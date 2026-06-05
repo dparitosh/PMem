@@ -1,0 +1,78 @@
+@prefix rr: <http://www.w3.org/ns/r2rml#> .
+@prefix rml: <http://semweb.mmlab.be/ns/rml#> .
+@prefix ap242: <http://example.org/ap242/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+# TripleMap 1: PRODUCT entities → AP242 Part
+<#PartTripleMap>
+  rml:logicalSource [
+    rml:source "step_entities.ttl" ;
+    rml:iterator "//*[entity_type='PRODUCT']"
+  ] ;
+  
+  rr:subjectMap [
+    rr:template "http://example.org/ap242/part/{entity_id}" ;
+    rr:class ap242:Part
+  ] ;
+  
+  rr:predicateObjectMap [
+    rr:predicate rdfs:label ;
+    rr:objectMap [ rml:reference "id_name" ]
+  ] ;
+  
+  rr:predicateObjectMap [
+    rr:predicate ap242:hasEntityType ;
+    rr:objectMap [ rml:reference "entity_type" ]
+  ] .
+
+# TripleMap 2: PRODUCT_DEFINITION_FORMATION → AP242 PartVersion
+<#PartVersionTripleMap>
+  rml:logicalSource [
+    rml:source "step_entities.ttl" ;
+    rml:iterator "//*[entity_type='PRODUCT_DEFINITION_FORMATION']"
+  ] ;
+  
+  rr:subjectMap [
+    rr:template "http://example.org/ap242/partversion/{entity_id}" ;
+    rr:class ap242:PartVersion
+  ] ;
+  
+  rr:predicateObjectMap [
+    rr:predicate rdfs:label ;
+    rr:objectMap [ rml:reference "formation_id" ]
+  ] .
+
+# TripleMap 3: SHAPE_REPRESENTATION → AP242 PartView
+<#PartViewTripleMap>
+  rml:logicalSource [
+    rml:source "step_entities.ttl" ;
+    rml:iterator "//*[entity_type='SHAPE_REPRESENTATION']"
+  ] ;
+  
+  rr:subjectMap [
+    rr:template "http://example.org/ap242/partview/{entity_id}" ;
+    rr:class ap242:PartView
+  ] ;
+  
+  rr:predicateObjectMap [
+    rr:predicate rdfs:label ;
+    rr:objectMap [ rml:reference "representation_id" ]
+  ] .
+
+# TripleMap 4: MAPPED_ITEM → AP242 Occurrence
+<#OccurrenceTripleMap>
+  rml:logicalSource [
+    rml:source "step_entities.ttl" ;
+    rml:iterator "//*[entity_type='MAPPED_ITEM']"
+  ] ;
+  
+  rr:subjectMap [
+    rr:template "http://example.org/ap242/occurrence/{entity_id}" ;
+    rr:class ap242:Occurrence
+  ] ;
+  
+  rr:predicateObjectMap [
+    rr:predicate rdfs:label ;
+    rr:objectMap [ rml:reference "item_id" ]
+  ] .

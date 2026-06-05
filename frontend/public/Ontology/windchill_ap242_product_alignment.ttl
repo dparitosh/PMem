@@ -1,0 +1,44 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix wc: <http://IAE-depo.com/windchill-odata#> .
+@prefix ap242: <http://IAE-depo.com/ap242-bo#> .
+@prefix align: <http://IAE-depo.com/windchill-ap242-alignment#> .
+
+# =============================================================================
+# Windchill OData to AP242 Product Alignment Ontology
+# =============================================================================
+
+<http://IAE-depo.com/windchill-ap242-product-alignment>
+    a owl:Ontology ;
+    rdfs:label "Windchill OData to AP242 Product Alignment"@en ;
+    rdfs:comment "Alignment ontology linking Windchill ProdMgmt OData API concepts to AP242 BO concepts."@en .
+
+# Class-Level Alignment: Product Chain
+wc:Part owl:equivalentClass ap242:Part .
+wc:Part skos:exactMatch ap242:Part .
+wc:PartVersion owl:equivalentClass ap242:PartVersion .
+wc:PartVersion skos:exactMatch ap242:PartVersion .
+wc:PartView skos:closeMatch ap242:PartView .
+wc:Occurrence owl:equivalentClass ap242:Occurrence .
+wc:Occurrence skos:exactMatch ap242:Occurrence .
+
+# Class-Level Alignment: Documents & Content
+wc:Document skos:closeMatch ap242:Document .
+wc:CADDocument skos:closeMatch ap242:Document .
+wc:ContentItem skos:closeMatch ap242:DigitalFile .
+
+# Property-Level Alignment
+wc:Part_Number skos:closeMatch ap242:externalId .
+wc:Part_Version skos:closeMatch ap242:versionId .
+wc:Part_Name skos:closeMatch ap242:name .
+wc:PartUseLink_Quantity skos:closeMatch ap242:quantity .
+wc:Part_State skos:closeMatch ap242:lifecycleState .
+
+# Relationship-Level Alignment
+wc:hasPartView skos:closeMatch ap242:hasView .
+wc:hasOccurrence skos:closeMatch ap242:hasOccurrence .
+wc:isVersionOf skos:closeMatch ap242:isVersionOf .
+wc:hasContent skos:closeMatch ap242:hasDigitalFile .

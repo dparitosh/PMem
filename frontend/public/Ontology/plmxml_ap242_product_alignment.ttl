@@ -1,0 +1,35 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix plmxml: <http://IAE-depo.com/plmxml-ontology#> .
+@prefix ap242: <http://IAE-depo.com/ap242-bo#> .
+
+<http://IAE-depo.com/plmxml-ap242-product-alignment>
+    a owl:Ontology ;
+    rdfs:label "PLMXML to AP242 Product Alignment"@en ;
+    rdfs:comment "Alignment ontology linking PLMXML product model concepts to AP242 BO concepts."@en .
+
+# Product chain alignment: Part -> PartVersion -> PartView -> Occurrence
+plmxml:Part owl:equivalentClass ap242:Part .
+plmxml:Part skos:exactMatch ap242:Part .
+plmxml:Revision owl:equivalentClass ap242:PartVersion .
+plmxml:Revision skos:exactMatch ap242:PartVersion .
+plmxml:ProductView skos:closeMatch ap242:PartView .
+plmxml:ProductInstance owl:equivalentClass ap242:Occurrence .
+plmxml:ProductInstance skos:exactMatch ap242:Occurrence .
+
+# Supporting content alignment
+plmxml:Document skos:closeMatch ap242:Document .
+plmxml:ExternalFile skos:closeMatch ap242:DigitalFile .
+
+# Property-level alignment
+plmxml:partNumber skos:closeMatch ap242:externalId .
+plmxml:revision skos:closeMatch ap242:versionId .
+plmxml:quantity skos:closeMatch ap242:quantity .
+plmxml:location skos:closeMatch ap242:location .
+
+# Relationship-level alignment
+plmxml:hasProductView skos:closeMatch ap242:hasView .
+plmxml:containsOccurrence skos:closeMatch ap242:hasOccurrence .
+plmxml:referencesPart skos:closeMatch ap242:relatedView .

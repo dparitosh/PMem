@@ -1,0 +1,58 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+*.env
+backend/backend/azure.txt
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+.npm
+.yarn
+
+# IDE
+.vscode/
+.idea/
+.agents/
+.codex/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+build/
+dist/
+frontend/build/
+*.egg-info/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Logs
+logs/
+backend/logs/
+backend/backend/logs/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+.cache/
+
+# Local runtime and generated test artifacts
+.dt_venv/
+backend/.dt_venv/
+backend/uploads/
+backend/cat_test_results/
+frontend/playwright-report/
+frontend/test-results/
+frontend/test-screenshots*/
+frontend/test-ontology-screenshots/
+frontend/test-stage-*/

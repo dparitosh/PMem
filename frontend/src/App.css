@@ -1,0 +1,325 @@
+html {
+  min-height: 100%;
+}
+
+.css-1mbxq6w-MuiTreeItem-label{
+  margin-top: 8px;
+}
+
+.table-striped > tbody {
+  margin-top: 8px;
+}
+
+body {
+  min-height: 100%;
+}
+
+/* ===== LAYOUT ===== */
+#cloud-container {
+  position: relative;
+  width: 100%;
+  margin-left: 0;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 8vh);
+  overflow: hidden;
+}
+
+.cloud-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.whereused-wrapper {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  /* Remove vertical centering so inner graph/hierarchy can use full height */
+  justify-content: flex-start;
+  padding: 0; /* let inner component manage spacing */
+}
+
+/* ===== RESIZABLE GRAPH/TABS SECTIONS ===== */
+.graph-section-container {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  background: #fff;
+}
+
+.tabs-section-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  background: #fff;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Splitter styling */
+.resizable-splitter {
+  cursor: row-resize;
+  background-color: #d0d5db;
+  transition: background-color 0.15s ease;
+  flex-shrink: 0;
+  height: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  z-index: 100;
+  border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.resizable-splitter:hover {
+  background-color: #004B87;
+}
+
+.resizable-splitter:active {
+  background-color: #004B87;
+}
+
+.graph-wrapper, .table-wrapper, .reports-wrapper {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* #pageTitle {
+  font-size: calc(0.75em + 1vmin);
+} */
+
+.navbar__wrapper {
+  height: '20px';
+}
+
+@media screen and (max-width: 800px) {
+  .navbar__container {
+    height: '20px';
+  }
+}
+
+
+/* width */
+::-webkit-scrollbar {
+  width: 5px;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+  background: #888;
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+.sticky-top {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+}
+
+/* Custom tab styles */
+.nav-tabs {
+  border-bottom: 2px solid #0a8276;
+  margin-bottom: 0;
+}
+
+.nav-tabs .nav-link {
+  border: none;
+  border-radius: 8px 8px 0 0;
+  margin-right: 5px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.nav-tabs .nav-link:hover {
+  background-color: rgba(10, 130, 118, 0.1);
+  border-color: transparent;
+}
+
+.nav-tabs .nav-link.active {
+  background-color: #0a8276 !important;
+  color: white !important;
+  border-color: #0a8276 !important;
+}
+
+/* Report table styles */
+.table-hover tbody tr:hover {
+  background-color: rgba(10, 130, 118, 0.05);
+}
+
+.table th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+  color: #0a8276;
+  border-bottom: 2px solid #0a8276;
+}
+
+.btn-group .btn {
+  margin-right: 5px;
+}
+
+.btn-outline-primary {
+  border-color: #0a8276;
+  color: #0a8276;
+}
+
+.btn-outline-primary:hover {
+  background-color: #0a8276;
+  border-color: #0a8276;
+}
+
+.btn-primary {
+  background-color: #0a8276;
+  border-color: #0a8276;
+}
+
+/* Pagination styles */
+.pagination {
+  gap: 2px;
+}
+
+.pagination .page-link {
+  color: #0a8276;
+  border: 1px solid #dee2e6;
+  padding: 0.375rem 0.75rem;
+  margin: 0 1px;
+  border-radius: 4px;
+  transition: all 0.15s ease-in-out;
+}
+
+.pagination .page-link:hover {
+  background-color: #0a8276;
+  border-color: #0a8276;
+  color: white;
+}
+
+.pagination .page-item.active .page-link {
+  background-color: #0a8276;
+  border-color: #0a8276;
+  color: white;
+}
+
+.pagination .page-item.disabled .page-link {
+  color: #6c757d;
+  background-color: #fff;
+  border-color: #dee2e6;
+  cursor: not-allowed;
+}
+
+/* Table pagination info */
+.table-pagination-info {
+  font-size: 0.875rem;
+  color: #6c757d;
+}
+
+/* Export buttons */
+.export-buttons {
+  gap: 10px;
+}
+
+.export-buttons .btn {
+  font-size: 0.875rem;
+}
+
+/* Where Used hierarchy label color enforcement */
+.whereused-wrapper svg .hier-node-label {
+  fill: #000 !important;
+  stroke: none;
+}
+
+/* ===== CHALLENGE FIXES ===== */
+
+/* Challenge 1: Tab State Preservation - Smooth transitions */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Challenge 2: Graph Canvas Height Optimization - consolidated into main layout above */
+
+/* Challenge 3: Responsive Navigation */
+@media screen and (max-width: 768px) {
+  #cloud-container {
+    height: auto;
+  }
+  
+  .nav-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav-tabs .nav-link {
+    margin-right: 2px;
+    font-size: 12px;
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+
+  .graph-wrapper,
+  .table-wrapper,
+  .reports-wrapper {
+    min-height: 400px;
+  }
+}
+
+@media screen and (max-width: 576px) {
+  .nav-tabs .nav-link {
+    font-size: 10px;
+    padding: 6px 8px;
+  }
+  
+  .nav-tabs {
+    gap: 2px;
+  }
+}
+
+/* Tooltip positioning - High z-index for visibility */
+.tooltip {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: auto;
+  max-width: 300px;
+  word-wrap: break-word;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+
+/* Ensure chat sidebar doesn't hide tooltips */
+@media screen and (min-width: 992px) {
+  .graph-wrapper.col-md-8 {
+    /* Recalculate width accounting for potential chat sidebar */
+    max-width: calc(100% - 4px);
+  }
+}
+
+/* Prevent content shift when scrollbars appear */
+html {
+  overflow-y: scroll;
+}
+
+/* Optimize graph rendering performance */
+.graph-wrapper svg {
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+  will-change: transform;
+}

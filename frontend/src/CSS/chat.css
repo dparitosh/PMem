@@ -1,0 +1,4 @@
+input[type="text"]:focus {
+    outline: solid !important;
+    border: 1px #6C757D !important;
+}

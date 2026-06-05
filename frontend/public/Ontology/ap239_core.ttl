@@ -1,0 +1,18 @@
+@prefix ap239: <http://IAE-depo.com/ap239#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://IAE-depo.com/ap239> a owl:Ontology ;
+    rdfs:label "AP239 - Product Life-Cycle Support"@en ;
+    rdfs:comment "Product lifecycle management, configuration management"@en ;
+    owl:versionInfo "1.0"^^xsd:string .
+
+ap239:AP239ConceptScheme a skos:ConceptScheme ;
+    rdfs:label "AP239 Concept Scheme" .
+
+ap239:AP239Entity a owl:Class ;
+    rdfs:label "AP239 Entity" ;
+    rdfs:comment "Root class for AP239 (Product Life-Cycle Support) entities." .
+

@@ -1,0 +1,66 @@
+/* 
+ * Optimized CSS for Node Icons
+ * Performance-focused styles for better rendering
+ */
+
+/* Icon styling - optimized for performance */
+.main-icon {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+  transition: filter 0.15s ease-out;
+  will-change: filter;
+}
+
+.main-icon:hover {
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2)) brightness(1.1);
+}
+
+/* Fallback circle styling - optimized */
+.fallback-circle {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+  transition: filter 0.15s ease-out;
+  will-change: filter;
+}
+
+.fallback-circle:hover {
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2)) brightness(1.1);
+}
+
+/* Expand/collapse controls - positioned on top with proper layering */
+.expand-control-bg {
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.4));
+  will-change: opacity;
+  /* Ensure it's always visible above other elements */
+  pointer-events: auto;
+}
+
+.expand-symbol {
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  will-change: opacity;
+  font-family: Arial, sans-serif;
+  /* Ensure text is always on top */
+  pointer-events: none;
+}
+
+/* Loading indicator animation - optimized */
+.loading-indicator {
+  animation: spin 1s linear infinite;
+  will-change: transform;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Performance optimizations */
+svg {
+  shape-rendering: optimizeSpeed;
+}
+
+.node-group {
+  will-change: transform;
+}
+
+.link {
+  will-change: auto;
+}

@@ -1,0 +1,2690 @@
+@prefix mbse: <http://depo.example/mbse/domain#> .
+@prefix inst: <http://depo.example/mbse/instance#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+mbse:MBSEDomainOntology a owl:Ontology ;
+  rdfs:label "MBSE Domain Ontology - SugarPlantMBSE" .
+
+mbse:Actor a owl:Class ; rdfs:label "Actor" .
+mbse:Allocate a owl:Class ; rdfs:label "Allocate" .
+mbse:Association a owl:Class ; rdfs:label "Association" .
+mbse:Class a owl:Class ; rdfs:label "Class" .
+mbse:Component a owl:Class ; rdfs:label "Component" .
+mbse:ConstraintBlock a owl:Class ; rdfs:label "ConstraintBlock" .
+mbse:Element a owl:Class ; rdfs:label "Element" .
+mbse:Interface a owl:Class ; rdfs:label "Interface" .
+mbse:Package a owl:Class ; rdfs:label "Package" .
+mbse:Parameter a owl:Class ; rdfs:label "Parameter" .
+mbse:Refine a owl:Class ; rdfs:label "Refine" .
+mbse:Requirement a owl:Class ; rdfs:label "Requirement" .
+mbse:Trace a owl:Class ; rdfs:label "Trace" .
+mbse:UseCase a owl:Class ; rdfs:label "UseCase" .
+mbse:Verify a owl:Class ; rdfs:label "Verify" .
+
+mbse:AGGREGATION a owl:ObjectProperty ; rdfs:label "AGGREGATION" .
+mbse:ASSOCIATION a owl:ObjectProperty ; rdfs:label "ASSOCIATION" .
+mbse:COMPOSITION a owl:ObjectProperty ; rdfs:label "COMPOSITION" .
+mbse:STEREOTYPE a owl:ObjectProperty ; rdfs:label "STEREOTYPE" .
+
+inst:19_0_2_4520142_1657362849664_754191_42466 a mbse:Package ;
+  rdfs:label "1 Problem Domain" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849671_631307_42549 a mbse:Package ;
+  rdfs:label "Black Box" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849654_477988_42447 a mbse:Package ;
+  rdfs:label "Sugar Production Plant Use Cases" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657819584014_211775_44267 a mbse:UseCase ;
+  rdfs:label "Variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657819602386_374466_44282 a mbse:UseCase ;
+  rdfs:label "Energy efficiency for juice purification " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657819638934_208957_44297 a mbse:UseCase ;
+  rdfs:label "Deliver  RPM  & Power  " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657819665991_236518_44312 a mbse:UseCase ;
+  rdfs:label "Maintain Temperature " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657819691241_492622_44327 a mbse:UseCase ;
+  rdfs:label "Maintain  Low Vibration/Noise " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657819712873_982784_44342 a mbse:UseCase ;
+  rdfs:label "Maintain Stable Voltage " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657819740312_1346_44357 a mbse:UseCase ;
+  rdfs:label "Environmental Standards " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657819770434_656390_44372 a mbse:UseCase ;
+  rdfs:label "Start/Stop Motor " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657819811663_870817_44387 a mbse:UseCase ;
+  rdfs:label "Bearing system to support moving components  " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657819835110_895316_44402 a mbse:UseCase ;
+  rdfs:label "Monitor Motor Parameters  " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657819960200_262355_44417 a mbse:Actor ;
+  rdfs:label "Service Engineer" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657819998747_887079_44441 a mbse:Association ;
+  rdfs:label "Acts on VSD" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657820036605_645641_44457 a mbse:Association ;
+  rdfs:label "Supplies Stable RPM & Power" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657820108330_512221_44518 a mbse:Association ;
+  rdfs:label "Monitors Motor Parameters" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657820759792_547496_44607 a mbse:UseCase ;
+  rdfs:label "Reducing friction " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657820834710_530098_44622 a mbse:UseCase ;
+  rdfs:label "Supporting the load " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657820860007_431544_44637 a mbse:UseCase ;
+  rdfs:label "Providing the guide for moving components " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849680_917167_42605 a mbse:Package ;
+  rdfs:label "Sugar Production Plant Measurements of Effectiveness" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657856061062_532140_42843 a mbse:Class ;
+  rdfs:label "Sugar Production Plant Measurements of Effectiveness" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657857489328_337143_42961 a mbse:Class ;
+  rdfs:label "Juice Purification and Heating" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849688_196402_42718 a mbse:Package ;
+  rdfs:label "Sugar Production Plant  Stakeholder Needs" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657364461359_738122_43019 a mbse:Class ;
+  rdfs:label "Varibale Speed Drives" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657364535718_351406_43029 a mbse:Class ;
+  rdfs:label "Energy efficiency for juice purification " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657364579062_46590_43037 a mbse:Class ;
+  rdfs:label "Adjustable frequency for VSD " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657364666167_668612_43045 a mbse:Class ;
+  rdfs:label "The VSD to deliver process KPIs " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657364698767_947125_43091 a mbse:Class ;
+  rdfs:label "The VSD shall deliver operational mterics " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849686_491702_42697 a mbse:Package ;
+  rdfs:label "Sugar Production Plant System Context" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_454470_42803 a mbse:Package ;
+  rdfs:label "Exchange Items" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657821134718_39185_44856 a mbse:Class ;
+  rdfs:label "Sugar Production Plant" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657821210267_679476_44946 a mbse:Class ;
+  rdfs:label "Juice Purification & Heating" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657821246693_35785_44991 a mbse:Class ;
+  rdfs:label "Variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657821300393_266626_45036 a mbse:Class ;
+  rdfs:label "Sensors" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657821323804_343645_45081 a mbse:Class ;
+  rdfs:label "Parameter Monitoring" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657821553829_405756_45126 a mbse:Class ;
+  rdfs:label "IoT System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657821705026_585596_45171 a mbse:Class ;
+  rdfs:label "Analytics System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657821884981_191138_45216 a mbse:Class ;
+  rdfs:label "Service Actions" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822056535_786330_45319 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657822056535_786330_45319" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822071449_574812_45338 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657822071449_574812_45338" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822139418_270557_45357 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657822139418_270557_45357" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822229422_13632_45378 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657822229422_13632_45378" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822245247_768447_45397 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657822245247_768447_45397" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822276983_770615_45419 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657822276983_770615_45419" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822422039_656899_45451 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657822422039_656899_45451" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822429348_565791_45467 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657822429348_565791_45467" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822539282_709142_45505 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657822539282_709142_45505" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849671_810213_42541 a mbse:Package ;
+  rdfs:label "White Box" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_504546_42857 a mbse:Package ;
+  rdfs:label "2 Functional Analysis" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_422738_42822 a mbse:Package ;
+  rdfs:label "3 Logical Architecture" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849681_486214_42625 a mbse:Package ;
+  rdfs:label "1 Interfaces" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849682_474920_42643 a mbse:Package ;
+  rdfs:label "2 Logical Subsystems" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849682_59420_42650 a mbse:Package ;
+  rdfs:label "Unit Imports" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849707_611909_42908 a mbse:Package ;
+  rdfs:label "Basic Units" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849679_956432_42588 a mbse:Package ;
+  rdfs:label "Basic Length" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_138437_42830 a mbse:Package ;
+  rdfs:label "Basic Mass" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849669_373651_42513 a mbse:Package ;
+  rdfs:label "Basic Area" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849707_971904_42918 a mbse:Package ;
+  rdfs:label "Basic Volume" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849673_633754_42570 a mbse:Package ;
+  rdfs:label "Basic Time" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_495329_42801 a mbse:Package ;
+  rdfs:label "Basic Electric Current" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849687_279362_42715 a mbse:Package ;
+  rdfs:label "Basic Thermodynamic Temperature" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849670_3845_42534 a mbse:Package ;
+  rdfs:label "Basic Amount of Substance" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_100413_42755 a mbse:Package ;
+  rdfs:label "Basic Luminous Intensity" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849672_969510_42561 a mbse:Package ;
+  rdfs:label "Basic Speed and Velocity" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_132513_42842 a mbse:Package ;
+  rdfs:label "Basic Acceleration" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_88320_42827 a mbse:Package ;
+  rdfs:label "Basic Mass Density" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849665_847370_42498 a mbse:Package ;
+  rdfs:label "Basic Electric Current Density" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_108446_42840 a mbse:Package ;
+  rdfs:label "Basic Amount of Substance Concentration" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849680_989184_42594 a mbse:Package ;
+  rdfs:label "Basic Magnetic Field Strength" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849707_519509_42901 a mbse:Package ;
+  rdfs:label "Basic Luminance" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849681_699944_42622 a mbse:Package ;
+  rdfs:label "2 Solution Domain" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849707_378238_42864 a mbse:Package ;
+  rdfs:label "1 Variable Speed Drive System Requirements" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657364852426_282026_43143 a mbse:Class ;
+  rdfs:label "Motor Speccifications" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657364948606_984168_43186 a mbse:Class ;
+  rdfs:label "Low Bearing Noice/Virbration" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657371823689_838667_43292 a mbse:Class ;
+  rdfs:label "Temperature should be with in  50 C to 110 C" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657372220313_733094_43378 a mbse:Class ;
+  rdfs:label "High-speed capability " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657372277153_290493_43421 a mbse:Class ;
+  rdfs:label "Overload or Instantaneous trip check " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657372357897_621045_43464 a mbse:Class ;
+  rdfs:label "Low Motor Starting Time " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657372446298_558495_43507 a mbse:Class ;
+  rdfs:label "Motor Voltage " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657372497874_699814_43550 a mbse:Class ;
+  rdfs:label "Motor Capacity" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657372540282_929236_43593 a mbse:Class ;
+  rdfs:label "Motor winding insulation " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657372590684_209523_43636 a mbse:Class ;
+  rdfs:label "Motor Winding Compliance " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657372638363_196176_43679 a mbse:Class ;
+  rdfs:label "Rib cooling mechanism " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657372686395_154690_43722 a mbse:Class ;
+  rdfs:label "Cooling of ribs " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657372731748_729457_43765 a mbse:Class ;
+  rdfs:label "Motor ambient conditions " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657372771797_804200_43808 a mbse:Class ;
+  rdfs:label "Motor Operating Frequency " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657372837292_523125_43851 a mbse:Class ;
+  rdfs:label "Poles for motor " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657372873997_926518_43894 a mbse:Class ;
+  rdfs:label "Dust and water protection for motor " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657372904973_720478_43937 a mbse:Class ;
+  rdfs:label "Compliance IEC 60034-5 " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849664_947841_42470 a mbse:Package ;
+  rdfs:label "3 Variable Speed Drive System Structure" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849690_987149_42746 a mbse:Package ;
+  rdfs:label "1 Interfaces" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849670_633644_42526 a mbse:Package ;
+  rdfs:label "2 Exchange Items" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849689_160594_42733 a mbse:Package ;
+  rdfs:label "3 Subsystems" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992250821_213001_42975 a mbse:Class ;
+  rdfs:label "Variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992272414_373051_43020 a mbse:Class ;
+  rdfs:label "Cooling System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992294461_444597_43065 a mbse:Class ;
+  rdfs:label "Heating System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992307566_336188_43110 a mbse:Class ;
+  rdfs:label "Load Balancer" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992322822_147475_43155 a mbse:Class ;
+  rdfs:label "Bushing" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992339783_934817_43200 a mbse:Class ;
+  rdfs:label "Rotor" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992385358_623582_43245 a mbse:Class ;
+  rdfs:label "Firm Hosting" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992401822_988626_43290 a mbse:Class ;
+  rdfs:label "Shock Absorbers" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992426336_818336_43335 a mbse:Class ;
+  rdfs:label "Air Circulation System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992460079_874535_43380 a mbse:Class ;
+  rdfs:label "Ventilation System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992480472_790222_43425 a mbse:Class ;
+  rdfs:label "Motor Housing" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992491807_984131_43470 a mbse:Class ;
+  rdfs:label "Dust Cleaning System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992522464_664756_43515 a mbse:Class ;
+  rdfs:label "Bearing System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992573897_439964_43560 a mbse:Class ;
+  rdfs:label "Temperature Sensors" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992596888_700403_43605 a mbse:Class ;
+  rdfs:label "Voltometer" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992633692_780779_43650 a mbse:Class ;
+  rdfs:label "Accelerometer" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992718761_494048_43695 a mbse:Class ;
+  rdfs:label "Noise Sensor" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992736297_81604_43740 a mbse:Class ;
+  rdfs:label "Spark Detector" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992760226_26004_43785 a mbse:Class ;
+  rdfs:label "Strain Guage" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992816914_481683_43830 a mbse:Class ;
+  rdfs:label "Monitoring System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992887954_339634_43875 a mbse:Class ;
+  rdfs:label "Spacer" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993023427_118512_43922 a mbse:Class ;
+  rdfs:label "Control Unit" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993036699_791928_43967 a mbse:Class ;
+  rdfs:label "Power Supply" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993071643_371692_44013 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993071643_371692_44013" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993088430_74182_44032 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993088430_74182_44032" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993093837_740116_44051 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993093837_740116_44051" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993098998_331913_44070 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993098998_331913_44070" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993104743_278912_44089 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993104743_278912_44089" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993116537_22247_44108 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993116537_22247_44108" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993125131_972246_44127 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993125131_972246_44127" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993133631_893042_44146 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993133631_893042_44146" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993147680_33816_44187 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993147680_33816_44187" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993154003_368744_44206 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993154003_368744_44206" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993162330_698695_44225 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993162330_698695_44225" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993172210_853904_44244 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993172210_853904_44244" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993177627_817412_44263 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993177627_817412_44263" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993185356_872318_44282 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993185356_872318_44282" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993199581_448112_44301 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993199581_448112_44301" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993214126_537303_44320 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993214126_537303_44320" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993218240_471149_44339 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993218240_471149_44339" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993222817_475498_44358 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993222817_475498_44358" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993228211_940368_44377 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993228211_940368_44377" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993233316_941185_44396 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993233316_941185_44396" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993238999_433328_44415 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993238999_433328_44415" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993244087_861598_44434 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993244087_861598_44434" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849625_545383_42437 a mbse:Package ;
+  rdfs:label "2.1 Bearing Assembly Subsystem" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849679_377612_42576 a mbse:Package ;
+  rdfs:label "Bearing Assembly  Behavior" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849625_643353_42442 a mbse:Package ;
+  rdfs:label "Bearing Assembly Structure" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_558156_42806 a mbse:Package ;
+  rdfs:label "1 Interfaces" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849668_667666_42511 a mbse:Package ;
+  rdfs:label "2 Exchange Items" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849707_634466_42877 a mbse:Package ;
+  rdfs:label "3 Components" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849669_298667_42516 a mbse:Package ;
+  rdfs:label "Component 1" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993646055_300372_44546 a mbse:Class ;
+  rdfs:label "Bearing assembly N-end" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993653424_734130_44591 a mbse:Class ;
+  rdfs:label "Bearing assembly D-end" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993668327_950828_44636 a mbse:Class ;
+  rdfs:label "Spring washer" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993686766_888859_44681 a mbse:Class ;
+  rdfs:label "Hex screw steel" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993702975_636796_44726 a mbse:Class ;
+  rdfs:label "Sleeve bearing" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993740450_71783_44772 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993740450_71783_44772" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993745880_200206_44791 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993745880_200206_44791" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993749169_209170_44810 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993749169_209170_44810" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993752766_652038_44829 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993752766_652038_44829" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993756697_625294_44848 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993756697_625294_44848" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993760485_366104_44867 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993760485_366104_44867" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993763693_435055_44886 a mbse:Association ;
+  rdfs:label "_19_0_2_4520142_1657993763693_435055_44886" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_756927_42774 a mbse:Package ;
+  rdfs:label "Bearing Assembly  Requirements" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657797528962_509588_43117 a mbse:Class ;
+  rdfs:label "Bearing Sub System specifications" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657797632018_48841_43203 a mbse:Class ;
+  rdfs:label "Preventing false brinelling" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657797673787_934369_43246 a mbse:Class ;
+  rdfs:label "Magnitude and direction of radial loads for drive end " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657797713455_128049_43289 a mbse:Class ;
+  rdfs:label "Magnitude and direction of radial loads for non drive end " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657797762612_562816_43332 a mbse:Class ;
+  rdfs:label "Magnitude and direction of axial loads for drive end " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657797829770_105754_43375 a mbse:Class ;
+  rdfs:label "Magnitude and direction of axial loads for non drive end " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657797869434_711243_43418 a mbse:Class ;
+  rdfs:label "Magnitude and direction of Faigue loads for non drive end " ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657797902703_441439_43461 a mbse:Class ;
+  rdfs:label "Variable Speed" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657797956811_1264_43504 a mbse:Class ;
+  rdfs:label "Shaft and housing materials - cast iron or steel or aluminium" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798020872_293366_43547 a mbse:Class ;
+  rdfs:label "Coupling, belt or gear drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798059158_250731_43590 a mbse:Class ;
+  rdfs:label "Mounting" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798110709_79088_43633 a mbse:Class ;
+  rdfs:label "Environment" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798299668_989079_43814 a mbse:Class ;
+  rdfs:label "Lubrication: grease versus oil" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798385028_38553_43900 a mbse:Class ;
+  rdfs:label "Condition monitoring" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798397729_404037_43943 a mbse:Class ;
+  rdfs:label "Sealing (integral and/or external)" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849671_409646_42543 a mbse:Package ;
+  rdfs:label "Bearing Assembly Parameters" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_858173_42752 a mbse:Package ;
+  rdfs:label "3 Bearing Component" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_965410_42758 a mbse:Package ;
+  rdfs:label "Bearing Requirements" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1658124552107_729411_43245 a mbse:Class ;
+  rdfs:label "Bearing Specification" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849707_804125_42865 a mbse:Package ;
+  rdfs:label "Bearing Structure" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849689_937247_42738 a mbse:Package ;
+  rdfs:label "Bearing Parameters" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849680_207782_42606 a mbse:Package ;
+  rdfs:label "1 Constraints" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_65806_42784 a mbse:Package ;
+  rdfs:label "Bearing Behavior" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849680_830697_42608 a mbse:Package ;
+  rdfs:label "4 Implementation Domain" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849686_345498_42695 a mbse:Package ;
+  rdfs:label "Bearing  Physical Requirements" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786568472_214808_43001 a mbse:Package ;
+  rdfs:label "2.2 Motor Housing Sub System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786568473_786674_43002 a mbse:Package ;
+  rdfs:label "Motor Housing Sub System  Behavior" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786568473_85659_43003 a mbse:Package ;
+  rdfs:label "Motor Housing Sub System Structure" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786568473_769960_43006 a mbse:Package ;
+  rdfs:label "1 Interfaces" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786568473_514316_43007 a mbse:Package ;
+  rdfs:label "2 Exchange Items" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786568473_214773_43008 a mbse:Package ;
+  rdfs:label "3 Components" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786568489_994299_43030 a mbse:Package ;
+  rdfs:label "Component 1" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786568473_855847_43004 a mbse:Package ;
+  rdfs:label "Motor Housing Sub System Requirements" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786568473_688320_43005 a mbse:Package ;
+  rdfs:label "Motor Housing Sub System Parameters" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786780270_369103_43051 a mbse:Package ;
+  rdfs:label "2.3 Sensors - VSD Parameter Monitoring Sub System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786780270_191896_43052 a mbse:Package ;
+  rdfs:label "Sensors - VSD Parameter Monitoring Sub System  Behavior" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786780271_214849_43053 a mbse:Package ;
+  rdfs:label "Sensors - VSD Parameter Monitoring Sub System Structure" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786780272_429688_43056 a mbse:Package ;
+  rdfs:label "1 Interfaces" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786780272_77662_43057 a mbse:Package ;
+  rdfs:label "2 Exchange Items" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786780272_733437_43058 a mbse:Package ;
+  rdfs:label "3 Components" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786780290_538989_43080 a mbse:Package ;
+  rdfs:label "Component 1" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786780271_396138_43054 a mbse:Package ;
+  rdfs:label "Sensors - VSD Parameter Monitoring Sub System Requirements" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657786780272_846436_43055 a mbse:Package ;
+  rdfs:label "Sensors - VSD Parameter Monitoring Sub System Parameters" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657787029339_791991_43104 a mbse:Package ;
+  rdfs:label "2.4 Busing or Rotor  Sub System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657787125119_23612_43105 a mbse:Package ;
+  rdfs:label "2.5 Spacer  Sub System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657787130671_843796_43106 a mbse:Package ;
+  rdfs:label "2.6 Power Supplyr  Sub System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657787134096_88431_43107 a mbse:Package ;
+  rdfs:label "2.7 VSD Monitoring SW  Sub System" ;
+  mbse:sourceFormat "xmi" .
+inst:be00301_1073394351331_445580_2 a mbse:Package ;
+  rdfs:label "MagicDraw Profile" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8f90291_1173963323875_662612_98 a mbse:Package ;
+  rdfs:label "auxiliaryResource" ;
+  mbse:sourceFormat "xmi" .
+inst:10_0EAPbeta_be00301_1123081772098_323897_274 a mbse:Package ;
+  rdfs:label "_10_0EAPbeta_be00301_1123081772098_323897_274" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8f90291_1173963939937_323574_98 a mbse:Package ;
+  rdfs:label "_12_1_8f90291_1173963939937_323574_98" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_be00301_1108044721245_236588_411 a mbse:Package ;
+  rdfs:label "InvisibleStereotype" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_be00301_1108053761194_467635_11463 a mbse:Package ;
+  rdfs:label "UML2 Metamodel" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704884807_371561_7741 a mbse:Package ;
+  rdfs:label "Element" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704920340_825592_9329 a mbse:Package ;
+  rdfs:label "Model" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1157529392394_202602_1 a mbse:Package ;
+  rdfs:label "PrimitiveTypes" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1157529792739_987548_11 a mbse:Package ;
+  rdfs:label "Boolean" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_be00301_1108050582343_527400_10847 a mbse:Package ;
+  rdfs:label "StandardProfile" ;
+  mbse:sourceFormat "xmi" .
+inst:magicdraw_1046861421236_601240_36 a mbse:Package ;
+  rdfs:label "Metamodel" ;
+  mbse:sourceFormat "xmi" .
+inst:10_0EAPbeta_be00301_1123081771136_824883_97 a mbse:Package ;
+  rdfs:label "_10_0EAPbeta_be00301_1123081771136_824883_97" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704885298_713292_7913 a mbse:Package ;
+  rdfs:label "Package" ;
+  mbse:sourceFormat "xmi" .
+inst:10_0EAPbeta_be00301_1123081772478_425419_349 a mbse:Package ;
+  rdfs:label "_10_0EAPbeta_be00301_1123081772478_425419_349" ;
+  mbse:sourceFormat "xmi" .
+inst:magicdraw_1046861421236_39100_29 a mbse:Package ;
+  rdfs:label "ModelLibrary" ;
+  mbse:sourceFormat "xmi" .
+inst:donce_1051693917650_319078_0 a mbse:Package ;
+  rdfs:label "Integer" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1106296071977_61607_0 a mbse:Package ;
+  rdfs:label "Diagram" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_8f90291_1391001597107_586303_6259 a mbse:Package ;
+  rdfs:label "additional_stereotypes" ;
+  mbse:sourceFormat "xmi" .
+inst:16_6beta_bb002ea_1245402187328_327249_5698 a mbse:Package ;
+  rdfs:label "_16_6beta_bb002ea_1245402187328_327249_5698" ;
+  mbse:sourceFormat "xmi" .
+inst:16_6beta_bb002ea_1245402130171_170238_5692 a mbse:Package ;
+  rdfs:label "RequirementTable" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_2_3_ff3038a_1383749269646_31940_44489 a mbse:Package ;
+  rdfs:label "deprecated" ;
+  mbse:sourceFormat "xmi" .
+inst:18_3beta_601020a_1444321256807_279830_4605 a mbse:Package ;
+  rdfs:label "_18_3beta_601020a_1444321256807_279830_4605" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_2_91a0295_1110274713995_297054_0 a mbse:Package ;
+  rdfs:label "String" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1157529809864_59216_12 a mbse:Package ;
+  rdfs:label "UnlimitedNatural" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0beta_f720368_1291217394082_340077_1886 a mbse:Package ;
+  rdfs:label "Real" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704906476_241761_9108 a mbse:Package ;
+  rdfs:label "ChangeEvent" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704921145_783591_9372 a mbse:Package ;
+  rdfs:label "ParameterSet" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704885228_400432_7889 a mbse:Package ;
+  rdfs:label "StructuralFeature" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704884546_526097_7628 a mbse:Package ;
+  rdfs:label "ConnectorEnd" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704893217_304959_8514 a mbse:Package ;
+  rdfs:label "ActivityEdge" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704887064_979432_8141 a mbse:Package ;
+  rdfs:label "InvocationAction" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704885343_144138_7929 a mbse:Package ;
+  rdfs:label "Class" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704904246_626651_9067 a mbse:Package ;
+  rdfs:label "AcceptEventAction" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704899911_307257_8888 a mbse:Package ;
+  rdfs:label "InformationFlow" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704884559_152470_7636 a mbse:Package ;
+  rdfs:label "Connector" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704884514_638424_7612 a mbse:Package ;
+  rdfs:label "Classifier" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704893267_8162_8522 a mbse:Package ;
+  rdfs:label "ObjectNode" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704907324_573147_9117 a mbse:Package ;
+  rdfs:label "Trigger" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704911199_900094_9269 a mbse:Package ;
+  rdfs:label "Port" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704892254_121736_8466 a mbse:Package ;
+  rdfs:label "Activity" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704884574_96724_7644 a mbse:Package ;
+  rdfs:label "Property" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704884825_217290_7749 a mbse:Package ;
+  rdfs:label "Comment" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704884846_260393_7757 a mbse:Package ;
+  rdfs:label "DirectedRelationship" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704884715_427797_7700 a mbse:Package ;
+  rdfs:label "Behavior" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704885376_903292_7939 a mbse:Package ;
+  rdfs:label "DataType" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704919680_932732_9312 a mbse:Package ;
+  rdfs:label "UseCase" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704885833_713624_8075 a mbse:Package ;
+  rdfs:label "Dependency" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704884528_587873_7620 a mbse:Package ;
+  rdfs:label "Parameter" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704884698_645168_7692 a mbse:Package ;
+  rdfs:label "Operation" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704919482_11686_9288 a mbse:Package ;
+  rdfs:label "Actor" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704884649_358727_7668 a mbse:Package ;
+  rdfs:label "Interface" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704884863_927714_7765 a mbse:Package ;
+  rdfs:label "NamedElement" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704896930_275083_8743 a mbse:Package ;
+  rdfs:label "AddStructuralFeatureValueAction" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704885806_49506_8067 a mbse:Package ;
+  rdfs:label "Abstraction" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704885195_432731_7879 a mbse:Package ;
+  rdfs:label "Generalization" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704885153_836117_7863 a mbse:Package ;
+  rdfs:label "Feature" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704885251_933969_7897 a mbse:Package ;
+  rdfs:label "InstanceSpecification" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704921570_774139_9419 a mbse:Package ;
+  rdfs:label "ActivityPartition" ;
+  mbse:sourceFormat "xmi" .
+inst:10_0EAPbeta_be00301_1123081771527_791354_142 a mbse:Package ;
+  rdfs:label "_10_0EAPbeta_be00301_1123081771527_791354_142" ;
+  mbse:sourceFormat "xmi" .
+inst:magicdraw_1046861421246_733231_63 a mbse:Package ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:magicdraw_1046861421236_260147_44 a mbse:Package ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:10_0EAPbeta_be00301_1123081771206_35231_112 a mbse:Package ;
+  rdfs:label "_10_0EAPbeta_be00301_1123081771206_35231_112" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1162212177466_124550_157_convert a mbse:Package ;
+  rdfs:label "Blocks" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147430241871_662816_1191 a mbse:Package ;
+  rdfs:label "E_extension_ValueType_base_DataType" ;
+  mbse:sourceFormat "xmi" .
+inst:15_0_be00301_1204738521334_980448_1165 a mbse:Package ;
+  rdfs:label "E_extension_ConnectorProperty_base_Property" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147430239267_179145_1189 a mbse:Package ;
+  rdfs:label "ValueType" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147424181797_708260_960 a mbse:Package ;
+  rdfs:label "E_extension_Block_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:15_0_be00301_1204738120503_502083_5046 a mbse:Package ;
+  rdfs:label "E_extension_BindingConnector_base_Connector" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147424472816_170898_1144 a mbse:Package ;
+  rdfs:label "DistributedProperty" ;
+  mbse:sourceFormat "xmi" .
+inst:15_0_be00301_1204738519224_422618_1163 a mbse:Package ;
+  rdfs:label "ConnectorProperty" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147424475940_131431_1146 a mbse:Package ;
+  rdfs:label "E_extension_DistributedProperty_base_Property" ;
+  mbse:sourceFormat "xmi" .
+inst:15_0_be00301_1204738438075_92104_1078 a mbse:Package ;
+  rdfs:label "ParticipantProperty" ;
+  mbse:sourceFormat "xmi" .
+inst:15_0_be00301_1204738115945_253883_5044 a mbse:Package ;
+  rdfs:label "BindingConnector" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147424179914_458922_958 a mbse:Package ;
+  rdfs:label "Block" ;
+  mbse:sourceFormat "xmi" .
+inst:15_0_be00301_1204738457049_973040_1080 a mbse:Package ;
+  rdfs:label "E_extension_ParticipantProperty_base_Property" ;
+  mbse:sourceFormat "xmi" .
+inst:15_0_be00301_1204738666848_701421_1246 a mbse:Package ;
+  rdfs:label "PropertySpecificType" ;
+  mbse:sourceFormat "xmi" .
+inst:15_0_be00301_1204738669328_280963_1248 a mbse:Package ;
+  rdfs:label "E_extension_PropertySpecificType_base_Classifier" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147431313222_407417_1457 a mbse:Package ;
+  rdfs:label "E_extension_NestedConnectorEnd_base_ConnectorEnd" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147431307463_773225_1455 a mbse:Package ;
+  rdfs:label "NestedConnectorEnd" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_2_136f03d9_1338272752776_55195_8697 a mbse:Package ;
+  rdfs:label "A_valueType_unit" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_2_136f03d9_1338272505244_672703_8645 a mbse:Package ;
+  rdfs:label "A_valueType_quantityKind" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382583834110_524897_11405 a mbse:Package ;
+  rdfs:label "DirectedRelationshipPropertyPath" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382583840378_500403_11406 a mbse:Package ;
+  rdfs:label "E_extension_DirectedRelationshipPropertyPath_base_DirectedRelationship" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382583868131_903533_11430 a mbse:Package ;
+  rdfs:label "ElementPropertyPath" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382583873424_653226_11431 a mbse:Package ;
+  rdfs:label "E_extension_ElementPropertyPath_base_Element" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382584168890_908205_11616 a mbse:Package ;
+  rdfs:label "A_directedRelationshipPropertyPath_sourcePropertyPath" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382584196675_943821_11643 a mbse:Package ;
+  rdfs:label "A_directedRelationshipPropertyPath_targetPropertyPath" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382584523352_517962_11711 a mbse:Package ;
+  rdfs:label "A_directedRelationshipPropertyPath_sourceContext" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382584567025_123156_11738 a mbse:Package ;
+  rdfs:label "A_directedRelationshipPropertyPath_targetContext" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382586118983_449262_12259 a mbse:Package ;
+  rdfs:label "A_elementPropertyPath_propertyPath" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382589293714_676330_13011 a mbse:Package ;
+  rdfs:label "EndPathMultiplicity" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382589378317_208314_13060 a mbse:Package ;
+  rdfs:label "E_extension_EndPathMultiplicity_base_Property" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382589402278_962385_13079 a mbse:Package ;
+  rdfs:label "BoundReference" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382595829800_90522_13318 a mbse:Package ;
+  rdfs:label "AdjunctProperty" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382596093724_522425_13348 a mbse:Package ;
+  rdfs:label "E_extension_AdjunctProperty_base_Property" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382596103711_316615_13367 a mbse:Package ;
+  rdfs:label "ClassifierBehaviorProperty" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382596113026_171970_13397 a mbse:Package ;
+  rdfs:label "E_extension_ClassifierBehaviorProperty_base_Property" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382596491310_483534_13439 a mbse:Package ;
+  rdfs:label "A_adjunctProperty_principal" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1162212153231_267910_150_convert a mbse:Package ;
+  rdfs:label "Ports&Flows" ;
+  mbse:sourceFormat "xmi" .
+inst:11_0_be00301_1147691438774_108723_225 a mbse:Package ;
+  rdfs:label "E_extension_ItemFlow_base_InformationFlow" ;
+  mbse:sourceFormat "xmi" .
+inst:11_0_be00301_1147691436170_978680_223 a mbse:Package ;
+  rdfs:label "ItemFlow" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147436063562_621599_1913 a mbse:Package ;
+  rdfs:label "E_extension_FlowProperty_base_Property" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147436061009_177713_1911 a mbse:Package ;
+  rdfs:label "FlowProperty" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147437142143_384817_2096 a mbse:Package ;
+  rdfs:label "FlowDirectionKind" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320213032822_616987_2338 a mbse:Package ;
+  rdfs:label "FullPort" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320213042637_358962_2340 a mbse:Package ;
+  rdfs:label "E_extension_FullPort_base_Port" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320213059640_259248_2362 a mbse:Package ;
+  rdfs:label "InterfaceBlock" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320213131032_5397_2410 a mbse:Package ;
+  rdfs:label "ProxyPort" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320213133500_190442_2412 a mbse:Package ;
+  rdfs:label "E_extension_ProxyPort_base_Port" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320212766653_42845_2152 a mbse:Package ;
+  rdfs:label "FeatureDirectionKind" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320212889034_110598_2266 a mbse:Package ;
+  rdfs:label "AcceptChangeStructuralFeatureEventAction" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320212897313_185755_2268 a mbse:Package ;
+  rdfs:label "E_extension_AcceptChangeStructuralFeatureEventAction_base_AcceptEventAction" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320212957445_232003_2290 a mbse:Package ;
+  rdfs:label "ChangeStructuralFeatureEvent" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320212960672_402438_2292 a mbse:Package ;
+  rdfs:label "E_extension_ChangeStructuralFeatureEvent_base_ChangeEvent" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320213007890_392543_2314 a mbse:Package ;
+  rdfs:label "DirectedFeature" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320213011126_778641_2316 a mbse:Package ;
+  rdfs:label "E_extension_DirectedFeature_base_Feature" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320213093492_61640_2386 a mbse:Package ;
+  rdfs:label "InvocationOnNestedPortAction" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320213096904_391266_2388 a mbse:Package ;
+  rdfs:label "E_extension_InvocationOnNestedPortAction_base_InvocationAction" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320213149797_551008_2434 a mbse:Package ;
+  rdfs:label "TriggerOnNestedPort" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320213161270_411182_2436 a mbse:Package ;
+  rdfs:label "E_extension_TriggerOnNestedPort_base_Trigger" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_2_136f03d9_1338532248278_454490_11938 a mbse:Package ;
+  rdfs:label "A_changeStructuralFeatureEvent_structuralFeature" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_2_136f03d9_1338532827722_116428_12009 a mbse:Package ;
+  rdfs:label "A_invocationOnNestedPortAction_onNestedPort" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_2_136f03d9_1338532854842_293309_12049 a mbse:Package ;
+  rdfs:label "A_triggerOnNestedPort_onNestedPort" ;
+  mbse:sourceFormat "xmi" .
+inst:20_0_3360132_1592906761079_745602_1358 a mbse:Package ;
+  rdfs:label "~InterfaceBlock" ;
+  mbse:sourceFormat "xmi" .
+inst:20_0_3360132_1592906773615_604695_1365 a mbse:Package ;
+  rdfs:label "_20_0_3360132_1592906773615_604695_1365" ;
+  mbse:sourceFormat "xmi" .
+inst:20_0_2e60112_1594368541726_775369_1368 a mbse:Package ;
+  rdfs:label "AddFlowPropertyValueOnNestedPortAction" ;
+  mbse:sourceFormat "xmi" .
+inst:20_0_2e60112_1594368600694_876284_1392 a mbse:Package ;
+  rdfs:label "_20_0_2e60112_1594368600694_876284_1392" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1162212146862_105296_149_convert a mbse:Package ;
+  rdfs:label "Activities" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147853256126_184198_1456 a mbse:Package ;
+  rdfs:label "E_extension_NoBuffer_base_ObjectNode" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147781598046_316220_859 a mbse:Package ;
+  rdfs:label "E_extension_Rate_base_ActivityEdge" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1160059850675_200027_523 a mbse:Package ;
+  rdfs:label "E_extension_Rate_base_ObjectNode" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147853229748_66367_1360 a mbse:Package ;
+  rdfs:label "Overwrite" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147852116807_575008_1176 a mbse:Package ;
+  rdfs:label "ControlOperator" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147852265541_387812_1234 a mbse:Package ;
+  rdfs:label "E_extension_ControlOperator_base_Behavior" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147781440810_933798_669 a mbse:Package ;
+  rdfs:label "Rate" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147853221115_789113_1340 a mbse:Package ;
+  rdfs:label "NoBuffer" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147781531681_406380_792 a mbse:Package ;
+  rdfs:label "Discrete" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147781516379_523424_746 a mbse:Package ;
+  rdfs:label "Continuous" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147791565729_482613_1123 a mbse:Package ;
+  rdfs:label "E_extension_Probability_base_ParameterSet" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147853254043_319057_1401 a mbse:Package ;
+  rdfs:label "E_extension_Overwrite_base_ObjectNode" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147852268225_839532_1289 a mbse:Package ;
+  rdfs:label "E_extension_ControlOperator_base_Operation" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1160122280244_878936_1631 a mbse:Package ;
+  rdfs:label "E_extension_Rate_base_Parameter" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147791547553_100861_1051 a mbse:Package ;
+  rdfs:label "E_extension_Probability_base_ActivityEdge" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147791539091_825444_1027 a mbse:Package ;
+  rdfs:label "Probability" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147781357961_454792_562 a mbse:Package ;
+  rdfs:label "Optional" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147781381044_221167_564 a mbse:Package ;
+  rdfs:label "E_extension_Optional_base_Parameter" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1162212161323_676208_154_convert a mbse:Package ;
+  rdfs:label "ModelElements" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147421401018_777370_546 a mbse:Package ;
+  rdfs:label "Rationale" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147420760998_43940_227 a mbse:Package ;
+  rdfs:label "View" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147420728091_674481_152 a mbse:Package ;
+  rdfs:label "Conform" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147421421037_25607_638 a mbse:Package ;
+  rdfs:label "Problem" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147420812402_281263_364 a mbse:Package ;
+  rdfs:label "Viewpoint" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147421423911_617102_640 a mbse:Package ;
+  rdfs:label "E_extension_Problem_base_Comment" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147420814215_304595_366 a mbse:Package ;
+  rdfs:label "E_extension_Viewpoint_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147421406106_279901_548 a mbse:Package ;
+  rdfs:label "E_extension_Rationale_base_Comment" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382587450944_361333_12499 a mbse:Package ;
+  rdfs:label "Stakeholder" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382587480303_325976_12505 a mbse:Package ;
+  rdfs:label "Expose" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382587564934_321604_12603 a mbse:Package ;
+  rdfs:label "E_extension_Stakeholder_base_Classifier" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382588175122_941420_12652 a mbse:Package ;
+  rdfs:label "E_extension_Expose_base_Dependency" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382588222749_29505_12714 a mbse:Package ;
+  rdfs:label "E_extension_Conform_base_Generalization" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382588389513_816262_12819 a mbse:Package ;
+  rdfs:label "E_extension_View_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382588727729_600191_12925 a mbse:Package ;
+  rdfs:label "ElementGroup" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382588739585_892834_12955 a mbse:Package ;
+  rdfs:label "E_extension_ElementGroup_base_Comment" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_4_2_ff3038a_1384457418031_542687_4487 a mbse:Package ;
+  rdfs:label "Deprecated" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147420763311_97227_229 a mbse:Package ;
+  rdfs:label "E_extension_View_base_Package" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147420732277_674802_154 a mbse:Package ;
+  rdfs:label "E_extension_Conform_base_Dependency" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172582132296_2971_270_convert a mbse:Package ;
+  rdfs:label "Non-Normative Extensions" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094234_111415_1517 a mbse:Package ;
+  rdfs:label "Block" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094265_375361_1577 a mbse:Package ;
+  rdfs:label "System" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094265_388539_1575 a mbse:Package ;
+  rdfs:label "Domain" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094265_193194_1582 a mbse:Package ;
+  rdfs:label "E_extension_System_context_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094265_310701_1581 a mbse:Package ;
+  rdfs:label "System context" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094265_526561_1580 a mbse:Package ;
+  rdfs:label "E_extension_Subsystem_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1173094732687_902196_266 a mbse:Package ;
+  rdfs:label "E_extension_External_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094265_898135_1579 a mbse:Package ;
+  rdfs:label "Subsystem" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094265_519058_1576 a mbse:Package ;
+  rdfs:label "E_extension_Domain_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1173094714531_37548_260 a mbse:Package ;
+  rdfs:label "External" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094265_5446_1578 a mbse:Package ;
+  rdfs:label "E_extension_System_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734562_168879_160 a mbse:Package ;
+  rdfs:label "Requirement" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734609_530688_194 a mbse:Package ;
+  rdfs:label "functionalRequirement" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734609_725391_198 a mbse:Package ;
+  rdfs:label "performanceRequirement" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734593_228534_190 a mbse:Package ;
+  rdfs:label "extendedRequirement" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734609_884033_201 a mbse:Package ;
+  rdfs:label "E_extension_physicalRequirement_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172577924546_344524_937 a mbse:Package ;
+  rdfs:label "E_extension_businessRequirement_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576899375_124997_871 a mbse:Package ;
+  rdfs:label "E_extension_usabilityRequirement_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576899359_902879_864 a mbse:Package ;
+  rdfs:label "usabilityRequirement" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734609_234637_202 a mbse:Package ;
+  rdfs:label "designConstraint" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734609_642643_203 a mbse:Package ;
+  rdfs:label "E_extension_designConstraint_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734609_13948_199 a mbse:Package ;
+  rdfs:label "E_extension_performanceRequirement_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734609_387880_196 a mbse:Package ;
+  rdfs:label "interfaceRequirement" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734609_379155_195 a mbse:Package ;
+  rdfs:label "E_extension_functionalRequirement_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734609_449996_197 a mbse:Package ;
+  rdfs:label "E_extension_interfaceRequirement_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734609_380772_200 a mbse:Package ;
+  rdfs:label "physicalRequirement" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734609_180048_191 a mbse:Package ;
+  rdfs:label "E_extension_extendedRequirement_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172577924546_705207_930 a mbse:Package ;
+  rdfs:label "businessRequirement" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734609_735478_192 a mbse:Package ;
+  rdfs:label "RiskKind" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734609_300295_193 a mbse:Package ;
+  rdfs:label "VerificationMethodKind" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094234_402752_1516 a mbse:Package ;
+  rdfs:label "Actors" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094250_866559_1543 a mbse:Package ;
+  rdfs:label "External system" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094250_807075_1551 a mbse:Package ;
+  rdfs:label "Sensor" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094250_216542_1547 a mbse:Package ;
+  rdfs:label "Boundary system" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094250_828333_1552 a mbse:Package ;
+  rdfs:label "E_extension_Sensor_base_Actor" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094250_142142_1546 a mbse:Package ;
+  rdfs:label "E_extension_User_system_base_Actor" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094250_839556_1553 a mbse:Package ;
+  rdfs:label "Environmental effect" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094250_952766_1545 a mbse:Package ;
+  rdfs:label "User system" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094250_174772_1554 a mbse:Package ;
+  rdfs:label "E_extension_Environmental_effect_base_Actor" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094250_895860_1544 a mbse:Package ;
+  rdfs:label "E_extension_External_system_base_Actor" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094250_210574_1548 a mbse:Package ;
+  rdfs:label "E_extension_Boundary_system_base_Actor" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094250_957630_1549 a mbse:Package ;
+  rdfs:label "Actuator" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094250_656791_1550 a mbse:Package ;
+  rdfs:label "E_extension_Actuator_base_Actor" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734562_360673_162 a mbse:Package ;
+  rdfs:label "Distributions" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734640_755733_260 a mbse:Package ;
+  rdfs:label "E_extension_Normal_base_Property" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734640_591251_263 a mbse:Package ;
+  rdfs:label "Uniform" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734640_549510_259 a mbse:Package ;
+  rdfs:label "Normal" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734640_742238_262 a mbse:Package ;
+  rdfs:label "E_extension_Interval_base_Property" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734640_83610_264 a mbse:Package ;
+  rdfs:label "E_extension_Uniform_base_Property" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734640_900149_258 a mbse:Package ;
+  rdfs:label "E_extension_BasicInterval_base_Property" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734640_342779_257 a mbse:Package ;
+  rdfs:label "BasicInterval" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734640_318444_261 a mbse:Package ;
+  rdfs:label "Interval" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734562_508136_163 a mbse:Package ;
+  rdfs:label "Diagrams" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734656_487917_289 a mbse:Package ;
+  rdfs:label "BlockHierarchy" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734656_159797_290 a mbse:Package ;
+  rdfs:label "E_extension_BlockHierarchy_base_Diagram" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1173775032859_804702_281 a mbse:Package ;
+  rdfs:label "Diagram Description" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734656_516845_286 a mbse:Package ;
+  rdfs:label "E_extension_ContextDiagram_base_Diagram" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734656_651532_288 a mbse:Package ;
+  rdfs:label "E_extension_SwimLaneDiagram_base_Diagram" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1173775699593_653812_1615 a mbse:Package ;
+  rdfs:label "E_extension_diagramUsage_base_Diagram" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734656_686200_287 a mbse:Package ;
+  rdfs:label "SwimLaneDiagram" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1173775654796_77943_1609 a mbse:Package ;
+  rdfs:label "diagramUsage" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734656_121806_285 a mbse:Package ;
+  rdfs:label "ContextDiagram" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1173775273640_17443_287 a mbse:Package ;
+  rdfs:label "E_extension_Diagram_Description_base_Diagram" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734562_842583_161 a mbse:Package ;
+  rdfs:label "Parametric" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734625_746740_236 a mbse:Package ;
+  rdfs:label "E_extension_objectiveFunction_base_Property" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734625_309076_233 a mbse:Package ;
+  rdfs:label "E_extension_objectiveFunction_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734625_231808_234 a mbse:Package ;
+  rdfs:label "moe" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734625_415117_235 a mbse:Package ;
+  rdfs:label "E_extension_moe_base_Property" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734625_106167_232 a mbse:Package ;
+  rdfs:label "objectiveFunction" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734562_193412_159 a mbse:Package ;
+  rdfs:label "Activity" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734578_663824_169 a mbse:Package ;
+  rdfs:label "E_extension_nonStreaming_base_Activity" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734578_110349_168 a mbse:Package ;
+  rdfs:label "nonStreaming" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094234_982026_1521 a mbse:Package ;
+  rdfs:label "E_extension_System_process_base_Activity" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734578_611548_166 a mbse:Package ;
+  rdfs:label "streaming" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734562_519055_165 a mbse:Package ;
+  rdfs:label "E_extension_effbd_base_Activity" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734578_420889_167 a mbse:Package ;
+  rdfs:label "E_extension_streaming_base_Activity" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094234_705470_1518 a mbse:Package ;
+  rdfs:label "Essential" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172576734562_288312_164 a mbse:Package ;
+  rdfs:label "effbd" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094234_227215_1519 a mbse:Package ;
+  rdfs:label "E_extension_Essential_base_Activity" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094234_367109_1522 a mbse:Package ;
+  rdfs:label "E_extension_System_process_base_UseCase" ;
+  mbse:sourceFormat "xmi" .
+inst:12_1_8740266_1172578094234_714969_1520 a mbse:Package ;
+  rdfs:label "System process" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1162212172109_505903_156_convert a mbse:Package ;
+  rdfs:label "ConstraintBlocks" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147767804973_159489_404 a mbse:Package ;
+  rdfs:label "ConstraintBlock" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147767812494_729656_406 a mbse:Package ;
+  rdfs:label "E_extension_ConstraintBlock_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1162212183625_977347_163_convert a mbse:Package ;
+  rdfs:label "Allocations" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147866649354_618531_1543 a mbse:Package ;
+  rdfs:label "E_extension_Allocate_base_Abstraction" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147870200350_689540_1730 a mbse:Package ;
+  rdfs:label "E_extension_AllocateActivityPartition_base_ActivityPartition" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147870196585_633942_1728 a mbse:Package ;
+  rdfs:label "AllocateActivityPartition" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147866646230_488749_1541 a mbse:Package ;
+  rdfs:label "Allocate" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147420340684_309964_123_convert a mbse:Package ;
+  rdfs:label "Requirements" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147872860786_209724_1848 a mbse:Package ;
+  rdfs:label "DeriveReqt" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147873127229_923575_2046 a mbse:Package ;
+  rdfs:label "Copy" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147873165274_736484_2128 a mbse:Package ;
+  rdfs:label "Satisfy" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147937775809_572980_2450 a mbse:Package ;
+  rdfs:label "E_extension_TestCase_base_Operation" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147937772815_210871_2448 a mbse:Package ;
+  rdfs:label "TestCase" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147873190330_159934_2220 a mbse:Package ;
+  rdfs:label "Requirement" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147873202657_910044_2244 a mbse:Package ;
+  rdfs:label "E_extension_Requirement_base_Class" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147873114711_445574_2026 a mbse:Package ;
+  rdfs:label "Verify" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147937794336_440047_2544 a mbse:Package ;
+  rdfs:label "E_extension_TestCase_base_Behavior" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147937844838_242658_2617 a mbse:Package ;
+  rdfs:label "VerdictKind" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382584906245_122734_11803 a mbse:Package ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382584914591_39608_11809 a mbse:Package ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382584942406_108402_11846 a mbse:Package ;
+  rdfs:label "E_extension_Trace_base_Abstraction" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_17530432_1382585104397_22211_11929 a mbse:Package ;
+  rdfs:label "E_extension_Refine_base_Abstraction" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0beta_8c4028a_1491909612801_342688_5361 a mbse:Package ;
+  rdfs:label "AbstractRequirement" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0beta_8c4028a_1491909708543_140448_5419 a mbse:Package ;
+  rdfs:label "_19_0beta_8c4028a_1491909708543_140448_5419" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3_17530432_1320212535488_356435_2067 a mbse:Package ;
+  rdfs:label "DeprecatedElements" ;
+  mbse:sourceFormat "xmi" .
+inst:11_0_be00301_1147682946132_981479_8 a mbse:Package ;
+  rdfs:label "FlowPort" ;
+  mbse:sourceFormat "xmi" .
+inst:11_0_be00301_1147682950728_325778_10 a mbse:Package ;
+  rdfs:label "E_extension_FlowPort_base_Port" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147436929898_779228_1998 a mbse:Package ;
+  rdfs:label "FlowSpecification" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147436932662_507636_2000 a mbse:Package ;
+  rdfs:label "E_extension_FlowSpecification_base_Interface" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147866677244_999655_1628 a mbse:Package ;
+  rdfs:label "Allocated" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147866679177_103787_1630 a mbse:Package ;
+  rdfs:label "E_extension_Allocated_base_NamedElement" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147937995745_366126_2645 a mbse:Package ;
+  rdfs:label "RequirementRelated" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147937998790_376296_2647 a mbse:Package ;
+  rdfs:label "E_extension_RequirementRelated_base_NamedElement" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_4_2_ff3038a_1383664741266_15929_43395 a mbse:Package ;
+  rdfs:label "Libraries" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_2_136f03d9_1344498413266_378771_11852 a mbse:Package ;
+  rdfs:label "PrimitiveValueTypes" ;
+  mbse:sourceFormat "xmi" .
+inst:16_5_1_12c903cb_1245415335546_39033_4086 a mbse:Package ;
+  rdfs:label "Boolean" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147431846238_895928_1691 a mbse:Package ;
+  rdfs:label "Complex" ;
+  mbse:sourceFormat "xmi" .
+inst:16_5_1_12c903cb_1245415335546_8641_4088 a mbse:Package ;
+  rdfs:label "Integer" ;
+  mbse:sourceFormat "xmi" .
+inst:16_5_1_12c903cb_1245415335546_535327_4089 a mbse:Package ;
+  rdfs:label "Number" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147431819399_50461_1671 a mbse:Package ;
+  rdfs:label "Real" ;
+  mbse:sourceFormat "xmi" .
+inst:16_5_1_12c903cb_1245415335546_479030_4092 a mbse:Package ;
+  rdfs:label "String" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_4_2_ff3038a_1384458369684_442353_5047 a mbse:Package ;
+  rdfs:label "Deprecated" ;
+  mbse:sourceFormat "xmi" .
+inst:16_6beta_17530432_1249976300015_220785_665 a mbse:Package ;
+  rdfs:label "UnlimitedNatural" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_4_2_ff3038a_1383664790729_173194_43405 a mbse:Package ;
+  rdfs:label "ControlValues" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147853298336_475258_1508 a mbse:Package ;
+  rdfs:label "ControlValueKind" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_2_3_ff3038a_1383715236095_671155_43230 a mbse:Package ;
+  rdfs:label "UnitAndQuantityKind" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_4_2_ff3038a_1384212066733_482167_102865 a mbse:Package ;
+  rdfs:label "Deprecated" ;
+  mbse:sourceFormat "xmi" .
+inst:16_5_1_12c903cb_1245419143265_313151_5613_180beta a mbse:Package ;
+  rdfs:label "ScaleValueDefinition" ;
+  mbse:sourceFormat "xmi" .
+inst:16_5_1_12c903cb_1245417628921_308934_5138_180beta a mbse:Package ;
+  rdfs:label "Scale" ;
+  mbse:sourceFormat "xmi" .
+inst:16_5_2_ff3038a_1247424548600_590007_5915_180beta a mbse:Package ;
+  rdfs:label "A_scale_unit" ;
+  mbse:sourceFormat "xmi" .
+inst:16_5_1_12c903cb_1245419168734_459330_5636_180beta a mbse:Package ;
+  rdfs:label "A_scale_valueDefinition" ;
+  mbse:sourceFormat "xmi" .
+inst:16_5_2_ff3038a_1247424623985_40967_5959_180beta a mbse:Package ;
+  rdfs:label "A_quantityKind_scale" ;
+  mbse:sourceFormat "xmi" .
+inst:16_5_1_12c903cb_1245417288453_874257_4989_180beta a mbse:Package ;
+  rdfs:label "Unit" ;
+  mbse:sourceFormat "xmi" .
+inst:16_5_1_12c903cb_1245415169125_739263_4059_180beta a mbse:Package ;
+  rdfs:label "QuantityKind" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_2_3_ff3038a_1383748655755_103715_44292 a mbse:Package ;
+  rdfs:label "A_quantityKind_unit" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_8cb028a_1542813352833_915507_4956 a mbse:Package ;
+  rdfs:label "Built-in Operations" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_8cb028a_1542813352853_268760_4957 a mbse:Package ;
+  rdfs:label "StructureDecomposition" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_3_8cb028a_1549531218595_347250_4972 a mbse:Package ;
+  rdfs:label "BehaviorDecomposition" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650184399_373188_90571 a mbse:Package ;
+  rdfs:label "ISO80000-3 Space and Time" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650186579_449738_103883 a mbse:Package ;
+  rdfs:label "Quantities" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650178472_729986_53823 a mbse:Package ;
+  rdfs:label "length" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650194122_562877_140708 a mbse:Package ;
+  rdfs:label "length" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650184197_68200_89010 a mbse:Package ;
+  rdfs:label "length[metre]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650186361_504568_102985 a mbse:Package ;
+  rdfs:label "length[nanometre]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650188500_264415_109792 a mbse:Package ;
+  rdfs:label "length[millimetre]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650176685_831550_48171 a mbse:Package ;
+  rdfs:label "length[kilometre]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650197817_764941_164038 a mbse:Package ;
+  rdfs:label "length[decimetre]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650197507_72058_162360 a mbse:Package ;
+  rdfs:label "length[centimetre]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650201319_979164_184535 a mbse:Package ;
+  rdfs:label "velocity" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650203184_691120_189384 a mbse:Package ;
+  rdfs:label "velocity" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650193281_622367_136704 a mbse:Package ;
+  rdfs:label "velocity[metre per second]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650198181_277095_166341 a mbse:Package ;
+  rdfs:label "acceleration" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650189153_746526_112836 a mbse:Package ;
+  rdfs:label "acceleration" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650198064_856347_165513 a mbse:Package ;
+  rdfs:label "acceleration[metre per second squared]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650196606_376688_156672 a mbse:Package ;
+  rdfs:label "volume" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650191667_380508_126546 a mbse:Package ;
+  rdfs:label "volume" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650198447_465711_168384 a mbse:Package ;
+  rdfs:label "volume[cubic metre]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650189856_799326_116677 a mbse:Package ;
+  rdfs:label "speed" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650203108_876922_189119 a mbse:Package ;
+  rdfs:label "speed" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650180999_872881_71027 a mbse:Package ;
+  rdfs:label "speed[metre per second]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650200978_451054_182621 a mbse:Package ;
+  rdfs:label "area" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650185460_822442_97222 a mbse:Package ;
+  rdfs:label "area" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650181697_71046_76139 a mbse:Package ;
+  rdfs:label "area[square metre]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650192878_963676_134876 a mbse:Package ;
+  rdfs:label "time" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650188512_144339_109917 a mbse:Package ;
+  rdfs:label "time" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650198891_148719_170889 a mbse:Package ;
+  rdfs:label "time[second]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650184440_753470_90915 a mbse:Package ;
+  rdfs:label "ISO80000-4 Mechanics" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650191215_28566_123844 a mbse:Package ;
+  rdfs:label "Quantities" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650191667_657368_126538 a mbse:Package ;
+  rdfs:label "mass density" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650192872_357244_134795 a mbse:Package ;
+  rdfs:label "mass density" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650178558_159802_54381 a mbse:Package ;
+  rdfs:label "mass density[kilogram per cubic metre]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650177209_76316_50067 a mbse:Package ;
+  rdfs:label "mass" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650193270_151662_136538 a mbse:Package ;
+  rdfs:label "mass" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650202383_273056_185530 a mbse:Package ;
+  rdfs:label "mass[gram]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650179955_769911_61861 a mbse:Package ;
+  rdfs:label "mass[milligram]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650184728_204346_92547 a mbse:Package ;
+  rdfs:label "mass[kilogram]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650175881_507111_45844 a mbse:Package ;
+  rdfs:label "ISO80000-5 Thermodynamics" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650193819_782254_139508 a mbse:Package ;
+  rdfs:label "Quantities" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650184302_230153_89775 a mbse:Package ;
+  rdfs:label "thermodynamic temperature" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650195097_84516_146909 a mbse:Package ;
+  rdfs:label "thermodynamic temperature" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650193666_776688_138662 a mbse:Package ;
+  rdfs:label "thermodynamic temperature[kelvin]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650179456_928886_59032 a mbse:Package ;
+  rdfs:label "IEC80000-6 Electromagnetism" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650202761_670029_187425 a mbse:Package ;
+  rdfs:label "Quantities" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650196341_284157_154811 a mbse:Package ;
+  rdfs:label "electric current" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650188627_40055_110473 a mbse:Package ;
+  rdfs:label "electric current" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650189201_296142_113251 a mbse:Package ;
+  rdfs:label "electric current[ampere]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650176009_428066_46312 a mbse:Package ;
+  rdfs:label "electric current[milliampere]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650196906_301878_158547 a mbse:Package ;
+  rdfs:label "magnetic field strength" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650188402_442957_108344 a mbse:Package ;
+  rdfs:label "magnetic field strength" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650194403_461525_142281 a mbse:Package ;
+  rdfs:label "magnetic field strength[ampere per metre]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650182138_691406_78267 a mbse:Package ;
+  rdfs:label "electric current density" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650198783_26818_170324 a mbse:Package ;
+  rdfs:label "electric current density" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650185648_30703_98522 a mbse:Package ;
+  rdfs:label "electric current density[ampere per square metre]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650198485_26853_168686 a mbse:Package ;
+  rdfs:label "ISO80000-7 Light" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650178505_484067_54142 a mbse:Package ;
+  rdfs:label "Quantities" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650196086_795947_153050 a mbse:Package ;
+  rdfs:label "luminous intensity" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650192064_908818_130251 a mbse:Package ;
+  rdfs:label "luminous intensity" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650193761_648715_138929 a mbse:Package ;
+  rdfs:label "luminous intensity[candela]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650202729_66544_187089 a mbse:Package ;
+  rdfs:label "luminance" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650192131_861488_130374 a mbse:Package ;
+  rdfs:label "luminance" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650191542_644508_126071 a mbse:Package ;
+  rdfs:label "luminance[candela per square metre]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650179613_224173_59562 a mbse:Package ;
+  rdfs:label "ISO80000-9 Physical Chemestry and Molecular Physics" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650191195_186310_123720 a mbse:Package ;
+  rdfs:label "Quantities" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650185087_266319_94541 a mbse:Package ;
+  rdfs:label "amount of substance" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650189782_109507_116243 a mbse:Package ;
+  rdfs:label "amount of substance" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650189229_159383_113368 a mbse:Package ;
+  rdfs:label "amount of substance[mole]" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650191533_439388_125976 a mbse:Package ;
+  rdfs:label "amount of substance concentration" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650195952_388056_152400 a mbse:Package ;
+  rdfs:label "amount of substance concentration" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1388650181014_906619_71386 a mbse:Package ;
+  rdfs:label "amount of substance concentration[mole per cubic metre]" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5_f720368_1159529670215_231387_1 a mbse:Package ;
+  rdfs:label "Validation Profile" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5_f720368_1159529725637_145757_40 a mbse:Package ;
+  rdfs:label "validationSuite" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5_f720368_1159529728183_56333_42 a mbse:Package ;
+  rdfs:label "_11_5_f720368_1159529728183_56333_42" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1161869751943_478405_658_convert a mbse:Package ;
+  rdfs:label "additional_stereotypes" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147424449672_945552_1054 a mbse:Package ;
+  rdfs:label "_11_5EAPbeta_be00301_1147424449672_945552_1054" ;
+  mbse:sourceFormat "xmi" .
+inst:15_0_be00301_1199378034525_799087_3098 a mbse:Package ;
+  rdfs:label "_15_0_be00301_1199378034525_799087_3098" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147424447149_890357_1052 a mbse:Package ;
+  rdfs:label "BlockProperty" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1161355503976_51059_459 a mbse:Package ;
+  rdfs:label "ConstraintParameter" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1161355559717_376213_532 a mbse:Package ;
+  rdfs:label "_12_0EAPbeta_be00301_1161355559717_376213_532" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0_be00301_1164123483951_695645_2041 a mbse:Package ;
+  rdfs:label "ValueProperty" ;
+  mbse:sourceFormat "xmi" .
+inst:15_0_be00301_1199378032543_992832_3096 a mbse:Package ;
+  rdfs:label "ReferenceProperty" ;
+  mbse:sourceFormat "xmi" .
+inst:15_0_be00301_1199377821718_195894_2894 a mbse:Package ;
+  rdfs:label "AbstractReferenceProperty" ;
+  mbse:sourceFormat "xmi" .
+inst:15_0_be00301_1199377823726_1514_2896 a mbse:Package ;
+  rdfs:label "_15_0_be00301_1199377823726_1514_2896" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0_be00301_1164123486896_808248_2043 a mbse:Package ;
+  rdfs:label "_12_0_be00301_1164123486896_808248_2043" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_903028d_1386255595028_904734_3975 a mbse:Package ;
+  rdfs:label "deprecated elements" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147767840464_372327_467 a mbse:Package ;
+  rdfs:label "ConstraintProperty" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5EAPbeta_be00301_1147767843078_692381_469 a mbse:Package ;
+  rdfs:label "E_extension_ConstraintProperty_base_Property" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0beta_be00301_1509088836681_140371_12745 a mbse:Package ;
+  rdfs:label "Analysis" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0beta_be00301_1509088836685_827622_12746 a mbse:Package ;
+  rdfs:label "_19_0beta_be00301_1509088836685_827622_12746" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_be00301_1108044705753_203399_228 a mbse:Package ;
+  rdfs:label "TODO_Owner" ;
+  mbse:sourceFormat "xmi" .
+inst:10_0EAPbeta_be00301_1123081772378_472845_329 a mbse:Package ;
+  rdfs:label "_10_0EAPbeta_be00301_1123081772378_472845_329" ;
+  mbse:sourceFormat "xmi" .
+inst:16_5beta1_8ba0276_1232443673758_573873_267 a mbse:Package ;
+  rdfs:label "DiagramTable" ;
+  mbse:sourceFormat "xmi" .
+inst:11_5_be00301_1153310565718_226811_161 a mbse:Package ;
+  rdfs:label "DSL Customization" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_6790224_1293095142853_418877_62555 a mbse:Package ;
+  rdfs:label "NumberOwner" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_6790224_1293095142973_566840_62601 a mbse:Package ;
+  rdfs:label "_17_0_6790224_1293095142973_566840_62601" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_be00301_1108044380615_150487_0 a mbse:Package ;
+  rdfs:label "DiagramInfo" ;
+  mbse:sourceFormat "xmi" .
+inst:16_0_62a020a_1227788740027_441955_240 a mbse:Package ;
+  rdfs:label "CustomImageHolder" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_2_be00301_1111670217596_336168_627 a mbse:Package ;
+  rdfs:label "datatypes" ;
+  mbse:sourceFormat "xmi" .
+inst:eee_1045467100323_191782_59 a mbse:Package ;
+  rdfs:label "boolean" ;
+  mbse:sourceFormat "xmi" .
+inst:eee_1045467100323_917313_65 a mbse:Package ;
+  rdfs:label "int" ;
+  mbse:sourceFormat "xmi" .
+inst:be00301_1073305590699_364818_1 a mbse:Package ;
+  rdfs:label "date" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_5beta_8ca0285_1371718963438_430146_3255 a mbse:Package ;
+  rdfs:label "StructuredExpression" ;
+  mbse:sourceFormat "xmi" .
+inst:16_0_62a020a_1227788740076_236895_241 a mbse:Package ;
+  rdfs:label "_16_0_62a020a_1227788740076_236895_241" ;
+  mbse:sourceFormat "xmi" .
+inst:16_5beta1_8ba0276_1232443673820_192007_281 a mbse:Package ;
+  rdfs:label "_16_5beta1_8ba0276_1232443673820_192007_281" ;
+  mbse:sourceFormat "xmi" .
+inst:10_0EAPbeta_be00301_1123081772498_531863_355 a mbse:Package ;
+  rdfs:label "_10_0EAPbeta_be00301_1123081772498_531863_355" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_2beta_903028d_1330931963982_116619_1920 a mbse:Package ;
+  rdfs:label "Legend" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_2beta_903028d_1330931963984_368156_1921 a mbse:Package ;
+  rdfs:label "_17_0_2beta_903028d_1330931963984_368156_1921" ;
+  mbse:sourceFormat "xmi" .
+inst:18_4beta_8bb027e_1454316221414_112845_4182 a mbse:Package ;
+  rdfs:label "TableDisplayMode" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0beta_9250292_1504527525561_959599_4506 a mbse:Package ;
+  rdfs:label "additionalElementImport" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0beta_9250292_1504527525563_988911_4508 a mbse:Package ;
+  rdfs:label "_19_0beta_9250292_1504527525563_988911_4508" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0beta_9250292_1504527525562_901741_4507 a mbse:Package ;
+  rdfs:label "additionalPackageImport" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0beta_9250292_1504527525565_594616_4513 a mbse:Package ;
+  rdfs:label "_19_0beta_9250292_1504527525565_594616_4513" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704885549_50839_7995 a mbse:Package ;
+  rdfs:label "ValueSpecification" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704885047_824117_7838 a mbse:Package ;
+  rdfs:label "ElementImport" ;
+  mbse:sourceFormat "xmi" .
+inst:9_0_62a020a_1105704885319_392905_7921 a mbse:Package ;
+  rdfs:label "PackageImport" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_4beta_8ca0285_1361349406965_180847_3086 a mbse:Package ;
+  rdfs:label "Dependency Matrix Profile" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3beta_8e10289_1348753189254_575688_2954 a mbse:Package ;
+  rdfs:label "Types" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3beta_8e10289_1348753189307_91247_3068 a mbse:Package ;
+  rdfs:label "TextDirection" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3beta_8e10289_1348753189307_866738_3062 a mbse:Package ;
+  rdfs:label "RelationOption" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3beta_8e10289_1348753189274_953899_3014 a mbse:Package ;
+  rdfs:label "Direction" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_4beta_8e10289_1358431599968_292291_2980 a mbse:Package ;
+  rdfs:label "OwnerDisplayMode" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_4beta_8f90291_1361806196409_193631_3432 a mbse:Package ;
+  rdfs:label "SortingMode" ;
+  mbse:sourceFormat "xmi" .
+inst:18_3beta_8ba0279_1441021003111_866999_4103 a mbse:Package ;
+  rdfs:label "LegendLocation" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3beta_8e10289_1348753189236_873942_2915 a mbse:Package ;
+  rdfs:label "DependencyMatrix" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_4beta_8e10289_1354780972723_880239_2971 a mbse:Package ;
+  rdfs:label "_17_0_4beta_8e10289_1354780972723_880239_2971" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_3beta_8e10289_1348753189306_38038_3061 a mbse:Package ;
+  rdfs:label "MatrixFilter" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_4beta_8e10289_1354780981787_543298_2976 a mbse:Package ;
+  rdfs:label "_17_0_4beta_8e10289_1354780981787_543298_2976" ;
+  mbse:sourceFormat "xmi" .
+inst:eee_1045467100313_135436_1 a mbse:Package ;
+  rdfs:label "Model" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849679_98600_42581 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849679_98600_42581" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849683_754664_42653 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849683_754664_42653" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849686_519242_42691 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849686_519242_42691" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849681_623551_42628 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849681_623551_42628" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849685_661495_42680 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849685_661495_42680" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849707_647827_42902 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849707_647827_42902" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_727466_42768 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849691_727466_42768" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849669_88363_42512 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849669_88363_42512" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849707_553408_42871 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849707_553408_42871" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_164992_42812 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849691_164992_42812" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849691_285386_42796 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849691_285386_42796" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849707_750981_42860 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849707_750981_42860" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849671_819950_42552 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849671_819950_42552" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849654_550476_42445 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849654_550476_42445" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849672_397280_42565 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849672_397280_42565" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657362849689_945504_42730 a mbse:Interface ;
+  rdfs:label "_19_0_2_4520142_1657362849689_945504_42730" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657819998747_857747_44442 a mbse:Parameter ;
+  rdfs:label "_19_0_2_4520142_1657819998747_857747_44442" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657819998747_187484_44443 a mbse:Parameter ;
+  rdfs:label "_19_0_2_4520142_1657819998747_187484_44443" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657820036605_886448_44458 a mbse:Parameter ;
+  rdfs:label "_19_0_2_4520142_1657820036605_886448_44458" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657820036605_496646_44459 a mbse:Parameter ;
+  rdfs:label "_19_0_2_4520142_1657820036605_496646_44459" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657820108330_971070_44519 a mbse:Parameter ;
+  rdfs:label "_19_0_2_4520142_1657820108330_971070_44519" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657820108330_907691_44520 a mbse:Parameter ;
+  rdfs:label "_19_0_2_4520142_1657820108330_907691_44520" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657862459565_640306_43098 a mbse:ConstraintBlock ;
+  rdfs:label "Reliability" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657856080671_315970_42879 a mbse:Parameter ;
+  rdfs:label "SugarPlant MoEs" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657857413751_493059_42935 a mbse:Parameter ;
+  rdfs:label "Juice Purification and Heating" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657862045785_720169_43064 a mbse:Parameter ;
+  rdfs:label "Variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657862779370_185555_43179 a mbse:Interface ;
+  rdfs:label "p1" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657862817304_601991_43222 a mbse:Interface ;
+  rdfs:label "Variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:IIYCwP92Eeygn6BpI72xjw a mbse:Element ;
+  rdfs:label "_IIYCwP92Eeygn6BpI72xjw" ;
+  mbse:sourceFormat "xmi" .
+inst:d-8XYAOdEe2kNYQerycvVw a mbse:Element ;
+  rdfs:label "_d-8XYAOdEe2kNYQerycvVw" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822422039_658591_45452 a mbse:Parameter ;
+  rdfs:label "juice Purification & Heating" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822429348_503095_45468 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822245247_699537_45399 a mbse:Parameter ;
+  rdfs:label "sensors" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822276983_579660_45420 a mbse:Parameter ;
+  rdfs:label "juice Purification & Heating" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822229422_89938_45380 a mbse:Parameter ;
+  rdfs:label "IoT System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822245247_240436_45398 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822071449_678934_45340 a mbse:Parameter ;
+  rdfs:label "analytics System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822139418_546315_45359 a mbse:Parameter ;
+  rdfs:label "analytics System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822229422_693068_45379 a mbse:Parameter ;
+  rdfs:label "sensors" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822056535_912459_45320 a mbse:Parameter ;
+  rdfs:label "service Actions" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822071449_15241_45339 a mbse:Parameter ;
+  rdfs:label "parameter Monitoring" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822139418_443378_45358 a mbse:Parameter ;
+  rdfs:label "IoT System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822056535_647974_45321 a mbse:Parameter ;
+  rdfs:label "analytics System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822539282_821944_45506 a mbse:Parameter ;
+  rdfs:label "_19_0_2_4520142_1657822539282_821944_45506" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822276983_995298_45421 a mbse:Parameter ;
+  rdfs:label "_19_0_2_4520142_1657822276983_995298_45421" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822422039_366949_45453 a mbse:Parameter ;
+  rdfs:label "_19_0_2_4520142_1657822422039_366949_45453" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822429348_87450_45469 a mbse:Parameter ;
+  rdfs:label "_19_0_2_4520142_1657822429348_87450_45469" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657822539282_612479_45507 a mbse:Parameter ;
+  rdfs:label "_19_0_2_4520142_1657822539282_612479_45507" ;
+  mbse:sourceFormat "xmi" .
+inst:J6564P93Eeygn6BpI72xjw a mbse:Element ;
+  rdfs:label "_J6564P93Eeygn6BpI72xjw" ;
+  mbse:sourceFormat "xmi" .
+inst:ATQGQAUsEe25RIIkW5GDBA a mbse:Element ;
+  rdfs:label "_ATQGQAUsEe25RIIkW5GDBA" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993071643_161256_44014 a mbse:Parameter ;
+  rdfs:label "cooling System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993088430_842076_44033 a mbse:Parameter ;
+  rdfs:label "rotor" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993093837_862758_44052 a mbse:Parameter ;
+  rdfs:label "heating System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993098998_634789_44071 a mbse:Parameter ;
+  rdfs:label "ventilation System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993104743_668612_44090 a mbse:Parameter ;
+  rdfs:label "firm Hosting" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993116537_107505_44109 a mbse:Parameter ;
+  rdfs:label "spacer" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993125131_383603_44128 a mbse:Parameter ;
+  rdfs:label "bushing" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993133631_234323_44147 a mbse:Parameter ;
+  rdfs:label "shock Absorbers" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993147680_174300_44188 a mbse:Parameter ;
+  rdfs:label "motor Housing" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993154003_505396_44207 a mbse:Parameter ;
+  rdfs:label "load Balancer" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993162330_34507_44226 a mbse:Parameter ;
+  rdfs:label "dust Cleaning System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993172210_297282_44245 a mbse:Parameter ;
+  rdfs:label "air Circulation System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993177627_737642_44264 a mbse:Parameter ;
+  rdfs:label "bearing System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993185356_493939_44283 a mbse:Parameter ;
+  rdfs:label "control Unit" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993214126_131774_44321 a mbse:Parameter ;
+  rdfs:label "spark Detector" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993218240_849911_44340 a mbse:Parameter ;
+  rdfs:label "noise Sensor" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993222817_392944_44359 a mbse:Parameter ;
+  rdfs:label "voltometer" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993228211_534839_44378 a mbse:Parameter ;
+  rdfs:label "strain Guage" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993233316_595290_44397 a mbse:Parameter ;
+  rdfs:label "temperature Sensors" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993238999_930545_44416 a mbse:Parameter ;
+  rdfs:label "accelerometer" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993244087_390410_44435 a mbse:Parameter ;
+  rdfs:label "monitoring System" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993071643_981287_44015 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993093837_12798_44053 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993154003_111792_44208 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993125131_873371_44129 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993088430_131055_44034 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993104743_231467_44091 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993133631_673409_44148 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993172210_259432_44246 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993098998_401699_44072 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993147680_985502_44189 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993162330_827116_44227 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993177627_359084_44265 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993233316_597626_44398 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993222817_103085_44360 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993238999_410108_44417 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993218240_178153_44341 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993214126_742459_44322 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993228211_318006_44379 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993244087_531814_44436 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993116537_814395_44110 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993185356_222403_44284 a mbse:Parameter ;
+  rdfs:label "variable Speed Drive" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993199581_351286_44303 a mbse:Parameter ;
+  rdfs:label "power Supply" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993199581_24334_44302 a mbse:Parameter ;
+  rdfs:label "control Unit" ;
+  mbse:sourceFormat "xmi" .
+inst:TNRY4AUvEe25RIIkW5GDBA a mbse:Element ;
+  rdfs:label "_TNRY4AUvEe25RIIkW5GDBA" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993740450_548661_44773 a mbse:Parameter ;
+  rdfs:label "bearing assembly D-end" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993745880_424856_44792 a mbse:Parameter ;
+  rdfs:label "sleeve bearing" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993749169_742554_44811 a mbse:Parameter ;
+  rdfs:label "spring washer" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993752766_306874_44830 a mbse:Parameter ;
+  rdfs:label "hex screw steel" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993740450_870548_44774 a mbse:Parameter ;
+  rdfs:label "bearing assembly N-end" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993756697_588934_44849 a mbse:Parameter ;
+  rdfs:label "sleeve bearing" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993760485_388550_44868 a mbse:Parameter ;
+  rdfs:label "hex screw steel" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993763693_27204_44887 a mbse:Parameter ;
+  rdfs:label "spring washer" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993749169_383627_44812 a mbse:Parameter ;
+  rdfs:label "bearing assembly N-end" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993763693_317678_44888 a mbse:Parameter ;
+  rdfs:label "bearing assembly D-end" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993752766_269213_44831 a mbse:Parameter ;
+  rdfs:label "bearing assembly N-end" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993760485_471009_44869 a mbse:Parameter ;
+  rdfs:label "bearing assembly D-end" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993745880_938710_44793 a mbse:Parameter ;
+  rdfs:label "bearing assembly N-end" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993756697_160414_44850 a mbse:Parameter ;
+  rdfs:label "bearing assembly D-end" ;
+  mbse:sourceFormat "xmi" .
+inst:vFcpIANMEe2kNYQerycvVw a mbse:Element ;
+  rdfs:label "_vFcpIANMEe2kNYQerycvVw" ;
+  mbse:sourceFormat "xmi" .
+inst:8voJ0AP_Ee2rVIud6CQ35Q a mbse:Element ;
+  rdfs:label "_8voJ0AP_Ee2rVIud6CQ35Q" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798191773_261712_43719 a mbse:Class ;
+  rdfs:label "Noise level" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1658124159277_439976_43158 a mbse:Class ;
+  rdfs:label "Bearing Material" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1658124467386_496805_43202 a mbse:Class ;
+  rdfs:label "Wear and Tear" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657797570954_738815_43160 a mbse:Class ;
+  rdfs:label "Bearing  Life" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798159696_412579_43676 a mbse:Class ;
+  rdfs:label "Vibration level" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798236575_936567_43762 a mbse:Class ;
+  rdfs:label "Temperature" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798336511_789555_43857 a mbse:Class ;
+  rdfs:label "Maintenance" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1658125026223_659049_43327 a mbse:Class ;
+  rdfs:label "Bearing dimensions" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1658125124827_537806_43371 a mbse:Class ;
+  rdfs:label "Static Safety Factor" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1658125184785_316923_43414 a mbse:Class ;
+  rdfs:label "Kappa Value" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1658125223139_772135_43457 a mbse:Class ;
+  rdfs:label "Viscosity Oil" ;
+  mbse:sourceFormat "xmi" .
+inst:yQUaMAUvEe25RIIkW5GDBA a mbse:Element ;
+  rdfs:label "_yQUaMAUvEe25RIIkW5GDBA" ;
+  mbse:sourceFormat "xmi" .
+inst:NslxkANNEe2kNYQerycvVw a mbse:Element ;
+  rdfs:label "_NslxkANNEe2kNYQerycvVw" ;
+  mbse:sourceFormat "xmi" .
+inst:tQe2IANNEe2kNYQerycvVw a mbse:Element ;
+  rdfs:label "_tQe2IANNEe2kNYQerycvVw" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657856061062_562463_42844 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657856061062_562463_42844" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657857489328_484186_42962 a mbse:ConstraintBlock ;
+  rdfs:label "_19_0_2_4520142_1657857489328_484186_42962" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657364852427_736392_43144 a mbse:Requirement ;
+  rdfs:label "_19_0_2_4520142_1657364852427_736392_43144" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992250822_707335_42976 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992250822_707335_42976" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992272414_432267_43021 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992272414_432267_43021" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992294462_359877_43066 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992294462_359877_43066" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992307566_391335_43111 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992307566_391335_43111" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992322823_200549_43156 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992322823_200549_43156" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992339783_643439_43201 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992339783_643439_43201" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992385359_973962_43246 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992385359_973962_43246" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992401822_214223_43291 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992401822_214223_43291" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992426336_97825_43336 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992426336_97825_43336" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992460079_162072_43381 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992460079_162072_43381" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992480473_398398_43426 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992480473_398398_43426" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992491807_534150_43471 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992491807_534150_43471" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992522464_381610_43516 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992522464_381610_43516" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992573897_102717_43561 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992573897_102717_43561" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992596889_23566_43606 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992596889_23566_43606" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992633692_561450_43651 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992633692_561450_43651" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992718761_925884_43696 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992718761_925884_43696" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992736297_20379_43741 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992736297_20379_43741" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992760227_246751_43786 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992760227_246751_43786" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992816914_735575_43831 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992816914_735575_43831" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657992887955_705403_43876 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657992887955_705403_43876" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993023428_903627_43923 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657993023428_903627_43923" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993036699_114516_43968 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657993036699_114516_43968" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993646055_120019_44547 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657993646055_120019_44547" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993653424_982141_44592 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657993653424_982141_44592" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993668327_77705_44637 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657993668327_77705_44637" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993686766_347948_44682 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657993686766_347948_44682" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657993702975_861261_44727 a mbse:Component ;
+  rdfs:label "_19_0_2_4520142_1657993702975_861261_44727" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657797528962_743696_43118 a mbse:Requirement ;
+  rdfs:label "_19_0_2_4520142_1657797528962_743696_43118" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1658124552108_807222_43246 a mbse:Requirement ;
+  rdfs:label "_19_0_2_4520142_1658124552108_807222_43246" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1658124467386_498001_43203 a mbse:Requirement ;
+  rdfs:label "_19_0_2_4520142_1658124467386_498001_43203" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0_8f90291_1163762295984_947862_300 a mbse:Package ;
+  rdfs:label "SysML constraints" ;
+  mbse:sourceFormat "xmi" .
+inst:magicdraw_uml_standard_profile_v_0001 a mbse:Package ;
+  rdfs:label "UML Standard Profile" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_9150291_1392280884421_448498_10673 a mbse:Package ;
+  rdfs:label "MD Customization for ViewsViewpoints" ;
+  mbse:sourceFormat "xmi" .
+inst:18_3beta_9250292_1446323090172_3125_46229 a mbse:Package ;
+  rdfs:label "01 Conceptual Model" ;
+  mbse:sourceFormat "xmi" .
+inst:18_3beta_9250292_1446323100301_732553_46231 a mbse:Package ;
+  rdfs:label "02 Logical Model" ;
+  mbse:sourceFormat "xmi" .
+inst:18_3beta_9250292_1446323104598_984991_46245 a mbse:Package ;
+  rdfs:label "03 Physical Model" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_8f90291_1390312307333_47808_9425 a mbse:Package ;
+  rdfs:label "Requirement constraints" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0beta_8c4028a_1506585200574_397586_41114 a mbse:Package ;
+  rdfs:label "ISO-80000-Extension" ;
+  mbse:sourceFormat "xmi" .
+inst:18_0beta_8f90291_1391000707955_594012_6218 a mbse:Package ;
+  rdfs:label "MD Customization for Requirements" ;
+  mbse:sourceFormat "xmi" .
+inst:cad57231-da70-4698-9930-327efc8023f2 a mbse:Package ;
+  rdfs:label "ISO-80000" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_1beta2_f720368_1308056683608_788463_2650 a mbse:Package ;
+  rdfs:label "EMOF 2.4 Validation" ;
+  mbse:sourceFormat "xmi" .
+inst:15_5_f720368_1219919276873_792304_347 a mbse:Package ;
+  rdfs:label "EMOF 2.0 Validation" ;
+  mbse:sourceFormat "xmi" .
+inst:15_5_f720368_1219919248251_148123_346 a mbse:Package ;
+  rdfs:label "CMOF 2.0 Validation" ;
+  mbse:sourceFormat "xmi" .
+inst:17_0_1beta2_f720368_1307960687292_462562_2220 a mbse:Package ;
+  rdfs:label "CMOF 2.4 Validation" ;
+  mbse:sourceFormat "xmi" .
+inst:12_0EAPbeta_be00301_1156851270584_552173_1 a mbse:Package ;
+  rdfs:label "MD Customization for SysML" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657856605043_350277_42915 a mbse:Verify ;
+  rdfs:label "Verify" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657365156483_982160_43221 a mbse:Allocate ;
+  rdfs:label "Allocate" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784777408_917927_42643 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784798789_467997_42658 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784814045_986738_42668 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784824548_677394_42678 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784831701_57961_42688 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784842374_406133_42698 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784847917_713478_42708 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784853959_861389_42718 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784880649_798566_42728 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784885790_679858_42738 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784889674_5522_42748 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784894165_732559_42758 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784898198_647940_42768 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784902001_357577_42778 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784906321_493369_42788 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657784911184_940069_42798 a mbse:Trace ;
+  rdfs:label "Trace" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798479380_714427_43981 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798517187_79151_44008 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798521394_796606_44020 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798524568_514112_44032 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798527722_887254_44044 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798539886_343324_44056 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798553214_96788_44068 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798558425_346031_44080 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798562150_519648_44092 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798565844_3995_44104 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798569248_690978_44116 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798572925_936006_44128 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798576480_110769_44140 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798580722_873977_44152 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798584063_565440_44164 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798588159_754807_44176 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798592012_946053_44188 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798595374_752250_44200 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+inst:19_0_2_4520142_1657798603979_512390_44212 a mbse:Refine ;
+  rdfs:label "Refine" ;
+  mbse:sourceFormat "xmi" .
+
+inst:19_0_2_4520142_1657819998747_887079_44441 mbse:ASSOCIATION inst:19_0_2_4520142_1657819770434_656390_44372 .
+inst:19_0_2_4520142_1657819998747_887079_44441 mbse:ASSOCIATION inst:19_0_2_4520142_1657819960200_262355_44417 .
+inst:19_0_2_4520142_1657820036605_645641_44457 mbse:ASSOCIATION inst:19_0_2_4520142_1657819602386_374466_44282 .
+inst:19_0_2_4520142_1657820036605_645641_44457 mbse:ASSOCIATION inst:19_0_2_4520142_1657819584014_211775_44267 .
+inst:19_0_2_4520142_1657820108330_512221_44518 mbse:ASSOCIATION inst:19_0_2_4520142_1657819835110_895316_44402 .
+inst:19_0_2_4520142_1657820108330_512221_44518 mbse:ASSOCIATION inst:19_0_2_4520142_1657819584014_211775_44267 .
+inst:19_0_2_4520142_1657856061062_532140_42843 mbse:COMPOSITION inst:19_0_2_4520142_1657857489328_337143_42961 .
+inst:19_0_2_4520142_1657821134718_39185_44856 mbse:AGGREGATION inst:19_0_2_4520142_1657821210267_679476_44946 .
+inst:19_0_2_4520142_1657821134718_39185_44856 mbse:AGGREGATION inst:19_0_2_4520142_1657821246693_35785_44991 .
+inst:19_0_2_4520142_1657821246693_35785_44991 mbse:ASSOCIATION inst:19_0_2_4520142_1657821300393_266626_45036 .
+inst:19_0_2_4520142_1657821246693_35785_44991 mbse:ASSOCIATION inst:19_0_2_4520142_1657821210267_679476_44946 .
+inst:19_0_2_4520142_1657821300393_266626_45036 mbse:ASSOCIATION inst:19_0_2_4520142_1657821553829_405756_45126 .
+inst:19_0_2_4520142_1657821300393_266626_45036 mbse:ASSOCIATION inst:19_0_2_4520142_1657821246693_35785_44991 .
+inst:19_0_2_4520142_1657821323804_343645_45081 mbse:ASSOCIATION inst:19_0_2_4520142_1657821705026_585596_45171 .
+inst:19_0_2_4520142_1657821553829_405756_45126 mbse:ASSOCIATION inst:19_0_2_4520142_1657821705026_585596_45171 .
+inst:19_0_2_4520142_1657821553829_405756_45126 mbse:ASSOCIATION inst:19_0_2_4520142_1657821300393_266626_45036 .
+inst:19_0_2_4520142_1657821705026_585596_45171 mbse:AGGREGATION inst:19_0_2_4520142_1657821884981_191138_45216 .
+inst:19_0_2_4520142_1657821705026_585596_45171 mbse:AGGREGATION inst:19_0_2_4520142_1657821323804_343645_45081 .
+inst:19_0_2_4520142_1657821705026_585596_45171 mbse:ASSOCIATION inst:19_0_2_4520142_1657821553829_405756_45126 .
+inst:19_0_2_4520142_1657821884981_191138_45216 mbse:ASSOCIATION inst:19_0_2_4520142_1657821705026_585596_45171 .
+inst:19_0_2_4520142_1657821884981_191138_45216 mbse:ASSOCIATION inst:19_0_2_4520142_1657819960200_262355_44417 .
+inst:19_0_2_4520142_1657822276983_770615_45419 mbse:ASSOCIATION inst:19_0_2_4520142_1657821246693_35785_44991 .
+inst:19_0_2_4520142_1657822422039_656899_45451 mbse:ASSOCIATION inst:19_0_2_4520142_1657821134718_39185_44856 .
+inst:19_0_2_4520142_1657822429348_565791_45467 mbse:ASSOCIATION inst:19_0_2_4520142_1657821134718_39185_44856 .
+inst:19_0_2_4520142_1657822539282_709142_45505 mbse:ASSOCIATION inst:19_0_2_4520142_1657821884981_191138_45216 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:AGGREGATION inst:19_0_2_4520142_1657992272414_373051_43020 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:AGGREGATION inst:19_0_2_4520142_1657992339783_934817_43200 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:AGGREGATION inst:19_0_2_4520142_1657992294461_444597_43065 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:AGGREGATION inst:19_0_2_4520142_1657992460079_874535_43380 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:AGGREGATION inst:19_0_2_4520142_1657992385358_623582_43245 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:AGGREGATION inst:19_0_2_4520142_1657992887954_339634_43875 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:AGGREGATION inst:19_0_2_4520142_1657992322822_147475_43155 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:AGGREGATION inst:19_0_2_4520142_1657992401822_988626_43290 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:AGGREGATION inst:19_0_2_4520142_1657992480472_790222_43425 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:AGGREGATION inst:19_0_2_4520142_1657992307566_336188_43110 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:AGGREGATION inst:19_0_2_4520142_1657992491807_984131_43470 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:AGGREGATION inst:19_0_2_4520142_1657992426336_818336_43335 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:AGGREGATION inst:19_0_2_4520142_1657992522464_664756_43515 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:AGGREGATION inst:19_0_2_4520142_1657993023427_118512_43922 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:ASSOCIATION inst:19_0_2_4520142_1657992736297_81604_43740 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:ASSOCIATION inst:19_0_2_4520142_1657992718761_494048_43695 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:ASSOCIATION inst:19_0_2_4520142_1657992596888_700403_43605 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:ASSOCIATION inst:19_0_2_4520142_1657992760226_26004_43785 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:ASSOCIATION inst:19_0_2_4520142_1657992573897_439964_43560 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:ASSOCIATION inst:19_0_2_4520142_1657992633692_780779_43650 .
+inst:19_0_2_4520142_1657992250821_213001_42975 mbse:ASSOCIATION inst:19_0_2_4520142_1657992816914_481683_43830 .
+inst:19_0_2_4520142_1657992272414_373051_43020 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992294461_444597_43065 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992307566_336188_43110 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992322822_147475_43155 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992339783_934817_43200 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992385358_623582_43245 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992401822_988626_43290 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992426336_818336_43335 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992460079_874535_43380 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992480472_790222_43425 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992491807_984131_43470 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992522464_664756_43515 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992573897_439964_43560 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992596888_700403_43605 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992633692_780779_43650 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992718761_494048_43695 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992736297_81604_43740 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992760226_26004_43785 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992816914_481683_43830 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657992887954_339634_43875 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657993023427_118512_43922 mbse:ASSOCIATION inst:19_0_2_4520142_1657992250821_213001_42975 .
+inst:19_0_2_4520142_1657993023427_118512_43922 mbse:ASSOCIATION inst:19_0_2_4520142_1657993036699_791928_43967 .
+inst:19_0_2_4520142_1657993036699_791928_43967 mbse:ASSOCIATION inst:19_0_2_4520142_1657993023427_118512_43922 .
+inst:19_0_2_4520142_1657993646055_300372_44546 mbse:ASSOCIATION inst:19_0_2_4520142_1657993653424_734130_44591 .
+inst:19_0_2_4520142_1657993646055_300372_44546 mbse:ASSOCIATION inst:19_0_2_4520142_1657993702975_636796_44726 .
+inst:19_0_2_4520142_1657993646055_300372_44546 mbse:ASSOCIATION inst:19_0_2_4520142_1657993668327_950828_44636 .
+inst:19_0_2_4520142_1657993646055_300372_44546 mbse:ASSOCIATION inst:19_0_2_4520142_1657993686766_888859_44681 .
+inst:19_0_2_4520142_1657993653424_734130_44591 mbse:ASSOCIATION inst:19_0_2_4520142_1657993646055_300372_44546 .
+inst:19_0_2_4520142_1657993653424_734130_44591 mbse:ASSOCIATION inst:19_0_2_4520142_1657993702975_636796_44726 .
+inst:19_0_2_4520142_1657993653424_734130_44591 mbse:ASSOCIATION inst:19_0_2_4520142_1657993686766_888859_44681 .
+inst:19_0_2_4520142_1657993653424_734130_44591 mbse:ASSOCIATION inst:19_0_2_4520142_1657993668327_950828_44636 .
+inst:19_0_2_4520142_1657993668327_950828_44636 mbse:ASSOCIATION inst:19_0_2_4520142_1657993646055_300372_44546 .
+inst:19_0_2_4520142_1657993668327_950828_44636 mbse:ASSOCIATION inst:19_0_2_4520142_1657993653424_734130_44591 .
+inst:19_0_2_4520142_1657993686766_888859_44681 mbse:ASSOCIATION inst:19_0_2_4520142_1657993646055_300372_44546 .
+inst:19_0_2_4520142_1657993686766_888859_44681 mbse:ASSOCIATION inst:19_0_2_4520142_1657993653424_734130_44591 .
+inst:19_0_2_4520142_1657993702975_636796_44726 mbse:ASSOCIATION inst:19_0_2_4520142_1657993646055_300372_44546 .
+inst:19_0_2_4520142_1657993702975_636796_44726 mbse:ASSOCIATION inst:19_0_2_4520142_1657993653424_734130_44591 .
+inst:11_5EAPbeta_be00301_1147937844838_242658_2617 mbse:STEREOTYPE inst:11_5EAPbeta_be00301_1147430239267_179145_1189 .
+inst:16_5_1_12c903cb_1245415335546_39033_4086 mbse:STEREOTYPE inst:11_5EAPbeta_be00301_1147430239267_179145_1189 .
+inst:11_5EAPbeta_be00301_1147431846238_895928_1691 mbse:STEREOTYPE inst:11_5EAPbeta_be00301_1147430239267_179145_1189 .
+inst:16_5_1_12c903cb_1245415335546_8641_4088 mbse:STEREOTYPE inst:11_5EAPbeta_be00301_1147430239267_179145_1189 .
+inst:16_5_1_12c903cb_1245415335546_535327_4089 mbse:STEREOTYPE inst:11_5EAPbeta_be00301_1147430239267_179145_1189 .
+inst:11_5EAPbeta_be00301_1147431819399_50461_1671 mbse:STEREOTYPE inst:11_5EAPbeta_be00301_1147430239267_179145_1189 .
+inst:16_5_1_12c903cb_1245415335546_479030_4092 mbse:STEREOTYPE inst:11_5EAPbeta_be00301_1147430239267_179145_1189 .
+inst:16_6beta_17530432_1249976300015_220785_665 mbse:STEREOTYPE inst:11_5EAPbeta_be00301_1147430239267_179145_1189 .
+inst:11_5EAPbeta_be00301_1147853298336_475258_1508 mbse:STEREOTYPE inst:11_5EAPbeta_be00301_1147430239267_179145_1189 .
+inst:16_5_1_12c903cb_1245417288453_874257_4989_180beta mbse:STEREOTYPE inst:11_5EAPbeta_be00301_1147424179914_458922_958 .
+inst:16_5_1_12c903cb_1245415169125_739263_4059_180beta mbse:STEREOTYPE inst:11_5EAPbeta_be00301_1147424179914_458922_958 .
+inst:magicdraw_uml_standard_profile_v_0001 mbse:STEREOTYPE inst:12_1_8f90291_1173963323875_662612_98 .
+inst:9_0_be00301_1108053761194_467635_11463 mbse:STEREOTYPE inst:magicdraw_1046861421236_601240_36 .

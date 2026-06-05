@@ -1,0 +1,90 @@
+{
+  "name": "knowledge-graph-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/material": "^7.1.1",
+    "@mui/x-tree-view": "^8.5.2",
+    "@neo4j-nvl/base": "^0.3.8",
+    "@progress/kendo-react-animation": "^11.1.0",
+    "@progress/kendo-react-buttons": "^11.1.0",
+    "@progress/kendo-react-data-tools": "^11.1.0",
+    "@progress/kendo-react-dateinputs": "^11.1.0",
+    "@progress/kendo-react-dialogs": "^11.1.0",
+    "@progress/kendo-react-dropdowns": "^11.1.0",
+    "@progress/kendo-react-grid": "^11.1.0",
+    "@progress/kendo-react-indicators": "^11.1.0",
+    "@progress/kendo-react-inputs": "^11.1.0",
+    "@progress/kendo-react-labels": "^11.1.0",
+    "@progress/kendo-react-layout": "^11.1.0",
+    "@progress/kendo-react-listbox": "^11.1.0",
+    "@progress/kendo-react-notification": "^11.1.0",
+    "@progress/kendo-react-popup": "^11.1.0",
+    "@progress/kendo-react-progressbars": "^11.1.0",
+    "@progress/kendo-react-tooltip": "^11.1.0",
+    "@progress/kendo-theme-default": "^11.0.2",
+    "@syncfusion/ej2-base": "^29.2.11",
+    "@syncfusion/ej2-navigations": "^29.2.8",
+    "@syncfusion/ej2-react-base": "^29.2.4",
+    "@syncfusion/ej2-react-navigations": "^29.2.8",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/user-event": "^13.5.0",
+    "axios": "^1.10.0",
+    "bootstrap": "^5.3.6",
+    "cytoscape-cose-bilkent": "^4.1.0",
+    "cytoscape-expand-collapse": "^4.1.0",
+    "d3": "^7.9.0",
+    "dompurify": "^3.4.5",
+    "framer-motion": "^12.11.3",
+    "fuse": "^0.12.1",
+    "fuse.js": "^7.1.0",
+    "install": "^0.13.0",
+    "lucide-react": "^0.510.0",
+    "neo4j": "^2.0.0-RC2",
+    "neo4j-driver": "^5.19.0",
+    "neo4j-driver-core": "^5.20.0",
+    "primereact": "^10.9.6",
+    "react": "^18.2.0",
+    "react-arborist": "^3.4.3",
+    "react-cytoscapejs": "^2.0.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "react-select": "^5.10.1",
+    "rsuite": "^5.82.0",
+    "rxjs": "^7.8.1",
+    "sass": "^1.88.0",
+    "three-spritetext": "^1.9.6",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
+}

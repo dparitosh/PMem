@@ -1,0 +1,130 @@
+{
+  "node_count": 854,
+  "relationship_count": 96,
+  "node_types": {
+    "Package": 527,
+    "UseCase": 13,
+    "Actor": 1,
+    "Association": 41,
+    "Class": 87,
+    "Interface": 18,
+    "Parameter": 85,
+    "ConstraintBlock": 2,
+    "Element": 10,
+    "Component": 29,
+    "Requirement": 4,
+    "Verify": 1,
+    "Allocate": 1,
+    "Trace": 16,
+    "Refine": 19
+  },
+  "sample_nodes": [
+    {
+      "label": "Package",
+      "properties": {
+        "id": "_19_0_2_4520142_1657362849664_754191_42466",
+        "type": "uml:Package",
+        "name": "1 Problem Domain",
+        "ownerId": "eee_1045467100313_135436_1"
+      }
+    },
+    {
+      "label": "Package",
+      "properties": {
+        "id": "_19_0_2_4520142_1657362849671_631307_42549",
+        "type": "uml:Package",
+        "name": "Black Box",
+        "ownerId": "_19_0_2_4520142_1657362849664_754191_42466"
+      }
+    },
+    {
+      "label": "Package",
+      "properties": {
+        "id": "_19_0_2_4520142_1657362849654_477988_42447",
+        "type": "uml:Package",
+        "name": "Sugar Production Plant Use Cases",
+        "ownerId": "_19_0_2_4520142_1657362849671_631307_42549"
+      }
+    },
+    {
+      "label": "UseCase",
+      "properties": {
+        "id": "_19_0_2_4520142_1657819584014_211775_44267",
+        "type": "uml:UseCase",
+        "name": "Variable Speed Drive",
+        "ownerId": "_19_0_2_4520142_1657362849654_477988_42447"
+      }
+    },
+    {
+      "label": "UseCase",
+      "properties": {
+        "id": "_19_0_2_4520142_1657819602386_374466_44282",
+        "type": "uml:UseCase",
+        "name": "Energy efficiency for juice purification\n",
+        "ownerId": "_19_0_2_4520142_1657362849654_477988_42447"
+      }
+    }
+  ],
+  "sample_relationships": [
+    {
+      "from_label": "Element",
+      "from_props": {
+        "id": "_19_0_2_4520142_1657819998747_887079_44441"
+      },
+      "type": "ASSOCIATION",
+      "to_label": "Element",
+      "to_props": {
+        "id": "_19_0_2_4520142_1657819770434_656390_44372"
+      },
+      "properties": {}
+    },
+    {
+      "from_label": "Element",
+      "from_props": {
+        "id": "_19_0_2_4520142_1657819998747_887079_44441"
+      },
+      "type": "ASSOCIATION",
+      "to_label": "Element",
+      "to_props": {
+        "id": "_19_0_2_4520142_1657819960200_262355_44417"
+      },
+      "properties": {}
+    },
+    {
+      "from_label": "Element",
+      "from_props": {
+        "id": "_19_0_2_4520142_1657820036605_645641_44457"
+      },
+      "type": "ASSOCIATION",
+      "to_label": "Element",
+      "to_props": {
+        "id": "_19_0_2_4520142_1657819602386_374466_44282"
+      },
+      "properties": {}
+    },
+    {
+      "from_label": "Element",
+      "from_props": {
+        "id": "_19_0_2_4520142_1657820036605_645641_44457"
+      },
+      "type": "ASSOCIATION",
+      "to_label": "Element",
+      "to_props": {
+        "id": "_19_0_2_4520142_1657819584014_211775_44267"
+      },
+      "properties": {}
+    },
+    {
+      "from_label": "Element",
+      "from_props": {
+        "id": "_19_0_2_4520142_1657820108330_512221_44518"
+      },
+      "type": "ASSOCIATION",
+      "to_label": "Element",
+      "to_props": {
+        "id": "_19_0_2_4520142_1657819835110_895316_44402"
+      },
+      "properties": {}
+    }
+  ]
+}
