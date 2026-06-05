@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001" xmlns:sysml="http://www.omg.org/spec/SysML/20150709/SysML" xmlns:StandardProfile="http://www.omg.org/spec/UML/20131001/StandardProfile">
+  <uml:Package xmi:id="_18_4_1_e120334_1499417106051_369027_23364" xmi:uuid="59565316-9dd1-4456-b9a8-da76fb8bb29d" xmi:type="uml:Package">
+    <ownedComment xmi:id="_18_4_1_290014c_1548420214407_320709_124225" xmi:uuid="04f22804-651c-4878-86f6-467cfa076e43" xmi:type="uml:Comment">
+      <annotatedElement xmi:idref="_18_4_1_e120334_1499417106051_369027_23364"/>
+      <body>ISO/TC 184/SC 4/WG12 N11492 - ISO/TS 10303-4442 Edition 5: Domain model: Managed model-based 3d engineering domain - XMI</body>
+    </ownedComment>
+    <name>Domain_model</name>
+    <packagedElement href="Activity/Activity.xmi#_18_4_1_e120334_1499417451024_997902_22061"/>
+    <packagedElement href="AnalysisManagement/AnalysisManagement.xmi#_18_4_1_8e001ed_1516268433980_603911_53310"/>
+    <packagedElement href="AnnotatedModelPresentation/AnnotatedModelPresentation.xmi#_18_4_1_91401df_1619506231326_659448_91901"/>
+    <packagedElement href="Breakdown/Breakdown.xmi#_18_4_1_e120334_1499419916542_352852_23563"/>
+    <packagedElement href="CommonResources/CommonResources.xmi#_18_4_1_e120334_1499781608893_736279_36119"/>
+    <packagedElement href="CompositeStructuralShapeAndStructure/CompositeStructuralShapeAndStructure.xmi#_18_4_1_e120334_1499774143838_799754_29773"/>
+    <packagedElement href="DeltaChange/DeltaChange.xmi#_18_4_1_e120334_1499437346611_995960_29661"/>
+    <packagedElement href="DocumentManagement/DocumentManagement.xmi#_18_4_1_e120334_1499440120477_63042_29697"/>
+    <packagedElement href="ElectricalHarness/ElectricalHarness.xmi#_18_4_1_e120334_1499698941481_944701_44554"/>
+    <packagedElement href="GeometricDimensioningAndTolerancing/GeometricDimensioningAndTolerancing.xmi#_18_4_1_af4021f_1601394052943_428599_102235"/>
+    <packagedElement href="IndividualPart/IndividualPart.xmi#_18_4_1_e120334_1499442754353_478197_32970"/>
+    <packagedElement href="Interface/Interface.xmi#_18_4_1_8e001ed_1516203983895_974692_100304"/>
+    <packagedElement href="Kinematics/Kinematics.xmi#_18_4_1_e120334_1499781275503_964108_36116"/>
+    <packagedElement href="ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499702357231_637719_46429"/>
+    <packagedElement href="Material/Material.xmi#_18_4_1_e120334_1499424283497_540441_27617"/>
+    <packagedElement href="Mating/Mating.xmi#_18_4_1_e120334_1499423538378_387250_26990"/>
+    <packagedElement href="Message/Message.xmi#_18_4_1_8e001ed_1516284410450_795911_56355"/>
+    <packagedElement href="PlannedAndEvaluatedCharacteristics/PlannedAndEvaluatedCharacteristics.xmi#_18_4_1_e120334_1499423155907_684978_26672"/>
+    <packagedElement href="ProcessPlan/ProcessPlan.xmi#_18_4_1_e120334_1499443990527_796342_35732"/>
+    <packagedElement href="ProductDataManagement/ProductDataManagement.xmi#_18_4_1_e120334_1499701414789_107593_46426"/>
+    <packagedElement href="ProductSpecificationAndConfiguration/ProductSpecificationAndConfiguration.xmi#_18_4_1_e120334_1499436234071_649954_29658"/>
+    <packagedElement href="RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499761463063_699735_22045"/>
+    <packagedElement href="RequirementManagementAndVAndV/RequirementManagementAndVAndV.xmi#_18_4_1_e120334_1499699549803_975803_44555"/>
+    <packagedElement href="ShapeAssociationAndStructure/ShapeAssociationAndStructure.xmi#_18_4_1_e120334_1499433278411_811722_28110"/>
+    <packagedElement href="TestData/TestData.xmi#_18_4_1_271a0567_1509444026430_580649_30792"/>
+    <packagedElement href="Topology/Topology.xmi#_18_4_1_8db01ea_1501686483781_425073_24619"/>
+    <packagedElement href="WorkManagement/WorkManagement.xmi#_18_4_1_e120334_1499422794447_305442_26067"/>
+  </uml:Package>
+</xmi:XMI>

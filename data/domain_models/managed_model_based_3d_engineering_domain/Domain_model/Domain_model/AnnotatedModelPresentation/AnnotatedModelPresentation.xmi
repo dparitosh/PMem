@@ -1,0 +1,2218 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001" xmlns:sysml="http://www.omg.org/spec/SysML/20150709/SysML" xmlns:StandardProfile="http://www.omg.org/spec/UML/20131001/StandardProfile">
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_91401df_1619511701920_301182_94918application1" xmi:uuid="f641a180-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619511701918_597010_94917"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_91401df_1619516349457_387786_95191application1" xmi:uuid="f641b440-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619516349457_353334_95190"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_91401df_1619517051136_999567_95916application1" xmi:uuid="f641d130-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619517051135_204780_95915"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_91401df_1619614630077_323763_92079application1" xmi:uuid="f641e2b0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619614630076_769278_92078"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_91401df_1619595333870_360757_90731application1" xmi:uuid="f641ea90-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619595333854_639499_90730"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_91401df_1619681910252_211876_91032application1" xmi:uuid="f641f4d0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619681910250_551082_91031"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_91401df_1619773323940_603544_97985application1" xmi:uuid="f6420bb0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619773323940_321835_97984"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_91401df_1619776540731_561597_98542application1" xmi:uuid="f6422440-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619776540731_639623_98541"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_91401df_1620048314180_518064_93170application1" xmi:uuid="f6422ee0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620048314179_78393_93169"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_91401df_1620049071892_148497_93359application1" xmi:uuid="f64240c0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620049071890_762247_93358"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_91401df_1620052199454_354825_93847application1" xmi:uuid="f64247e0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620052199453_643335_93846"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_91401df_1620131551663_457845_95805application1" xmi:uuid="f64265e0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620131551662_720892_95804"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_91401df_1620204390621_784441_98818application1" xmi:uuid="f642c480-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620204390621_703870_98817"/>
+  </StandardProfile:Auxiliary>
+  <sysml:Block xmi:id="_18_4_1_af4021f_1718635369606_8118_132348" xmi:uuid="a37fae40-16c7-013d-ad3e-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_af4021f_1718635369600_117348_132344"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_af4021f_1718635601335_603682_133342" xmi:uuid="a37fc730-16c7-013d-ad3e-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_af4021f_1718635601334_238616_133341"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1716555524510_63609_134001" xmi:uuid="a38000f0-16c7-013d-ad3e-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_91401df_1716555524510_134968_134000"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619507105523_768270_94449" xmi:uuid="f6419920-b235-013c-7b62-089a2f3f1c8a">
+    <isEncapsulated>false</isEncapsulated>
+    <base_Class xmi:idref="_18_4_1_91401df_1619507105520_772248_94448"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619511701920_301182_94918" xmi:uuid="f6419e00-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619511701918_597010_94917"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619515971948_785693_95053" xmi:uuid="f641a5e0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619515971948_609005_95052"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619516088698_404050_95099" xmi:uuid="f641a8c0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619516088698_44291_95098"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619516349457_387786_95191" xmi:uuid="f641ae30-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619516349457_353334_95190"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619612757505_53313_91227" xmi:uuid="f641bd50-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619612757504_76440_91226"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619511522626_266753_94847" xmi:uuid="f641c340-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619511522626_524628_94846"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619612472083_525853_91099" xmi:uuid="f641c600-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619612472082_717705_91098"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619613488316_279245_91673" xmi:uuid="f641ca50-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619613488316_252956_91672"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619517051136_999567_95916" xmi:uuid="f641cdb0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619517051135_204780_95915"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619681469311_795877_90954" xmi:uuid="f641da10-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619681469311_688191_90953"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619614630077_323763_92079" xmi:uuid="f641ddc0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619614630076_769278_92078"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619595333870_360757_90731" xmi:uuid="f641e5e0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619595333854_639499_90730"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619766465156_764108_91277" xmi:uuid="f641edb0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619766465156_809499_91276"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619681910252_211876_91032" xmi:uuid="f641f0e0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619681910250_551082_91031"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619765946928_109734_91176" xmi:uuid="f641f7a0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619765946927_236269_91175"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619773724011_922528_98042" xmi:uuid="f641fbf0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619773724011_673445_98041"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619776728335_662982_98614" xmi:uuid="f641ffe0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619776728335_262889_98613"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619773323940_603544_97985" xmi:uuid="f6420690-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619773323940_321835_97984"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619776847193_356018_98706" xmi:uuid="f64210c0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619776847193_436886_98705"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619776933230_205930_98755" xmi:uuid="f6421460-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619776933230_729774_98754"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620049014785_73311_93313" xmi:uuid="f6421720-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620049014785_429739_93312"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619776540731_561597_98542" xmi:uuid="f6421f70-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619776540731_639623_98541"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620048314180_518064_93170" xmi:uuid="f6422bd0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620048314179_78393_93169"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620054885002_800103_93984" xmi:uuid="f6423330-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620054885001_949491_93983"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620052000326_997769_93764" xmi:uuid="f6423640-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620052000325_393917_93763"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1619785583948_434068_101334" xmi:uuid="f6423a20-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1619785583948_632237_101333"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620049071892_148497_93359" xmi:uuid="f6423d20-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620049071890_762247_93358"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620052199454_354825_93847" xmi:uuid="f64243e0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620052199453_643335_93846"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620057050641_555745_94187" xmi:uuid="f6424ac0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620057050641_11898_94186"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620113692204_237015_91094" xmi:uuid="f64255e0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620113692204_685865_91093"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620121885756_798296_92632" xmi:uuid="f6425970-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620121885756_975220_92631"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620121719921_796067_92581" xmi:uuid="f6425d90-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620121719921_992914_92580"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620131551663_457845_95805" xmi:uuid="f6426110-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620131551662_720892_95804"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620057113727_680449_94236" xmi:uuid="f6426a80-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620057113727_506873_94235"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620131931463_38985_95985" xmi:uuid="f6426e90-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620131931463_37195_95984"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620055788718_334997_94093" xmi:uuid="f64283e0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620055788718_576580_94092"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620131196730_257787_95690" xmi:uuid="f6428b90-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620131196729_590039_95689"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620203746144_821555_98549" xmi:uuid="f64291e0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620203746144_623127_98548"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620204151790_139569_98670" xmi:uuid="f642a360-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620204151790_748241_98669"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620204246823_209521_98719" xmi:uuid="f642a640-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620204246823_247594_98718"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620204295180_419609_98769" xmi:uuid="f642aa70-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620204295180_103673_98768"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620204542413_66457_98910" xmi:uuid="f642ad30-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620204542412_760410_98909"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620205794755_339977_99048" xmi:uuid="f642b140-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620205794755_443436_99047"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620204523995_462022_98864" xmi:uuid="f642b410-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620204523995_59895_98863"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_af4021f_1644573405252_977826_91267" xmi:uuid="f642bc20-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_af4021f_1644573405237_809921_91266"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_91401df_1620204390621_784441_98818" xmi:uuid="f642bef0-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_91401df_1620204390621_703870_98817"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_af4021f_1649233046778_209763_148288" xmi:uuid="f642c880-b235-013c-7b62-089a2f3f1c8a">
+    <base_Class xmi:idref="_18_4_1_af4021f_1649233046776_937737_148287"/>
+  </sysml:Block>
+  <uml:Package xmi:id="_18_4_1_91401df_1619506231326_659448_91901" xmi:uuid="59796035-9e5c-4994-b168-3c7ab1e2b767" xmi:type="uml:Package">
+    <ownedComment xmi:id="_18_4_1_91401df_1620291036522_273360_94190" xmi:uuid="837a8738-5c1a-40d3-ab4f-a34a048c9030" xmi:type="uml:Comment">
+      <annotatedElement xmi:idref="_18_4_1_91401df_1619506231326_659448_91901"/>
+      <body>This capability enables the representation of annotated model presentation, consisting of: &lt;ul&gt; &lt;li&gt;annotated model presentation;&lt;/li&gt; &lt;li&gt;annotation callout;&lt;/li&gt; &lt;li&gt;annotation placeholder with leader line;&lt;/li&gt; &lt;li&gt;camera view 3D;&lt;/li&gt; &lt;li&gt;appearance assignment;&lt;/li&gt; &lt;li&gt;curve appearance;&lt;/li&gt; &lt;li&gt;text appearance.&lt;/li&gt; &lt;/ul&gt; The Figure &lt;caption&gt;Simplified overview of the AP242 Annotated Model presentation&lt;/caption&gt; provides an overview of the capability. &lt;figuresysml&gt;&lt;id&gt;_18_4_1_91401df_1620221920273_268853_90884&lt;/id&gt;Simplified overview of the AP242 Annotated Model presentation&lt;/figuresysml&gt; Unless otherwise specified, an AnnotatedModelPresentation shall be a presentation of model with annotation according to ISO 16792. A Callout is a collection of presentation specific annotation elements depicting information or requirements about the product itself. An AnnotationPlaceholderOccurrence provides enough information about the position, orientation and leader lines of an annotation so that a target system with annotation authoring capability can re-create the presentation. A leader line only consist of a list of points with an associated optional terminator symbol.</body>
+    </ownedComment>
+    <name>AnnotatedModelPresentation</name>
+    <packagedElement xmi:id="_18_4_1_91401df_1619507105520_772248_94448" xmi:uuid="00298749-7b3e-4098-8aac-76a698700abe" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1619509974251_291058_94744" xmi:uuid="5eabb645-ff65-4d56-8ee7-37ae22880c6f" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619507105520_772248_94448"/>
+        <body>An AnnotationPlaceholderOccurrence is a type of RepresentationItem that provides enough information about the position and orientation of a PMI annotation so that a target system with PMI authoring capability can re-create the presentation based on the Representation data given in the file. An annotation occurrence aggregates one or more leader lines to provide data necessary to render needed leader lines. &lt;note&gt;This avoids requiring the user of the target system to manually position each PMI element.&lt;/note&gt; &lt;example&gt;An AnnotationPlaceholderOccurrence specifies two LeaderLines, one of which is an AnnotationToModelLeaderLine, illustrated in the Figure &lt;caption&gt;A leader line with forward arrowhead that starts at annotation and ends at model&lt;/caption&gt;, and the other of which is an AuxiliaryLeaderLine, illustrated in the Figure &lt;caption&gt;An AuxiliaryLeaderLine with forward arrowhead that starts at a random location and ends at model&lt;/caption&gt;, to provide location data for a placeholder for presentation of a geometric tolerance. The point list for the Figure &lt;caption&gt;A leader line with forward arrowhead that starts at annotation and ends at model&lt;/caption&gt; is (A1, A2, A3) while that for Figure &lt;caption&gt;An AuxiliaryLeaderLine with forward arrowhead that starts at a random location and ends at model&lt;/caption&gt; is (B1, B2, B3).&lt;/example&gt; &lt;figure&gt;&lt;name&gt;annotation_placeholder_occurrence_with_leader_line_1.gif&lt;/name&gt;A leader line with forward arrowhead that starts at annotation and ends at model&lt;/figure&gt; &lt;figure&gt;&lt;name&gt;annotation_placeholder_occurrence_with_leader_line_2.gif&lt;/name&gt;An AuxiliaryLeaderLine with forward arrowhead that starts at a random location and ends at model&lt;/figure&gt; &lt;table&gt; &lt;name&gt;Attribute Mapping&lt;/name&gt; &lt;tr&gt; &lt;th&gt;Name&lt;/th&gt; &lt;th&gt;TYPE&lt;/th&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;angular dimension&lt;/td&gt; &lt;td&gt;AngularLocation&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;angularity&lt;/td&gt; &lt;td&gt;AngularityTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;circular runout&lt;/td&gt; &lt;td&gt;CircularRunoutTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;circularity&lt;/td&gt; &lt;td&gt;RoundnessTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;coaxiality&lt;/td&gt; &lt;td&gt;CoaxialityTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;concentricity&lt;/td&gt; &lt;td&gt;ConcentricityTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;curve dimension&lt;/td&gt; &lt;td&gt;CurvedSize&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;cylindricity&lt;/td&gt; &lt;td&gt;CylindricityTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;datum&lt;/td&gt; &lt;td&gt;Datum&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;datum target&lt;/td&gt; &lt;td&gt;DatumTarget&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;diameter dimension&lt;/td&gt; &lt;td&gt;DiameterSize&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;flatness&lt;/td&gt; &lt;td&gt;FlatnessTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;general dimension&lt;/td&gt; &lt;td&gt;DimensionalSize&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;general note&lt;/td&gt; &lt;td&gt;PropertyValueAssignment&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;general tolerance&lt;/td&gt; &lt;td&gt;DimensionalSize&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;label&lt;/td&gt; &lt;td&gt;PropertyValueAssignment&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;linear dimension&lt;/td&gt; &lt;td&gt;LinearDistance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;ordinate dimension&lt;/td&gt; &lt;td&gt;DimensionalSize&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;note &lt;/td&gt; &lt;td&gt;PropertyValueAssignment&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;parallelism &lt;/td&gt; &lt;td&gt;ParallelismTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;perpendicularity&lt;/td&gt; &lt;td&gt;PerpendicularityTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;position &lt;/td&gt; &lt;td&gt;PositionTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;profile of line&lt;/td&gt; &lt;td&gt;LineProfileTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;profile of surface&lt;/td&gt; &lt;td&gt;SurfaceProfileTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;radial dimension&lt;/td&gt; &lt;td&gt;RadialSize&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;roundness &lt;/td&gt; &lt;td&gt;RoundnessTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;straightness &lt;/td&gt; &lt;td&gt;StraightnessTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;symmetry &lt;/td&gt; &lt;td&gt;SymmetryTolerance&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;total runout &lt;/td&gt; &lt;td&gt;TotalRunoutTolerance&lt;/td&gt; &lt;/tr&gt; &lt;/table&gt; </body>
+      </ownedComment>
+      <name>AnnotationPlaceholderOccurrence</name>
+      <ownedRule xmi:id="_18_4_1_af4021f_1663143822444_4768_147689" xmi:uuid="9a454b22-0d7e-474e-81de-fb499e2404ef" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_65b021e_1663406524496_339904_162077" xmi:uuid="ff1ae7b1-53c8-4c3c-b3f8-ba685cddd1a1" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_af4021f_1663143822444_4768_147689"/>
+          <body>The content of an AnnotationPlaceholderOccurrence shall be one axis placement, one or more point subtype instance, zero or one planar box, zero or one text.</body>
+        </ownedComment>
+        <name>IP1</name>
+        <constrainedElement xmi:idref="_18_4_1_91401df_1619507105520_772248_94448"/>
+        <specification xmi:id="_18_4_1_af4021f_1663143822446_611547_147690" xmi:uuid="b458f37f-007f-4743-bdfa-4afdbf9858e4" xmi:type="uml:OpaqueExpression">
+          <body>The content of an AnnotationPlaceholderOccurrence shall be one axis placement, one or more point subtype instance, zero or one planar box, zero or one text.</body>
+          <language>English</language>
+        </specification>
+      </ownedRule>
+      <ownedRule xmi:id="_18_4_1_af4021f_1663143852987_116254_147691" xmi:uuid="bf456663-9922-4035-ab64-ef36ce4be813" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_65b021e_1663406511078_402568_162074" xmi:uuid="b686c140-f27d-454b-952f-4e2605d40010" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_af4021f_1663143852987_116254_147691"/>
+          <body>If the role is for geometric product specification purposes, the name of the GeometricPlaceholderSet shall be correlated with the type specified by the Definition attribute of the AnnotatedModelItemAssociation according to the table above.</body>
+        </ownedComment>
+        <name>IP2</name>
+        <constrainedElement xmi:idref="_18_4_1_91401df_1619507105520_772248_94448"/>
+        <specification xmi:id="_18_4_1_af4021f_1663143852987_727566_147692" xmi:uuid="2817cce8-c800-4edd-a5e6-7ce42fc4ad17" xmi:type="uml:OpaqueExpression">
+          <body>If the role is for geometric product specification purposes the name of the RepresentationItem supertype of the GeometricPlaceholderSet specified by the attribute element shall be correlated with the type specified by the IdentifiedItem attribute of that AnnotatedModelPresentation according to the table above.</body>
+          <language>English</language>
+        </specification>
+      </ownedRule>
+      <generalization xmi:id="_18_4_1_91401df_1619508407024_821768_94557" xmi:uuid="27944693-e4eb-4ad9-9c69-75120c299079" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619612472082_717705_91098"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1619511964255_641880_94996" xmi:uuid="7cc010ad-2e2d-4ffd-a50a-66c8127e08d4" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619511701918_597010_94917"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619511048487_465349_94790" xmi:uuid="54b57685-60f2-410e-88de-a6223ee171b7" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1619511183524_453352_94821" xmi:uuid="47a7476e-6cfc-4c2f-bd75-07aec98d4779" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619511048487_465349_94790"/>
+          <body>specifies that the placeholder occurrence is for user defined text or is for geometric product specification purposes. </body>
+        </ownedComment>
+        <name>Role</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619510892129_23236_94760"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1619511140825_778126_94795"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619773795376_356649_98084" xmi:uuid="b25e6e45-39e8-4c3a-8ebe-d3cf25fda758" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1620303326117_758263_91734" xmi:uuid="fe087cec-4e6d-4473-befb-26cdfeac317c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619773795376_356649_98084"/>
+          <body> geometric set that defines the geometric data elements for the placeholder occurrence.</body>
+        </ownedComment>
+        <name>Element</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619773724011_673445_98041"/>
+        <association xmi:idref="_18_4_1_91401df_1619774515100_984707_98232"/>
+        <redefinedProperty xmi:idref="_18_4_1_91401df_1619614483489_732265_92063"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620203884269_627991_98635" xmi:uuid="25b1b327-2a23-448b-8c06-bb794105f5bc" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1620303225861_330482_91733" xmi:uuid="ee19ce1d-003c-4e1d-982b-44a824e3e346" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620203884269_627991_98635"/>
+          <body>specifies the set of LeaderLine that comprise the leader line contents. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>LeaderLines</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620203746144_623127_98548"/>
+        <lowerValue xmi:id="_18_4_1_91401df_1620203900745_758944_98638" xmi:uuid="873437d1-e12d-4709-9a10-dab33bacd479" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_91401df_1620203900760_968224_98639" xmi:uuid="e043ce9b-fd10-4b46-a0c3-68410db7a0f6" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1620203919826_619750_98640"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620289405097_698427_94022" xmi:uuid="da20f001-31ec-443f-bc82-40aa3add2903" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1620294566637_631065_94259" xmi:uuid="a4693105-7922-4598-9713-2398ca97af7b" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620289405097_698427_94022"/>
+          <body>the vertical distance between the top of two consecutive lines of characters.</body>
+        </ownedComment>
+        <name>LineSpacing</name>
+        <visibility>public</visibility>
+        <type href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_8db01ea_1505833409534_836596_29694"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619614701382_893871_92121" xmi:uuid="058220d7-932c-4dbf-b474-118151a63442" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1619614701382_547087_92122"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1619614483489_732265_92063"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1619614701382_547087_92122" xmi:uuid="52cd6453-b6f7-425d-9be7-9c5d6d83a8f8" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619613488316_252956_91672"/>
+        <association xmi:idref="_18_4_1_91401df_1619614701382_893871_92121"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620204151790_748241_98669" xmi:uuid="05b5210e-ae7c-48fe-b26c-7f3718ffde7a" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1620303432809_584313_91736" xmi:uuid="a96e6dc3-8a24-4871-86e7-e8e802246b6c" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620204151790_748241_98669"/>
+        <body>An AnnotationToModelLeaderLine is a type of LeaderLine that provides a simplified representation of the graphic visually connecting an annotation to the product model.</body>
+      </ownedComment>
+      <name>AnnotationToModelLeaderLine</name>
+      <generalization xmi:id="_18_4_1_91401df_1620204194874_537287_98714" xmi:uuid="8733d068-7768-4d0a-96e0-4a438ae541f4" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620203746144_623127_98548"/>
+      </generalization>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_af4021f_1649233577726_947287_148392" xmi:uuid="087b223b-4421-432b-80e4-7c4cebd4d808" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_af4021f_1649233577726_996407_148393"/>
+      <memberEnd xmi:idref="_18_4_1_af4021f_1649233549602_698997_148353"/>
+      <ownedEnd xmi:id="_18_4_1_af4021f_1649233577726_996407_148393" xmi:uuid="d65ba2f0-f340-4daf-8b39-d1a17634c52f" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_af4021f_1649233046776_937737_148287"/>
+        <lowerValue xmi:id="_18_4_1_af4021f_1721129971341_239376_133577" xmi:uuid="b8df3f45-88d6-4983-98fc-3368f5051699" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_af4021f_1721129971341_10966_133578" xmi:uuid="71a7abca-6117-4b6c-9317-3d4d05e585e8" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_af4021f_1649233577726_947287_148392"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620048414429_476738_93218" xmi:uuid="1304cb93-bd76-4b39-8de3-0ce4deccf5a3" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620048414430_241681_93219"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620046830820_59937_92974"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620048414430_241681_93219" xmi:uuid="f5a9d241-2164-463f-bac3-3f66711be2b9" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619785583948_632237_101333"/>
+        <association xmi:idref="_18_4_1_91401df_1620048414429_476738_93218"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620057113727_506873_94235" xmi:uuid="160e6203-c3f0-40d0-9632-9fc8d7d72b19" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621585736064_517373_91565" xmi:uuid="6968f885-0fc0-4de7-9b64-c447abdf0da7" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620057113727_506873_94235"/>
+        <body>An ExternallyDefinedColour is a type of Colour that has its definition established and maintained by a source outside of ISO 10303.</body>
+      </ownedComment>
+      <name>ExternallyDefinedColour</name>
+      <generalization xmi:id="_18_4_1_91401df_1620057204841_210870_94289" xmi:uuid="b98d2f6d-aa98-4741-8c0a-6004f92b4f81" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620054885001_949491_93983"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620114728559_432492_92483" xmi:uuid="1054f5a4-a000-45af-9814-4a4e189103dd" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585756427_374965_91566" xmi:uuid="c378086d-c6c7-4fce-9ba4-80368ddda907" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620114728559_432492_92483"/>
+          <body>the source specifies the identification of the organization responsible for the Colour definition.</body>
+        </ownedComment>
+        <name>Source</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193102_563946_23571"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620205041182_165552_99010" xmi:uuid="1990e9fb-7ca9-4ec3-8472-9b7ac1b97ef1" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620205041198_571699_99011"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620204967109_789854_99005"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620205041198_571699_99011" xmi:uuid="242e4368-1c10-479b-b777-e6b9aee8a914" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620204246823_247594_98718"/>
+        <association xmi:idref="_18_4_1_91401df_1620205041182_165552_99010"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1716554902976_969084_133964" xmi:uuid="1f268eb0-8991-4b5d-942f-09e160576e85" xmi:type="uml:Enumeration">
+      <ownedComment xmi:id="_18_4_1_91401df_1716555378318_995048_133987" xmi:uuid="252a231c-84e3-456c-acff-e792ad04e10b" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1716554902976_969084_133964"/>
+        <body>A SurfaceSideEnum specifies the sides of a surface to which a surface style is applied.</body>
+      </ownedComment>
+      <name>SurfaceSideEnum</name>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1716555411924_129911_133988" xmi:uuid="f46408b8-ee25-4bf7-9679-28b86bcddb92" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1716555449179_993384_133990" xmi:uuid="41b4031e-0734-4117-8940-8f3caa7542ad" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1716555411924_129911_133988"/>
+          <body>the side of a surface which is in the same direction as the surface normal.</body>
+        </ownedComment>
+        <name>positive</name>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1716555451459_503172_133991" xmi:uuid="7ed9a1a2-6a5b-4c42-95e5-062298fe710a" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1716555464858_281820_133993" xmi:uuid="3b61068f-11fa-406f-8001-ceddb7cb6351" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1716555451459_503172_133991"/>
+          <body>the side of a surface which is in the opposite direction than the surface normal.</body>
+        </ownedComment>
+        <name>negative</name>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1716555467768_578857_133994" xmi:uuid="5a80f436-c42b-4ac9-9f83-ddeb3795d9af" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1716555479584_934551_133996" xmi:uuid="7bafc94b-2d92-44bc-8498-32ed0b35e0d0" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1716555467768_578857_133994"/>
+          <body>both sides.</body>
+        </ownedComment>
+        <name>both</name>
+      </ownedLiteral>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620206403826_91107_99288" xmi:uuid="1f678a01-7572-4f2f-8bc0-364d8fd29d7e" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620206403826_991768_99289"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620205571399_431542_99039"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620206403826_991768_99289" xmi:uuid="96a122da-d79a-4a31-acd8-856395c50b2e" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620204523995_59895_98863"/>
+        <association xmi:idref="_18_4_1_91401df_1620206403826_91107_99288"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620049014785_429739_93312" xmi:uuid="297515a2-9530-4062-8c0c-97feb591bf05" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1620303480398_188769_91737" xmi:uuid="cf14507c-e56f-42e1-99c1-520035db2566" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620049014785_429739_93312"/>
+        <body>An AppearanceAssignment is the identification of the characteristics of visual appearance of geometric or annotation elements. &lt;note&gt;The various visual characteristics that can be assigned to points, curves or surfaces are defined in other application modules.&lt;/note&gt; &lt;note&gt;The appearance can be defined explicitly for each represented element or for a context in which the elements are represented.&lt;/note&gt; &lt;note&gt;Several appearance components can be simultaneously specified with an AppearanceAssignment.&lt;/note&gt;</body>
+      </ownedComment>
+      <name>AppearanceAssignment</name>
+      <generalization xmi:id="_18_4_1_91401df_1620049898851_730146_93449" xmi:uuid="c0b81580-d806-402a-884c-fade7be7e6fe" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619776540731_639623_98541"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620049813968_702137_93410" xmi:uuid="42f85337-7ba0-4bc4-a534-e64786a6a4f6" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1620303558294_124230_91738" xmi:uuid="6006b108-49c0-4abd-8232-fd70ed485419" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620049813968_702137_93410"/>
+          <body>the set of instances of entity types listed in AppearanceSelect that characterize the appearance of geometric and annotation objects.</body>
+        </ownedComment>
+        <name>AppearanceComponents</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620049071890_762247_93358"/>
+        <upperValue xmi:id="_18_4_1_91401df_1620049841117_316460_93414" xmi:uuid="f1dcf8c5-ffc5-49ff-85ee-4b3694892a7a" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_91401df_1620049849563_479559_93415"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619681910250_551082_91031" xmi:uuid="29f807f2-94ed-4f85-9a65-795155fc0729" xmi:type="uml:Class">
+      <name>AnnotatedModelItemDefinitionSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_af4021f_1718635601334_238616_133341" xmi:uuid="2aa13c0a-ac7e-49cc-8ae3-f8d345eb60d5" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_af4021f_1718635841178_839197_133470" xmi:uuid="d8a6240c-67b6-4b98-896c-75ebda1e12c0" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_af4021f_1718635601334_238616_133341"/>
+        <body>A TessellatedItem is a type of DetailedGeometricModelItem used in the description of a tessellated shape defined externally.</body>
+      </ownedComment>
+      <name>TessellatedItem</name>
+      <generalization xmi:id="_18_4_1_af4021f_1718635671634_796652_133428" xmi:uuid="b649d051-ab3f-4192-81f3-26250d9bf310" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193072_543741_23516"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_af4021f_1718635743766_325533_133461" xmi:uuid="c13a2edf-c7f6-401d-a744-4271a492bc6c" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_af4021f_1718635743767_905515_133463" xmi:uuid="edf14448-4256-4b2d-bc91-cba72c1ceff0" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_af4021f_1718635743766_325533_133461"/>
+          <body> the reference to the external item.</body>
+        </ownedComment>
+        <name>External</name>
+        <visibility>public</visibility>
+        <type href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193098_672769_23564"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_af4021f_1718635743837_977386_133466"/>
+        <redefinedProperty href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417194011_416684_28708"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620205794755_443436_99047" xmi:uuid="2aa5b22a-776b-4dd6-a281-cbf3d5795112" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621585919118_988617_92106" xmi:uuid="ede00fad-112b-42f5-8dad-af87c1ccc2ef" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620205794755_443436_99047"/>
+        <body>A FaceSurface is a type of DetailedGeometricModelElement that has its geometry defined by a geometric Surface.</body>
+      </ownedComment>
+      <name>FaceSurface</name>
+      <generalization xmi:id="_18_4_1_91401df_1620206019050_488323_99209" xmi:uuid="52a27929-8f39-4b83-88c7-0e482663eac3" xmi:type="uml:Generalization">
+        <general href="../Topology/Topology.xmi#_18_4_1_e120334_1499417193274_958104_23888"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620205889675_836128_99176" xmi:uuid="f6dec3c9-b71a-4e74-982c-b5c8b087d70e" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621587843644_240556_92119" xmi:uuid="f33b8571-bf5d-45d1-bacd-df57543a629f" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620205889675_836128_99176"/>
+          <body>the Surface defining the geometric shape of the Face.</body>
+        </ownedComment>
+        <name>FaceGeometry</name>
+        <visibility>public</visibility>
+        <type href="../CompositeStructuralShapeAndStructure/CompositeStructuralShapeAndStructure.xmi#_18_4_1_e120334_1499417193262_84138_23869"/>
+        <association xmi:idref="_18_4_1_91401df_1620205934256_193886_99181"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620206098702_381642_99225" xmi:uuid="209404dc-9eb5-458c-bee8-f4ac2f9ac2b7" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621588161557_731125_92120" xmi:uuid="ef5224c9-c47c-4596-9e63-cf4ce8d65a11" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620206098702_381642_99225"/>
+          <body>a BOOLEAN variable giving the relationship between the topological normal of the Face and the geometric normal to the surface.</body>
+        </ownedComment>
+        <name>SameSense</name>
+        <visibility>public</visibility>
+        <type href="../../../../DataTypes.xmi#BOOLEAN"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620113692204_685865_91093" xmi:uuid="2c39cf7d-b6e6-4b22-bf4b-8acb24a209e3" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621585683043_877658_91551" xmi:uuid="6e9fc2af-3ad2-430a-8913-d64795fb2900" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620113692204_685865_91093"/>
+        <body>A CurveFont is a shape replicated at a fixed pattern used to render a curve. A CurveFont may be either an ExternallyDefinedCurveFont or a PredefinedCurveFont.</body>
+      </ownedComment>
+      <name>CurveFont</name>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620121649394_93093_92569" xmi:uuid="5e829194-3ae3-4eb5-b118-768585a9ffbb" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585694013_293748_91552" xmi:uuid="b7f52dca-3e18-4ef1-b7d3-121d06f989a8" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620121649394_93093_92569"/>
+          <body>the words or set of words by which the CurveFont is known.</body>
+        </ownedComment>
+        <name>Name</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1620121667062_250406_92572"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_af4021f_1718635743837_977386_133466" xmi:uuid="2ca8997e-d770-4714-ae77-ae5e33e03beb" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_af4021f_1718635743837_832124_133467"/>
+      <memberEnd xmi:idref="_18_4_1_af4021f_1718635743766_325533_133461"/>
+      <ownedEnd xmi:id="_18_4_1_af4021f_1718635743837_832124_133467" xmi:uuid="625b3ab5-d0d1-4bc7-9472-f468a64e2551" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_af4021f_1718635601334_238616_133341"/>
+        <association xmi:idref="_18_4_1_af4021f_1718635743837_977386_133466"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620132356522_234621_96125" xmi:uuid="2cb2de4d-8055-4e18-8243-b11a4d6c28a0" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620132356522_583469_96126"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620132187178_807028_96040"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620132356522_583469_96126" xmi:uuid="63251d7b-b560-47c1-87aa-7a21fe24e385" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620131931463_37195_95984"/>
+        <association xmi:idref="_18_4_1_91401df_1620132356522_234621_96125"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619773323940_321835_97984" xmi:uuid="2e16dd23-fbde-4a31-bf20-a0cf4d7a39e7" xmi:type="uml:Class">
+      <name>GeometricPlaceholderSetSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619765946927_236269_91175" xmi:uuid="2ef577bd-25db-4631-b133-be8c9976aba0" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621589670190_792364_92186" xmi:uuid="efbac0ea-5b0d-4b1e-a9ed-d0ddb6f06763" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619765946927_236269_91175"/>
+        <body>A Plane is a type of Surface that is flat. A Plane is considered infinite.</body>
+      </ownedComment>
+      <name>Plane</name>
+      <generalization xmi:id="_18_4_1_91401df_1619766001032_168512_91267" xmi:uuid="143b797a-8f09-424c-8552-3b860774ce40" xmi:type="uml:Generalization">
+        <general href="../CompositeStructuralShapeAndStructure/CompositeStructuralShapeAndStructure.xmi#_18_4_1_e120334_1499417193262_84138_23869"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1620131772743_558693_95951" xmi:uuid="2747a5d8-39e8-492d-8e11-d64dfcd88ca2" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620131551662_720892_95804"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1619765962156_331508_91220" xmi:uuid="94bf9e52-7007-4997-a0f6-e1ad07115c91" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619517051135_204780_95915"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619766073418_908864_91268" xmi:uuid="3650d713-b7f2-4432-b953-af52d4c5d158" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621589692140_115759_92187" xmi:uuid="cbec8c45-475c-4c2f-8628-4b703cb6690e" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619766073418_908864_91268"/>
+          <body>an AxisPlacement that defines the location and orientation of the plane.</body>
+        </ownedComment>
+        <name>Position</name>
+        <visibility>public</visibility>
+        <type href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193025_577371_23412"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619517051135_204780_95915" xmi:uuid="30f8ab54-2245-433d-9b4d-2ae334acacdf" xmi:type="uml:Class">
+      <name>PlaneOrPlanarBoxSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620131551662_720892_95804" xmi:uuid="31cc32db-8ba3-4cda-b610-17fe0b846089" xmi:type="uml:Class">
+      <name>ClippingElementSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620121885756_975220_92631" xmi:uuid="324947f0-23ca-4b2f-ae54-f5c18bbb9b41" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621585792573_340790_91567" xmi:uuid="7c49b313-7837-4017-a87e-94937f860b80" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620121885756_975220_92631"/>
+        <body>An ExternallyDefinedCurveFont is a type of CurveFont whose definition is outside the scope of this application module. An ExternallyDefinedCurveFont is a curve font that is defined in an external computer interpretable system.</body>
+      </ownedComment>
+      <name>ExternallyDefinedCurveFont</name>
+      <generalization xmi:id="_18_4_1_91401df_1620121920377_418567_92676" xmi:uuid="dde27b88-c846-4012-b38e-a86fc66653f2" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620113692204_685865_91093"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620121953844_177404_92677" xmi:uuid="87f35e7b-58db-4bb4-820f-6008348d09e6" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585804894_72679_91568" xmi:uuid="96bd35d9-eb55-49eb-bb25-b40b737bc713" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620121953844_177404_92677"/>
+          <body>the identification of the curve font in the external reference.</body>
+        </ownedComment>
+        <name>CurveFontReference</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193102_563946_23571"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619614630076_769278_92078" xmi:uuid="371a11d7-e45c-4c12-9a1e-a19ccba5f907" xmi:type="uml:Class">
+      <name>StyledElementTargetSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620204246823_247594_98718" xmi:uuid="375fc41f-335d-4d9c-bdd7-4bc5ba73c6ee" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1620303591267_647346_91739" xmi:uuid="d310b6f8-e733-4289-b365-97d5c9cc4387" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620204246823_247594_98718"/>
+        <body>An AuxiliaryLeaderLine is a type of LeaderLine that provides a simplified representation of the graphic visually connecting a leader line that is dependent on another leader line to construction geometry that is connected to a product model.</body>
+      </ownedComment>
+      <name>AuxiliaryLeaderLine</name>
+      <generalization xmi:id="_18_4_1_91401df_1620204268330_536119_98763" xmi:uuid="6c2b7b1c-411a-443a-b733-2c306e0c0487" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620203746144_623127_98548"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620204967109_789854_99005" xmi:uuid="e20ff2e3-7852-4ad8-8408-a764bc55c7d2" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1620303626590_929507_91740" xmi:uuid="6a8e78a9-f3a8-42cb-97af-c10e602992da" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620204967109_789854_99005"/>
+          <body>specifies the LeaderLine that controls this AuxiliaryLeaderLine.</body>
+        </ownedComment>
+        <name>ControllingLeaderLine</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620204151790_748241_98669"/>
+        <association xmi:idref="_18_4_1_91401df_1620205041182_165552_99010"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619690865385_437434_94507" xmi:uuid="37aac40d-838a-4eee-b5e3-ea87eea54399" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1619690865385_945838_94508"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1619615636336_486601_92299"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1619690865385_945838_94508" xmi:uuid="22e06e3e-897e-4c31-aeae-f00ab0d15b8c" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619515971948_609005_95052"/>
+        <association xmi:idref="_18_4_1_91401df_1619690865385_437434_94507"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620057050641_11898_94186" xmi:uuid="3a992f44-7f78-46b3-a248-2791fee19867" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621589753371_18456_92532" xmi:uuid="66adfd7b-078f-49ca-bc5f-bc4a7af8799f" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620057050641_11898_94186"/>
+        <body>A PreDefinedColour is a type of Colour which is defined by name as defined in the table below. &lt;table&gt; &lt;name&gt;Red, green and blue colour components&lt;/name&gt; &lt;tr&gt; &lt;td&gt;Colour name&lt;/td&gt; &lt;td&gt;Red&lt;/td&gt; &lt;td&gt;Green&lt;/td&gt; &lt;td&gt;Blue&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;black&lt;/td&gt; &lt;td&gt;0.0&lt;/td&gt; &lt;td&gt;0.0&lt;/td&gt; &lt;td&gt;0.0&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;red&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;0.0&lt;/td&gt; &lt;td&gt;0.0&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;green&lt;/td&gt; &lt;td&gt;0.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;0.0&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;blue&lt;/td&gt; &lt;td&gt;0.0&lt;/td&gt; &lt;td&gt;0.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;yellow&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;0.0&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;magenta&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;0.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;cyan&lt;/td&gt; &lt;td&gt;0.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;white&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;/tr&gt; &lt;/table&gt;</body>
+      </ownedComment>
+      <name>PreDefinedColour</name>
+      <ownedRule xmi:id="_18_4_1_91401df_1717142308551_525782_132725" xmi:uuid="399c95ce-8c98-4166-b78f-487e08767842" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_91401df_1717142330151_609347_132727" xmi:uuid="45c1816e-8dc9-42c0-a4ae-7b2bb327ecec" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1717142308551_525782_132725"/>
+          <body>the Name of the PreDefinedColour shall be 'red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'black', or 'white'.</body>
+        </ownedComment>
+        <ownedComment xmi:id="_18_4_1_91401df_1717144965197_666587_132751" xmi:uuid="fc7ea0fc-3366-44cd-a5df-cfe5ecf84c42" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_91401df_1717144972956_886474_132752" xmi:uuid="bc177f6e-03f1-47fa-8264-043545157cb1" xmi:type="uml:Comment">
+            <body>&lt;sch:rule context="//*[ @uid and substring-after(@xsi:type,':')='PreDefinedColour']/Name"&gt; &lt;sch:let name="uid" value="../@uid" /&gt; &lt;sch:assert test="CharacterString ='red' or CharacterString ='green' or CharacterString ='blue' or CharacterString ='yellow' or CharacterString ='magenta' or CharacterString ='cyan' or CharacterString ='black' or CharacterString ='white'"&gt; (PreDefinedColour.WR1: &lt;sch:value-of select="$uid" /&gt;)The Name of the PreDefinedColour shall be 'red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'black', or 'white'.&lt;/sch:assert&gt; &lt;/sch:rule&gt;</body>
+          </ownedComment>
+          <body>Schematron</body>
+        </ownedComment>
+        <name>WR1</name>
+        <constrainedElement xmi:idref="_18_4_1_91401df_1620057050641_11898_94186"/>
+        <specification xmi:id="_18_4_1_91401df_1717142308551_955941_132726" xmi:uuid="e2fdbac9-a84f-4622-b431-a1f60f24f0d3" xmi:type="uml:OpaqueExpression">
+          <body>self.Name.oclAsType(Application_protocols::AP242::Domain_model::CommonResources::CharacterStringProxy).value = 'red' or self.Name.oclAsType(Application_protocols::AP242::Domain_model::CommonResources::CharacterStringProxy).value= 'green' or self.Name.oclAsType(Application_protocols::AP242::Domain_model::CommonResources::CharacterStringProxy).value= 'blue' or self.Name.oclAsType(Application_protocols::AP242::Domain_model::CommonResources::CharacterStringProxy).value= 'yellow' or self.Name.oclAsType(Application_protocols::AP242::Domain_model::CommonResources::CharacterStringProxy).value= 'magenta' or self.Name.oclAsType(Application_protocols::AP242::Domain_model::CommonResources::CharacterStringProxy).value= 'cyan' or self.Name.oclAsType(Application_protocols::AP242::Domain_model::CommonResources::CharacterStringProxy).value= 'black' or self.Name.oclAsType(Application_protocols::AP242::Domain_model::CommonResources::CharacterStringProxy).value= 'white'</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <generalization xmi:id="_18_4_1_91401df_1620057089225_163653_94231" xmi:uuid="45c35080-74f4-4be9-8a9a-e03afc28c151" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620054885001_949491_93983"/>
+      </generalization>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619785583948_632237_101333" xmi:uuid="3bb190c4-1006-46b7-bfc4-0ea4ccdff22e" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621589918970_908761_92537" xmi:uuid="1a8b1ebe-738a-4ad3-bf53-e4a4225eff72" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619785583948_632237_101333"/>
+        <body>A StyledModelReplication is a type of RepresentationItem that replicates a StyledModel in another StyledModel that includes it with a transformation.</body>
+      </ownedComment>
+      <name>StyledModelReplication</name>
+      <generalization xmi:id="_18_4_1_91401df_1713430735903_660487_142032" xmi:uuid="25534250-8491-41d8-ab31-161dece1000f" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619614630076_769278_92078"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1619786166768_371469_101504" xmi:uuid="3120bd9c-a6a8-465f-8305-94357bf36ae2" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619595333854_639499_90730"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1619785632039_265584_101378" xmi:uuid="deeb7c43-46ce-4d9d-b698-10323c1fd10d" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193222_666164_23810"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620046763534_969010_92961" xmi:uuid="175c0858-e5a0-43fa-9308-992f7c76a908" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621593582634_976297_92550" xmi:uuid="25f215b1-e4a2-4703-a67a-0f8c04ef10e5" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620046763534_969010_92961"/>
+          <body>specifies the StyledModel that is replicated.</body>
+        </ownedComment>
+        <name>ReplicatedModel</name>
+        <visibility>public</visibility>
+        <type href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193257_299866_23863"/>
+        <association xmi:idref="_18_4_1_91401df_1620047367494_455114_92995"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620046804094_276600_92968" xmi:uuid="61f44661-d130-43e4-9970-13f749e6cf98" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621593600984_345448_92551" xmi:uuid="cf582a86-50c9-4897-8fa0-2979605ae2d2" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620046804094_276600_92968"/>
+          <body>the AxisPlacement that specifies the origin of the ReplicatedModel origin to be transformed.</body>
+        </ownedComment>
+        <name>Source</name>
+        <visibility>public</visibility>
+        <type href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193025_577371_23412"/>
+        <association xmi:idref="_18_4_1_91401df_1620047398514_104826_93067"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620046830820_59937_92974" xmi:uuid="8b1ad0c1-0e5d-47e2-9c43-7a4689525de1" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621593623785_669048_92552" xmi:uuid="02b9e2aa-ebe8-4e0b-a7c8-7eaabad256ce" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620046830820_59937_92974"/>
+          <body>the AxisPlacement or CartesianTransformation that specifies the target for the transformation.</body>
+        </ownedComment>
+        <name>Target</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620048314179_78393_93169"/>
+        <association xmi:idref="_18_4_1_91401df_1620048414429_476738_93218"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_af4021f_1649233464287_735700_148335" xmi:uuid="3d8eb746-08ad-47ab-afe3-8e6707076aa5" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_af4021f_1649233464288_216338_148336"/>
+      <memberEnd xmi:idref="_18_4_1_af4021f_1649233433349_172265_148332"/>
+      <ownedEnd xmi:id="_18_4_1_af4021f_1649233464288_216338_148336" xmi:uuid="43ade2e2-f843-457c-85cf-09af9e3d86c3" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_af4021f_1649233046776_937737_148287"/>
+        <association xmi:idref="_18_4_1_af4021f_1649233464287_735700_148335"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619681469311_688191_90953" xmi:uuid="3f9e1260-9b25-4c5f-b999-83281b2a5097" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1620293007332_698291_94242" xmi:uuid="a6533b2b-bdda-4126-ad95-022aa96d7d14" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619681469311_688191_90953"/>
+        <body>An AnnotatedModelItemAssociation is an identification of a Callout within an AnnotatedModelPresentation as being the element that describes a GeometricDimension, GeometricTolerance, ShapeFeatureDefinition, ShapeElement or a ShapeElementRelationship. &lt;example&gt;In an application protocol, an instance of GeometricModel describes a characteristic of a product. One element of the GeometricModel - a Curve - represents the boundary of a hole that is a ShapeElement in the product. This entity data type may be used to state that the curve describes the hole, in the context of the entire GeometricModel describing the shape of the product.&lt;/example&gt;</body>
+      </ownedComment>
+      <name>AnnotatedModelItemAssociation</name>
+      <generalization xmi:id="_18_4_1_65b021e_1721221106975_413699_148773" xmi:uuid="d0268caf-496d-4f44-aec9-011e921b675e" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_65b021e_1719937607582_594298_150024"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619690148647_293562_94129" xmi:uuid="08ee8c0c-7059-459d-ab65-207a09c82feb" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1620293374169_391533_94243" xmi:uuid="4b4aabc2-8662-4dc3-bfae-3cbc4d83f79a" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619690148647_293562_94129"/>
+          <body>specifies the AnnotatedModelPresentation containing the IdentifiedItem.</body>
+        </ownedComment>
+        <name>UsedModel</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619516088698_44291_95098"/>
+        <association xmi:idref="_18_4_1_91401df_1619690575215_742064_94134"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619690693381_12141_94353" xmi:uuid="2a099364-c359-4570-9464-088d6b48c9bd" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1620293411689_885583_94244" xmi:uuid="4fa52cc7-7832-47fd-b316-85f2f649799c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619690693381_12141_94353"/>
+          <body>specifies the Callout presenting the definition.</body>
+        </ownedComment>
+        <name>IdentifiedItem</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619511522626_524628_94846"/>
+        <association xmi:idref="_18_4_1_91401df_1619690730304_432799_94358"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619692496463_802045_94727" xmi:uuid="37ea6779-650d-4240-ae09-b3f8c563b6d9" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1620293454821_28020_94245" xmi:uuid="5f888562-772c-4203-95ee-c731065de26b" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619692496463_802045_94727"/>
+          <body>specifies the AnnotatedModelItemDefinitionSelect that is presented by the IdentifiedItem.</body>
+        </ownedComment>
+        <name>Definition</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619681910250_551082_91031"/>
+        <association xmi:idref="_18_4_1_91401df_1619692535898_897441_94732"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619692694176_392602_94764" xmi:uuid="d8c2c65c-fb55-46e3-a928-269d9dbe7e5a" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1620293506381_182900_94246" xmi:uuid="8b0e018d-b3f6-4c09-b25c-5715d8024ee9" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619692694176_392602_94764"/>
+          <body>the words or set of words by which the AnnotatedModelItemAssociation is known.</body>
+        </ownedComment>
+        <name>Name</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1619692713556_790506_94767"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619692535898_897441_94732" xmi:uuid="49fcf418-3367-4d14-9704-de6f51750a9d" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1619692535899_411018_94733"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1619692496463_802045_94727"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1619692535899_411018_94733" xmi:uuid="a6a8e39a-71fd-48ba-a653-86befbfa81d0" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619681469311_688191_90953"/>
+        <association xmi:idref="_18_4_1_91401df_1619692535898_897441_94732"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620131196729_590039_95689" xmi:uuid="4b9ecb74-f517-4cb8-a1e8-c3ea2ab8fc64" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621585250266_267633_91528" xmi:uuid="dfc2dd21-e950-4b95-a45d-879c32e6c743" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620131196729_590039_95689"/>
+        <body>A ClippingOperator is a type of DetailedGeometricModelItem.</body>
+      </ownedComment>
+      <name>ClippingOperator</name>
+      <generalization xmi:id="_18_4_1_91401df_1620131215220_882349_95734" xmi:uuid="1456e79f-014b-48ed-9cb2-f855002461bf" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193072_543741_23516"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1620131778965_708766_95954" xmi:uuid="8deb4c2a-ab7c-437c-a756-bcae778fe57e" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620131551662_720892_95804"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620131325738_162571_95740" xmi:uuid="89fa9dbf-d969-4598-ba2a-134dec82c92f" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585355008_901981_91530" xmi:uuid="cd73d7a2-9b94-4fec-92bc-a939469dd995" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620131325738_162571_95740"/>
+          <body>specifies a role of the ClippingMode for the ClippingOperator.</body>
+        </ownedComment>
+        <name>Operator</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620131379272_236180_95748"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1620131629204_86894_95856"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620131607330_900458_95853" xmi:uuid="e964ce2a-162a-443e-89ea-00aeddad28fc" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585298418_69061_91529" xmi:uuid="4a70b770-24a3-4939-b445-87a3981f10bc" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620131607330_900458_95853"/>
+          <body>specifies a role of the ClippingElementSelect for the ClippingOperator. There shall exist one or more ClippingElementSelect for the ClippingOperator.</body>
+        </ownedComment>
+        <name>Elements</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620131551662_720892_95804"/>
+        <upperValue xmi:id="_18_4_1_af4021f_1660228607046_51185_149213" xmi:uuid="caf2b509-fa7f-40b0-9e12-dc852f10f1d3" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_91401df_1620131630931_716411_95882"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620203919826_619750_98640" xmi:uuid="4fec80eb-97f2-4c42-b1a8-84106d80d20c" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620203919826_399234_98641"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620203884269_627991_98635"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620203919826_399234_98641" xmi:uuid="a8cfe779-7990-462f-ab67-7454b58bd1b9" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619507105520_772248_94448"/>
+        <association xmi:idref="_18_4_1_91401df_1620203919826_619750_98640"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619511522626_524628_94846" xmi:uuid="57d54bf7-937c-436f-ad19-27a20869ab42" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1619512185516_940493_94999" xmi:uuid="290796ee-376a-40d4-b0e9-2d84ba45511b" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619511522626_524628_94846"/>
+        <body>A Callout is a type of RepresentationItem. A Callout is a human-interpretable collection of annotation element that presents product requirements or information used to interpret the annotated model. </body>
+      </ownedComment>
+      <name>Callout</name>
+      <generalization xmi:id="_18_4_1_91401df_1619516455501_506118_95235" xmi:uuid="63bf796e-0d66-4683-ba2e-8dce54c6fe45" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619516349457_353334_95190"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1619612853730_966231_91290" xmi:uuid="afb9a6c9-fc19-4ef5-915b-dc8227c42fa8" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619595333854_639499_90730"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1619511627197_351354_94916" xmi:uuid="feaa3eb4-d08f-4402-8005-658cfe69e6c5" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193222_666164_23810"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619511846626_49793_94960" xmi:uuid="bb902a1d-a6e3-4c53-840f-0c4be9eeb8e7" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1619512216315_733203_95000" xmi:uuid="b624867b-973f-45f2-9485-b0916ffa302e" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619511846626_49793_94960"/>
+          <body>the annotation elements comprising the presentation of information. </body>
+        </ownedComment>
+        <name>Contents</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619511701918_597010_94917"/>
+        <upperValue xmi:id="_18_4_1_91401df_1619511870415_587932_94967" xmi:uuid="c893a39f-d192-45dc-9b37-c2a224b5b4b8" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_91401df_1619511862434_706677_94963"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619776540731_639623_98541" xmi:uuid="57e560b0-a9e6-4311-a45f-4c6a4ad40b98" xmi:type="uml:Class">
+      <name>StyledElementAppearanceSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620055788718_576580_94092" xmi:uuid="58278898-6716-434e-b74b-fdb456cafcc0" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621593832880_122435_92557" xmi:uuid="772e951e-c1d8-412d-8c2b-26fd9d0ca0cb" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620055788718_576580_94092"/>
+        <body>A UserDefinedColour is a type of Colour that has its definition established without referencing any standard.</body>
+      </ownedComment>
+      <name>UserDefinedColour</name>
+      <ownedRule xmi:id="_18_4_1_af4021f_1649404622674_437409_150585" xmi:uuid="01577166-585e-45c4-9301-7488fa71c891" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_af4021f_1651566909139_547520_151277" xmi:uuid="b74d1290-1ece-443b-b1d8-62145266daa5" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_af4021f_1651566969947_658926_151278" xmi:uuid="d575ea4c-32a3-4c9d-8046-fa05ec2f76a8" xmi:type="uml:Comment">
+            <body>&lt;sch:rule context="//*[ @uid and substring-after(@xsi:type,':')='UserDefinedColour']/Blue"&gt; &lt;sch:let name="uid" value="../@uid"/&gt; &lt;sch:let name="blue" value="."/&gt; &lt;sch:assert test="(xs:decimal($blue) ge 0.0) and (xs:decimal($blue) le 1.0)"&gt;(UserDefinedColour.WR3: &lt;sch:value-of select="$uid"/&gt;) the intensity of the blue component (&lt;sch:value-of select="$blue"/&gt;) shall be a real number between 0.0 and 1.0., inclusive.&lt;/sch:assert&gt; &lt;/sch:rule&gt;</body>
+          </ownedComment>
+          <body>Schematron</body>
+        </ownedComment>
+        <ownedComment xmi:id="_18_4_1_af4021f_1649404661726_592295_150592" xmi:uuid="e063ef6e-0bcb-4587-9908-a95259997be0" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_af4021f_1649404622674_437409_150585"/>
+          <body>the intensity of the green component shall be a real number between 0.0 and 1.0, inclusive.</body>
+        </ownedComment>
+        <name>WR3</name>
+        <constrainedElement xmi:idref="_18_4_1_91401df_1620055788718_576580_94092"/>
+        <specification xmi:id="_18_4_1_af4021f_1649404622675_409874_150586" xmi:uuid="51f12113-ac9c-4e87-b34e-023f69efd7ae" xmi:type="uml:OpaqueExpression">
+          <body>(self.Blue &gt;= 0) and (self.Blue &lt;= 1)</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <ownedRule xmi:id="_18_4_1_af4021f_1649404497050_934375_150565" xmi:uuid="d4fb8f9d-7f81-4fca-8b15-3e207452d3fc" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_af4021f_1649404544074_260954_150572" xmi:uuid="6226eed2-ee8b-4c8c-8d3e-4009f618b438" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_af4021f_1649404497050_934375_150565"/>
+          <body>the intensity of the red component shall be a real number between 0.0 and 1.0., inclusive.</body>
+        </ownedComment>
+        <ownedComment xmi:id="_18_4_1_af4021f_1651566823416_141559_151267" xmi:uuid="afcccc9c-7090-40b6-8d35-b7bfb93c764f" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_af4021f_1651566845219_635430_151270" xmi:uuid="7ec0c372-ffd4-425d-9734-3a915ca8e957" xmi:type="uml:Comment">
+            <body>&lt;sch:rule context="//*[ @uid and substring-after(@xsi:type,':')='UserDefinedColour']/Red"&gt; &lt;sch:let name="uid" value="../@uid"/&gt; &lt;sch:let name="red" value="."/&gt; &lt;sch:assert test="(xs:decimal($red) ge 0.0) and (xs:decimal($red) le 1.0)"&gt;(UserDefinedColour.WR1: &lt;sch:value-of select="$uid"/&gt;) the intensity of the red component (&lt;sch:value-of select="$red"/&gt;) shall be a real number between 0.0 and 1.0., inclusive.&lt;/sch:assert&gt; &lt;/sch:rule&gt;</body>
+          </ownedComment>
+          <body>Schematron</body>
+        </ownedComment>
+        <name>WR1</name>
+        <constrainedElement xmi:idref="_18_4_1_91401df_1620055788718_576580_94092"/>
+        <specification xmi:id="_18_4_1_af4021f_1649404497057_524183_150566" xmi:uuid="3f3658e6-f3b2-4c23-9534-a809b5fdc83b" xmi:type="uml:OpaqueExpression">
+          <body>(self.Red &gt;= 0) and (self.Red &lt;= 1)</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <ownedRule xmi:id="_18_4_1_af4021f_1649404566260_899377_150573" xmi:uuid="eb8db684-bb36-44ef-88ea-6835e9a46425" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_af4021f_1649404680731_602617_150593" xmi:uuid="65eb9b08-4f21-4eae-a643-3e9744594a7c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_af4021f_1649404566260_899377_150573"/>
+          <body>the intensity of the blue component shall be a real number between 0.0 and 1.0., inclusive.</body>
+        </ownedComment>
+        <ownedComment xmi:id="_18_4_1_af4021f_1651566872131_457775_151273" xmi:uuid="e809c251-523e-4f0f-ba31-eb3245bd6fd2" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_af4021f_1651566883764_582632_151274" xmi:uuid="8287ec92-d780-49d6-be74-413e066bb37f" xmi:type="uml:Comment">
+            <body>&lt;sch:rule context="//*[ @uid and substring-after(@xsi:type,':')='UserDefinedColour']/Green"&gt; &lt;sch:let name="uid" value="../@uid"/&gt; &lt;sch:let name="green" value="."/&gt; &lt;sch:assert test="(xs:decimal($green) ge 0.0) and (xs:decimal($green) le 1.0)"&gt;(UserDefinedColour.WR2: &lt;sch:value-of select="$uid"/&gt;) the intensity of the green component (&lt;sch:value-of select="$green"/&gt;) shall be a real number between 0.0 and 1.0., inclusive.&lt;/sch:assert&gt; &lt;/sch:rule&gt;</body>
+          </ownedComment>
+          <body>Schematron</body>
+        </ownedComment>
+        <name>WR2</name>
+        <constrainedElement xmi:idref="_18_4_1_91401df_1620055788718_576580_94092"/>
+        <specification xmi:id="_18_4_1_af4021f_1649404566260_367598_150574" xmi:uuid="6ecded2e-e477-4d20-948f-794322781686" xmi:type="uml:OpaqueExpression">
+          <body>(self.Green &gt;= 0) and (self.Green &lt;= 1)</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <generalization xmi:id="_18_4_1_91401df_1620055822569_831009_94137" xmi:uuid="a74b5c16-a821-4088-81d5-715122a6db06" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620054885001_949491_93983"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620056214523_409554_94153" xmi:uuid="da0e15a9-0b8d-4226-b15a-b5700356ff53" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621593844473_698410_92558" xmi:uuid="60c50739-f6a2-4420-a6d6-e44044f42a12" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620056214523_409554_94153"/>
+          <body>the intensity of the red Colour component.</body>
+        </ownedComment>
+        <name>Red</name>
+        <visibility>public</visibility>
+        <type href="../../../../DataTypes.xmi#REAL"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620056252106_227971_94158" xmi:uuid="ed381846-3d9b-413f-a171-a44408cb7296" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621593853059_457005_92559" xmi:uuid="1218be9f-1e2f-401e-91ad-8eb759631230" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620056252106_227971_94158"/>
+          <body>the intensity of the green Colour component.</body>
+        </ownedComment>
+        <name>Green</name>
+        <visibility>public</visibility>
+        <type href="../../../../DataTypes.xmi#REAL"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620056294314_285621_94163" xmi:uuid="945d1c2d-b706-48c0-924b-bc4c6a25155c" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621593866231_116438_92560" xmi:uuid="1c738e93-0c5f-4746-a4f7-60a93bd520e0" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620056294314_285621_94163"/>
+          <body> the intensity of the blue Colour component.</body>
+        </ownedComment>
+        <name>Blue</name>
+        <visibility>public</visibility>
+        <type href="../../../../DataTypes.xmi#REAL"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619612472082_717705_91098" xmi:uuid="59165be0-2e15-470f-934d-f1a009605c50" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1619764840225_128618_90962" xmi:uuid="0da74d7c-ba07-4a32-bec5-39e3c1d0f1a5" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619612472082_717705_91098"/>
+        <body>An AnnotationElement is a type of StyledElement that is a representation of an annotation.</body>
+      </ownedComment>
+      <name>AnnotationElement</name>
+      <generalization xmi:id="_18_4_1_91401df_1619612490601_267179_91143" xmi:uuid="1819dee0-73ab-490d-a6dd-cf8b29ddb631" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619613488316_252956_91672"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1718366235154_773639_132928" xmi:uuid="b5fd5928-2cf3-4aa1-8e94-389b1fe3f354" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1718366235158_291083_132930" xmi:uuid="bc17bde6-b8f2-4f85-803e-783c6ce40cef" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1718366235154_773639_132928"/>
+          <body>a Boolean value that specifies whether the StyledElement is invisible.</body>
+        </ownedComment>
+        <name>Invisible</name>
+        <visibility>public</visibility>
+        <type href="../../../../DataTypes.xmi#BOOLEAN"/>
+        <aggregation>composite</aggregation>
+        <redefinedProperty xmi:idref="_18_4_1_91401df_1619614572041_494029_92069"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620121719921_992914_92580" xmi:uuid="59535c43-ca79-4b9e-9667-e736de8b7bb6" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1620121830858_639002_92626" xmi:uuid="985964b0-3298-4896-b2bc-cdbc80613429" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620121719921_992914_92580"/>
+        <body>A PredefinedCurveFont is a type of CurveFont which is defined in this document. Since its definition is standard, it is interchanged by name as defined in the table below. &lt;table&gt; &lt;name&gt;Predefined curve font segment lengths&lt;/name&gt; &lt;tr&gt; &lt;td&gt;Curve Pattern Name&lt;/td&gt; &lt;td&gt;Segment (mm)&lt;/td&gt; &lt;td&gt;Space (mm)&lt;/td&gt; &lt;td&gt;Segment (mm)&lt;/td&gt; &lt;td&gt;Space (mm)&lt;/td&gt; &lt;td&gt;Segment (mm)&lt;/td&gt; &lt;td&gt;Space (mm)&lt;/td&gt; &lt;td&gt;Number of segments&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;Continuous&lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt;0&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;Dashed&lt;/td&gt; &lt;td&gt;4.0&lt;/td&gt; &lt;td&gt;1.5&lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt;2&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;Chain&lt;/td&gt; &lt;td&gt;7.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt;4&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;Chain double dash&lt;/td&gt; &lt;td&gt;7.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;6&lt;/td&gt; &lt;/tr&gt; &lt;tr&gt; &lt;td&gt;Dotted&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt;1.0&lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt; &lt;/td&gt; &lt;td&gt;2&lt;/td&gt; &lt;/tr&gt; &lt;/table&gt;</body>
+      </ownedComment>
+      <name>PredefinedCurveFont</name>
+      <generalization xmi:id="_18_4_1_91401df_1620121776461_435775_92625" xmi:uuid="cb23f1a4-7971-4eee-b8c1-7a4ecf47293f" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620113692204_685865_91093"/>
+      </generalization>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620205934256_193886_99181" xmi:uuid="63c3e019-f5bc-4e2a-b3c0-2bc414d9cba7" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620205934256_791073_99182"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620205889675_836128_99176"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620205934256_791073_99182" xmi:uuid="a9022083-ee5b-4f0a-9aaf-b107bd2a1230" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620205794755_443436_99047"/>
+        <association xmi:idref="_18_4_1_91401df_1620205934256_193886_99181"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619774515100_984707_98232" xmi:uuid="642abb62-dee3-41f9-82eb-cbbdd87b102f" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1619774515100_129895_98233"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1619773795376_356649_98084"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1619774515100_129895_98233" xmi:uuid="c225aa69-6dd2-4675-802e-0925bab061cf" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619507105520_772248_94448"/>
+        <association xmi:idref="_18_4_1_91401df_1619774515100_984707_98232"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620054885001_949491_93983" xmi:uuid="65c277bd-6691-4c76-a2ac-09f63c70a14f" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621597101198_79167_91354" xmi:uuid="c2450c90-3983-4702-9afb-208182587736" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620054885001_949491_93983"/>
+        <body>A Colour is a name for a property of reflecting light at a particular wavelength.</body>
+      </ownedComment>
+      <name>Colour</name>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620114580714_902176_92473" xmi:uuid="7a1e287f-3fbf-4624-ae49-9a0037808d17" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585422054_691642_91532" xmi:uuid="36dc4268-8a01-4a4f-b96e-4a239e2172f9" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620114580714_902176_92473"/>
+          <body>the words or set of words by which the Colour is known.</body>
+        </ownedComment>
+        <name>Name</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1620114606370_893095_92480"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619776600938_449760_98584" xmi:uuid="67f9a9b6-e4ad-48ef-8ba2-6b7be58a3869" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1619776600938_438091_98585"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1619614448153_729346_92057"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1619776600938_438091_98585" xmi:uuid="e1415774-3d47-4ceb-b74d-2a8cee7f7936" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619613488316_252956_91672"/>
+        <association xmi:idref="_18_4_1_91401df_1619776600938_449760_98584"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619776933230_729774_98754" xmi:uuid="686355cd-cdaa-4d94-b3f1-026f7544030c" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621585530486_408366_91533" xmi:uuid="e60ded23-8a04-42ef-bd6a-5162999ba34b" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619776933230_729774_98754"/>
+        <body>A ContextDependentOverRidingStyledElement is a type of OverRidingStyledElement that overrides the visual characteristics of another StyledElement in the context of another DetailedGeometricModelElement or a StyledModel.</body>
+      </ownedComment>
+      <name>ContextDependentOverRidingStyledElement</name>
+      <generalization xmi:id="_18_4_1_91401df_1620052122982_869686_93842" xmi:uuid="fd687cdc-8bde-4405-81ae-b9760366395a" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620052000325_393917_93763"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620130045852_314260_95427" xmi:uuid="870414c6-6184-4111-8c9c-8f8fed23b35c" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585541693_308612_91534" xmi:uuid="e2662902-46b3-41e9-882c-cd10a0359495" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620130045852_314260_95427"/>
+          <body>specifies a list of one or more contexts for which the overriding styles applies.</body>
+        </ownedComment>
+        <name>ContextDefinition</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620052199453_643335_93846"/>
+        <isOrdered>true</isOrdered>
+        <upperValue xmi:id="_18_4_1_91401df_1620130067636_354726_95432" xmi:uuid="f19efd6f-0ffd-428c-aa66-79db6a59092b" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_91401df_1620130117026_592793_95433"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620131125757_65040_95551" xmi:uuid="6acb5e39-d62b-4092-9e5c-595aca016778" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620131125757_196916_95552"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620131070319_190920_95546"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620131125757_196916_95552" xmi:uuid="250507b3-0ea8-4462-ae3c-b3c397aca854" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619612757504_76440_91226"/>
+        <association xmi:idref="_18_4_1_91401df_1620131125757_65040_95551"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620203746144_623127_98548" xmi:uuid="6bf3f122-90f9-4e7e-bd44-84817c7c423b" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621588517322_440406_92123" xmi:uuid="1a7c0bd2-ffcb-44db-90b0-e612c2de2bd7" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620203746144_623127_98548"/>
+        <body>A LeaderLine provides a simplified representation for leader line. A LeaderLine relates annotation to other annotation or annotation to product geometric model, either directly or indirectly through supplemental geometry or through dimension lines and dimension curves. The leader line may start in free space in the coordinate system. </body>
+      </ownedComment>
+      <name>LeaderLine</name>
+      <isAbstract>true</isAbstract>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620204689259_595882_98972" xmi:uuid="5256e873-1373-47e9-a13e-e657eb9f37eb" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621588886698_2610_92136" xmi:uuid="e74c48df-65cd-4709-b370-67b0fa92a88d" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620204689259_595882_98972"/>
+          <body>specifies the list of points for the simplified representation.</body>
+        </ownedComment>
+        <name>GeometricElements</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620204390621_703870_98817"/>
+        <isOrdered>true</isOrdered>
+        <lowerValue xmi:id="_18_4_1_91401df_1620204751847_709599_98977" xmi:uuid="d6cd4f80-d67a-41a1-bf09-edcb61037a5c" xmi:type="uml:LiteralInteger">
+          <value>2</value>
+        </lowerValue>
+        <upperValue xmi:id="_18_4_1_91401df_1620204751847_907102_98978" xmi:uuid="dd5bba78-cbcb-48b5-996c-54ab72054e85" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_91401df_1620204765803_531567_98979"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619511862434_706677_94963" xmi:uuid="6fa61597-c4ac-4289-b415-e3e9053d4903" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1619511862434_165809_94964"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1619511846626_49793_94960"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1619511862434_165809_94964" xmi:uuid="eaa1dd7d-19d1-4bdc-be95-18c990e600b2" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619511522626_524628_94846"/>
+        <association xmi:idref="_18_4_1_91401df_1619511862434_706677_94963"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620047398514_104826_93067" xmi:uuid="759aeb86-c450-40be-bd7a-2772c860ac10" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620047398515_198494_93068"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620046804094_276600_92968"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620047398515_198494_93068" xmi:uuid="5d5db151-db42-4228-b3c4-97f34862eb82" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619785583948_632237_101333"/>
+        <association xmi:idref="_18_4_1_91401df_1620047398514_104826_93067"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620131379272_236180_95748" xmi:uuid="78382e05-8d93-436b-896e-2c9ccb6a05d2" xmi:type="uml:Enumeration">
+      <ownedComment xmi:id="_18_4_1_91401df_1620291576647_241423_94203" xmi:uuid="0cfe2acd-73a0-4c8b-9f02-e8ccbfebe4f3" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620131379272_236180_95748"/>
+        <body>A ClippingModeEnum presents the modes of clipping.</body>
+      </ownedComment>
+      <name>ClippingModeEnum</name>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620131421624_805368_95773" xmi:uuid="83905142-87ae-43e8-9f9f-2de37b609d4a" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620291586324_974483_94204" xmi:uuid="15d007ba-5dc1-4d3b-94cb-d7f86cca51dd" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620131421624_805368_95773"/>
+          <body>the clipping mode is intersection.</body>
+        </ownedComment>
+        <name>intersection</name>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620131405214_60417_95771" xmi:uuid="09ad35e1-a2e0-4f40-9d1a-5ac19cb1fa58" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620291593237_519490_94205" xmi:uuid="cf0e6c24-e2f0-4c16-937e-14cd30b30f54" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620131405214_60417_95771"/>
+          <body>the clipping mode is union.</body>
+        </ownedComment>
+        <name>union</name>
+      </ownedLiteral>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1716555935247_117230_134079" xmi:uuid="78db3f77-ca87-492e-9342-e3fed6afbed3" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1716555935247_947964_134080"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1716555561732_215920_134043"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1716555935247_947964_134080" xmi:uuid="6e1b3bf1-b9c0-4011-84b7-2abfe61fb3ca" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1716555524510_134968_134000"/>
+        <association xmi:idref="_18_4_1_91401df_1716555935247_117230_134079"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619690730304_432799_94358" xmi:uuid="7ae161e7-3a45-4ef2-b2ca-f597cb14fd76" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1619690730304_837692_94359"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1619690693381_12141_94353"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1619690730304_837692_94359" xmi:uuid="684ae776-a980-4810-9f82-79176d67ae27" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619681469311_688191_90953"/>
+        <lowerValue xmi:id="_18_4_1_af4021f_1721129923402_625779_133168" xmi:uuid="7d5fec04-18a0-486f-a5e7-ca8a7db74ee1" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_af4021f_1721129923403_797459_133169" xmi:uuid="73399e5a-0760-4215-ad78-e657cbb12f91" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1619690730304_432799_94358"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620131835054_179954_95955" xmi:uuid="7bc95ac4-622f-4a24-aa7b-a0f7ce0592e4" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620131835055_612828_95956"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620130692008_625490_95507"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620131835055_612828_95956" xmi:uuid="09f7adcf-dfcf-42fa-a79f-9e77426c32e0" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619612757504_76440_91226"/>
+        <association xmi:idref="_18_4_1_91401df_1620131835054_179954_95955"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620048314179_78393_93169" xmi:uuid="7bd0cd9e-1170-41f2-b5fe-8b2ddc4eac82" xmi:type="uml:Class">
+      <name>GeometricMappingTargetSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620052000325_393917_93763" xmi:uuid="7ca7ba92-f2d7-4a62-9766-e70f480342d6" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621589552811_780741_92168" xmi:uuid="b7559629-16ad-47b2-aaa6-1578960df217" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620052000325_393917_93763"/>
+        <body>An OverRidingStyledElement is a type of StyledElement that overrides the visual characteristics of another StyledElement. &lt;note&gt;Overriding occurs when both instances of StyledElement are included, directly or indirectly, in the same presentation.&lt;/note&gt; &lt;example&gt;An instance of StyledElement may assign a blue colour to a circle. An instance of OverRidingStyledElement would override that colour by a red colour.&lt;/example&gt;</body>
+      </ownedComment>
+      <name>OverRidingStyledElement</name>
+      <ownedRule xmi:id="_18_4_1_91401df_1718366357230_920573_132933" xmi:uuid="675469d9-3f35-4342-835f-98f4548bbb5a" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_91401df_1718370010562_677369_132969" xmi:uuid="8beaf914-03f4-40ff-8db4-dfaaae3c2b0e" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_91401df_1718370021692_857740_132970" xmi:uuid="1f71e552-52b8-47a8-8b0e-c77a579b7a23" xmi:type="uml:Comment">
+            <body> &lt;sch:rule context="//RepresentationItem[@uid and local-fn:testXsiTypeOverRidingStyledElement(@xsi:type)=true()]"&gt; &lt;sch:let name="uid" value="@uid"/&gt; &lt;sch:assert test="child::Appearance or child::Invisible"&gt;(OverRidingStyledElement.WR1 &lt;sch:value-of select="$uid"/&gt;) the Appearance shall be defined or the Invisible shall be defined.&lt;/sch:assert&gt; &lt;/sch:rule&gt;</body>
+          </ownedComment>
+          <body>Schematron</body>
+        </ownedComment>
+        <ownedComment xmi:id="_18_4_1_91401df_1718366384410_51569_132935" xmi:uuid="989f8ff3-7612-424a-a499-b1c020d23289" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1718366357230_920573_132933"/>
+          <body>the Appearance shall be defined or the Invisible shall be defined.</body>
+        </ownedComment>
+        <name>WR1</name>
+        <constrainedElement xmi:idref="_18_4_1_91401df_1620052000325_393917_93763"/>
+        <specification xmi:id="_18_4_1_91401df_1718366357230_398754_132934" xmi:uuid="650e7b05-a77a-43e4-85ea-228c6c76279f" xmi:type="uml:OpaqueExpression">
+          <body>not (self.Appearance.oclIsUndefined()) or not (self.Invisible.oclIsUndefined())</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <generalization xmi:id="_18_4_1_91401df_1620052026342_909101_93808" xmi:uuid="189c2688-196a-4afe-ba5a-ec6aebde9cf1" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619613488316_252956_91672"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620052059151_874154_93809" xmi:uuid="ffc100e3-2c1c-4162-8571-7ade082c663b" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621589619141_1172_92182" xmi:uuid="762e3fef-f052-4dc2-9db2-2396b03a3233" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620052059151_874154_93809"/>
+          <body>the StyledElement whose visual characteristics are overridden.</body>
+        </ownedComment>
+        <name>OverRiddenElement</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619613488316_252956_91672"/>
+        <association xmi:idref="_18_4_1_91401df_1620052096915_671977_93814"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620206183275_192647_99235" xmi:uuid="7fa73377-1667-49e8-b34b-fcbf8bc72f67" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620206183291_234082_99236"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620206159696_295640_99230"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620206183291_234082_99236" xmi:uuid="b0af3592-8d9e-40c5-bd63-81bee2ad29ef" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620204542412_760410_98909"/>
+        <association xmi:idref="_18_4_1_91401df_1620206183275_192647_99235"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620132387054_132854_96151" xmi:uuid="802a70cb-ef4c-40ff-b811-2bceb025ce98" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620132387054_711840_96152"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620130869538_423404_95531"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620132387054_711840_96152" xmi:uuid="e409ecc8-457e-480e-a347-49b886a40acc" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619612757504_76440_91226"/>
+        <association xmi:idref="_18_4_1_91401df_1620132387054_132854_96151"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620131931463_37195_95984" xmi:uuid="81ef2651-4373-4f1d-b248-36ba37b2e716" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621589262707_400820_92153" xmi:uuid="04fd9874-5bbb-4c12-9f18-1f5307f46b63" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620131931463_37195_95984"/>
+        <body>A LightSource is a type of DetailedGeometricModelItem.</body>
+      </ownedComment>
+      <name>LightSource</name>
+      <generalization xmi:id="_18_4_1_91401df_1620132003056_352421_96031" xmi:uuid="e6f084d1-777f-428c-8f77-770c670ea05a" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193072_543741_23516"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620132131328_532365_96032" xmi:uuid="548da122-ee54-4107-9736-41b20be9ce54" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621589409032_388828_92154" xmi:uuid="cac77ce0-cfd0-4490-9888-eb72ee5c4a53" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620132131328_532365_96032"/>
+          <body>specifies a role of the Colour for the LightSource. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Colour</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620054885001_949491_93983"/>
+        <lowerValue xmi:id="_18_4_1_91401df_1620132165503_872574_96038" xmi:uuid="d2162128-626a-4ea5-b388-550c56388546" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1620132159987_750443_96035"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620132187178_807028_96040" xmi:uuid="75e449b5-5b88-4d45-9370-da0cfdd1cc76" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621589434813_668761_92155" xmi:uuid="fd3d1772-0d8e-405c-a3b4-67f22c885c1c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620132187178_807028_96040"/>
+          <body>specifies a LightType for the LightSource.</body>
+        </ownedComment>
+        <name>LightType</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620132272724_913735_96094"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1620132356522_234621_96125"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620049071890_762247_93358" xmi:uuid="8235ca94-9ebc-4543-a28a-b08ac4c653fe" xmi:type="uml:Class">
+      <name>AppearanceSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620129096573_522485_95399" xmi:uuid="839d5554-5426-4b42-9d44-0cd285a70e59" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620129096573_40166_95400"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620129072674_790043_95396"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620129096573_40166_95400" xmi:uuid="84a2efe1-ce2d-4eca-a01a-01d9afe6ef8c" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619776847193_436886_98705"/>
+        <association xmi:idref="_18_4_1_91401df_1620129096573_522485_95399"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620130760771_711379_95519" xmi:uuid="847ac65c-6859-47dd-9a67-ad26d97531ce" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620130760772_464981_95520"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620130733000_123346_95514"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620130760772_464981_95520" xmi:uuid="bf854981-ecb5-4a8a-804c-cf53c84a669c" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619612757504_76440_91226"/>
+        <association xmi:idref="_18_4_1_91401df_1620130760771_711379_95519"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619516613725_550942_95242" xmi:uuid="8a16fca8-4f1a-4eee-90a3-65ab45647aa3" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1619516613727_268465_95243"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1619516502131_269924_95236"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1619516613727_268465_95243" xmi:uuid="ac9a7cbc-41d8-4a39-8a45-c21be89d81cb" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619515971948_609005_95052"/>
+        <association xmi:idref="_18_4_1_91401df_1619516613725_550942_95242"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_af4021f_1718635720374_689900_133439" xmi:uuid="8b26bcf0-6817-4e5c-a020-6c1191074dbc" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_af4021f_1718635720374_797296_133440"/>
+      <memberEnd xmi:idref="_18_4_1_af4021f_1718635705262_622159_133429"/>
+      <ownedEnd xmi:id="_18_4_1_af4021f_1718635720374_797296_133440" xmi:uuid="3ff7a19f-dc7a-44d1-9a41-11bd932b49d8" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_af4021f_1718635369600_117348_132344"/>
+        <association xmi:idref="_18_4_1_af4021f_1718635720374_689900_133439"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619515971948_609005_95052" xmi:uuid="8b474784-efbe-46d9-ab25-d667c395b151" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1619523655590_338265_90509" xmi:uuid="6405b866-7640-4b9f-9c72-29e74626a958" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619515971948_609005_95052"/>
+        <body>An AnnotationPlane is a type of AnnotationElement for the purpose of grouping annotation elements that are arranged on a plane within a 3D coordinate space. The plane may be bounded by a rectangle and styled so that it becomes visible. An AnnotationPlane may satisfy the requirements for an annotation plane specified in ISO 16792 when all the members of elements are intended to be on the same plane and only numeric accuracy prevents the data from being co-planar.</body>
+      </ownedComment>
+      <name>AnnotationPlane</name>
+      <generalization xmi:id="_18_4_1_91401df_1619516273174_221156_95185" xmi:uuid="05ad2976-7649-4e7f-bf8f-e21c06baa2d1" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619612472082_717705_91098"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619516502131_269924_95236" xmi:uuid="362bd31d-2af1-43e9-a42f-e1ef54d8b296" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1619523892361_943241_90510" xmi:uuid="3c7f7c5a-af12-44c5-a5b6-1d4eff08c42f" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619516502131_269924_95236"/>
+          <body>the AnnotationPlaneElements that are within the AnnotationPlane. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Elements</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619516349457_353334_95190"/>
+        <lowerValue xmi:id="_18_4_1_91401df_1619516535557_426922_95239" xmi:uuid="4684dc50-3726-4113-85fd-9c32b9743bca" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_91401df_1619516535558_240593_95240" xmi:uuid="ea2021d5-9b8f-43bf-9f1a-ed9ce6351f90" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_91401df_1619516613725_550942_95242"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619615636336_486601_92299" xmi:uuid="0d46b7ef-efc3-4c18-90e4-aae82a0c907d" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1619765195396_436578_91156" xmi:uuid="1dd77138-889d-450c-bba1-ee1401c113df" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619615636336_486601_92299"/>
+          <body>an attribute inherited from the StyledElement shall be redeclared as the PlaneOrPlanarBoxSelect for the AnnotationPlane.</body>
+        </ownedComment>
+        <name>Element</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619517051135_204780_95915"/>
+        <association xmi:idref="_18_4_1_91401df_1619690865385_437434_94507"/>
+        <redefinedProperty xmi:idref="_18_4_1_91401df_1619614483489_732265_92063"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620132159987_750443_96035" xmi:uuid="8b619227-a794-4e63-90a6-e153b9c385dd" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620132159987_528289_96036"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620132131328_532365_96032"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620132159987_528289_96036" xmi:uuid="a42b1d97-f0a3-4755-acd7-901470ab8285" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620131931463_37195_95984"/>
+        <association xmi:idref="_18_4_1_91401df_1620132159987_750443_96035"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_af4021f_1649233046776_937737_148287" xmi:uuid="8c2d882b-8005-46f6-93ad-a114ca16d252" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_af4021f_1649234028665_294563_148505" xmi:uuid="a0191250-ed5c-4a5e-9adc-6d7ba9a17ed8" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_af4021f_1649233046776_937737_148287"/>
+        <body>A CalloutRelationship is a logical relationship between two annotation groups which appear on an annotated model.</body>
+      </ownedComment>
+      <name>CalloutRelationship</name>
+      <generalization xmi:id="_18_4_1_65b021e_1721221107272_939125_148798" xmi:uuid="5edcd16a-4719-41f6-98d4-09c8170becfc" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_65b021e_1719937007191_236673_147578"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_af4021f_1649233433349_172265_148332" xmi:uuid="83dbd3eb-9985-400e-ac8f-c700665c0a86" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_af4021f_1649234048861_3692_148506" xmi:uuid="0d9723d8-88c5-4ef8-b89f-cf7591c894d9" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_af4021f_1649233433349_172265_148332"/>
+          <body>the words or set of words by which the CalloutRelationship is spoken of or referred to.</body>
+        </ownedComment>
+        <name>Name</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_af4021f_1649233464287_735700_148335"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_af4021f_1649233490538_733096_148340" xmi:uuid="c9b4e96c-6bc3-4726-92ff-b80a67a08c27" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_af4021f_1649234056373_329469_148507" xmi:uuid="7bc4225e-0d0a-49eb-b0e8-59c7607c58ec" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_af4021f_1649233490538_733096_148340"/>
+          <body>the text or the set of texts that provide further information about the nature of the CalloutRelationship.The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Description</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <lowerValue xmi:id="_18_4_1_af4021f_1649233515211_657327_148346" xmi:uuid="54adc019-a716-4f62-ab86-0ef44c7e7e25" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_af4021f_1649233509088_757184_148343"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_af4021f_1649233526187_27838_148348" xmi:uuid="6341fc32-5ade-47c4-a5e7-25c27ee7da25" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_af4021f_1649234079898_730797_148509" xmi:uuid="1e486e86-66b3-4e67-9ae0-d4bb4260ffc7" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_af4021f_1649233526187_27838_148348"/>
+          <body>one of the Callouts which is a part of the relationship.</body>
+        </ownedComment>
+        <name>Related</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619511522626_524628_94846"/>
+        <association xmi:idref="_18_4_1_af4021f_1649233575002_113159_148360"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_af4021f_1649233549602_698997_148353" xmi:uuid="12369313-354c-4354-8ffa-c8ef18c5ecf6" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_af4021f_1649234069244_377746_148508" xmi:uuid="12165278-1839-41f4-9b1a-ace50d5bc46f" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_af4021f_1649233549602_698997_148353"/>
+          <body>the other Callout which is a part of the relationship.</body>
+        </ownedComment>
+        <name>Relating</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619511522626_524628_94846"/>
+        <association xmi:idref="_18_4_1_af4021f_1649233577726_947287_148392"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620052096915_671977_93814" xmi:uuid="8c2e8474-6c51-45c9-a4c5-8deee7a68d1d" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620052096916_972214_93815"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620052059151_874154_93809"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620052096916_972214_93815" xmi:uuid="0a957a91-e9eb-48e4-a961-a15448e13e0a" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620052000325_393917_93763"/>
+        <association xmi:idref="_18_4_1_91401df_1620052096915_671977_93814"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_af4021f_1653486868906_958382_150685" xmi:uuid="8d65acc5-c2e8-48b9-878e-0578fd7cc65c" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_af4021f_1653486868908_61308_150686"/>
+      <memberEnd xmi:idref="_18_4_1_af4021f_1653486865235_160838_150667"/>
+      <ownedEnd xmi:id="_18_4_1_af4021f_1653486868908_61308_150686" xmi:uuid="79c3bb3d-1d52-4552-9af9-f66d220b92cf" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620204542412_760410_98909"/>
+        <association xmi:idref="_18_4_1_af4021f_1653486868906_958382_150685"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619510892129_23236_94760" xmi:uuid="90012275-cdd2-413b-b697-d4fedad65758" xmi:type="uml:Enumeration">
+      <ownedComment xmi:id="_18_4_1_91401df_1619511017090_68131_94789" xmi:uuid="55a990ee-2823-4309-bf54-4ed2fe7681d5" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619510892129_23236_94760"/>
+        <body>The AnnotationPlaceholderOccurrenceRole is either a user defined text or a class of geometric product specification. </body>
+      </ownedComment>
+      <name>AnnotationPlaceholderOccurrenceRoleEnum</name>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1619510939109_868881_94783" xmi:uuid="7815fb2a-415b-4f3e-a523-c00416c450c2" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1619510956005_131939_94785" xmi:uuid="c8cb1e2e-f95a-4c7c-8c3b-f42cc0dc0345" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619510939109_868881_94783"/>
+          <body>user defined text.</body>
+        </ownedComment>
+        <name>annotation_text</name>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1619510963701_210747_94786" xmi:uuid="25f8bec2-5f0b-49f9-8d40-78b378702c4c" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1619510974963_253190_94788" xmi:uuid="bcee9c47-4672-40c6-b0c4-ceea01a7483a" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619510963701_210747_94786"/>
+          <body>geometric product specification class that associated with a specific entity type in this document. </body>
+        </ownedComment>
+        <name>gps_data</name>
+      </ownedLiteral>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620206299307_292407_99265" xmi:uuid="9339cd7d-78a7-4d54-be77-91c9f991e4d8" xmi:type="uml:Enumeration">
+      <ownedComment xmi:id="_18_4_1_91401df_1620301912324_640012_91690" xmi:uuid="7c4b8aa6-c0b6-46ca-a10a-9ddb34b81f34" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620206299307_292407_99265"/>
+        <body>The LeaderLinePointSymbolEnum provides an identification of the required symbol to be used in a specific segment of a leader line. &lt;note&gt;The actual graphic of the symbol is not provided, but the interpretation shall be in accordance with applicable draughting standards.&lt;/note&gt;</body>
+      </ownedComment>
+      <name>LeaderLinePointSymbolEnum</name>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620206438639_647132_99314" xmi:uuid="cedc8814-6a8d-4129-906d-5248df967065" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620302092876_685877_91691" xmi:uuid="2684d739-e4a4-442a-a99a-c67416345d6d" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620206438639_647132_99314"/>
+          <body>a circle is to be applied to the point specified in the leader line. &lt;note&gt;The Figure &lt;caption&gt;A LeaderLine circle as an "as provided" example&lt;/caption&gt; illustrates the 'as provided' data for the application of a circle to a leader line. The point list for figure &lt;caption&gt;A LeaderLine circle as an "as provided" example&lt;/caption&gt; is (A1, A2, A3).&lt;/note&gt; &lt;figure&gt;&lt;name&gt;annotaion_to_model_leader_line_circle_as_provided.gif&lt;/name&gt;A LeaderLine circle as an "as provided" example&lt;/figure&gt; &lt;note&gt;The Figure &lt;caption&gt;A LeaderLine circle as an "as rendered" example&lt;/caption&gt; illustrates the 'as rendered' presentation for the application of a circle to a leader line. The point list for Figure &lt;caption&gt;A LeaderLine circle as an "as rendered" example&lt;/caption&gt; is (A1, A2, A3).&lt;/note&gt; &lt;figure&gt;&lt;name&gt;annotaion_to_model_leader_line_circle_as_rendered.gif&lt;/name&gt;A LeaderLine circle as an "as rendered" example&lt;/figure&gt;</body>
+        </ownedComment>
+        <name>circle</name>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620206450573_677040_99316" xmi:uuid="7efaee88-8b48-4716-9629-8ffed9f5b775" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620302099701_743287_91692" xmi:uuid="34861454-aa16-4b38-9094-73afce4c18ae" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620206450573_677040_99316"/>
+          <body>a dot is to be applied to the point specified in the leader line.</body>
+        </ownedComment>
+        <name>dot</name>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620206459354_526517_99318" xmi:uuid="5f57d3bb-3d16-4336-8fdd-ad1f09cdb55a" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620302116037_722411_91693" xmi:uuid="6234a4e7-01ed-42ab-a3b5-433ecb01b184" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620206459354_526517_99318"/>
+          <body>an internal_pair_forward_arrowhead is one end of a pair of arrows where there is no annotation between the arrows. Forward is to be interpreted as the leader line arrives to the point. The arrowhead is at a point with an index in the list of points that is greater than the point to which the internal_pair_reverse_arrowhead is applied. &lt;note&gt;The Figure &lt;caption&gt;An LeaderLine arrowhead pair as an "as rendered" example&lt;/caption&gt; illustrates the 'as rendered' presentation for the application of both the internal pair forward and reverse arrowheads to a leader line. The point list for the Figure &lt;caption&gt;An LeaderLine arrowhead pair as an "as rendered" example&lt;/caption&gt; is (B1, B2, B3, B4).&lt;/note&gt; &lt;figure&gt;&lt;name&gt;annotation_to_model_leader_line_arrowhead_pair_as_rendered.gif&lt;/name&gt;An LeaderLine arrowhead pair as an "as rendered" example&lt;/figure&gt;</body>
+        </ownedComment>
+        <name>internal_pair_forward_arrowhead</name>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620206471714_356198_99320" xmi:uuid="3203fef7-922a-4dc4-b30f-b1f475e1551b" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620302837318_36124_91709" xmi:uuid="a7028ab9-c86d-44b7-a54c-a48de236b426" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620206471714_356198_99320"/>
+          <body>an internal_pair_reverse_arrowhead is one end of a pair of arrows where there is no annotation between the arrows. Reverse is to be interpreted as the leader line leaves the point. The arrowhead is at a point with an index in the list of points that is less than the point to which the internal_pair_forward_arrowhead is applied.</body>
+        </ownedComment>
+        <name>internal_pair_reverse_arrowhead</name>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620206481309_200955_99322" xmi:uuid="d1754503-067f-40f7-862d-c3976c0bf6c3" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620302844442_77170_91710" xmi:uuid="b66a4c5b-ac64-438f-b125-598d194128dc" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620206481309_200955_99322"/>
+          <body>there is no symbol applied.</body>
+        </ownedComment>
+        <name>none</name>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620206491788_438603_99324" xmi:uuid="e46491bf-92f9-4520-8133-a2bec4aaf7ef" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620302853154_695293_91711" xmi:uuid="1107169f-7fea-4e7e-ade3-898a544ed79d" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620206491788_438603_99324"/>
+          <body>a positive_arrowhead is applied to a point where the index of the point in the list of points is greater than the index of the first point in the list.</body>
+        </ownedComment>
+        <name>positive_arrowhead</name>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620206500796_31677_99326" xmi:uuid="489d8d0a-64aa-4bac-9362-cfb576bbfaa5" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620302862019_14226_91712" xmi:uuid="e4502605-5428-4ebd-9ca0-e3bcdf0a0855" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620206500796_31677_99326"/>
+          <body> a triangle is applied to a point where the index of the point in the list of points is greater than the index of the first point in the list.</body>
+        </ownedComment>
+        <name>triangle</name>
+      </ownedLiteral>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619516088698_44291_95098" xmi:uuid="939b8e01-9f43-457d-88a4-d85dbc002b52" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1620028579608_160442_91631" xmi:uuid="34c5a87c-473b-4417-b89d-92ebe7c30cb3" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619516088698_44291_95098"/>
+        <body>An AnnotatedModelPresentation is a type of StyledModel that describes a presentation of model with annotation according to ISO 16792.</body>
+      </ownedComment>
+      <name>AnnotatedModelPresentation</name>
+      <ownedRule xmi:id="_18_4_1_af4021f_1682327407604_872084_153369" xmi:uuid="32baeced-7c33-46e6-93ee-ab0ff0d53c30" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_af4021f_1682327439079_98279_153371" xmi:uuid="844b5103-d345-4c4f-9fe5-cc5aa4b335e7" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_af4021f_1682327407604_872084_153369"/>
+          <body>If the PresentationType is 'Saved View', Items shall contain exactly one CameraModel3D.</body>
+        </ownedComment>
+        <ownedComment xmi:id="_18_4_1_af4021f_1682327498190_736875_153381" xmi:uuid="c32e4dde-8479-4fe8-b489-557e13d9de99" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_af4021f_1682327509118_992789_153382" xmi:uuid="30937eda-9261-426f-8172-192ebd0949fd" xmi:type="uml:Comment">
+            <body>&lt;sch:rule context="//Representation[ @uid and substring-after(@xsi:type,':')='AnnotatedModelPresentation' and ./PresentationType/ClassString='Saved View']"&gt; &lt;sch:let name="uid" value="@uid"/&gt; &lt;sch:let name="uidRef" value="./Items/RepresentationItem/@uidRef"/&gt; &lt;sch:assert test=" count (//RepresentationItem[substring-after(@xsi:type,':')='CameraModel3D' and @uid=$uidRef]) = 1 "&gt; (AnnotatedModelPresentation.WR2: &lt;sch:value-of select="$uid"/&gt;) If the PresentationType is 'Saved View', the Items shall contain exactly one CameraModel3D. &lt;/sch:assert&gt; &lt;/sch:rule&gt;</body>
+          </ownedComment>
+          <body>Schematron</body>
+        </ownedComment>
+        <name>WR2</name>
+        <constrainedElement xmi:idref="_18_4_1_91401df_1619516088698_44291_95098"/>
+        <specification xmi:id="_18_4_1_af4021f_1682327407605_890146_153370" xmi:uuid="58250de4-f347-4331-931b-568970c6b7e0" xmi:type="uml:OpaqueExpression">
+          <body>self.PresentationType.oclAsType(Application_protocols::AP242::Domain_model::CommonResources::ClassStringProxy).value= 'Saved View' implies (self.Items -&gt; select(oclIsKindOf(Application_protocols::AP242::Domain_model::AnnotatedModelPresentation::CameraModel3D))) -&gt; size() = 1</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <ownedRule xmi:id="_18_4_1_91401df_1649421720450_652623_151520" xmi:uuid="cec32753-21dc-4413-b75c-445b224de473" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_91401df_1649421781525_267601_151530" xmi:uuid="a66ca4d6-6b04-4bb6-829e-534430139e78" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1649421720450_652623_151520"/>
+          <body>the name should be unique within a population of the AnnotatedModelPresentation.</body>
+        </ownedComment>
+        <ownedComment xmi:id="_18_4_1_af4021f_1651571820746_314728_147955" xmi:uuid="bd332058-3f1f-4076-8cda-ce9e90e10de3" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_af4021f_1651571841811_607340_147958" xmi:uuid="0038adb8-68a4-46ba-b52e-d5cd4672ba15" xmi:type="uml:Comment">
+            <body>&lt;sch:rule context="//Representation[ @uid and substring-after(@xsi:type,':')='AnnotatedModelPresentation']"&gt; &lt;sch:let name="uid" value="@uid"/&gt; &lt;sch:let name="name" value="./Name/CharacterString"/&gt; &lt;sch:assert test="not($name = following-sibling::Representation[substring-after(@xsi:type,':')='AnnotatedModelPresentation']/Name/CharacterString or $name = preceding-sibling::Representation[substring-after(@xsi:type,':')='AnnotatedModelPresentation']/Name/CharacterString)"&gt; (AnnotatedModelPresentation.WR1 &lt;sch:value-of select="$uid"/&gt;) the name should be unique within a population of the AnnotatedModelPresentation/&gt; &lt;/sch:assert&gt; &lt;/sch:rule&gt;</body>
+          </ownedComment>
+          <body>Schematron</body>
+        </ownedComment>
+        <name>WR1</name>
+        <constrainedElement xmi:idref="_18_4_1_91401df_1619516088698_44291_95098"/>
+        <specification xmi:id="_18_4_1_91401df_1649421720456_737808_151521" xmi:uuid="d609cb58-07d9-4847-be44-8d8d0b20727b" xmi:type="uml:OpaqueExpression">
+          <body>AnnotatedModelPresentation::allInstances()-&gt;isUnique( Name.oclAsType(Application_protocols::AP242::Domain_model::CommonResources::Descriptor).Text.oclAsType(Application_protocols::AP242::Domain_model::CommonResources::CharacterStringProxy).value )</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <generalization xmi:id="_18_4_1_91401df_1619612199767_158507_91094" xmi:uuid="661cac78-fd48-4339-b71f-554ee9bb4787" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193257_299866_23863"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619595504556_244226_90773" xmi:uuid="cfa000ea-4a43-41a6-9bfe-b21a229419e0" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1619595504556_305407_90775" xmi:uuid="482d89ae-b68e-4049-937a-3a1ec50a988c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619595504556_244226_90773"/>
+          <body>the instances of RepresentationItem that are included in the Representation. </body>
+        </ownedComment>
+        <name>Items</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619595333854_639499_90730"/>
+        <upperValue xmi:id="_18_4_1_91401df_1619595504556_266653_90774" xmi:uuid="897ad908-ea81-476d-a62d-ed209bf3a76d" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_91401df_1619686920706_458084_91443"/>
+        <redefinedProperty href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417194007_289896_28693"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620046515253_558629_92936" xmi:uuid="ba34c0f1-ae01-4c02-9693-b5c81288cf18" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1620046569976_412279_92942" xmi:uuid="cb44b509-025f-476a-8f6d-223e6c04ca09" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620046515253_558629_92936"/>
+          <body>specifies the type of presentation. &lt;note&gt; The type 'Global Draughting Model' is used for the AnnotatedModelPresentation that contains all AnnotationElements, Callouts, CameraModel3D and StyledModelReplication.&lt;/note&gt; &lt;note&gt; The type 'Saved View' is used for saved views according to ISO 16792. A saved view shall have an identifier, contain exactly one CameraModel3D that denotes the direction of the view relative to the model, and may contain one or more of the AnnotationPlane(s), a selected set of annotation, or a selected set of geometry.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>PresentationType</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193042_855579_23449"/>
+        <upperValue xmi:id="_18_4_1_91401df_1620046540078_457717_92941" xmi:uuid="48c2e7bb-95e2-4a56-8726-006df67327c3" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620131630931_716411_95882" xmi:uuid="939c4e59-2df5-46e6-a3fa-a203282c0867" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620131630931_601882_95883"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620131607330_900458_95853"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620131630931_601882_95883" xmi:uuid="c20d3b9b-6198-410a-a5ae-d844cade046a" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620131196729_590039_95689"/>
+        <association xmi:idref="_18_4_1_91401df_1620131630931_716411_95882"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620204542412_760410_98909" xmi:uuid="9e365b1f-9c51-42d7-9005-9f89c1dfbaa5" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621589104615_595278_92151" xmi:uuid="0b8c54be-b16c-444e-83fb-4cfa6fe255c0" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620204542412_760410_98909"/>
+        <body>A LeaderLinePointWithSurface is a type of LeaderLinePoint included to help compose a list of points that represent starting points, midpoints, and end points for a receiver to implement presentation information.</body>
+      </ownedComment>
+      <name>LeaderLinePointWithSurface</name>
+      <generalization xmi:id="_18_4_1_91401df_1620205549112_55924_99038" xmi:uuid="946e7523-34ef-45d4-9fcf-d0bb8c6203b6" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193035_360707_23436"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1620204652846_520946_98971" xmi:uuid="d4c14823-8a7d-4e27-bd87-673a8782fd2a" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620204390621_703870_98817"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620206159696_295640_99230" xmi:uuid="dfd4d478-d8a3-49ad-b7a6-6d318e1fb327" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621589210289_503620_92152" xmi:uuid="8cbc66e6-10d4-4843-8a69-9116e357a296" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620206159696_295640_99230"/>
+          <body>specifies the surface that is the logical target for the simplified representation of a leader line that points to a product model.</body>
+        </ownedComment>
+        <name>AssociatedSurface</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620205794755_443436_99047"/>
+        <association xmi:idref="_18_4_1_91401df_1620206183275_192647_99235"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_af4021f_1653486865235_160838_150667" xmi:uuid="878f0021-2a1a-4439-9c80-0b6c3a809768" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_af4021f_1653486865244_846027_150669" xmi:uuid="63a2be7c-c860-4323-9280-da4c3b4870cc" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_af4021f_1653486865235_160838_150667"/>
+          <body>specifies the symbol to be applied to the LeaderLinePoint.</body>
+        </ownedComment>
+        <name>SymbolApplied</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620206299307_292407_99265"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_af4021f_1653486868906_958382_150685"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620204523995_59895_98863" xmi:uuid="9eb32b32-185a-4949-ad8f-700d8afec7b5" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621589050536_4046_92149" xmi:uuid="1941013d-88c4-4d21-93b1-1d436b71e1c9" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620204523995_59895_98863"/>
+        <body>A LeaderLinePoint is a type of CartesianPoint included to help compose a list of points that represent starting points, midpoints, and end points for a receiver to implement presentation information.</body>
+      </ownedComment>
+      <name>LeaderLinePoint</name>
+      <generalization xmi:id="_18_4_1_91401df_1620288384772_668564_93991" xmi:uuid="a76c06a5-6687-44af-a5ed-1b84f5ff72ce" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193035_360707_23436"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1620204648088_770403_98968" xmi:uuid="d74458d1-e6c3-43e9-a9fb-a7e7455c9d0b" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620204390621_703870_98817"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620205571399_431542_99039" xmi:uuid="6d48f745-735c-4c80-b02f-2baead161858" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621589078351_8531_92150" xmi:uuid="9ab493c0-d067-4c33-8283-96cfbb5716c1" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620205571399_431542_99039"/>
+          <body>specifies the symbol to be applied to the LeaderLinePoint.</body>
+        </ownedComment>
+        <name>SymbolApplied</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620206299307_292407_99265"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1620206403826_91107_99288"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_af4021f_1649233509088_757184_148343" xmi:uuid="a472ecd4-fb9d-4ff1-baca-ae8d773fccf7" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_af4021f_1649233509088_906206_148344"/>
+      <memberEnd xmi:idref="_18_4_1_af4021f_1649233490538_733096_148340"/>
+      <ownedEnd xmi:id="_18_4_1_af4021f_1649233509088_906206_148344" xmi:uuid="516ab0b1-799e-45be-8233-6c64bd82b9d4" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_af4021f_1649233046776_937737_148287"/>
+        <association xmi:idref="_18_4_1_af4021f_1649233509088_757184_148343"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619692713556_790506_94767" xmi:uuid="a53429e2-baf8-4df1-af05-5090eaa1a7aa" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1619692713556_187273_94768"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1619692694176_392602_94764"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1619692713556_187273_94768" xmi:uuid="2a6bba14-aa57-421e-abb5-535d64f7a72c" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619681469311_688191_90953"/>
+        <association xmi:idref="_18_4_1_91401df_1619692713556_790506_94767"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619612757504_76440_91226" xmi:uuid="aaeaf551-f1ae-45d8-aca1-e79f0469ec5a" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1620303795548_830133_91741" xmi:uuid="0365d4ef-d5a3-4085-862c-86b4bfb44df3" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619612757504_76440_91226"/>
+        <body>A CameraModel3D is a type of DetailedGeometricModelItem. A CameraModel3D contains the information needed to create the projection from a three-dimensional representation to a two-dimensional picture of that representation.</body>
+      </ownedComment>
+      <name>CameraModel3D</name>
+      <ownedRule xmi:id="_18_4_1_91401df_1649420344411_866252_150753" xmi:uuid="6280a01a-a752-48f5-97fe-f6bae96dad99" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_91401df_1649420541207_734519_150763" xmi:uuid="62ef7cc6-cecd-416b-a7e7-06a8acc8e2ad" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1649420344411_866252_150753"/>
+          <body>if the HiddenLineRemoval is not set, then the HiddenElementAppearance shall not be set as well.</body>
+        </ownedComment>
+        <ownedComment xmi:id="_18_4_1_af4021f_1651562041423_274051_147506" xmi:uuid="afd94d92-37ef-44cf-b3b7-4478680c3a4e" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_af4021f_1651562180028_879898_147509" xmi:uuid="581ad456-54a2-4b98-afe3-527d3b9489e9" xmi:type="uml:Comment">
+            <body>&lt;sch:rule context="//RepresentationItem[ @uid and substring-after(@xsi:type,':')='CameraModel3D' and not(.//HiddenLineRemoval)]"&gt; &lt;sch:let name="uid" value="@uid"/&gt; &lt;sch:assert test="not(./HiddenElementAppearance)"&gt;(CameraModel3D : &lt;sch:value-of select="$uid"/&gt;) If the HiddenLineRemoval is not set, then the HiddenElementAppearance shall not be set as well.&lt;/sch:assert&gt; &lt;/sch:rule&gt;</body>
+          </ownedComment>
+          <body>Schematron</body>
+        </ownedComment>
+        <name>WR1</name>
+        <constrainedElement xmi:idref="_18_4_1_91401df_1619612757504_76440_91226"/>
+        <specification xmi:id="_18_4_1_91401df_1649420344427_792797_150754" xmi:uuid="9e3ba2c3-5f00-41d0-ac10-9d44055bbf7a" xmi:type="uml:OpaqueExpression">
+          <body>self.HiddenLineRemoval.oclIsUndefined() implies self.HiddenElementAppearance.oclIsUndefined()</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <generalization xmi:id="_18_4_1_91401df_1619686590047_365231_91442" xmi:uuid="1e1b95a3-5fa5-40e9-9469-a961bf531991" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193072_543741_23516"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1619612814608_105184_91287" xmi:uuid="717db7fc-dbe5-4bec-91a1-656ae8928d1a" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619595333854_639499_90730"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620130692008_625490_95507" xmi:uuid="ab5112cd-c7fd-41c9-85d9-a74fa597f2e6" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585081772_566334_91507" xmi:uuid="b808332e-642d-40bd-b3ce-7d37000d58c9" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620130692008_625490_95507"/>
+          <body>specifies a role of the ClippingOperator for the CameraModel3D. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Clipping</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620131196729_590039_95689"/>
+        <lowerValue xmi:id="_18_4_1_91401df_1620130708860_384300_95512" xmi:uuid="ecb13ae8-6091-41b5-9cc0-86b397ba30d9" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_91401df_1620131835054_179954_95955"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620130733000_123346_95514" xmi:uuid="982eab18-fd95-499e-b911-d84dd981180c" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585107605_957292_91508" xmi:uuid="a429619a-a15f-489f-bcb1-b765c78ec653" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620130733000_123346_95514"/>
+          <body>specifies a role of the AppearanceAssignment for the CameraModel3D. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>HiddenElementAppearance</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620049014785_429739_93312"/>
+        <lowerValue xmi:id="_18_4_1_91401df_1620130766630_343285_95522" xmi:uuid="ea9d5d2e-43b2-4de5-a164-28decac484b2" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1620130760771_711379_95519"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620130817233_826487_95524" xmi:uuid="52c90a2d-19e4-4b42-8fcf-c2d59c99239f" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585117335_776254_91509" xmi:uuid="9987cafe-ad82-45dd-b5ea-69bad479fed7" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620130817233_826487_95524"/>
+          <body>specifies a logical value. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>HiddenLineRemoval</name>
+        <visibility>public</visibility>
+        <type href="../../../../DataTypes.xmi#BOOLEAN"/>
+        <lowerValue xmi:id="_18_4_1_91401df_1620130857023_551758_95529" xmi:uuid="5d6934d7-1234-4123-b9d2-873065af97d9" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620130869538_423404_95531" xmi:uuid="92c64c53-ff89-4623-ac43-d852140a8436" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585157163_817346_91510" xmi:uuid="2ac00519-80ea-48db-befd-a6e6231193a4" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620130869538_423404_95531"/>
+          <body>specifies a role of the LightSource for the CameraModel3D. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Sources</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620131931463_37195_95984"/>
+        <lowerValue xmi:id="_18_4_1_91401df_1620130888147_425560_95535" xmi:uuid="a44ff219-6e4b-4d8d-a56a-49e746100bbb" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_91401df_1620130888148_893479_95536" xmi:uuid="e6f2e32c-d230-4972-bcf0-665f35d55e7e" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_91401df_1620132387054_132854_96151"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620131070319_190920_95546" xmi:uuid="8fa740e8-3513-4b4b-901a-5f2ab157f4c0" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585176018_159404_91511" xmi:uuid="e7d7d765-e84a-4230-89db-89d7cdcf2071" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620131070319_190920_95546"/>
+          <body>specifies a role of the PlanarBox for the CameraModel3D.</body>
+        </ownedComment>
+        <name>ViewWindow</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619766465156_809499_91276"/>
+        <association xmi:idref="_18_4_1_91401df_1620131125757_65040_95551"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620132549250_615216_96209" xmi:uuid="56d1a472-7825-4cbc-be67-af40cd78cd42" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585202712_696059_91512" xmi:uuid="cbd02f2f-c35f-4f29-9aee-8fad55d0553a" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620132549250_615216_96209"/>
+          <body>specifies a role of the ViewProjectionType for the CameraModel3D.</body>
+        </ownedComment>
+        <name>ViewProjection</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620132447981_73810_96180"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1620132574705_817306_96214"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619690575215_742064_94134" xmi:uuid="ad329903-27f1-4739-9f24-c04c401a819d" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1619690575216_205402_94135"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1619690148647_293562_94129"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1619690575216_205402_94135" xmi:uuid="491747da-968d-4ee0-8f8e-768a08371d76" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619681469311_688191_90953"/>
+        <association xmi:idref="_18_4_1_91401df_1619690575215_742064_94134"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619511701918_597010_94917" xmi:uuid="ae0e861c-c309-4cab-b03a-cb858a69bd72" xmi:type="uml:Class">
+      <name>CalloutElementSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620204295180_103673_98768" xmi:uuid="ae70b238-46c7-440b-b6c8-54ff821bafbf" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1620303397107_181607_91735" xmi:uuid="9f221e98-489b-483e-8594-3dc11eb95b3c" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620204295180_103673_98768"/>
+        <body>An AnnotationToAnnotationLeaderLine is a type of LeaderLine that provides a simplified representation of the graphic visually connecting one annotation to another.</body>
+      </ownedComment>
+      <name>AnnotationToAnnotationLeaderLine</name>
+      <generalization xmi:id="_18_4_1_91401df_1620204333366_892257_98813" xmi:uuid="fa4ece9e-5aae-40d3-bb01-977adb5d74da" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620203746144_623127_98548"/>
+      </generalization>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620047367494_455114_92995" xmi:uuid="b00abe1b-3ff5-4077-b12e-f6986540529a" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620047367495_781284_92996"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620046763534_969010_92961"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620047367495_781284_92996" xmi:uuid="ac14d0d5-c6db-4a93-aa58-326006801c11" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619785583948_632237_101333"/>
+        <association xmi:idref="_18_4_1_91401df_1620047367494_455114_92995"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619773724011_673445_98041" xmi:uuid="b2a6095a-0233-4105-84ad-f403d74bead1" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621588215174_449722_92121" xmi:uuid="e9f50924-58cd-4a21-b8d7-6ea2cac337e3" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619773724011_673445_98041"/>
+        <body>A GeometricPlaceholderSet is a type of DetailedGeometricModelItem that collects detail model geometric elements including CartesianPoint, PointOnCurve, PointOnSurface, PlanarBox and AxisPlacement.</body>
+      </ownedComment>
+      <name>GeometricPlaceholderSet</name>
+      <generalization xmi:id="_18_4_1_91401df_1619774462301_281772_98231" xmi:uuid="a0ce7dac-4069-4258-ace2-1294fbaa7515" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193072_543741_23516"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619774708736_332807_98268" xmi:uuid="71c48244-6c67-418d-ae17-f4882f485480" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621588271700_707300_92122" xmi:uuid="b6115119-dcad-4440-9e8c-e7acd2d0a024" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619774708736_332807_98268"/>
+          <body>specifies the elements in the collection.</body>
+        </ownedComment>
+        <name>Elements</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619773323940_321835_97984"/>
+        <upperValue xmi:id="_18_4_1_91401df_1619774741217_417580_98272" xmi:uuid="863e297c-9fbe-4920-930c-79bd03598b1f" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_91401df_1619774750424_748092_98273"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620114323022_223500_92447" xmi:uuid="b2b3a3d3-7c3e-432b-914d-b620561afdce" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620114323022_361733_92448"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620055513382_39626_94072"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620114323022_361733_92448" xmi:uuid="fb2481aa-fbc6-4283-a748-df8cb1a29914" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619776728335_262889_98613"/>
+        <association xmi:idref="_18_4_1_91401df_1620114323022_223500_92447"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_af4021f_1649233575002_113159_148360" xmi:uuid="b3e75ca7-6010-46a9-87a3-4725fbcff5ee" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_af4021f_1649233575002_945413_148361"/>
+      <memberEnd xmi:idref="_18_4_1_af4021f_1649233526187_27838_148348"/>
+      <ownedEnd xmi:id="_18_4_1_af4021f_1649233575002_945413_148361" xmi:uuid="c552699b-97c0-42f4-aeb4-1aeae915f0e6" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_af4021f_1649233046776_937737_148287"/>
+        <association xmi:idref="_18_4_1_af4021f_1649233575002_113159_148360"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1716555648003_332419_134051" xmi:uuid="b957d4fd-ef09-47d9-9d25-8e8f744253aa" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1716555648003_95813_134052"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1716555635804_960558_134048"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1716555648003_95813_134052" xmi:uuid="afd32334-288e-48f7-bfa1-29c1be6e2313" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1716555524510_134968_134000"/>
+        <association xmi:idref="_18_4_1_91401df_1716555648003_332419_134051"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619766465156_809499_91276" xmi:uuid="bdad42c0-4300-4a1e-bf2d-248d5f6ac930" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621589603379_378544_92181" xmi:uuid="9f30378e-26de-4b93-868b-71b32359c326" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619766465156_809499_91276"/>
+        <body>A PlanarBox is a type of DetailedGeometricModelItem that specifies an arbitrary rectangular box and its location.</body>
+      </ownedComment>
+      <name>PlanarBox</name>
+      <generalization xmi:id="_18_4_1_91401df_1619766588276_424493_91366" xmi:uuid="1b64301f-4a55-439a-bd8d-e8fc42645ded" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619517051135_204780_95915"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1619766583387_292734_91363" xmi:uuid="1fca4aaf-b360-4c7a-9fda-ad4072637c68" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193072_543741_23516"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1619775440375_430016_98437" xmi:uuid="bdb38296-0d4c-4ca3-9558-df86ace31eb3" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619773323940_321835_97984"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619767555301_938158_95838" xmi:uuid="da20d47f-86ea-492c-a8cb-067f19c124d2" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621589626754_855339_92183" xmi:uuid="0d13d3c3-615b-4f5a-86d9-eaf5ceb71b38" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619767555301_938158_95838"/>
+          <body>specifies the position and orientation of the bottom-left corner of the box.</body>
+        </ownedComment>
+        <name>Placement</name>
+        <visibility>public</visibility>
+        <type href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193025_577371_23412"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620289203107_176822_94006" xmi:uuid="75f2a393-bd24-4ddf-84cb-841c4090478a" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621589634469_518094_92184" xmi:uuid="43cab98a-dce1-4a55-bc82-60304db3e80a" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620289203107_176822_94006"/>
+          <body>specifies the extent in the x axis direction prior of applying the placement transformation.</body>
+        </ownedComment>
+        <name>SizeInX</name>
+        <visibility>public</visibility>
+        <type href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193306_113204_23949"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620289238986_844070_94014" xmi:uuid="37f59fc4-3ea9-427e-b2f7-2ab5b9377ce4" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621589642303_4841_92185" xmi:uuid="1b448001-f214-4202-9dac-ee9811b2844e" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620289238986_844070_94014"/>
+          <body>specifies the extent in the y axis direction prior of applying the placement transformation.</body>
+        </ownedComment>
+        <name>SizeInY</name>
+        <visibility>public</visibility>
+        <type href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193306_113204_23949"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619613488316_252956_91672" xmi:uuid="beb76ca5-55bc-4d3c-83b3-8831c5150092" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621589842974_342938_92533" xmi:uuid="081166e7-4344-45ab-915b-df49ed0b1b5c" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619613488316_252956_91672"/>
+        <body>A StyledElement is a type of RepresentationItem that has presentation information.</body>
+      </ownedComment>
+      <name>StyledElement</name>
+      <generalization xmi:id="_18_4_1_91401df_1619785293722_460981_101329" xmi:uuid="65505bf9-9ade-43f9-b939-a25817dc0032" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619595333854_639499_90730"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1619613987345_992863_91909" xmi:uuid="d1dff941-3e57-4966-9e87-47c0097a1eea" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193222_666164_23810"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_91401df_1620132978840_60038_96281" xmi:uuid="f933180c-e99c-4fdf-a5df-602d57feda9f" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619516349457_353334_95190"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619614448153_729346_92057" xmi:uuid="0c729ecd-64f3-47f2-9e0c-85c2d667f307" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621589867066_412910_92534" xmi:uuid="e9de8c11-fa58-4877-95f7-3636ef214739" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619614448153_729346_92057"/>
+          <body>the StyledElementAppearance that specifies the presentation characteristics of the StyledElement. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Appearance</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619776540731_639623_98541"/>
+        <lowerValue xmi:id="_18_4_1_91401df_1619614464267_400734_92061" xmi:uuid="b402edb4-32f3-4c57-a965-42087217822a" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1619776600938_449760_98584"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619614483489_732265_92063" xmi:uuid="d654cf5a-4ed7-425e-be2b-af0a5072bec5" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621589876092_707433_92535" xmi:uuid="262d2b84-d11b-42c0-9624-0a579e566acb" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619614483489_732265_92063"/>
+          <body>the element to which styles are assigned.</body>
+        </ownedComment>
+        <name>Element</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619614630076_769278_92078"/>
+        <association xmi:idref="_18_4_1_91401df_1619614701382_893871_92121"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1619614572041_494029_92069" xmi:uuid="c692f4a9-0a56-48ba-9fc8-206909b15e9a" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621589888711_47489_92536" xmi:uuid="2245a89e-327e-4de2-b848-f777ea1ef84d" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1619614572041_494029_92069"/>
+          <body>a Boolean value that specifies whether the StyledElement is invisible. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Invisible</name>
+        <visibility>public</visibility>
+        <type href="../../../../DataTypes.xmi#BOOLEAN"/>
+        <lowerValue xmi:id="_18_4_1_91401df_1619614612833_639972_92073" xmi:uuid="8dc09550-6ed6-41dc-8b03-5ff71264ca67" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620204390621_703870_98817" xmi:uuid="c2fa2ce1-fbbd-42c5-b654-401c8dfee79b" xmi:type="uml:Class">
+      <name>LeaderLinePointSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619774750424_748092_98273" xmi:uuid="c55f9cce-9b2e-4722-87d9-82853ba07895" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1619774750424_528770_98274"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1619774708736_332807_98268"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1619774750424_528770_98274" xmi:uuid="526939bd-447d-4ac9-8ac3-00c58778a124" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619773724011_673445_98041"/>
+        <association xmi:idref="_18_4_1_91401df_1619774750424_748092_98273"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620121667062_250406_92572" xmi:uuid="c5c89e79-37b6-482a-ab2e-bef2ca3b99af" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620121667078_947197_92573"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620121649394_93093_92569"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620121667078_947197_92573" xmi:uuid="e68b2b91-4ce3-4595-aaf4-8310d33e7157" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620113692204_685865_91093"/>
+        <association xmi:idref="_18_4_1_91401df_1620121667062_250406_92572"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619686920706_458084_91443" xmi:uuid="c6c1b91e-8aed-4461-908a-4365fd427ad7" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1619686920707_17613_91444"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1619595504556_244226_90773"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1619686920707_17613_91444" xmi:uuid="42378780-2124-4e0c-a9d2-f46ed0dbf6c1" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619516088698_44291_95098"/>
+        <association xmi:idref="_18_4_1_91401df_1619686920706_458084_91443"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620114606370_893095_92480" xmi:uuid="c8b953cb-c70b-4343-8230-e777870b1d4f" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620114606370_258785_92481"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620114580714_902176_92473"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620114606370_258785_92481" xmi:uuid="92ceea17-41e4-411e-abf7-bb9aca928f2a" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620054885001_949491_93983"/>
+        <association xmi:idref="_18_4_1_91401df_1620114606370_893095_92480"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620131629204_86894_95856" xmi:uuid="cc1f1b2c-d3d5-412f-8d7e-2fbe878cf163" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620131629205_64481_95857"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620131325738_162571_95740"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620131629205_64481_95857" xmi:uuid="beee6d84-0183-446b-a398-848771d24fbd" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620131196729_590039_95689"/>
+        <association xmi:idref="_18_4_1_91401df_1620131629204_86894_95856"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620132447981_73810_96180" xmi:uuid="cd55ed53-3d23-4dd1-a2e5-f3f9ef4b8dd3" xmi:type="uml:Enumeration">
+      <ownedComment xmi:id="_18_4_1_91401df_1620302964920_962439_91718" xmi:uuid="b0357e4c-32e4-46bf-8c1e-f9187b6ba0ff" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620132447981_73810_96180"/>
+        <body>A ViewProjectionTypeEnum presents the types of view projection.</body>
+      </ownedComment>
+      <name>ViewProjectionTypeEnum</name>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620132490852_228410_96203" xmi:uuid="dc1aeb3f-b4c1-40e9-b263-36532c505e4b" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620302991493_577380_91719" xmi:uuid="932f7e11-3216-44eb-ba01-a39bf252b5a5" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620132490852_228410_96203"/>
+          <body>the view projection type is central.</body>
+        </ownedComment>
+        <name>central</name>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620132499196_651726_96205" xmi:uuid="c449e0bf-beda-4345-a0fa-62822d869843" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620302998489_380876_91720" xmi:uuid="71f74973-76d4-4311-a247-80fc856ed0d4" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620132499196_651726_96205"/>
+          <body>the view projection type is parallel.</body>
+        </ownedComment>
+        <name>parallel</name>
+      </ownedLiteral>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620052199453_643335_93846" xmi:uuid="d189fb0b-1572-46f8-a671-1c0e4cdffb32" xmi:type="uml:Class">
+      <name>OverridingStyleContextSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620132574705_817306_96214" xmi:uuid="d1e42b24-5bd3-4f15-9c20-67406f4c48df" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620132574705_357266_96215"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620132549250_615216_96209"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620132574705_357266_96215" xmi:uuid="17545ca4-bf8e-46b7-94c6-57c158c135ee" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619612757504_76440_91226"/>
+        <association xmi:idref="_18_4_1_91401df_1620132574705_817306_96214"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620055457109_362936_94046" xmi:uuid="d3c5be87-cbec-4ef0-8114-fcb663ac4144" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620055457109_889322_94047"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620052573697_516227_93910"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620055457109_889322_94047" xmi:uuid="76e6b0f1-5909-420b-ac9c-bd5bbd61af21" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619776728335_262889_98613"/>
+        <association xmi:idref="_18_4_1_91401df_1620055457109_362936_94046"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_af4021f_1644573405237_809921_91266" xmi:uuid="d702fbb0-bf25-4038-94dc-0962b77b9a40" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_af4021f_1644577436458_125359_91146" xmi:uuid="b47dbf09-a8e5-46fe-a85b-512d21396fe5" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_af4021f_1644573405237_809921_91266"/>
+        <body>An ExternalTessellatedAnnotation is a type of ExternalRepresentationItem that is a representation of an annotation where the annotation geometry and the styling are provided as a tessellated_annotation_occurrence.</body>
+      </ownedComment>
+      <name>ExternalTessellatedAnnotation</name>
+      <generalization xmi:id="_18_4_1_af4021f_1644573552598_67726_91357" xmi:uuid="66a5100f-11f0-4ac3-be9d-74a5f20c4c00" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193101_792587_23569"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_af4021f_1644573565443_450992_91360" xmi:uuid="9e3228db-4b0f-4360-b304-c8bf693a094f" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619511701918_597010_94917"/>
+      </generalization>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619776728335_262889_98613" xmi:uuid="d869d2ba-2220-4aa0-8893-eb4f2a2f224b" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621585583684_181427_91547" xmi:uuid="8080fee9-6e5f-4804-b1df-ad7fadb10bb3" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619776728335_262889_98613"/>
+        <body>A CurveAppearance is the visual appearance of geometric curves and annotation curves.</body>
+      </ownedComment>
+      <name>CurveAppearance</name>
+      <generalization xmi:id="_18_4_1_91401df_1620049729959_418766_93403" xmi:uuid="f488909d-927a-4976-91af-dc3969a75a3f" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620049071890_762247_93358"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620052573697_516227_93910" xmi:uuid="36112d78-ded5-4cd0-bcc6-9ac18bcb214a" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585592770_985680_91548" xmi:uuid="550b81c9-6003-418c-bcc2-1fae3e03d257" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620052573697_516227_93910"/>
+          <body>the Colour of the visible segments of a curve.</body>
+        </ownedComment>
+        <name>Colour</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620054885001_949491_93983"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1620055457109_362936_94046"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620055513382_39626_94072" xmi:uuid="63e4490c-0278-4303-9d4f-ea2275f3383a" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585601482_715603_91549" xmi:uuid="118d876c-d26e-4730-a4b5-37e1bce6be7c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620055513382_39626_94072"/>
+          <body>the display pattern of a curve. The font determines the visible and invisible segments of a curve.</body>
+        </ownedComment>
+        <name>Font</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620113692204_685865_91093"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1620114323022_223500_92447"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620397018392_194524_92120" xmi:uuid="3ece4cb3-1be4-4c12-8c63-98acea1a6ef0" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621585610693_995682_91550" xmi:uuid="f4f2e495-e5b4-4e76-9f7a-e6c6248d658d" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620397018392_194524_92120"/>
+          <body>the breadth of the rendered curve.</body>
+        </ownedComment>
+        <name>Width</name>
+        <visibility>public</visibility>
+        <type href="../../../../DataTypes.xmi#REAL"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619516349457_353334_95190" xmi:uuid="dce7ef45-1102-466d-9607-342ac065f654" xmi:type="uml:Class">
+      <name>AnnotationPlaneElementSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620130117026_592793_95433" xmi:uuid="dd7af37b-fe98-46f7-ac00-928588b8750d" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620130117027_770199_95434"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620130045852_314260_95427"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620130117027_770199_95434" xmi:uuid="b5b89d33-4174-4df2-9085-c6dcf9838516" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619776933230_729774_98754"/>
+        <association xmi:idref="_18_4_1_91401df_1620130117026_592793_95433"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_af4021f_1718635369600_117348_132344" xmi:uuid="e14abc2b-5225-4a6f-ab55-db45841bea64" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_af4021f_1718635369605_185625_132345" xmi:uuid="8835e702-14bf-4b75-b075-c5d665df243f" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_af4021f_1718635369600_117348_132344"/>
+        <body>An TessellatedAnnotation is a type of AnnotationElement that is a presentation of an annotation where the annotation geometry is provided as an external TessellatedItem.</body>
+      </ownedComment>
+      <name>TessellatedAnnotation</name>
+      <generalization xmi:id="_18_4_1_af4021f_1718635369606_604832_132346" xmi:uuid="c79187a1-789c-4f7e-8b78-19afa6e995b7" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619612472082_717705_91098"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_af4021f_1718635369606_46709_132347" xmi:uuid="ffff2bc9-febf-4e21-ba05-7c8dfec293b9" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1619511701918_597010_94917"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_af4021f_1718635705262_622159_133429" xmi:uuid="030caa70-6a75-46ef-975c-39dd092dc4f5" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_af4021f_1718635705264_505249_133431" xmi:uuid="7a380cfe-3409-445d-9aba-881608d572ce" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_af4021f_1718635705262_622159_133429"/>
+          <body>the TessellatedItem to which styles are assigned.</body>
+        </ownedComment>
+        <name>Element</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_af4021f_1718635601334_238616_133341"/>
+        <association xmi:idref="_18_4_1_af4021f_1718635720374_689900_133439"/>
+        <redefinedProperty xmi:idref="_18_4_1_91401df_1619614483489_732265_92063"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619511140825_778126_94795" xmi:uuid="ed259518-0982-4bce-97fc-69a38d6c1db7" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1619511140825_845565_94796"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1619511048487_465349_94790"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1619511140825_845565_94796" xmi:uuid="41c81a41-7e8e-42f4-97a9-9b8a6a1a9099" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1619507105520_772248_94448"/>
+        <association xmi:idref="_18_4_1_91401df_1619511140825_778126_94795"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620049849563_479559_93415" xmi:uuid="eda699e7-5ba3-4ff0-9d33-6f4ab3653b5f" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620049849563_446991_93416"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620049813968_702137_93410"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620049849563_446991_93416" xmi:uuid="b525d89b-ba20-46df-b389-e73be8218712" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620049014785_429739_93312"/>
+        <association xmi:idref="_18_4_1_91401df_1620049849563_479559_93415"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619595333854_639499_90730" xmi:uuid="f2be2a38-fbe1-4f43-a141-4eea95314cbb" xmi:type="uml:Class">
+      <name>AnnotatedModelItemSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620132272724_913735_96094" xmi:uuid="f799c32f-fdeb-479a-a4da-c91c0f855b81" xmi:type="uml:Enumeration">
+      <ownedComment xmi:id="_18_4_1_91401df_1620302905668_563580_91713" xmi:uuid="fe909456-847c-490c-a212-fd77f192cb70" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1620132272724_913735_96094"/>
+        <body>A LightTypeEnum presents the types of light.</body>
+      </ownedComment>
+      <name>LightTypeEnum</name>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620132295230_122761_96117" xmi:uuid="bef27447-dfab-42ec-96b6-e3d496ffe911" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620302913785_197233_91714" xmi:uuid="206dd0e8-4df9-4b79-9a15-4544c72271f0" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620132295230_122761_96117"/>
+          <body>the light is ambient;</body>
+        </ownedComment>
+        <name>ambient</name>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620132305305_708420_96119" xmi:uuid="6c46380a-c16c-41c8-ac12-cdf43f4f716d" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620302922893_303723_91715" xmi:uuid="469f1844-119e-4698-8075-4804b5d25e35" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620132305305_708420_96119"/>
+          <body>the light is directional;</body>
+        </ownedComment>
+        <name>directional</name>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620132313900_931575_96121" xmi:uuid="7ebd80a9-5807-4d81-922d-2b2fc1013b88" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620302930138_952374_91716" xmi:uuid="05f9c803-0490-4733-8669-bf06ea250cd6" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620132313900_931575_96121"/>
+          <body>the light is spot;</body>
+        </ownedComment>
+        <name>spot</name>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_18_4_1_91401df_1620132323204_976469_96123" xmi:uuid="fc981d8f-22af-41d6-8834-7872621fdc3a" xmi:type="uml:EnumerationLiteral">
+        <ownedComment xmi:id="_18_4_1_91401df_1620302940347_266308_91717" xmi:uuid="5fc5f6c4-5c20-4d0d-94ce-3765d69d39d1" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620132323204_976469_96123"/>
+          <body>the light is positional.</body>
+        </ownedComment>
+        <name>positional</name>
+      </ownedLiteral>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1620204765803_531567_98979" xmi:uuid="f8f8819a-85c5-44bf-bc82-b9a594818a71" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_91401df_1620204765803_799277_98980"/>
+      <memberEnd xmi:idref="_18_4_1_91401df_1620204689259_595882_98972"/>
+      <ownedEnd xmi:id="_18_4_1_91401df_1620204765803_799277_98980" xmi:uuid="4925d225-d726-4bdb-bde5-b4140b55c559" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620203746144_623127_98548"/>
+        <association xmi:idref="_18_4_1_91401df_1620204765803_531567_98979"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1619776847193_436886_98705" xmi:uuid="fdee6901-974e-4631-98eb-b0f014d88790" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1621593689143_952939_92553" xmi:uuid="0ed08f58-f3c3-4dc5-b33e-b461efd81c3d" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1619776847193_436886_98705"/>
+        <body>A TextStyle is the definition of the visual presentation of a text.</body>
+      </ownedComment>
+      <name>TextStyle</name>
+      <generalization xmi:id="_18_4_1_91401df_1620049739904_305601_93409" xmi:uuid="78fcddfb-bc7b-41e2-9015-6c0a9649b360" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620049071890_762247_93358"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620128993961_562496_95385" xmi:uuid="3487b363-ab0c-46bc-80cc-074006e20cf4" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621593765993_355529_92554" xmi:uuid="4d127252-edbf-4654-abf5-c387abd635c4" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620128993961_562496_95385"/>
+          <body>specifies the REAL value.</body>
+        </ownedComment>
+        <name>FontSize</name>
+        <visibility>public</visibility>
+        <type href="../../../../DataTypes.xmi#REAL"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620129039528_935309_95390" xmi:uuid="2a7fc537-ffc8-4a6c-a41e-a09435724b5a" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621593793916_988962_92555" xmi:uuid="e00b0c15-9153-440c-84b1-813dce9a4f2f" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620129039528_935309_95390"/>
+          <body>specifies the role of the AxisPlacement for the TextStyle. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>MirrorPlacement</name>
+        <visibility>public</visibility>
+        <type href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193025_577371_23412"/>
+        <lowerValue xmi:id="_18_4_1_91401df_1620129064272_927531_95394" xmi:uuid="ce30c42c-49d5-4602-82c2-7e3a461b9095" xmi:type="uml:LiteralInteger"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1620129072674_790043_95396" xmi:uuid="4c3214c3-6c0e-43b6-bebb-be8f25090c8d" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1621593809038_33308_92556" xmi:uuid="445eff74-0a56-44d1-96a1-f7b5b8bd28a2" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1620129072674_790043_95396"/>
+          <body>specifies the role of the Colour for the TextStyle.</body>
+        </ownedComment>
+        <name>TextColour</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620054885001_949491_93983"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1620129096573_522485_95399"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_91401df_1716555524510_134968_134000" xmi:uuid="ffb69356-2e8f-41c4-8b92-cdf1eee9df82" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_91401df_1716558925288_271836_134124" xmi:uuid="f361022d-a90a-4429-9e66-708852151a55" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_91401df_1716555524510_134968_134000"/>
+        <body>A SurfaceAppearance is the definition of the visual appearance of a surface.</body>
+      </ownedComment>
+      <name>SurfaceAppearance</name>
+      <generalization xmi:id="_18_4_1_91401df_1716558886999_983021_134123" xmi:uuid="7fbcbd0b-6dcf-4f98-956e-3a0fe9612a60" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_91401df_1620049071890_762247_93358"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1716555561732_215920_134043" xmi:uuid="7268105b-53df-4a81-b7d1-ee257abf3ea0" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1716559007182_501233_134126" xmi:uuid="4287b60e-35cf-4373-b362-bec6f0e025f5" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1716555561732_215920_134043"/>
+          <body>the side of a surface to which the colour is applied.</body>
+        </ownedComment>
+        <name>Side</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1716554902976_969084_133964"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1716555935247_117230_134079"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_91401df_1716555635804_960558_134048" xmi:uuid="d2f6e316-1793-407d-afbc-c073a39b95b8" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_91401df_1716558938512_95575_134125" xmi:uuid="f7f311fb-1c81-4a49-9ea1-a799f3dee31d" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_91401df_1716555635804_960558_134048"/>
+          <body>the colour to be used for filling the area.</body>
+        </ownedComment>
+        <name>Colour</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_91401df_1620054885001_949491_93983"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_91401df_1716555648003_332419_134051"/>
+      </ownedAttribute>
+    </packagedElement>
+  </uml:Package>
+  <sysml:ValueType xmi:id="_18_4_1_91401df_1716554902985_188172_133965" xmi:uuid="a37f8b20-16c7-013d-ad3e-52540000fd3c">
+    <base_DataType xmi:idref="_18_4_1_91401df_1716554902976_969084_133964"/>
+  </sysml:ValueType>
+  <sysml:ValueType xmi:id="_18_4_1_91401df_1619510892130_359100_94761" xmi:uuid="f641ba70-b235-013c-7b62-089a2f3f1c8a">
+    <base_DataType xmi:idref="_18_4_1_91401df_1619510892129_23236_94760"/>
+  </sysml:ValueType>
+  <sysml:ValueType xmi:id="_18_4_1_91401df_1620132272725_778770_96095" xmi:uuid="f6427de0-b235-013c-7b62-089a2f3f1c8a">
+    <base_DataType xmi:idref="_18_4_1_91401df_1620132272724_913735_96094"/>
+  </sysml:ValueType>
+  <sysml:ValueType xmi:id="_18_4_1_91401df_1620132447982_638855_96181" xmi:uuid="f64294f0-b235-013c-7b62-089a2f3f1c8a">
+    <base_DataType xmi:idref="_18_4_1_91401df_1620132447981_73810_96180"/>
+  </sysml:ValueType>
+  <sysml:ValueType xmi:id="_18_4_1_91401df_1620131379273_520390_95749" xmi:uuid="f6429a40-b235-013c-7b62-089a2f3f1c8a">
+    <base_DataType xmi:idref="_18_4_1_91401df_1620131379272_236180_95748"/>
+  </sysml:ValueType>
+  <sysml:ValueType xmi:id="_18_4_1_91401df_1620206299307_562768_99266" xmi:uuid="f642b920-b235-013c-7b62-089a2f3f1c8a">
+    <base_DataType xmi:idref="_18_4_1_91401df_1620206299307_292407_99265"/>
+  </sysml:ValueType>
+</xmi:XMI>

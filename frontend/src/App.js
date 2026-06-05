@@ -13,12 +13,15 @@ import DataImportPipeline from './Components/DataImportPipeline';
 import TabContainer from './Components/TabContainer';
 import ErrorBoundary from './Components/ErrorBoundary';
 import ResizableSplitter from './Components/ResizableSplitter';
+import LandingPage from './Components/LandingPage';
 import { SchemaProvider } from './SchemaContext';
+import { OntologyProvider } from './contexts/OntologyContext';
 import { useState, useCallback } from 'react';
 
 const MIDDLE_HEIGHT = () => window.innerHeight * 0.45;
 
 function App() {
+  const [page, setPage] = useState('home'); // 'home' | 'graph'
   const [data, setData] = useState();
   const [activeTab, setActiveTab] = useState('graph');
   const [searchResults, setSearchResults] = useState(null);
@@ -65,11 +68,67 @@ function App() {
     setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
   }, [splitState]);
 
+  if (page === 'home') {
+    return (
+      <ErrorBoundary>
+        <OntologyProvider>
+          <SchemaProvider>
+            <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{
+                height: '8vh', backgroundColor: '#2c3e50',
+                display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingLeft: 20, paddingRight: 20,
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)', flexShrink: 0,
+              }}>
+                <h1 style={{ color: 'white', margin: 0, fontSize: 20, fontWeight: 600 }}>
+                  DEPO: Digital Engineering Product Ontology Knowledge Graph
+                </h1>
+                <button
+                  onClick={() => setPage('graph')}
+                  style={{
+                    background: 'rgba(255,255,255,0.15)', color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.4)',
+                    borderRadius: 6, padding: '5px 16px',
+                    fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  Graph Explorer →
+                </button>
+              </div>
+              <div style={{ flex: '1 1 0', minHeight: 0 }}>
+                <LandingPage
+                  setChatResults={setChatResults}
+                  onNavigate={setPage}
+                />
+              </div>
+            </div>
+          </SchemaProvider>
+        </OntologyProvider>
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
-      <SchemaProvider>
-      <>
+      <OntologyProvider>
+        <SchemaProvider>
+        <>
         <Header />
+        <div style={{ position: 'fixed', top: '8vh', right: 12, zIndex: 9999 }}>
+          <button
+            onClick={() => setPage('home')}
+            style={{
+              background: '#004B87', color: '#fff',
+              border: 'none', borderRadius: 6,
+              padding: '4px 14px', fontSize: 12,
+              fontWeight: 700, cursor: 'pointer',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
+            }}
+          >
+            ⌂ Home
+          </button>
+        </div>
       <div id="cloud-container">
       
       {/* Where Used toolbar */}
@@ -200,11 +259,10 @@ function App() {
                 flexShrink: 0,
               }}>
                 {[
-                  { id: 'whereused', label: '↗ Where Used' },
                   { id: 'table', label: '▦ Table' },
                   { id: 'reports', label: '▲ Reports' },
                   { id: 'ingestion', label: '↓ Data Import' },
-                  { id: 'ontology', label: '◆ Ontology Mapper' },
+                  { id: 'ontology', label: '◆ Semantic Bridge' },
                   { id: 'recommendations', label: '★ Recommendations' },
                 ].map(tab => (
                   <button
@@ -285,7 +343,8 @@ function App() {
       </div>
       </div>
     </>
-      </SchemaProvider>
+        </SchemaProvider>
+      </OntologyProvider>
     </ErrorBoundary>
   );
 }

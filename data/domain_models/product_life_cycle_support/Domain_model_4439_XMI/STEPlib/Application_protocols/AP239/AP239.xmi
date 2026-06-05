@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001" xmlns:sysml="http://www.omg.org/spec/SysML/20150709/SysML" xmlns:StandardProfile="http://www.omg.org/spec/UML/20131001/StandardProfile">
+  <uml:Package xmi:id="_18_4_1_271a0567_1560355744616_739994_83734" xmi:uuid="79fc104c-b9f3-4eec-99c0-50c5516ce90d" xmi:type="uml:Package">
+    <name>AP239</name>
+    <packagedElement href="Activity_model/Activity_model.xmi#_18_4_1_271a0567_1601385791334_491709_75999"/>
+    <packagedElement href="Data_planning_model/Data_planning_model.xmi#_18_4_1_271a0567_1601386310268_623395_76000"/>
+    <packagedElement href="Domain_model/Domain_model.xmi#_18_4_1_271a0567_1560414861929_781059_5049"/>
+  </uml:Package>
+</xmi:XMI>

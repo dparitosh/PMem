@@ -1,5 +1,5 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 
 :: ──── DT Project Setup ────────────────────────────────────────────────────
 :: Usage: setup.bat [--backend] [--frontend]
@@ -23,8 +23,7 @@ if "%ANY_FLAG%"=="0" (
     set "DO_FRONTEND=1"
 )
 
-set "BACKEND_ROOT=%~dp0"
-for %%I in ("%BACKEND_ROOT%..") do set "PROJECT_ROOT=%%~fI\"
+set "ROOT=%~dp0"
 
 :: ──── Backend Setup ───────────────────────────────────────────────────────
 if "%DO_BACKEND%"=="1" (
@@ -34,17 +33,11 @@ if "%DO_BACKEND%"=="1" (
     echo ============================================================
     echo.
 
-    if exist "%BACKEND_ROOT%.dt_venv\Scripts\python.exe" (
-        "%BACKEND_ROOT%.dt_venv\Scripts\python.exe" --version >nul 2>&1
-        if errorlevel 1 (
-            echo [1/3] Existing virtual environment is broken. Recreating .dt_venv ...
-            rmdir /s /q "%BACKEND_ROOT%.dt_venv"
-        )
-    )
+    echo [0/3] Skipping Python version check - ensure Python 3.8+ is installed and on PATH
 
-    if not exist "%BACKEND_ROOT%.dt_venv\Scripts\activate.bat" (
+    if not exist "%ROOT%.dt_venv\Scripts\activate.bat" (
         echo [1/3] Creating Python virtual environment .dt_venv ...
-        python -m venv "%BACKEND_ROOT%.dt_venv"
+        python -m venv "%ROOT%.dt_venv"
         if errorlevel 1 (
             echo ERROR: Failed to create virtual environment. Is Python installed?
             exit /b 1
@@ -54,12 +47,18 @@ if "%DO_BACKEND%"=="1" (
     )
 
     echo [2/3] Activating virtual environment ...
-    call "%BACKEND_ROOT%.dt_venv\Scripts\activate.bat"
+    call "%ROOT%.dt_venv\Scripts\activate.bat"
 
     echo [3/3] Installing backend dependencies ...
-    pip install -r "%BACKEND_ROOT%backend\requirements.txt" --quiet
+    echo Updating pip and installing requirements (uses python -m pip)...
+    python -m pip install --upgrade pip
     if errorlevel 1 (
-        echo ERROR: pip install failed.
+        echo ERROR: pip upgrade failed.
+        exit /b 1
+    )
+    python -m pip install -r "%ROOT%\requirements.txt"
+    if errorlevel 1 (
+        echo ERROR: pip install failed. Check output above for details.
         exit /b 1
     )
 
@@ -83,10 +82,15 @@ if "%DO_FRONTEND%"=="1" (
     )
 
     echo [1/1] Installing frontend dependencies ...
-    pushd "%PROJECT_ROOT%frontend"
-    call npm install
+    pushd "%ROOT%frontend"
+    if exist "%ROOT%frontend\package-lock.json" (
+        echo package-lock.json found — using `npm ci` for reproducible install
+        call npm ci
+    ) else (
+        call npm install
+    )
     if errorlevel 1 (
-        echo ERROR: npm install failed.
+        echo ERROR: npm install (or ci) failed.
         popd
         exit /b 1
     )

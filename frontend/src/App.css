@@ -2,6 +2,11 @@ html {
   min-height: 100%;
 }
 
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
 .css-1mbxq6w-MuiTreeItem-label{
   margin-top: 8px;
 }
