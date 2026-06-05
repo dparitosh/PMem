@@ -4457,6 +4457,11 @@ const boundaryForce = (width, height) => {
             <button
               className="dropdown-item"
               style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
+              onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('traceability'); } }}
+            >⌁ Digital Thread</button>
+            <button
+              className="dropdown-item"
+              style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
               onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('recommendations'); } }}
             >★ Recommendations</button>
             <button
