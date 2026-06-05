@@ -135,12 +135,14 @@ const IMPORT_ENDPOINTS = {
   previewLegacy: process.env.REACT_APP_API_IMPORT_PREVIEW_LEGACY || '/api/import/preview/{task_id}',
   preCommitLegacy: process.env.REACT_APP_API_IMPORT_PRE_COMMIT_LEGACY || '/api/import/pre-commit/{task_id}',
   commitLegacy: process.env.REACT_APP_API_IMPORT_COMMIT_LEGACY || '/api/import/commit/{task_id}',
+  cancelLegacy: process.env.REACT_APP_API_IMPORT_CANCEL_LEGACY || '/api/import/cancel/{task_id}',
   tasksLegacy: process.env.REACT_APP_API_IMPORT_TASKS_LEGACY || '/api/import/tasks',
   uploadDataImport: process.env.REACT_APP_API_DATA_IMPORT_UPLOAD || '/data-import/upload',
   statusDataImport: process.env.REACT_APP_API_DATA_IMPORT_STATUS || '/data-import/status/{task_id}',
   previewDataImport: process.env.REACT_APP_API_DATA_IMPORT_PREVIEW || '/data-import/preview/{task_id}',
   preCommitDataImport: process.env.REACT_APP_API_DATA_IMPORT_PRE_COMMIT || '/data-import/pre-commit/{task_id}',
   commitDataImport: process.env.REACT_APP_API_DATA_IMPORT_COMMIT || '/data-import/commit/{task_id}',
+  cancelDataImport: process.env.REACT_APP_API_DATA_IMPORT_CANCEL || '/data-import/cancel/{task_id}',
   tasksDataImport: process.env.REACT_APP_API_DATA_IMPORT_TASKS || '/data-import/tasks',
 };
 
@@ -148,7 +150,7 @@ const IMPORT_ENDPOINTS = {
  * Ingestion Endpoints (v1)
  */
 const INGESTION_ENDPOINTS = {
-  ingestData: process.env.REACT_APP_API_INGEST_DATA || '/api/v1/ingestion/ingest-data',
+  ingestData: process.env.REACT_APP_API_INGEST_DATA || '/api/v1/ingest-data',
   ingestDataRoot: process.env.REACT_APP_API_INGEST_DATA_ROOT || '/api/v1/ingest-data',
 };
 

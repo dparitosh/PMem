@@ -13,7 +13,7 @@ Scope:
 | App / service | Runtime | Entry point | Port | Purpose | Current state |
 | --- | --- | --- | --- | --- | --- |
 | Frontend UI | React / CRA | `frontend/src/App.js`, started by `start_frontend.bat` or `npm start` | `3000` | Main user interface: landing page, graph, table, reports, data import, semantic bridge, digital thread, recommendations | Active. Uses `frontend/src/config.js` plus `frontend/.env` / `.env.example` for backend endpoints. |
-| Backend API | FastAPI / Uvicorn | `backend/main.py`, started by `start_backend.bat` | `8000` | API service surface for graph, ontology, import, admin, chat, recommendations, webhook, and traceability workflows | Active. OpenAPI reports 78 paths. |
+| Backend API | FastAPI / Uvicorn | `backend/main.py`, started by `start_backend.bat` | `8000` | API service surface for graph, ontology, import, admin, chat, recommendations, webhook, and traceability workflows | Active. Edited app OpenAPI reports 90 paths. |
 | Neo4j database | External DB | configured by `backend/.env` | usually `7687` | Graph persistence and query execution | Required for graph, ontology, recommendations, traceability, schema cleanup. Current logs show placeholder host `your-neo4j-instance:7687`; this must be corrected in runtime env. |
 | Ollama / LLM service | Optional external service | `backend/Services/ollama_service.py`, `backend/core/llm.py` | configured externally | Chat and optional import assistant functionality | Optional. Backend has health/query endpoints under import for Ollama. |
 
@@ -28,7 +28,7 @@ Live paths are grouped by user-facing service responsibility.
 | Ontology graph browsing | `GET /ontology/options`, `GET /ontology/{ontology_type}`, `GET /ontology/{ontology_type}/instances`, `GET /ontology/step/parts`, `GET /ontology/step/{part_name}`, `GET /ontology/mbse-instances` | `backend/main.py` | `GraphHEB.js` |
 | Ontology upload and registry | `POST /api/v1/ontology/upload`, `GET /api/v1/ontology/registered`, `POST /api/v1/ontology/merge`, `POST /api/v1/ontology/cleanup-old-xsd` | `backend/Services/unified_import_router.py`, `backend/Services/ontology_upload_manager.py` | `OntologyContext.js`, `OntologyMapper.js`, `GraphHEB.js`, `DataImportPipeline.js`, `apiClient.js` |
 | Semantic bridge / ontology mapping | `GET /api/v1/ontology/{prefix}/data-dictionary`, `GET /api/v1/ontology/{prefix}/mappings/{source_format}`, `POST /api/v1/ontology/{prefix}/map-entity`, `GET /ontology-mapper/*`, `GET /ontology-mappings` | `backend/routes/ontology_routes.py`, `backend/main.py`, `backend/Services/ontology_mapper_service.py`, `backend/Services/ap239_mapper_service.py` | `OntologyMapper.js`, `OntologyMetadataForm.js`, `apiClient.js` |
-| Data import pipeline | `POST /api/v1/import/upload`, `GET /api/v1/import/status/{task_id}`, `GET /api/v1/import/preview/{task_id}`, `GET /api/v1/import/pre-commit/{task_id}`, `POST /api/v1/import/commit/{task_id}`, `GET /api/v1/import/tasks`, legacy `/api/import/*`, `/data-import/*` | `backend/main.py`, `backend/Services/unified_data_import.py`, `backend/Services/data_import_service.py`, parsers in `backend/Services/*_parser.py` | `DataImportPipeline.js`, `apiClient.js` |
+| Data import pipeline | `POST /api/v1/import/upload`, `GET /api/v1/import/status/{task_id}`, `GET /api/v1/import/preview/{task_id}`, `GET /api/v1/import/pre-commit/{task_id}`, `POST /api/v1/import/commit/{task_id}`, `POST /api/v1/import/cancel/{task_id}`, `GET /api/v1/import/formats`, `GET /api/v1/import/owl/{task_id}`, `GET /api/v1/import/tasks`, legacy `/api/import/*`, `/data-import/*` | `backend/main.py`, `backend/Services/unified_data_import.py`, `backend/Services/data_import_service.py`, parsers in `backend/Services/*_parser.py` | `DataImportPipeline.js`, `apiClient.js` |
 | Data ingestion router | `POST /api/v1/ingest-data` | `backend/data_ingestion.py` | No direct current component use found. `frontend/.env.example` maps stale `/api/v1/ingestion/ingest-data`, not the live `/api/v1/ingest-data`. |
 | 3DXML extraction | `POST /api/v1/ontology/extract-3dxml`, `GET /api/v1/ontology/3dxml/status/{task_id}`, `GET /api/v1/ontology/3dxml/formats` | `backend/routes/threedxml_routes.py`, `backend/Services/threedxml_ontology_extractor.py`, `backend/Services/splm_ontology_extractor.py` | `apiClient.js` mapped; no direct component use found in current UI. |
 | Admin / cleanup | `GET /api/v1/admin/health`, `POST /api/v1/admin/clean-schema`, `GET /api/v1/admin/schema-stats`, `POST /api/v1/admin/reset-database` | `backend/routes/admin_routes.py`, `backend/Services/neo4j_schema_cleaner.py` | `GraphHEB.js`, `apiClient.js` |
@@ -96,39 +96,38 @@ All UI work should use `frontend/src/config.js` and `frontend/src/services/apiCl
 | `frontend/src/config.js` | Endpoint mapping and `REACT_APP_*` env binding | Correct source for environment mapping. Some stale/planned mappings remain. |
 | `frontend/src/Components/LandingPage.js` | `healthAPI.graphMetrics`, `healthAPI.ontologiesAvailable` | Correct. Depends on `/graph-metrics` and `/ontologies/available`. |
 | `frontend/src/Components/GraphHEB.js` | graph, ontology, admin, cleanup, recommendation prefill | Heavy API user. Should be split later: graph data hook, ontology controls hook, admin tools hook. Has direct `apiClient.get/post(API...)` calls; acceptable but not fully centralized through typed wrapper methods. |
-| `frontend/src/Components/DataImportPipeline.js` | import upload/status/preview/pre-commit/commit/cancel | Correct workflow goes through FastAPI. Risk: `API.import.cancel` is mapped but not live in OpenAPI. Commit uses `fetch` instead of `apiClient`; consider converting for consistent error handling. |
+| `frontend/src/Components/DataImportPipeline.js` | import upload/status/preview/pre-commit/commit/cancel | Correct workflow goes through FastAPI. Cancel route is now live. Commit uses `fetch` instead of `apiClient`; consider converting for consistent error handling. |
 | `frontend/src/Components/OntologyMapper.js` | ontology mapper, ontology registry, merge | Requires mapping/data-dictionary/vocabulary/stats endpoints. Should continue using configured paths only. |
 | `frontend/src/contexts/OntologyContext.js` | `API_METHODS.ontology.listRegistered` | Correct shared polling source for registered ontologies. |
 | `frontend/src/Components/Chatbot.js` | chat stream and sample queries | Uses `fetch` for streaming; acceptable for SSE-like streaming, but still uses `buildUrl(API...)`. |
 | `frontend/src/Components/DigitalThreadTracer.jsx` | `POST /trace/digital-thread` | Correctly goes through `apiClient` and `API.integration.digitalThreadTrace`. |
 | `frontend/src/Components/RecommendationsTab.js` | recommendations service wrappers | Correct use of `API_METHODS.recommendations`. |
-| `frontend/src/Components/WhereUsedView.js` | graph filter and traversal | Uses configured graph endpoints. Risk: uses `/graphfilter`, which is not live in current OpenAPI; should use `/graphfilter-multi` or backend should restore `/graphfilter`. |
+| `frontend/src/Components/WhereUsedView.js` | graph filter and traversal | Uses configured graph endpoints. `/graphfilter` has been restored in backend. |
 | `frontend/src/SchemaContext.js` | schema endpoint | Correct. |
 
 ## 5. API Mapping Gaps
 
-OpenAPI comparison found that every live backend path has a corresponding frontend env mapping, but the frontend also maps endpoints that are not live.
+OpenAPI comparison against the edited FastAPI app found:
+- Live backend paths missing from `frontend/.env.example`: `0`
+- Frontend-mapped paths not live in backend: `13`
 
 ### Frontend-Mapped But Not Live In Backend
 
 | Endpoint | Impact | Recommendation |
 | --- | --- | --- |
 | `/api/v1/documents/*` | `documentAPI` wrappers will fail if wired into UI | Either include `backend/Services/documents_api.py` router and fix its imports, or remove/hide document UI mappings. |
-| `/api/v1/import/cancel/{task_id}` | Data import cancel button can fail | Add backend cancel route or remove cancel UI. |
-| `/api/v1/import/owl/{task_id}` | OWL download wrapper can fail | Add route or remove wrapper. |
-| `/api/v1/import/convert-schema`, `/parse-schema`, `/process-stages-4-7`, `/formats`, `/map-ontology` | Older/newer pipeline wrappers not live | Confirm whether these belong to `data_import_service.py`; expose through router or delete mappings. |
-| `/api/v1/ingestion/ingest-data` | Wrong frontend env path | Change to live `/api/v1/ingest-data` or update backend router prefix. |
-| `/graphfilter` | Used by `GraphHEB.js` and `WhereUsedView.js` | Backend live route is `/graphfilter-multi`; restore single-search route or refactor frontend to multi route. |
-| `/comparative-search` | Used by `GraphHEB.js` comparative search | Add backend route or hide/disable UI feature. |
+| `/api/v1/import/convert-schema`, `/parse-schema`, `/process-stages-4-7`, `/map-ontology` | Older/newer pipeline wrappers not live | Confirm whether these belong to `data_import_service.py`; expose through router or delete mappings. |
 | `/reports` | Wrapped by `schemaAPI.getReports`; not live | Reports tab currently appears mostly local/graph-derived; remove wrapper or add backend route. |
+| `/graphtraverse` | Base path mapping is not live | Keep `/graphtraverse/{node_id}` and remove the unused base mapping if no component needs it. |
 | `/api/ontology/upload`, `/api/ontology/registered`, `/api/v1/ontology` | Legacy/stale ontology paths | Prefer `/api/v1/ontology/upload` and `/api/v1/ontology/registered`; remove unneeded legacy mappings after UI migration. |
+| `/api/v1/documents/*` | Document wrappers are mapped but the document router is not mounted | Mount and fix `backend/Services/documents_api.py`, or remove document wrappers until the UI uses them. |
 
 ## 6. Recommended Cleanup Order
 
 1. Fix environment/runtime first: ensure `backend/.env` has the real Neo4j URI/user/password and the running backend process is restarted.
-2. Restore or remove stale frontend API mappings:
-   - Highest priority: `/graphfilter`, `/comparative-search`, `/api/v1/import/cancel/{task_id}` because current UI can call them.
-   - Medium priority: documents and schema conversion routes, unless they are planned features.
+2. Restore or remove remaining stale frontend API mappings:
+   - Highest priority: `/api/v1/import/convert-schema`, `/api/v1/import/parse-schema`, `/api/v1/import/process-stages-4-7`, `/api/v1/import/map-ontology` if the import UI will expose those controls.
+   - Medium priority: documents and `/reports`, unless they are planned features.
 3. Move non-service backend scripts:
    - Move `analyze_splm_structure.py`, `debug_excel.py`, `debug_excel2.py`, `test_ontology_pipeline.py` into `backend/tools/` or `backend/tests/`.
 4. Split `backend/main.py` into routers by service group:

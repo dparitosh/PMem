@@ -1752,17 +1752,166 @@ async def get_instance_graph():
     - Includes time, provenance, and contextual metadata
     - Color: Green for instances (#27AE60), Yellow for contextual (#F39C12)
     """
-    
-    
-    
-    try:
-        input_val = request.search.strip()
+    instance_query = """
+        MATCH (n)
+        WHERE NOT (
+            n:OntologyClass OR n:Class OR n:ObjectProperty OR n:DatatypeProperty
+            OR n:DatasheetChunk OR n:GraphChunk
+        )
+        OPTIONAL MATCH (n)-[r]-(m)
+        WHERE NOT (
+            m:OntologyClass OR m:Class OR m:ObjectProperty OR m:DatatypeProperty
+            OR m:DatasheetChunk OR m:GraphChunk
+        )
+        RETURN
+          {
+            elementId: elementId(n),
+            labels: labels(n),
+            properties: properties(n),
+            layerType: 'instance',
+            color: '#27AE60'
+          } AS n,
+          CASE WHEN r IS NOT NULL THEN
+            {
+              elementId: elementId(r),
+              type: type(r),
+              properties: properties(r),
+              start: elementId(startNode(r)),
+              end: elementId(endNode(r))
+            }
+          ELSE NULL END AS r,
+          CASE WHEN m IS NOT NULL THEN
+            {
+              elementId: elementId(m),
+              labels: labels(m),
+              properties: properties(m),
+              layerType: 'instance',
+              color: '#27AE60'
+            }
+          ELSE NULL END AS m
+        LIMIT 1000
+    """
 
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        results = await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: graph.query(instance_query)),
+            timeout=20.0,
+        )
+        return {"results": results or [], "layerType": "instance"}
+    except asyncio.TimeoutError:
+        logger.warning("/instance-graph timed out")
+        return {"results": [], "message": "Instance graph query timed out"}
+    except Exception as e:
+        logger.warning(f"/instance-graph error: {type(e).__name__}: {str(e)}")
+        return {"results": [], "message": "Failed to fetch instance graph"}
+
+
+@app.post("/graphfilter")
+def filter_graph_nodes(request: TextSearchRequest):
+    """Search graph nodes by text and return local relationships in graphvis shape."""
+    input_val = (request.search or "").strip()
+    if not input_val:
+        return {"results": []}
+
+    query = """
+        MATCH (n)
+        WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
+          AND (
+            toLower(coalesce(n.name, '')) CONTAINS toLower($input)
+            OR toLower(coalesce(n.label, '')) CONTAINS toLower($input)
+            OR toLower(coalesce(n.FileName, '')) CONTAINS toLower($input)
+            OR toLower(coalesce(n.id, '')) CONTAINS toLower($input)
+            OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($input))
+          )
+        WITH collect(DISTINCT n)[..100] AS matchedNodes
+        UNWIND matchedNodes AS n
+        OPTIONAL MATCH (n)-[r]-(m)
+        WHERE m IN matchedNodes
+        RETURN
+          {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
+          CASE WHEN r IS NOT NULL THEN {
+            elementId: elementId(r),
+            type: type(r),
+            properties: properties(r),
+            start: elementId(startNode(r)),
+            end: elementId(endNode(r))
+          } ELSE null END AS r,
+          CASE WHEN m IS NOT NULL THEN {
+            elementId: elementId(m), labels: labels(m), properties: properties(m)
+          } ELSE null END AS m
+    """
+    try:
         results = graph.query(query, params={"input": input_val})
         return {"results": results}
-    
     except Exception as e:
         safe_error("/graphfilter", e)
+
+
+class ComparativeSearchRequest(BaseModel):
+    nodeType: str = ""
+    name: str = ""
+    version: str = ""
+
+
+@app.post("/comparative-search")
+def comparative_search(request: ComparativeSearchRequest):
+    """Search a node by type/name/version for the graph comparison UI."""
+    node_type = (request.nodeType or "").strip()
+    name = (request.name or "").strip()
+    version = (request.version or "").strip()
+
+    if not name and not node_type and not version:
+        return {"results": []}
+
+    query = """
+        MATCH (n)
+        WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
+          AND (
+            $name = ''
+            OR toLower(coalesce(n.name, '')) CONTAINS toLower($name)
+            OR toLower(coalesce(n.label, '')) CONTAINS toLower($name)
+            OR toLower(coalesce(n.FileName, '')) CONTAINS toLower($name)
+            OR toLower(coalesce(n.id, '')) CONTAINS toLower($name)
+          )
+          AND (
+            $node_type = ''
+            OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($node_type))
+            OR toLower(coalesce(n.type, '')) CONTAINS toLower($node_type)
+            OR toLower(coalesce(n.node_type, '')) CONTAINS toLower($node_type)
+          )
+          AND (
+            $version = ''
+            OR toLower(coalesce(n.version, '')) CONTAINS toLower($version)
+            OR toLower(coalesce(n.Version, '')) CONTAINS toLower($version)
+            OR toLower(coalesce(n.revision, '')) CONTAINS toLower($version)
+          )
+        WITH collect(DISTINCT n)[..100] AS matchedNodes
+        UNWIND matchedNodes AS n
+        OPTIONAL MATCH (n)-[r]-(m)
+        WHERE m IN matchedNodes
+        RETURN
+          {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
+          CASE WHEN r IS NOT NULL THEN {
+            elementId: elementId(r),
+            type: type(r),
+            properties: properties(r),
+            start: elementId(startNode(r)),
+            end: elementId(endNode(r))
+          } ELSE null END AS r,
+          CASE WHEN m IS NOT NULL THEN {
+            elementId: elementId(m), labels: labels(m), properties: properties(m)
+          } ELSE null END AS m
+    """
+    try:
+        results = graph.query(
+            query,
+            params={"node_type": node_type, "name": name, "version": version},
+        )
+        return {"results": results}
+    except Exception as e:
+        safe_error("/comparative-search", e)
 
 
 class MultiNameSearchRequest(BaseModel):
@@ -3096,6 +3245,70 @@ def get_import_status(task_id: str):
         }
     except Exception as e:
         safe_error("/data-import/status/{task_id}", e)
+
+
+@app.post("/api/v1/import/cancel/{task_id}")
+@app.post("/api/import/cancel/{task_id}")
+@app.post("/data-import/cancel/{task_id}")
+def cancel_import(task_id: str):
+    """Cancel a processing import task."""
+    try:
+        from backend.Services.unified_data_import import UnifiedDataImportService
+
+        status = UnifiedDataImportService.get_status(task_id)
+        if not status:
+            raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
+
+        UnifiedDataImportService.cancel_import(task_id)
+        updated = UnifiedDataImportService.get_status(task_id) or status
+        return {
+            "task_id": task_id,
+            "status": updated.get("status"),
+            "message": "Import task cancelled" if updated.get("status") == "cancelled" else "Task is not in a cancellable state",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        safe_error("/api/v1/import/cancel/{task_id}", e)
+
+
+@app.get("/api/v1/import/formats")
+def get_import_formats():
+    """Return supported import file extensions."""
+    try:
+        from backend.Services.unified_data_import import FileFormatDetector
+
+        return {
+            "supported_formats": FileFormatDetector.get_supported_formats(),
+            "formats": FileFormatDetector.get_supported_formats(),
+        }
+    except Exception as e:
+        safe_error("/api/v1/import/formats", e)
+
+
+@app.get("/api/v1/import/owl/{task_id}")
+def get_import_owl(task_id: str):
+    """Return generated OWL/Turtle content for an import task when available."""
+    try:
+        from backend.Services.unified_data_import import UnifiedDataImportService
+
+        status = UnifiedDataImportService.get_status(task_id)
+        if not status:
+            raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
+
+        owl_ttl = status.get("owl_ttl")
+        if not owl_ttl:
+            raise HTTPException(status_code=404, detail=f"No OWL content available for task: {task_id}")
+
+        return {
+            "task_id": task_id,
+            "format": "text/turtle",
+            "owl_ttl": owl_ttl,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        safe_error("/api/v1/import/owl/{task_id}", e)
 
 
 @app.get("/api/v1/import/tasks")
