@@ -1,17 +1,14 @@
-# Utility: Clean all nodes and relationships from Neo4j (SPDMS DB)
-from neo4j import GraphDatabase
+"""Compatibility wrapper for Neo4j cleanup.
 
-NEO4J_URI = "bolt://localhost:7687"
-NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "tcs12345"
-NEO4J_DB = "spdms"
+This file used to contain hardcoded local Neo4j credentials and deleted all
+nodes immediately. Keep it importable for old commands, but delegate the actual
+work to the guarded admin tool.
+"""
 
-def clean_schema():
-    driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
-    with driver.session(database=NEO4J_DB) as session:
-        session.run("MATCH (n) DETACH DELETE n")
-    driver.close()
-    print("All nodes and relationships deleted from Neo4j (SPDMS DB).")
+from __future__ import annotations
+
+from tools.admin.cleanup_neo4j import main
+
 
 if __name__ == "__main__":
-    clean_schema()
+    raise SystemExit(main())

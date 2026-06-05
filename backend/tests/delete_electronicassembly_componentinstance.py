@@ -1,17 +1,52 @@
-# Utility: Delete all ElectronicAssembly and ComponentInstance nodes from Neo4j
-from neo4j import GraphDatabase
+"""Delete ElectronicAssembly and ComponentInstance test nodes.
 
-NEO4J_URI = "bolt://localhost:7687"
-NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "tcs12345"
-NEO4J_DB = "spdms"
+This is intentionally guarded because it mutates Neo4j data. Connection
+settings come from `backend/.env` through the centralized db config.
+"""
 
-def delete_test_nodes():
-    driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
-    with driver.session(database=NEO4J_DB) as session:
-        session.run("MATCH (n) WHERE n:ElectronicAssembly OR n:ComponentInstance DETACH DELETE n")
-    driver.close()
-    print("Deleted all ElectronicAssembly and ComponentInstance nodes.")
+from __future__ import annotations
+
+import argparse
+
+from dotenv import load_dotenv
+
+from backend.core.db_config import Neo4jConnection, get_config
+
+
+def delete_test_nodes() -> int:
+    cfg = get_config()
+    with Neo4jConnection(database=cfg.database) as session:
+        before = session.run(
+            """
+            MATCH (n)
+            WHERE n:ElectronicAssembly OR n:ComponentInstance
+            RETURN count(n) AS count
+            """
+        ).single()["count"]
+        session.run(
+            """
+            MATCH (m)
+            WHERE m:ElectronicAssembly OR m:ComponentInstance
+            DETACH DELETE m
+            """
+        )
+    return int(before)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--env-file", default="backend/.env")
+    parser.add_argument("--yes", action="store_true", help="Required for destructive cleanup.")
+    args = parser.parse_args()
+
+    if not args.yes:
+        raise SystemExit("Refusing to delete Neo4j nodes without --yes.")
+
+    load_dotenv(args.env_file)
+    deleted = delete_test_nodes()
+    print(f"Deleted {deleted} ElectronicAssembly/ComponentInstance nodes.")
+    return 0
+
 
 if __name__ == "__main__":
-    delete_test_nodes()
+    raise SystemExit(main())
