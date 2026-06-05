@@ -148,6 +148,8 @@ export const graphAPI = {
     apiClient.post(buildUrl(API.graph.graphfilterMulti), filters),
   traverse: (nodeId) => 
     apiClient.get(buildUrl(replaceParams(API.graph.graphtraverse, { node_id: nodeId }))),
+  getSchemaGraph: () => apiClient.get(buildUrl(API.graph.schemaGraph)),
+  getInstanceGraph: () => apiClient.get(buildUrl(API.graph.instanceGraph)),
   getOntologyInstances: (ontologyId, params = {}) =>
     apiClient.get(buildUrl(replaceParams(API.graph.ontologyInstances, { ontology: ontologyId })), { params }),
 };
@@ -158,6 +160,8 @@ export const schemaAPI = {
   getAP242RotorPmi: () => apiClient.get(buildUrl(API.schema.ap242RotorPmi)),
   searchAP242: (query) => 
     apiClient.post(buildUrl(API.schema.ap242Search), { query }),
+  getReports: (type, page = 1, pageSize = 10) =>
+    apiClient.post(buildUrl(API.schema.reports), { type, page, page_size: pageSize }),
 };
 
 // ========== CHAT ENDPOINTS ==========
@@ -166,6 +170,7 @@ export const chatAPI = {
     apiClient.post(buildUrl(API.chat.chat), { message, session_id: sessionId }),
   streamChat: (message, sessionId = null) => 
     apiClient.post(buildUrl(API.chat.chatStream), { message, session_id: sessionId }),
+  sampleQueries: () => apiClient.get(buildUrl(API.chat.sampleQueries)),
 };
 
 // ========== ONTOLOGY ENDPOINTS ==========
@@ -209,11 +214,12 @@ export const ontologyAPI = {
     return apiClient.get(buildUrl(`${API.ontology.alignmentOptions}${suffix}`));
   },
   merge: (fromOntologyId, toOntologyId, options = {}) =>
-    apiClient.post(buildUrl('/api/v1/ontology/merge'), {
+    apiClient.post(buildUrl(API.ontology.merge), {
       from_ontology_id: fromOntologyId,
       to_ontology_id: toOntologyId,
       ...(options || {}),
     }),
+  cleanupOldXsd: (body) => apiClient.post(buildUrl(API.ontology.cleanupOldXsd), body),
 };
 
 // ========== DATA IMPORT ENDPOINTS ==========
@@ -238,7 +244,7 @@ export const importAPI = {
       timeout: 300000, // 5 minutes — Neo4j batch commit to AuraDB can take 2-3 min
     }),
   preCommitCheck: (taskId) =>
-    apiClient.get(buildUrl(`/api/v1/import/pre-commit/${taskId}`), { timeout: 15000 }),
+    apiClient.get(buildUrl(replaceParams(API.import.preCommit, { task_id: taskId })), { timeout: 15000 }),
   cancel: (taskId) => 
     apiClient.post(buildUrl(replaceParams(API.import.cancel, { task_id: taskId }))),
   getOWL: (taskId) => 
@@ -296,6 +302,27 @@ export const documentAPI = {
   checkHealth: () => apiClient.get(buildUrl(API.document.health)),
 };
 
+// ========== ADMIN ENDPOINTS ==========
+export const adminAPI = {
+  health: () => apiClient.get(buildUrl(API.admin.health)),
+  cleanSchema: () =>
+    apiClient.post(buildUrl(API.admin.cleanSchema), { confirm: 'CLEAN_NEO4J_SCHEMA' }),
+  schemaStats: () => apiClient.get(buildUrl(API.admin.schemaStats)),
+  resetDatabase: (recreateIndexes = true) =>
+    apiClient.post(buildUrl(API.admin.resetDatabase), null, { params: { recreate_indexes: recreateIndexes } }),
+};
+
+// ========== RECOMMENDATION ENDPOINTS ==========
+export const recommendationsAPI = {
+  changeImpact: (changeName) =>
+    apiClient.post(buildUrl(API.recommendations.changeImpact), { change_name: changeName }),
+  similarParts: (partName, topN = 10) =>
+    apiClient.post(buildUrl(API.recommendations.similarParts), { part_name: partName, top_n: topN }),
+  manufacturing: (partName) =>
+    apiClient.post(buildUrl(API.recommendations.manufacturing), { part_name: partName }),
+  health: () => apiClient.get(buildUrl(API.recommendations.health)),
+};
+
 /**
  * Export unified API object for convenience
  */
@@ -308,6 +335,8 @@ export const API_METHODS = {
   import: importAPI,
   ingestion: ingestionAPI,
   document: documentAPI,
+  admin: adminAPI,
+  recommendations: recommendationsAPI,
 };
 
 /**

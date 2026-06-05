@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
-import config from './config';
+import { API, buildUrl } from './config';
+import { apiClient } from './services/apiClient';
 
 const SchemaContext = createContext(null);
 
@@ -33,7 +33,7 @@ export function SchemaProvider({ children }) {
       try {
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
           try {
-            const res = await axios.get(`${config.apiUrl}/schema`, { timeout: 20000 });
+            const res = await apiClient.get(buildUrl(API.schema.schema), { timeout: 20000 });
             if (!cancelled) setSchema(res.data);
             return;
           } catch (err) {

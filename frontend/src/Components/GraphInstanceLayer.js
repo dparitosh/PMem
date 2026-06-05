@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import '../CSS/GraphHEB.css';
-import { apiClient } from '../services/apiClient';
+import { API_METHODS } from '../services/apiClient';
 import { safeGet } from '../utils/safeAccess';
 
 /**
@@ -85,7 +85,7 @@ export const GraphInstanceLayer = ({ onNodeClick, selectedNode, highlightedNodes
         setLoading(true);
         console.log('Fetching instance graph...');
         
-        const response = await apiClient.get('/instance-graph');
+        const response = await API_METHODS.graph.getInstanceGraph();
         
         if (!response || !response.data || !response.data.results) {
           throw new Error('Invalid instance graph response');

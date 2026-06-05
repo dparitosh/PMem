@@ -204,7 +204,7 @@ const Chatbot = ({ setChatResults }) => {
         // Fetch dynamic sample queries from backend
         const fetchSampleQueries = async () => {
             try {
-                const response = await fetch(buildUrl('/chat/sample-queries'), {
+                const response = await fetch(buildUrl(API.chat.sampleQueries), {
                     method: 'GET',
                     headers: { 'Content-Type': 'application/json' },
                 });

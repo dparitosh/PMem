@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
+import { API_METHODS } from '../services/apiClient';
 
 // Simplified clean ReportsTab component with Search + backend report types.
 // Generic version - works with any node types
@@ -97,7 +97,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
     const fetchReport = async (type,page=1) => {
         setLoading(true);
         try {
-            const res = await axios.post('http://localhost:8000/reports', { type, page, page_size: itemsPerPage });
+            const res = await API_METHODS.schema.getReports(type, page, itemsPerPage);
             const rows = res.data?.data || [];
             setReportData(stripUnwanted(rows));
             setTotalItems(res.data?.total_items || rows.length);

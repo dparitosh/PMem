@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import '../CSS/GraphHEB.css';
-import { apiClient } from '../services/apiClient';
+import { API_METHODS } from '../services/apiClient';
 import { safeGet } from '../utils/safeAccess';
 
 /**
@@ -51,7 +51,7 @@ export const GraphSchemaLayer = ({ onNodeClick, selectedNode, highlightedNodes =
         setLoading(true);
         console.log('Fetching schema graph...');
         
-        const response = await apiClient.get('/schema-graph');
+        const response = await API_METHODS.graph.getSchemaGraph();
         
         if (!response || !response.data || !response.data.results) {
           throw new Error('Invalid schema graph response');

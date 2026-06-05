@@ -555,7 +555,7 @@ export default function DataImportPipeline() {
     // Show a quick checking state in the modal before closing it
     try {
       const checkRes = await apiClient.get(
-        buildUrl(`/api/v1/import/pre-commit/${taskId}`),
+        buildUrl(replaceParams(API.import.preCommit, { task_id: taskId })),
         { timeout: 15000 }
       );
       const check = checkRes.data || {};
@@ -1389,7 +1389,7 @@ export default function DataImportPipeline() {
                           setPreviewTaskId(status.taskId);
                           // Run pre-commit check immediately when modal opens
                           setPreCheck({ loading: true });
-                          apiClient.get(buildUrl(`/api/v1/import/pre-commit/${status.taskId}`), { timeout: 15000 })
+                          apiClient.get(buildUrl(replaceParams(API.import.preCommit, { task_id: status.taskId })), { timeout: 15000 })
                             .then(r => setPreCheck({ loading: false, ...r.data }))
                             .catch(() => setPreCheck({ loading: false, ready: true, checks: {}, reason: null }));
                         }}

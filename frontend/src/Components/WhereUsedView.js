@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
 import * as d3 from 'd3';
 import '../App.css';
-import config from '../config';
+import { API, buildUrl, replaceParams } from '../config';
+import { apiClient } from '../services/apiClient';
 import { useSchema } from '../SchemaContext';
 import { buildTooltipHeader } from './tooltipBuilder';
 import logger from '../utils/logger';
@@ -106,7 +106,7 @@ const WhereUsedView = ({
         setSearchError(null);
         try {
             // Use graphfilter endpoint similar to GraphHEB implementation
-            const response = await axios.post(`${config.apiUrl}/graphfilter`, { search: term.toLowerCase() });
+            const response = await apiClient.post(buildUrl(API.graph.graphfilter), { search: term.toLowerCase() });
             const records = response.data?.results || [];
             if (records.length === 0) {
                 setHierarchySearchResults([]);
@@ -184,7 +184,7 @@ const WhereUsedView = ({
 
                 // Call traverse API for current node
                 try {
-                    const resp = await axios.get(`${config.apiUrl}/graphtraverse/${currentNode.elementId}`);
+                    const resp = await apiClient.get(buildUrl(replaceParams(API.graph.graphtraverseNode, { node_id: currentNode.elementId })));
                     const records = resp.data?.results || [];
                     records.forEach(record => {
                         const n = record['n'];

@@ -4327,7 +4327,7 @@ const boundaryForce = (width, height) => {
     const ok = window.confirm('Clean Neo4j schema? This will delete all nodes and relationships.');
     if (!ok) return;
     try {
-      const res = await apiClient.post('/api/v1/admin/clean-schema', {
+      const res = await apiClient.post(API.admin.cleanSchema, {
         confirm: 'CLEAN_NEO4J_SCHEMA',
       });
       const msg = res?.data?.message || 'Schema cleanup completed.';
@@ -4341,7 +4341,7 @@ const boundaryForce = (width, height) => {
 
   const handleDeleteOldXsdSchemas = useCallback(async () => {
     try {
-      const preview = await apiClient.post('/api/v1/ontology/cleanup-old-xsd', {
+      const preview = await apiClient.post(API.ontology.cleanupOldXsd, {
         dry_run: true,
         delete_from_neo4j: true,
       });
@@ -4356,7 +4356,7 @@ const boundaryForce = (width, height) => {
       );
       if (!ok) return;
 
-      const result = await apiClient.post('/api/v1/ontology/cleanup-old-xsd', {
+      const result = await apiClient.post(API.ontology.cleanupOldXsd, {
         dry_run: false,
         delete_from_neo4j: true,
         confirm: 'DELETE_OLD_XSD',

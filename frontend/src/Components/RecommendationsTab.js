@@ -6,7 +6,7 @@ import {
   CheckCircle, Minus, AlertTriangle,
   Info,
 } from 'lucide-react';
-import { apiClient } from '../services/apiClient';
+import { API_METHODS } from '../services/apiClient';
 
 // ============================================================
 // Corporate Design Tokens — TCS Blue / Infineon Brand System
@@ -441,11 +441,11 @@ const RecommendationsTab = ({ setActiveTab }) => {
     try {
       let resp;
       if (activeService === 'change-impact') {
-        resp = await apiClient.post('/recommendations/change-impact', { change_name: inputValue.trim() });
+        resp = await API_METHODS.recommendations.changeImpact(inputValue.trim());
       } else if (activeService === 'similar-parts') {
-        resp = await apiClient.post('/recommendations/similar-parts', { part_name: inputValue.trim(), top_n: topN });
+        resp = await API_METHODS.recommendations.similarParts(inputValue.trim(), topN);
       } else if (activeService === 'manufacturing') {
-        resp = await apiClient.post('/recommendations/manufacturing', { part_name: inputValue.trim() });
+        resp = await API_METHODS.recommendations.manufacturing(inputValue.trim());
       }
       setResult(resp.data);
     } catch (err) {
