@@ -4797,15 +4797,17 @@ const boundaryForce = (width, height) => {
  
   {/* ✅ INTERACTIVE CONTROL TOOLBAR - NEW */}
   <div style={{
-    position:'absolute', top:12, left:12, zIndex:11,
+    position:'absolute', top:12, left:12, zIndex:20,
+    maxWidth:'min(760px, calc(100% - 24px))',
     background: 'rgba(255,255,255,0.97)', 
     backdropFilter: 'blur(10px)',
     padding:'12px 16px', 
     borderRadius:'8px',
     boxShadow:'0 4px 16px rgba(0,0,0,0.15)',
     display:'flex', 
-    alignItems:'center', 
-    gap:'16px',
+    flexDirection:'column',
+    alignItems:'stretch',
+    gap:'8px',
     border: '1px solid rgba(0,0,0,0.08)'
   }}>
     {/* Mode Toggle Buttons */}
@@ -4851,7 +4853,7 @@ const boundaryForce = (width, height) => {
 
     {/* Ontology Selector - Show when in Ontology mode */}
     {graphViewMode === 'ontology' && (
-      <div style={{ display:'flex', gap:'8px', alignItems:'center', borderLeft:'1px solid #e0e0e0', paddingLeft:'16px' }}>
+      <div style={{ display:'flex', gap:'8px', alignItems:'center', flexWrap:'wrap' }}>
         <label style={{ fontSize:'12px', fontWeight:'600', color:'#2c3e50' }}>Ontology:</label>
         <select
           value={selectedOntology}
@@ -4870,7 +4872,8 @@ const boundaryForce = (width, height) => {
             fontWeight:'500',
             fontSize:'11px',
             cursor:'pointer',
-            minWidth:'140px',
+            minWidth:'180px',
+            maxWidth:'100%',
             transition:'border-color 0.2s'
           }}
           title="Select ontology to visualize"
@@ -4887,7 +4890,16 @@ const boundaryForce = (width, height) => {
     )}
 
     {/* Mode Status Text */}
-    <div style={{ fontSize:'11px', color:'#7f8c8d', marginLeft:'auto', minWidth:'max-content' }}>
+    <div style={{
+      fontSize:'11px',
+      color:'#52606d',
+      background:'#f7f9fb',
+      border:'1px solid #d9e2ec',
+      borderRadius:'5px',
+      padding:'5px 8px',
+      lineHeight:1.35,
+      whiteSpace:'normal'
+    }}>
       {graphViewMode === 'individual' ? 'Showing instance nodes & connections' : `Showing ontology classes${selectedOntology !== 'ALL' ? ` (${selectedOntology})` : ''}`}
     </div>
   </div>
