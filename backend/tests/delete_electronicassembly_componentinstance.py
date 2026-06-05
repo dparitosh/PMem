@@ -7,8 +7,16 @@ settings come from `backend/.env` through the centralized db config.
 from __future__ import annotations
 
 import argparse
+import os
+import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+os.chdir(REPO_ROOT)
 
 from backend.core.db_config import Neo4jConnection, get_config
 

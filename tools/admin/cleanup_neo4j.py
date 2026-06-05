@@ -17,6 +17,11 @@ from backend.core.db_config import Neo4jConnection, get_config
 
 def wipe_neo4j(batch_size: int) -> None:
     cfg = get_config()
+    if "your-neo4j-instance" in cfg.uri:
+        raise SystemExit(
+            "Refusing cleanup because NEO4J_URI still points to "
+            "'your-neo4j-instance'. Update backend/.env with the real Neo4j URI first."
+        )
     with Neo4jConnection(database=cfg.database) as session:
         before = session.run("MATCH (n) RETURN count(n) AS c").single()["c"]
         print(f"Nodes before: {before}")
@@ -74,4 +79,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
