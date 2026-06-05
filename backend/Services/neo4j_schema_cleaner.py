@@ -7,6 +7,7 @@ Cleans and manages Neo4j schema for testing and production use
 
 import logging
 import os
+from pathlib import Path
 from typing import Dict, List, Any, Tuple
 from neo4j import GraphDatabase, Driver
 from dataclasses import dataclass
@@ -14,13 +15,17 @@ from dotenv import load_dotenv
 
 # ✅ Import centralized database configuration
 try:
-    from core.db_config import get_config, get_driver
+    from backend.core.db_config import get_config, get_driver
     CENTRALIZED_CONFIG_AVAILABLE = True
 except ImportError:
-    CENTRALIZED_CONFIG_AVAILABLE = False
+    try:
+        from core.db_config import get_config, get_driver
+        CENTRALIZED_CONFIG_AVAILABLE = True
+    except ImportError:
+        CENTRALIZED_CONFIG_AVAILABLE = False
 
 # Load environment variables
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +48,14 @@ def _get_env(*keys: str) -> str | None:
         if value:
             return value.strip()
     return None
+
+
+def _reject_placeholder_uri(uri: str) -> None:
+    if "your-neo4j-instance" in uri:
+        raise ValueError(
+            "NEO4J_URI still points to 'your-neo4j-instance'. "
+            "Update backend/.env with the real Neo4j URI before cleaning schema."
+        )
 
 
 class Neo4jSchemaCleaner:
@@ -83,14 +96,18 @@ class Neo4jSchemaCleaner:
                 logger.warning(f"Failed to use centralized config: {e}. Falling back to env vars.")
                 self.uri = uri or _get_env("NEO4J_URI", "NEO4J_URL") or "bolt://localhost:7687"
                 self.username = username or _get_env("NEO4J_USER", "NEO4J_USERNAME") or "neo4j"
-                self.password = password or _get_env("NEO4J_PASS", "NEO4J_PASSWORD") or "tcs12345"
+                self.password = password or _get_env("NEO4J_PASS", "NEO4J_PASSWORD")
                 self.database = database or _get_env("NEO4J_DATABASE") or "neo4j"
         else:
             # Use provided values or environment variables
             self.uri = uri or _get_env("NEO4J_URI", "NEO4J_URL") or "bolt://localhost:7687"
             self.username = username or _get_env("NEO4J_USER", "NEO4J_USERNAME") or "neo4j"
-            self.password = password or _get_env("NEO4J_PASS", "NEO4J_PASSWORD") or "tcs12345"
+            self.password = password or _get_env("NEO4J_PASS", "NEO4J_PASSWORD")
             self.database = database or _get_env("NEO4J_DATABASE") or "neo4j"
+
+        _reject_placeholder_uri(self.uri)
+        if not self.password:
+            raise ValueError("NEO4J_PASS or NEO4J_PASSWORD is required before cleaning schema.")
         
         try:
             # Try to use centralized driver if available
@@ -111,6 +128,7 @@ class Neo4jSchemaCleaner:
             logger.info("[OK] Neo4j connection established")
         except Exception as e:
             logger.error(f"[ERROR] Neo4j connection failed: {str(e)}")
+            raise RuntimeError(f"Neo4j connection failed: {e}") from e
     
     def get_schema_stats(self) -> SchemaStats:
         """Get current schema statistics"""
@@ -265,8 +283,9 @@ class Neo4jSchemaCleaner:
                 
                 for index in indexes:
                     index_name = index.get("name")
-                    if index_name and not index_name.startswith("__"):
-                        session.run(f"DROP INDEX {index_name} IF EXISTS")
+                    index_type = str(index.get("type") or "").upper()
+                    if index_name and index_type != "LOOKUP" and not index_name.startswith("__"):
+                        session.run(f"DROP INDEX `{index_name}` IF EXISTS")
                 
                 logger.info(f"[OK] Dropped {len(indexes)} indexes")
                 return True, f"Dropped {len(indexes)} indexes"

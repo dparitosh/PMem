@@ -4327,7 +4327,9 @@ const boundaryForce = (width, height) => {
     const ok = window.confirm('Clean Neo4j schema? This will delete all nodes and relationships.');
     if (!ok) return;
     try {
-      const res = await apiClient.post('/api/v1/admin/clean-schema');
+      const res = await apiClient.post('/api/v1/admin/clean-schema', {
+        confirm: 'CLEAN_NEO4J_SCHEMA',
+      });
       const msg = res?.data?.message || 'Schema cleanup completed.';
       window.alert(msg);
       window.location.reload();
