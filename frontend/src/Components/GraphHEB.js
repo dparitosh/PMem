@@ -612,6 +612,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   // Ontology viewer state
   const [selectedOntology, setSelectedOntology] = useState('ALL');
   const selectedOntologyRef = useRef('ALL');
+  const lastNeo4jConnectedRef = useRef(null);
   // Local loading state for ontology-specific operations (separate from context loading)
   const [localOntologyLoading, setOntologyLoading] = useState(false);
   // Ontology options loaded from centralized context (shared across all components)
@@ -2594,7 +2595,11 @@ const getPrimaryNodeLabel = useCallback((d) => {
     const checkHealth = async () => {
       try {
         const response = await apiClient.get(API.graph.neo4jHealth);
-        if (response.data?.neo4j_connected === false && graphData.nodes.length === 0) {
+        const connected = response.data?.neo4j_connected === true;
+        const previousConnected = lastNeo4jConnectedRef.current;
+        lastNeo4jConnectedRef.current = connected;
+
+        if (connected && previousConnected === false && graphData.nodes.length === 0) {
           // Connection was restored but graph is empty - trigger refresh
           logger.data('Neo4j reconnected, refreshing graph...');
           const graphResponse = await apiClient.get(API.graph.graphvis);

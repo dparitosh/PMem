@@ -2702,9 +2702,43 @@ def get_graph_metrics():
 @app.get("/ontologies/available")
 def get_available_ontologies():
     """Get available ontologies from Neo4j and registered upload storage."""
+    ontologies = []
+    seen_keys = set()
+
+    def _normalize_dashboard_name(row: dict) -> str:
+        raw_name = str(row.get('name') or '').strip()
+        if raw_name and not raw_name.lower().startswith('auto-detect'):
+            return raw_name
+
+        file_type = str(row.get('file_type') or row.get('type') or '').upper()
+        if file_type:
+            return f"Imported {file_type} Ontology"
+        return "Imported Ontology"
+
     try:
-        from core.graph import graph
-        from Services.ontology_upload_manager import OntologyUploadManager
+        try:
+            from core.graph import graph
+        except Exception as import_err:
+            try:
+                from backend.core.graph import graph
+            except Exception as fallback_import_err:
+                graph = None
+                logger.warning(
+                    "/ontologies/available graph import unavailable: "
+                    f"{import_err}; fallback: {fallback_import_err}"
+                )
+
+        try:
+            from Services.ontology_upload_manager import OntologyUploadManager
+        except Exception as import_err:
+            try:
+                from backend.Services.ontology_upload_manager import OntologyUploadManager
+            except Exception as fallback_import_err:
+                logger.warning(
+                    "/ontologies/available registry import unavailable: "
+                    f"{import_err}; fallback: {fallback_import_err}"
+                )
+                OntologyUploadManager = None
         
         # Query used ontologies from Neo4j
         cypher = """
@@ -2720,19 +2754,12 @@ def get_available_ontologies():
         ORDER BY om.usage_count DESC, om.last_used DESC
         """
         
-        results = graph.query(cypher)
-        ontologies = []
-        seen_keys = set()
-
-        def _normalize_dashboard_name(row: dict) -> str:
-            raw_name = str(row.get('name') or '').strip()
-            if raw_name and not raw_name.lower().startswith('auto-detect'):
-                return raw_name
-
-            file_type = str(row.get('file_type') or row.get('type') or '').upper()
-            if file_type:
-                return f"Imported {file_type} Ontology"
-            return "Imported Ontology"
+        results = []
+        if graph is not None:
+            try:
+                results = graph.query(cypher)
+            except Exception as neo4j_err:
+                logger.warning(f"/ontologies/available metadata query skipped: {neo4j_err}")
         
         for row in results:
             ontology = {
@@ -2753,7 +2780,12 @@ def get_available_ontologies():
             seen_keys.add(key)
             ontologies.append(ontology)
 
-        registry_result = OntologyUploadManager.list_ontologies() or {}
+        registry_result = {}
+        if OntologyUploadManager is not None:
+            try:
+                registry_result = OntologyUploadManager.list_ontologies() or {}
+            except Exception as registry_err:
+                logger.warning(f"/ontologies/available registry list skipped: {registry_err}")
         registry_rows = registry_result.get('ontologies', []) if registry_result.get('status') == 'success' else []
 
         for row in registry_rows:
@@ -2786,6 +2818,8 @@ def get_available_ontologies():
 
         # Also discover ontologies loaded directly into Neo4j (not via upload pipeline)
         try:
+            if graph is None:
+                raise RuntimeError("Neo4j graph unavailable")
             neo4j_prefix_rows = graph.query(
                 """
                 MATCH (n)
@@ -2832,7 +2866,8 @@ def get_available_ontologies():
             'registeredCount': len([o for o in ontologies if o.get('source') == 'registered']),
         }
     except Exception as e:
-        return safe_error("/ontologies/available", e) or {
+        logger.warning(f"/ontologies/available fallback after error: {type(e).__name__}: {e}", exc_info=True)
+        return {
             'ontologies': [],
             'count': 0,
             'dynamicCount': 0,
