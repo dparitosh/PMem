@@ -13,7 +13,6 @@ import {
   Boxes,
   Workflow,
   AlertTriangle,
-  FolderOpen,
   Network,
   Check,
   Upload,
@@ -206,7 +205,6 @@ const isImportWorkflow = (workflowId) => workflowId === 'instance.import' || wor
 export default function DataImportPipeline() {
   const [files, setFiles] = useState([]);
   const [pipelineStatus, setPipelineStatus] = useState({});
-  const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState(null);
   const [startedFiles, setStartedFiles] = useState(new Set());
   const [selectedStage, setSelectedStage] = useState('upload');
@@ -298,22 +296,6 @@ export default function DataImportPipeline() {
       setSelectedOntology('');
     }
   }, [selectedOntology, availableMappings]);
-
-  const handleDrag = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(e.type === 'dragenter' || e.type === 'dragover');
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFiles(e.dataTransfer.files);
-    }
-  };
 
   const handleFileInput = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -940,7 +922,7 @@ export default function DataImportPipeline() {
           marginBottom: '8px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <Workflow size={8} strokeWidth={2.6} color={C.primary} />
+            <Workflow size={4} strokeWidth={3} color={C.primary} />
             <div>
               <div style={{ fontSize: '11px', fontWeight: '700', color: C.textPrimary }}>
                 Workflow catalog
@@ -1621,16 +1603,11 @@ export default function DataImportPipeline() {
 
       {/* Data table */}
       <div
-        onDragEnter={handleDrag}
-        onDragOver={handleDrag}
-        onDragLeave={handleDrag}
-        onDrop={handleDrop}
         style={{
           background: C.surface,
-          border: `1px solid ${dragActive ? C.primary : C.border}`,
+          border: `1px solid ${C.border}`,
           borderRadius: '6px',
           overflow: 'hidden',
-          transition: 'border-color 0.15s',
         }}
       >
         {/* Table header */}
@@ -1659,38 +1636,34 @@ export default function DataImportPipeline() {
 
         {/* Empty state */}
         {files.length === 0 ? (
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              padding: '40px 20px',
-              textAlign: 'center',
-              color: C.textMuted,
-              fontSize: '11px',
-              background: dragActive ? C.primaryLight : C.bg,
-              borderRadius: '0 0 6px 6px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: '120px',
-              gap: '8px',
-              cursor: 'pointer',
-              transition: 'background 0.15s',
-            }}>
-            <FolderOpen size={18} strokeWidth={1.8} style={{ opacity: 0.65 }} aria-hidden="true" />
-            <div style={{ fontWeight: '500', color: C.textSec }}>No files uploaded yet</div>
-            <div style={{ fontSize: '10px', color: C.textMuted }}>
-              Drag and drop files here or click to browse
-            </div>
-            <div style={{
-              marginTop: '8px',
-              fontSize: '9px',
-              color: C.textMuted,
-              maxWidth: '400px',
-              lineHeight: '1.4'
-            }}>
-              Supported: CSV, JSON, STEP (.stp/.step/.stpx), XML, XSD, XMI, OWL, RDF/XML, TTL, Excel
-            </div>
+          <div style={{
+            padding: '10px',
+            background: C.bg,
+            borderRadius: '0 0 6px 6px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px',
+            fontSize: '10px',
+            color: C.textMuted,
+          }}>
+            <span>Supported: CSV, JSON, STEP, STPX, XML, XSD, XMI, OWL, RDF, TTL, Excel</span>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                padding: '5px 10px',
+                background: C.primary,
+                color: '#fff',
+                border: 'none',
+                borderRadius: '3px',
+                fontSize: '10px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Browse files
+            </button>
           </div>
         ) : (
           <>
