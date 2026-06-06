@@ -44,7 +44,7 @@ NEO4J_TRUST_SYSTEM_CA=false
 | NEO4J_DATABASE | ❌ No | neo4j | neo4j |
 | NEO4J_MAX_POOL_SIZE | ❌ No | 50 | 100 |
 | NEO4J_QUERY_TIMEOUT | ❌ No | 30 | 60 |
-| NEO4J_ENCRYPTED | ❌ No | true | false |
+| NEO4J_ENCRYPTED | ❌ No | false for `bolt://`, true for TLS schemes | false |
 | NEO4J_TRUST_SYSTEM_CA | ❌ No | true | false |
 
 ## 💻 Code Examples
@@ -162,7 +162,7 @@ NEO4J_QUERY_TIMEOUT=60
 | Connection timeout | URI is correct, network accessible |
 | Authentication failed | Username/password correct |
 | AuraDB paused | Resume in console.neo4j.io |
-| SSL error | NEO4J_ENCRYPTED=true, certificates valid |
+| SSL error | For lab `bolt://`, set `NEO4J_ENCRYPTED=false`; for TLS schemes, verify certificates |
 
 ## 📚 Files Updated
 

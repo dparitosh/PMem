@@ -87,7 +87,7 @@ NEO4J_SOCKET_CONNECTION_TIMEOUT=15   # Socket timeout in seconds (default: 15)
 NEO4J_QUERY_TIMEOUT=30               # Query timeout in seconds (default: 30)
 
 # ========== SSL/TLS ==========
-NEO4J_ENCRYPTED=true                 # Enable TLS (default: true)
+NEO4J_ENCRYPTED=false                # Lab bolt:// default; use true only for TLS schemes
 NEO4J_TRUST_SYSTEM_CA=true          # Trust system CA (default: true)
 NEO4J_CUSTOM_CA_PATH=/path/to/ca-cert.pem  # Optional: custom CA for self-signed certs
 ```
@@ -206,7 +206,7 @@ NEO4J_TRUST_SYSTEM_CA=true
 
 ### Scenario 3: On-Premises Community (no TLS)
 
-**Use Case**: Development/testing with Community Edition
+**Use Case**: Development/testing in a lab sandbox VM
 
 ```env
 NEO4J_URI=bolt://localhost:7687
@@ -219,7 +219,7 @@ NEO4J_TRUST_SYSTEM_CA=false
 
 **Characteristics**:
 - Uses `bolt://` scheme (no TLS)
-- Typically localhost for development
+- Typically localhost or a lab VM address
 - No SSL/encryption
 - Suitable for local development only
 
