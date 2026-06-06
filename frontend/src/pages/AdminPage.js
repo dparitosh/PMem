@@ -23,11 +23,9 @@ const serviceColumns = [
   { field: 'owner', width: 170 },
   { field: 'endpoint', flex: 1.4, minWidth: 190 },
   { field: 'health_endpoint', headerName: 'Health Endpoint', flex: 1, minWidth: 160 },
+  { field: 'config_source', headerName: 'Config Source', flex: 1, minWidth: 160 },
   { field: 'route_count', headerName: 'Routes', width: 105 },
   { field: 'frontend_mapped_count', headerName: 'Mapped', width: 110 },
-  { field: 'database', width: 125 },
-  { field: 'configured_database', headerName: 'Configured DB', width: 140 },
-  { field: 'config_source', headerName: 'Config Source', flex: 1, minWidth: 160 },
   { field: 'model', width: 150 },
 ];
 
@@ -164,6 +162,7 @@ export default function AdminPage({ onSchemaCleaned }) {
             { field: 'model', flex: 1.2 },
             { field: 'status' },
             { field: 'health_endpoint', flex: 1.4 },
+            { field: 'config_source', flex: 1 },
           ]} />
         </div>
       </div>

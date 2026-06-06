@@ -237,9 +237,11 @@ def test_admin_registry_returns_required_catalogs():
         assert isinstance(data[key], list)
     assert any(service["id"] == "backend-api" for service in data["services"])
     assert any(service["type"] == "api_route_group" for service in data["services"])
+    assert not any(service["id"] == "neo4j-graph" for service in data["services"])
     assert any(workflow["id"] == "instance.import" for workflow in data["workflows"])
     assert any(route["path"] == "/api/v1/admin/registry" for route in data["api_routes"])
     assert any(row["key"] == "NEO4J_DATABASE" for row in data["configuration"])
+    assert [source["id"] for source in data["data_sources"]] == ["neo4j"]
 
 
 def test_admin_registry_masks_datasource_secrets():
@@ -264,6 +266,7 @@ def test_admin_registry_masks_datasource_secrets():
             assert "active_database" in source
             assert "configured_database" in source
             assert "configured_database_source" in source
+            assert source["configured_database"] == "semantics"
 
 
 if __name__ == '__main__':

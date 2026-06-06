@@ -130,7 +130,7 @@ def _load_environment() -> None:
     
     for env_path in possible_paths:
         if env_path.exists():
-            load_dotenv(env_path, override=_has_placeholder_neo4j_uri())
+            load_dotenv(env_path, override=True)
             logger.debug(f"Loaded environment from {env_path}")
             return
     

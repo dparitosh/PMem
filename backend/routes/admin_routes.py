@@ -276,15 +276,21 @@ def _configuration_registry(neo4j: dict, llm: dict) -> list[dict]:
 
 
 def _llm_settings() -> dict:
-    provider = (os.getenv("USE_LLM") or "ollama").lower()
-    model = os.getenv("LLM_MODEL_NAME") or os.getenv("AZURE_OPENAI_DEPLOYMENT") or "llama3:latest"
-    endpoint = os.getenv("OLLAMA_BASE_URL") or os.getenv("AZURE_OPENAI_ENDPOINT") or "http://localhost:11434"
+    provider, provider_source = _env_lookup("USE_LLM")
+    model, model_source = _env_lookup("LLM_MODEL_NAME", "AZURE_OPENAI_DEPLOYMENT")
+    endpoint, endpoint_source = _env_lookup("OLLAMA_BASE_URL", "AZURE_OPENAI_ENDPOINT")
+    provider = (provider or "ollama").lower()
+    model = model or "llama3:latest"
+    endpoint = endpoint or "http://localhost:11434"
     status = "configured" if endpoint and model else "degraded"
     return {
         "provider": provider,
         "model": model,
         "endpoint": endpoint,
         "status": status,
+        "provider_source": provider_source,
+        "model_source": model_source,
+        "endpoint_source": endpoint_source,
     }
 
 
@@ -450,6 +456,10 @@ def _route_group_services(api_routes: list[dict]) -> list[dict]:
             item["frontend_mapped_count"] += 1
     return sorted(groups.values(), key=lambda row: row["name"])
 
+
+def _route_available(api_routes: list[dict], path: str) -> str:
+    return path if any(route.get("path") == path for route in api_routes) else ""
+
 # Test endpoint
 @router.get("/health")
 async def admin_health():
@@ -468,6 +478,9 @@ async def get_admin_registry(request: Request):
     api_routes = _discover_api_routes(request)
     backend_endpoint = str(request.base_url).rstrip("/")
     route_group_services = _route_group_services(api_routes)
+    backend_health = _route_available(api_routes, "/health")
+    llm_health = _route_available(api_routes, "/api/v1/import/ollama/health")
+    chat_health = _route_available(api_routes, "/chat/sample-queries")
 
     return {
         "services": [
@@ -479,6 +492,7 @@ async def get_admin_registry(request: Request):
                 "owner": "Digital Engineering",
                 "endpoint": "http://localhost:3000",
                 "health_endpoint": "",
+                "config_source": "frontend/.env",
                 "route_count": 0,
                 "frontend_mapped_count": 0,
             },
@@ -489,23 +503,10 @@ async def get_admin_registry(request: Request):
                 "status": "online",
                 "owner": "Digital Engineering",
                 "endpoint": backend_endpoint,
-                "health_endpoint": "/health",
+                "health_endpoint": backend_health,
+                "config_source": "backend/.env",
                 "route_count": len(api_routes),
                 "frontend_mapped_count": sum(1 for route in api_routes if route.get("frontend_mapped")),
-            },
-            {
-                "id": "neo4j-graph",
-                "name": "Neo4j Graph Datasource",
-                "type": "datasource",
-                "status": neo4j["status"],
-                "owner": "Data Platform",
-                "endpoint": neo4j.get("uri_masked", ""),
-                "health_endpoint": "/health/neo4j",
-                "route_count": 0,
-                "frontend_mapped_count": 0,
-                "database": neo4j.get("active_database", neo4j.get("database", "")),
-                "configured_database": neo4j.get("configured_database", ""),
-                "config_source": neo4j.get("configured_database_source", ""),
             },
             {
                 "id": "llm-agent-runtime",
@@ -514,7 +515,8 @@ async def get_admin_registry(request: Request):
                 "status": llm["status"],
                 "owner": "Semantic AI",
                 "endpoint": _mask_uri(llm.get("endpoint")),
-                "health_endpoint": "/api/v1/import/ollama/health",
+                "health_endpoint": llm_health,
+                "config_source": llm.get("endpoint_source", ""),
                 "route_count": 0,
                 "frontend_mapped_count": 0,
                 "model": llm.get("model", ""),
@@ -523,15 +525,6 @@ async def get_admin_registry(request: Request):
         "api_routes": api_routes,
         "data_sources": [
             neo4j,
-            {
-                "id": "ollama",
-                "name": "Ollama / LLM Endpoint",
-                "type": "llm",
-                "status": llm["status"],
-                "uri_masked": _mask_uri(llm.get("endpoint")),
-                "database": llm["model"],
-                "mutable": False,
-            },
         ],
         "configuration": _configuration_registry(neo4j, llm),
         "agents": [
@@ -541,7 +534,8 @@ async def get_admin_registry(request: Request):
                 "provider": llm["provider"],
                 "model": llm["model"],
                 "status": llm["status"],
-                "health_endpoint": "/chat/sample-queries",
+                "health_endpoint": chat_health,
+                "config_source": llm.get("model_source", ""),
             },
             {
                 "id": "workflow-advisor",
@@ -549,7 +543,8 @@ async def get_admin_registry(request: Request):
                 "provider": llm["provider"],
                 "model": llm["model"],
                 "status": llm["status"],
-                "health_endpoint": "/api/v1/import/ollama/health",
+                "health_endpoint": llm_health,
+                "config_source": llm.get("model_source", ""),
             },
         ],
         "workflows": _workflow_registry(),
