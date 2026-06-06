@@ -1619,6 +1619,9 @@ class UnifiedDataImportService:
     @classmethod
     def _restore_task(cls, task_id: str) -> Optional[Dict[str, Any]]:
         """Restore task snapshot when current worker does not have in-memory state."""
+        if task_id in import_tasks:
+            return import_tasks[task_id]
+
         path = cls._task_snapshot_path(task_id)
         if not path.exists():
             return None

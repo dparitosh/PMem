@@ -3045,7 +3045,7 @@ async def upload_file(file: UploadFile = File(...), ontology_id: str = Form(""),
 
         # Prefer the unified import service which persists task snapshots so status
         # and commit operations work across workers/processes.
-        from backend.Services.unified_data_import import UnifiedDataImportService
+        from backend.Services.unified_data_import import FileFormatDetector, UnifiedDataImportService
         from backend.Services.ontology_upload_manager import OntologyUploadManager
 
         # Resolve ontology prefix from ontology_id (if provided)
@@ -3065,7 +3065,7 @@ async def upload_file(file: UploadFile = File(...), ontology_id: str = Form(""),
         return {
             "task_id": task_id,
             "filename": filename,
-            "file_type": UnifiedDataImportService._restore_task(task_id) and UnifiedDataImportService._restore_task(task_id).get('file_type') or None,
+            "file_type": FileFormatDetector.detect(filename).value,
             "ontology_id": ontology_id,
             "ontology_mapping": resolved_ontology_mapping,
             "message": f"File '{filename}' uploaded. Processing started in background. Check status with task_id: {task_id}",

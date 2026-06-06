@@ -154,7 +154,8 @@ export default function DataImportPipeline() {
 
   useEffect(() => {
     const pending = files.find(f => !startedFiles.has(f.fileId));
-    const fileTypeContext = pending ? inferFileTypeFromExtension(pending.name) : (pendingFileForMetadata ? inferFileTypeFromExtension(pendingFileForMetadata.name) : '');
+    const contextFile = pending || pendingFileForMetadata || files[0];
+    const fileTypeContext = contextFile ? inferFileTypeFromExtension(contextFile.name) : '';
     setMappingFileTypeContext(fileTypeContext);
 
     const fetchAlignmentOptions = async () => {
