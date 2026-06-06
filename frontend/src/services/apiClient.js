@@ -322,6 +322,7 @@ export const documentAPI = {
 // ========== ADMIN ENDPOINTS ==========
 export const adminAPI = {
   health: () => apiClient.get(buildUrl(API.admin.health)),
+  registry: () => apiClient.get(buildUrl(API.admin.registry)),
   cleanSchema: () =>
     apiClient.post(buildUrl(API.admin.cleanSchema), { confirm: 'CLEAN_NEO4J_SCHEMA' }),
   schemaStats: () => apiClient.get(buildUrl(API.admin.schemaStats)),

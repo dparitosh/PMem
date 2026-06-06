@@ -3,9 +3,14 @@ Admin Routes - Schema Management
 Provides endpoints for database cleaning and schema operations
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 import logging
+import json
+import os
+import re
+from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -15,11 +20,349 @@ CLEAN_SCHEMA_CONFIRM_TOKEN = "CLEAN_NEO4J_SCHEMA"
 class CleanSchemaRequest(BaseModel):
     confirm: str | None = None
 
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _mask_uri(uri: str | None) -> str:
+    if not uri:
+        return ""
+    try:
+        parsed = urlparse(uri)
+        if not parsed.scheme:
+            return "***"
+        hostname = parsed.hostname or ""
+        port = f":{parsed.port}" if parsed.port else ""
+        masked_host = "localhost" if hostname in {"localhost", "127.0.0.1"} else "***"
+        return urlunparse((parsed.scheme, f"{masked_host}{port}", parsed.path, "", "", ""))
+    except Exception:
+        return "***"
+
+
+def _frontend_mapped_paths() -> set[str]:
+    config_path = _project_root() / "frontend" / "src" / "config.js"
+    if not config_path.exists():
+        return set()
+    try:
+        text = config_path.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return set()
+    paths = set()
+    for match in re.findall(r"['\"](/[^'\"]+)['\"]", text):
+        paths.add(match.split("?", 1)[0])
+    return paths
+
+
+def _service_group(path: str, tag: str) -> str:
+    if tag and tag != "default":
+        return tag.replace("v1-", "").replace("_", " ").title()
+    parts = [part for part in path.split("/") if part and not part.startswith("{")]
+    if len(parts) >= 3 and parts[0] == "api" and parts[1] == "v1":
+        return parts[2].replace("-", " ").title()
+    return parts[0].replace("-", " ").title() if parts else "Core"
+
+
+def _discover_api_routes(request: Request) -> list[dict]:
+    mapped_paths = _frontend_mapped_paths()
+    routes = []
+    try:
+        openapi = request.app.openapi()
+        for path, methods in sorted(openapi.get("paths", {}).items()):
+            for method, operation in sorted(methods.items()):
+                if method.lower() not in {"get", "post", "put", "patch", "delete"}:
+                    continue
+                tag = (operation.get("tags") or ["default"])[0]
+                frontend_mapped = path in mapped_paths or any(
+                    path.replace("{", "{").startswith(mapped_path.rstrip("/{"))
+                    for mapped_path in mapped_paths
+                )
+                routes.append({
+                    "method": method.upper(),
+                    "path": path,
+                    "tag": tag,
+                    "service_group": _service_group(path, tag),
+                    "frontend_mapped": frontend_mapped,
+                })
+    except Exception as exc:
+        logger.warning("OpenAPI route discovery failed: %s", exc)
+    return routes
+
+
+def _neo4j_datasource() -> dict:
+    try:
+        try:
+            from backend.core.db_config import get_config
+        except ImportError:
+            from core.db_config import get_config
+        config = get_config()
+        return {
+            "id": "neo4j",
+            "name": "Neo4j Knowledge Graph",
+            "type": "graph_database",
+            "status": "configured",
+            "uri_masked": _mask_uri(config.uri),
+            "database": config.database,
+            "mutable": False,
+        }
+    except Exception as exc:
+        return {
+            "id": "neo4j",
+            "name": "Neo4j Knowledge Graph",
+            "type": "graph_database",
+            "status": "degraded",
+            "uri_masked": "",
+            "database": "",
+            "mutable": False,
+            "message": str(exc),
+        }
+
+
+def _llm_settings() -> dict:
+    provider = (os.getenv("USE_LLM") or "ollama").lower()
+    model = os.getenv("LLM_MODEL_NAME") or os.getenv("AZURE_OPENAI_DEPLOYMENT") or "llama3:latest"
+    endpoint = os.getenv("OLLAMA_BASE_URL") or os.getenv("AZURE_OPENAI_ENDPOINT") or "http://localhost:11434"
+    status = "configured" if endpoint and model else "degraded"
+    return {
+        "provider": provider,
+        "model": model,
+        "endpoint": endpoint,
+        "status": status,
+    }
+
+
+def _workflow_registry() -> list[dict]:
+    return [
+        {
+            "id": "ontology.create",
+            "label": "Create Ontology",
+            "category": "Ontology",
+            "inputs": "EXPRESS, XSD, OWL, CSV, namespace metadata",
+            "outputs": "OWL/TTL ontology, prefix registry, retained artifact",
+            "writes_to_neo4j": False,
+            "retains_artifacts": True,
+        },
+        {
+            "id": "instance.import",
+            "label": "Import Instance Graph",
+            "category": "Import",
+            "inputs": "STEP, STP, STPX, PLMXML, XMI, CSV",
+            "outputs": "Neo4j instance graph, parse report, retained artifact",
+            "writes_to_neo4j": True,
+            "retains_artifacts": True,
+        },
+        {
+            "id": "instance.link",
+            "label": "Link Instances to Ontology",
+            "category": "Mapping",
+            "inputs": "Instance graph, ontology, mapping rules",
+            "outputs": "Semantic links, alignment report",
+            "writes_to_neo4j": True,
+            "retains_artifacts": True,
+        },
+        {
+            "id": "ontology.validate",
+            "label": "Validate Ontology",
+            "category": "Quality",
+            "inputs": "Ontology, SHACL/rules profile",
+            "outputs": "Validation issues, quality score",
+            "writes_to_neo4j": False,
+            "retains_artifacts": True,
+        },
+        {
+            "id": "ontology.merge",
+            "label": "Merge Ontologies",
+            "category": "Ontology",
+            "inputs": "Source ontology, target ontology, merge policy",
+            "outputs": "Merged ontology, conflict report",
+            "writes_to_neo4j": True,
+            "retains_artifacts": True,
+        },
+        {
+            "id": "dictionary.generate",
+            "label": "Generate Data Dictionary",
+            "category": "Governance",
+            "inputs": "Ontology or namespace",
+            "outputs": "Data dictionary, taxonomy terms",
+            "writes_to_neo4j": False,
+            "retains_artifacts": True,
+        },
+        {
+            "id": "artifact.export",
+            "label": "Export Artifacts",
+            "category": "Reports",
+            "inputs": "Ontology, graph, validation run",
+            "outputs": "TTL, JSON, CSV, report bundle",
+            "writes_to_neo4j": False,
+            "retains_artifacts": True,
+        },
+    ]
+
+
+def _package_registry() -> list[dict]:
+    package_path = _project_root() / "frontend" / "package.json"
+    keep = {
+        "@emotion/react",
+        "@emotion/styled",
+        "@mui/material",
+        "@mui/x-tree-view",
+        "@testing-library/dom",
+        "@testing-library/jest-dom",
+        "@testing-library/react",
+        "@testing-library/user-event",
+        "ag-grid-community",
+        "ag-grid-react",
+        "axios",
+        "bootstrap",
+        "d3",
+        "dompurify",
+        "lucide-react",
+        "react",
+        "react-dom",
+        "react-scripts",
+        "web-vitals",
+    }
+    remove_candidates = {
+        "@neo4j-nvl/base",
+        "cytoscape-cose-bilkent",
+        "cytoscape-expand-collapse",
+        "framer-motion",
+        "fuse",
+        "fuse.js",
+        "install",
+        "neo4j",
+        "neo4j-driver",
+        "neo4j-driver-core",
+        "primereact",
+        "react-arborist",
+        "react-cytoscapejs",
+        "react-select",
+        "rsuite",
+        "rxjs",
+        "sass",
+        "three-spritetext",
+    }
+    packages = []
+    try:
+        data = json.loads(package_path.read_text(encoding="utf-8"))
+        for name in sorted((data.get("dependencies") or {}).keys()):
+            if name.startswith("@progress/") or name.startswith("@syncfusion/"):
+                recommendation = "remove_candidate"
+                used = False
+                category = "legacy_ui_suite"
+            elif name in remove_candidates:
+                recommendation = "remove_candidate"
+                used = False
+                category = "legacy_or_unused"
+            elif name in keep:
+                recommendation = "keep"
+                used = True
+                category = "active_runtime"
+            else:
+                recommendation = "review"
+                used = False
+                category = "needs_import_audit"
+            packages.append({
+                "name": name,
+                "category": category,
+                "used": used,
+                "recommendation": recommendation,
+            })
+    except Exception as exc:
+        logger.warning("Package registry discovery failed: %s", exc)
+    return packages
+
 # Test endpoint
 @router.get("/health")
 async def admin_health():
     """Admin health check - always accessible"""
     return {"status": "admin_ok", "message": "Admin routes loaded"}
+
+
+@router.get("/registry")
+async def get_admin_registry(request: Request):
+    """
+    Read-only operational catalog for frontend services, APIs, datasources,
+    agents, workflows, and package rationalization.
+    """
+    llm = _llm_settings()
+    neo4j = _neo4j_datasource()
+    api_routes = _discover_api_routes(request)
+    backend_endpoint = str(request.base_url).rstrip("/")
+
+    return {
+        "services": [
+            {
+                "id": "frontend-ui",
+                "name": "DEPO Frontend Workspace",
+                "type": "frontend",
+                "status": "configured",
+                "owner": "Digital Engineering",
+                "endpoint": "http://localhost:3000",
+                "health_endpoint": "",
+            },
+            {
+                "id": "backend-api",
+                "name": "DEPO FastAPI Service",
+                "type": "api",
+                "status": "online",
+                "owner": "Digital Engineering",
+                "endpoint": backend_endpoint,
+                "health_endpoint": "/health",
+            },
+            {
+                "id": "neo4j-graph",
+                "name": "Neo4j Graph Datasource",
+                "type": "datasource",
+                "status": neo4j["status"],
+                "owner": "Data Platform",
+                "endpoint": neo4j.get("uri_masked", ""),
+                "health_endpoint": "/health/neo4j",
+            },
+            {
+                "id": "llm-agent-runtime",
+                "name": "LLM / Agent Runtime",
+                "type": "agent",
+                "status": llm["status"],
+                "owner": "Semantic AI",
+                "endpoint": _mask_uri(llm.get("endpoint")),
+                "health_endpoint": "/api/v1/import/ollama/health",
+            },
+        ],
+        "api_routes": api_routes,
+        "data_sources": [
+            neo4j,
+            {
+                "id": "ollama",
+                "name": "Ollama / LLM Endpoint",
+                "type": "llm",
+                "status": llm["status"],
+                "uri_masked": _mask_uri(llm.get("endpoint")),
+                "database": llm["model"],
+                "mutable": False,
+            },
+        ],
+        "agents": [
+            {
+                "id": "semantic-chat",
+                "name": "Semantic Chat Agent",
+                "provider": llm["provider"],
+                "model": llm["model"],
+                "status": llm["status"],
+                "health_endpoint": "/chat/sample-queries",
+            },
+            {
+                "id": "workflow-advisor",
+                "name": "Workflow Advisor",
+                "provider": llm["provider"],
+                "model": llm["model"],
+                "status": llm["status"],
+                "health_endpoint": "/api/v1/import/ollama/health",
+            },
+        ],
+        "workflows": _workflow_registry(),
+        "packages": _package_registry(),
+    }
 
 # Import schema cleaner (optional - graceful fallback if not available)
 try:

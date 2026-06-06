@@ -13,6 +13,8 @@ import sys
 from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 # Add backend to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -217,6 +219,45 @@ async def test_schema_stats_counts_custom_indexes_separately():
 
             assert response['stats']['indexes_count'] == 1
             assert response['stats']['lookup_indexes_count'] == 1
+
+
+def test_admin_registry_returns_required_catalogs():
+    """Admin registry should be read-only and complete enough for the UI shell."""
+    from routes.admin_routes import router
+
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    client = TestClient(app)
+
+    response = client.get("/api/v1/admin/registry")
+
+    assert response.status_code == 200
+    data = response.json()
+    for key in ["services", "api_routes", "data_sources", "agents", "workflows", "packages"]:
+        assert isinstance(data[key], list)
+    assert any(service["id"] == "backend-api" for service in data["services"])
+    assert any(workflow["id"] == "instance.import" for workflow in data["workflows"])
+    assert any(route["path"] == "/api/v1/admin/registry" for route in data["api_routes"])
+
+
+def test_admin_registry_masks_datasource_secrets():
+    """Registry output must not expose Neo4j passwords or raw remote hosts."""
+    from routes.admin_routes import router
+
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    client = TestClient(app)
+
+    response = client.get("/api/v1/admin/registry")
+    assert response.status_code == 200
+    text = json.dumps(response.json()).lower()
+
+    assert "password" not in text
+    assert "neo4j_pass" not in text
+    for source in response.json()["data_sources"]:
+        assert source["mutable"] is False
+        assert "uri" not in source
+        assert "uri_masked" in source
 
 
 if __name__ == '__main__':

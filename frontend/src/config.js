@@ -176,6 +176,7 @@ const DOCUMENT_ENDPOINTS = {
  */
 const ADMIN_ENDPOINTS = {
   health: process.env.REACT_APP_API_ADMIN_HEALTH || '/api/v1/admin/health',
+  registry: process.env.REACT_APP_API_ADMIN_REGISTRY || '/api/v1/admin/registry',
   cleanSchema: process.env.REACT_APP_API_ADMIN_CLEAN_SCHEMA || '/api/v1/admin/clean-schema',
   schemaStats: process.env.REACT_APP_API_ADMIN_SCHEMA_STATS || '/api/v1/admin/schema-stats',
   resetDatabase: process.env.REACT_APP_API_ADMIN_RESET_DATABASE || '/api/v1/admin/reset-database',
