@@ -1005,140 +1005,6 @@ async def chat_stream(request: ChatRequest):
     )
 
 
-@app.post("/trace/digital-thread")
-async def trace_digital_thread(request: ChatRequest):
-    """Direct digital thread tracing endpoint.
-    
-    Returns a digital thread analysis using direct Cypher queries,
-    without requiring LLM tool calling support.
-    
-    Args:
-        request.message: The entity name to trace (e.g., "Rotor Shaft")
-        request.session_id: Session ID for tracking
-    
-    Returns:
-        {"answer": str, "nodes": list, "relationships": list, "status": "success" or "error"}
-    """
-    try:
-        from chains.cypher import query_cypher
-        from core.graph import graph
-        
-        entity_name = request.message.strip()
-        if not entity_name:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Please provide an entity name to trace"}
-            )
-        
-        # Build comprehensive digital thread Cypher query
-        # This finds all relationships connected to the entity across all types
-        cypher_queries = [
-            # 1. Find the main entity
-            f"""MATCH (n) 
-            WHERE n.name = '{entity_name}' OR n.FileName = '{entity_name}'
-            RETURN n, labels(n) as labels
-            LIMIT 1""",
-            
-            # 2. Find all direct connections (1-hop)
-            f"""MATCH (n)-[r]-(m)
-            WHERE n.name = '{entity_name}' OR n.FileName = '{entity_name}'
-            RETURN n, type(r) as relationship, m, properties(r) as rel_props
-            LIMIT 20""",
-            
-            # 3. Find 2-hop connections for deeper traceability
-            f"""MATCH (n)-[r1]-(m)-[r2]-(o)
-            WHERE n.name = '{entity_name}' OR n.FileName = '{entity_name}'
-            RETURN n, type(r1) as rel1, m, type(r2) as rel2, o
-            LIMIT 15"""
-        ]
-        
-        logger.info(f"Digital thread trace query for: {entity_name}")
-        
-        results = []
-        all_nodes = {}
-        all_relationships = []
-        
-        for i, query in enumerate(cypher_queries):
-            try:
-                query_results = query_cypher(query)
-                logger.info(f"Query {i+1} returned {len(query_results)} results")
-                results.append({
-                    "query_index": i,
-                    "result_count": len(query_results),
-                    "data": query_results[:10]  # Limit to 10 results per query
-                })
-                
-                # Collect nodes and relationships for response
-                for record in query_results:
-                    if isinstance(record, dict):
-                        for key, value in record.items():
-                            if hasattr(value, "get"):  # It's a dict-like node
-                                all_nodes[str(value.get("name", f"node_{id(value)}"))] = value
-                            elif isinstance(value, str) and value.startswith("CONFORMS") or value.startswith("HAS") or value.startswith("REQUIRES"):
-                                all_relationships.append(value)
-            
-            except Exception as e:
-                logger.warning(f"Query {i+1} failed: {e}")
-                results.append({
-                    "query_index": i,
-                    "error": str(e),
-                    "data": []
-                })
-        
-        # Build formatted answer
-        answer_parts = [f"## Digital Thread for '{entity_name}'", ""]
-        
-        if results[0].get("data"):
-            answer_parts.append(f"**Entity Found**: {entity_name}")
-            entity_data = results[0]["data"][0]
-            answer_parts.append(f"- **Type**: {entity_data.get('labels', ['Unknown'])[0] if isinstance(entity_data.get('labels'), list) else 'Unknown'}")
-            answer_parts.append("")
-        
-        if results[1].get("data"):
-            answer_parts.append(f"### Direct Connections ({len(results[1]['data'])} found)")
-            for conn in results[1]["data"][:5]:
-                rel_type = conn.get("relationship", "RELATED")
-                target = conn.get("m", {}).get("name", "Unknown")
-                answer_parts.append(f"- **{rel_type}** → {target}")
-            answer_parts.append("")
-        
-        if results[2].get("data"):
-            answer_parts.append(f"### Extended Digital Thread ({len(results[2]['data'])} connections found)")
-            for conn in results[2]["data"][:5]:
-                rel1 = conn.get("rel1", "LINKS")
-                mid = conn.get("m", {}).get("name", "Unknown")
-                rel2 = conn.get("rel2", "TO")
-                target = conn.get("o", {}).get("name", "Unknown")
-                answer_parts.append(f"- {rel1} → {mid} → {rel2} → {target}")
-            answer_parts.append("")
-        
-        if not any(results[i].get("data") for i in [0,1,2]):
-            answer_parts.append(f"⚠️ **No digital thread found** for '{entity_name}'")
-            answer_parts.append("Possible reasons:")
-            answer_parts.append("- The entity name may not match exactly (check capitalization)")
-            answer_parts.append("- The entity may not be imported in the database yet")
-            answer_parts.append("- Try searching in the Graph View to verify the exact name")
-        
-        final_answer = "\n".join(answer_parts)
-        
-        return JSONResponse({
-            "answer": final_answer,
-            "status": "success",
-            "entity": entity_name,
-            "result_summary": {
-                "direct_connections": len(results[1].get("data", [])),
-                "extended_thread": len(results[2].get("data", []))
-            }
-        })
-        
-    except Exception as e:
-        logger.error(f"Digital thread trace error: {e}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Failed to trace digital thread: {str(e)}"}
-        )
-
-
 @app.get("/chat/sample-queries")
 async def get_sample_queries():
     """Return dynamically generated sample queries based on actual Neo4j data.
@@ -1193,7 +1059,7 @@ async def get_sample_queries():
                 f'Trace the MBSE requirements for use case "{uc1}"',
                 f'Which SysML blocks are associated with "{cls2}"?',
                 # Cross-domain
-                f'Trace the full digital thread for "{part1}" from requirements to manufacturing',
+                f'Analyse change impact if "{part1}" is modified',
                 f'What ontology classes does "{asm1}" instantiate?',
             ]
         else:
@@ -1205,7 +1071,7 @@ async def get_sample_queries():
                 'Find parts similar to LAMINATED ROTOR CORE that could be substituted',
                 'What SysML requirements relate to the Variable Speed Drive?',
                 'Show all use cases and actors in the Sugar Production Plant MBSE model',
-                'Trace the digital thread for ROTOR SHAFT from requirements to manufacturing',
+                'Analyse change impact if ROTOR SHAFT is modified',
                 'Analyse change impact if THREE PHASE WINDINGS is modified',
             ]
 
@@ -1227,7 +1093,7 @@ async def get_sample_queries():
                 'Find parts similar to LAMINATED ROTOR CORE that could be substituted',
                 'What SysML requirements relate to the Variable Speed Drive?',
                 'Show all use cases and actors in the Sugar Production Plant MBSE model',
-                'Trace the digital thread for ROTOR SHAFT from requirements to manufacturing',
+                'Analyse change impact if ROTOR SHAFT is modified',
                 'Analyse change impact if THREE PHASE WINDINGS is modified',
             ],
             "data_available": False,

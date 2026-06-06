@@ -110,18 +110,6 @@ def graph_context_search(query: str) -> str:
 
 
 @tool
-def digital_thread_traceability(query: str) -> str:
-    """Trace end-to-end digital thread links across requirements, parts, CAD, process, realization, and change relationships."""
-    if cypher_qa is None:
-        return "Digital thread traceability is unavailable because the Cypher QA chain is not ready."
-    guided_query = (
-        f"{query}\n"
-        "Focus on digital thread traceability across requirements, functions, logical elements, physical parts, CAD, processes, and change relationships."
-    )
-    return _normalize_graph_response(cypher_qa(guided_query))
-
-
-@tool
 def cad_structure_analysis(query: str) -> str:
     """Answer CAD-centric questions about assemblies, part structure, where-used, component hierarchy, and CAD relationships."""
     if cypher_qa is None:
@@ -353,7 +341,6 @@ def recommend_manufacturing_processes(query: str) -> str:
 _DIRECT_RESULT_TOOLS: set = set()  # All tools pass through LLM for domain-language reformatting
 
 tools = [
-    digital_thread_traceability,
     cad_structure_analysis,
     part_contextual_insights,
     graph_context_search,
@@ -415,7 +402,7 @@ ALWAYS:
 - When discussing requirements, explain what they mean in physical/functional terms.
 
 NEVER:
-- Show tool names, function calls, or code snippets (e.g. NEVER show `digital_thread_traceability(...)` or `project_product_info(...)`).
+- Show tool names, function calls, or code snippets (e.g. NEVER show `project_product_info(...)`).
 - Show raw Cypher queries or graph database syntax to the user.
 - Say "I will use the X tool" or "calling the Y function".
 - Show JSON, dictionary output, or raw data structures.
@@ -426,7 +413,6 @@ Pass part names EXACTLY as typed by the user. Do NOT shorten or rephrase.
 "ROTOR SHAFT" stays "ROTOR SHAFT". Never "Rotor" or "shaft".
 
 == TOOL SELECTION ==
-- digital_thread_traceability → traceability, digital thread, requirements to shop floor
 - cad_structure_analysis → assembly structure, BOM, component hierarchy, where-used
 - part_contextual_insights → part lifecycle, linked assemblies, process steps
 - graph_context_search → contextual engineering insights, connected graph context
@@ -537,7 +523,6 @@ async def generate_response(session_id: str, user_input: str) -> str:
 
 # ──── Streaming response ─────────────────────────────────────────────────────
 _TOOL_LABELS = {
-    "digital_thread_traceability": "[TRACE] Tracing the digital thread…",
     "cad_structure_analysis": "[CAD] Exploring CAD structure…",
     "part_contextual_insights": "[PART] Building part insights…",
     "graph_context_search": "[GRAPH] Gathering graph context…",

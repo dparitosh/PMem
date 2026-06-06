@@ -10,7 +10,6 @@ import WhereUsedView from './Components/WhereUsedView';
 import RecommendationsTab from './Components/RecommendationsTab';
 import OntologyMapper from './Components/OntologyMapper';
 import DataImportPipeline from './Components/DataImportPipeline';
-import DigitalThreadTracer from './Components/DigitalThreadTracer';
 import TabContainer from './Components/TabContainer';
 import ErrorBoundary from './Components/ErrorBoundary';
 import ResizableSplitter from './Components/ResizableSplitter';
@@ -264,7 +263,6 @@ function App() {
                   { id: 'reports', label: '▲ Reports' },
                   { id: 'ingestion', label: '↓ Data Import' },
                   { id: 'ontology', label: '◆ Semantic Bridge' },
-                  { id: 'traceability', label: '⌁ Digital Thread' },
                   { id: 'recommendations', label: '★ Recommendations' },
                 ].map(tab => (
                   <button
@@ -334,14 +332,6 @@ function App() {
                   <div id="ontology-container" style={{ position:'absolute', inset:0, overflow:'auto', padding:'4px' }}>
                     <ErrorBoundary>
                       <OntologyMapper />
-                    </ErrorBoundary>
-                  </div>
-                </TabContainer>
-
-                <TabContainer isActive={activeTab === 'traceability'} tabId="traceability">
-                  <div id="traceability-container" style={{ position:'absolute', inset:0, overflow:'hidden', padding:'4px' }}>
-                    <ErrorBoundary>
-                      <DigitalThreadTracer />
                     </ErrorBoundary>
                   </div>
                 </TabContainer>

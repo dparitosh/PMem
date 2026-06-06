@@ -83,7 +83,7 @@ const Chatbot = ({ setChatResults }) => {
         'Find parts similar to LAMINATED ROTOR CORE that could be substituted',
         'What SysML requirements relate to the Variable Speed Drive?',
         'Show all use cases and actors in the Sugar Production Plant MBSE model',
-        'Trace the digital thread for ROTOR SHAFT from requirements to manufacturing',
+        'Analyse change impact if ROTOR SHAFT is modified',
         'Analyse change impact if THREE PHASE WINDINGS is modified',
     ]);
 
@@ -305,7 +305,7 @@ const Chatbot = ({ setChatResults }) => {
                             fontSize: '13px'
                         }}>
                             <p style={{ margin: '0 0 12px', fontWeight: 600, color: '#004B87' }}>
-                                Motor Assembly · SysML MBSE · Digital Thread · Change Impact
+                                Motor Assembly · SysML MBSE · Process Planning · Change Impact
                             </p>
                             <p style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>
                                 Select a query below or type your own question.

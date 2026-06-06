@@ -199,7 +199,6 @@ const ONTOLOGY_MAPPER_ENDPOINTS = {
  * Integration/Webhook Endpoints
  */
 const INTEGRATION_ENDPOINTS = {
-  digitalThreadTrace: process.env.REACT_APP_API_TRACE_DIGITAL_THREAD || '/trace/digital-thread',
   embeddingsBuild: process.env.REACT_APP_API_EMBEDDINGS_BUILD || '/embeddings/build',
   neo4jWebhookV1: process.env.REACT_APP_API_WEBHOOKS_NEO4J_V1 || '/api/v1/webhooks/neo4j',
   neo4jWebhookLegacy: process.env.REACT_APP_API_WEBHOOKS_NEO4J_LEGACY || '/api/webhooks/neo4j',
