@@ -194,6 +194,8 @@ const recommendWorkflowForFile = (fileName) => {
   return 'instance.import';
 };
 
+const getWorkflowById = (workflowId) => WORKFLOW_OPTIONS.find(w => w.id === workflowId) || WORKFLOW_OPTIONS[0];
+
 export default function DataImportPipeline() {
   const [files, setFiles] = useState([]);
   const [pipelineStatus, setPipelineStatus] = useState({});
@@ -347,7 +349,7 @@ export default function DataImportPipeline() {
       name: file.name,
       size: file.size,
       fileObj: file,
-      workflowId: recommendedWorkflow,
+      workflowId: recommendWorkflowForFile(file.name),
       createdAt: new Date().toLocaleTimeString()
     }));
 
@@ -448,14 +450,13 @@ export default function DataImportPipeline() {
   };
 
   const startImport = async (file) => {
-    const workflow = WORKFLOW_OPTIONS.find(w => w.id === selectedWorkflow);
+    const workflow = getWorkflowById(file.workflowId || selectedWorkflow);
     if (workflow?.status !== 'available') {
       setError(`${workflow?.title || 'Selected workflow'} is not connected to backend services yet. Review the workflow plan, then choose an available workflow to run.`);
       return;
     }
 
     const fileId = file.fileId;
-    setPipelineStatus(prev => ({ ...prev, [fileId]: { stage: 'upload', progress: 0, message: 'Uploading...' } }));
 
     try {
       const formData = new FormData();
@@ -480,6 +481,9 @@ export default function DataImportPipeline() {
           'Please choose a mapping from the Ontology Alignment dropdown.'
         );
       }
+
+      setStartedFiles(prev => new Set([...prev, fileId]));
+      setPipelineStatus(prev => ({ ...prev, [fileId]: { stage: 'upload', progress: 0, message: 'Uploading...' } }));
 
       // Pass both ontology_id and ontology_mapping (mapping is for backward compatibility)
       if (ontologyToUse) {
@@ -522,6 +526,11 @@ export default function DataImportPipeline() {
           error: true 
         }
       }));
+      setStartedFiles(prev => {
+        const next = new Set(prev);
+        next.delete(fileId);
+        return next;
+      });
     }
   };
 
@@ -636,7 +645,7 @@ export default function DataImportPipeline() {
   };
 
   const startAllImports = async () => {
-    const workflow = WORKFLOW_OPTIONS.find(w => w.id === selectedWorkflow);
+    const workflow = getWorkflowById(selectedWorkflow);
     if (workflow?.status !== 'available') {
       setError(`${workflow?.title || 'Selected workflow'} is not connected to backend services yet. Use Import instance graph or Create ontology for current execution.`);
       return;
@@ -665,8 +674,6 @@ export default function DataImportPipeline() {
       return;
     }
 
-    setStartedFiles(prev => new Set([...prev, ...filesToImport.map(f => f.fileId)]));
-    
     for (const file of filesToImport) {
       startImport(file);
     }
@@ -1662,10 +1669,9 @@ export default function DataImportPipeline() {
                     gap: '6px',
                     justifyContent: 'flex-end',
                   }}>
-                    {!isStarted && status.stage === 'upload' && (
+                    {!isStarted && (status.stage === 'upload' || status.error) && (
                       <button
                         onClick={() => {
-                          setStartedFiles(prev => new Set([...prev, fileId]));
                           startImport(file);
                         }}
                         disabled={!canRunSelectedWorkflow}
@@ -1685,7 +1691,7 @@ export default function DataImportPipeline() {
                         }}
                         title={canRunSelectedWorkflow ? 'Start workflow for this file' : 'Selected workflow is not connected to backend services yet'}
                       >
-                        <Play size={12} /> Start
+                        <Play size={12} /> {status.error ? 'Retry' : 'Start'}
                       </button>
                     )}
                     {isStarted && !status.error && !status.commitError && status.stage !== 'verify' && status.status !== 'completed' && status.progress < 75 && (
