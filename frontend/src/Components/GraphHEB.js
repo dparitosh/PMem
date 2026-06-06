@@ -175,11 +175,6 @@ const ARROW_HEAD_LENGTH = 8;
 const ARROW_HEAD_WIDTH = 4;
 const ARROW_REF_X = NODE_RADIUS + 3; // Adjust so arrow starts slightly after node boundary
 
-// Text markers used in graph controls. Keep these plain for enterprise UI consistency.
-const ICON_GLOBE      = '';
-const ICON_CLIPBOARD  = '';
-const ICON_REFRESH    = '';
-const ICON_HOURGLASS  = '[WAIT]';
 const CHAR_TIMES      = '\u00D7';     // ×   multiplication sign (close button)
 const CHAR_MINUS      = '\u2212';     // −   minus sign
 const CHAR_BULLET     = '\u2022';     // •   bullet
@@ -1674,7 +1669,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       .attr('font-size', '18px')
       .attr('font-weight', 'bold')
       .attr('fill', 'white')
-      .text(ICON_CLIPBOARD + ' Hierarchical Data View');
+      .text('Hierarchical Data View');
     
     // Item count badge
     headerGroup.append('circle')
@@ -4544,8 +4539,8 @@ const boundaryForce = (width, height) => {
             }}
             title={isLayoutSwitching ? 'Layout switching in progress...' : 'Select graph layout type'}
           >
-            <option key="force-directed" value="force-directed" style={{color:'#333'}}>{ICON_GLOBE} Force-Directed Graph</option>
-            <option key="indented-tree" value="indented-tree" style={{color:'#333'}}>{ICON_CLIPBOARD} Indented Tree Layout</option>
+            <option key="force-directed" value="force-directed" style={{color:'#333'}}>Force-Directed Graph</option>
+            <option key="indented-tree" value="indented-tree" style={{color:'#333'}}>Indented Tree Layout</option>
           </select>
         </div>
         
@@ -4648,7 +4643,7 @@ const boundaryForce = (width, height) => {
               if (setSearchResults) setSearchResults(initialData.nodes);
             }}
             style={{padding:'6px 12px', border:'none', borderRadius:'6px', backgroundColor:'#004B87', color:'#fff', fontSize:'13px', fontWeight:600, cursor:'pointer', transition:'all .2s ease'}}
-          >{ICON_REFRESH} Reset</button>
+          >Reset</button>
         )}
         <button
           onClick={toggleChat}
@@ -4672,7 +4667,7 @@ const boundaryForce = (width, height) => {
           border: '1px solid rgba(0,0,0,0.1)',
           minWidth: '280px'
         }}>
-          <div style={{ marginBottom: '16px', fontSize: '48px' }}>{ICON_HOURGLASS}</div>
+          <div style={{ marginBottom: '12px', fontSize: '13px', fontWeight: 700, color: '#52606d' }}>Loading graph</div>
           <div style={{ fontSize: '18px', fontWeight: '600', color: '#2C2C2C', marginBottom: '8px' }}>Loading Graph Data</div>
           <div style={{ fontSize: '14px', color: '#7f8c8d' }}>Please wait while we fetch your data...</div>
         </div>
