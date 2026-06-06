@@ -46,10 +46,11 @@ def test_deployment_type_detection():
     elif "bolt+s://" in config.uri:
         assert config.deployment_type == Neo4jDeploymentType.ENTERPRISE
         print("[PASS] Correctly detected Enterprise deployment")
-    # Should detect Community for bolt:// URIs
+    # Should detect on-premises deployment for bolt:// URIs
     elif "bolt://" in config.uri:
-        assert config.deployment_type == Neo4jDeploymentType.COMMUNITY
-        print("[PASS] Correctly detected Community deployment")
+        assert config.deployment_type == Neo4jDeploymentType.ON_PREMISES
+        assert config.encrypted is False
+        print("[PASS] Correctly detected on-premises deployment")
 
 
 # Test 2: Ontology Metadata Clearing

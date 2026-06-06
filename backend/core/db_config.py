@@ -181,6 +181,9 @@ def get_config() -> Neo4jConfig:
     # Optional: Custom SSL configuration
     custom_ca = os.getenv("NEO4J_CUSTOM_CA_PATH")
     
+    default_encrypted = deployment_type != Neo4jDeploymentType.ON_PREMISES
+    encrypted_env = os.getenv("NEO4J_ENCRYPTED")
+
     config = Neo4jConfig(
         uri=uri,
         username=username,
@@ -202,7 +205,11 @@ def get_config() -> Neo4jConfig:
         # Query settings
         query_timeout=int(os.getenv("NEO4J_QUERY_TIMEOUT", "30")),
         # SSL settings
-        encrypted=os.getenv("NEO4J_ENCRYPTED", "true").lower() == "true",
+        encrypted=(
+            encrypted_env.lower() == "true"
+            if encrypted_env is not None
+            else default_encrypted
+        ),
         trust_system_ca_signed_certificates=os.getenv(
             "NEO4J_TRUST_SYSTEM_CA", "true"
         ).lower() == "true",
