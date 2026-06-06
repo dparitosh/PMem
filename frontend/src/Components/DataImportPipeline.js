@@ -1,5 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Play, RefreshCw } from 'lucide-react';
+import {
+  X,
+  Play,
+  RefreshCw,
+  Database,
+  FileCode2,
+  Link2,
+  GitMerge,
+  ShieldCheck,
+  BookOpen,
+  Tags,
+  Boxes,
+  Workflow,
+} from 'lucide-react';
 import OntologyMetadataForm from './OntologyMetadataForm';
 import { API_METHODS } from '../services/apiClient';
 import { apiClient } from '../services/apiClient';
@@ -69,6 +82,90 @@ const SUPPORTED_FORMATS = [
   { ext: '.mdxml', name: 'MagicDraw' },
   { ext: '.xml', name: 'XML' },
   { ext: '.xsd', name: 'XSD' },
+  { ext: '.exp', name: 'EXPRESS' },
+];
+
+const WORKFLOW_OPTIONS = [
+  {
+    id: 'instance.import',
+    title: 'Import instance graph',
+    description: 'Parse product, tabular, or exchange files into inspectable entities and relationships.',
+    inputs: 'STEP, STPX, CSV, Excel, JSON, XML, PLMXML, 3DXML',
+    status: 'available',
+    icon: Database,
+    stages: ['Upload', 'Parse preview', 'Map optional or required ontology', 'Load to Neo4j'],
+    outputs: ['Instance graph', 'Preview rows', 'Entity and relationship counts'],
+  },
+  {
+    id: 'ontology.create',
+    title: 'Create ontology',
+    description: 'Register schema or ontology files with namespace, prefix, and metadata capture.',
+    inputs: 'EXPRESS, OWL, RDF, TTL, XSD, XMI, MDXML',
+    status: 'available',
+    icon: FileCode2,
+    stages: ['Upload schema', 'Detect namespace and schema', 'Generate ontology preview', 'Register or load after review'],
+    outputs: ['Ontology preview', 'Prefix metadata', 'Schema classes'],
+  },
+  {
+    id: 'instance.link',
+    title: 'Link instances to ontology',
+    description: 'Review candidate mappings and attach imported instances to an ontology model.',
+    inputs: 'Existing graph plus ontology',
+    status: 'planned',
+    icon: Link2,
+    stages: ['Select graph', 'Select ontology', 'Review candidates', 'Commit links'],
+    outputs: ['Mapping candidates', 'Confidence report', 'Linked graph'],
+  },
+  {
+    id: 'ontology.merge',
+    title: 'Merge ontologies',
+    description: 'Compare two ontologies, resolve conflicts, and produce a merged semantic model.',
+    inputs: 'Two ontology catalog entries',
+    status: 'planned',
+    icon: GitMerge,
+    stages: ['Select sources', 'Detect overlaps', 'Resolve conflicts', 'Create merged ontology'],
+    outputs: ['Conflict report', 'Merged ontology', 'Change log'],
+  },
+  {
+    id: 'ontology.validate',
+    title: 'Validate ontology',
+    description: 'Run quality, namespace, prefix, and consistency checks before publishing.',
+    inputs: 'Ontology catalog entry or file',
+    status: 'planned',
+    icon: ShieldCheck,
+    stages: ['Select ontology', 'Run checks', 'Review findings', 'Export report'],
+    outputs: ['Validation report', 'Quality score', 'Repair suggestions'],
+  },
+  {
+    id: 'dictionary.generate',
+    title: 'Build data dictionary',
+    description: 'Extract terms, fields, definitions, and source lineage for business review.',
+    inputs: 'Ontology, graph, CSV, Excel',
+    status: 'planned',
+    icon: BookOpen,
+    stages: ['Select source', 'Extract terms', 'Review definitions', 'Publish dictionary'],
+    outputs: ['Data dictionary', 'Term lineage', 'Review queue'],
+  },
+  {
+    id: 'taxonomy.generate',
+    title: 'Build taxonomy',
+    description: 'Generate hierarchy, synonyms, and preferred terms from semantic assets.',
+    inputs: 'Ontology or graph',
+    status: 'planned',
+    icon: Tags,
+    stages: ['Select source', 'Cluster concepts', 'Review hierarchy', 'Publish taxonomy'],
+    outputs: ['Taxonomy tree', 'Synonym set', 'Rejected terms'],
+  },
+  {
+    id: 'graph.chunk',
+    title: 'Chunk and index graph',
+    description: 'Prepare ontology or graph chunks for search, retrieval, and downstream AI workflows.',
+    inputs: 'Ontology or graph',
+    status: 'planned',
+    icon: Boxes,
+    stages: ['Select source', 'Choose chunking rule', 'Preview chunks', 'Create index'],
+    outputs: ['Chunk set', 'Index manifest', 'Coverage report'],
+  },
 ];
 
 // Helper: determine file extension safely
@@ -87,7 +184,14 @@ const inferFileTypeFromExtension = (fileName) => {
   if (['.plmxml'].includes(ext)) return 'plmxml';
   if (['.xmi', '.mdxml'].includes(ext)) return 'xmi';
   if (['.xsd'].includes(ext)) return 'xsd';
+  if (['.exp'].includes(ext)) return 'express';
   return '';
+};
+
+const recommendWorkflowForFile = (fileName) => {
+  const fileType = inferFileTypeFromExtension(fileName);
+  if (fileType === 'ontology' || fileType === 'xsd' || fileType === 'xmi' || fileType === 'express') return 'ontology.create';
+  return 'instance.import';
 };
 
 export default function DataImportPipeline() {
@@ -103,6 +207,7 @@ export default function DataImportPipeline() {
   const [confirmingImport, setConfirmingImport] = useState(null);
   const [preCheck, setPreCheck] = useState(null); // { loading, ready, checks, reason }
   const fileInputRef = useRef(null);
+  const [selectedWorkflow, setSelectedWorkflow] = useState('instance.import');
 
   // Ontology mapping selection
   const [availableOntologies, setAvailableOntologies] = useState([]);
@@ -225,8 +330,10 @@ export default function DataImportPipeline() {
     // Check if this is an ontology file requiring metadata capture
     const firstFile = newFiles[0];
     const ext = '.' + firstFile.name.split('.').pop().toLowerCase();
+    const recommendedWorkflow = recommendWorkflowForFile(firstFile.name);
+    setSelectedWorkflow(recommendedWorkflow);
     
-    if (['.xsd', '.xmi', '.owl', '.rdf', '.ttl'].includes(ext)) {
+    if (['.xsd', '.xmi', '.mdxml', '.owl', '.rdf', '.ttl'].includes(ext)) {
       setMetadataFormPrefill(null);
       setPendingFileForMetadata(firstFile);
       setShowMetadataForm(true);
@@ -240,6 +347,7 @@ export default function DataImportPipeline() {
       name: file.name,
       size: file.size,
       fileObj: file,
+      workflowId: recommendedWorkflow,
       createdAt: new Date().toLocaleTimeString()
     }));
 
@@ -270,7 +378,8 @@ export default function DataImportPipeline() {
         ontologyId: uploadDataBody.ontology_id,
         ontologyName: metadata.ontologyName,
         prefix: metadata.prefix,
-        generationType: metadata.generationType
+        generationType: metadata.generationType,
+        workflowId: 'ontology.create'
       };
 
       setFiles(prev => [...prev, newFile]);
@@ -339,6 +448,12 @@ export default function DataImportPipeline() {
   };
 
   const startImport = async (file) => {
+    const workflow = WORKFLOW_OPTIONS.find(w => w.id === selectedWorkflow);
+    if (workflow?.status !== 'available') {
+      setError(`${workflow?.title || 'Selected workflow'} is not connected to backend services yet. Review the workflow plan, then choose an available workflow to run.`);
+      return;
+    }
+
     const fileId = file.fileId;
     setPipelineStatus(prev => ({ ...prev, [fileId]: { stage: 'upload', progress: 0, message: 'Uploading...' } }));
 
@@ -521,6 +636,12 @@ export default function DataImportPipeline() {
   };
 
   const startAllImports = async () => {
+    const workflow = WORKFLOW_OPTIONS.find(w => w.id === selectedWorkflow);
+    if (workflow?.status !== 'available') {
+      setError(`${workflow?.title || 'Selected workflow'} is not connected to backend services yet. Use Import instance graph or Create ontology for current execution.`);
+      return;
+    }
+
     const filesToImport = files.filter(f => {
       if (startedFiles.has(f.fileId)) return false;
       const policy = getAlignmentPolicy(f.name);
@@ -698,6 +819,12 @@ export default function DataImportPipeline() {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
+  const activeWorkflow = WORKFLOW_OPTIONS.find(w => w.id === selectedWorkflow) || WORKFLOW_OPTIONS[0];
+  const contextFile = files.find(f => !startedFiles.has(f.fileId)) || files[0] || pendingFileForMetadata;
+  const recommendedWorkflowId = contextFile ? recommendWorkflowForFile(contextFile.name) : selectedWorkflow;
+  const canRunSelectedWorkflow = activeWorkflow.status === 'available';
+  const pendingFileCount = files.filter(f => !startedFiles.has(f.fileId)).length;
+
   return (
     <div style={{ background: C.bg, minHeight: '100%', padding: '10px', boxSizing: 'border-box' }}>
       {/* Ontology Metadata Form Modal */}
@@ -726,8 +853,201 @@ export default function DataImportPipeline() {
           Data Import Pipeline
         </h2>
         <p style={{ fontSize: '10px', color: C.textMuted, margin: 0 }}>
-          Upload and process data files through the semantic ontology pipeline
+          Choose a semantic workflow, review the expected outputs, then process files through backend API services.
         </p>
+      </div>
+
+      {/* Workflow catalog */}
+      <div style={{
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: '6px',
+        padding: '10px',
+        marginBottom: '10px',
+      }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          marginBottom: '8px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Workflow size={14} color={C.primary} />
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: '700', color: C.textPrimary }}>
+                Workflow catalog
+              </div>
+              <div style={{ fontSize: '9px', color: C.textMuted }}>
+                Select the semantic operation before choosing mappings or loading to Neo4j. {availableOntologies.length} ontology entries are available.
+              </div>
+            </div>
+          </div>
+          <div style={{
+            fontSize: '9px',
+            color: canRunSelectedWorkflow ? C.green : C.orange,
+            fontWeight: '700',
+            background: canRunSelectedWorkflow ? '#E8F5E9' : '#FFF8E1',
+            border: `1px solid ${canRunSelectedWorkflow ? '#B7E2BF' : '#FFE082'}`,
+            borderRadius: '4px',
+            padding: '4px 8px',
+            whiteSpace: 'nowrap',
+          }}>
+            {canRunSelectedWorkflow ? 'API connected' : 'Design queued'}
+          </div>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+          gap: '8px',
+        }}>
+          {WORKFLOW_OPTIONS.map(option => {
+            const Icon = option.icon;
+            const isSelected = option.id === selectedWorkflow;
+            const isRecommended = option.id === recommendedWorkflowId;
+            const isAvailable = option.status === 'available';
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setSelectedWorkflow(option.id)}
+                title={isAvailable ? `Select ${option.title}` : `${option.title} is planned for backend service wiring`}
+                style={{
+                  textAlign: 'left',
+                  background: isSelected ? C.primaryLight : C.surface,
+                  border: `1px solid ${isSelected ? C.primary : C.borderDark}`,
+                  borderRadius: '6px',
+                  padding: '8px',
+                  cursor: 'pointer',
+                  minHeight: '112px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  boxShadow: isSelected ? `0 0 0 2px rgba(0, 75, 135, 0.08)` : 'none',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                    <Icon size={14} color={isSelected ? C.primary : C.textSec} />
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      color: C.textPrimary,
+                      lineHeight: 1.25,
+                    }}>
+                      {option.title}
+                    </span>
+                  </div>
+                  <span style={{
+                    fontSize: '8px',
+                    fontWeight: '700',
+                    color: isAvailable ? C.green : C.orange,
+                    background: isAvailable ? '#E8F5E9' : '#FFF8E1',
+                    borderRadius: '3px',
+                    padding: '2px 5px',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {isAvailable ? 'Ready' : 'Planned'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '9px', color: C.textSec, lineHeight: 1.35 }}>
+                  {option.description}
+                </div>
+                <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                  <span style={{
+                    fontSize: '8px',
+                    color: C.textMuted,
+                    lineHeight: 1.25,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {option.inputs}
+                  </span>
+                  {isRecommended && (
+                    <span style={{
+                      fontSize: '8px',
+                      fontWeight: '700',
+                      color: C.primary,
+                      background: '#FFFFFF',
+                      border: `1px solid ${C.primaryLight}`,
+                      borderRadius: '3px',
+                      padding: '2px 5px',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      Recommended
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{
+          marginTop: '8px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: '8px',
+        }}>
+          <div style={{
+            border: `1px solid ${C.border}`,
+            borderRadius: '4px',
+            padding: '8px',
+            background: C.bg,
+          }}>
+            <div style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary, marginBottom: '6px' }}>
+              Execution plan
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {activeWorkflow.stages.map((stage, idx) => (
+                <span
+                  key={`${activeWorkflow.id}-${stage}`}
+                  style={{
+                    fontSize: '9px',
+                    color: C.textPrimary,
+                    background: C.surface,
+                    border: `1px solid ${C.borderDark}`,
+                    borderRadius: '4px',
+                    padding: '4px 6px',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {idx + 1}. {stage}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div style={{
+            border: `1px solid ${C.border}`,
+            borderRadius: '4px',
+            padding: '8px',
+            background: C.bg,
+          }}>
+            <div style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary, marginBottom: '6px' }}>
+              Review before commit
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+              {activeWorkflow.outputs.map(output => (
+                <span
+                  key={`${activeWorkflow.id}-${output}`}
+                  style={{
+                    fontSize: '9px',
+                    color: C.textSec,
+                    background: C.surface,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: '4px',
+                    padding: '3px 6px',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {output}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Pipeline Stages Workflow */}
@@ -1034,23 +1354,24 @@ export default function DataImportPipeline() {
           color: C.textPrimary,
           whiteSpace: 'nowrap',
         }}>
-          Ontology Alignment:
+          {selectedWorkflow === 'ontology.create' ? 'Namespace and prefix:' : 'Target ontology:'}
         </label>
         <select
           value={selectedOntology}
           onChange={(e) => setSelectedOntology(e.target.value)}
+          disabled={!canRunSelectedWorkflow || selectedWorkflow === 'ontology.create'}
           style={{
             flex: 1,
             padding: '4px 8px',
             fontSize: '10px',
             border: `1px solid ${C.borderDark}`,
             borderRadius: '3px',
-            background: C.bg,
+            background: (!canRunSelectedWorkflow || selectedWorkflow === 'ontology.create') ? '#F1F3F5' : C.bg,
             color: C.textPrimary,
-            cursor: 'pointer',
+            cursor: (!canRunSelectedWorkflow || selectedWorkflow === 'ontology.create') ? 'not-allowed' : 'pointer',
             maxWidth: '400px',
           }}
-          title="Select ontology mapping. STEP uses AP242-MBD3D automatically. CSV/Excel require a mapping."
+          title="Select ontology mapping. STEP uses AP242-MBD3D automatically. CSV/Excel require a mapping. Ontology creation captures namespace and prefix in the metadata form."
         >
           <option key="auto" value="">No explicit mapping (use backend rules)</option>
           {availableMappings.map((m, idx) => {
@@ -1068,26 +1389,26 @@ export default function DataImportPipeline() {
           )}
         </select>
         <span style={{ fontSize: '9px', color: C.textMuted }}>
-          {selectedOntology || '(none selected)'}
+          {selectedWorkflow === 'ontology.create' ? 'captured during ontology upload' : (selectedOntology || '(none selected)')}
         </span>
         <button
           onClick={startAllImports}
-          disabled={files.filter(f => !startedFiles.has(f.fileId)).length === 0}
+          disabled={pendingFileCount === 0 || !canRunSelectedWorkflow}
           style={{
             marginLeft: 'auto',
             padding: '4px 12px',
-            background: files.filter(f => !startedFiles.has(f.fileId)).length === 0 ? C.textMuted : C.green,
+            background: (pendingFileCount === 0 || !canRunSelectedWorkflow) ? C.textMuted : C.green,
             color: '#fff',
             border: 'none',
             borderRadius: '3px',
             fontSize: '10px',
             fontWeight: '700',
-            cursor: files.filter(f => !startedFiles.has(f.fileId)).length === 0 ? 'not-allowed' : 'pointer',
-            opacity: files.filter(f => !startedFiles.has(f.fileId)).length === 0 ? 0.5 : 1,
+            cursor: (pendingFileCount === 0 || !canRunSelectedWorkflow) ? 'not-allowed' : 'pointer',
+            opacity: (pendingFileCount === 0 || !canRunSelectedWorkflow) ? 0.5 : 1,
             whiteSpace: 'nowrap',
           }}
         >
-          ▶ Start Pipeline
+          Start workflow
         </button>
       </div>
 
@@ -1101,12 +1422,15 @@ export default function DataImportPipeline() {
         color: C.textSec,
         lineHeight: 1.45,
       }}>
-        <strong style={{ color: C.textPrimary }}>Alignment guidance:</strong>{' '}
-        {mappingFileTypeContext === 'step' && 'STEP files use AP242-MBD3D mapping automatically.'}
+        <strong style={{ color: C.textPrimary }}>Workflow guidance:</strong>{' '}
+        {!canRunSelectedWorkflow && `${activeWorkflow.title} is visible for planning, but backend service wiring is still required before execution.`}
+        {canRunSelectedWorkflow && selectedWorkflow === 'ontology.create' && mappingFileTypeContext !== 'express' && 'Schema and ontology files are registered through metadata capture. EXPRESS/XSD-style schemas create ontology structure; they do not create STEP instance graphs.'}
+        {canRunSelectedWorkflow && mappingFileTypeContext === 'express' && 'EXPRESS files create ontology/schema structure from ISO 10303 definitions. Use STEP/STP/STPX when you need product instance data.'}
+        {canRunSelectedWorkflow && mappingFileTypeContext === 'step' && 'STEP/STP/STPX files create an instance graph. AP242-MBD3D alignment is applied automatically when available.'}
         {(mappingFileTypeContext === 'csv' || mappingFileTypeContext === 'excel') && 'CSV/Excel require a selected ontology mapping before start.'}
         {(mappingFileTypeContext === 'json' || mappingFileTypeContext === 'xml') && 'JSON/XML can auto-generate OWL/TTL if no mapping is selected.'}
         {mappingFileTypeContext === 'ontology' && 'OWL/RDF/TTL are imported directly as ontology content (as-is).'}
-        {!mappingFileTypeContext && 'Select files to see file-type specific alignment guidance.'}
+        {canRunSelectedWorkflow && !mappingFileTypeContext && selectedWorkflow !== 'ontology.create' && 'Select files to see file-type specific alignment guidance.'}
         {requiredMappings.length > 0 && (
           <span> Required mapping for current file type: {requiredMappings.join(', ')}.</span>
         )}
@@ -1344,20 +1668,22 @@ export default function DataImportPipeline() {
                           setStartedFiles(prev => new Set([...prev, fileId]));
                           startImport(file);
                         }}
+                        disabled={!canRunSelectedWorkflow}
                         style={{
                           padding: '6px 10px',
-                          background: C.primary,
+                          background: canRunSelectedWorkflow ? C.primary : C.textMuted,
                           color: '#fff',
                           border: 'none',
                           borderRadius: '4px',
                           fontSize: '10px',
                           fontWeight: '600',
-                          cursor: 'pointer',
+                          cursor: canRunSelectedWorkflow ? 'pointer' : 'not-allowed',
+                          opacity: canRunSelectedWorkflow ? 1 : 0.6,
                           display: 'flex',
                           alignItems: 'center',
                           gap: '4px',
                         }}
-                        title="Start import"
+                        title={canRunSelectedWorkflow ? 'Start workflow for this file' : 'Selected workflow is not connected to backend services yet'}
                       >
                         <Play size={12} /> Start
                       </button>
@@ -1495,19 +1821,19 @@ export default function DataImportPipeline() {
                 })()}
                 <button
                   onClick={startAllImports}
-                  disabled={files.filter(f => !startedFiles.has(f.fileId)).length === 0}
+                  disabled={pendingFileCount === 0 || !canRunSelectedWorkflow}
                   style={{
                     padding: '4px 10px',
-                    background: files.filter(f => !startedFiles.has(f.fileId)).length === 0 ? C.textMuted : C.green,
+                    background: (pendingFileCount === 0 || !canRunSelectedWorkflow) ? C.textMuted : C.green,
                     color: '#fff',
                     border: 'none',
                     borderRadius: '3px',
                     fontSize: '10px',
                     fontWeight: '600',
-                    cursor: files.filter(f => !startedFiles.has(f.fileId)).length === 0 ? 'not-allowed' : 'pointer',
-                    opacity: files.filter(f => !startedFiles.has(f.fileId)).length === 0 ? 0.5 : 1,
+                    cursor: (pendingFileCount === 0 || !canRunSelectedWorkflow) ? 'not-allowed' : 'pointer',
+                    opacity: (pendingFileCount === 0 || !canRunSelectedWorkflow) ? 0.5 : 1,
                   }}>
-                  Start All Imports
+                  Start all
                 </button>
               </div>
             )}

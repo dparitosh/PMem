@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 const C = {
   primary: '#004B87',
@@ -13,6 +13,30 @@ const C = {
   borderDark: '#CED4DA',
   bg: '#F8F9FA',
   surface: '#FFFFFF',
+};
+
+const getGenerationOptionsForFileType = (fileType) => {
+  if (fileType === 'xsd') {
+    return [
+      { value: 'shacl', label: 'SHACL (RDF Shapes) - Recommended for XSD' },
+      { value: 'owl', label: 'OWL (Web Ontology Language)' },
+      { value: 'both', label: 'Both SHACL and OWL' }
+    ];
+  }
+  if (fileType === 'xmi' || fileType === 'mdxml') {
+    return [
+      { value: 'owl', label: 'OWL (Web Ontology Language) - Recommended for XMI/MagicDraw' },
+      { value: 'shacl', label: 'SHACL (RDF Shapes)' },
+      { value: 'both', label: 'Both OWL and SHACL' }
+    ];
+  }
+  if (['owl', 'rdf', 'ttl'].includes(fileType)) {
+    return [
+      { value: 'as_is', label: 'As Is (register ontology directly without conversion)' },
+    ];
+  }
+
+  return [];
 };
 
 /**
@@ -51,34 +75,9 @@ export default function OntologyMetadataForm({
     return ext;
   };
 
-  // Get generation type options based on file type
-  const getGenerationOptions = () => {
-    const fileType = getFileType();
-    
-    if (fileType === 'xsd') {
-      return [
-        { value: 'shacl', label: 'SHACL (RDF Shapes) - Recommended for XSD' },
-        { value: 'owl', label: 'OWL (Web Ontology Language)' },
-        { value: 'both', label: 'Both SHACL and OWL' }
-      ];
-    } else if (fileType === 'xmi') {
-      return [
-        { value: 'owl', label: 'OWL (Web Ontology Language) - Recommended for XMI' },
-        { value: 'shacl', label: 'SHACL (RDF Shapes)' },
-        { value: 'both', label: 'Both OWL and SHACL' }
-      ];
-    } else if (['owl', 'rdf', 'ttl'].includes(fileType)) {
-      return [
-        { value: 'as_is', label: 'As Is (register ontology directly without conversion)' },
-      ];
-    }
-    
-    return [];
-  };
-
   // Check if generation options are empty due to unrecognized file type
-  const generationOptions = getGenerationOptions();
   const fileType = getFileType();
+  const generationOptions = useMemo(() => getGenerationOptionsForFileType(fileType), [fileType]);
   const showFileTypeError = fileType && generationOptions.length === 0;
 
   useEffect(() => {
@@ -88,7 +87,7 @@ export default function OntologyMetadataForm({
         generationType: generationOptions[0].value,
       }));
     }
-  }, [fileType, generationOptions.length, formData.generationType]);
+  }, [fileType, generationOptions, formData.generationType]);
 
   const validateForm = () => {
     const errors = {};
@@ -119,10 +118,11 @@ export default function OntologyMetadataForm({
     }
     
     const fileType = getFileType();
+    const normalizedFileType = fileType === 'mdxml' ? 'xmi' : fileType;
     
     onSubmit({
       ...formData,
-      fileType: fileType,
+      fileType: normalizedFileType,
       selectedFile: selectedFile,
       schemaType: formData.schemaType || 'schema'
     });
