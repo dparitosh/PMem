@@ -10,6 +10,7 @@ import pytest
 import tempfile
 import json
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -189,6 +190,33 @@ async def test_clean_schema_endpoint_includes_metadata_clear():
                 assert response['metadata_cleared'] == 5
                 assert 'Metadata files cleared: 5' in response['message']
                 print("[PASS] clean_neo4j_schema endpoint includes metadata clearing")
+
+
+@pytest.mark.asyncio
+async def test_schema_stats_counts_custom_indexes_separately():
+    """Neo4j lookup indexes should not make a clean schema look dirty."""
+    from routes.admin_routes import get_schema_stats
+
+    with patch('routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
+        with patch('routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
+            mock_cleaner = MagicMock()
+            mock_cleaner.get_schema_stats.return_value = SimpleNamespace(
+                total_nodes=0,
+                total_relationships=0,
+                node_types=[],
+                relationship_types=[],
+                indexes=[
+                    'index_1b9dcc97: LOOKUP',
+                    'idx_entity_name: RANGE',
+                ],
+                constraints=[],
+            )
+            mock_cleaner_class.return_value = mock_cleaner
+
+            response = await get_schema_stats()
+
+            assert response['stats']['indexes_count'] == 1
+            assert response['stats']['lookup_indexes_count'] == 1
 
 
 if __name__ == '__main__':

@@ -103,6 +103,16 @@ async def get_schema_stats():
         cleaner = Neo4jSchemaCleaner()
         stats = cleaner.get_schema_stats()
         cleaner.close()
+        custom_indexes = [
+            index
+            for index in stats.indexes
+            if ": LOOKUP" not in str(index).upper()
+        ]
+        lookup_indexes = [
+            index
+            for index in stats.indexes
+            if ": LOOKUP" in str(index).upper()
+        ]
         
         return {
             "status": "success",
@@ -111,7 +121,8 @@ async def get_schema_stats():
                 "total_relationships": stats.total_relationships,
                 "node_types": stats.node_types,
                 "relationship_types": stats.relationship_types,
-                "indexes_count": len(stats.indexes),
+                "indexes_count": len(custom_indexes),
+                "lookup_indexes_count": len(lookup_indexes),
                 "constraints_count": len(stats.constraints)
             }
         }

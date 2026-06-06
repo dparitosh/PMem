@@ -82,6 +82,12 @@ export default function AdminPanel({ onSchemaCleaned }) {
       ]);
       if (healthRes.status === 'fulfilled') {
         setHealth(healthRes.value.data || null);
+      } else {
+        const detail =
+          healthRes.reason?.response?.data?.detail ||
+          healthRes.reason?.message ||
+          'Admin health unavailable.';
+        setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
       }
       if (statsRes.status === 'fulfilled') {
         setStats(statsRes.value.data?.stats || null);
@@ -165,7 +171,8 @@ export default function AdminPanel({ onSchemaCleaned }) {
   const statusText = useMemo(() => {
     if (loading) return 'Refreshing';
     if (error) return 'Needs attention';
-    return health?.status || 'Ready';
+    if (health?.status) return 'Online';
+    return 'Ready';
   }, [error, health, loading]);
 
   return (
@@ -174,9 +181,6 @@ export default function AdminPanel({ onSchemaCleaned }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 18, color: colors.text, fontWeight: 800 }}>Admin</h2>
-            <div style={{ fontSize: 12, color: colors.muted }}>
-              Operational controls for Neo4j health, schema state, and cleanup.
-            </div>
           </div>
           <button type="button" onClick={loadAdminState} disabled={loading} style={buttonStyle}>
             <RefreshCw size={14} />
@@ -196,9 +200,9 @@ export default function AdminPanel({ onSchemaCleaned }) {
             <div style={{ fontSize: 24, fontWeight: 800, color: error ? colors.danger : colors.ok }}>
               {statusText}
             </div>
-            <div style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
-              {health?.message || 'Admin routes are available when backend is reachable.'}
-            </div>
+            {health?.message && (
+              <div style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>{health.message}</div>
+            )}
           </section>
 
           <section style={cardStyle}>
@@ -209,7 +213,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 }}>
               <Stat label="Nodes" value={stats?.total_nodes} />
               <Stat label="Relationships" value={stats?.total_relationships} />
-              <Stat label="Indexes" value={stats?.indexes_count} />
+              <Stat label="Custom indexes" value={stats?.indexes_count} />
               <Stat label="Constraints" value={stats?.constraints_count} />
             </div>
           </section>
@@ -234,9 +238,6 @@ export default function AdminPanel({ onSchemaCleaned }) {
               <Trash2 size={14} />
               Clean Neo4j Schema
             </button>
-          </div>
-          <div style={{ fontSize: 12, color: colors.muted, marginTop: 8, maxWidth: 760 }}>
-            Destructive actions require confirmation and then refresh ontology metadata and schema stats.
           </div>
         </section>
       </div>
