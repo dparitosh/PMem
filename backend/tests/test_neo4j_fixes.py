@@ -233,11 +233,13 @@ def test_admin_registry_returns_required_catalogs():
 
     assert response.status_code == 200
     data = response.json()
-    for key in ["services", "api_routes", "data_sources", "agents", "workflows", "packages"]:
+    for key in ["services", "api_routes", "data_sources", "configuration", "agents", "workflows", "packages"]:
         assert isinstance(data[key], list)
     assert any(service["id"] == "backend-api" for service in data["services"])
+    assert any(service["type"] == "api_route_group" for service in data["services"])
     assert any(workflow["id"] == "instance.import" for workflow in data["workflows"])
     assert any(route["path"] == "/api/v1/admin/registry" for route in data["api_routes"])
+    assert any(row["key"] == "NEO4J_DATABASE" for row in data["configuration"])
 
 
 def test_admin_registry_masks_datasource_secrets():
@@ -258,6 +260,10 @@ def test_admin_registry_masks_datasource_secrets():
         assert source["mutable"] is False
         assert "uri" not in source
         assert "uri_masked" in source
+        if source["id"] == "neo4j":
+            assert "active_database" in source
+            assert "configured_database" in source
+            assert "configured_database_source" in source
 
 
 if __name__ == '__main__':

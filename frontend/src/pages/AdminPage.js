@@ -15,6 +15,49 @@ const routeColumns = [
   { field: 'frontend_mapped', headerName: 'Frontend Mapped', width: 150 },
 ];
 
+const serviceColumns = [
+  { field: 'id', width: 170 },
+  { field: 'name', flex: 1.5, minWidth: 210 },
+  { field: 'type', width: 150 },
+  { field: 'status', width: 120 },
+  { field: 'owner', width: 170 },
+  { field: 'endpoint', flex: 1.4, minWidth: 190 },
+  { field: 'health_endpoint', headerName: 'Health Endpoint', flex: 1, minWidth: 160 },
+  { field: 'route_count', headerName: 'Routes', width: 105 },
+  { field: 'frontend_mapped_count', headerName: 'Mapped', width: 110 },
+  { field: 'database', width: 125 },
+  { field: 'configured_database', headerName: 'Configured DB', width: 140 },
+  { field: 'config_source', headerName: 'Config Source', flex: 1, minWidth: 160 },
+  { field: 'model', width: 150 },
+];
+
+const dataSourceColumns = [
+  { field: 'id', width: 120 },
+  { field: 'name', flex: 1.2, minWidth: 210 },
+  { field: 'type', width: 150 },
+  { field: 'status', width: 120 },
+  { field: 'uri_masked', headerName: 'URI', flex: 1.2, minWidth: 180 },
+  { field: 'active_database', headerName: 'Active DB', width: 130 },
+  { field: 'configured_database', headerName: 'Configured DB', width: 140 },
+  { field: 'configured_database_source', headerName: 'Config Source', flex: 1, minWidth: 170 },
+  { field: 'database_status', headerName: 'DB Status', width: 125 },
+  { field: 'deployment_type', headerName: 'Deployment', width: 130 },
+  { field: 'encrypted', width: 110 },
+  { field: 'query_timeout', headerName: 'Timeout', width: 110 },
+  { field: 'message', flex: 1.6, minWidth: 220 },
+  { field: 'mutable', width: 100 },
+];
+
+const configColumns = [
+  { field: 'component', width: 120 },
+  { field: 'key', width: 170 },
+  { field: 'configured_value', headerName: 'Configured Value', flex: 1.3, minWidth: 180 },
+  { field: 'active_value', headerName: 'Active Value', flex: 1.2, minWidth: 170 },
+  { field: 'source', flex: 1.1, minWidth: 170 },
+  { field: 'status', width: 120 },
+  { field: 'mutable', width: 100 },
+];
+
 const packageColumns = [
   { field: 'name', flex: 1.4 },
   { field: 'category', flex: 1 },
@@ -50,6 +93,7 @@ export default function AdminPage({ onSchemaCleaned }) {
     routes: registry?.api_routes?.length || 0,
     sources: registry?.data_sources?.length || 0,
     workflows: registry?.workflows?.length || 0,
+    config: registry?.configuration?.length || 0,
   }), [registry]);
 
   return (
@@ -95,6 +139,7 @@ export default function AdminPage({ onSchemaCleaned }) {
           { label: 'Services', value: counts.services },
           { label: 'API routes', value: counts.routes },
           { label: 'Datasources', value: counts.sources },
+          { label: 'Configuration', value: counts.config },
           { label: 'Workflow capabilities', value: counts.workflows },
         ]}
       />
@@ -110,8 +155,8 @@ export default function AdminPage({ onSchemaCleaned }) {
           <AdminPanel onSchemaCleaned={onSchemaCleaned} />
         </section>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <RegistryWidget title="Service Catalog" rows={registry?.services || []} height={240} />
-          <RegistryWidget title="Data Sources" rows={registry?.data_sources || []} height={220} />
+          <RegistryWidget title="Service Catalog" rows={registry?.services || []} columns={serviceColumns} height={320} />
+          <RegistryWidget title="Data Sources" rows={registry?.data_sources || []} columns={dataSourceColumns} height={250} />
           <RegistryWidget title="Agents" rows={registry?.agents || []} height={220} columns={[
             { field: 'id', flex: 1 },
             { field: 'name', flex: 1.4 },
@@ -123,6 +168,7 @@ export default function AdminPage({ onSchemaCleaned }) {
         </div>
       </div>
 
+      <RegistryWidget title="Runtime Configuration" rows={registry?.configuration || []} columns={configColumns} height={300} />
       <RegistryWidget title="Workflow Registry" rows={registry?.workflows || []} height={280} />
       <RegistryWidget title="API Route Registry" rows={registry?.api_routes || []} columns={routeColumns} height={360} />
       <RegistryWidget title="Package Rationalization" rows={registry?.packages || []} columns={packageColumns} height={360} />

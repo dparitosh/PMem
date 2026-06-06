@@ -122,7 +122,7 @@ def _load_environment() -> None:
     # db_config.py is at: Depo_onto/backend/core/db_config.py
     # Need to go up 4 levels to project root, then into requirements/
     possible_paths = [
-        Path(__file__).parent.parent.parent.parent / "requirements" / ".env",  # Project root: requirements/.env (PRIMARY)
+        Path(__file__).parent.parent.parent / "requirements" / ".env",  # Project root: requirements/.env (PRIMARY)
         Path(__file__).parent.parent / ".env",  # Fallback: backend/.env
         Path.cwd() / ".env",  # Fallback: Current working directory
         Path.cwd() / "requirements" / ".env",  # Fallback: requirements/ from cwd

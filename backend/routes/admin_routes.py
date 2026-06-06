@@ -40,6 +40,45 @@ def _mask_uri(uri: str | None) -> str:
         return "***"
 
 
+def _env_candidates() -> list[Path]:
+    root = _project_root()
+    return [
+        root / "requirements" / ".env",
+        root / "backend" / ".env",
+        root / ".env",
+    ]
+
+
+def _read_env_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    try:
+        for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, value = stripped.split("=", 1)
+            values[key.strip()] = value.strip().strip('"').strip("'")
+    except Exception as exc:
+        logger.warning("Could not read env file %s: %s", path, exc)
+    return values
+
+
+def _env_lookup(*keys: str) -> tuple[str, str]:
+    for env_path in _env_candidates():
+        env_values = _read_env_file(env_path)
+        for key in keys:
+            value = env_values.get(key)
+            if value:
+                return value.strip(), str(env_path.relative_to(_project_root()))
+    for key in keys:
+        value = os.getenv(key)
+        if value:
+            return value.strip(), "process"
+    return "", "default"
+
+
 def _frontend_mapped_paths() -> set[str]:
     config_path = _project_root() / "frontend" / "src" / "config.js"
     if not config_path.exists():
@@ -96,6 +135,16 @@ def _neo4j_datasource() -> dict:
         except ImportError:
             from core.db_config import get_config
         config = get_config()
+        configured_database, configured_database_source = _env_lookup("NEO4J_DATABASE", "Neo4j_database")
+        configured_database = configured_database or "neo4j"
+        database_status = "active"
+        database_message = ""
+        if configured_database and configured_database != config.database:
+            database_status = "mismatch"
+            database_message = (
+                f"Configured database is '{configured_database}' from {configured_database_source}, "
+                f"but active backend config is '{config.database}'. Restart backend or clear config cache."
+            )
         return {
             "id": "neo4j",
             "name": "Neo4j Knowledge Graph",
@@ -103,6 +152,14 @@ def _neo4j_datasource() -> dict:
             "status": "configured",
             "uri_masked": _mask_uri(config.uri),
             "database": config.database,
+            "active_database": config.database,
+            "configured_database": configured_database,
+            "configured_database_source": configured_database_source,
+            "database_status": database_status,
+            "message": database_message,
+            "deployment_type": config.deployment_type.value,
+            "encrypted": config.encrypted,
+            "query_timeout": config.query_timeout,
             "mutable": False,
         }
     except Exception as exc:
@@ -113,9 +170,109 @@ def _neo4j_datasource() -> dict:
             "status": "degraded",
             "uri_masked": "",
             "database": "",
+            "active_database": "",
+            "configured_database": "",
+            "configured_database_source": "",
+            "database_status": "degraded",
             "mutable": False,
             "message": str(exc),
         }
+
+
+def _configuration_registry(neo4j: dict, llm: dict) -> list[dict]:
+    uri, uri_source = _env_lookup("NEO4J_URI", "NEO4J_URL", "Neo4j_url")
+    user, user_source = _env_lookup("NEO4J_USER", "NEO4J_USERNAME", "Neo4j_user")
+    credential, credential_source = _env_lookup("NEO4J_PASS", "NEO4J_PASSWORD", "Neo4j_password")
+    encrypted, encrypted_source = _env_lookup("NEO4J_ENCRYPTED")
+    timeout, timeout_source = _env_lookup("NEO4J_QUERY_TIMEOUT")
+    ollama_base, ollama_source = _env_lookup("OLLAMA_BASE_URL")
+    llm_model, model_source = _env_lookup("LLM_MODEL_NAME")
+    use_llm, use_llm_source = _env_lookup("USE_LLM")
+
+    rows = [
+        {
+            "component": "Neo4j",
+            "key": "NEO4J_URI",
+            "configured_value": _mask_uri(uri),
+            "active_value": neo4j.get("uri_masked", ""),
+            "source": uri_source,
+            "status": "configured" if uri else "missing",
+            "mutable": False,
+        },
+        {
+            "component": "Neo4j",
+            "key": "NEO4J_USER",
+            "configured_value": user,
+            "active_value": user,
+            "source": user_source,
+            "status": "configured" if user else "missing",
+            "mutable": False,
+        },
+        {
+            "component": "Neo4j",
+            "key": "NEO4J_CREDENTIAL",
+            "configured_value": "configured" if credential else "missing",
+            "active_value": "redacted" if credential else "missing",
+            "source": credential_source,
+            "status": "configured" if credential else "missing",
+            "mutable": False,
+        },
+        {
+            "component": "Neo4j",
+            "key": "NEO4J_DATABASE",
+            "configured_value": neo4j.get("configured_database", ""),
+            "active_value": neo4j.get("active_database", ""),
+            "source": neo4j.get("configured_database_source", ""),
+            "status": neo4j.get("database_status", "unknown"),
+            "mutable": False,
+        },
+        {
+            "component": "Neo4j",
+            "key": "NEO4J_ENCRYPTED",
+            "configured_value": encrypted or str(neo4j.get("encrypted", "")),
+            "active_value": str(neo4j.get("encrypted", "")),
+            "source": encrypted_source,
+            "status": "configured" if encrypted else "default",
+            "mutable": False,
+        },
+        {
+            "component": "Neo4j",
+            "key": "NEO4J_QUERY_TIMEOUT",
+            "configured_value": timeout or str(neo4j.get("query_timeout", "")),
+            "active_value": str(neo4j.get("query_timeout", "")),
+            "source": timeout_source,
+            "status": "configured" if timeout else "default",
+            "mutable": False,
+        },
+        {
+            "component": "LLM",
+            "key": "USE_LLM",
+            "configured_value": use_llm or llm.get("provider", ""),
+            "active_value": llm.get("provider", ""),
+            "source": use_llm_source,
+            "status": "configured" if use_llm else "default",
+            "mutable": False,
+        },
+        {
+            "component": "LLM",
+            "key": "OLLAMA_BASE_URL",
+            "configured_value": _mask_uri(ollama_base or llm.get("endpoint", "")),
+            "active_value": _mask_uri(llm.get("endpoint", "")),
+            "source": ollama_source,
+            "status": "configured" if ollama_base else "default",
+            "mutable": False,
+        },
+        {
+            "component": "LLM",
+            "key": "LLM_MODEL_NAME",
+            "configured_value": llm_model or llm.get("model", ""),
+            "active_value": llm.get("model", ""),
+            "source": model_source,
+            "status": "configured" if llm_model else "default",
+            "mutable": False,
+        },
+    ]
+    return rows
 
 
 def _llm_settings() -> dict:
@@ -272,6 +429,27 @@ def _package_registry() -> list[dict]:
         logger.warning("Package registry discovery failed: %s", exc)
     return packages
 
+
+def _route_group_services(api_routes: list[dict]) -> list[dict]:
+    groups: dict[str, dict] = {}
+    for route in api_routes:
+        group = route.get("service_group") or "Core"
+        item = groups.setdefault(group, {
+            "id": f"api-{group.lower().replace(' ', '-').replace('_', '-')}",
+            "name": f"{group} API",
+            "type": "api_route_group",
+            "status": "online",
+            "owner": "Digital Engineering",
+            "endpoint": "",
+            "health_endpoint": "",
+            "route_count": 0,
+            "frontend_mapped_count": 0,
+        })
+        item["route_count"] += 1
+        if route.get("frontend_mapped"):
+            item["frontend_mapped_count"] += 1
+    return sorted(groups.values(), key=lambda row: row["name"])
+
 # Test endpoint
 @router.get("/health")
 async def admin_health():
@@ -289,6 +467,7 @@ async def get_admin_registry(request: Request):
     neo4j = _neo4j_datasource()
     api_routes = _discover_api_routes(request)
     backend_endpoint = str(request.base_url).rstrip("/")
+    route_group_services = _route_group_services(api_routes)
 
     return {
         "services": [
@@ -300,6 +479,8 @@ async def get_admin_registry(request: Request):
                 "owner": "Digital Engineering",
                 "endpoint": "http://localhost:3000",
                 "health_endpoint": "",
+                "route_count": 0,
+                "frontend_mapped_count": 0,
             },
             {
                 "id": "backend-api",
@@ -309,6 +490,8 @@ async def get_admin_registry(request: Request):
                 "owner": "Digital Engineering",
                 "endpoint": backend_endpoint,
                 "health_endpoint": "/health",
+                "route_count": len(api_routes),
+                "frontend_mapped_count": sum(1 for route in api_routes if route.get("frontend_mapped")),
             },
             {
                 "id": "neo4j-graph",
@@ -318,6 +501,11 @@ async def get_admin_registry(request: Request):
                 "owner": "Data Platform",
                 "endpoint": neo4j.get("uri_masked", ""),
                 "health_endpoint": "/health/neo4j",
+                "route_count": 0,
+                "frontend_mapped_count": 0,
+                "database": neo4j.get("active_database", neo4j.get("database", "")),
+                "configured_database": neo4j.get("configured_database", ""),
+                "config_source": neo4j.get("configured_database_source", ""),
             },
             {
                 "id": "llm-agent-runtime",
@@ -327,8 +515,11 @@ async def get_admin_registry(request: Request):
                 "owner": "Semantic AI",
                 "endpoint": _mask_uri(llm.get("endpoint")),
                 "health_endpoint": "/api/v1/import/ollama/health",
+                "route_count": 0,
+                "frontend_mapped_count": 0,
+                "model": llm.get("model", ""),
             },
-        ],
+        ] + route_group_services,
         "api_routes": api_routes,
         "data_sources": [
             neo4j,
@@ -342,6 +533,7 @@ async def get_admin_registry(request: Request):
                 "mutable": False,
             },
         ],
+        "configuration": _configuration_registry(neo4j, llm),
         "agents": [
             {
                 "id": "semantic-chat",
