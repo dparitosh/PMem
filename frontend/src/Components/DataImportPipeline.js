@@ -906,8 +906,8 @@ export default function DataImportPipeline() {
 
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-          gap: '8px',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+          gap: '6px',
         }}>
           {WORKFLOW_OPTIONS.map(option => {
             const Icon = option.icon;
@@ -924,46 +924,54 @@ export default function DataImportPipeline() {
                   textAlign: 'left',
                   background: isSelected ? C.primaryLight : C.surface,
                   border: `1px solid ${isSelected ? C.primary : C.borderDark}`,
-                  borderRadius: '6px',
-                  padding: '8px',
+                  borderRadius: '5px',
+                  padding: '6px',
                   cursor: 'pointer',
-                  minHeight: '112px',
+                  minHeight: '78px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '6px',
+                  gap: '4px',
                   boxShadow: isSelected ? `0 0 0 2px rgba(0, 75, 135, 0.08)` : 'none',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
-                    <Icon size={14} color={isSelected ? C.primary : C.textSec} />
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0 }}>
+                    <Icon size={13} color={isSelected ? C.primary : C.textSec} />
                     <span style={{
-                      fontSize: '11px',
+                      fontSize: '10px',
                       fontWeight: '700',
                       color: C.textPrimary,
                       lineHeight: 1.25,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
                     }}>
                       {option.title}
                     </span>
                   </div>
                   <span style={{
-                    fontSize: '8px',
+                    fontSize: '7px',
                     fontWeight: '700',
                     color: isAvailable ? C.green : C.orange,
                     background: isAvailable ? '#E8F5E9' : '#FFF8E1',
                     borderRadius: '3px',
-                    padding: '2px 5px',
+                    padding: '1px 4px',
                     whiteSpace: 'nowrap',
                   }}>
                     {isAvailable ? 'Ready' : 'Planned'}
                   </span>
                 </div>
-                <div style={{ fontSize: '9px', color: C.textSec, lineHeight: 1.35 }}>
+                <div style={{
+                  fontSize: '8px',
+                  color: C.textSec,
+                  lineHeight: 1.3,
+                  maxHeight: '21px',
+                  overflow: 'hidden',
+                }}>
                   {option.description}
                 </div>
-                <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '5px' }}>
                   <span style={{
-                    fontSize: '8px',
+                    fontSize: '7px',
                     color: C.textMuted,
                     lineHeight: 1.25,
                     overflow: 'hidden',
@@ -974,13 +982,13 @@ export default function DataImportPipeline() {
                   </span>
                   {isRecommended && (
                     <span style={{
-                      fontSize: '8px',
+                      fontSize: '7px',
                       fontWeight: '700',
                       color: C.primary,
                       background: '#FFFFFF',
                       border: `1px solid ${C.primaryLight}`,
                       borderRadius: '3px',
-                      padding: '2px 5px',
+                      padding: '1px 4px',
                       whiteSpace: 'nowrap',
                     }}>
                       Recommended
