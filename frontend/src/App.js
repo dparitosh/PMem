@@ -10,6 +10,7 @@ import WhereUsedView from './Components/WhereUsedView';
 import RecommendationsTab from './Components/RecommendationsTab';
 import OntologyMapper from './Components/OntologyMapper';
 import DataImportPipeline from './Components/DataImportPipeline';
+import AdminPanel from './Components/AdminPanel';
 import TabContainer from './Components/TabContainer';
 import ErrorBoundary from './Components/ErrorBoundary';
 import ResizableSplitter from './Components/ResizableSplitter';
@@ -67,6 +68,13 @@ function App() {
     }
     setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
   }, [splitState]);
+
+  const handleSchemaCleaned = useCallback(() => {
+    setData({ nodes: [], links: [] });
+    setSearchResults(null);
+    setChatResults(null);
+    setVisibleRelationships(null);
+  }, []);
 
   if (page === 'home') {
     return (
@@ -259,11 +267,12 @@ function App() {
                 flexShrink: 0,
               }}>
                 {[
-                  { id: 'table', label: '▦ Table' },
-                  { id: 'reports', label: '▲ Reports' },
-                  { id: 'ingestion', label: '↓ Data Import' },
-                  { id: 'ontology', label: '◆ Semantic Bridge' },
-                  { id: 'recommendations', label: '★ Recommendations' },
+                  { id: 'table', label: 'Table' },
+                  { id: 'reports', label: 'Reports' },
+                  { id: 'ingestion', label: 'Import' },
+                  { id: 'ontology', label: 'Map & Align' },
+                  { id: 'recommendations', label: 'Recommendations' },
+                  { id: 'admin', label: 'Admin' },
                 ].map(tab => (
                   <button
                     key={tab.id}
@@ -323,7 +332,7 @@ function App() {
                 <TabContainer isActive={activeTab === 'recommendations'} tabId="recommendations">
                   <div id="recommendations-container" style={{ position:'absolute', inset:0, overflow:'auto', padding:'4px' }}>
                     <ErrorBoundary>
-                      <RecommendationsTab setActiveTab={setActiveTab} />
+                      <RecommendationsTab setActiveTab={handleSetActiveTab} />
                     </ErrorBoundary>
                   </div>
                 </TabContainer>
@@ -332,6 +341,14 @@ function App() {
                   <div id="ontology-container" style={{ position:'absolute', inset:0, overflow:'auto', padding:'4px' }}>
                     <ErrorBoundary>
                       <OntologyMapper />
+                    </ErrorBoundary>
+                  </div>
+                </TabContainer>
+
+                <TabContainer isActive={activeTab === 'admin'} tabId="admin">
+                  <div id="admin-container" style={{ position:'absolute', inset:0, overflow:'hidden', padding:'4px' }}>
+                    <ErrorBoundary>
+                      <AdminPanel onSchemaCleaned={handleSchemaCleaned} />
                     </ErrorBoundary>
                   </div>
                 </TabContainer>

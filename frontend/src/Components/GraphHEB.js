@@ -6,7 +6,7 @@ import { useOntologies } from '../contexts/OntologyContext';
 import { logger } from '../utils/logger';
 import { safeGet, safeString } from '../utils/safeAccess';
 import { buildUrl, replaceParams, API } from '../config';
-import { apiClient, API_METHODS } from '../services/apiClient';
+import { apiClient } from '../services/apiClient';
 import { buildTooltipHeader } from './tooltipBuilder';
 
 // Security: HTML-escape utility for tooltip interpolation
@@ -593,6 +593,33 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   // ── Recommendation: slide-in panel state ──
   const [recPanel, setRecPanel] = useState({ open: false, service: null, nodeName: '', loading: false, result: null, error: '' });
   const primaryButtonColor = 'rgb(10, 130, 118)';
+
+  useEffect(() => {
+    const handleSchemaCleaned = () => {
+      const empty = { nodes: [], links: [] };
+      setGraphData(empty);
+      setFilteredData(empty);
+      setFullDataset(empty);
+      setInitialData(empty);
+      setSearchResultData(empty);
+      setSearchQuery('');
+      setSearchInput('');
+      setAvailableLabels([]);
+      setSelectedLabelFilter('ALL');
+      setExpandedNodes(new Set());
+      setLoadingNodes(new Set());
+      setNodeExpansions(new Map());
+      setTreeExpandedNodes(new Set());
+      setSelectedOntology('ALL');
+      selectedOntologyRef.current = 'ALL';
+      setStepParts([]);
+      setSelectedStepPart('ALL');
+      setError(null);
+      setData(empty);
+    };
+    window.addEventListener('dt-schema-cleaned', handleSchemaCleaned);
+    return () => window.removeEventListener('dt-schema-cleaned', handleSchemaCleaned);
+  }, [setData]);
   // New keyword-based dual-node comparison (graphfilter) states
   const [compareTermA, setCompareTermA] = useState('');
   const [compareTermB, setCompareTermB] = useState('');
@@ -620,7 +647,6 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     ontologies: ontologyOptions,
     loading: ontologyLoading,
     error: ontologyError,
-    fetchOntologies,
   } = useOntologies();
   const [stepParts, setStepParts] = useState([]); // available STEP part names
   const [selectedStepPart, setSelectedStepPart] = useState('ALL');
@@ -4333,73 +4359,6 @@ const boundaryForce = (width, height) => {
     };
   }, []);
 
-  const handleCleanNeo4jSchema = useCallback(async () => {
-    const ok = window.confirm(
-      'Clean Neo4j schema? This will delete all nodes, relationships, uploaded ontology metadata, indexes, and constraints.'
-    );
-    if (!ok) return;
-    try {
-      const res = await API_METHODS.admin.cleanSchema();
-      const before = res?.data?.before || {};
-      const after = res?.data?.after || {};
-      const metadataCleared = res?.data?.metadata_cleared ?? 0;
-
-      setGraphData({ nodes: [], links: [] });
-      setFilteredData({ nodes: [], links: [] });
-      setSelectedOntology('ALL');
-      selectedOntologyRef.current = 'ALL';
-      await fetchOntologies();
-
-      const msg = res?.data?.message || 'Schema cleanup completed.';
-      window.alert(
-        `${msg}\n\nBefore: ${before.nodes ?? 0} nodes, ${before.relationships ?? 0} relationships\n` +
-        `After: ${after.nodes ?? 0} nodes, ${after.relationships ?? 0} relationships\n` +
-        `Ontology folders cleared: ${metadataCleared}`
-      );
-    } catch (err) {
-      const detail = err?.response?.data?.detail || err?.message || 'Schema cleanup failed.';
-      window.alert(`Schema cleanup failed: ${detail}`);
-    }
-  }, [fetchOntologies]);
-
-  const handleDeleteOldXsdSchemas = useCallback(async () => {
-    try {
-      const preview = await apiClient.post(API.ontology.cleanupOldXsd, {
-        dry_run: true,
-        delete_from_neo4j: true,
-      });
-      const count = preview?.data?.candidate_count || 0;
-      if (count === 0) {
-        window.alert('No old ingested XSD schemas found to delete.');
-        return;
-      }
-
-      const ok = window.confirm(
-        `Delete ${count} old ingested XSD schema entries from storage and Neo4j?`
-      );
-      if (!ok) return;
-
-      const result = await apiClient.post(API.ontology.cleanupOldXsd, {
-        dry_run: false,
-        delete_from_neo4j: true,
-        confirm: 'DELETE_OLD_XSD',
-      });
-      const deleted = result?.data?.deleted_count || 0;
-      const deletedNodes = result?.data?.neo4j_deleted_nodes || 0;
-      window.alert(`Deleted ${deleted} old XSD schemas and ${deletedNodes} Neo4j nodes.`);
-      
-      // Refresh ontology list (hook will handle the update automatically)
-      // ontologyOptions comes from useOntologies() hook and is automatically managed
-      
-      // Soft reload after brief delay to let UI update
-      setTimeout(() => window.location.reload(), 500);
-    } catch (err) {
-      const detail = err?.response?.data?.detail || err?.message || 'Old XSD cleanup failed.';
-      window.alert(`Old XSD cleanup failed: ${typeof detail === 'string' ? detail : JSON.stringify(detail)}`);
-    }
-  }, []);
-
-  
   return (
     <div
       className="graph-heb-root"
@@ -4456,37 +4415,32 @@ const boundaryForce = (width, height) => {
               className="dropdown-item"
               style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
               onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('table'); } }}
-            >▦ Table View</button>
+            >Table View</button>
             <button
               className="dropdown-item"
               style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
               onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('reports'); } }}
-            >▲ Reports</button>
+            >Reports</button>
             <button
               className="dropdown-item"
               style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
               onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('ingestion'); } }}
-            >↓ Data Ingestion</button>
+            >Data Import</button>
             <button
               className="dropdown-item"
               style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
               onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('ontology'); } }}
-            >◆ Ontology</button>
+            >Map & Align</button>
             <button
               className="dropdown-item"
               style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
               onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('recommendations'); } }}
-            >★ Recommendations</button>
+            >Recommendations</button>
             <button
               className="dropdown-item"
               style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
-              onClick={handleDeleteOldXsdSchemas}
-            >Delete Old XSD Schemas</button>
-            <button
-              className="dropdown-item"
-              style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
-              onClick={handleCleanNeo4jSchema}
-            >Clean Neo4j Schema</button>
+              onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('admin'); } }}
+            >Admin</button>
           </div>
         </div>
       </div>
