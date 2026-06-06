@@ -147,6 +147,11 @@ const IMPORT_ENDPOINTS = {
   tasksDataImport: process.env.REACT_APP_API_DATA_IMPORT_TASKS || '/data-import/tasks',
 };
 
+const WORKFLOW_ENDPOINTS = {
+  options: process.env.REACT_APP_API_WORKFLOW_OPTIONS || '/api/v1/workflows/options',
+  execute: process.env.REACT_APP_API_WORKFLOW_EXECUTE || '/api/v1/workflows/execute',
+};
+
 /**
  * Ingestion Endpoints (v1)
  */
@@ -248,6 +253,7 @@ export const API = {
   chat: CHAT_ENDPOINTS,
   ontology: ONTOLOGY_ENDPOINTS,
   import: IMPORT_ENDPOINTS,
+  workflow: WORKFLOW_ENDPOINTS,
   ingestion: INGESTION_ENDPOINTS,
   document: DOCUMENT_ENDPOINTS,
   admin: ADMIN_ENDPOINTS,

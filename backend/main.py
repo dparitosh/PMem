@@ -181,6 +181,11 @@ from contextlib import asynccontextmanager
 class TextSearchRequest(BaseModel):
     search: str
 
+
+class WorkflowExecuteRequest(BaseModel):
+    workflow_id: str
+    payload: dict = {}
+
 #graph = Neo4jPropertyGraphStore(
 #    url = os.getenv('Neo4j_url'),
 #    username=os.getenv('Neo4j_user'),
@@ -3191,6 +3196,36 @@ def get_import_artifacts(task_id: str):
         raise
     except Exception as e:
         safe_error("/api/v1/import/artifacts/{task_id}", e)
+
+
+@app.get("/api/v1/workflows/options")
+def get_workflow_options():
+    """Return executable semantic workflow IDs."""
+    return {
+        "workflows": [
+            {"id": "instance.import", "status": "existing_import_pipeline"},
+            {"id": "ontology.create", "status": "existing_upload_pipeline"},
+            {"id": "instance.link", "status": "artifact_report"},
+            {"id": "ontology.merge", "status": "artifact_report"},
+            {"id": "ontology.validate", "status": "artifact_report"},
+            {"id": "dictionary.generate", "status": "artifact_report"},
+            {"id": "taxonomy.generate", "status": "artifact_report"},
+            {"id": "graph.chunk", "status": "artifact_report"},
+        ]
+    }
+
+
+@app.post("/api/v1/workflows/execute")
+def execute_workflow(request: WorkflowExecuteRequest):
+    """Execute an artifact-first semantic workflow."""
+    try:
+        from backend.Services.semantic_workflow_service import SemanticWorkflowService
+
+        return SemanticWorkflowService.execute(request.workflow_id, request.payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        safe_error("/api/v1/workflows/execute", e)
 
 
 @app.get("/api/v1/import/tasks")

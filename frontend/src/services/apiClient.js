@@ -266,6 +266,18 @@ export const importAPI = {
   checkOllamaHealth: () => apiClient.get(buildUrl(API.import.ollamaHealth)),
 };
 
+// ========== WORKFLOW ENDPOINTS ==========
+export const workflowAPI = {
+  getOptions: () => apiClient.get(buildUrl(API.workflow.options)),
+  execute: (workflowId, payload = {}) =>
+    apiClient.post(buildUrl(API.workflow.execute), {
+      workflow_id: workflowId,
+      payload,
+    }, {
+      timeout: 300000,
+    }),
+};
+
 // ========== INGESTION ENDPOINTS ==========
 export const ingestionAPI = {
   ingestData: (data) => 
@@ -333,6 +345,7 @@ export const API_METHODS = {
   chat: chatAPI,
   ontology: ontologyAPI,
   import: importAPI,
+  workflow: workflowAPI,
   ingestion: ingestionAPI,
   document: documentAPI,
   admin: adminAPI,

@@ -117,37 +117,37 @@ const WORKFLOW_OPTIONS = [
     title: 'Link instances to ontology',
     description: 'Review candidate mappings and attach imported instances to an ontology model.',
     inputs: 'Existing graph plus ontology',
-    status: 'planned',
+    status: 'available',
     icon: Link2,
-    stages: ['Select graph', 'Select ontology', 'Review candidates', 'Commit links'],
-    outputs: ['Mapping candidates', 'Confidence report', 'Linked graph'],
+    stages: ['Select latest import', 'Select ontology', 'Generate candidates', 'Review artifact'],
+    outputs: ['Mapping candidates', 'Confidence report', 'Link review file'],
   },
   {
     id: 'ontology.merge',
     title: 'Merge ontologies',
     description: 'Compare two ontologies, resolve conflicts, and produce a merged semantic model.',
     inputs: 'Two ontology catalog entries',
-    status: 'planned',
+    status: 'available',
     icon: GitMerge,
-    stages: ['Select sources', 'Detect overlaps', 'Resolve conflicts', 'Create merged ontology'],
-    outputs: ['Conflict report', 'Merged ontology', 'Change log'],
+    stages: ['Select sources', 'Detect overlaps', 'Identify additions', 'Export merge plan'],
+    outputs: ['Merge plan', 'Overlap report', 'Addition candidates'],
   },
   {
     id: 'ontology.validate',
     title: 'Validate ontology',
     description: 'Run quality, namespace, prefix, and consistency checks before publishing.',
     inputs: 'Ontology catalog entry or file',
-    status: 'planned',
+    status: 'available',
     icon: ShieldCheck,
     stages: ['Select ontology', 'Run checks', 'Review findings', 'Export report'],
-    outputs: ['Validation report', 'Quality score', 'Repair suggestions'],
+    outputs: ['Validation report', 'Finding counts', 'Review suggestions'],
   },
   {
     id: 'dictionary.generate',
     title: 'Build data dictionary',
     description: 'Extract terms, fields, definitions, and source lineage for business review.',
     inputs: 'Ontology, graph, CSV, Excel',
-    status: 'planned',
+    status: 'available',
     icon: BookOpen,
     stages: ['Select source', 'Extract terms', 'Review definitions', 'Publish dictionary'],
     outputs: ['Data dictionary', 'Term lineage', 'Review queue'],
@@ -157,9 +157,9 @@ const WORKFLOW_OPTIONS = [
     title: 'Build taxonomy',
     description: 'Generate hierarchy, synonyms, and preferred terms from semantic assets.',
     inputs: 'Ontology or graph',
-    status: 'planned',
+    status: 'available',
     icon: Tags,
-    stages: ['Select source', 'Cluster concepts', 'Review hierarchy', 'Publish taxonomy'],
+    stages: ['Select source', 'Cluster concepts', 'Review hierarchy', 'Export taxonomy'],
     outputs: ['Taxonomy tree', 'Synonym set', 'Rejected terms'],
   },
   {
@@ -167,9 +167,9 @@ const WORKFLOW_OPTIONS = [
     title: 'Chunk and index graph',
     description: 'Prepare ontology or graph chunks for search, retrieval, and downstream AI workflows.',
     inputs: 'Ontology or graph',
-    status: 'planned',
+    status: 'available',
     icon: Boxes,
-    stages: ['Select source', 'Choose chunking rule', 'Preview chunks', 'Create index'],
+    stages: ['Select source', 'Choose chunking rule', 'Preview chunks', 'Export manifest'],
     outputs: ['Chunk set', 'Index manifest', 'Coverage report'],
   },
 ];
@@ -201,6 +201,7 @@ const recommendWorkflowForFile = (fileName) => {
 };
 
 const getWorkflowById = (workflowId) => WORKFLOW_OPTIONS.find(w => w.id === workflowId) || WORKFLOW_OPTIONS[0];
+const isImportWorkflow = (workflowId) => workflowId === 'instance.import' || workflowId === 'ontology.create';
 
 export default function DataImportPipeline() {
   const [files, setFiles] = useState([]);
@@ -216,6 +217,10 @@ export default function DataImportPipeline() {
   const [preCheck, setPreCheck] = useState(null); // { loading, ready, checks, reason }
   const fileInputRef = useRef(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState('instance.import');
+  const [workflowOntologyId, setWorkflowOntologyId] = useState('');
+  const [workflowTargetOntologyId, setWorkflowTargetOntologyId] = useState('');
+  const [workflowRun, setWorkflowRun] = useState(null);
+  const [workflowLoading, setWorkflowLoading] = useState(false);
 
   // Ontology mapping selection
   const [availableOntologies, setAvailableOntologies] = useState([]);
@@ -605,6 +610,8 @@ export default function DataImportPipeline() {
             completedAt: data.status === 'completed' ? new Date().toLocaleTimeString() : null,
             shaclConforms,
             shaclFile,
+            artifact_manifest: data.artifact_manifest,
+            workflow_id: data.workflow_id,
           }
         }));
 
@@ -682,6 +689,49 @@ export default function DataImportPipeline() {
 
     for (const file of filesToImport) {
       startImport(file);
+    }
+  };
+
+  const runSelectedWorkflow = async () => {
+    if (isImportWorkflow(selectedWorkflow)) {
+      startAllImports();
+      return;
+    }
+    if (!workflowOntologyId) {
+      setError('Select an ontology catalog entry before running this workflow.');
+      return;
+    }
+    if (selectedWorkflow === 'ontology.merge' && !workflowTargetOntologyId) {
+      setError('Select a target ontology before running merge.');
+      return;
+    }
+    if (selectedWorkflow === 'ontology.merge' && workflowTargetOntologyId === workflowOntologyId) {
+      setError('Choose two different ontologies for merge.');
+      return;
+    }
+
+    const latestArtifactManifest = Object.values(pipelineStatus)
+      .map(s => s?.artifact_manifest)
+      .filter(Boolean)
+      .slice(-1)[0];
+    const payload = {
+      ontology_id: workflowOntologyId,
+      source_ontology_id: workflowOntologyId,
+      target_ontology_id: workflowTargetOntologyId,
+      import_artifact_manifest: latestArtifactManifest,
+    };
+
+    setWorkflowLoading(true);
+    setWorkflowRun(null);
+    setError(null);
+    try {
+      const response = await API_METHODS.workflow.execute(selectedWorkflow, payload);
+      setWorkflowRun(response.data || response);
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.response?.data?.error || err.message;
+      setError(String(detail));
+    } finally {
+      setWorkflowLoading(false);
     }
   };
 
@@ -1069,6 +1119,85 @@ export default function DataImportPipeline() {
             </div>
           </div>
         </div>
+
+        {!isImportWorkflow(selectedWorkflow) && (
+          <div style={{
+            marginTop: '8px',
+            border: `1px solid ${C.border}`,
+            borderRadius: '4px',
+            padding: '8px',
+            background: C.surface,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            flexWrap: 'wrap',
+          }}>
+            <label style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
+              Source ontology
+            </label>
+            <select
+              value={workflowOntologyId}
+              onChange={(e) => setWorkflowOntologyId(e.target.value)}
+              style={{
+                minWidth: '180px',
+                padding: '4px 8px',
+                fontSize: '10px',
+                border: `1px solid ${C.borderDark}`,
+                borderRadius: '3px',
+              }}
+            >
+              <option value="">Select ontology</option>
+              {availableOntologies.map(o => (
+                <option key={o.id} value={o.id}>{o.name || o.id}</option>
+              ))}
+            </select>
+            {selectedWorkflow === 'ontology.merge' && (
+              <>
+                <label style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
+                  Target ontology
+                </label>
+                <select
+                  value={workflowTargetOntologyId}
+                  onChange={(e) => setWorkflowTargetOntologyId(e.target.value)}
+                  style={{
+                    minWidth: '180px',
+                    padding: '4px 8px',
+                    fontSize: '10px',
+                    border: `1px solid ${C.borderDark}`,
+                    borderRadius: '3px',
+                  }}
+                >
+                  <option value="">Select target</option>
+                  {availableOntologies.map(o => (
+                    <option key={o.id} value={o.id}>{o.name || o.id}</option>
+                  ))}
+                </select>
+              </>
+            )}
+            <button
+              onClick={runSelectedWorkflow}
+              disabled={workflowLoading}
+              style={{
+                marginLeft: 'auto',
+                padding: '5px 10px',
+                background: workflowLoading ? C.textMuted : C.primary,
+                color: '#fff',
+                border: 'none',
+                borderRadius: '3px',
+                fontSize: '10px',
+                fontWeight: '700',
+                cursor: workflowLoading ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {workflowLoading ? 'Running...' : 'Run workflow'}
+            </button>
+            {workflowRun?.artifact_manifest && (
+              <div style={{ flexBasis: '100%', fontSize: '10px', color: C.textSec }}>
+                Generated {workflowRun.artifact_manifest.artifacts?.length || 0} retained artifact(s) in task {workflowRun.task_id}.
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Pipeline Stages Workflow */}
@@ -1413,23 +1542,23 @@ export default function DataImportPipeline() {
           {selectedWorkflow === 'ontology.create' ? 'captured during ontology upload' : (selectedOntology || '(none selected)')}
         </span>
         <button
-          onClick={startAllImports}
-          disabled={pendingFileCount === 0 || !canRunSelectedWorkflow}
+          onClick={runSelectedWorkflow}
+          disabled={(isImportWorkflow(selectedWorkflow) && pendingFileCount === 0) || !canRunSelectedWorkflow || workflowLoading}
           style={{
             marginLeft: 'auto',
             padding: '4px 12px',
-            background: (pendingFileCount === 0 || !canRunSelectedWorkflow) ? C.textMuted : C.green,
+            background: ((isImportWorkflow(selectedWorkflow) && pendingFileCount === 0) || !canRunSelectedWorkflow || workflowLoading) ? C.textMuted : C.green,
             color: '#fff',
             border: 'none',
             borderRadius: '3px',
             fontSize: '10px',
             fontWeight: '700',
-            cursor: (pendingFileCount === 0 || !canRunSelectedWorkflow) ? 'not-allowed' : 'pointer',
-            opacity: (pendingFileCount === 0 || !canRunSelectedWorkflow) ? 0.5 : 1,
+            cursor: ((isImportWorkflow(selectedWorkflow) && pendingFileCount === 0) || !canRunSelectedWorkflow || workflowLoading) ? 'not-allowed' : 'pointer',
+            opacity: ((isImportWorkflow(selectedWorkflow) && pendingFileCount === 0) || !canRunSelectedWorkflow || workflowLoading) ? 0.5 : 1,
             whiteSpace: 'nowrap',
           }}
         >
-          Start workflow
+          {workflowLoading ? 'Running...' : 'Start workflow'}
         </button>
       </div>
 
@@ -1445,6 +1574,7 @@ export default function DataImportPipeline() {
       }}>
         <strong style={{ color: C.textPrimary }}>Workflow guidance:</strong>{' '}
         {!canRunSelectedWorkflow && `${activeWorkflow.title} is visible for planning, but backend service wiring is still required before execution.`}
+        {canRunSelectedWorkflow && !isImportWorkflow(selectedWorkflow) && 'This workflow creates retained review artifacts and does not write to Neo4j directly.'}
         {canRunSelectedWorkflow && selectedWorkflow === 'ontology.create' && mappingFileTypeContext !== 'express' && 'Schema and ontology files are registered through metadata capture. EXPRESS/XSD-style schemas create ontology structure; they do not create STEP instance graphs.'}
         {canRunSelectedWorkflow && mappingFileTypeContext === 'express' && 'EXPRESS files create ontology/schema structure from ISO 10303 definitions. Use STEP/STP/STPX when you need product instance data.'}
         {canRunSelectedWorkflow && mappingFileTypeContext === 'step' && 'STEP/STP/STPX files create an instance graph. AP242-MBD3D alignment is applied automatically when available.'}
