@@ -21,6 +21,8 @@ from datetime import datetime
 import time
 from typing import Dict, Any, Optional, List, Tuple
 
+from .workflow_artifact_service import WorkflowArtifactService
+
 
 def _derive_prefix_from_namespace(namespace: str) -> str:
     """Derive a short lowercase ontology prefix from an XML namespace URI.
@@ -1465,6 +1467,22 @@ class UnifiedDataImportService:
         return cls.TASK_STORE_DIR / f"{task_id}.json"
 
     @classmethod
+    def _refresh_artifact_manifest(cls, task_id: str, task_info: Dict[str, Any]) -> None:
+        try:
+            task_info['artifact_manifest'] = WorkflowArtifactService.get_manifest(task_id)
+        except Exception as exc:
+            logger.warning(f"Task {task_id}: artifact manifest refresh failed: {exc}")
+
+    @classmethod
+    def _write_artifact(cls, task_id: str, task_info: Dict[str, Any], method: str, *args, **kwargs) -> None:
+        try:
+            writer = getattr(WorkflowArtifactService, method)
+            writer(task_id, *args, **kwargs)
+            cls._refresh_artifact_manifest(task_id, task_info)
+        except Exception as exc:
+            logger.warning(f"Task {task_id}: artifact write failed ({method}): {exc}")
+
+    @classmethod
     def _build_persistable_task(cls, task: Dict[str, Any]) -> Dict[str, Any]:
         """Serialize task fields needed for status/preview and cross-worker commit restore."""
         persistable = dict(task)
@@ -1707,9 +1725,28 @@ class UnifiedDataImportService:
             'started_at': datetime.now().isoformat(),
             'completed_at': None,
             'result': None,
+            'workflow_id': 'ontology.create' if file_type in {FileType.EXPRESS, FileType.XSD, FileType.ONTOLOGY} else 'instance.import',
+            'artifact_manifest': None,
             # Keep raw bytes only where downstream OWL generation may need them.
             'file_content': file_content if keep_file_content else None,
         }
+        cls._write_artifact(
+            task_id,
+            task_info,
+            "ensure_task",
+            workflow_id=task_info['workflow_id'],
+            filename=filename,
+        )
+        cls._write_artifact(
+            task_id,
+            task_info,
+            "write_bytes",
+            "source",
+            filename,
+            file_content,
+            "source_file",
+            {"file_type": file_type.value, "ontology_mapping": normalized_mapping},
+        )
         # Register task immediately so the frontend can start polling
         import_tasks[task_id] = task_info
         cls._persist_task(task_id)
@@ -1832,6 +1869,46 @@ class UnifiedDataImportService:
                 'auto_schema': schema,
             }
             task_info['preview_data'] = preview
+            cls._write_artifact(
+                task_id,
+                task_info,
+                "write_json",
+                "preview",
+                "preview.json",
+                preview,
+                "preview_data",
+                {"row_count": len(rows)},
+            )
+            cls._write_artifact(
+                task_id,
+                task_info,
+                "write_json",
+                "manifests",
+                "auto_schema.json",
+                schema,
+                "auto_schema",
+            )
+            if task_info.get('schema_metadata'):
+                cls._write_artifact(
+                    task_id,
+                    task_info,
+                    "write_json",
+                    "ontology",
+                    "schema_metadata.json",
+                    task_info.get('schema_metadata'),
+                    "schema_metadata",
+                )
+            if task_info.get('owl_ttl'):
+                cls._write_artifact(
+                    task_id,
+                    task_info,
+                    "write_text",
+                    "ontology",
+                    f"{Path(task_info.get('filename') or 'ontology').stem}.ttl",
+                    task_info.get('owl_ttl'),
+                    "ontology_ttl",
+                    task_info.get('schema_metadata') or {},
+                )
             cls._persist_task(task_id)
             
             logger.info(f"Task {task_id} ready for preview: {len(rows)} rows")
@@ -1855,6 +1932,13 @@ class UnifiedDataImportService:
                 return None
         
         task = import_tasks[task_id]
+        artifact_manifest = task.get('artifact_manifest')
+        if not artifact_manifest:
+            try:
+                artifact_manifest = WorkflowArtifactService.get_manifest(task_id)
+            except Exception as exc:
+                logger.warning(f"Task {task_id}: artifact manifest lookup failed: {exc}")
+
         return {
             'task_id': task['task_id'],
             'filename': task['filename'],
@@ -1867,6 +1951,8 @@ class UnifiedDataImportService:
             'stats': task.get('stats'),
             'schema_metadata': task.get('schema_metadata'),
             'owl_ttl': task.get('owl_ttl'),  # Include OWL if available
+            'workflow_id': task.get('workflow_id'),
+            'artifact_manifest': artifact_manifest,
             'started_at': task['started_at'],
             'completed_at': task.get('completed_at'),
         }
@@ -2063,6 +2149,16 @@ class UnifiedDataImportService:
                     logger.info(f"Task {task_id}: background OWL generation took {dur:.2f}s")
             if owl_ttl:
                 OWLGenerationService.store(task_id, owl_ttl)
+                cls._write_artifact(
+                    task_id,
+                    task,
+                    "write_text",
+                    "ontology",
+                    f"{Path(task.get('filename') or 'ontology').stem}.ttl",
+                    owl_ttl,
+                    "ontology_ttl",
+                    owl_meta,
+                )
                 task.setdefault('result', {})['owl_ttl_lines'] = owl_meta.get('ttl_lines', 0)
                 task['result']['owl_format'] = owl_meta.get('format', '')
                 validation = owl_meta.get('validation', {})
@@ -2076,6 +2172,15 @@ class UnifiedDataImportService:
                     shacl_report = OWLGenerationService.validate_with_shacl(owl_ttl)
                     task['shacl_report'] = shacl_report
                     task.setdefault('result', {})['shacl_conforms'] = shacl_report.get('conforms')
+                    cls._write_artifact(
+                        task_id,
+                        task,
+                        "write_json",
+                        "validation",
+                        "shacl_report.json",
+                        shacl_report,
+                        "shacl_report",
+                    )
                     logger.info(f"Task {task_id}: SHACL validation conforms={shacl_report.get('conforms')}")
                 except Exception as sh_err:
                     logger.warning(f"Task {task_id}: SHACL validation failed: {sh_err}")
@@ -2087,6 +2192,7 @@ class UnifiedDataImportService:
             logger.warning(f"Task {task_id}: OWL background generation failed: {owl_err}")
         finally:
             task.pop('file_content', None)  # release after OWL is done
+            cls._refresh_artifact_manifest(task_id, task)
             cls._persist_task(task_id)
 
     @classmethod

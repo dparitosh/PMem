@@ -3177,6 +3177,22 @@ def get_import_owl(task_id: str):
         safe_error("/api/v1/import/owl/{task_id}", e)
 
 
+@app.get("/api/v1/import/artifacts/{task_id}")
+def get_import_artifacts(task_id: str):
+    """Return retained workflow artifacts for an import task."""
+    try:
+        from backend.Services.workflow_artifact_service import WorkflowArtifactService
+
+        manifest = WorkflowArtifactService.get_manifest(task_id)
+        if not manifest:
+            raise HTTPException(status_code=404, detail=f"No artifacts found for task: {task_id}")
+        return manifest
+    except HTTPException:
+        raise
+    except Exception as e:
+        safe_error("/api/v1/import/artifacts/{task_id}", e)
+
+
 @app.get("/api/v1/import/tasks")
 @app.get("/api/import/tasks")
 @app.get("/data-import/tasks")
