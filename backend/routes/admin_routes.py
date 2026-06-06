@@ -52,10 +52,13 @@ async def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
         )
     
     try:
-        # 1. Clean database
+        # 1. Clean database and schema. The UI action is a destructive full schema clean,
+        # so leave indexes/constraints empty instead of recreating default indexes.
         cleaner = Neo4jSchemaCleaner()
-        result = cleaner.reset_database(recreate_indexes=True)
-        cleaner.close()
+        try:
+            result = cleaner.reset_database(recreate_indexes=False)
+        finally:
+            cleaner.close()
 
         if result.get("status") != "SUCCESS":
             raise HTTPException(status_code=500, detail=result.get("message", "Schema cleanup failed"))
@@ -74,6 +77,7 @@ async def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             metadata_cleared = 0
         
         return {
+            "success": True,
             "status": result.get("status"),
             "message": result.get("message") + f" [Metadata files cleared: {metadata_cleared}]",
             "before": result.get("before"),

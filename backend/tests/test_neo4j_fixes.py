@@ -138,17 +138,21 @@ def test_driver_kwargs_conditional_encryption():
 @pytest.mark.asyncio
 async def test_clean_schema_endpoint_includes_metadata_clear():
     """Test that /admin/clean-schema endpoint clears metadata"""
-    from routes.admin_routes import clean_neo4j_schema
+    from routes.admin_routes import (
+        CLEAN_SCHEMA_CONFIRM_TOKEN,
+        CleanSchemaRequest,
+        clean_neo4j_schema,
+    )
     
     # Mock dependencies
     with patch('routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
         # Ensure the module-level availability flag is True for the duration of this test
         with patch('routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
-            with patch('Services.ontology_upload_manager.OntologyUploadManager') as mock_upload_manager:
+            with patch('backend.Services.ontology_upload_manager.OntologyUploadManager') as mock_upload_manager:
                 # Setup mocks
                 mock_cleaner = MagicMock()
                 mock_cleaner.reset_database.return_value = {
-                    'status': 'success',
+                    'status': 'SUCCESS',
                     'message': 'Schema cleaned',
                     'before': {'nodes': 100},
                     'after': {'nodes': 0}
@@ -161,9 +165,12 @@ async def test_clean_schema_endpoint_includes_metadata_clear():
                 }
 
                 # Call endpoint
-                response = await clean_neo4j_schema()
+                response = await clean_neo4j_schema(
+                    CleanSchemaRequest(confirm=CLEAN_SCHEMA_CONFIRM_TOKEN)
+                )
 
                 # Verify response includes metadata cleared count
+                mock_cleaner.reset_database.assert_called_once_with(recreate_indexes=False)
                 assert response['metadata_cleared'] == 5
                 assert 'Metadata files cleared: 5' in response['message']
                 print("[PASS] clean_neo4j_schema endpoint includes metadata clearing")

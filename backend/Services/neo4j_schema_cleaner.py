@@ -197,14 +197,12 @@ class Neo4jSchemaCleaner:
         
         try:
             with self.driver.session(database=self.database) as session:
-                # First delete relationships, then nodes
-                rel_result = session.run("MATCH ()-[r]-() DELETE r RETURN count(r) as count")
-                rel_record = rel_result.single()
+                rel_record = session.run("MATCH ()-[r]->() RETURN count(r) as count").single()
+                node_record = session.run("MATCH (n) RETURN count(n) as count").single()
                 rel_deleted = rel_record["count"] if rel_record else 0
-                
-                node_result = session.run("MATCH (n) DELETE n RETURN count(n) as count")
-                node_record = node_result.single()
                 node_deleted = node_record["count"] if node_record else 0
+
+                session.run("MATCH (n) DETACH DELETE n").consume()
                 
                 logger.warning(f"[WARN] Deleted {node_deleted} nodes and {rel_deleted} relationships")
                 return True, f"Deleted {node_deleted} nodes, {rel_deleted} relationships"
@@ -271,24 +269,45 @@ class Neo4jSchemaCleaner:
             logger.error(f"[ERROR] Failed to create indexes: {str(e)}")
             return False, str(e)
     
-    def drop_all_indexes(self) -> Tuple[bool, str]:
-        """Drop all indexes"""
+    def drop_all_constraints(self) -> Tuple[bool, str]:
+        """Drop all non-system constraints."""
         if not self.driver:
             return False, "No database connection"
-        
+
         try:
             with self.driver.session(database=self.database) as session:
-                result = session.run("SHOW INDEXES")
-                indexes = list(result)
-                
+                constraints = list(session.run("SHOW CONSTRAINTS"))
+                dropped = 0
+                for constraint in constraints:
+                    constraint_name = constraint.get("name")
+                    if constraint_name and not constraint_name.startswith("__"):
+                        session.run(f"DROP CONSTRAINT `{constraint_name}` IF EXISTS").consume()
+                        dropped += 1
+
+                logger.info("[OK] Dropped %d constraints", dropped)
+                return True, f"Dropped {dropped} constraints"
+        except Exception as e:
+            logger.error(f"[ERROR] Failed to drop constraints: {str(e)}")
+            return False, str(e)
+
+    def drop_all_indexes(self) -> Tuple[bool, str]:
+        """Drop all non-system indexes."""
+        if not self.driver:
+            return False, "No database connection"
+
+        try:
+            with self.driver.session(database=self.database) as session:
+                indexes = list(session.run("SHOW INDEXES"))
+                dropped = 0
                 for index in indexes:
                     index_name = index.get("name")
                     index_type = str(index.get("type") or "").upper()
                     if index_name and index_type != "LOOKUP" and not index_name.startswith("__"):
-                        session.run(f"DROP INDEX `{index_name}` IF EXISTS")
-                
-                logger.info(f"[OK] Dropped {len(indexes)} indexes")
-                return True, f"Dropped {len(indexes)} indexes"
+                        session.run(f"DROP INDEX `{index_name}` IF EXISTS").consume()
+                        dropped += 1
+
+                logger.info("[OK] Dropped %d indexes", dropped)
+                return True, f"Dropped {dropped} indexes"
         except Exception as e:
             logger.error(f"[ERROR] Failed to drop indexes: {str(e)}")
             return False, str(e)
@@ -311,8 +330,22 @@ class Neo4jSchemaCleaner:
                 "before": stats_before.__dict__ if stats_before else {}
             }
         
-        # Drop indexes
+        # Drop constraints before indexes because constraints can own backing indexes.
+        success, msg = self.drop_all_constraints()
+        if not success:
+            return {
+                "status": "FAIL",
+                "message": f"Failed to drop constraints: {msg}",
+                "before": stats_before.__dict__ if stats_before else {}
+            }
+
         success, msg = self.drop_all_indexes()
+        if not success:
+            return {
+                "status": "FAIL",
+                "message": f"Failed to drop indexes: {msg}",
+                "before": stats_before.__dict__ if stats_before else {}
+            }
         
         # Recreate indexes
         if recreate_indexes:

@@ -6,7 +6,7 @@ import { useOntologies } from '../contexts/OntologyContext';
 import { logger } from '../utils/logger';
 import { safeGet, safeString } from '../utils/safeAccess';
 import { buildUrl, replaceParams, API } from '../config';
-import { apiClient } from '../services/apiClient';
+import { apiClient, API_METHODS } from '../services/apiClient';
 import { buildTooltipHeader } from './tooltipBuilder';
 
 // Security: HTML-escape utility for tooltip interpolation
@@ -614,9 +614,14 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const selectedOntologyRef = useRef('ALL');
   const lastNeo4jConnectedRef = useRef(null);
   // Local loading state for ontology-specific operations (separate from context loading)
-  const [localOntologyLoading, setOntologyLoading] = useState(false);
+  const [, setOntologyLoading] = useState(false);
   // Ontology options loaded from centralized context (shared across all components)
-  const { ontologies: ontologyOptions, loading: ontologyLoading, error: ontologyError } = useOntologies();
+  const {
+    ontologies: ontologyOptions,
+    loading: ontologyLoading,
+    error: ontologyError,
+    fetchOntologies,
+  } = useOntologies();
   const [stepParts, setStepParts] = useState([]); // available STEP part names
   const [selectedStepPart, setSelectedStepPart] = useState('ALL');
   const [stepPartsLoading, setStepPartsLoading] = useState(false);
@@ -4329,20 +4334,33 @@ const boundaryForce = (width, height) => {
   }, []);
 
   const handleCleanNeo4jSchema = useCallback(async () => {
-    const ok = window.confirm('Clean Neo4j schema? This will delete all nodes and relationships.');
+    const ok = window.confirm(
+      'Clean Neo4j schema? This will delete all nodes, relationships, uploaded ontology metadata, indexes, and constraints.'
+    );
     if (!ok) return;
     try {
-      const res = await apiClient.post(API.admin.cleanSchema, {
-        confirm: 'CLEAN_NEO4J_SCHEMA',
-      });
+      const res = await API_METHODS.admin.cleanSchema();
+      const before = res?.data?.before || {};
+      const after = res?.data?.after || {};
+      const metadataCleared = res?.data?.metadata_cleared ?? 0;
+
+      setGraphData({ nodes: [], links: [] });
+      setFilteredData({ nodes: [], links: [] });
+      setSelectedOntology('ALL');
+      selectedOntologyRef.current = 'ALL';
+      await fetchOntologies();
+
       const msg = res?.data?.message || 'Schema cleanup completed.';
-      window.alert(msg);
-      window.location.reload();
+      window.alert(
+        `${msg}\n\nBefore: ${before.nodes ?? 0} nodes, ${before.relationships ?? 0} relationships\n` +
+        `After: ${after.nodes ?? 0} nodes, ${after.relationships ?? 0} relationships\n` +
+        `Ontology folders cleared: ${metadataCleared}`
+      );
     } catch (err) {
       const detail = err?.response?.data?.detail || err?.message || 'Schema cleanup failed.';
       window.alert(`Schema cleanup failed: ${detail}`);
     }
-  }, []);
+  }, [fetchOntologies]);
 
   const handleDeleteOldXsdSchemas = useCallback(async () => {
     try {
@@ -4463,12 +4481,12 @@ const boundaryForce = (width, height) => {
               className="dropdown-item"
               style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
               onClick={handleDeleteOldXsdSchemas}
-            >🧹 Delete Old XSD Schemas</button>
+            >Delete Old XSD Schemas</button>
             <button
               className="dropdown-item"
               style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
               onClick={handleCleanNeo4jSchema}
-            >⚠ Clean Neo4j Schema</button>
+            >Clean Neo4j Schema</button>
           </div>
         </div>
       </div>
@@ -4509,8 +4527,8 @@ const boundaryForce = (width, height) => {
             }}
             title="Switch between Ontology Graph and Individual Contextual Graph"
           >
-            <option value="ontology" style={{color:'#333', fontWeight:600}}>🔷 Ontology Graph Visualization</option>
-            <option value="individual" style={{color:'#333', fontWeight:600}}>🔶 Contextual Individual Graph View</option>
+            <option value="ontology" style={{color:'#333', fontWeight:600}}>Ontology Graph Visualization</option>
+            <option value="individual" style={{color:'#333', fontWeight:600}}>Contextual Individual Graph View</option>
           </select>
         </div>
         {/* Divider */}
@@ -4628,7 +4646,7 @@ const boundaryForce = (width, height) => {
                 </option>
               ))}
             </select>
-            {ontologyError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>⚠️ {ontologyError}</span>}
+            {ontologyError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>Warning: {ontologyError}</span>}
           </div>
         </div>
         )}
@@ -4664,7 +4682,7 @@ const boundaryForce = (width, height) => {
                   </option>
                 ))}
               </select>
-              {stepPartsError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>⚠️ {stepPartsError}</span>}
+              {stepPartsError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>Warning: {stepPartsError}</span>}
             </div>
           </div>
         )}
