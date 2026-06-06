@@ -96,6 +96,12 @@ def _get_env(*keys: str) -> Optional[str]:
     return None
 
 
+def _has_placeholder_neo4j_uri() -> bool:
+    """Return True when the active process env still has a template Neo4j URI."""
+    uri = _get_env("NEO4J_URI", "NEO4J_URL", "Neo4j_url")
+    return bool(uri and "your-neo4j-instance" in uri)
+
+
 def _detect_deployment_type(uri: str) -> Neo4jDeploymentType:
     """Detect deployment type from URI scheme"""
     if uri.startswith("neo4j+s://"):
@@ -124,7 +130,7 @@ def _load_environment() -> None:
     
     for env_path in possible_paths:
         if env_path.exists():
-            load_dotenv(env_path, override=False)
+            load_dotenv(env_path, override=_has_placeholder_neo4j_uri())
             logger.debug(f"Loaded environment from {env_path}")
             return
     

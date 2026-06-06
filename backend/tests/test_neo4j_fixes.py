@@ -53,6 +53,20 @@ def test_deployment_type_detection():
         print("[PASS] Correctly detected on-premises deployment")
 
 
+def test_placeholder_process_env_does_not_override_backend_env(monkeypatch):
+    """A template Neo4j URI inherited from the shell must not beat backend/.env."""
+    import core.db_config as db_config
+
+    monkeypatch.setenv("NEO4J_URI", "neo4j+ssc://your-neo4j-instance")
+    db_config.get_config.cache_clear()
+    try:
+        config = db_config.get_config()
+        assert "your-neo4j-instance" not in config.uri
+        assert config.uri.startswith(("bolt://", "bolt+s://", "neo4j+s://", "neo4j://"))
+    finally:
+        db_config.get_config.cache_clear()
+
+
 # Test 2: Ontology Metadata Clearing
 def test_clear_all_metadata_removes_files():
     """Test that clear_all_metadata() removes all metadata files"""
