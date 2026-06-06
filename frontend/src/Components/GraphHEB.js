@@ -40,7 +40,7 @@ const DISPLAY_MODE = 'property-only';
 // const DISPLAY_MODE = 'property-only';
 // ───────────────────────────────────────────────────────────────────────────
 
-// 🔧 LOW PRIORITY: Define constants for magic numbers
+// Define constants for graph tuning values.
 // These improve readability and maintainability
 const HIGHLIGHT_AUTO_CLEAR_MS = 15000;        // 15 seconds - clear highlight after timeout
 const ENTITY_EXTRACTION_DELAY_MS = 500;       // 500ms - allow text selection to settle
@@ -175,14 +175,10 @@ const ARROW_HEAD_LENGTH = 8;
 const ARROW_HEAD_WIDTH = 4;
 const ARROW_REF_X = NODE_RADIUS + 3; // Adjust so arrow starts slightly after node boundary
 
-// ──── UNICODE CHARACTERS (ASCII-safe escape sequences) ────────────────────
-// Use these constants instead of literal emoji/special chars so the code
-// survives copy-paste across systems with different encodings.
-const ICON_TOOLS      = '\u{1F6E0}';  // 🛠  wrench
-const ICON_SEARCH     = '[FIND]';
-const ICON_GLOBE      = '\u{1F310}';  // 🌐  globe
-const ICON_CLIPBOARD  = '\u{1F4CB}';  // 📋  clipboard
-const ICON_REFRESH    = '\u{1F504}';  // 🔄  anticlockwise arrows
+// Text markers used in graph controls. Keep these plain for enterprise UI consistency.
+const ICON_GLOBE      = '';
+const ICON_CLIPBOARD  = '';
+const ICON_REFRESH    = '';
 const ICON_HOURGLASS  = '[WAIT]';
 const CHAR_TIMES      = '\u00D7';     // ×   multiplication sign (close button)
 const CHAR_MINUS      = '\u2212';     // −   minus sign
@@ -4372,78 +4368,6 @@ const boundaryForce = (width, height) => {
         overflow: 'hidden',
       }}
     >
-      {/* Tools dropdown replacing standalone Compare Nodes button */}
-  <div style={{ position:'fixed', top:14, right:14, zIndex:10000 }}>
-        <div className="dropdown" style={{ position:'relative' }}>
-          <button
-            className="btn btn-sm dropdown-toggle"
-            type="button"
-            onClick={(e)=>{
-              const menu = e.currentTarget.nextSibling; if(menu) menu.classList.toggle('show');
-            }}
-            style={{
-              backgroundColor:'#004B87',
-              color:'#fff',
-              fontWeight:600,
-              border:'1px solid #004B87',
-              padding:'8px 14px',
-              boxShadow:'0 2px 6px rgba(0,0,0,0.15)'
-            }}
-          >{ICON_TOOLS} Tools</button>
-          <div
-            className="dropdown-menu p-2"
-            style={{
-              minWidth:180,
-              background:'#004B87',
-              color:'#fff',
-              border:'1px solid #004B87',
-              boxShadow:'0 4px 12px rgba(0,0,0,0.25)',
-              position:'absolute',
-              top:'100%',
-              right:0,
-              left:'auto',
-              marginTop:4,
-              zIndex:10001
-            }}
-          >
-            <button
-              className="dropdown-item"
-              style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
-              onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('whereused'); } }}
-            >{ICON_SEARCH} Where Used</button>
-            <button
-              className="dropdown-item"
-              style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
-              onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('table'); } }}
-            >Table View</button>
-            <button
-              className="dropdown-item"
-              style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
-              onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('reports'); } }}
-            >Reports</button>
-            <button
-              className="dropdown-item"
-              style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
-              onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('ingestion'); } }}
-            >Data Import</button>
-            <button
-              className="dropdown-item"
-              style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
-              onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('ontology'); } }}
-            >Map & Align</button>
-            <button
-              className="dropdown-item"
-              style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
-              onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('recommendations'); } }}
-            >Recommendations</button>
-            <button
-              className="dropdown-item"
-              style={{ color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}
-              onClick={()=>{ if(typeof setActiveTab==='function'){ setActiveTab('admin'); } }}
-            >Admin</button>
-          </div>
-        </div>
-      </div>
       {/* STATIC TOOLBAR (prevents overlap with graph + tree layouts) */}
       <div
         className="graph-toolbar"
@@ -4461,6 +4385,62 @@ const boundaryForce = (width, height) => {
           position:'relative'
         }}
       >
+        <div className="dropdown" style={{ position:'relative' }}>
+          <button
+            className="btn btn-sm dropdown-toggle"
+            type="button"
+            title="Graph tools"
+            onClick={(e)=>{
+              const menu = e.currentTarget.nextSibling; if(menu) menu.classList.toggle('show');
+            }}
+            style={{
+              backgroundColor:'#fff',
+              color:'#004B87',
+              fontWeight:700,
+              border:'1px solid #cfd6dc',
+              borderRadius:6,
+              padding:'5px 9px',
+              fontSize:12,
+              lineHeight:1.2
+            }}
+          >Tools</button>
+          <div
+            className="dropdown-menu p-1"
+            style={{
+              minWidth:150,
+              background:'#fff',
+              color:'#243b53',
+              border:'1px solid #cfd6dc',
+              boxShadow:'0 4px 12px rgba(16,42,67,0.14)',
+              position:'absolute',
+              top:'100%',
+              left:0,
+              marginTop:4,
+              zIndex:2000
+            }}
+          >
+            {[
+              ['Where Used', 'whereused'],
+              ['Table View', 'table'],
+              ['Reports', 'reports'],
+              ['Data Import', 'ingestion'],
+              ['Map & Align', 'ontology'],
+              ['Recommendations', 'recommendations'],
+              ['Admin', 'admin'],
+            ].map(([label, target]) => (
+              <button
+                key={target}
+                className="dropdown-item"
+                style={{ color:'#243b53', fontSize:12, fontWeight:600, cursor:'pointer', padding:'5px 8px' }}
+                onClick={(e)=>{
+                  e.currentTarget.closest('.dropdown-menu')?.classList.remove('show');
+                  if(typeof setActiveTab==='function'){ setActiveTab(target); }
+                }}
+              >{label}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{ width: 1, height: 24, background: '#d0d7de', margin: '0 2px' }} />
         {/* ── Graph View Mode selector ─────────────────────────────────── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <i className="fas fa-layer-group" style={{ fontSize: '14px', color: '#004B87' }}></i>
@@ -5017,7 +4997,7 @@ if (!document.head.querySelector('style[data-spinner]')) {
   document.head.appendChild(spinnerStyles);
 }
 
-// 🔒 MEDIUM PRIORITY: Memoize component to prevent unnecessary re-renders
+// Memoize component to prevent unnecessary re-renders.
 export default React.memo(GraphHEB, (prevProps, nextProps) => {
   // Custom comparison: only re-render if specific props change
   return (

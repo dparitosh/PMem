@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Database, RefreshCw, Server, Trash2 } from 'lucide-react';
+import { RefreshCw, Trash2 } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import { useOntologies } from '../contexts/OntologyContext';
 
@@ -16,9 +16,9 @@ const colors = {
 
 const cardStyle = {
   border: `1px solid ${colors.border}`,
-  borderRadius: 6,
+  borderRadius: 5,
   background: '#fff',
-  padding: 14,
+  padding: 8,
 };
 
 const buttonStyle = {
@@ -28,18 +28,18 @@ const buttonStyle = {
   color: colors.text,
   fontSize: 12,
   fontWeight: 700,
-  padding: '7px 10px',
+  padding: '5px 8px',
   cursor: 'pointer',
   display: 'inline-flex',
   alignItems: 'center',
-  gap: 6,
+  gap: 5,
 };
 
 function Stat({ label, value }) {
   return (
-    <div style={{ minWidth: 120, padding: '6px 8px', borderLeft: `3px solid ${colors.blue}` }}>
-      <div style={{ fontSize: 11, color: colors.muted, fontWeight: 700 }}>{label}</div>
-      <div style={{ fontSize: 22, color: colors.text, fontWeight: 800, lineHeight: 1.2 }}>{value ?? '-'}</div>
+    <div style={{ minWidth: 82, padding: '5px 7px', borderLeft: `2px solid ${colors.blue}` }}>
+      <div style={{ fontSize: 10, color: colors.muted, fontWeight: 800 }}>{label}</div>
+      <div style={{ fontSize: 16, color: colors.text, fontWeight: 850, lineHeight: 1.2 }}>{value ?? '-'}</div>
     </div>
   );
 }
@@ -178,9 +178,9 @@ export default function AdminPanel({ onSchemaCleaned }) {
   return (
     <div style={{ height: '100%', overflow: 'auto', background: '#fff', padding: 10 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
           <button type="button" onClick={loadAdminState} disabled={loading} style={buttonStyle}>
-            <RefreshCw size={14} />
+            <RefreshCw size={11} />
             Refresh
           </button>
         </div>
@@ -189,41 +189,38 @@ export default function AdminPanel({ onSchemaCleaned }) {
         <Message tone="error">{error}</Message>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
-          <section style={{ ...cardStyle, padding: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <Server size={16} color={colors.blue} />
-              <div style={{ fontSize: 13, fontWeight: 800, color: colors.text }}>Service Health</div>
-            </div>
-            <div style={{ fontSize: 20, fontWeight: 850, color: error ? colors.danger : colors.ok }}>
-              {statusText}
+          <section style={cardStyle}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 850, color: colors.text }}>Service Health</div>
+              <div style={{ fontSize: 13, fontWeight: 850, color: error ? colors.danger : colors.ok }}>
+                {statusText}
+              </div>
             </div>
             {health?.message && (
-              <div style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>{health.message}</div>
+              <div style={{ fontSize: 11, color: colors.muted, marginTop: 3 }}>{health.message}</div>
             )}
           </section>
 
-          <section style={{ ...cardStyle, padding: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <Database size={16} color={colors.blue} />
-              <div style={{ fontSize: 13, fontWeight: 800, color: colors.text }}>Neo4j Schema Snapshot</div>
+          <section style={cardStyle}>
+            <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 6 }}>
+              Neo4j Schema Snapshot
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(82px, 1fr))', gap: 4 }}>
               <Stat label="Nodes" value={stats?.total_nodes} />
-              <Stat label="Relationships" value={stats?.total_relationships} />
-              <Stat label="Custom indexes" value={stats?.indexes_count} />
+              <Stat label="Rels" value={stats?.total_relationships} />
+              <Stat label="Indexes" value={stats?.indexes_count} />
               <Stat label="Constraints" value={stats?.constraints_count} />
             </div>
           </section>
         </div>
 
-        <section style={{ ...cardStyle, padding: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <AlertTriangle size={16} color={colors.danger} />
-            <div style={{ fontSize: 13, fontWeight: 800, color: colors.text }}>Controlled Cleanup</div>
+        <section style={cardStyle}>
+          <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 7 }}>
+            Controlled Cleanup
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <button type="button" onClick={deleteOldXsdSchemas} disabled={loading} style={buttonStyle}>
-              <Trash2 size={14} />
+              <Trash2 size={10} />
               Delete Old XSD Schemas
             </button>
             <button
@@ -232,7 +229,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
               disabled={loading}
               style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}
             >
-              <Trash2 size={14} />
+              <Trash2 size={10} />
               Clean Neo4j Schema
             </button>
           </div>
