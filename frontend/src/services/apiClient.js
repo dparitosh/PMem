@@ -276,6 +276,11 @@ export const workflowAPI = {
     }, {
       timeout: 300000,
     }),
+  artifactUrl: (taskId, artifactPath) =>
+    buildUrl(replaceParams(API.workflow.artifactFile, {
+      task_id: taskId,
+      artifact_path: artifactPath,
+    })),
 };
 
 // ========== INGESTION ENDPOINTS ==========

@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Path, Request, APIRouter, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 import logging as _logging
 from logging.handlers import RotatingFileHandler
 import json
@@ -3226,6 +3226,22 @@ def execute_workflow(request: WorkflowExecuteRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         safe_error("/api/v1/workflows/execute", e)
+
+
+@app.get("/api/v1/workflows/artifacts/{task_id}/{artifact_path:path}")
+def get_workflow_artifact_file(task_id: str, artifact_path: str):
+    """Return one retained workflow artifact file by manifest path."""
+    try:
+        from backend.Services.workflow_artifact_service import WorkflowArtifactService
+
+        artifact_file = WorkflowArtifactService.resolve_artifact_path(task_id, artifact_path)
+        if not artifact_file:
+            raise HTTPException(status_code=404, detail=f"Artifact not found: {artifact_path}")
+        return FileResponse(path=str(artifact_file), filename=artifact_file.name)
+    except HTTPException:
+        raise
+    except Exception as e:
+        safe_error("/api/v1/workflows/artifacts/{task_id}/{artifact_path}", e)
 
 
 @app.get("/api/v1/import/tasks")

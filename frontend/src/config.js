@@ -150,6 +150,7 @@ const IMPORT_ENDPOINTS = {
 const WORKFLOW_ENDPOINTS = {
   options: process.env.REACT_APP_API_WORKFLOW_OPTIONS || '/api/v1/workflows/options',
   execute: process.env.REACT_APP_API_WORKFLOW_EXECUTE || '/api/v1/workflows/execute',
+  artifactFile: process.env.REACT_APP_API_WORKFLOW_ARTIFACT_FILE || '/api/v1/workflows/artifacts/{task_id}/{artifact_path}',
 };
 
 /**

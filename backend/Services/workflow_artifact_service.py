@@ -67,6 +67,20 @@ class WorkflowArtifactService:
         return json.loads(path.read_text(encoding="utf-8"))
 
     @classmethod
+    def resolve_artifact_path(cls, task_id: str, artifact_path: str) -> Optional[Path]:
+        manifest = cls.get_manifest(task_id)
+        if not manifest:
+            return None
+        normalized = Path(artifact_path).as_posix().lstrip("/")
+        if not any(a.get("path") == normalized for a in manifest.get("artifacts", [])):
+            return None
+        root = cls.task_dir(task_id).resolve()
+        candidate = (root / normalized).resolve()
+        if root != candidate and root not in candidate.parents:
+            return None
+        return candidate if candidate.exists() else None
+
+    @classmethod
     def write_bytes(
         cls,
         task_id: str,

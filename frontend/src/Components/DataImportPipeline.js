@@ -714,6 +714,10 @@ export default function DataImportPipeline() {
       .map(s => s?.artifact_manifest)
       .filter(Boolean)
       .slice(-1)[0];
+    if (selectedWorkflow === 'instance.link' && !latestArtifactManifest) {
+      setError('Import an instance file first so the link workflow has retained source artifacts to analyze.');
+      return;
+    }
     const payload = {
       ontology_id: workflowOntologyId,
       source_ontology_id: workflowOntologyId,
@@ -1192,8 +1196,36 @@ export default function DataImportPipeline() {
               {workflowLoading ? 'Running...' : 'Run workflow'}
             </button>
             {workflowRun?.artifact_manifest && (
-              <div style={{ flexBasis: '100%', fontSize: '10px', color: C.textSec }}>
-                Generated {workflowRun.artifact_manifest.artifacts?.length || 0} retained artifact(s) in task {workflowRun.task_id}.
+              <div style={{ flexBasis: '100%', fontSize: '10px', color: C.textSec, lineHeight: 1.45 }}>
+                <div>
+                  Generated {workflowRun.artifact_manifest.artifacts?.length || 0} retained artifact(s) in task {workflowRun.task_id}.
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '4px' }}>
+                  {(workflowRun.artifact_manifest.artifacts || []).slice(0, 6).map(artifact => (
+                    <a
+                      key={artifact.path}
+                      href={API_METHODS.workflow.artifactUrl(workflowRun.task_id, artifact.path)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={artifact.absolute_path || artifact.path}
+                      style={{
+                        background: C.bg,
+                        border: `1px solid ${C.border}`,
+                        borderRadius: '3px',
+                        color: C.textPrimary,
+                        padding: '2px 5px',
+                        fontSize: '9px',
+                        maxWidth: '240px',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      {artifact.path}
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
           </div>
