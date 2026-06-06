@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, Database, Network, RefreshCw } from 'lucide-react';
 
 const C = {
   primary: '#004B87',
@@ -159,9 +160,12 @@ export default function OntologyMetadataForm({
           color: 'white',
           padding: '20px',
           fontWeight: 700,
-          fontSize: '16px'
+          fontSize: '16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
         }}>
-          🧬 {formTitle}
+          <Network size={14} strokeWidth={2.4} aria-hidden="true" /> {formTitle}
         </div>
 
         {/* Form */}
@@ -271,7 +275,8 @@ export default function OntologyMetadataForm({
             </label>
             {showFileTypeError && (
               <div style={{ color: C.red, fontSize: '11px', marginBottom: '8px', padding: '8px', background: '#FFE5E5', border: `1px solid ${C.red}`, borderRadius: '4px' }}>
-                ⚠️ File type ".{fileType}" is not recognized. Supported types: .xsd, .xmi, .owl, .rdf, .ttl
+                <AlertTriangle size={12} style={{ verticalAlign: 'text-bottom', marginRight: '4px' }} aria-hidden="true" />
+                File type ".{fileType}" is not recognized. Supported types: .xsd, .xmi, .owl, .rdf, .ttl
               </div>
             )}
             <select
@@ -410,12 +415,16 @@ export default function OntologyMetadataForm({
             color: C.textMuted,
             borderLeft: `3px solid ${C.primary}`
           }}>
-            <strong>💾 File will be saved to:</strong>
+            <strong style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+              <Database size={12} aria-hidden="true" /> File will be saved to:
+            </strong>
             <div style={{ fontFamily: 'monospace', marginTop: '4px' }}>
               ontology_uploads/{formData.prefix || 'prefix'}_{'{timestamp}'}
             </div>
             <div style={{ marginTop: '8px' }}>
-              <strong>🔄 For future reuse:</strong> Files stored with metadata for easy access
+              <strong style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                <RefreshCw size={12} aria-hidden="true" /> For future reuse:
+              </strong> Files stored with metadata for easy access
             </div>
           </div>
 
@@ -458,7 +467,7 @@ export default function OntologyMetadataForm({
                 opacity: isLoading ? 0.7 : 1
               }}
             >
-              {isLoading ? '[WAIT] Processing...' : '[OK] Upload & Parse'}
+              {isLoading ? 'Processing...' : 'Upload and Parse'}
             </button>
           </div>
         </form>

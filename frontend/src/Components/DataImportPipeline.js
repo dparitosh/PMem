@@ -12,6 +12,12 @@ import {
   Tags,
   Boxes,
   Workflow,
+  AlertTriangle,
+  FolderOpen,
+  Network,
+  Check,
+  Upload,
+  Loader2,
 } from 'lucide-react';
 import OntologyMetadataForm from './OntologyMetadataForm';
 import { API_METHODS } from '../services/apiClient';
@@ -693,7 +699,7 @@ export default function DataImportPipeline() {
         const reason = check.reason || 'Pre-commit check failed.';
         const neo4jOk = check.checks?.neo4j?.ok;
         const taskOk  = check.checks?.task?.ok;
-        let msg = `[ERROR] Cannot commit: ${reason}`;
+        let msg = `Cannot commit: ${reason}`;
         if (!neo4jOk) msg += '\n\nNeo4j is unreachable — check your database connection.';
         if (!taskOk)  msg += `\n\nTask state: ${check.checks?.task?.status}`;
         setError(msg);
@@ -769,7 +775,7 @@ export default function DataImportPipeline() {
           }
           return updated;
         });
-        setError(`[ERROR] Commit failed: ${err.message}`);
+        setError(`Commit failed: ${err.message}`);
       });
   };
 
@@ -792,7 +798,7 @@ export default function DataImportPipeline() {
 
   const getStatusBadge = (stage, progress, error, backendStage, committing, commitError) => {
     if (committing) {
-      return { text: 'Loading to Neo4j…', bg: '#FFF8E1', color: '#F57F17' };
+      return { text: 'Loading to Neo4j...', bg: '#FFF8E1', color: '#F57F17' };
     }
     if (commitError) {
       return { text: 'Commit Failed', bg: '#FFEBEE', color: C.red };
@@ -879,8 +885,8 @@ export default function DataImportPipeline() {
           gap: '12px',
           marginBottom: '8px',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Workflow size={14} color={C.primary} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Workflow size={8} strokeWidth={2.6} color={C.primary} />
             <div>
               <div style={{ fontSize: '11px', fontWeight: '700', color: C.textPrimary }}>
                 Workflow catalog
@@ -1320,7 +1326,7 @@ export default function DataImportPipeline() {
           fontWeight: '500',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-            <span style={{ fontSize: '18px' }}>⚠️</span>
+            <AlertTriangle size={14} aria-hidden="true" />
             <span>{error}</span>
           </div>
           <button
@@ -1509,7 +1515,7 @@ export default function DataImportPipeline() {
               cursor: 'pointer',
               transition: 'background 0.15s',
             }}>
-            <div style={{ fontSize: '28px', opacity: 0.5 }}>📁</div>
+            <FolderOpen size={18} strokeWidth={1.8} style={{ opacity: 0.65 }} aria-hidden="true" />
             <div style={{ fontWeight: '500', color: C.textSec }}>No files uploaded yet</div>
             <div style={{ fontSize: '10px', color: C.textMuted }}>
               Drag and drop files here or click to browse
@@ -1566,9 +1572,12 @@ export default function DataImportPipeline() {
                         backgroundColor: C.primaryLight,
                         color: C.primary,
                         borderRadius: '3px',
-                        whiteSpace: 'nowrap'
+                        whiteSpace: 'nowrap',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px'
                       }}>
-                        🧬 {file.prefix}
+                        <Network size={9} strokeWidth={2.4} aria-hidden="true" /> {file.prefix}
                       </span>
                     )}
                   </div>
@@ -1640,13 +1649,13 @@ export default function DataImportPipeline() {
                       {getStageLabel(status.stage)}
                       {status.stage === 'map' && status.stats?.ontology_mapping && (
                         <span style={{ fontSize: '9px', color: C.orange, marginLeft: '4px' }}>
-                          ({status.stats.ontology_mapping === 'auto' ? '🔄 Auto' : '✓ ' + status.stats.ontology_mapping})
+                          ({status.stats.ontology_mapping === 'auto' ? 'Auto' : status.stats.ontology_mapping})
                         </span>
                       )}
                       {/* SHACL status indicator */}
                       {typeof status.shaclConforms !== 'undefined' && status.shaclConforms !== null && (
                         <span style={{ fontSize: '10px', fontWeight: '700', marginLeft: '8px', color: status.shaclConforms ? C.green : C.orange }}>
-                          {status.shaclConforms ? 'SHACL ✓' : 'SHACL ✖'}
+                          {status.shaclConforms ? 'SHACL OK' : 'SHACL Failed'}
                         </span>
                       )}
                   </div>
@@ -1749,7 +1758,7 @@ export default function DataImportPipeline() {
                         }}
                         title="Parsed successfully — click to load into Neo4j"
                       >
-                        ⬆ Load to Neo4j
+                        <Upload size={12} /> Load to Neo4j
                       </button>
                     )}
                     {status.committing && (
@@ -1770,7 +1779,7 @@ export default function DataImportPipeline() {
                           gap: '4px',
                         }}
                       >
-                        [WAIT] Loading to Neo4j…
+                        <Loader2 size={12} /> Loading to Neo4j...
                       </button>
                     )}
                     {status.progress === 100 && !status.error && status.committed && (
@@ -1781,8 +1790,11 @@ export default function DataImportPipeline() {
                         borderRadius: '4px',
                         fontSize: '10px',
                         fontWeight: '600',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
                       }}>
-                        ✓ Committed
+                        <Check size={12} /> Committed
                       </div>
                     )}
                     <button
@@ -2019,23 +2031,23 @@ export default function DataImportPipeline() {
               {preCheck?.loading && (
                 <div style={{ color: C.textSec, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ display: 'inline-block', width: 12, height: 12, border: `2px solid ${C.border}`, borderTop: `2px solid ${C.primary}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                  Checking Neo4j connectivity and task state…
+                  Checking Neo4j connectivity and task state...
                   <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
                 </div>
               )}
               {!preCheck?.loading && preCheck && (
                 <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={{ fontWeight: 700, color: preCheck.ready ? '#067647' : '#B42318' }}>
-                    {preCheck.ready ? '[OK] Ready to commit' : '[ERROR] Cannot commit'}
+                    {preCheck.ready ? 'Ready to commit' : 'Cannot commit'}
                   </span>
                   {preCheck.checks?.neo4j && (
                     <span style={{ color: preCheck.checks.neo4j.ok ? '#067647' : '#B42318' }}>
-                      {preCheck.checks.neo4j.ok ? '✔' : '✘'} Neo4j: {preCheck.checks.neo4j.message || (preCheck.checks.neo4j.ok ? 'Connected' : 'Unreachable')}
+                      {preCheck.checks.neo4j.ok ? 'OK' : 'Failed'} Neo4j: {preCheck.checks.neo4j.message || (preCheck.checks.neo4j.ok ? 'Connected' : 'Unreachable')}
                     </span>
                   )}
                   {preCheck.checks?.task && (
                     <span style={{ color: preCheck.checks.task.ok ? '#067647' : '#B42318' }}>
-                      {preCheck.checks.task.ok ? '✔' : '✘'} Task: {preCheck.checks.task.status}
+                      {preCheck.checks.task.ok ? 'OK' : 'Failed'} Task: {preCheck.checks.task.status}
                       {preCheck.checks.task.rows ? ` · ${preCheck.checks.task.rows.toLocaleString()} rows` : ''}
                     </span>
                   )}
@@ -2084,7 +2096,7 @@ export default function DataImportPipeline() {
                   cursor: (preCheck?.loading || preCheck?.ready === false) ? 'not-allowed' : 'pointer',
                 }}
               >
-                {preCheck?.loading ? '[WAIT] Checking…' : '[OK] Confirm Import'}
+                {preCheck?.loading ? 'Checking...' : 'Confirm Import'}
               </button>
             </div>
           </div>
