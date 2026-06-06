@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, Database, Route, Server, Workflow } from 'lucide-react';
+import { Bot } from 'lucide-react';
 import AdminPanel from '../Components/AdminPanel';
 import { API_METHODS } from '../services/apiClient';
+import KpiStrip from '../widgets/KpiStrip';
+import PageHeader from '../widgets/PageHeader';
 import RegistryWidget from '../widgets/RegistryWidget';
-import StatWidget from '../widgets/StatWidget';
 import { widgetCardStyle, widgetColors } from '../widgets/widgetStyles';
 
 const routeColumns = [
@@ -53,11 +54,17 @@ export default function AdminPage({ onSchemaCleaned }) {
 
   return (
     <div className="depo-page">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div>
-          <div style={{ color: widgetColors.text, fontSize: 18, fontWeight: 850 }}>Admin Registry</div>
-          <div style={{ color: widgetColors.muted, fontSize: 12 }}>Read-only service catalog, API routes, datasources, agents, workflows, and package guidance.</div>
-        </div>
+      <PageHeader
+        eyebrow="Operations and platform registry"
+        title="Operate services, datasources, agents, and workflow capabilities from one catalog"
+        summary="Admin is the control room for runtime health and governed capabilities. Destructive actions stay isolated in Operations; registry data remains read-only for this phase."
+        insights={[
+          { label: 'Service standard', value: 'Every runtime has owner, endpoint, status, and health path' },
+          { label: 'Governance rule', value: 'Frontend never connects directly to Neo4j' },
+          { label: 'Change scope', value: 'Read-only registry first; config writes stay deferred' },
+        ]}
+      />
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button
           type="button"
           onClick={loadRegistry}
@@ -83,15 +90,25 @@ export default function AdminPage({ onSchemaCleaned }) {
         </div>
       )}
 
-      <div className="depo-widget-grid">
-        <StatWidget label="Services" value={counts.services} icon={Server} status={counts.services ? 'ok' : 'neutral'} />
-        <StatWidget label="API Routes" value={counts.routes} icon={Route} status={counts.routes ? 'ok' : 'neutral'} />
-        <StatWidget label="Datasources" value={counts.sources} icon={Database} status={counts.sources ? 'ok' : 'neutral'} />
-        <StatWidget label="Workflows" value={counts.workflows} icon={Workflow} status={counts.workflows ? 'ok' : 'neutral'} />
-      </div>
+      <KpiStrip
+        items={[
+          { label: 'Services', value: counts.services },
+          { label: 'API routes', value: counts.routes },
+          { label: 'Datasources', value: counts.sources },
+          { label: 'Workflow capabilities', value: counts.workflows },
+        ]}
+      />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 0.85fr) minmax(0, 1.15fr)', gap: 12, alignItems: 'start' }}>
-        <AdminPanel onSchemaCleaned={onSchemaCleaned} />
+      <div className="depo-two-column">
+        <section className="depo-panel">
+          <div className="depo-panel__header">
+            <div>
+              <div className="depo-panel__title">Operations</div>
+              <div className="depo-panel__meta">Controlled cleanup and current Neo4j schema status.</div>
+            </div>
+          </div>
+          <AdminPanel onSchemaCleaned={onSchemaCleaned} />
+        </section>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <RegistryWidget title="Service Catalog" rows={registry?.services || []} height={240} />
           <RegistryWidget title="Data Sources" rows={registry?.data_sources || []} height={220} />

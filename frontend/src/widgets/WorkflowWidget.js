@@ -20,32 +20,32 @@ export default function WorkflowWidget({ workflow, onOpen }) {
       style={{
         ...widgetCardStyle,
         textAlign: 'left',
-        padding: 10,
+        padding: 8,
         cursor: onOpen ? 'pointer' : 'default',
-        minHeight: 118,
+        minHeight: 86,
         display: 'flex',
         flexDirection: 'column',
-        gap: 8,
+        gap: 6,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Icon size={10} color={widgetColors.blue} strokeWidth={3} />
-        <div style={{ color: widgetColors.text, fontSize: 13, fontWeight: 800, lineHeight: 1.25 }}>
+        <Icon size={8} color={widgetColors.blue} strokeWidth={3.2} />
+        <div style={{ color: widgetColors.text, fontSize: 12, fontWeight: 850, lineHeight: 1.25 }}>
           {workflow?.label}
         </div>
       </div>
-      <div style={{ color: widgetColors.muted, fontSize: 11, lineHeight: 1.35 }}>
+      <div style={{ color: widgetColors.muted, fontSize: 10, lineHeight: 1.3 }}>
         <strong>Input:</strong> {workflow?.inputs}
       </div>
-      <div style={{ color: widgetColors.muted, fontSize: 11, lineHeight: 1.35 }}>
+      <div style={{ color: widgetColors.muted, fontSize: 10, lineHeight: 1.3 }}>
         <strong>Output:</strong> {workflow?.outputs}
       </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 'auto' }}>
-        <span style={{ fontSize: 10, fontWeight: 800, color: widgetColors.blue, background: '#eef5fb', padding: '3px 6px', borderRadius: 4 }}>
+        <span style={{ fontSize: 9, fontWeight: 850, color: widgetColors.blue, background: '#eef5fb', padding: '2px 5px', borderRadius: 4 }}>
           {workflow?.category}
         </span>
         {workflow?.retains_artifacts && (
-          <span style={{ fontSize: 10, fontWeight: 800, color: widgetColors.ok, background: '#edf9f2', padding: '3px 6px', borderRadius: 4 }}>
+          <span style={{ fontSize: 9, fontWeight: 850, color: widgetColors.ok, background: '#edf9f2', padding: '2px 5px', borderRadius: 4 }}>
             Retains artifacts
           </span>
         )}

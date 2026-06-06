@@ -17,7 +17,7 @@ export default function AppShell({
       <nav className="depo-rail" aria-label="Application navigation">
         <div className="depo-rail__brand">DEPO</div>
         <button type="button" className="depo-rail__button" title="Home" onClick={onHome}>
-          <Home size={18} />
+          <Home size={15} />
         </button>
         {navigationItems.map((item) => {
           const Icon = item.icon;
@@ -31,7 +31,7 @@ export default function AppShell({
               aria-label={item.label}
               onClick={() => onPageChange(item.id)}
             >
-              <Icon size={18} />
+              <Icon size={15} />
             </button>
           );
         })}

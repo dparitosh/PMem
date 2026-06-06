@@ -1,8 +1,8 @@
 .depo-shell {
   height: 100vh;
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  grid-template-rows: 54px minmax(0, 1fr);
+  grid-template-columns: 64px minmax(0, 1fr);
+  grid-template-rows: 50px minmax(0, 1fr);
   background: #f5f7fa;
   color: #243b53;
   overflow: hidden;
@@ -15,25 +15,25 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 10px 8px;
+  gap: 6px;
+  padding: 8px 7px;
 }
 
 .depo-rail__brand {
-  width: 40px;
-  height: 32px;
+  width: 38px;
+  height: 30px;
   display: grid;
   place-items: center;
   color: #fff;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 900;
   border-bottom: 1px solid rgba(255, 255, 255, 0.18);
   margin-bottom: 4px;
 }
 
 .depo-rail__button {
-  width: 48px;
-  height: 46px;
+  width: 42px;
+  height: 38px;
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
@@ -56,7 +56,7 @@
   grid-template-columns: minmax(220px, 1fr) minmax(240px, 420px) auto;
   align-items: center;
   gap: 12px;
-  padding: 8px 14px;
+  padding: 7px 12px;
   background: #fff;
   border-bottom: 1px solid #d9e2ec;
 }
@@ -66,7 +66,7 @@
 }
 
 .depo-topbar__title h1 {
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.2;
   margin: 0;
   font-weight: 850;
@@ -86,7 +86,7 @@
   width: 100%;
   border: 1px solid #d9e2ec;
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 7px 9px;
   font-size: 12px;
   outline: none;
 }
@@ -109,8 +109,8 @@
 }
 
 .depo-icon-button {
-  width: 34px;
-  height: 32px;
+  width: 32px;
+  height: 30px;
   border: 1px solid #d9e2ec;
   border-radius: 6px;
   background: #fff;
@@ -133,7 +133,7 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 12px;
+  padding: 10px;
 }
 
 .depo-drawer {
@@ -148,19 +148,149 @@
 .depo-page {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   min-height: 100%;
 }
 
 .depo-widget-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
 }
 
 .depo-workflow-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.depo-page-header {
+  background: #fff;
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(340px, 1.2fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.depo-page-header__eyebrow {
+  color: #004b87;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.depo-page-header__title {
+  margin-top: 2px;
+  color: #243b53;
+  font-size: 17px;
+  line-height: 1.2;
+  font-weight: 850;
+}
+
+.depo-page-header__summary {
+  color: #52606d;
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+.depo-page-header__insights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.depo-insight {
+  border-left: 3px solid #004b87;
+  background: #f7f9fb;
+  padding: 7px 8px;
+  min-height: 58px;
+}
+
+.depo-insight__label {
+  color: #52606d;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.depo-insight__value {
+  color: #243b53;
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 3px;
+  font-weight: 700;
+}
+
+.depo-panel {
+  background: #fff;
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.depo-panel__header {
+  padding: 9px 11px;
+  border-bottom: 1px solid #d9e2ec;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.depo-panel__title {
+  color: #243b53;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.depo-panel__meta {
+  color: #52606d;
+  font-size: 11px;
+}
+
+.depo-panel__body {
+  padding: 10px;
+}
+
+.depo-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #d9e2ec;
+}
+
+.depo-kpi-cell {
+  background: #fff;
+  padding: 8px 10px;
+  min-height: 58px;
+}
+
+.depo-kpi-cell__label {
+  color: #52606d;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.depo-kpi-cell__value {
+  color: #243b53;
+  font-size: 20px;
+  font-weight: 850;
+  line-height: 1.2;
+  margin-top: 4px;
+}
+
+.depo-two-column {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.36fr) minmax(0, 0.64fr);
   gap: 10px;
 }
 
@@ -180,10 +310,19 @@
   .depo-drawer {
     position: absolute;
     right: 0;
-    top: 54px;
+    top: 50px;
     bottom: 0;
     height: auto;
     z-index: 20;
     box-shadow: -8px 0 18px rgba(16, 42, 67, 0.16);
+  }
+
+  .depo-page-header,
+  .depo-two-column {
+    grid-template-columns: 1fr;
+  }
+
+  .depo-page-header__insights {
+    grid-template-columns: 1fr;
   }
 }

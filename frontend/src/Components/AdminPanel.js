@@ -176,12 +176,9 @@ export default function AdminPanel({ onSchemaCleaned }) {
   }, [error, health, loading]);
 
   return (
-    <div style={{ height: '100%', overflow: 'auto', background: colors.bg, padding: 12 }}>
-      <div style={{ maxWidth: 1120, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 18, color: colors.text, fontWeight: 800 }}>Admin</h2>
-          </div>
+    <div style={{ height: '100%', overflow: 'auto', background: '#fff', padding: 10 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
           <button type="button" onClick={loadAdminState} disabled={loading} style={buttonStyle}>
             <RefreshCw size={14} />
             Refresh
@@ -191,13 +188,13 @@ export default function AdminPanel({ onSchemaCleaned }) {
         <Message tone="success">{message}</Message>
         <Message tone="error">{error}</Message>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
-          <section style={cardStyle}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+          <section style={{ ...cardStyle, padding: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
               <Server size={16} color={colors.blue} />
               <div style={{ fontSize: 13, fontWeight: 800, color: colors.text }}>Service Health</div>
             </div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: error ? colors.danger : colors.ok }}>
+            <div style={{ fontSize: 20, fontWeight: 850, color: error ? colors.danger : colors.ok }}>
               {statusText}
             </div>
             {health?.message && (
@@ -205,7 +202,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
             )}
           </section>
 
-          <section style={cardStyle}>
+          <section style={{ ...cardStyle, padding: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
               <Database size={16} color={colors.blue} />
               <div style={{ fontSize: 13, fontWeight: 800, color: colors.text }}>Neo4j Schema Snapshot</div>
@@ -219,7 +216,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
           </section>
         </div>
 
-        <section style={cardStyle}>
+        <section style={{ ...cardStyle, padding: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <AlertTriangle size={16} color={colors.danger} />
             <div style={{ fontSize: 13, fontWeight: 800, color: colors.text }}>Controlled Cleanup</div>
