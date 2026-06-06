@@ -353,7 +353,7 @@ export default function DataImportPipeline() {
         ontologyToUse = policy.forcedMapping;
       }
 
-      if (ontologyToUse && !availableMappings.some(m => m.id === ontologyToUse)) {
+      if (ontologyToUse && !policy.forcedMapping && !availableMappings.some(m => m.id === ontologyToUse)) {
         throw new Error(
           `${file.name}: Selected ontology mapping is invalid. Please pick a mapping from the Ontology Alignment dropdown.`
         );
