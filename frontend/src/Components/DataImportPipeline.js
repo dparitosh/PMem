@@ -935,8 +935,8 @@ export default function DataImportPipeline() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '6px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0 }}>
-                    <Icon size={13} color={isSelected ? C.primary : C.textSec} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px', minWidth: 0 }}>
+                    <Icon size={9} strokeWidth={2.4} color={isSelected ? C.primary : C.textSec} />
                     <span style={{
                       fontSize: '10px',
                       fontWeight: '700',
