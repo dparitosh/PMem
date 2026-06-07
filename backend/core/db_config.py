@@ -116,16 +116,15 @@ def _detect_deployment_type(uri: str) -> Neo4jDeploymentType:
 
 
 def _load_environment() -> None:
-    """Load environment variables from centralized .env file (SINGLE SOURCE OF TRUTH)"""
-    # CENTRALIZED: Load from requirements/.env in project root FIRST
-    # This ensures all scripts (root and backend) use the SAME configuration
-    # db_config.py is at: Depo_onto/backend/core/db_config.py
-    # Need to go up 4 levels to project root, then into requirements/
+    """Load environment variables from backend/.env as the runtime source of truth."""
+    project_root = Path(__file__).resolve().parents[2]
     possible_paths = [
-        Path(__file__).parent.parent.parent / "requirements" / ".env",  # Project root: requirements/.env (PRIMARY)
-        Path(__file__).parent.parent / ".env",  # Fallback: backend/.env
-        Path.cwd() / ".env",  # Fallback: Current working directory
-        Path.cwd() / "requirements" / ".env",  # Fallback: requirements/ from cwd
+        project_root / "backend" / ".env",
+        project_root / ".env",
+        project_root / "requirements" / ".env",
+        Path.cwd() / ".env",
+        Path.cwd() / "backend" / ".env",
+        Path.cwd() / "requirements" / ".env",
     ]
     
     for env_path in possible_paths:

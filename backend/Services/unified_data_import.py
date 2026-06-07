@@ -1114,6 +1114,7 @@ class FileParser:
                         'id': f'#{entity.step_id}',
                         'entity_type': entity.entity_type,
                         'args': args_preview,
+                        'ref_ids': list(entity.ref_ids),
                     }
                     # G-B: extract name/description for AP242 semantic entity types.
                     # Canonical pattern from requirements/src/engines/ap242_bom_mapper.py.
@@ -1127,13 +1128,28 @@ class FileParser:
                     if entity.ref_ids:
                         ref_map[entity.step_id] = entity.ref_ids
 
+                id_seen: Dict[str, int] = {}
+                duplicate_id_count = 0
+                for row in rows:
+                    source_id = str(row.get('id') or '')
+                    id_seen[source_id] = id_seen.get(source_id, 0) + 1
+                    occurrence = id_seen[source_id]
+                    if occurrence > 1:
+                        duplicate_id_count += 1
+                    row['import_row_key'] = source_id if occurrence == 1 else f'{source_id}::{occurrence}'
+
+                all_columns = sorted({key for row in rows for key in row.keys()})
                 stats = {
                     'format': 'STEP',
                     'schema': schema,
+                    'namespace': file_meta.namespace,
+                    'schema_location': file_meta.schema_location,
+                    'schema_version': file_meta.schema_version,
                     'row_count': len(rows),
-                    'column_count': len(rows[0]) if rows else 3,
-                    'columns': list(rows[0].keys()) if rows else ['id', 'entity_type', 'args'],
+                    'column_count': len(all_columns) if rows else 4,
+                    'columns': all_columns if rows else ['import_row_key', 'id', 'entity_type', 'args'],
                     'entity_types': type_counts,
+                    'duplicate_source_id_count': duplicate_id_count,
                     '_step_ref_map': ref_map,
                 }
                 return rows, stats
@@ -1164,19 +1180,33 @@ class FileParser:
             )
             rows = []
             type_counts: Dict[str, int] = {}
+            id_seen: Dict[str, int] = {}
+            duplicate_id_count = 0
             for match in entity_pattern.finditer(data_section):
                 eid, etype, args = match.group(1), match.group(2), match.group(3).strip()
                 args_preview = args[:200] + '...' if len(args) > 200 else args
-                rows.append({'id': f'#{eid}', 'entity_type': etype, 'args': args_preview})
+                source_id = f'#{eid}'
+                id_seen[source_id] = id_seen.get(source_id, 0) + 1
+                occurrence = id_seen[source_id]
+                if occurrence > 1:
+                    duplicate_id_count += 1
+                rows.append({
+                    'import_row_key': source_id if occurrence == 1 else f'{source_id}::{occurrence}',
+                    'id': source_id,
+                    'entity_type': etype,
+                    'args': args_preview,
+                    'ref_ids': [],
+                })
                 type_counts[etype] = type_counts.get(etype, 0) + 1
 
             stats = {
                 'format': 'STEP',
                 'schema': schema,
                 'row_count': len(rows),
-                'column_count': 3,
-                'columns': ['id', 'entity_type', 'args'],
+                'column_count': 4,
+                'columns': ['import_row_key', 'id', 'entity_type', 'args'],
                 'entity_types': type_counts,
+                'duplicate_source_id_count': duplicate_id_count,
             }
             return rows, stats
         except Exception as e:
@@ -1279,7 +1309,7 @@ class DataTransformer:
         # ── Single-label schema (original logic, column union fix applied) ────
         columns = sorted({k for row in rows for k in row.keys()})
         # Prefer unique identifier columns; 'name' is often non-unique or empty
-        merge_key = next((c for c in ('id', 'uuid', 'key', 'name') if c in columns), columns[0])
+        merge_key = next((c for c in ('import_row_key', 'id', 'uuid', 'key', 'name') if c in columns), columns[0])
         default_label = (
             element_types[0] if element_types
             else str(rows[0].get('type', 'DataNode')).replace(' ', '_').replace(':', '_')
@@ -1968,6 +1998,60 @@ class UnifiedDataImportService:
         task = import_tasks[task_id]
         return task.get('preview_data')
 
+    @staticmethod
+    def _ontology_match_key(value: Any) -> str:
+        return re.sub(r'[^A-Z0-9]', '', str(value or '').upper())
+
+    @classmethod
+    def _load_ontology_class_lookup(cls, ontology_prefix: str) -> Dict[str, Dict[str, Any]]:
+        """Return normalized AP242/selected ontology class names keyed for STEP linking."""
+        prefix = str(ontology_prefix or '').lower()
+        preferred_prefixes = [prefix]
+        if prefix in ('step', 'step_ap242_mbd3d', 'ap242_mbd3d') or 'ap242' in prefix:
+            preferred_prefixes.extend(['ap242', 'step_ap242_mbd3d'])
+        preferred_prefixes = sorted({p for p in preferred_prefixes if p})
+
+        query = """
+        MATCH (c:OntologyClass)
+        WHERE toLower(coalesce(c.prefix, c.ontology_prefix, c.ontology_id, '')) IN $prefixes
+           OR ($ap242 = true AND (
+                toLower(coalesce(c.prefix, '')) CONTAINS 'ap242'
+                OR toLower(coalesce(c.ontology_prefix, '')) CONTAINS 'ap242'
+                OR toLower(coalesce(c.ontology_id, '')) CONTAINS 'ap242'
+                OR toLower(coalesce(c.namespace, '')) CONTAINS '10303'
+           ))
+        RETURN elementId(c) AS element_id,
+               coalesce(c.name, c.label, c.id, c.uri) AS name,
+               coalesce(c.prefix, c.ontology_prefix, c.ontology_id, '') AS prefix
+        """
+        try:
+            try:
+                from core.graph import query_with_timeout as _query_with_timeout
+            except ModuleNotFoundError:
+                from ..core.graph import query_with_timeout as _query_with_timeout
+            records = _query_with_timeout(
+                query,
+                {'prefixes': preferred_prefixes, 'ap242': any('ap242' in p for p in preferred_prefixes)},
+            ) or []
+        except Exception as exc:
+            logger.warning(f"Ontology class lookup skipped for prefix '{ontology_prefix}': {exc}")
+            return {}
+
+        lookup: Dict[str, Dict[str, Any]] = {}
+        for record in records:
+            name = record.get('name')
+            element_id = record.get('element_id')
+            if not name or not element_id:
+                continue
+            key = cls._ontology_match_key(name)
+            if key and key not in lookup:
+                lookup[key] = {
+                    'element_id': element_id,
+                    'class_name': str(name),
+                    'prefix': record.get('prefix') or ontology_prefix,
+                }
+        return lookup
+
     @classmethod
     def _commit_sync(cls, task_id: str, task: dict, schema: dict) -> Dict[str, Any]:
         """
@@ -2006,7 +2090,8 @@ class UnifiedDataImportService:
             _row.setdefault('source_ontology', _namespace_uri or _ontology_name)
 
         result = {'queries_executed': 0, 'nodes_created': 0,
-                  'relationships_created': 0, 'errors': []}
+                  'relationships_created': 0, 'instance_links_created': 0,
+                  'ontology_classes_matched': 0, 'errors': []}
 
         # ── Node queries ────────────────────────────────────────────────────
         for node_def in schema.get('nodes', []):
@@ -2027,6 +2112,7 @@ class UnifiedDataImportService:
             queries, _ = DataTransformer.transform_to_nodes(node_rows, label, merge_keys)
             node_result = Neo4jImporter.execute_cypher(queries, node_rows)
             result['queries_executed'] += node_result.get('queries_executed', 0)
+            result['nodes_created'] += len(node_rows)
             result['errors'].extend(node_result.get('errors', []))
 
         # ── Index queries ────────────────────────────────────────────────────
@@ -2068,7 +2154,30 @@ class UnifiedDataImportService:
 
         # ── STEP reference edges ────────────────────────────────────────────
         step_ref_map = task.get('_step_ref_map', {})
-        if step_ref_map:
+        step_ref_rows = [
+            {'from_key': r.get('import_row_key'), 'to_id': f"#{tid}"}
+            for r in rows
+            for tid in (r.get('ref_ids') or [])
+            if r.get('import_row_key') and tid is not None
+        ]
+        if step_ref_rows:
+            step_rel_cypher = f"""
+            UNWIND $rows AS row
+            MATCH (a{_label_hint} {{import_row_key: row.from_key, import_id: row.import_id}})
+            MATCH (b{_label_hint} {{import_row_key: row.to_id, import_id: row.import_id}})
+            MERGE (a)-[:REFERENCES {target_source_id: row.to_id}]->(b)
+            """
+            try:
+                ref_rows_scoped = [{**rr, 'import_id': task_id} for rr in step_ref_rows]
+                step_rel_result = Neo4jImporter.execute_cypher([step_rel_cypher], ref_rows_scoped)
+                if not step_rel_result.get('errors'):
+                    result['relationships_created'] += len(step_ref_rows)
+                    logger.info(f"Task {task_id}: STEP — wrote {len(step_ref_rows)} row-key REFERENCES edges")
+                else:
+                    logger.warning(f"Task {task_id}: STEP ref write errors: {step_rel_result['errors'][:3]}")
+            except Exception as step_rel_err:
+                logger.warning(f"Task {task_id}: STEP reference edges skipped: {step_rel_err}")
+        elif step_ref_map:
             ref_rows = [
                 {'from_id': f'#{fid}', 'to_id': f'#{tid}'}
                 for fid, refs in step_ref_map.items()
@@ -2090,6 +2199,63 @@ class UnifiedDataImportService:
                     logger.warning(f"Task {task_id}: STEP ref write errors: {step_rel_result['errors'][:3]}")
             except Exception as step_rel_err:
                 logger.warning(f"Task {task_id}: STEP reference edges skipped: {step_rel_err}")
+
+        # ── STEP/STPX semantic links to ontology classes ────────────────────
+        if task.get('file_type') == FileType.STEP.value:
+            class_lookup = cls._load_ontology_class_lookup(_ontology_prefix)
+            link_rows: List[Dict[str, Any]] = []
+            seen_link_keys = set()
+            for row in rows:
+                entity_type = row.get('entity_type') or row.get('type') or row.get('name')
+                row_key = row.get('import_row_key') or row.get('id')
+                match = class_lookup.get(cls._ontology_match_key(entity_type))
+                if not row_key or not match:
+                    continue
+                unique_key = (row_key, match['element_id'])
+                if unique_key in seen_link_keys:
+                    continue
+                seen_link_keys.add(unique_key)
+                link_rows.append({
+                    'import_row_key': row_key,
+                    'import_id': task_id,
+                    'class_element_id': match['element_id'],
+                    'class_name': match['class_name'],
+                    'mapping': _ontology_prefix,
+                })
+
+            result['ontology_classes_matched'] = len({r['class_element_id'] for r in link_rows})
+            if link_rows:
+                link_cypher = f"""
+                UNWIND $rows AS row
+                MATCH (n{_label_hint} {{import_row_key: row.import_row_key, import_id: row.import_id}})
+                MATCH (c:OntologyClass)
+                WHERE elementId(c) = row.class_element_id
+                MERGE (n)-[rel:INSTANCE_OF]->(c)
+                SET rel.mapping = row.mapping,
+                    rel.class_name = row.class_name,
+                    rel.import_id = row.import_id
+                RETURN count(rel) AS linked
+                """
+                try:
+                    try:
+                        from core.graph import query_with_timeout as _query_with_timeout
+                    except ModuleNotFoundError:
+                        from ..core.graph import query_with_timeout as _query_with_timeout
+                    _BATCH = max(50, IMPORT_WRITE_BATCH_SIZE)
+                    linked_total = 0
+                    for _i in range(0, len(link_rows), _BATCH):
+                        linked_result = _query_with_timeout(link_cypher, {'rows': link_rows[_i:_i + _BATCH]}) or []
+                        result['queries_executed'] += 1
+                        if linked_result and isinstance(linked_result[0], dict):
+                            linked_total += int(linked_result[0].get('linked') or 0)
+                    result['instance_links_created'] = linked_total
+                    result['relationships_created'] += linked_total
+                    logger.info(
+                        f"Task {task_id}: linked {linked_total} STEP/STPX instances "
+                        f"to {result['ontology_classes_matched']} ontology classes"
+                    )
+                except Exception as link_err:
+                    logger.warning(f"Task {task_id}: AP242 INSTANCE_OF linking skipped: {link_err}")
 
         # ── ownerId → OWNED_BY relationship edges (XMI ownership hierarchy) ──
         owner_rows = [

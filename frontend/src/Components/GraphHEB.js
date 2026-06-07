@@ -633,6 +633,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const lastNeo4jConnectedRef = useRef(null);
   // Local loading state for ontology-specific operations (separate from context loading)
   const [, setOntologyLoading] = useState(false);
+  const [ontologyGraphMessage, setOntologyGraphMessage] = useState('');
   // Ontology options loaded from centralized context (shared across all components)
   const {
     ontologies: ontologyOptions,
@@ -2695,7 +2696,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // Check health every 30 seconds
     const healthCheckInterval = setInterval(checkHealth, 30000);
     return () => clearInterval(healthCheckInterval);
-  }, [graphData.nodes.length]);
+  }, [graphData.nodes.length, setData]);
 
  
   // Performance: Optimized search with debouncing and caching
@@ -2918,6 +2919,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
   const fetchOntologyGraph = useCallback(async (ontologyType, partName) => {
     if (ontologyType === 'ALL') {
       // Reset to initial full graph
+      setOntologyGraphMessage('');
       setFilteredData(initialData);
       setGraphData(initialData);
       setFullDataset(initialData);
@@ -2929,6 +2931,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     }
 
     setOntologyLoading(true);
+    setOntologyGraphMessage('');
     try {
       let response;
       if (ontologyType === 'step' && partName && partName !== 'ALL') {
@@ -2941,7 +2944,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       } else if (ontologyType === 'mbse_instances') {
         response = await apiClient.get(API.graph.ontologyMbseInstances);
       } else {
-        const endpointPath = replaceParams(API.graph.ontologyGraph, { ontology: ontologyType });
+        const endpointPath = replaceParams(API.graph.graphvisByOntology, { prefix: ontologyType });
         response = await apiClient.get(endpointPath);
       }
       if (response.data?.results?.length > 0) {
@@ -2991,25 +2994,31 @@ const getPrimaryNodeLabel = useCallback((d) => {
         const nodes = Array.from(nodesMap.values());
         const existingNodeIds = new Set(nodes.map(node => node.elementId));
         
-        // Debug: Log the first few nodes to see their elementId format
-        console.log('[ONTOLOGY DEBUG] Sample nodes:', nodes.slice(0, 2).map(n => ({ elementId: n.elementId, label: n.label })));
-        console.log('[ONTOLOGY DEBUG] Total nodes:', nodes.length);
-        console.log('[ONTOLOGY DEBUG] Total rawLinks before validation:', rawLinks.size);
-        
-        // Debug: Check if links have valid source/target
         const sampleLinks = Array.from(rawLinks.values()).slice(0, 2);
-        console.log('[ONTOLOGY DEBUG] Sample rawLinks:', sampleLinks.map(l => ({ 
+        logger.ontology('[ONTOLOGY] Graph payload sample', {
+          nodes: nodes.slice(0, 2).map(n => ({ elementId: n.elementId, label: n.label })),
+          nodeCount: nodes.length,
+          rawLinkCount: rawLinks.size,
+          links: sampleLinks.map(l => ({
           source: l.source, 
           target: l.target,
           sourceExists: existingNodeIds.has(l.source),
           targetExists: existingNodeIds.has(l.target)
-        })));
+          })),
+        });
         
         const validatedLinks = Array.from(rawLinks.values()).filter(link =>
           existingNodeIds.has(link.source) && existingNodeIds.has(link.target)
         );
         
-        console.log('[ONTOLOGY DEBUG] Validated links:', validatedLinks.length);
+        logger.ontology('[ONTOLOGY] Validated graph links', validatedLinks.length);
+        if (nodes.length > 0 && rawLinks.size > 0 && validatedLinks.length === 0) {
+          setOntologyGraphMessage('Ontology has relationships, but visualization could not match relationship source/target IDs.');
+        } else if (nodes.length > 0 && validatedLinks.length === 0) {
+          setOntologyGraphMessage('Ontology has classes but no relationships.');
+        } else {
+          setOntologyGraphMessage('');
+        }
 
         const dataSet = { nodes, links: validatedLinks };
         setFilteredData(dataSet);
@@ -3020,6 +3029,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         logger.render(`[ONTOLOGY] Loaded ${ontologyType}: ${nodes.length} nodes, ${validatedLinks.length} links`);
       } else {
         const empty = { nodes: [], links: [] };
+        setOntologyGraphMessage(response.data?.message || response.data?.error || 'Neo4j query returned zero records.');
         setFilteredData(empty);
         setGraphData(empty);
         setFullDataset(empty);
@@ -3028,6 +3038,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       }
     } catch (err) {
       logger.error('[ONTOLOGY] Fetch error:', err);
+      setOntologyGraphMessage(err?.response?.data?.detail || err?.message || 'Visualization received empty graph.');
     } finally {
       setOntologyLoading(false);
     }
@@ -3559,10 +3570,9 @@ const boundaryForce = (width, height) => {
 
     logger.render(`[DATA] Rendering with ${renderData.nodes.length} nodes, ${renderData.links.length} links`);
     
-    // Debug: Check if links have valid source/target after filter
     if (renderData.links && renderData.links.length > 0) {
       const sample = renderData.links.slice(0, 2);
-      console.log('[RENDER DEBUG] Sample links with source/target:', sample.map(l => ({
+      logger.render('[RENDER] Sample links with source/target:', sample.map(l => ({
         elementId: l.elementId,
         source: l.source,
         target: l.target,
@@ -3636,7 +3646,7 @@ const boundaryForce = (width, height) => {
     // --- Process links for bidirectional relationship separation ---
     const processedLinks = processLinksForOffset([...renderData.links]);
     
-    console.log('[LINK PROCESSING DEBUG]', {
+    logger.render('[LINK PROCESSING]', {
       inputLinks: renderData.links.length,
       processedLinks: processedLinks.length,
       sample: processedLinks.slice(0, 2).map(l => ({ source: l.source, target: l.target, type: l.type }))
@@ -3697,7 +3707,7 @@ const boundaryForce = (width, height) => {
       .data(processedLinks, d => d.elementId)
       .join(
         enter => {
-          console.log('[LINK DEBUG] Creating', enter.size(), 'new links with marker-end attribute');
+          logger.render('[LINK] Creating new links with marker-end attribute', enter.size());
           const group = enter.append('path')
             .attr('class', 'link')
             .attr('stroke', LINK_COLOR || '#999')
@@ -4569,9 +4579,9 @@ const boundaryForce = (width, height) => {
               title={ontologyError ? ontologyError : "Select ontology to view"}
             >
               <option value="ALL" style={{color:'#333', fontWeight:600}}>— All Ontologies (Full Graph) —</option>
-              {ontologyOptions.filter(o => o.value !== 'ALL').map((opt, idx) => (
+              {ontologyOptions.filter(o => o.value !== 'ALL' && !o.disabled).map((opt, idx) => (
                 <option key={opt.value || `ontology-opt-${idx}`} value={opt.value} style={{color:'#333'}}>
-                  {opt.prefix ? `[${opt.prefix}] ` : ''}{opt.label}{opt.type ? ` · ${opt.type}` : ''}
+                  {opt.prefix ? `[${opt.prefix}] ` : ''}{opt.label}{opt.type ? ` · ${opt.type}` : ''}{Number(opt.relationship_count || 0) === 0 ? ' · classes only' : ''}
                 </option>
               ))}
             </select>
@@ -4619,6 +4629,11 @@ const boundaryForce = (width, height) => {
           <div style={{display:'flex', alignItems:'center', gap:6, fontSize:13, color:'#004B87'}}>
             <div className="spinner" style={{width:14,height:14,border:'2px solid #f3f3f3',borderTop:'2px solid #004B87',borderRadius:'50%',animation:'spin 1s linear infinite'}}></div>
             {searchLoading ? 'Searching...' : ontologyLoading ? 'Loading ontology...' : 'Switching layout...'}
+          </div>
+        )}
+        {ontologyGraphMessage && (
+          <div style={{fontSize:12, color:'#8a5a00', background:'#fff8e1', border:'1px solid #ffe082', borderRadius:5, padding:'5px 8px'}}>
+            {ontologyGraphMessage}
           </div>
         )}
         {(searchQuery || selectedOntology !== 'ALL' || graphViewMode !== 'ontology') && (

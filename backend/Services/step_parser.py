@@ -13,6 +13,19 @@ from typing import Dict, Iterator, List, Optional
 import re
 import xml.etree.ElementTree as ET
 
+try:
+    from .ap242_domain_model import (
+        AP242_DOMAIN_MODEL_NAMESPACE,
+        AP242_DOMAIN_MODEL_SCHEMA_TOKEN,
+        is_ap242_domain_model_namespace,
+    )
+except ImportError:
+    from ap242_domain_model import (  # type: ignore
+        AP242_DOMAIN_MODEL_NAMESPACE,
+        AP242_DOMAIN_MODEL_SCHEMA_TOKEN,
+        is_ap242_domain_model_namespace,
+    )
+
 
 _ENTITY_RE = re.compile(r"^\s*#(\d+)\s*=\s*([A-Z0-9_]+)\s*\((.*)\)\s*$", re.IGNORECASE | re.DOTALL)
 # Compound entity instance: #n = (ENTITY1(...) ENTITY2(...)) — ISO 10303-11 §12.4.3
@@ -67,6 +80,9 @@ class StepFileMeta:
     format: str
     file_schema: Optional[str]
     file_name: str
+    namespace: str = ""
+    schema_location: str = ""
+    schema_version: str = ""
 
 
 @dataclass
@@ -200,7 +216,26 @@ def parse_step_metadata(
             # ✅ SECURITY: use defusedxml for STPX schema extraction to prevent XXE
             import defusedxml.ElementTree as _DET
             root = _DET.fromstring(text)
-            schema = root.attrib.get("schemaVersion") or root.attrib.get("version")
+            namespace = _namespace_uri(root.tag)
+            schema_location = (
+                root.attrib.get("{http://www.w3.org/2001/XMLSchema-instance}schemaLocation")
+                or root.attrib.get("schemaLocation")
+                or ""
+            )
+            schema_version = root.attrib.get("schemaVersion") or root.attrib.get("version") or ""
+            schema = schema_version
+            if is_ap242_domain_model_namespace(namespace) or AP242_DOMAIN_MODEL_NAMESPACE in schema_location:
+                schema = AP242_DOMAIN_MODEL_SCHEMA_TOKEN
+            elif namespace:
+                schema = namespace.rstrip("/").rsplit("/", 1)[-1] or schema
+            return StepFileMeta(
+                format=fmt,
+                file_schema=schema,
+                file_name=file_path.name,
+                namespace=namespace,
+                schema_location=schema_location,
+                schema_version=schema_version,
+            )
     except OSError:
         pass
     except ET.ParseError:
@@ -217,6 +252,12 @@ def _local_name(tag: str) -> str:
     if "}" in tag:
         return tag.rsplit("}", 1)[1]
     return tag
+
+
+def _namespace_uri(tag: str) -> str:
+    if tag.startswith("{") and "}" in tag:
+        return tag[1:].split("}", 1)[0]
+    return ""
 
 
 def _extract_part21_data_records(text: str) -> List[str]:
@@ -379,6 +420,39 @@ def _classify_cad_entity(entity: StepP21Entity) -> Optional[str]:
     return None
 
 
+def _first_number(raw_args: str) -> Optional[float]:
+    match = re.search(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[Ee][-+]?\d+)?", raw_args or "")
+    if not match:
+        return None
+    try:
+        return float(match.group(0))
+    except ValueError:
+        return None
+
+
+def _classify_pmi_entity(entity: StepP21Entity) -> Optional[str]:
+    et = entity.entity_type.upper()
+    if "GEOMETRIC_TOLERANCE" in et or et.endswith("_TOLERANCE"):
+        return "geometric_tolerance"
+    if "DATUM" in et:
+        return "datum"
+    if "DIMENSION" in et or et in {"DIMENSIONAL_SIZE", "DIMENSIONAL_LOCATION"}:
+        return "dimension"
+    if "ANNOTATION" in et or "DRAUGHTING" in et:
+        return "annotation"
+    if "SURFACE_FINISH" in et or "SURFACE_TEXTURE" in et or "ROUGHNESS" in et:
+        return "surface_finish"
+    return None
+
+
+def _cad_name_fields(entity: StepP21Entity) -> tuple[str, str, str]:
+    strings = extract_step_strings(entity.raw_args)
+    external_id = strings[0] if strings else ""
+    name = strings[1] if len(strings) > 1 else external_id
+    description = strings[2] if len(strings) > 2 else ""
+    return external_id, name, description
+
+
 def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
     fmt = detect_step_format(file_path)
     # Read file text once for p21 files (G19 — avoids 2× disk read on large STEP files)
@@ -396,29 +470,93 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
     cad_representations: List[StepCadEntity] = []
     cad_topology: List[StepCadEntity] = []
     cad_geometry: List[StepCadEntity] = []
+    geometric_tolerances: List[StepGeometricTolerance] = []
+    datums: List[StepDatum] = []
+    dimensions: List[StepDimension] = []
+    annotations: List[StepAnnotation] = []
+    surface_finishes: List[StepSurfaceFinish] = []
 
     for entity in entities:
         group = _classify_cad_entity(entity)
-        if not group:
+        if group:
+            external_id, name, description = _cad_name_fields(entity)
+            cad = StepCadEntity(
+                id=entity.step_id,
+                entity_type=entity.entity_type,
+                external_id=external_id,
+                name=name,
+                description=description,
+                ref_ids=list(entity.ref_ids),
+            )
+            if group == "product":
+                cad_products.append(cad)
+            elif group == "representation":
+                cad_representations.append(cad)
+            elif group == "topology":
+                cad_topology.append(cad)
+            elif group == "geometry":
+                cad_geometry.append(cad)
+
+        pmi_group = _classify_pmi_entity(entity)
+        if not pmi_group:
             continue
-        cad = StepCadEntity(
-            id=entity.step_id,
-            entity_type=entity.entity_type,
-            ref_ids=list(entity.ref_ids),
-        )
-        if group == "product":
-            cad_products.append(cad)
-        elif group == "representation":
-            cad_representations.append(cad)
-        elif group == "topology":
-            cad_topology.append(cad)
-        elif group == "geometry":
-            cad_geometry.append(cad)
+        strings = extract_step_strings(entity.raw_args)
+        label = strings[0] if strings else ""
+        name = strings[1] if len(strings) > 1 else label
+        description = strings[2] if len(strings) > 2 else ""
+        number = _first_number(entity.raw_args)
+
+        if pmi_group == "geometric_tolerance":
+            geometric_tolerances.append(StepGeometricTolerance(
+                id=entity.step_id,
+                tolerance_type=entity.entity_type,
+                name=name,
+                description=description,
+                magnitude=number,
+                toleranced_feature_refs=list(entity.ref_ids),
+            ))
+        elif pmi_group == "datum":
+            datums.append(StepDatum(
+                id=entity.step_id,
+                label=label,
+                datum_type=entity.entity_type,
+                feature_refs=list(entity.ref_ids),
+                name=name,
+            ))
+        elif pmi_group == "dimension":
+            dimensions.append(StepDimension(
+                id=entity.step_id,
+                dimension_type=entity.entity_type,
+                name=name,
+                description=description,
+                nominal_value=number,
+                feature_refs=list(entity.ref_ids),
+            ))
+        elif pmi_group == "annotation":
+            annotations.append(StepAnnotation(
+                id=entity.step_id,
+                annotation_type=entity.entity_type,
+                text=description or name or label,
+                name=name,
+                presentation_refs=list(entity.ref_ids),
+            ))
+        elif pmi_group == "surface_finish":
+            surface_finishes.append(StepSurfaceFinish(
+                id=entity.step_id,
+                finish_type=entity.entity_type,
+                roughness_average=number,
+                feature_refs=list(entity.ref_ids),
+            ))
 
     return StepPMIDocument(
         metadata=metadata,
         entities=entities,
         entity_map=entity_map,
+        geometric_tolerances=geometric_tolerances,
+        datums=datums,
+        dimensions=dimensions,
+        annotations=annotations,
+        surface_finishes=surface_finishes,
         cad_products=cad_products,
         cad_representations=cad_representations,
         cad_topology=cad_topology,

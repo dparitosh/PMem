@@ -43,9 +43,9 @@ def _mask_uri(uri: str | None) -> str:
 def _env_candidates() -> list[Path]:
     root = _project_root()
     return [
-        root / "requirements" / ".env",
         root / "backend" / ".env",
         root / ".env",
+        root / "requirements" / ".env",
     ]
 
 
@@ -134,6 +134,8 @@ def _neo4j_datasource() -> dict:
             from backend.core.db_config import get_config
         except ImportError:
             from core.db_config import get_config
+        if hasattr(get_config, "cache_clear"):
+            get_config.cache_clear()
         config = get_config()
         configured_database, configured_database_source = _env_lookup("NEO4J_DATABASE", "Neo4j_database")
         configured_database = configured_database or "neo4j"
@@ -460,6 +462,23 @@ def _route_group_services(api_routes: list[dict]) -> list[dict]:
 def _route_available(api_routes: list[dict], path: str) -> str:
     return path if any(route.get("path") == path for route in api_routes) else ""
 
+
+def _empty_schema_stats() -> dict:
+    return {
+        "total_nodes": 0,
+        "total_relationships": 0,
+        "node_types": [],
+        "relationship_types": [],
+        "indexes_count": 0,
+        "lookup_indexes_count": 0,
+        "constraints_count": 0,
+    }
+
+
+def _is_missing_database_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "databasenotfound" in message or "database does not exist" in message
+
 # Test endpoint
 @router.get("/health")
 async def admin_health():
@@ -661,6 +680,19 @@ async def get_schema_stats():
     except HTTPException:
         raise
     except Exception as e:
+        if _is_missing_database_error(e):
+            neo4j = _neo4j_datasource()
+            database = neo4j.get("configured_database") or neo4j.get("active_database") or "configured database"
+            return {
+                "status": "degraded",
+                "stats": _empty_schema_stats(),
+                "database": database,
+                "database_status": "missing",
+                "message": (
+                    f"Neo4j is configured from {neo4j.get('configured_database_source') or 'backend/.env'} "
+                    f"to use database '{database}', but that database does not exist in the running Neo4j instance."
+                ),
+            }
         logger.exception("Failed to get schema stats")
         raise HTTPException(status_code=500, detail=str(e))
 

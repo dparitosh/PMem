@@ -6,16 +6,22 @@ Bypasses the import pipeline to avoid embedding/LLM stalls.
 """
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "backend"))
 
 import rdflib
 from rdflib import RDF, RDFS, OWL, URIRef, Literal, BNode
 from neo4j import GraphDatabase
+from backend.core.db_config import get_config
 
-NEO4J_URI = "neo4j://127.0.0.1:7687"
-NEO4J_USER = "neo4j"
-NEO4J_PASS = "tcs12345"
-NEO4J_DB   = "spdm"
+_NEO4J_CONFIG = get_config()
+NEO4J_URI = _NEO4J_CONFIG.uri
+NEO4J_USER = _NEO4J_CONFIG.username
+NEO4J_PASS = _NEO4J_CONFIG.password
+NEO4J_DB = _NEO4J_CONFIG.database
 
 # Both TTL files → single 3DEXPERIENCE ontology
 TTL_FILES = [

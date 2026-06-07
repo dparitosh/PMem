@@ -4,9 +4,11 @@
  * This allows easy switching between environments without code changes
  */
 
+const configuredBackendUrl = process.env.REACT_APP_BACKEND_URL;
+
 // Base configuration
 const baseConfig = {
-  backendUrl: process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000',
+  backendUrl: configuredBackendUrl || 'http://localhost:8000',
   apiVersion: process.env.REACT_APP_API_VERSION || 'v1',
   environment: process.env.REACT_APP_ENV || 'development',
   debug: process.env.REACT_APP_DEBUG === 'true',
@@ -282,7 +284,7 @@ if (baseConfig.debug) {
 }
 
 // Validate required configuration
-if (!config.backendUrl) {
+if (!configuredBackendUrl && baseConfig.environment !== 'test') {
   // eslint-disable-next-line no-console
   console.warn('[CONFIG] Missing REACT_APP_BACKEND_URL. Using default: http://localhost:8000');
 }

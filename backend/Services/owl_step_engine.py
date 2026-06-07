@@ -16,7 +16,19 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 from loguru import logger
 import shutil
-from rdflib import Graph, URIRef
+
+try:
+    from rdflib import Graph, URIRef
+    _RDFLIB_IMPORT_ERROR = None
+except ModuleNotFoundError as exc:
+    Graph = None  # type: ignore[assignment]
+    URIRef = str  # type: ignore[assignment]
+    _RDFLIB_IMPORT_ERROR = exc
+
+try:
+    from .ap242_domain_model import describe_ap242_domain_model, describe_ap242_mbd_bom
+except ImportError:
+    from ap242_domain_model import describe_ap242_domain_model, describe_ap242_mbd_bom  # type: ignore
 
 # Paths adjusted for backend Services layout
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -24,6 +36,33 @@ _DEFAULT_STP_OUTPUT = _BACKEND_DIR / "output" / "stp"
 _REFERENCE_ONTOLOGY_SRC = _BACKEND_DIR / "ontologies" / "generated"
 _AP242_ONTO_URI = URIRef("http://IAE-depo.com/ap242-ontology")
 _AP242_PACKAGE_MODE = os.getenv("AP242_REFERENCE_PACKAGE", "full").strip().lower()
+
+
+def _read_backend_env_value(key: str) -> str:
+    env_path = _BACKEND_DIR / ".env"
+    if not env_path.exists():
+        return ""
+    try:
+        for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            env_key, value = stripped.split("=", 1)
+            if env_key.strip() == key:
+                return value.strip().strip('"').strip("'")
+    except Exception:
+        return ""
+    return ""
+
+
+def _configured_domain_model_path(default_path: Path) -> Path:
+    configured = (
+        os.getenv("AP242_DOMAIN_MODEL_PATH")
+        or os.getenv("DOMAIN_MODEL_PATH")
+        or _read_backend_env_value("AP242_DOMAIN_MODEL_PATH")
+        or _read_backend_env_value("DOMAIN_MODEL_PATH")
+    )
+    return Path(configured) if configured else default_path
 
 # Import STEP parser from backend Services
 try:
@@ -197,6 +236,9 @@ def _parse_enhanced_metadata(file_path: Path, format_type: str) -> StepFileMeta:
 def _generate_ttl_header(base_uri: str, prefix: str, metadata: StepFileMeta) -> str:
     """Generate TTL file header with ontology declarations."""
     schema_line = f'    step:fileSchema "{metadata.file_schema}" ;\n' if metadata.file_schema else ""
+    namespace_line = f'    step:schemaNamespace "{metadata.namespace}" ;\n' if metadata.namespace else ""
+    schema_location_line = f'    step:schemaLocation "{metadata.schema_location}" ;\n' if metadata.schema_location else ""
+    schema_version_line = f'    step:schemaVersion "{metadata.schema_version}" ;\n' if metadata.schema_version else ""
     header = f"""@prefix {prefix}: <{base_uri}> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
@@ -212,6 +254,9 @@ def _generate_ttl_header(base_uri: str, prefix: str, metadata: StepFileMeta) -> 
     owl:imports <{_AP242_ONTO_URI}> ;
     owl:versionInfo "1.0" ;
 {schema_line}
+{namespace_line}
+{schema_location_line}
+{schema_version_line}
     step:sourceFormat "{metadata.format}" .
 
 """
@@ -329,19 +374,18 @@ step:entityType a owl:DatatypeProperty ;
 
 
 def _integrate_domain_models(base_uri: str, prefix: str, schema: Optional[str]) -> str:
-    """Integrate with domain models — semantic ingestion from DomainModel.exp.
+    """Integrate with domain models — semantic ingestion from AP242 EXPRESS.
 
-    Locates bom.xsd (AP242 exchange schema) and DomainModel.exp (AP242 EXPRESS
-    semantic schema).  When DomainModel.exp is found it is fully parsed via
-    :mod:`src.parsers.express_parser` and the resulting OWL class/property
+    Locates bom.xsd/DomainModel.xsd and bom.exp/DomainModel.exp. When EXPRESS
+    is found it is fully parsed via the local EXPRESS parser and OWL declarations
     declarations are emitted as a Turtle fragment.  When only bom.xsd is found
     a lightweight traceability comment + owl:imports is emitted instead.
     """
     local_mbd3d_path = _BACKEND_DIR / "data" / "MBD3D_BO"
 
-    configured_domain_path = Path(
-        os.getenv("DOMAIN_MODEL_PATH", str(local_mbd3d_path))
-    )
+    configured_domain_path = _configured_domain_model_path(local_mbd3d_path)
+    ap242_domain = describe_ap242_domain_model()
+    ap242_bom = describe_ap242_mbd_bom()
 
     bom_candidates: List[Path] = [
         local_mbd3d_path / "bom.xsd",
@@ -349,6 +393,7 @@ def _integrate_domain_models(base_uri: str, prefix: str, schema: Optional[str]) 
     ]
     exp_candidates: List[Path] = [
         local_mbd3d_path / "DomainModel.exp",
+        local_mbd3d_path / "bom.exp",
     ]
 
     # Additional search roots from the env-configured domain path
@@ -356,11 +401,20 @@ def _integrate_domain_models(base_uri: str, prefix: str, schema: Optional[str]) 
         if not root.exists():
             continue
         bom_candidates.extend([
+            root / "bom.xsd",
+            root / "DomainModel.xsd",
+            root / "data" / "business_object_models" / "managed_model_based_3d_engineering" / "bom.xsd",
+            root / "business_object_models" / "managed_model_based_3d_engineering" / "bom.xsd",
             root / "managed_model_based_3d_engineering_domain" / "Domain_model" / "DomainModel.xsd",
             root / "managed_model_based_3d_engineering_domain" / "Domain_model" / "bom.xsd",
         ])
         exp_candidates.extend([
+            root / "bom.exp",
+            root / "DomainModel.exp",
+            root / "data" / "business_object_models" / "managed_model_based_3d_engineering" / "bom.exp",
+            root / "business_object_models" / "managed_model_based_3d_engineering" / "bom.exp",
             root / "managed_model_based_3d_engineering_domain" / "Domain_model" / "DomainModel.exp",
+            root / "managed_model_based_3d_engineering_domain" / "Domain_model" / "bom.exp",
         ])
 
     bom_ref = next((p for p in bom_candidates if p.exists()), None)
@@ -377,6 +431,12 @@ def _integrate_domain_models(base_uri: str, prefix: str, schema: Optional[str]) 
     ]
     if bom_ref:
         ttl_parts.append(f"# AP242 exchange schema (XSD) : {bom_ref}")
+    else:
+        ttl_parts.append(f"# AP242 exchange schema (XSD) : {ap242_domain['xsd_url']}")
+        ttl_parts.append(f"# AP242 domain model edition : {ap242_domain['edition']}")
+        ttl_parts.append(f"# AP242 XSD version : {ap242_domain['xsd_version']}")
+    ttl_parts.append(f"# AP242 MBD BOM schema : {ap242_bom['schema_name']}")
+    ttl_parts.append(f"# AP242 MBD BOM namespace : {ap242_bom['namespace']}")
     if exp_ref:
         ttl_parts.append(f"# AP242 semantic authority (EXPRESS) : {exp_ref}")
     ttl_parts.append("")
@@ -395,7 +455,10 @@ def _integrate_domain_models(base_uri: str, prefix: str, schema: Optional[str]) 
     # ── Semantic ingestion from DomainModel.exp ────────────────────────────
     if exp_ref is not None:
         try:
-            from ..parsers.express_parser import parse_express, emit_owl_ttl as _emit_express_owl
+            try:
+                from .express_parser import parse_express, emit_owl_ttl as _emit_express_owl
+            except ImportError:
+                from express_parser import parse_express, emit_owl_ttl as _emit_express_owl  # type: ignore
             dm_base = "http://IAE-depo.com/ap242dm#"
             express_schema = parse_express(exp_ref)
             owl_fragment = _emit_express_owl(
@@ -436,6 +499,11 @@ def copy_ap242_reference_ontology(output_dir: Path) -> Dict[str, Path]:
         copied["ontology_ttl"] = ttl_dst
 
         if _AP242_PACKAGE_MODE == "full":
+            if Graph is None:
+                raise RuntimeError(
+                    "rdflib is required to serialize AP242 reference ontology to OWL. "
+                    "Run backend\\setup.bat --backend or install backend requirements."
+                ) from _RDFLIB_IMPORT_ERROR
             graph = Graph()
             graph.parse(str(ttl_dst), format="turtle")
             owl_dst = output_dir / "ap242_ontology.owl"

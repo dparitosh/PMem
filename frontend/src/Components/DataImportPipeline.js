@@ -11,7 +11,6 @@ import {
   BookOpen,
   Tags,
   Boxes,
-  Workflow,
   AlertTriangle,
   Network,
   Check,
@@ -599,7 +598,14 @@ export default function DataImportPipeline() {
 
         // Auto-set preview data when preview/verify stage or completed is reached
         if (data.current_stage === 'preview' || data.current_stage === 'verify' || data.status === 'completed') {
-          setPreviewData(data);
+          const statusPreview = {
+            ...data,
+            row_count: normalizedStats.row_count ?? normalizedStats.entities_found ?? 0,
+            columns: normalizedStats.columns || [],
+            sample_rows: [],
+            auto_schema: data.auto_schema || {},
+          };
+          setPreviewData(statusPreview);
           setPreviewTaskId(taskId);
           // Fetch actual preview rows from the preview endpoint
           try {
@@ -783,15 +789,29 @@ export default function DataImportPipeline() {
           const updated = { ...prev };
           for (const [fid, status] of Object.entries(updated)) {
             if (status.taskId === taskId) {
+              const entityCount =
+                commitResult.nodes_created ??
+                status.stats?.row_count ??
+                status.stats?.entities_found;
+              const relationshipCount =
+                commitResult.relationships_created ??
+                status.stats?.relationships_found;
               updated[fid] = {
                 ...status,
+                stage: 'load',
+                backendStage: 'ingest',
                 progress: 100,
+                status: 'completed',
+                message: 'Import completed successfully',
                 committed: true,
                 committing: false,
+                completedAt: new Date().toLocaleTimeString(),
                 stats: {
                   ...status.stats,
-                  entities_found:      commitResult.nodes_created         ?? status.stats?.entities_found,
-                  relationships_found: commitResult.relationships_created ?? status.stats?.relationships_found,
+                  entities_found: entityCount,
+                  relationships_found: relationshipCount,
+                  instance_links_created: commitResult.instance_links_created,
+                  ontology_classes_matched: commitResult.ontology_classes_matched,
                 },
               };
             }
@@ -922,7 +942,6 @@ export default function DataImportPipeline() {
           marginBottom: '8px',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <Workflow size={4} strokeWidth={3} color={C.primary} />
             <div>
               <div style={{ fontSize: '11px', fontWeight: '700', color: C.textPrimary }}>
                 Workflow catalog

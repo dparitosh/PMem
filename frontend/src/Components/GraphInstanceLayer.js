@@ -3,6 +3,7 @@ import * as d3 from 'd3';
 import '../CSS/GraphHEB.css';
 import { API_METHODS } from '../services/apiClient';
 import { safeGet } from '../utils/safeAccess';
+import { logger } from '../utils/logger';
 
 /**
  * GraphInstanceLayer Component
@@ -83,7 +84,7 @@ export const GraphInstanceLayer = ({ onNodeClick, selectedNode, highlightedNodes
     const fetchInstanceGraph = async () => {
       try {
         setLoading(true);
-        console.log('Fetching instance graph...');
+        logger.render('Fetching instance graph...');
         
         const response = await API_METHODS.graph.getInstanceGraph();
         
@@ -104,7 +105,7 @@ export const GraphInstanceLayer = ({ onNodeClick, selectedNode, highlightedNodes
         
         setError(null);
       } catch (err) {
-        console.error('Failed to fetch instance graph:', err);
+        logger.error('Failed to fetch instance graph:', err);
         setError(`Failed to load instance graph: ${err.message}`);
         setData({ nodes: [], links: [] });
       } finally {

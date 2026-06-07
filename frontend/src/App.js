@@ -1,22 +1,39 @@
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 import './CSS/TCSColors.css';
-import Chatbot from './Components/Chatbot';
 import ErrorBoundary from './Components/ErrorBoundary';
 import LandingPage from './Components/LandingPage';
 import { SchemaProvider } from './SchemaContext';
 import { OntologyProvider } from './contexts/OntologyContext';
-import { useCallback, useState } from 'react';
+import { Suspense, lazy, useCallback, useState } from 'react';
 import AppShell from './app/AppShell';
 import { normalizePage } from './app/navigation';
-import WorkspacePage from './pages/WorkspacePage';
-import ImportPage from './pages/ImportPage';
-import OntologyStudioPage from './pages/OntologyStudioPage';
-import GraphExplorerPage from './pages/GraphExplorerPage';
-import QualityPage from './pages/QualityPage';
-import ReportsPage from './pages/ReportsPage';
-import AdminPage from './pages/AdminPage';
-import WhereUsedPage from './pages/WhereUsedPage';
+
+const Chatbot = lazy(() => import('./Components/Chatbot'));
+const WorkspacePage = lazy(() => import('./pages/WorkspacePage'));
+const ImportPage = lazy(() => import('./pages/ImportPage'));
+const OntologyStudioPage = lazy(() => import('./pages/OntologyStudioPage'));
+const GraphExplorerPage = lazy(() => import('./pages/GraphExplorerPage'));
+const QualityPage = lazy(() => import('./pages/QualityPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const WhereUsedPage = lazy(() => import('./pages/WhereUsedPage'));
+
+function PageFallback() {
+  return (
+    <div style={{
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: '#52606d',
+      fontSize: 13,
+      fontWeight: 600,
+    }}>
+      Loading workspace...
+    </div>
+  );
+}
 
 function App() {
   const [page, setPage] = useState('home');
@@ -152,17 +169,21 @@ function App() {
             onToggleChat={toggleChat}
             rightDrawer={(
               <ErrorBoundary>
-                <Chatbot
-                  graphData={data}
-                  searchResults={searchResults}
-                  chatResults={chatResults}
-                  setSearchResults={setSearchResults}
-                  setChatResults={setChatResults}
-                />
+                <Suspense fallback={<PageFallback />}>
+                  <Chatbot
+                    graphData={data}
+                    searchResults={searchResults}
+                    chatResults={chatResults}
+                    setSearchResults={setSearchResults}
+                    setChatResults={setChatResults}
+                  />
+                </Suspense>
               </ErrorBoundary>
             )}
           >
-            {renderPage()}
+            <Suspense fallback={<PageFallback />}>
+              {renderPage()}
+            </Suspense>
           </AppShell>
         </SchemaProvider>
       </OntologyProvider>

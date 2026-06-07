@@ -37,30 +37,28 @@ def setup_logging():
     # Root logger setup
     root_logger = _logging.getLogger()
     root_logger.setLevel(_logging.INFO)
+    if root_logger.handlers:
+        return root_logger
     
     # Console handler
     console_handler = _logging.StreamHandler()
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
     
-    # File handler with rotation (10MB per file, keep 5 backups)
-    file_handler = RotatingFileHandler(
-        f'{logs_dir}/app.log',
-        maxBytes=10*1024*1024,  # 10MB
-        backupCount=5
-    )
-    file_handler.setFormatter(formatter)
-    root_logger.addHandler(file_handler)
-    
-    # Error file handler (only errors and above)
-    error_handler = RotatingFileHandler(
-        f'{logs_dir}/error.log',
-        maxBytes=10*1024*1024,  # 10MB
-        backupCount=5
-    )
-    error_handler.setLevel(_logging.ERROR)
-    error_handler.setFormatter(formatter)
-    root_logger.addHandler(error_handler)
+    # File handlers are useful, but they must not prevent FastAPI startup if
+    # Windows has a stale lock on a log file.
+    for log_name, level in (('app.log', _logging.INFO), ('error.log', _logging.ERROR)):
+        try:
+            file_handler = RotatingFileHandler(
+                os.path.join(logs_dir, log_name),
+                maxBytes=10*1024*1024,
+                backupCount=5
+            )
+            file_handler.setLevel(level)
+            file_handler.setFormatter(formatter)
+            root_logger.addHandler(file_handler)
+        except OSError as exc:
+            root_logger.warning("File logging disabled for %s: %s", log_name, exc)
     
     return root_logger
 
@@ -1425,6 +1423,103 @@ async def get_graph_by_ontology(prefix: str):
         return {"results": [], "prefix": prefix_safe, "error": str(e)}
 
 
+ONTOLOGY_VISUALIZATION_CYPHER = """
+MATCH (n)-[r]->(m)
+WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR m:DatasheetChunk OR m:GraphChunk)
+  AND (
+    n.prefix = $prefix OR n.ontology_prefix = $prefix OR
+    m.prefix = $prefix OR m.ontology_prefix = $prefix
+  )
+RETURN
+  {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
+  {elementId: elementId(r), type: type(r), properties: properties(r),
+    start: elementId(startNode(r)), end: elementId(endNode(r))} AS r,
+  {elementId: elementId(m), labels: labels(m), properties: properties(m)} AS m
+LIMIT 2000
+"""
+
+
+async def ontology_debug_payload(ontology_id: str):
+    """Return ontology generation, Neo4j load, and visualization diagnostics."""
+    try:
+        from Services.ontology_upload_manager import OntologyUploadManager
+    except Exception:
+        from backend.Services.ontology_upload_manager import OntologyUploadManager
+
+    meta_result = OntologyUploadManager.get_ontology(ontology_id)
+    metadata = meta_result.get("metadata") if meta_result.get("status") == "success" else {}
+    prefix = (metadata or {}).get("prefix") or ontology_id
+    owl_file_path = (metadata or {}).get("owl_file_path", "")
+
+    counts_q = """
+    MATCH (n)
+    WHERE n.prefix = $prefix OR n.ontology_prefix = $prefix OR n.source_ontology = $ontology_id
+    WITH collect(n) AS nodes
+    UNWIND nodes AS n
+    OPTIONAL MATCH (n)-[r]->(m)
+    WHERE m.prefix = $prefix OR m.ontology_prefix = $prefix OR m.source_ontology = $ontology_id
+    RETURN
+      size(nodes) AS node_count,
+      count(DISTINCT r) AS relationship_count,
+      sum(CASE WHEN n:OntologyClass THEN 1 ELSE 0 END) AS class_count,
+      sum(CASE WHEN n:ObjectProperty THEN 1 ELSE 0 END) AS object_property_count,
+      sum(CASE WHEN n:DatatypeProperty THEN 1 ELSE 0 END) AS datatype_property_count,
+      sum(CASE WHEN type(r) = 'SUBCLASS_OF' THEN 1 ELSE 0 END) AS subclass_relationship_count
+    """
+    sample_nodes_q = """
+    MATCH (n)
+    WHERE n.prefix = $prefix OR n.ontology_prefix = $prefix OR n.source_ontology = $ontology_id
+    RETURN elementId(n) AS elementId, labels(n) AS labels, properties(n) AS properties
+    LIMIT 10
+    """
+    sample_rels_q = """
+    MATCH (n)-[r]->(m)
+    WHERE (n.prefix = $prefix OR n.ontology_prefix = $prefix OR n.source_ontology = $ontology_id)
+      AND (m.prefix = $prefix OR m.ontology_prefix = $prefix OR m.source_ontology = $ontology_id)
+    RETURN elementId(r) AS elementId, type(r) AS type,
+           elementId(startNode(r)) AS start, elementId(endNode(r)) AS end,
+           properties(r) AS properties
+    LIMIT 10
+    """
+
+    try:
+        counts = (graph.query(counts_q, params={"prefix": prefix, "ontology_id": ontology_id}) or [{}])[0]
+        sample_nodes = graph.query(sample_nodes_q, params={"prefix": prefix, "ontology_id": ontology_id}) or []
+        sample_relationships = graph.query(sample_rels_q, params={"prefix": prefix, "ontology_id": ontology_id}) or []
+    except Exception as exc:
+        counts = {"error": str(exc)}
+        sample_nodes = []
+        sample_relationships = []
+
+    return {
+        "ontology_id": ontology_id,
+        "ontology_metadata": metadata,
+        "owl_file_path": owl_file_path,
+        "parsed_class_count": metadata.get("parsed_class_count", 0) if metadata else 0,
+        "parsed_property_count": (
+            (metadata.get("parsed_object_property_count", 0) if metadata else 0)
+            + (metadata.get("parsed_datatype_property_count", 0) if metadata else 0)
+        ),
+        "parsed_relationship_count": (
+            (metadata.get("parsed_subclass_relationship_count", 0) if metadata else 0)
+            + (metadata.get("parsed_domain_relationship_count", 0) if metadata else 0)
+            + (metadata.get("parsed_range_relationship_count", 0) if metadata else 0)
+        ),
+        "neo4j_node_count": counts.get("node_count", 0),
+        "neo4j_relationship_count": counts.get("relationship_count", 0),
+        "neo4j_counts": counts,
+        "sample_nodes": sample_nodes,
+        "sample_relationships": sample_relationships,
+        "cypher_query_used_by_visualization": ONTOLOGY_VISUALIZATION_CYPHER,
+    }
+
+
+@app.get("/api/ontology/{ontology_id}/debug")
+@app.get("/api/v1/ontology/{ontology_id}/debug")
+async def debug_ontology(ontology_id: str):
+    return await ontology_debug_payload(ontology_id)
+
+
 @app.get("/ontology/registered")
 async def list_ontologies_registered():
     """Alias for /ontologies/list — used by frontend OntologyContext"""
@@ -1433,53 +1528,25 @@ async def list_ontologies_registered():
 
 @app.get("/ontologies/list")
 async def list_ontologies():
-    """List unique ontology prefixes — deduplicated, with cleaned display names"""
+    """List registered ontology prefixes with configured Neo4j runtime counts."""
     try:
-        query = """
-        MATCH (n)
-        WHERE n.prefix IS NOT NULL
-          AND NOT (n:DatasheetChunk OR n:GraphChunk)
-        RETURN n.prefix AS prefix,
-               n.ontology_name AS name,
-               n.namespace AS namespace,
-               count(*) AS node_count
-        ORDER BY prefix
-        """
-        
+        try:
+            from Services.ontology_upload_manager import OntologyUploadManager
+        except Exception:
+            from backend.Services.ontology_upload_manager import OntologyUploadManager
+
         loop = asyncio.get_event_loop()
-        results = await asyncio.wait_for(
-            loop.run_in_executor(None, lambda: graph.query(query)),
+        result = await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: OntologyUploadManager.list_ontologies_with_neo4j_counts(graph)),
             timeout=10.0
         )
-        
-        # Deduplicate by prefix — keep the row with the highest node_count per prefix
-        seen: dict = {}
-        for row in results:
-            p = row.get("prefix")
-            if not p:
-                continue
-            raw_name = row.get("name") or ""
-            # Strip vendor-specific suffixes that don't belong in display names:
-            # "3DEXPERIENCE SPLM" -> "3DEXPERIENCE" (SPLM = Siemens PLM, wrong attribution)
-            clean_name = raw_name.replace(" SPLM", "").replace("_splm", "").strip() or p.upper()
-            existing = seen.get(p)
-            if existing is None or row.get("node_count", 0) > existing["node_count"]:
-                seen[p] = {
-                    "prefix": p,
-                    "name": clean_name,
-                    "namespace": row.get("namespace", ""),
-                    "node_count": row.get("node_count", 0),
-                }
-        
-        ontologies = sorted(seen.values(), key=lambda x: x["prefix"])
-        return {
-            "ontologies": ontologies,
-            "total": len(ontologies)
-        }
+        result["total"] = result.get("count", 0)
+        return result
     except Exception as e:
         logger.warning(f"/ontologies/list error: {type(e).__name__}: {str(e)}")
         return {
             "ontologies": [],
+            "status": "error",
             "error": str(e)
         }
 
@@ -2113,27 +2180,85 @@ def get_step_part_graph(part_name: str = Path(..., description="Part name filter
 
 @app.get("/ontology/options")
 def get_ontology_options():
-        """Return ontology/data-view dropdown options including dynamic MBSE entries."""
-        options = [
-                {"value": "ALL", "label": "All Data"},
-                {"value": "ap242", "label": "MBD3D AP242 Ontology"},
-                {"value": "plmxml", "label": "SPLM PLMXML Ontology"},
-                {"value": "step", "label": "CAD STEP Instances"},
-        ]
+        """Return registry-driven ontology/data-view dropdown options."""
+        options = [{"value": "ALL", "label": "All Ontologies", "source": "system"}]
         try:
-                # Add MBSE options only when MBSE imports exist.
+                try:
+                        from Services.ontology_upload_manager import OntologyUploadManager
+                except Exception:
+                        from backend.Services.ontology_upload_manager import OntologyUploadManager
+
+                registry = OntologyUploadManager.list_ontologies_with_neo4j_counts(graph)
+                for row in registry.get("ontologies", []):
+                        prefix = row.get("prefix")
+                        if not prefix:
+                                continue
+                        name = row.get("ontology_name") or row.get("name") or prefix.upper()
+                        node_count = int(row.get("node_count") or 0)
+                        rel_count = int(row.get("relationship_count") or 0)
+                        options.append({
+                                "value": prefix,
+                                "label": name,
+                                "prefix": prefix,
+                                "ontology_id": row.get("ontology_id"),
+                                "source": row.get("source", "registered"),
+                                "status": row.get("availability") or row.get("status"),
+                                "node_count": node_count,
+                                "relationship_count": rel_count,
+                                "disabled": node_count == 0,
+                        })
+
+                # Add STEP and MBSE system views only when corresponding data exists.
+                step_count_query = """
+                MATCH (n)
+                WHERE n.namespace CONTAINS 'step-ap242'
+                   OR n.source_format = 'step'
+                   OR n.file_format = 'step'
+                RETURN count(n) AS cnt
+                """
                 mbse_count_query = """
                 MATCH (n)
                 WHERE n.source_format = 'xmi' OR n.ontology_id = 'mbse_domain_ontology'
                 RETURN count(n) AS cnt
                 """
-                results = graph.query(mbse_count_query)
-                mbse_count = (results[0].get("cnt", 0) if results else 0)
-                if mbse_count > 0:
-                        options.append({"value": "mbse", "label": "MBSE Domain Ontology (OWL/TTL)"})
-                        options.append({"value": "mbse_instances", "label": "MBSE Data (Instance Graph)"})
+                step_results = OntologyUploadManager._query_configured_neo4j(step_count_query, graph=graph)
+                step_count = (step_results[0].get("cnt", 0) if step_results else 0)
+                if step_count > 0:
+                        options.append({
+                                "value": "step",
+                                "label": "CAD STEP Instances",
+                                "source": "system",
+                                "status": "available",
+                                "node_count": step_count,
+                                "relationship_count": 0,
+                        })
 
-                return {"options": options, "count": len(options), "mbse_node_count": mbse_count}
+                mbse_results = OntologyUploadManager._query_configured_neo4j(mbse_count_query, graph=graph)
+                mbse_count = (mbse_results[0].get("cnt", 0) if mbse_results else 0)
+                if mbse_count > 0:
+                        options.append({
+                                "value": "mbse",
+                                "label": "MBSE Domain Ontology",
+                                "source": "system",
+                                "status": "available",
+                                "node_count": mbse_count,
+                                "relationship_count": 0,
+                        })
+                        options.append({
+                                "value": "mbse_instances",
+                                "label": "MBSE Data",
+                                "source": "system",
+                                "status": "available",
+                                "node_count": mbse_count,
+                                "relationship_count": 0,
+                        })
+
+                return {
+                        "options": options,
+                        "count": len(options),
+                        "step_node_count": step_count,
+                        "mbse_node_count": mbse_count,
+                }
         except Exception as e:
                 safe_error("/ontology/options", e)
 
@@ -2722,167 +2847,36 @@ def get_graph_metrics():
 @app.get("/ontologies/available")
 def get_available_ontologies():
     """Get available ontologies from Neo4j and registered upload storage."""
-    ontologies = []
-    seen_keys = set()
-
-    def _normalize_dashboard_name(row: dict) -> str:
-        raw_name = str(row.get('name') or '').strip()
-        if raw_name and not raw_name.lower().startswith('auto-detect'):
-            return raw_name
-
-        file_type = str(row.get('file_type') or row.get('type') or '').upper()
-        if file_type:
-            return f"Imported {file_type} Ontology"
-        return "Imported Ontology"
-
     try:
         try:
-            from core.graph import graph
-        except Exception as import_err:
-            try:
-                from backend.core.graph import graph
-            except Exception as fallback_import_err:
-                graph = None
-                logger.warning(
-                    "/ontologies/available graph import unavailable: "
-                    f"{import_err}; fallback: {fallback_import_err}"
-                )
-
-        try:
             from Services.ontology_upload_manager import OntologyUploadManager
-        except Exception as import_err:
-            try:
-                from backend.Services.ontology_upload_manager import OntologyUploadManager
-            except Exception as fallback_import_err:
-                logger.warning(
-                    "/ontologies/available registry import unavailable: "
-                    f"{import_err}; fallback: {fallback_import_err}"
-                )
-                OntologyUploadManager = None
-        
-        # Query used ontologies from Neo4j
-        cypher = """
-        MATCH (om:OntologyMetadata)
-         RETURN om.id AS id,
-             om.name AS name,
-             om.type AS type,
-               om.file_type AS file_type,
-             om.view_mode AS view_mode,
-             om.ttl_file AS ttl_file,
-             om.usage_count AS usage_count,
-             om.last_used AS last_used
-        ORDER BY om.usage_count DESC, om.last_used DESC
-        """
-        
-        results = []
-        if graph is not None:
-            try:
-                results = graph.query(cypher)
-            except Exception as neo4j_err:
-                logger.warning(f"/ontologies/available metadata query skipped: {neo4j_err}")
-        
-        for row in results:
-            ontology = {
-                'id': row['id'],
-                'name': _normalize_dashboard_name(row),
-                'type': row['type'],
-                'fileType': row.get('file_type') or row.get('type'),
-                'viewMode': row.get('view_mode'),
-                'ttlFile': row.get('ttl_file'),
-                'usageCount': row['usage_count'] or 0,
-                'lastUsed': row['last_used'],
-                'source': 'dynamic'  # From Neo4j
-            }
-            key = (
-                str(ontology.get('id') or '').strip().lower(),
-                str(ontology.get('name') or '').strip().lower(),
-            )
-            seen_keys.add(key)
-            ontologies.append(ontology)
+        except Exception:
+            from backend.Services.ontology_upload_manager import OntologyUploadManager
 
-        registry_result = {}
-        if OntologyUploadManager is not None:
-            try:
-                registry_result = OntologyUploadManager.list_ontologies() or {}
-            except Exception as registry_err:
-                logger.warning(f"/ontologies/available registry list skipped: {registry_err}")
-        registry_rows = registry_result.get('ontologies', []) if registry_result.get('status') == 'success' else []
-
-        for row in registry_rows:
-            ontology = {
-                'id': row.get('ontology_id'),
-                'name': row.get('ontology_name') or row.get('prefix') or row.get('ontology_id'),
+        registry = OntologyUploadManager.list_ontologies_with_neo4j_counts(graph)
+        ontologies = []
+        for row in registry.get("ontologies", []):
+            ontologies.append({
+                'id': row.get('ontology_id') or row.get('prefix'),
+                'name': row.get('ontology_name') or row.get('name') or row.get('prefix'),
                 'type': row.get('generation_type') or row.get('file_type') or 'ontology',
                 'fileType': row.get('file_type'),
                 'viewMode': None,
-                'ttlFile': row.get('stored_filename') or row.get('original_filename'),
+                'ttlFile': row.get('owl_file_path') or row.get('stored_filename') or row.get('original_filename'),
                 'usageCount': 0,
                 'lastUsed': row.get('uploaded_at'),
-                'source': 'registered',
+                'source': row.get('source') or 'registered',
                 'prefix': row.get('prefix'),
-                'status': row.get('status'),
-            }
-            key = (
-                str(ontology.get('id') or '').strip().lower(),
-                str(ontology.get('name') or '').strip().lower(),
-            )
-            prefix_match = str(row.get('prefix') or '').strip().lower()
-            duplicate = key in seen_keys or any(
-                prefix_match and prefix_match == str(existing.get('prefix') or '').strip().lower()
-                for existing in ontologies
-            )
-            if duplicate:
-                continue
-            seen_keys.add(key)
-            ontologies.append(ontology)
+                'status': row.get('availability') or row.get('status'),
+                'node_count': row.get('node_count', 0),
+                'relationship_count': row.get('relationship_count', 0),
+                'ontology_id': row.get('ontology_id') or row.get('prefix'),
+            })
 
-        # Also discover ontologies loaded directly into Neo4j (not via upload pipeline)
-        try:
-            if graph is None:
-                raise RuntimeError("Neo4j graph unavailable")
-            neo4j_prefix_rows = graph.query(
-                """
-                MATCH (n)
-                WHERE n.prefix IS NOT NULL
-                  AND NOT (n:DatasheetChunk OR n:GraphChunk)
-                RETURN n.prefix AS prefix,
-                       n.ontology_name AS ontology_name,
-                       count(*) AS node_count
-                ORDER BY prefix
-                """
-            )
-            for row in neo4j_prefix_rows:
-                p = str(row.get("prefix") or "").strip()
-                if not p:
-                    continue
-                already = any(
-                    str(ex.get('prefix') or '').strip().lower() == p.lower()
-                    for ex in ontologies
-                )
-                if already:
-                    continue
-                raw_name = str(row.get("ontology_name") or "").strip()
-                clean_name = raw_name.replace(" SPLM", "").replace("_splm", "").strip() or p.upper()
-                ontologies.append({
-                    'id': p,
-                    'name': clean_name,
-                    'type': 'direct',
-                    'fileType': 'xls',
-                    'viewMode': None,
-                    'ttlFile': None,
-                    'usageCount': 0,
-                    'lastUsed': None,
-                    'source': 'neo4j',
-                    'prefix': p,
-                    'node_count': row.get("node_count", 0),
-                })
-        except Exception as _disc_err:
-            logger.warning(f"/ontologies/available neo4j discovery: {_disc_err}")
-        
         return {
             'ontologies': ontologies,
             'count': len(ontologies),
-            'dynamicCount': len([o for o in ontologies if o.get('source') == 'dynamic']),
+            'dynamicCount': len([o for o in ontologies if o.get('source') == 'neo4j']),
             'registeredCount': len([o for o in ontologies if o.get('source') == 'registered']),
         }
     except Exception as e:
@@ -3302,7 +3296,19 @@ def ollama_query(payload: OllamaQueryRequest):
 def get_import_preview(task_id: str):
     """Get a preview of the import data for a task."""
     try:
+        from backend.Services.unified_data_import import UnifiedDataImportService
         from backend.Services.data_import_service import import_tasks
+
+        unified_preview = UnifiedDataImportService.get_preview(task_id)
+        if unified_preview:
+            unified_status = UnifiedDataImportService.get_status(task_id) or {}
+            return {
+                "task_id": task_id,
+                "filename": unified_status.get("filename", ""),
+                "file_type": unified_status.get("file_type", ""),
+                "status": unified_status.get("status", ""),
+                **unified_preview,
+            }
         
         status = import_tasks.get(task_id)
         if not status:
@@ -3336,14 +3342,15 @@ def pre_commit_check(task_id: str):
         from backend.Services.data_import_service import import_tasks
         from backend.Services.unified_data_import import UnifiedDataImportService
 
-        # Get task status (try memory first, then restore from disk)
-        status = import_tasks.get(task_id)
+        # Prefer unified task state; it is the source used by STEP/STPX imports.
+        status = UnifiedDataImportService.get_status(task_id)
         if not status:
-            # Attempt to restore persisted snapshot (works across workers)
+            status = import_tasks.get(task_id)
+        if not status:
             task = UnifiedDataImportService._restore_task(task_id)
             if task:
                 import_tasks[task_id] = task
-                status = import_tasks.get(task_id)
+                status = UnifiedDataImportService.get_status(task_id) or import_tasks.get(task_id)
             else:
                 return {
                     "ready": False,
@@ -3358,20 +3365,39 @@ def pre_commit_check(task_id: str):
         # Task is ready if it has completed processing or is ready for commit
         task_ok = task_status in ("completed", "ready_for_commit", "processing")
         
+        preview = UnifiedDataImportService.get_preview(task_id) or {}
         result_data = status.get("result") or {}
         parsed_data = result_data.get("parsed_data", {})
-        node_count = len(parsed_data.get("nodes", []))
+        stats = status.get("stats") or {}
+        node_count = (
+            preview.get("row_count")
+            or stats.get("row_count")
+            or stats.get("entities_found")
+            or len(parsed_data.get("nodes", []))
+            or 0
+        )
         
-        ready = task_ok  # Simplified: just check task status, assume Neo4j is ok
+        neo4j_ok = False
+        neo4j_message = "Unchecked"
+        try:
+            result = graph.query("RETURN 1 AS ok")
+            neo4j_ok = bool(result)
+            neo4j_message = "Connected" if neo4j_ok else "No response"
+        except Exception as neo4j_exc:
+            neo4j_message = str(neo4j_exc)
+
+        ready = task_ok and neo4j_ok
         reason = ""
         if not task_ok:
             reason = f"Task not ready (status: {task_status})"
+        elif not neo4j_ok:
+            reason = f"Neo4j is not reachable: {neo4j_message}"
         
         return {
             "ready": ready,
             "reason": reason,
             "checks": {
-                "neo4j": {"ok": True},
+                "neo4j": {"ok": neo4j_ok, "message": neo4j_message},
                 "task": {
                     "ok": task_ok,
                     "status": task_status,
@@ -3385,7 +3411,7 @@ def pre_commit_check(task_id: str):
             "ready": False,
             "reason": f"Pre-commit check error: {str(e)}",
             "checks": {
-                "neo4j": {"ok": True},
+                "neo4j": {"ok": False, "message": "Pre-commit check failed before Neo4j validation"},
                 "task": {"ok": False, "status": "ERROR", "rows": 0}
             }
         }
@@ -3410,6 +3436,7 @@ async def commit_import(task_id: str):
         if UnifiedDataImportService is not None:
             try:
                 result = await UnifiedDataImportService.commit_import(task_id)
+                invalidate_graphvis_cache()
                 return {"success": True, "task_id": task_id, "message": "Committed via unified service", "result": result}
             except ValueError as ve:
                 # Task not found or not ready
@@ -3469,6 +3496,7 @@ async def commit_import(task_id: str):
             task["status"] = "committed"
             task["committed_count"] = committed_count
             task["completed_at"] = time.time()
+            invalidate_graphvis_cache()
             return {
                 "success": True,
                 "task_id": task_id,

@@ -28,6 +28,10 @@ export const OntologyProvider = ({ children }) => {
         ontology_id: o.ontology_id || o.id,
         type: o.file_type || o.type,
         source: o.source,
+        status: o.availability || o.status,
+        node_count: o.node_count || o.neo4j_nodes_merged || 0,
+        relationship_count: o.relationship_count || o.neo4j_relationships_merged || 0,
+        disabled: o.disabled || ((o.node_count || o.neo4j_nodes_merged || 0) === 0),
         raw: o, // Keep full metadata
       }));
       setOntologies(ontologyList);

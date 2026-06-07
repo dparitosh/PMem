@@ -1165,8 +1165,10 @@ class DataImportService:
                     'step_id': ann.id,
                     'attributes': {
                         'text': ann.text,
-                        'placement_refs': ann.placement_refs,
-                        'properties': ann.properties,
+                        'annotation_type': ann.annotation_type,
+                        'name': ann.name,
+                        'presentation_refs': ann.presentation_refs,
+                        'leader_refs': ann.leader_refs,
                     }
                 })
             
@@ -1189,6 +1191,9 @@ class DataImportService:
                 'metadata': {
                     'file_name': doc.metadata.file_name if doc.metadata else 'unknown',
                     'file_schema': doc.metadata.file_schema if doc.metadata else None,
+                    'namespace': doc.metadata.namespace if doc.metadata else '',
+                    'schema_location': doc.metadata.schema_location if doc.metadata else '',
+                    'schema_version': doc.metadata.schema_version if doc.metadata else '',
                 }
             }
         except Exception as e:

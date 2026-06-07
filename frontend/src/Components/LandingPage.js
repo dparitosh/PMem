@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { API, buildUrl } from '../config';
 import { healthAPI } from '../services/apiClient';
 import Chatbot from './Chatbot';
 import ErrorBoundary from './ErrorBoundary';
@@ -10,23 +9,6 @@ const DASHBOARD_ENABLED = true;
 function fmt(n) {
   if (n == null) return '—';
   return Number(n).toLocaleString();
-}
-
-function Badge({ label, value, color = '#004B87', light = '#e8f0fe', loading = false }) {
-  const displayValue = typeof value === 'string' ? value : fmt(value);
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      background: light, border: `1.5px solid ${color}`,
-      borderRadius: 10, padding: '14px 24px', minWidth: 130,
-    }}>
-      {loading
-        ? <div style={{ width: 48, height: 14, background: `${color}33`, borderRadius: 4, marginBottom: 6, animation: 'pulse 1.4s ease infinite' }} />
-        : <span style={{ fontSize: 26, fontWeight: 800, color }}>{displayValue}</span>
-      }
-      <span style={{ fontSize: 11, color: '#555', marginTop: 3, textAlign: 'center' }}>{label}</span>
-    </div>
-  );
 }
 
 function SectionTitle({ children }) {

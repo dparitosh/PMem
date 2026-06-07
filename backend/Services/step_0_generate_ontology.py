@@ -4,12 +4,11 @@ Extracts ontology schema (classes, properties) from PLMXML and creates OntologyC
 """
 
 from pathlib import Path
-from neo4j import GraphDatabase
 try:
-    from backend.core.db_config import Neo4jConnection
+    from backend.core.db_config import Neo4jConnection, get_config
 except Exception:
     # fallback for direct script execution
-    from core.db_config import Neo4jConnection
+    from core.db_config import Neo4jConnection, get_config
 
 try:
     from backend.Services.plmxml_parser import parse_plmxml_file
@@ -19,13 +18,6 @@ except ModuleNotFoundError:
     from pathlib import Path as _Path
     sys.path.append(str(_Path(__file__).parent))
     from plmxml_parser import parse_plmxml_file
-
-# Adjust these as needed
-NEO4J_URI = "bolt://localhost:7687"
-NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "tcs12345"
-NEO4J_DATABASE = "ontology"
-
 
 def extract_classes_and_properties(plmxml_doc):
     """
@@ -90,8 +82,9 @@ def extract_classes_and_properties(plmxml_doc):
 
 
 def create_ontology_in_neo4j(class_props):
-    # Use centralized connection manager to ensure sessions/drivers are handled
-    with Neo4jConnection(database=NEO4J_DATABASE) as session:
+    config = get_config()
+    # Use centralized connection manager so this script honors backend/.env.
+    with Neo4jConnection(database=config.database) as session:
         for class_name, props in class_props.items():
             session.run("MERGE (c:OntologyClass {name: $name})", {"name": class_name})
             for prop in props:

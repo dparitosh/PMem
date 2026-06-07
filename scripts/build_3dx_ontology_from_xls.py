@@ -16,15 +16,22 @@ Maps:
 import os
 import csv
 import io
+import sys
+from pathlib import Path
 from collections import defaultdict
 from neo4j import GraphDatabase
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from backend.core.db_config import get_config
+
 # ── Config ───────────────────────────────────────────────────────────────────
-SCHEMA_BASE   = r"C:\Users\895428\Depo\SPLM_Folder\Schema - Shared"
-NEO4J_URI     = "neo4j://127.0.0.1:7687"
-NEO4J_USER    = "neo4j"
-NEO4J_PASS    = "tcs12345"
-NEO4J_DB      = "spdm"
+_NEO4J_CONFIG = get_config()
+SCHEMA_BASE   = os.getenv("SPLM_SCHEMA_BASE", r"C:\Users\895428\Depo\SPLM_Folder\Schema - Shared")
+NEO4J_URI     = _NEO4J_CONFIG.uri
+NEO4J_USER    = _NEO4J_CONFIG.username
+NEO4J_PASS    = _NEO4J_CONFIG.password
+NEO4J_DB      = _NEO4J_CONFIG.database
 ONTOLOGY_NAME = "3DEXPERIENCE"
 PREFIX        = "ds3dx"
 NAMESPACE     = "http://3dexperience.dassault-systemes.com/ds3dx/"

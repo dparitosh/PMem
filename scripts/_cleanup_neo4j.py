@@ -1,7 +1,19 @@
-from neo4j import GraphDatabase
-d = GraphDatabase.driver("neo4j://127.0.0.1:7687", auth=("neo4j", "tcs12345"))
-with d.session(database="spdm") as s:
-    s.run("MATCH (n) DETACH DELETE n")
-    c = s.run("MATCH (n) RETURN count(n) AS c").single()["c"]
-    print("Remaining nodes:", c)
-d.close()
+"""
+Legacy safety wrapper.
+
+This script used to contain hardcoded Neo4j credentials and a fixed database
+name. Destructive cleanup must use the centralized .env-driven cleanup tool
+so the UI, API, and scripts all target the same configured database.
+"""
+
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from tools.admin.cleanup_neo4j import main
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

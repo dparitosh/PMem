@@ -266,7 +266,8 @@ def test_admin_registry_masks_datasource_secrets():
             assert "active_database" in source
             assert "configured_database" in source
             assert "configured_database_source" in source
-            assert source["configured_database"] == "semantics"
+            assert source["configured_database"] == source["active_database"]
+            assert source["configured_database_source"] == "backend\\.env"
 
 
 if __name__ == '__main__':

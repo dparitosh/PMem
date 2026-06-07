@@ -7,6 +7,9 @@ Test script for STEP file conversion via /api/import/convert-schema endpoint
 """
 
 import sys
+import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock
 
 # Verify imports work
 try:
@@ -109,6 +112,198 @@ END_SCHEMA;
     except Exception as e:
         print(f"   ✗ EXPRESS parsing failed: {e}")
         pytest.fail(f"EXPRESS parsing failed: {e}")
+
+
+def test_ap242_ed5_stpx_metadata_detection():
+    """STPX/AP242 XML should report the current ISO/TS 10303-4442 ed-5 namespace."""
+    from backend.Services.ap242_domain_model import (
+        AP242_DOMAIN_MODEL_NAMESPACE,
+        AP242_DOMAIN_MODEL_SCHEMA_TOKEN,
+        AP242_DOMAIN_MODEL_XSD_URL,
+    )
+    from backend.Services.step_parser import parse_step_metadata
+
+    stpx = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Uos xmlns="{AP242_DOMAIN_MODEL_NAMESPACE}"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="{AP242_DOMAIN_MODEL_NAMESPACE} {AP242_DOMAIN_MODEL_XSD_URL}">
+  <Header><Name>AP242 ed5 smoke</Name></Header>
+</Uos>
+"""
+
+    with tempfile.NamedTemporaryFile("w", suffix=".stpx", delete=False, encoding="utf-8") as tmp:
+        tmp.write(stpx)
+        path = Path(tmp.name)
+    try:
+        metadata = parse_step_metadata(path)
+    finally:
+        path.unlink(missing_ok=True)
+
+    assert metadata.format == "stpx"
+    assert metadata.namespace == AP242_DOMAIN_MODEL_NAMESPACE
+    assert AP242_DOMAIN_MODEL_XSD_URL in metadata.schema_location
+    assert metadata.file_schema == AP242_DOMAIN_MODEL_SCHEMA_TOKEN
+
+
+def test_step_parser_extracts_shape_geometry_dimension_and_pmi():
+    """Parser should populate semantic buckets, not only raw STEP rows."""
+    from backend.Services.step_parser import parse_step_with_pmi
+
+    step = """ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING'));
+ENDSEC;
+DATA;
+#1 = PRODUCT('P-100','Pump Housing','Demo housing',());
+#2 = SHAPE_REPRESENTATION('Body shape',(#5),#9);
+#3 = ADVANCED_FACE('',(),#6,.T.);
+#4 = CARTESIAN_POINT('origin',(0.0,0.0,0.0));
+#5 = GEOMETRIC_TOLERANCE('GT1','Position tolerance','controls hole',#3,#4);
+#6 = DIMENSIONAL_SIZE('D1','Hole diameter','nominal',25.0,#3);
+#7 = DATUM_FEATURE('A','Primary datum','mounting face',#3);
+#8 = ANNOTATION_TEXT_OCCURRENCE('NOTE1','Machined surface','Ra 1.6',#3);
+#9 = GEOMETRIC_REPRESENTATION_CONTEXT(3);
+ENDSEC;
+END-ISO-10303-21;
+"""
+
+    with tempfile.NamedTemporaryFile("w", suffix=".stp", delete=False, encoding="utf-8") as tmp:
+        tmp.write(step)
+        path = Path(tmp.name)
+    try:
+        doc = parse_step_with_pmi(path)
+    finally:
+        path.unlink(missing_ok=True)
+
+    assert doc.metadata.file_schema == "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING"
+    assert len(doc.cad_products) == 1
+    assert len(doc.cad_representations) >= 2
+    assert len(doc.cad_topology) == 1
+    assert len(doc.cad_geometry) >= 1
+    assert len(doc.geometric_tolerances) == 1
+    assert len(doc.dimensions) == 1
+    assert len(doc.datums) == 1
+    assert len(doc.annotations) == 1
+    assert doc.geometric_tolerances[0].toleranced_feature_refs
+
+
+def test_ap242_bom_exp_is_used_for_domain_integration(monkeypatch, tmp_path):
+    """AP242 SMRL v12 folders use bom.exp/bom.xsd, not DomainModel.exp only."""
+    from backend.Services.owl_step_engine import _integrate_domain_models
+
+    smrl_dir = tmp_path / "managed_model_based_3d_engineering"
+    smrl_dir.mkdir()
+    (smrl_dir / "bom.xsd").write_text(
+        """<?xml version="1.0"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            targetNamespace="http://standards.iso.org/iso/ts/10303/-3001/-ed-2/tech/xml-schema/bo_model"
+            version="2016-03-30"/>
+""",
+        encoding="utf-8",
+    )
+    (smrl_dir / "bom.exp").write_text(
+        """SCHEMA managed_model_based_3d_engineering_bom;
+ENTITY GeometricModel;
+  id : STRING;
+END_ENTITY;
+ENTITY GeometricDimension;
+  name : STRING;
+END_ENTITY;
+END_SCHEMA;
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AP242_DOMAIN_MODEL_PATH", str(smrl_dir))
+
+    ttl = _integrate_domain_models(
+        "http://example.org/step#",
+        "step",
+        "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING",
+    )
+
+    assert "bom.exp" in ttl
+    assert "managed_model_based_3d_engineering_bom" in ttl
+    assert "GeometricModel" in ttl
+    assert "GeometricDimension" in ttl
+
+
+def test_xsd_to_owl_generates_rich_semantics():
+    """XSD conversion should emit classes, properties, subclassing, and cardinality."""
+    from backend.Services.owl_generation_service import OWLGenerationService
+
+    xsd = b"""<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://example.com/demo"
+           xmlns="http://example.com/demo"
+           elementFormDefault="qualified">
+  <xs:complexType name="Part">
+    <xs:sequence>
+      <xs:element name="identifier" type="xs:string" minOccurs="1" maxOccurs="1"/>
+      <xs:element name="child" type="Part" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="revision" type="xs:string" use="required"/>
+  </xs:complexType>
+  <xs:complexType name="MachinedPart">
+    <xs:complexContent>
+      <xs:extension base="Part">
+        <xs:sequence>
+          <xs:element name="material" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+</xs:schema>
+"""
+
+    ttl, metadata = OWLGenerationService.generate_owl_from_xsd(xsd, "demo.xsd")
+
+    assert metadata["format"] == "XSD"
+    assert "owl:Class" in ttl
+    assert "owl:ObjectProperty" in ttl
+    assert "owl:DatatypeProperty" in ttl
+    assert "rdfs:domain" in ttl
+    assert "rdfs:range" in ttl
+    assert "rdfs:subClassOf" in ttl
+    assert "owl:minCardinality" in ttl
+    assert "owl:maxCardinality" in ttl
+
+
+def test_rdf_loader_preserves_ontology_relationships():
+    """Neo4j push should preserve OWL classes/properties/domain/range/subclass semantics."""
+    from rdflib import Graph
+    from backend.Services.ontology_upload_manager import OntologyUploadManager
+
+    ttl = """@prefix ex: <http://example.com/demo#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:Part a owl:Class ; rdfs:label "Part" .
+ex:MachinedPart a owl:Class ; rdfs:subClassOf ex:Part .
+ex:hasChild a owl:ObjectProperty ; rdfs:domain ex:Part ; rdfs:range ex:Part .
+ex:revision a owl:DatatypeProperty ; rdfs:domain ex:Part ; rdfs:range xsd:string .
+"""
+    rdf_graph = Graph()
+    rdf_graph.parse(data=ttl, format="turtle")
+    neo4j = MagicMock()
+    neo4j.query.return_value = [{"count": 1}]
+
+    result = OntologyUploadManager._push_rdf_graph_to_neo4j(
+        ontology_id="demo_1",
+        meta={"prefix": "demo", "ontology_name": "Demo", "version": 1},
+        rdf_graph=rdf_graph,
+        graph=neo4j,
+        owl_file_path="demo.generated.ttl",
+    )
+
+    submitted_cypher = "\n".join(call.args[0] for call in neo4j.query.call_args_list)
+    assert result["parsed_class_count"] == 2
+    assert result["parsed_object_property_count"] == 1
+    assert result["parsed_datatype_property_count"] == 1
+    assert result["parsed_subclass_relationship_count"] == 1
+    assert "SUBCLASS_OF" in submitted_cypher
+    assert "DOMAIN" in submitted_cypher
+    assert "RANGE" in submitted_cypher
 
 if __name__ == "__main__":
     print("\n" + "="*60)

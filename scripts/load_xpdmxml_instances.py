@@ -26,6 +26,7 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -33,13 +34,18 @@ from pathlib import Path
 # ── Neo4j ─────────────────────────────────────────────────────────────────────
 from neo4j import GraphDatabase
 
-NEO4J_URI  = "neo4j://127.0.0.1:7687"
-NEO4J_USER = "neo4j"
-NEO4J_PASS = "tcs12345"
-NEO4J_DB   = "spdm"
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from backend.core.db_config import get_config
+
+_NEO4J_CONFIG = get_config()
+NEO4J_URI  = _NEO4J_CONFIG.uri
+NEO4J_USER = _NEO4J_CONFIG.username
+NEO4J_PASS = _NEO4J_CONFIG.password
+NEO4J_DB   = _NEO4J_CONFIG.database
 
 # ── Source files ───────────────────────────────────────────────────────────────
-SOURCE_DIR = Path(r"C:\Users\895428\Depo\SPLM_Folder\Motor 2")
+SOURCE_DIR = Path(os.getenv("XPDMXML_SOURCE_DIR", r"C:\Users\895428\Depo\SPLM_Folder\Motor 2"))
 FILES = {
     "motor_bop":      SOURCE_DIR / "Motor_BOP.xml",
     "motor_workplan": SOURCE_DIR / "Motor_WorkPlan.xml",

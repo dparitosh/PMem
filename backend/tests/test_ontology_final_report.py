@@ -4,10 +4,18 @@ Comprehensive test demonstrating the complete workflow
 """
 
 import requests
+import sys
+import os
+from pathlib import Path
 from neo4j import GraphDatabase
 
-BASE_URL = "http://localhost:8001/api"
-BASE_URL_V1 = "http://localhost:8001/api/v1"
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from backend.core.db_config import get_config
+
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
+BASE_URL = f"{BACKEND_URL}/api"
+BASE_URL_V1 = f"{BACKEND_URL}/api/v1"
 
 GREEN, RED, YELLOW, BLUE, RESET = "\033[92m", "\033[91m", "\033[93m", "\033[94m", "\033[0m"
 
@@ -34,8 +42,9 @@ print(f"{YELLOW}SECTION 2: ONTOLOGYMETADATA NODES IN DATABASE{RESET}")
 print("-" * 80)
 
 try:
-    driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j', 'tcs12345'))
-    with driver.session(database='spdms') as session:
+    cfg = get_config()
+    driver = GraphDatabase.driver(cfg.uri, auth=(cfg.username, cfg.password))
+    with driver.session(database=cfg.database) as session:
         result = session.run("""
             MATCH (om:OntologyMetadata)
             RETURN om.id, om.name, om.type, om.source, om.usage_count, om.source_format, om.target_ontology
@@ -125,8 +134,9 @@ print(f"{YELLOW}SECTION 6: CREATED ENTITIES IN AP239 ONTOLOGY{RESET}")
 print("-" * 80)
 
 try:
-    driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j', 'tcs12345'))
-    with driver.session(database='spdms') as session:
+    cfg = get_config()
+    driver = GraphDatabase.driver(cfg.uri, auth=(cfg.username, cfg.password))
+    with driver.session(database=cfg.database) as session:
         # Removed ElectronicAssembly and ComponentInstance test node reporting
         
         # Relationships

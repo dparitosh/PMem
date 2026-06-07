@@ -46,6 +46,7 @@ Environment variables (all ONTO_* prefix):
 """
 
 import json
+import logging
 import os
 import sys
 from dataclasses import dataclass, field
@@ -66,6 +67,7 @@ PROV = Namespace("http://www.w3.org/ns/prov#")
 
 # XSD namespace prefix for XML parsing
 XSD_PRE = "{http://www.w3.org/2001/XMLSchema}"
+logger = logging.getLogger(__name__)
 
 # XSD primitive type → rdflib XSD datatype
 XSD_TYPE_MAP = {

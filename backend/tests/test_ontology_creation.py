@@ -10,9 +10,11 @@ Tests:
 import requests
 import json
 import time
+import os
 
-BASE_URL = "http://localhost:8001/api"
-BASE_URL_V1 = "http://localhost:8001/api/v1"
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
+BASE_URL = f"{BACKEND_URL}/api"
+BASE_URL_V1 = f"{BACKEND_URL}/api/v1"
 
 # ANSI color codes
 GREEN = "\033[92m"
@@ -110,10 +112,12 @@ except Exception as e:
 # TEST 4: Query Neo4j for OntologyMetadata nodes
 print_test("Query Neo4j for OntologyMetadata Nodes")
 try:
+    from backend.core.db_config import get_config
     from backend.core.graph import GraphConnection
+    cfg = get_config()
     graph = GraphConnection()
     
-    with graph.driver.session(database="spdms") as session:
+    with graph.driver.session(database=cfg.database) as session:
         result = session.run(
             """
             MATCH (om:OntologyMetadata)

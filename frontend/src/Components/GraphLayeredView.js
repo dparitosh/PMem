@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import GraphSchemaLayer from './GraphSchemaLayer';
 import GraphInstanceLayer from './GraphInstanceLayer';
 import '../CSS/GraphHEB.css';
+import { logger } from '../utils/logger';
 
 /**
  * GraphLayeredView Component
@@ -23,7 +24,7 @@ export const GraphLayeredView = ({ selectedNode = null, highlightedNodes = [] })
 
   const handleNodeClick = useCallback((nodeData) => {
     setSelectedNodeData(nodeData);
-    console.log('Selected node:', nodeData);
+    logger.render('Selected layered graph node:', nodeData);
   }, []);
 
   return (

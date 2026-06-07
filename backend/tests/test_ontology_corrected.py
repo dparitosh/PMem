@@ -4,9 +4,17 @@ Corrected Test: Ontology Creation and Accessibility
 
 import requests
 import time
+import sys
+import os
+from pathlib import Path
 
-BASE_URL = "http://localhost:8001/api"
-BASE_URL_V1 = "http://localhost:8001/api/v1"
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from backend.core.db_config import get_config
+
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
+BASE_URL = f"{BACKEND_URL}/api"
+BASE_URL_V1 = f"{BACKEND_URL}/api/v1"
 
 GREEN = "\033[92m"
 RED = "\033[91m"
@@ -82,9 +90,10 @@ time.sleep(1)
 print_header("3. Query OntologyMetadata from Neo4j SPDMS")
 try:
     from neo4j import GraphDatabase
-    
-    driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j', 'tcs12345'))
-    with driver.session(database='spdms') as session:
+    cfg = get_config()
+
+    driver = GraphDatabase.driver(cfg.uri, auth=(cfg.username, cfg.password))
+    with driver.session(database=cfg.database) as session:
         # Query OntologyMetadata
         result = session.run("""
             MATCH (om:OntologyMetadata)

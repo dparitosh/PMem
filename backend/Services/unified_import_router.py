@@ -321,49 +321,16 @@ async def list_registered_ontologies():
     Merges file-based upload registry with ontologies discovered directly in Neo4j
     (e.g. loaded via scripts rather than the upload pipeline).
     """
-    result = OntologyUploadManager.list_ontologies()
-    file_ontologies: list = result.get("ontologies", [])
-    file_prefixes = {o.get("prefix") for o in file_ontologies if o.get("prefix")}
-
-    # Discover ontologies that exist only in Neo4j (no metadata.json on disk)
     try:
         try:
             from core.graph import graph as _g
         except ModuleNotFoundError:
             from ..core.graph import graph as _g
-
-        neo4j_rows = _g.query(
-            """
-            MATCH (n)
-            WHERE n.prefix IS NOT NULL
-              AND NOT (n:DatasheetChunk OR n:GraphChunk)
-            RETURN n.prefix AS prefix,
-                   n.ontology_name AS ontology_name,
-                   count(*) AS node_count
-            ORDER BY prefix
-            """
-        )
-        for row in neo4j_rows:
-            p = row.get("prefix")
-            if p and p not in file_prefixes:
-                clean_name = (row.get("ontology_name") or "").replace(" SPLM", "").replace("_splm", "").strip() or p.upper()
-                file_ontologies.append({
-                    "ontology_id": p,
-                    "ontology_name": clean_name,
-                    "prefix": p,
-                    "name": clean_name,
-                    "file_type": "xls",
-                    "generation_type": "direct",
-                    "node_count": row.get("node_count", 0),
-                    "source": "neo4j",
-                })
-                file_prefixes.add(p)
     except Exception as e:
-        logger.warning(f"[registered] Neo4j discovery failed: {e}")
+        logger.warning(f"[registered] Neo4j unavailable for count enrichment: {e}")
+        _g = None
 
-    result["ontologies"] = file_ontologies
-    result["count"] = len(file_ontologies)
-    return result
+    return OntologyUploadManager.list_ontologies_with_neo4j_counts(_g)
 
 
 @ontology_router.post(

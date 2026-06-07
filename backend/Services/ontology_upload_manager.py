@@ -210,6 +210,140 @@ class OntologyUploadManager:
             logger.exception("Error listing ontologies")
             return {'status': 'error', 'error': str(e)}
 
+    @staticmethod
+    def _query_configured_neo4j(cypher: str, params: Optional[Dict[str, Any]] = None, graph=None) -> list[dict]:
+        """Run read queries using the app graph wrapper or the official Neo4j driver."""
+        params = params or {}
+        if graph is not None:
+            try:
+                return graph.query(cypher, params=params) or []
+            except Exception as exc:
+                logger.debug("Graph wrapper query unavailable; falling back to official driver: %s", exc)
+
+        try:
+            try:
+                from backend.core.db_config import get_config, get_driver
+            except Exception:
+                from core.db_config import get_config, get_driver
+
+            config = get_config()
+            driver = get_driver()
+            with driver.session(database=config.database) as session:
+                result = session.run(cypher, params)
+                return [dict(record) for record in result]
+        except Exception as exc:
+            raise RuntimeError(str(exc)) from exc
+
+    @classmethod
+    def list_ontologies_with_neo4j_counts(cls, graph=None, include_neo4j_only: bool = True) -> Dict[str, Any]:
+        """List registered ontology prefixes with runtime Neo4j counts.
+
+        File metadata is the product registry. Neo4j is used only as the
+        configured runtime validation source for node/relationship availability.
+        """
+        result = cls.list_ontologies()
+        if result.get("status") != "success":
+            return result
+
+        ontologies = [dict(row) for row in result.get("ontologies", [])]
+        by_prefix: Dict[str, Dict[str, Any]] = {}
+        for row in ontologies:
+            prefix = str(row.get("prefix") or row.get("ontology_prefix") or row.get("ontology_id") or "").strip()
+            if not prefix:
+                continue
+            row["prefix"] = prefix
+            row["ontology_prefix"] = row.get("ontology_prefix") or prefix
+            row["source"] = row.get("source") or "registered"
+            row.setdefault("node_count", row.get("neo4j_nodes_merged", 0) or 0)
+            row.setdefault("relationship_count", row.get("neo4j_relationships_merged", 0) or 0)
+            row["availability"] = "metadata_only"
+            by_prefix[prefix.lower()] = row
+
+        count_query = """
+        MATCH (n)
+        WHERE n.prefix = $prefix
+           OR n.ontology_prefix = $prefix
+           OR n.source_ontology = $ontology_id
+        WITH collect(DISTINCT n) AS nodes
+        UNWIND CASE WHEN size(nodes) = 0 THEN [NULL] ELSE nodes END AS a
+        OPTIONAL MATCH (a)-[r]-(b)
+        WHERE b IN nodes
+        RETURN size(nodes) AS node_count,
+               count(DISTINCT r) AS relationship_count
+        """
+        for row in by_prefix.values():
+            try:
+                counts = cls._query_configured_neo4j(count_query, params={
+                    "prefix": row.get("prefix"),
+                    "ontology_id": row.get("ontology_id") or row.get("prefix"),
+                }, graph=graph)
+                first = counts[0] if counts else {}
+                node_count = int(first.get("node_count") or 0)
+                relationship_count = int(first.get("relationship_count") or 0)
+                row["node_count"] = node_count
+                row["relationship_count"] = relationship_count
+                if node_count > 0 and relationship_count > 0:
+                    row["availability"] = "available"
+                elif node_count > 0:
+                    row["availability"] = "loaded_empty"
+                else:
+                    row["availability"] = "metadata_only"
+            except Exception as exc:
+                row["availability"] = "count_failed"
+                row["count_error"] = str(exc)
+
+        if include_neo4j_only:
+            try:
+                direct_rows = cls._query_configured_neo4j(
+                    """
+                    MATCH (n)
+                    WHERE n.prefix IS NOT NULL
+                      AND NOT (n:DatasheetChunk OR n:GraphChunk)
+                    WITH n.prefix AS prefix, collect(DISTINCT n) AS nodes
+                    UNWIND nodes AS a
+                    OPTIONAL MATCH (a)-[r]-(b)
+                    WHERE b IN nodes
+                    WITH prefix, nodes, count(DISTINCT r) AS relationship_count
+                    RETURN prefix,
+                           coalesce(head([n IN nodes WHERE n.ontology_name IS NOT NULL | n.ontology_name]), prefix) AS ontology_name,
+                           size(nodes) AS node_count,
+                           relationship_count
+                    ORDER BY prefix
+                    """,
+                    graph=graph,
+                )
+                for direct in direct_rows:
+                    prefix = str(direct.get("prefix") or "").strip()
+                    if not prefix or prefix.lower() in by_prefix:
+                        continue
+                    name = str(direct.get("ontology_name") or prefix).replace(" SPLM", "").replace("_splm", "").strip() or prefix.upper()
+                    node_count = int(direct.get("node_count") or 0)
+                    relationship_count = int(direct.get("relationship_count") or 0)
+                    by_prefix[prefix.lower()] = {
+                        "ontology_id": prefix,
+                        "ontology_name": name,
+                        "name": name,
+                        "prefix": prefix,
+                        "ontology_prefix": prefix,
+                        "file_type": "neo4j",
+                        "generation_type": "direct",
+                        "schema_type": "schema",
+                        "source": "neo4j",
+                        "status": "discovered",
+                        "node_count": node_count,
+                        "relationship_count": relationship_count,
+                        "availability": "available" if relationship_count > 0 else "loaded_empty",
+                    }
+            except Exception as exc:
+                logger.warning("Neo4j ontology prefix discovery failed: %s", exc)
+
+        rows = sorted(by_prefix.values(), key=lambda item: str(item.get("prefix") or ""))
+        return {
+            "status": "success",
+            "ontologies": rows,
+            "count": len(rows),
+        }
+
     @classmethod
     def list_all_ontologies(cls) -> Dict[str, Any]:
         """List all ontology metadata entries, including superseded versions."""
@@ -368,6 +502,270 @@ class OntologyUploadManager:
     # Neo4j push
     # ──────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _term_id(term) -> str:
+        return str(term)
+
+    @staticmethod
+    def _local_name(term) -> str:
+        text = str(term)
+        if "#" in text:
+            return text.rsplit("#", 1)[-1]
+        return text.rstrip("/").rsplit("/", 1)[-1]
+
+    @staticmethod
+    def _namespace(term) -> str:
+        text = str(term)
+        if "#" in text:
+            return text.rsplit("#", 1)[0] + "#"
+        return text.rstrip("/").rsplit("/", 1)[0] + "/"
+
+    @classmethod
+    def _rdf_labels(cls, rdf_graph: Any) -> Dict[str, str]:
+        from rdflib import Literal, URIRef
+        from rdflib.namespace import RDFS
+
+        labels: Dict[str, str] = {}
+        for s, _, o in rdf_graph.triples((None, RDFS.label, None)):
+            if isinstance(s, URIRef) and isinstance(o, Literal):
+                labels[cls._term_id(s)] = str(o)
+        return labels
+
+    @staticmethod
+    def _parse_rdf_content(file_content: bytes, filename: str) -> Any:
+        from rdflib import Graph as RDFGraph
+
+        rdf_graph = RDFGraph()
+        ext = Path(filename).suffix.lower()
+        candidates = ["turtle", "n3", "xml"] if ext == ".ttl" else ["xml", "turtle", "n3"]
+        last_error: Exception | None = None
+        text = file_content.decode("utf-8", errors="replace")
+        for fmt in candidates:
+            try:
+                rdf_graph.parse(data=text, format=fmt)
+                return rdf_graph
+            except Exception as exc:
+                last_error = exc
+        if last_error:
+            raise last_error
+        return rdf_graph
+
+    @classmethod
+    def _generate_rdf_for_source(cls, file_content: bytes, filename: str, file_type: str, generation_type: str) -> tuple[Any, str, Dict[str, Any]]:
+        if file_type == "xsd":
+            from rdflib import Graph as RDFGraph
+            from .owl_generation_service import OWLGenerationService
+            ttl, metadata = OWLGenerationService.generate_owl_from_xsd(file_content, filename)
+            rdf_graph = RDFGraph()
+            rdf_graph.parse(data=ttl, format="turtle")
+            return rdf_graph, ttl, metadata
+        if file_type == "ontology":
+            rdf_graph = cls._parse_rdf_content(file_content, filename)
+            return rdf_graph, file_content.decode("utf-8", errors="replace"), {"format": "RDF", "generation_type": generation_type}
+        raise ValueError(f"RDF semantic push is not available for file type: {file_type}")
+
+    @classmethod
+    def _push_rdf_graph_to_neo4j(
+        cls,
+        ontology_id: str,
+        meta: Dict[str, Any],
+        rdf_graph: Any,
+        graph,
+        owl_file_path: str = "",
+    ) -> Dict[str, Any]:
+        from rdflib import URIRef
+        from rdflib.namespace import RDF, RDFS, OWL
+
+        prefix = meta["prefix"]
+        ontology_name = meta["ontology_name"]
+        version = meta.get("version", 1)
+        labels = cls._rdf_labels(rdf_graph)
+
+        class_terms = {
+            s for s in rdf_graph.subjects(RDF.type, OWL.Class)
+            if isinstance(s, URIRef)
+        }
+        object_props = {
+            s for s in rdf_graph.subjects(RDF.type, OWL.ObjectProperty)
+            if isinstance(s, URIRef)
+        }
+        datatype_props = {
+            s for s in rdf_graph.subjects(RDF.type, OWL.DatatypeProperty)
+            if isinstance(s, URIRef)
+        }
+
+        class_rows = [
+            {
+                "uri": cls._term_id(term),
+                "name": labels.get(cls._term_id(term)) or cls._local_name(term),
+                "namespace": cls._namespace(term),
+                "comment": str(next(rdf_graph.objects(term, RDFS.comment), "")),
+            }
+            for term in sorted(class_terms, key=str)
+        ]
+        object_rows = [
+            {
+                "uri": cls._term_id(term),
+                "name": labels.get(cls._term_id(term)) or cls._local_name(term),
+                "namespace": cls._namespace(term),
+                "comment": str(next(rdf_graph.objects(term, RDFS.comment), "")),
+            }
+            for term in sorted(object_props, key=str)
+        ]
+        datatype_rows = [
+            {
+                "uri": cls._term_id(term),
+                "name": labels.get(cls._term_id(term)) or cls._local_name(term),
+                "namespace": cls._namespace(term),
+                "comment": str(next(rdf_graph.objects(term, RDFS.comment), "")),
+            }
+            for term in sorted(datatype_props, key=str)
+        ]
+
+        subclass_rows = [
+            {"child_uri": cls._term_id(s), "parent_uri": cls._term_id(o)}
+            for s, _, o in rdf_graph.triples((None, RDFS.subClassOf, None))
+            if isinstance(s, URIRef) and isinstance(o, URIRef) and s in class_terms
+        ]
+
+        domain_rows = []
+        range_rows = []
+        for prop in sorted(object_props | datatype_props, key=str):
+            prop_uri = cls._term_id(prop)
+            for domain in rdf_graph.objects(prop, RDFS.domain):
+                if isinstance(domain, URIRef):
+                    domain_rows.append({"prop_uri": prop_uri, "class_uri": cls._term_id(domain)})
+            for range_term in rdf_graph.objects(prop, RDFS.range):
+                if isinstance(range_term, URIRef):
+                    range_rows.append({"prop_uri": prop_uri, "range_uri": cls._term_id(range_term)})
+
+        def _run(cypher: str, rows: list[dict]) -> int:
+            if not rows:
+                return 0
+            total = 0
+            batch = 500
+            for idx in range(0, len(rows), batch):
+                result = graph.query(cypher, params={
+                    "rows": rows[idx:idx + batch],
+                    "prefix": prefix,
+                    "ontology_id": ontology_id,
+                    "ontology_name": ontology_name,
+                    "version": version,
+                    "owl_file_path": owl_file_path,
+                })
+                total += (result or [{"count": len(rows[idx:idx + batch])}])[0].get("count", len(rows[idx:idx + batch]))
+            return total
+
+        class_cypher = """
+UNWIND $rows AS row
+MERGE (c:OntologyClass {uri: row.uri, prefix: $prefix})
+ON CREATE SET c.created_at = datetime()
+SET c.name = row.name,
+    c.concept_type = 'owl:Class',
+    c.namespace = row.namespace,
+    c.comment = row.comment,
+    c.source_ontology = $ontology_id,
+    c.ontology_name = $ontology_name,
+    c.version = $version,
+    c.ontology_prefix = $prefix,
+    c.schema_type = 'schema',
+    c.owl_file_path = $owl_file_path,
+    c.updated_at = datetime()
+RETURN count(c) AS count
+"""
+        object_prop_cypher = """
+UNWIND $rows AS row
+MERGE (p:ObjectProperty {uri: row.uri, prefix: $prefix})
+ON CREATE SET p.created_at = datetime()
+SET p.name = row.name,
+    p.concept_type = 'owl:ObjectProperty',
+    p.namespace = row.namespace,
+    p.comment = row.comment,
+    p.source_ontology = $ontology_id,
+    p.ontology_name = $ontology_name,
+    p.version = $version,
+    p.ontology_prefix = $prefix,
+    p.schema_type = 'schema',
+    p.owl_file_path = $owl_file_path,
+    p.updated_at = datetime()
+RETURN count(p) AS count
+"""
+        datatype_prop_cypher = """
+UNWIND $rows AS row
+MERGE (p:DatatypeProperty {uri: row.uri, prefix: $prefix})
+ON CREATE SET p.created_at = datetime()
+SET p.name = row.name,
+    p.concept_type = 'owl:DatatypeProperty',
+    p.namespace = row.namespace,
+    p.comment = row.comment,
+    p.source_ontology = $ontology_id,
+    p.ontology_name = $ontology_name,
+    p.version = $version,
+    p.ontology_prefix = $prefix,
+    p.schema_type = 'schema',
+    p.owl_file_path = $owl_file_path,
+    p.updated_at = datetime()
+RETURN count(p) AS count
+"""
+        subclass_cypher = """
+UNWIND $rows AS row
+MATCH (child:OntologyClass {uri: row.child_uri, prefix: $prefix})
+MATCH (parent:OntologyClass {uri: row.parent_uri, prefix: $prefix})
+MERGE (child)-[r:SUBCLASS_OF]->(parent)
+RETURN count(r) AS count
+"""
+        domain_cypher = """
+UNWIND $rows AS row
+MATCH (p {uri: row.prop_uri, prefix: $prefix})
+MATCH (c:OntologyClass {uri: row.class_uri, prefix: $prefix})
+WHERE p:ObjectProperty OR p:DatatypeProperty
+MERGE (p)-[r:DOMAIN]->(c)
+RETURN count(r) AS count
+"""
+        range_cypher = """
+UNWIND $rows AS row
+MATCH (p {uri: row.prop_uri, prefix: $prefix})
+WHERE p:ObjectProperty OR p:DatatypeProperty
+MATCH (c:OntologyClass {uri: row.range_uri, prefix: $prefix})
+MERGE (p)-[r:RANGE]->(c)
+RETURN count(r) AS count
+"""
+
+        classes_created = _run(class_cypher, class_rows)
+        object_props_created = _run(object_prop_cypher, object_rows)
+        datatype_props_created = _run(datatype_prop_cypher, datatype_rows)
+        subclass_created = _run(subclass_cypher, subclass_rows)
+        domain_created = _run(domain_cypher, domain_rows)
+        range_created = _run(range_cypher, range_rows)
+
+        relationships_created = subclass_created + domain_created + range_created
+        logger.info(
+            "Ontology RDF push %s: classes=%s object_properties=%s datatype_properties=%s "
+            "subclass=%s domain=%s range=%s neo4j_nodes=%s neo4j_relationships=%s",
+            ontology_id,
+            len(class_rows),
+            len(object_rows),
+            len(datatype_rows),
+            len(subclass_rows),
+            len(domain_rows),
+            len(range_rows),
+            classes_created + object_props_created + datatype_props_created,
+            relationships_created,
+        )
+        return {
+            "status": "success",
+            "ontology_id": ontology_id,
+            "version": version,
+            "nodes_merged": classes_created + object_props_created + datatype_props_created,
+            "relationships_merged": relationships_created,
+            "parsed_class_count": len(class_rows),
+            "parsed_object_property_count": len(object_rows),
+            "parsed_datatype_property_count": len(datatype_rows),
+            "parsed_subclass_relationship_count": len(subclass_rows),
+            "parsed_domain_relationship_count": len(domain_rows),
+            "parsed_range_relationship_count": len(range_rows),
+        }
+
     @classmethod
     def push_to_neo4j(cls, ontology_id: str, graph, schema_type: str = "schema") -> Dict[str, Any]:
         """Parse the stored ontology file and MERGE its entities into Neo4j as OntologyClass or Instance nodes.
@@ -397,6 +795,42 @@ class OntologyUploadManager:
             file_type = meta['file_type']
             # Use schema_type from metadata or parameter override
             determined_schema_type = schema_type or meta.get('schema_type', 'schema')
+
+            if determined_schema_type == "schema" and file_type in {"xsd", "ontology"}:
+                rdf_graph, ttl_text, owl_metadata = cls._generate_rdf_for_source(
+                    file_content=file_content,
+                    filename=file_path.name,
+                    file_type=file_type,
+                    generation_type=meta.get("generation_type", ""),
+                )
+                owl_file_path = ""
+                if file_type == "xsd":
+                    owl_path = file_path.with_suffix(".generated.ttl")
+                    owl_path.write_text(ttl_text, encoding="utf-8")
+                    owl_file_path = str(owl_path)
+                elif file_path.suffix.lower() in {".ttl", ".rdf", ".owl"}:
+                    owl_file_path = str(file_path)
+
+                rdf_result = cls._push_rdf_graph_to_neo4j(
+                    ontology_id=ontology_id,
+                    meta=meta,
+                    rdf_graph=rdf_graph,
+                    graph=graph,
+                    owl_file_path=owl_file_path,
+                )
+                cls._update_status(ontology_id, 'pushed_to_neo4j', {
+                    'neo4j_nodes_merged': rdf_result.get('nodes_merged', 0),
+                    'neo4j_relationships_merged': rdf_result.get('relationships_merged', 0),
+                    'owl_file_path': owl_file_path,
+                    'owl_generation_metadata': owl_metadata,
+                    'parsed_class_count': rdf_result.get('parsed_class_count', 0),
+                    'parsed_object_property_count': rdf_result.get('parsed_object_property_count', 0),
+                    'parsed_datatype_property_count': rdf_result.get('parsed_datatype_property_count', 0),
+                    'parsed_subclass_relationship_count': rdf_result.get('parsed_subclass_relationship_count', 0),
+                    'parsed_domain_relationship_count': rdf_result.get('parsed_domain_relationship_count', 0),
+                    'parsed_range_relationship_count': rdf_result.get('parsed_range_relationship_count', 0),
+                })
+                return rdf_result
 
             # Parse entities
             rows: list = []

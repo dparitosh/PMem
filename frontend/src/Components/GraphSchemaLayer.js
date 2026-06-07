@@ -3,6 +3,7 @@ import * as d3 from 'd3';
 import '../CSS/GraphHEB.css';
 import { API_METHODS } from '../services/apiClient';
 import { safeGet } from '../utils/safeAccess';
+import { logger } from '../utils/logger';
 
 /**
  * GraphSchemaLayer Component
@@ -49,7 +50,7 @@ export const GraphSchemaLayer = ({ onNodeClick, selectedNode, highlightedNodes =
     const fetchSchemaGraph = async () => {
       try {
         setLoading(true);
-        console.log('Fetching schema graph...');
+        logger.render('Fetching schema graph...');
         
         const response = await API_METHODS.graph.getSchemaGraph();
         
@@ -63,7 +64,7 @@ export const GraphSchemaLayer = ({ onNodeClick, selectedNode, highlightedNodes =
         setData(processedData);
         setError(null);
       } catch (err) {
-        console.error('Failed to fetch schema graph:', err);
+        logger.error('Failed to fetch schema graph:', err);
         setError(`Failed to load schema graph: ${err.message}`);
         setData({ nodes: [], links: [] });
       } finally {

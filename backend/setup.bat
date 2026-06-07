@@ -24,6 +24,7 @@ if "%ANY_FLAG%"=="0" (
 )
 
 set "ROOT=%~dp0"
+for %%I in ("%ROOT%..") do set "PROJECT_ROOT=%%~fI\"
 
 :: ──── Backend Setup ───────────────────────────────────────────────────────
 if "%DO_BACKEND%"=="1" (
@@ -50,7 +51,7 @@ if "%DO_BACKEND%"=="1" (
     call "%ROOT%.dt_venv\Scripts\activate.bat"
 
     echo [3/3] Installing backend dependencies ...
-    echo Updating pip and installing requirements (uses python -m pip)...
+    echo Updating pip and installing requirements ^(uses python -m pip^)...
     python -m pip install --upgrade pip
     if errorlevel 1 (
         echo ERROR: pip upgrade failed.
@@ -82,15 +83,15 @@ if "%DO_FRONTEND%"=="1" (
     )
 
     echo [1/1] Installing frontend dependencies ...
-    pushd "%ROOT%frontend"
-    if exist "%ROOT%frontend\package-lock.json" (
+    pushd "%PROJECT_ROOT%frontend"
+    if exist "%PROJECT_ROOT%frontend\package-lock.json" (
         echo package-lock.json found — using `npm ci` for reproducible install
         call npm ci
     ) else (
         call npm install
     )
     if errorlevel 1 (
-        echo ERROR: npm install (or ci) failed.
+        echo ERROR: npm install ^(or ci^) failed.
         popd
         exit /b 1
     )

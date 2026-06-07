@@ -8,9 +8,17 @@ This tests the actual workflow:
 
 import requests
 import time
+import sys
+import os
+from pathlib import Path
 
-BASE_URL = "http://localhost:8001/api"
-BASE_URL_V1 = "http://localhost:8001/api/v1"
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from backend.core.db_config import get_config
+
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
+BASE_URL = f"{BACKEND_URL}/api"
+BASE_URL_V1 = f"{BACKEND_URL}/api/v1"
 
 GREEN, RED, YELLOW, BLUE, RESET = "\033[92m", "\033[91m", "\033[93m", "\033[94m", "\033[0m"
 
@@ -43,9 +51,10 @@ except Exception as e:
 print_header("2. Create OntologyMetadata Node Directly")
 try:
     from neo4j import GraphDatabase
-    driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j', 'tcs12345'))
+    cfg = get_config()
+    driver = GraphDatabase.driver(cfg.uri, auth=(cfg.username, cfg.password))
     
-    with driver.session(database='spdms') as session:
+    with driver.session(database=cfg.database) as session:
         # Create OntologyMetadata node
         result = session.run("""
             CREATE (om:OntologyMetadata {
@@ -81,9 +90,10 @@ time.sleep(1)
 print_header("3. Query Created OntologyMetadata Nodes")
 try:
     from neo4j import GraphDatabase
-    driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j', 'tcs12345'))
+    cfg = get_config()
+    driver = GraphDatabase.driver(cfg.uri, auth=(cfg.username, cfg.password))
     
-    with driver.session(database='spdms') as session:
+    with driver.session(database=cfg.database) as session:
         result = session.run("""
             MATCH (om:OntologyMetadata)
             RETURN om.id, om.name, om.type, om.usage_count, om.source
@@ -124,7 +134,8 @@ except Exception as e:
 print_header("5. Create Sample AP239 Entities in Neo4j")
 try:
     from neo4j import GraphDatabase
-    driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j', 'tcs12345'))
+    cfg = get_config()
+    driver = GraphDatabase.driver(cfg.uri, auth=(cfg.username, cfg.password))
     
     # Removed ElectronicAssembly and ComponentInstance test node creation
     
