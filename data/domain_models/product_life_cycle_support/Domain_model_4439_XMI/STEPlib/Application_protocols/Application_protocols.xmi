@@ -1,0 +1,8 @@
+<xmi:XMI xmlns:uml="http://www.omg.org/spec/UML/20131001" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:sysml="http://www.omg.org/spec/SysML/20150709/SysML" xmlns:StandardProfile="http://www.omg.org/spec/UML/20131001/StandardProfile" xmlns:STEPlib-profile="http:///schemas/STEPlib-profile.xmi">
+  <uml:Package xmi:type="uml:Package" xmi:id="_18_4_1_e120334_1499417092727_546907_23362" xmi:uuid="a2c64750-af2b-449a-a196-70709754e7c5">
+    <name>Application_protocols</name>
+    <packagedElement href="AP242/AP242.xmi#_18_4_1_e120334_1499417100049_362348_23363"/>
+    <packagedElement href="AP243/AP243.xmi#_18_4_1_1b310459_1505838673403_315716_25271"/>
+    <packagedElement href="AP239/AP239.xmi#_18_4_1_13110319_1554128163605_683165_91409"/>
+  </uml:Package>
+</xmi:XMI>

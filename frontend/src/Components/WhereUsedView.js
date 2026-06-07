@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
 import * as d3 from 'd3';
 import '../App.css';
-import config from '../config';
+import { API, buildUrl, replaceParams } from '../config';
+import { apiClient } from '../services/apiClient';
 import { useSchema } from '../SchemaContext';
+import { buildTooltipHeader } from './tooltipBuilder';
+import logger from '../utils/logger';
 
 // ──── DEVELOPER CONFIG: Node Display Label ────────────────────────────────
 //
@@ -104,7 +106,7 @@ const WhereUsedView = ({
         setSearchError(null);
         try {
             // Use graphfilter endpoint similar to GraphHEB implementation
-            const response = await axios.post(`${config.apiUrl}/graphfilter`, { search: term.toLowerCase() });
+            const response = await apiClient.post(buildUrl(API.graph.graphfilter), { search: term.toLowerCase() });
             const records = response.data?.results || [];
             if (records.length === 0) {
                 setHierarchySearchResults([]);
@@ -142,7 +144,7 @@ const WhereUsedView = ({
             const nodes = Array.from(nodesMap.values());
             setHierarchySearchResults(nodes);
         } catch (err) {
-            console.error('Search error (server):', err);
+            logger.search('Search error (server):', err);
             // Fallback to client-side filtering of provided data
             try {
                 const fallbackNodes = (data?.nodes || []).filter(n => {
@@ -182,7 +184,7 @@ const WhereUsedView = ({
 
                 // Call traverse API for current node
                 try {
-                    const resp = await axios.get(`${config.apiUrl}/graphtraverse/${currentNode.elementId}`);
+                    const resp = await apiClient.get(buildUrl(replaceParams(API.graph.graphtraverseNode, { node_id: currentNode.elementId })));
                     const records = resp.data?.results || [];
                     records.forEach(record => {
                         const n = record['n'];
@@ -218,7 +220,7 @@ const WhereUsedView = ({
                         }
                     });
                 } catch (e) {
-                    console.warn('Traverse fetch failed for', currentNode.elementId, e.message);
+                        logger.warn('Traverse fetch failed for %s: %s', currentNode.elementId, e.message);
                 }
             }
 
@@ -257,12 +259,12 @@ const WhereUsedView = ({
             });
             const sortedLevels = Array.from(levelMap.entries()).sort((a,b) => b[0]-a[0]).map(e => e[1]); // top ancestors first
             
-            console.log('WhereUsed - Hierarchy built:');
-            console.log('  Total nodes:', Array.from(ancestorMap.values()).length);
-            console.log('  Total links:', parentLinks.length);
-            console.log('  Levels:', sortedLevels.length);
+            logger.data('WhereUsed - Hierarchy built:');
+            logger.data('  Total nodes: %d', Array.from(ancestorMap.values()).length);
+            logger.data('  Total links: %d', parentLinks.length);
+            logger.data('  Levels: %d', sortedLevels.length);
             sortedLevels.forEach((level, idx) => {
-                console.log(`  Level ${idx}:`, level.length, 'nodes');
+                logger.data('  Level %d: %d nodes', idx, level.length);
             });
             
             setLevels(sortedLevels);
@@ -705,30 +707,12 @@ const WhereUsedView = ({
                   ? d.properties 
                   : d;
                 
-                let tooltipContent = `
-                  <div style="position:relative; background: linear-gradient(135deg, #0066B3 0%, #28A745 100%); color: white; padding: 8px 12px; margin: -8px -8px 8px -8px; font-weight: bold; border-radius: 4px 4px 0 0;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                      <i class="fas fa-tag" style="font-size: 16px;"></i>
-                      <span>${nodeType}</span>
-                    </div>
-                    ${closeBtn}
-                  </div>
-                `;
+                                let tooltipContent = buildTooltipHeader(nodeType, closeBtn);
                 
-                // Only exclude D3/graph-library internals — ALL real Neo4j properties will be shown
-                const excludedProps = [
-                  'x', 'y', 'vx', 'vy', 'fx', 'fy', 'index',              // D3 force layout
-                  'depth', 'parent', 'data', 'height', 'level', 'children', // D3 tree layout
-                  'elementId', 'elementID', 'identity', 'labels', 'properties', '__typename', // driver metadata
-                ];
-                
-                const allProps = Object.keys(props)
-                  .filter(k => {
-                    if (excludedProps.includes(k)) return false;
-                    if (typeof props[k] === 'function') return false;
-                    return true;
-                  })
-                  .map(k => [k, props[k]]);
+                                // Show all enumerable own properties (exclude functions only)
+                                const allProps = Object.keys(props)
+                                    .filter(k => typeof props[k] !== 'function')
+                                    .map(k => [k, props[k]]);
                 
                 if (allProps.length > 0) {
                   tooltipContent += `<div style="margin-top: 8px; padding: 8px; font-size: 12px; max-height: 300px; overflow-y: auto;">`;
@@ -751,11 +735,21 @@ const WhereUsedView = ({
                   tooltipContent += `<div style="margin-top: 8px; padding: 8px; font-size: 12px; color: #95a5a6; font-style: italic;">No properties available</div>`;
                 }
                 
+                // Dock tooltip to right side of the SVG canvas
+                const svgRect = svgEl.getBoundingClientRect();
+                const parentRect = container.getBoundingClientRect();
+                const panelWidth = 340;
+                let panelTop = Math.max(0, Math.round(svgRect.top - parentRect.top));
+                let panelLeft = Math.max(0, Math.round(svgRect.right - parentRect.left - panelWidth));
+                if (svgRect.width < panelWidth) panelLeft = Math.max(0, Math.round(svgRect.left - parentRect.left));
                 tooltip.html(tooltipContent)
-                    .style('left', (event.offsetX + 14) + 'px')
-                    .style('top', (event.offsetY + 14) + 'px')
+                    .style('left', panelLeft + 'px')
+                    .style('top', panelTop + 'px')
                     .style('pointer-events', 'auto')
-                    .style('opacity', 1);
+                    .style('opacity', 1)
+                    .style('width', panelWidth + 'px')
+                    .style('max-height', Math.min(svgRect.height, window.innerHeight - 40) + 'px')
+                    .style('overflow-y', 'auto');
             });
 
         // Compute bounding box of logical content for auto-fit

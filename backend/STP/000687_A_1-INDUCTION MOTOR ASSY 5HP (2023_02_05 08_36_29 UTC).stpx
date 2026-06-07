@@ -1,0 +1,1767 @@
+<?xml version="1.0"?>
+<n0:Uos xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:n0="http://standards.iso.org/iso/ts/10303/-3001/-ed-1/tech/xml-schema/bo_model" xmlns:cmn="http://standards.iso.org/iso/ts/10303/-3000/-ed-1/tech/xml-schema/common" xsi:schemaLocation="http://standards.iso.org/iso/ts/10303/-3001/-ed-1/tech/xml-schema/bo_model http://standards.iso.org/iso/ts/10303/-3001/-ed-1/tech/xml-schema/bo_model/bom.xsd">
+	<Header xmlns="">
+		<Name>Siemens PLM Software</Name>
+		<Documentation>CAx-IF Rec.Pracs.---AP242 BO Model XML Assembly Structure---0.15---2014-10-28</Documentation>
+	</Header>
+	<DataContainer xsi:type="n0:AP242DataContainer">
+		<ExchangeContext uid="ecs--ectxt">
+			<DefaultLanguage>en-US</DefaultLanguage>
+			<DefaultUnit uidRef="ecs--unit" />
+			<Description>
+				<CharacterString>AP242 BO Model XML Assembly Structure exchange</CharacterString>
+			</Description>
+		</ExchangeContext>
+		<ExternalClassSystem uid="ecs--dcat">
+			<Id id="document type">
+				<Identifier uid="dcat--documenttype-id1" id="document type" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</ExternalClassSystem>
+		<ExternalClassSystem uid="ecs--dtp">
+			<Id id="file type">
+				<Identifier uid="dtp--filetype-id1" id="file type" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</ExternalClassSystem>
+		<ExternalClassSystem uid="ecs--gmr">
+			<Id id="geometric model relation type">
+				<Identifier uid="dtp--gmr-id1" id="geometric model relation type" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</ExternalClassSystem>
+		<ExternalClassSystem uid="ecs--pcat">
+			<Id id="part type">
+				<Identifier uid="pcat--parttype-id1" id="part type" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</ExternalClassSystem>
+		<ExternalClassSystem uid="ecs--nauo">
+			<Id id="part view occurrence relation type">
+				<Identifier uid="ecs--nauo-id1" id="part view occurrence relation type" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</ExternalClassSystem>
+		<Class uid="dcat--document">
+			<DefinedIn uidRef="ecs--dcat" />
+			<Id id="document">
+				<Identifier uid="dcat--document--id1" id="document" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</Class>
+		<Class uid="dcat--geometryfile">
+			<DefinedIn uidRef="ecs--dcat" />
+			<Id id="geometryfile">
+				<Identifier uid="dcat--geometryfile--id1" id="geometryfile" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</Class>
+		<Class uid="dcat--3Dgeometry">
+			<DefinedIn uidRef="ecs--dcat" />
+			<Id id="3Dgeometry">
+				<Identifier uid="dcat--3Dgeometry--id1" id="3Dgeometry" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</Class>
+		<Class uid="dtp--CATProduct">
+			<DefinedIn uidRef="ecs--dtp" />
+			<Id id="CATProduct">
+				<Identifier uid="dtp--CATProduct--id1" id="CATProduct" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</Class>
+		<Class uid="dtp--CATPart">
+			<DefinedIn uidRef="ecs--dtp" />
+			<Id id="CATPart">
+				<Identifier uid="dtp--CATPart--id1" id="CATPart" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</Class>
+		<Class uid="dtp--Model">
+			<DefinedIn uidRef="ecs--dtp" />
+			<Id id="model">
+				<Identifier uid="dtp--Model--id1" id="model" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</Class>
+		<Class uid="dtp--CGR">
+			<DefinedIn uidRef="ecs--dtp" />
+			<Id id="cgr">
+				<Identifier uid="dtp--CGR--id1" id="cgr" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</Class>
+		<Class uid="dtp--JT">
+			<DefinedIn uidRef="ecs--dtp" />
+			<Id id="JT">
+				<Identifier uid="dtp--JT--id1" id="JT" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</Class>
+		<Class uid="ccs--cartesian">
+			<Id id="cartesian">
+				<Identifier uid="ccs--cartesian--id1" id="cartesian" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</Class>
+		<Class uid="gmr--decomposition">
+			<DefinedIn uidRef="ecs--gmr" />
+			<Id id="decomposition">
+				<Identifier uid="gmr--decomposition--id1" id="decomposition" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</Class>
+		<Class uid="pcat--part">
+			<DefinedIn uidRef="ecs--pcat" />
+			<Id id="piece part">
+				<Identifier uid="pcat--part--id1" id="piece part" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</Class>
+		<Class uid="pcat--assembly">
+			<DefinedIn uidRef="ecs--pcat" />
+			<Id id="product">
+				<Identifier uid="pcat--assembly--id1" id="product" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</Class>
+		<Class uid="nauo--assembly">
+			<DefinedIn uidRef="ecs--nauo" />
+			<Id id="assembly">
+				<Identifier uid="nauo--assembly--id1" id="assembly" idContextRef="org--0xbc66cf8" />
+			</Id>
+		</Class>
+		<FormatProperty uid="ffp--XML">
+			<DataFormat>
+				<ClassString>XML</ClassString>
+			</DataFormat>
+		</FormatProperty>
+		<FormatProperty uid="ffp--CATIAV4">
+			<DataFormat>
+				<ClassString>CATIA V4</ClassString>
+			</DataFormat>
+		</FormatProperty>
+		<FormatProperty uid="ffp--CATIAV5">
+			<DataFormat>
+				<ClassString>CATIA V5</ClassString>
+			</DataFormat>
+		</FormatProperty>
+		<FormatProperty uid="ffp--CGR">
+			<DataFormat>
+				<ClassString>CGR</ClassString>
+			</DataFormat>
+		</FormatProperty>
+		<Organization uid="org--0xbc66cf8">
+			<Id id="" />
+			<Name>
+				<CharacterString />
+			</Name>
+			<OrganizationTypes>
+				<ClassString>Siemens PLM Software</ClassString>
+			</OrganizationTypes>
+		</Organization>
+		<GeometricCoordinateSpace uid="ccs--origin">
+			<DimensionCount>3</DimensionCount>
+			<Id id="" />
+		</GeometricCoordinateSpace>
+		<ViewContext uid="ac--mechanicaldesign--design">
+			<ApplicationDomain>
+				<ProxyString>mechanical design</ProxyString>
+			</ApplicationDomain>
+			<LifeCycleStage>
+				<ProxyString>design</ProxyString>
+			</LifeCycleStage>
+		</ViewContext>
+		<File xsi:type="n0:DigitalFile" uid="id0">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000733_B;1-Laminated_Rotor_Core_with Copper Rings.stp">
+				<Identifier id="000733_B;1-Laminated_Rotor_Core_with Copper Rings.stp" idContextRef="org--0xbc66cf8" uid="id57" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id58">
+					<Id id="000733_B;1-Laminated_Rotor_Core_with Copper Rings.stp">
+						<Identifier id="000733_B;1-Laminated_Rotor_Core_with Copper Rings.stp" idContextRef="org--0xbc66cf8" uid="id59" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id1">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000684_B;1-Rotor Shaft Machined.stp">
+				<Identifier id="000684_B;1-Rotor Shaft Machined.stp" idContextRef="org--0xbc66cf8" uid="id60" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id61">
+					<Id id="000684_B;1-Rotor Shaft Machined.stp">
+						<Identifier id="000684_B;1-Rotor Shaft Machined.stp" idContextRef="org--0xbc66cf8" uid="id62" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id2">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000689_A;1-Motor Cover Machined.stp">
+				<Identifier id="000689_A;1-Motor Cover Machined.stp" idContextRef="org--0xbc66cf8" uid="id63" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id64">
+					<Id id="000689_A;1-Motor Cover Machined.stp">
+						<Identifier id="000689_A;1-Motor Cover Machined.stp" idContextRef="org--0xbc66cf8" uid="id65" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id3">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000685_A;1-Coil for Three Phase Winding.stp">
+				<Identifier id="000685_A;1-Coil for Three Phase Winding.stp" idContextRef="org--0xbc66cf8" uid="id66" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id67">
+					<Id id="000685_A;1-Coil for Three Phase Winding.stp">
+						<Identifier id="000685_A;1-Coil for Three Phase Winding.stp" idContextRef="org--0xbc66cf8" uid="id68" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id4">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000682_A;1-Laminated Stator Core.stp">
+				<Identifier id="000682_A;1-Laminated Stator Core.stp" idContextRef="org--0xbc66cf8" uid="id69" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id70">
+					<Id id="000682_A;1-Laminated Stator Core.stp">
+						<Identifier id="000682_A;1-Laminated Stator Core.stp" idContextRef="org--0xbc66cf8" uid="id71" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id5">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000681_A;1-External Circlip.stp">
+				<Identifier id="000681_A;1-External Circlip.stp" idContextRef="org--0xbc66cf8" uid="id72" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id73">
+					<Id id="000681_A;1-External Circlip.stp">
+						<Identifier id="000681_A;1-External Circlip.stp" idContextRef="org--0xbc66cf8" uid="id74" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id6">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000688_A;1-Bearing Holder_Machined.stp">
+				<Identifier id="000688_A;1-Bearing Holder_Machined.stp" idContextRef="org--0xbc66cf8" uid="id75" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id76">
+					<Id id="000688_A;1-Bearing Holder_Machined.stp">
+						<Identifier id="000688_A;1-Bearing Holder_Machined.stp" idContextRef="org--0xbc66cf8" uid="id77" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id7">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000683_A;1-Centrifugal Fan.stp">
+				<Identifier id="000683_A;1-Centrifugal Fan.stp" idContextRef="org--0xbc66cf8" uid="id78" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id79">
+					<Id id="000683_A;1-Centrifugal Fan.stp">
+						<Identifier id="000683_A;1-Centrifugal Fan.stp" idContextRef="org--0xbc66cf8" uid="id80" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id8">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000700_A;1-Rotor Shaft Key.stp">
+				<Identifier id="000700_A;1-Rotor Shaft Key.stp" idContextRef="org--0xbc66cf8" uid="id81" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id82">
+					<Id id="000700_A;1-Rotor Shaft Key.stp">
+						<Identifier id="000700_A;1-Rotor Shaft Key.stp" idContextRef="org--0xbc66cf8" uid="id83" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id9">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000686_A;1-Terminal Box_Machined.stp">
+				<Identifier id="000686_A;1-Terminal Box_Machined.stp" idContextRef="org--0xbc66cf8" uid="id84" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id85">
+					<Id id="000686_A;1-Terminal Box_Machined.stp">
+						<Identifier id="000686_A;1-Terminal Box_Machined.stp" idContextRef="org--0xbc66cf8" uid="id86" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id10">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000693_A;1-Fan Cover.stp">
+				<Identifier id="000693_A;1-Fan Cover.stp" idContextRef="org--0xbc66cf8" uid="id87" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id88">
+					<Id id="000693_A;1-Fan Cover.stp">
+						<Identifier id="000693_A;1-Fan Cover.stp" idContextRef="org--0xbc66cf8" uid="id89" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id11">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000701_A;1-SKF_6205-2Z16653_Prt1.stp">
+				<Identifier id="000701_A;1-SKF_6205-2Z16653_Prt1.stp" idContextRef="org--0xbc66cf8" uid="id90" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id91">
+					<Id id="000701_A;1-SKF_6205-2Z16653_Prt1.stp">
+						<Identifier id="000701_A;1-SKF_6205-2Z16653_Prt1.stp" idContextRef="org--0xbc66cf8" uid="id92" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id12">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000678_A;1-SKF_6306-2Z7097_Prt2.stp">
+				<Identifier id="000678_A;1-SKF_6306-2Z7097_Prt2.stp" idContextRef="org--0xbc66cf8" uid="id93" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id94">
+					<Id id="000678_A;1-SKF_6306-2Z7097_Prt2.stp">
+						<Identifier id="000678_A;1-SKF_6306-2Z7097_Prt2.stp" idContextRef="org--0xbc66cf8" uid="id95" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id13">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000680_A;1-SKF_6306-2Z7097_Prt3.stp">
+				<Identifier id="000680_A;1-SKF_6306-2Z7097_Prt3.stp" idContextRef="org--0xbc66cf8" uid="id96" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id97">
+					<Id id="000680_A;1-SKF_6306-2Z7097_Prt3.stp">
+						<Identifier id="000680_A;1-SKF_6306-2Z7097_Prt3.stp" idContextRef="org--0xbc66cf8" uid="id98" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id14">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000679_A;1-End Bell_Machined.stp">
+				<Identifier id="000679_A;1-End Bell_Machined.stp" idContextRef="org--0xbc66cf8" uid="id99" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id100">
+					<Id id="000679_A;1-End Bell_Machined.stp">
+						<Identifier id="000679_A;1-End Bell_Machined.stp" idContextRef="org--0xbc66cf8" uid="id101" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id15">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000697_A;1-SKF_6306-2Z7097_Prt1.stp">
+				<Identifier id="000697_A;1-SKF_6306-2Z7097_Prt1.stp" idContextRef="org--0xbc66cf8" uid="id102" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id103">
+					<Id id="000697_A;1-SKF_6306-2Z7097_Prt1.stp">
+						<Identifier id="000697_A;1-SKF_6306-2Z7097_Prt1.stp" idContextRef="org--0xbc66cf8" uid="id104" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id16">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000698_A;1-SKF_6306-2Z7097_Prt2.stp">
+				<Identifier id="000698_A;1-SKF_6306-2Z7097_Prt2.stp" idContextRef="org--0xbc66cf8" uid="id105" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id106">
+					<Id id="000698_A;1-SKF_6306-2Z7097_Prt2.stp">
+						<Identifier id="000698_A;1-SKF_6306-2Z7097_Prt2.stp" idContextRef="org--0xbc66cf8" uid="id107" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id17">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000699_A;1-SKF_6306-2Z7097_Prt3.stp">
+				<Identifier id="000699_A;1-SKF_6306-2Z7097_Prt3.stp" idContextRef="org--0xbc66cf8" uid="id108" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id109">
+					<Id id="000699_A;1-SKF_6306-2Z7097_Prt3.stp">
+						<Identifier id="000699_A;1-SKF_6306-2Z7097_Prt3.stp" idContextRef="org--0xbc66cf8" uid="id110" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<File xsi:type="n0:DigitalFile" uid="id18">
+			<FileFormat uidRef="ffp--XML" />
+			<FileType>
+				<Class uidRef="dtp--JT" />
+			</FileType>
+			<Id id="000692_A;1-Flange_Machined.stp">
+				<Identifier id="000692_A;1-Flange_Machined.stp" idContextRef="org--0xbc66cf8" uid="id111" />
+			</Id>
+			<Locations>
+				<ExternalItem uid="id112">
+					<Id id="000692_A;1-Flange_Machined.stp">
+						<Identifier id="000692_A;1-Flange_Machined.stp" idContextRef="org--0xbc66cf8" uid="id113" />
+					</Id>
+					<Source>
+						<IdentifierString>.\</IdentifierString>
+					</Source>
+				</ExternalItem>
+			</Locations>
+		</File>
+		<Part uid="id114">
+			<Id id="000687_A_1-INDUCTION MOTOR ASSY 5HP">
+				<Identifier id="000687_A_1-INDUCTION MOTOR ASSY 5HP" idContextRef="org--0xbc66cf8" uid="id115" />
+			</Id>
+			<Name>
+				<CharacterString>000687_A_1-INDUCTION MOTOR ASSY 5HP</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>assembly</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id116">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id117" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id118">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id260">
+								<Related uidRef="id21" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id298">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>0 0 0</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id264">
+								<Related uidRef="id25" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id302">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>0 0 0</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id265">
+								<Related uidRef="id26" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id303">
+										<RotationMatrix>0 0 -1 0 1 0 1 -0 0</RotationMatrix>
+										<TranslationVector>-87.24575 -21.918383 112.22047</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id266">
+								<Related uidRef="id27" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id304">
+										<RotationMatrix>0 0 1 0 1 -0 -1 0 0</RotationMatrix>
+										<TranslationVector>-86.74575 -21.918383 85</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id267">
+								<Related uidRef="id28" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id305">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>0 0 -14.76293</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id268">
+								<Related uidRef="id29" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id306">
+										<RotationMatrix>0 1 0 -1 0 0 0 -0 1</RotationMatrix>
+										<TranslationVector>-86.74575 -4.9183822 168</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id269">
+								<Related uidRef="id30" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id307">
+										<RotationMatrix>0 -1 0 1 0 0 -0 0 1</RotationMatrix>
+										<TranslationVector>-85.855751 -143.91838 -14.5</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id270">
+								<Related uidRef="id31" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id308">
+										<RotationMatrix>0.92387953 0.38268344 0 -0.38268344 0.92387953 0 0 -0 1</RotationMatrix>
+										<TranslationVector>-14.990963 31.527739 -22.271</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id282">
+								<Related uidRef="id43" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id320">
+										<RotationMatrix>0 0 -1 0 1 0 1 -0 0</RotationMatrix>
+										<TranslationVector>-86.74575 -21.918383 -122.5</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id283">
+								<Related uidRef="id44" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id321">
+										<RotationMatrix>0.76604443 0.64278763 0 -0.64278763 0.76604443 0 0 -0 1</RotationMatrix>
+										<TranslationVector>-34.383514 50.631165 -11</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id294">
+								<Related uidRef="id55" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id332">
+										<RotationMatrix>0 0 1 0 1 -0 -1 0 0</RotationMatrix>
+										<TranslationVector>-86.74575 -21.918383 92</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id295">
+								<Related uidRef="id56" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id333">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>0 0 -4</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id120">
+			<Id id="000695_A;1-Rotor Core Assembly with Shaft">
+				<Identifier id="000695_A;1-Rotor Core Assembly with Shaft" idContextRef="org--0xbc66cf8" uid="id121" />
+			</Id>
+			<Name>
+				<CharacterString>000695_A;1-Rotor Core Assembly with Shaft</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>assembly</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id122">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id123" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id124">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id21">
+								<Id id="000695_A;1-Rotor Core Assembly with Shaft" />
+							</Occurrence>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id258">
+								<Related uidRef="id19" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id296">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>0 0 -13.5</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id259">
+								<Related uidRef="id20" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id297">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>-2.2168933e-12 0 3</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id126">
+			<Id id="000733_B;1-Laminated_Rotor_Core_with Copper Rings">
+				<Identifier id="000733_B;1-Laminated_Rotor_Core_with Copper Rings" idContextRef="org--0xbc66cf8" uid="id127" />
+			</Id>
+			<Name>
+				<CharacterString>000733_B;1-Laminated_Rotor_Core_with Copper Rings</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id128">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id129" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id130">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id19">
+								<Id id="000733_B;1-Laminated_Rotor_Core_with Copper Rings" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id131">
+								<AssignedDocument uidRef="id0" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id132">
+			<Id id="000684_B;1-Rotor Shaft Machined">
+				<Identifier id="000684_B;1-Rotor Shaft Machined" idContextRef="org--0xbc66cf8" uid="id133" />
+			</Id>
+			<Name>
+				<CharacterString>000684_B;1-Rotor Shaft Machined</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id134">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id135" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id136">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id20">
+								<Id id="000684_B;1-Rotor Shaft Machined" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id137">
+								<AssignedDocument uidRef="id1" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id138">
+			<Id id="000696_A;1-Stator Assembly">
+				<Identifier id="000696_A;1-Stator Assembly" idContextRef="org--0xbc66cf8" uid="id139" />
+			</Id>
+			<Name>
+				<CharacterString>000696_A;1-Stator Assembly</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>assembly</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id140">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id141" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id142">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id25">
+								<Id id="000696_A;1-Stator Assembly" />
+							</Occurrence>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id261">
+								<Related uidRef="id22" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id299">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>0 0 9</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id262">
+								<Related uidRef="id23" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id300">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>0 0 -11.5</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id263">
+								<Related uidRef="id24" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id301">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>0 0 -3</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id144">
+			<Id id="000689_A;1-Motor Cover Machined">
+				<Identifier id="000689_A;1-Motor Cover Machined" idContextRef="org--0xbc66cf8" uid="id145" />
+			</Id>
+			<Name>
+				<CharacterString>000689_A;1-Motor Cover Machined</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id146">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id147" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id148">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id22">
+								<Id id="000689_A;1-Motor Cover Machined" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id149">
+								<AssignedDocument uidRef="id2" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id150">
+			<Id id="000685_A;1-Coil for Three Phase Winding">
+				<Identifier id="000685_A;1-Coil for Three Phase Winding" idContextRef="org--0xbc66cf8" uid="id151" />
+			</Id>
+			<Name>
+				<CharacterString>000685_A;1-Coil for Three Phase Winding</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id152">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id153" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id154">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id23">
+								<Id id="000685_A;1-Coil for Three Phase Winding" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id155">
+								<AssignedDocument uidRef="id3" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id156">
+			<Id id="000682_A;1-Laminated Stator Core">
+				<Identifier id="000682_A;1-Laminated Stator Core" idContextRef="org--0xbc66cf8" uid="id157" />
+			</Id>
+			<Name>
+				<CharacterString>000682_A;1-Laminated Stator Core</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id158">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id159" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id160">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id24">
+								<Id id="000682_A;1-Laminated Stator Core" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id161">
+								<AssignedDocument uidRef="id4" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id162">
+			<Id id="000681_A;1-External Circlip">
+				<Identifier id="000681_A;1-External Circlip" idContextRef="org--0xbc66cf8" uid="id163" />
+			</Id>
+			<Name>
+				<CharacterString>000681_A;1-External Circlip</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id164">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id165" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id166">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id26">
+								<Id id="000681_A;1-External Circlip" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id167">
+								<AssignedDocument uidRef="id5" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id168">
+			<Id id="000688_A;1-Bearing Holder_Machined">
+				<Identifier id="000688_A;1-Bearing Holder_Machined" idContextRef="org--0xbc66cf8" uid="id169" />
+			</Id>
+			<Name>
+				<CharacterString>000688_A;1-Bearing Holder_Machined</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id170">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id171" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id172">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id27">
+								<Id id="000688_A;1-Bearing Holder_Machined" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id173">
+								<AssignedDocument uidRef="id6" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id174">
+			<Id id="000683_A;1-Centrifugal Fan">
+				<Identifier id="000683_A;1-Centrifugal Fan" idContextRef="org--0xbc66cf8" uid="id175" />
+			</Id>
+			<Name>
+				<CharacterString>000683_A;1-Centrifugal Fan</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id176">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id177" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id178">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id28">
+								<Id id="000683_A;1-Centrifugal Fan" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id179">
+								<AssignedDocument uidRef="id7" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id180">
+			<Id id="000700_A;1-Rotor Shaft Key">
+				<Identifier id="000700_A;1-Rotor Shaft Key" idContextRef="org--0xbc66cf8" uid="id181" />
+			</Id>
+			<Name>
+				<CharacterString>000700_A;1-Rotor Shaft Key</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id182">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id183" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id184">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id29">
+								<Id id="000700_A;1-Rotor Shaft Key" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id185">
+								<AssignedDocument uidRef="id8" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id186">
+			<Id id="000686_A;1-Terminal Box_Machined">
+				<Identifier id="000686_A;1-Terminal Box_Machined" idContextRef="org--0xbc66cf8" uid="id187" />
+			</Id>
+			<Name>
+				<CharacterString>000686_A;1-Terminal Box_Machined</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id188">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id189" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id190">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id30">
+								<Id id="000686_A;1-Terminal Box_Machined" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id191">
+								<AssignedDocument uidRef="id9" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id192">
+			<Id id="000693_A;1-Fan Cover">
+				<Identifier id="000693_A;1-Fan Cover" idContextRef="org--0xbc66cf8" uid="id193" />
+			</Id>
+			<Name>
+				<CharacterString>000693_A;1-Fan Cover</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id194">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id195" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id196">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id31">
+								<Id id="000693_A;1-Fan Cover" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id197">
+								<AssignedDocument uidRef="id10" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id198">
+			<Id id="000694_B;1-SKF_6205_2Z16653_Deep Groove Ball Bearing">
+				<Identifier id="000694_B;1-SKF_6205_2Z16653_Deep Groove Ball Bearing" idContextRef="org--0xbc66cf8" uid="id199" />
+			</Id>
+			<Name>
+				<CharacterString>000694_B;1-SKF_6205_2Z16653_Deep Groove Ball Bearing</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>assembly</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id200">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id201" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id202">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id43">
+								<Id id="000694_B;1-SKF_6205_2Z16653_Deep Groove Ball Bearing" />
+							</Occurrence>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id271">
+								<Related uidRef="id32" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id309">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>-7.6293945e-06 0 7.6293945e-06</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id272">
+								<Related uidRef="id33" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id310">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>-7.6293945e-06 0 7.6293945e-06</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id273">
+								<Related uidRef="id34" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id311">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>-7.6293945e-06 0 7.6293945e-06</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id274">
+								<Related uidRef="id35" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id312">
+										<RotationMatrix>1 0 0 0 0.76604443 -0.64278763 -0 0.64278763 0.76604443</RotationMatrix>
+										<TranslationVector>-7.6293945e-06 0 7.6293945e-06</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id275">
+								<Related uidRef="id36" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id313">
+										<RotationMatrix>1 0 0 0 0.17364818 -0.98480775 -0 0.98480775 0.17364818</RotationMatrix>
+										<TranslationVector>-7.6293945e-06 0 7.6293945e-06</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id276">
+								<Related uidRef="id37" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id314">
+										<RotationMatrix>1 0 0 0 -0.50000001 -0.8660254 0 0.8660254 -0.50000001</RotationMatrix>
+										<TranslationVector>-7.6293945e-06 0 7.6293945e-06</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id277">
+								<Related uidRef="id38" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id315">
+										<RotationMatrix>1 0 0 0 -0.93969262 -0.34202015 0 0.34202015 -0.93969262</RotationMatrix>
+										<TranslationVector>-7.6293945e-06 0 7.6293945e-06</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id278">
+								<Related uidRef="id39" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id316">
+										<RotationMatrix>1 0 0 0 -0.93969262 0.34202015 0 -0.34202015 -0.93969262</RotationMatrix>
+										<TranslationVector>-7.6293945e-06 0 7.6293945e-06</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id279">
+								<Related uidRef="id40" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id317">
+										<RotationMatrix>1 0 0 0 -0.50000001 0.8660254 0 -0.8660254 -0.50000001</RotationMatrix>
+										<TranslationVector>-7.6293945e-06 0 7.6293945e-06</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id280">
+								<Related uidRef="id41" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id318">
+										<RotationMatrix>1 0 0 -0 0.17364818 0.98480775 0 -0.98480775 0.17364818</RotationMatrix>
+										<TranslationVector>-7.6293945e-06 0 7.6293945e-06</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id281">
+								<Related uidRef="id42" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id319">
+										<RotationMatrix>1 0 0 -0 0.76604443 0.64278763 0 -0.64278763 0.76604443</RotationMatrix>
+										<TranslationVector>-7.6293945e-06 0 7.6293945e-06</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id204">
+			<Id id="000701_A;1-SKF_6205-2Z16653_Prt1">
+				<Identifier id="000701_A;1-SKF_6205-2Z16653_Prt1" idContextRef="org--0xbc66cf8" uid="id205" />
+			</Id>
+			<Name>
+				<CharacterString>000701_A;1-SKF_6205-2Z16653_Prt1</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id206">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id207" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id208">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id32">
+								<Id id="000701_A;1-SKF_6205-2Z16653_Prt1" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id209">
+								<AssignedDocument uidRef="id11" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id210">
+			<Id id="000678_A;1-SKF_6306-2Z7097_Prt2">
+				<Identifier id="000678_A;1-SKF_6306-2Z7097_Prt2" idContextRef="org--0xbc66cf8" uid="id211" />
+			</Id>
+			<Name>
+				<CharacterString>000678_A;1-SKF_6306-2Z7097_Prt2</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id212">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id213" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id214">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id33">
+								<Id id="000678_A;1-SKF_6306-2Z7097_Prt2" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id215">
+								<AssignedDocument uidRef="id12" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id216">
+			<Id id="000680_A;1-SKF_6306-2Z7097_Prt3">
+				<Identifier id="000680_A;1-SKF_6306-2Z7097_Prt3" idContextRef="org--0xbc66cf8" uid="id217" />
+			</Id>
+			<Name>
+				<CharacterString>000680_A;1-SKF_6306-2Z7097_Prt3</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id218">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id219" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id220">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id34">
+								<Id id="000680_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id35">
+								<Id id="000680_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id36">
+								<Id id="000680_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id37">
+								<Id id="000680_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id38">
+								<Id id="000680_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id39">
+								<Id id="000680_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id40">
+								<Id id="000680_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id41">
+								<Id id="000680_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id42">
+								<Id id="000680_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id221">
+								<AssignedDocument uidRef="id13" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id222">
+			<Id id="000679_A;1-End Bell_Machined">
+				<Identifier id="000679_A;1-End Bell_Machined" idContextRef="org--0xbc66cf8" uid="id223" />
+			</Id>
+			<Name>
+				<CharacterString>000679_A;1-End Bell_Machined</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id224">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id225" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id226">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id44">
+								<Id id="000679_A;1-End Bell_Machined" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id227">
+								<AssignedDocument uidRef="id14" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id228">
+			<Id id="000691_A;1-SKF_6205_2Z7097_Deep Groove Ball Bearing">
+				<Identifier id="000691_A;1-SKF_6205_2Z7097_Deep Groove Ball Bearing" idContextRef="org--0xbc66cf8" uid="id229" />
+			</Id>
+			<Name>
+				<CharacterString>000691_A;1-SKF_6205_2Z7097_Deep Groove Ball Bearing</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>assembly</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id230">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id231" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id232">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id55">
+								<Id id="000691_A;1-SKF_6205_2Z7097_Deep Groove Ball Bearing" />
+							</Occurrence>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id284">
+								<Related uidRef="id45" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id322">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>0 0 0</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id285">
+								<Related uidRef="id46" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id323">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>0 0 0</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id286">
+								<Related uidRef="id47" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id324">
+										<RotationMatrix>1 0 0 0 1 0 0 0 1</RotationMatrix>
+										<TranslationVector>0 0 0</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id287">
+								<Related uidRef="id48" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id325">
+										<RotationMatrix>1 0 0 0 0.70710678 -0.70710678 -0 0.70710678 0.70710678</RotationMatrix>
+										<TranslationVector>0 0 0</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id288">
+								<Related uidRef="id49" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id326">
+										<RotationMatrix>1 0 0 0 0 -1 -0 1 0</RotationMatrix>
+										<TranslationVector>0 0 0</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id289">
+								<Related uidRef="id50" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id327">
+										<RotationMatrix>1 0 0 0 -0.70710678 -0.70710678 0 0.70710678 -0.70710678</RotationMatrix>
+										<TranslationVector>0 0 0</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id290">
+								<Related uidRef="id51" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id328">
+										<RotationMatrix>1 0 0 0 -1 0 0 0 -1</RotationMatrix>
+										<TranslationVector>0 0 0</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id291">
+								<Related uidRef="id52" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id329">
+										<RotationMatrix>1 0 0 0 -0.70710678 0.70710678 0 -0.70710678 -0.70710678</RotationMatrix>
+										<TranslationVector>0 0 0</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id292">
+								<Related uidRef="id53" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id330">
+										<RotationMatrix>1 0 0 -0 0 1 0 -1 0</RotationMatrix>
+										<TranslationVector>0 0 0</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+							<ViewOccurrenceRelationship xsi:type="n0:NextAssemblyOccurrenceUsage" uid="id293">
+								<Related uidRef="id54" />
+								<RelationType>
+									<ClassString>next assembly occurrence</ClassString>
+								</RelationType>
+								<Placement>
+									<CartesianTransformation uid="id331">
+										<RotationMatrix>1 0 0 -0 0.70710678 0.70710678 0 -0.70710678 0.70710678</RotationMatrix>
+										<TranslationVector>0 0 0</TranslationVector>
+									</CartesianTransformation>
+								</Placement>
+							</ViewOccurrenceRelationship>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id234">
+			<Id id="000697_A;1-SKF_6306-2Z7097_Prt1">
+				<Identifier id="000697_A;1-SKF_6306-2Z7097_Prt1" idContextRef="org--0xbc66cf8" uid="id235" />
+			</Id>
+			<Name>
+				<CharacterString>000697_A;1-SKF_6306-2Z7097_Prt1</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id236">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id237" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id238">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id45">
+								<Id id="000697_A;1-SKF_6306-2Z7097_Prt1" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id239">
+								<AssignedDocument uidRef="id15" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id240">
+			<Id id="000698_A;1-SKF_6306-2Z7097_Prt2">
+				<Identifier id="000698_A;1-SKF_6306-2Z7097_Prt2" idContextRef="org--0xbc66cf8" uid="id241" />
+			</Id>
+			<Name>
+				<CharacterString>000698_A;1-SKF_6306-2Z7097_Prt2</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id242">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id243" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id244">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id46">
+								<Id id="000698_A;1-SKF_6306-2Z7097_Prt2" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id245">
+								<AssignedDocument uidRef="id16" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id246">
+			<Id id="000699_A;1-SKF_6306-2Z7097_Prt3">
+				<Identifier id="000699_A;1-SKF_6306-2Z7097_Prt3" idContextRef="org--0xbc66cf8" uid="id247" />
+			</Id>
+			<Name>
+				<CharacterString>000699_A;1-SKF_6306-2Z7097_Prt3</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id248">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id249" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id250">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id47">
+								<Id id="000699_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id48">
+								<Id id="000699_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id49">
+								<Id id="000699_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id50">
+								<Id id="000699_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id51">
+								<Id id="000699_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id52">
+								<Id id="000699_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id53">
+								<Id id="000699_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id54">
+								<Id id="000699_A;1-SKF_6306-2Z7097_Prt3" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id251">
+								<AssignedDocument uidRef="id17" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Part uid="id252">
+			<Id id="000692_A;1-Flange_Machined">
+				<Identifier id="000692_A;1-Flange_Machined" idContextRef="org--0xbc66cf8" uid="id253" />
+			</Id>
+			<Name>
+				<CharacterString>000692_A;1-Flange_Machined</CharacterString>
+			</Name>
+			<PartTypes>
+				<ClassString>piece part</ClassString>
+			</PartTypes>
+			<Versions>
+				<PartVersion uid="id254">
+					<Id id="">
+						<Identifier id="" idContextRef="org--0xbc66cf8" uid="id255" />
+					</Id>
+					<Views>
+						<PartView xsi:type="n0:AssemblyDefinition" uid="id256">
+							<InitialContext uidRef="ac--mechanicaldesign--design" />
+							<Occurrence xsi:type="n0:SingleOccurrence" uid="id56">
+								<Id id="000692_A;1-Flange_Machined" />
+							</Occurrence>
+							<DocumentAssignment xsi:type="n0:DocumentAssignment" uid="id257">
+								<AssignedDocument uidRef="id18" />
+								<Role>
+									<ClassString>mandatory</ClassString>
+								</Role>
+							</DocumentAssignment>
+						</PartView>
+					</Views>
+				</PartVersion>
+			</Versions>
+		</Part>
+		<Unit uid="ecs--unit">
+			<Kind>
+				<ClassString>SI system</ClassString>
+			</Kind>
+			<Name>
+				<ClassString>metre</ClassString>
+			</Name>
+			<Prefix>
+				<ClassString>milli</ClassString>
+			</Prefix>
+		</Unit>
+	</DataContainer>
+</n0:Uos>

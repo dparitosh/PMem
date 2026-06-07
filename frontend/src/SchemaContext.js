@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
-import config from './config';
+import { API, buildUrl } from './config';
+import { apiClient } from './services/apiClient';
 
 const SchemaContext = createContext(null);
 
@@ -14,10 +14,35 @@ export function SchemaProvider({ children }) {
 
   useEffect(() => {
     let cancelled = false;
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const shouldRetry = (err) => {
+      const code = String(err?.code || '').toUpperCase();
+      const msg = String(err?.message || '').toLowerCase();
+      return (
+        code === 'ERR_NETWORK' ||
+        code === 'ECONNABORTED' ||
+        msg.includes('timeout') ||
+        msg.includes('connection refused') ||
+        msg.includes('connection reset')
+      );
+    };
+
     const fetchSchema = async () => {
+      const maxAttempts = 3;
       try {
-        const res = await axios.get(`${config.apiUrl}/schema`, { timeout: 10000 });
-        if (!cancelled) setSchema(res.data);
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          try {
+            const res = await apiClient.get(buildUrl(API.schema.schema), { timeout: 20000 });
+            if (!cancelled) setSchema(res.data);
+            return;
+          } catch (err) {
+            if (attempt >= maxAttempts || !shouldRetry(err)) {
+              throw err;
+            }
+            await wait(600 * attempt);
+          }
+        }
       } catch (err) {
         console.warn('Failed to fetch graph schema:', err.message);
       } finally {

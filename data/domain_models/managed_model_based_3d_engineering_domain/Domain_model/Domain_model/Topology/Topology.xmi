@@ -1,0 +1,1098 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001" xmlns:sysml="http://www.omg.org/spec/SysML/20150709/SysML" xmlns:StandardProfile="http://www.omg.org/spec/UML/20131001/StandardProfile">
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_e120334_1499417193538_408549_25806application1" xmi:uuid="f984c1f0-fa39-013a-046f-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193054_349108_23474"/>
+  </StandardProfile:Auxiliary>
+  <sysml:BindingConnector xmi:id="_18_4_1_290014c_1508779964132_502176_64397" xmi:uuid="f984a3d0-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1508421476451_4095_39402"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_290014c_1508779964137_525481_64427" xmi:uuid="f984a510-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1508421433629_978203_39360"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_8db01ea_1504775931488_615102_26472" xmi:uuid="f984a6e0-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1504775931478_362864_26469"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_8db01ea_1504775961137_610587_26498" xmi:uuid="f984a780-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1504775961137_747740_26495"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_290014c_1508779964129_688174_64386" xmi:uuid="f984a8b0-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1508487616983_351613_30566"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_8db01ea_1504535521707_275993_43451" xmi:uuid="f984ac40-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1504535521707_830372_43448"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_8db01ea_1504535873454_755043_43719" xmi:uuid="f984acd0-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1504535873454_162457_43716"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_8db01ea_1504536440042_93285_43752" xmi:uuid="f984ad70-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1504536440042_137395_43749"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_8db01ea_1504612584780_588839_44063" xmi:uuid="f984aea0-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1504612584780_128048_44060"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_290014c_1508779964124_954247_64367" xmi:uuid="f984afd0-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1508487838137_924401_30838"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_271a0567_1552489594904_423909_94262" xmi:uuid="f984b100-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_271a0567_1552489594899_89674_94259"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_290014c_1508779964123_855774_64357" xmi:uuid="f984b4f0-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1508419438159_691410_38691"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_271a0567_1555313088381_936698_98591" xmi:uuid="f984b580-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_271a0567_1555313088381_90888_98588"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_290014c_1508779964125_411076_64371" xmi:uuid="f984b7f0-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1508429009891_820791_41482"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_86c026b_1547548730981_348988_104006" xmi:uuid="f984b890-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_86c026b_1547548730980_659112_104003"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_290014c_1505052991886_575919_32375" xmi:uuid="f984be20-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_290014c_1505052991886_81336_32372"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_8db01ea_1590415083799_283889_94303" xmi:uuid="f984bf80-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1590415083799_545698_94300"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_290014c_1508779964108_395719_64288" xmi:uuid="f984c330-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1508423060886_802632_39845"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_290014c_1508779964119_339563_64348" xmi:uuid="f984c3c0-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1508423067703_9876_39869"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_86c026b_1547548730979_682867_104002" xmi:uuid="f984c990-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_86c026b_1547548730978_578_103999"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_290014c_1508779964135_314732_64410" xmi:uuid="f984ca30-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1508423054100_360016_39829"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_290014c_1508779964134_245103_64405" xmi:uuid="f984cb70-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1508423395911_901826_40276"/>
+  </sysml:BindingConnector>
+  <sysml:BindingConnector xmi:id="_18_4_1_290014c_1508779964134_83414_64404" xmi:uuid="f984d080-fa39-013a-046f-52540000fd3c">
+    <base_Connector xmi:idref="_18_4_1_8db01ea_1508423408204_575067_40296"/>
+  </sysml:BindingConnector>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417193538_348691_25801" xmi:uuid="f984a010-fa39-013a-046f-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193053_334749_23473"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417193537_207830_25799" xmi:uuid="f984a470-fa39-013a-046f-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193053_777197_23472"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417193892_852698_28131" xmi:uuid="f984a820-fa39-013a-046f-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193174_913820_23720"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417194102_668048_29116" xmi:uuid="f984b280-fa39-013a-046f-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193274_958104_23888"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417194113_56701_29165" xmi:uuid="f984b620-fa39-013a-046f-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193284_834711_23906"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417193539_258597_25811" xmi:uuid="f984b920-fa39-013a-046f-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193054_780176_23475"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417193640_591787_26562" xmi:uuid="f984c010-fa39-013a-046f-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193082_550704_23533"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417193538_408549_25806" xmi:uuid="f984c150-fa39-013a-046f-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193054_349108_23474"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417194085_757958_29032" xmi:uuid="f984c7c0-fa39-013a-046f-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193258_919763_23864"/>
+  </sysml:Block>
+  <sysml:ConstraintBlock xmi:id="_18_4_1_271a0567_1538757900633_778913_328767" xmi:uuid="f984cff0-fa39-013a-046f-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_271a0567_1538757900609_712874_328762"/>
+  </sysml:ConstraintBlock>
+  <sysml:FlowPort xmi:id="_18_4_1_8db01ea_1504777052192_225458_27005" xmi:uuid="f984a310-fa39-013a-046f-52540000fd3c">
+    <direction>out</direction>
+    <isAtomic>true</isAtomic>
+    <base_Port xmi:idref="_18_4_1_8db01ea_1504777052192_733896_27004"/>
+  </sysml:FlowPort>
+  <sysml:FlowPort xmi:id="_18_4_1_290014c_1508779964135_679594_64412" xmi:uuid="f984b6b0-fa39-013a-046f-52540000fd3c">
+    <direction>out</direction>
+    <isAtomic>true</isAtomic>
+    <base_Port xmi:idref="_18_4_1_8db01ea_1508419354125_221994_38647"/>
+  </sysml:FlowPort>
+  <sysml:FlowPort xmi:id="_18_4_1_8db01ea_1504775891198_304251_26442" xmi:uuid="f984b750-fa39-013a-046f-52540000fd3c">
+    <direction>out</direction>
+    <isAtomic>true</isAtomic>
+    <base_Port xmi:idref="_18_4_1_8db01ea_1504775891198_757289_26441"/>
+  </sysml:FlowPort>
+  <sysml:FlowPort xmi:id="_18_4_1_8db01ea_1504258830597_974928_35313" xmi:uuid="f984b9b0-fa39-013a-046f-52540000fd3c">
+    <direction>out</direction>
+    <isAtomic>true</isAtomic>
+    <base_Port xmi:idref="_18_4_1_8db01ea_1504258830597_625355_35312"/>
+  </sysml:FlowPort>
+  <sysml:FlowPort xmi:id="_18_4_1_290014c_1505052724529_553981_32293" xmi:uuid="f984bc90-fa39-013a-046f-52540000fd3c">
+    <direction>out</direction>
+    <isAtomic>true</isAtomic>
+    <base_Port xmi:idref="_18_4_1_290014c_1505052724529_927647_32292"/>
+  </sysml:FlowPort>
+  <sysml:FlowPort xmi:id="_18_4_1_8db01ea_1504535484049_540814_43423" xmi:uuid="f984bd70-fa39-013a-046f-52540000fd3c">
+    <direction>out</direction>
+    <isAtomic>true</isAtomic>
+    <base_Port xmi:idref="_18_4_1_8db01ea_1504535484049_298145_43422"/>
+  </sysml:FlowPort>
+  <sysml:FlowPort xmi:id="_18_4_1_8db01ea_1504780251897_885640_29964" xmi:uuid="f984bee0-fa39-013a-046f-52540000fd3c">
+    <direction>out</direction>
+    <isAtomic>true</isAtomic>
+    <base_Port xmi:idref="_18_4_1_8db01ea_1504780251897_322679_29963"/>
+  </sysml:FlowPort>
+  <sysml:FlowPort xmi:id="_18_4_1_8db01ea_1504257871172_2795_34811" xmi:uuid="f984c600-fa39-013a-046f-52540000fd3c">
+    <direction>out</direction>
+    <isAtomic>true</isAtomic>
+    <base_Port xmi:idref="_18_4_1_8db01ea_1504257778163_120959_33945"/>
+  </sysml:FlowPort>
+  <sysml:FlowPort xmi:id="_18_4_1_8db01ea_1504613191230_799912_44587" xmi:uuid="f984cad0-fa39-013a-046f-52540000fd3c">
+    <direction>out</direction>
+    <isAtomic>true</isAtomic>
+    <base_Port xmi:idref="_18_4_1_8db01ea_1504613191230_420910_44586"/>
+  </sysml:FlowPort>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_290014c_1508779964142_189761_64454" xmi:uuid="f984a5b0-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_e120334_1499417193537_484989_25800"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_8db01ea_1508421433629_444054_39361"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_290014c_1508779964115_147429_64321" xmi:uuid="f984a640-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_8db01ea_1508421407998_720226_39162"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_8db01ea_1508421433629_466261_39362"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_8db01ea_1504775961157_775181_26503" xmi:uuid="f984a960-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_8db01ea_1508420429885_195413_38762"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_8db01ea_1504775961137_493614_26497"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_8db01ea_1504775961157_95532_26500" xmi:uuid="f984ab90-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_e120334_1499417193537_419903_25798"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_8db01ea_1504775961137_117043_26496"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_8db01ea_1504535873469_300518_43721" xmi:uuid="f984ae00-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_8db01ea_1508429742761_936193_42521"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_8db01ea_1504535873454_39848_43717"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_8db01ea_1504536440042_246703_43754" xmi:uuid="f984af40-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_e120334_1499417193891_374344_28129"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_8db01ea_1504536440042_470665_43750"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_8db01ea_1504536654275_730017_43761" xmi:uuid="f984b070-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_8db01ea_1504535841536_741715_43454"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_8db01ea_1504536440042_247337_43751"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_8db01ea_1504612584780_183102_44065" xmi:uuid="f984b450-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_8db01ea_1504535841536_741715_43454"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_8db01ea_1504612584780_927647_44062"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_290014c_1505052991895_112347_32380" xmi:uuid="f984c0b0-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_8db01ea_1590415022244_396097_94253"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_290014c_1505052991886_48558_32374"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_290014c_1505052991890_985905_32377" xmi:uuid="f984c290-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_e120334_1499417193538_261568_25810"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_290014c_1505052991886_449050_32373"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_290014c_1508779964141_802438_64443" xmi:uuid="f984c6a0-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_e120334_1499417193640_982754_26561"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_8db01ea_1508423060886_318507_39846"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_290014c_1508779964124_560622_64365" xmi:uuid="f984c860-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_e120334_1499417193639_122142_26560"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_8db01ea_1508423067703_40740_39870"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_290014c_1508779964127_436505_64380" xmi:uuid="f984c900-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_8db01ea_1508422993244_528485_39588"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_8db01ea_1508423060886_450124_39847"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_290014c_1508779964124_802504_64362" xmi:uuid="f984cc00-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_8db01ea_1508423312794_396810_39971"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_8db01ea_1508423408204_787946_40298"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_290014c_1508779964138_937618_64433" xmi:uuid="f984cda0-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_e120334_1499417194084_293691_29031"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_8db01ea_1508423408204_196596_40297"/>
+  </sysml:NestedConnectorEnd>
+  <sysml:NestedConnectorEnd xmi:id="_18_4_1_290014c_1508779964119_469996_64347" xmi:uuid="f984cf40-fa39-013a-046f-52540000fd3c">
+    <propertyPath xmi:idref="_18_4_1_8db01ea_1508422993244_528485_39588"/>
+    <base_ConnectorEnd xmi:idref="_18_4_1_8db01ea_1508423067703_299453_39871"/>
+  </sysml:NestedConnectorEnd>
+  <uml:Package xmi:id="_18_4_1_8db01ea_1501686483781_425073_24619" xmi:uuid="a9f59986-2d75-40b7-b9d9-c630cdbe76cb" xmi:type="uml:Package">
+    <ownedComment xmi:id="_18_4_1_8db01ea_1512144797207_202198_39063" xmi:uuid="124aaa5b-c9d8-4881-a6b0-5357cc8d66a8" xmi:type="uml:Comment">
+      <annotatedElement xmi:idref="_18_4_1_8db01ea_1501686483781_425073_24619"/>
+      <body>This capability contains basic topological entities and specialized subtypes independent of a specific usage or geometry.&lt;br&gt; The main topological entities are Vertex and Edge that is connecting two vertices.&lt;br&gt; Edges can be combined into a Path or into ConnectedEdgeSet.&lt;br&gt; SubEdge can be defined by introducing additional vertices on the parent Edge and be used in further subsets of a ConnectedEdgeSet.&lt;br&gt; Entities can be shared by several Representations when they belong to the same RepresentationContext.&lt;br&gt; EdgeBasedTopologicalRepresentationWithLengthConstraint is such a Representation that contains only topological entities and is defined by unspecific points and curves that are independent of any specific coordinates. Only the lengths of the curves are constrained to specific values. </body>
+    </ownedComment>
+    <name>Topology</name>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193537_277083_25796" xmi:uuid="11677adc-a5b1-4d7a-bf29-8d6d1c67bc03" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194357_564190_31049"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417193537_419903_25798"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194357_564190_31049" xmi:uuid="52becbec-4588-4d26-b3fc-ea4543f56e3f" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193053_777197_23472"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194957_979237_36681" xmi:uuid="fccf7be7-6d4c-49f9-8e04-96dcdcb0f8ce" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194957_616193_36680" xmi:uuid="019548ea-239f-4324-8283-eaac48fffb1b" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193537_277083_25796"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193258_919763_23864" xmi:uuid="11bd6d1a-0e8e-48e1-8d54-176df62745fe" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_0_2_8db01ea_1455615543472_424759_42613" xmi:uuid="b4de24a4-2626-4093-852f-5abc2d2059d0" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193258_919763_23864"/>
+        <body>A SubEdge is a type if Edge that represents a piece of an Edge.</body>
+      </ownedComment>
+      <name>SubEdge</name>
+      <generalization xmi:id="_18_4_1_91401df_1718981050299_273225_131763" xmi:uuid="c6007a67-cd8e-48ad-b622-14e96b2429b6" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_e120334_1499417193054_349108_23474"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193639_299463_26554" xmi:uuid="ded988fa-b3cb-4104-8d26-98dbf432aff3" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_e120334_1499417193082_550704_23533"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194084_293691_29031" xmi:uuid="07c297d4-7f64-4eac-987b-b5e88208fefd" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_2_8db01ea_1455616053955_921696_42620" xmi:uuid="dbe27eb3-7f9b-4d86-b46d-e2328569f45b" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194084_293691_29031"/>
+          <body>specifies the parent Edge.</body>
+        </ownedComment>
+        <name>ParentEdge</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193082_550704_23533"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193639_816650_26555"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1504613191230_420910_44586" xmi:uuid="64a0d0ed-6145-41d7-895c-db84c06e726a" xmi:type="uml:Port">
+        <name>subEd</name>
+        <visibility>public</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Subedge"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1508423312794_396810_39971" xmi:uuid="18dc2a9f-bfa6-48bd-9f55-ab90f4dda8d9" xmi:type="uml:Property">
+        <name>representationItem</name>
+        <visibility>private</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Subedge"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_8db01ea_1508423312857_945403_39975"/>
+        <redefinedProperty xmi:idref="_18_4_1_8db01ea_1508422993244_528485_39588"/>
+      </ownedAttribute>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1508423395911_901826_40276" xmi:uuid="bfdbc2be-cee6-4e59-82a3-5811d44147f3" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1508423395911_161937_40277" xmi:uuid="ac8dbdd5-e428-438b-aede-3b12aa1da7e8" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1508423312794_396810_39971"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1508423395911_575378_40278" xmi:uuid="e53315de-0237-40db-a5a9-cc989c6fd2f5" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1504613191230_420910_44586"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1508423408204_575067_40296" xmi:uuid="e53de81d-2c1a-4684-a0fd-36995d83529a" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1508423408204_196596_40297" xmi:uuid="2b81a1fb-a982-48ad-a801-6051e535d2d2" xmi:type="uml:ConnectorEnd">
+          <partWithPort xmi:idref="_18_4_1_e120334_1499417194084_293691_29031"/>
+          <role xmi:idref="_18_4_1_8db01ea_1504257778163_120959_33945"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1508423408204_787946_40298" xmi:uuid="07c0c5dd-c874-4fa5-a12b-5ee8fba60ccf" xmi:type="uml:ConnectorEnd">
+          <role href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_2_attr_SYSML_ARM-Subedge-parent_edge"/>
+        </end>
+      </ownedConnector>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_8db01ea_1508428955217_92859_41440" xmi:uuid="1f726ead-f164-403b-be34-e70f21c0059c" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1508428955217_740371_41441"/>
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1508428955170_803327_41436"/>
+      <ownedEnd xmi:id="_18_4_1_8db01ea_1508428955217_740371_41441" xmi:uuid="e1721d34-d42c-4af8-8248-5ca79c8392e4" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193284_834711_23906"/>
+        <association xmi:idref="_18_4_1_8db01ea_1508428955217_92859_41440"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_8db01ea_1504535841552_888551_43487" xmi:uuid="20629689-a6a2-4b99-8fd3-fb59332a4a02" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1504535841552_820075_43488"/>
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1504535841536_741715_43454"/>
+      <ownedEnd xmi:id="_18_4_1_8db01ea_1504535841552_820075_43488" xmi:uuid="3b5d4136-008a-4f8c-9bd7-ab6b3e752871" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193174_913820_23720"/>
+        <association xmi:idref="_18_4_1_8db01ea_1504535841552_888551_43487"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193174_913820_23720" xmi:uuid="29454f74-64f1-4b81-a2a7-18a7d1722fe6" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_4_1_8db01ea_1513241900011_677448_44299" xmi:uuid="86b3251e-447b-4f80-959f-488ac2fb27bb" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193174_913820_23720"/>
+        <body>A Path is a type of TopologicalRepresentationItem consisting of an ordered collection of Edges, such that the start Vertex of each Edge coincides with the end Vertex of its predecessor. The path is ordered from the EdgeStart of its first Edge to the EdgeEnd of its last Edge An individual Edge can only be referenced once by an individual Path. An Edge can be referenced by multiple Paths. An Edge can exist independently of a Path.</body>
+      </ownedComment>
+      <name>Path</name>
+      <ownedRule xmi:id="_18_0_2_8db01ea_1463066423936_843015_49931" xmi:uuid="6a55824b-e2bc-4296-9d52-d7992635b7a9" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_91401df_1713966165297_510413_138395" xmi:uuid="6059dec4-1946-4964-915e-41519b761543" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_91401df_1713966174760_741937_138396" xmi:uuid="5f79af48-59e0-43c5-9f66-8dc306a074df" xmi:type="uml:Comment">
+            <body>&lt;sch:rule context="//RepresentationItem[@uid and substring-after(@xsi:type,':')='Path']"&gt; &lt;sch:let name="uid" value="@uid"/&gt; &lt;sch:let name="edgeList" value="child::EdgeList/Edge/@uidRef"/&gt; &lt;sch:assert test="every $j in for $i in $edgeList return ( (if ((child::OrientationList/Boolean[index-of($edgeList, $i)]) eq 'true' ) then //*[@uid=$i]/EdgeEnd/@uidRef else //*[@uid=$i]/EdgeStart/@uidRef) eq (if (child::OrientationList/Boolean[1+index-of($edgeList, $i) ] eq 'true') then //*[@uid=$edgeList[1+index-of($edgeList, $i)]]/EdgeStart/@uidRef else //*[@uid=$edgeList[1+index-of($edgeList, $i)]]/EdgeEnd/@uidRef )) satisfies $j=true()"&gt;(Path.WR1 &lt;sch:value-of select="$uid"/&gt;) the end Vertex of each Edge (&lt;sch:value-of select="$edgeList"/&gt;) shall be the same as the start Vertex of its successor.&lt;/sch:assert&gt; &lt;/sch:rule&gt;</body>
+          </ownedComment>
+          <body>Schematron</body>
+        </ownedComment>
+        <ownedComment xmi:id="_18_0_2_8db01ea_1463066462740_880452_49933" xmi:uuid="aff8512d-6819-4113-9123-77989e3484c7" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_271a0567_1539248044785_115872_102817" xmi:uuid="38769a0b-ebbc-4d98-ae01-1e96503d80f2" xmi:type="uml:Comment">
+            <annotatedElement xmi:idref="_18_0_2_8db01ea_1463066462740_880452_49933"/>
+            <body>path_aligned(SELF)</body>
+          </ownedComment>
+          <annotatedElement xmi:idref="_18_0_2_8db01ea_1463066423936_843015_49931"/>
+          <body>the end Vertex of each Edge shall be the same as the start Vertex of its successor. </body>
+        </ownedComment>
+        <name>WR1</name>
+        <constrainedElement xmi:idref="_18_4_1_e120334_1499417193174_913820_23720"/>
+        <specification xmi:id="_18_4_1_8db01ea_1513345488287_637166_76181" xmi:uuid="6f772fd5-5b12-4125-b0bb-f8242b31876f" xmi:type="uml:OpaqueExpression">
+          <body>Sequence{1..self.EdgeList-&gt;size()-1} -&gt;forAll(i | self.EdgeList-&gt;asSequence()-&gt;at(i).EdgeEnd = self.EdgeList-&gt;asSequence()-&gt;at(i+1).EdgeStart)</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <generalization xmi:id="_18_4_1_8db01ea_1551372925394_394938_121458" xmi:uuid="1113f1fa-a8db-4117-8d53-255df6d4ae97" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193179_295269_23733"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193538_513155_25804" xmi:uuid="403f2c8f-9e50-49ec-b841-a26b7e635671" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_e120334_1499417193054_349108_23474"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193891_979096_28128" xmi:uuid="88c97c0a-af34-414d-9c42-71e23f418def" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_e120334_1499417193274_958104_23888"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417193891_374344_28129" xmi:uuid="d90c1327-8046-415e-8ec3-950fe4f7b49a" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_2_8db01ea_1455614174210_576474_42554" xmi:uuid="df3bf343-a8c4-480e-b823-b78c86f95c0c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417193891_374344_28129"/>
+          <body>the list of unique Edge entities which are concatenated together to form this Path.</body>
+        </ownedComment>
+        <name>EdgeList</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193082_550704_23533"/>
+        <isOrdered>true</isOrdered>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194660_101070_33640" xmi:uuid="74c785cd-b5fe-4c88-9a3e-859229d7e6c4" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193638_437391_26552"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417193892_711933_28130" xmi:uuid="f8fe3a47-d1f2-4a45-a1e5-67dda3b8feed" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_2_8db01ea_1455614250230_99385_42555" xmi:uuid="ecd502a4-5672-46b1-a4c1-ecb6b96d032c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417193892_711933_28130"/>
+          <body>the list of Boolean values that specifies the orientation of each Edge in the Path. If TRUE, the topological orientation as used coincides with the orientation, from start Vertex to end Vertex, of the Edge, if FALSE the vertices are reversed in order.</body>
+        </ownedComment>
+        <name>OrientationList</name>
+        <visibility>public</visibility>
+        <type href="../../../../DataTypes.xmi#BOOLEAN"/>
+        <isOrdered>true</isOrdered>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194660_368835_33643" xmi:uuid="72b509f9-3b73-48c9-94a7-0f7cfe5aaf42" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1504535484049_298145_43422" xmi:uuid="53887b82-d521-45c6-b10a-4c424dd61a79" xmi:type="uml:Port">
+        <name>path</name>
+        <visibility>public</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Path"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1504535841536_741715_43454" xmi:uuid="a78a5118-3774-4b00-bbfa-839c61c99e0f" xmi:type="uml:Property">
+        <name>orientedEdge</name>
+        <visibility>private</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Oriented_edge"/>
+        <upperValue xmi:id="_18_4_1_8db01ea_1504536433584_265654_43740" xmi:uuid="95581257-4ded-48b9-b7b4-d5afceb548f4" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_8db01ea_1504535841552_888551_43487"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1508429742761_936193_42521" xmi:uuid="38773106-f980-476f-85d5-ac0a4a2316b6" xmi:type="uml:Property">
+        <name>path_</name>
+        <visibility>private</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Path"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_8db01ea_1508429742808_321430_42525"/>
+        <redefinedProperty xmi:idref="_18_4_1_8db01ea_1508419307038_713768_38625"/>
+      </ownedAttribute>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1504536440042_137395_43749" xmi:uuid="25d6d485-9dee-4b71-bcb1-ef951c539ace" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1504536440042_470665_43750" xmi:uuid="3e772d95-ecd7-4c44-9267-c7ac8ee8614b" xmi:type="uml:ConnectorEnd">
+          <partWithPort xmi:idref="_18_4_1_e120334_1499417193891_374344_28129"/>
+          <role xmi:idref="_18_4_1_8db01ea_1504257778163_120959_33945"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1504536440042_247337_43751" xmi:uuid="e5c758f5-a576-45e2-80e1-85c5d92a23ad" xmi:type="uml:ConnectorEnd">
+          <role href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_2_attr_SYSML_ARM-Oriented_edge-edge_definition"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1508487838137_924401_30838" xmi:uuid="319858d2-a64b-4c2b-92b8-dbaf50f143d0" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1508487838137_342390_30839" xmi:uuid="dcbf2d41-1a83-4d95-8c9c-0413f47ad389" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1508429742761_936193_42521"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1508487838137_104743_30840" xmi:uuid="9b5edf53-18f7-4e1a-82ef-55ef42f7d5fb" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_290014c_1505052724529_927647_32292"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1504535521707_830372_43448" xmi:uuid="8000a3a1-7561-4e28-8dca-1f01cba4d866" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1504535521707_287772_43449" xmi:uuid="62709aab-a056-4a02-bd76-91f290f40aa8" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1508429742761_936193_42521"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1504535521707_444279_43450" xmi:uuid="8291bd0d-6cb0-4180-b452-1e62908094c7" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1504535484049_298145_43422"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1504612584780_128048_44060" xmi:uuid="8af4d8e8-3b6b-4b80-be43-d400ef9e3587" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1504612584780_627197_44061" xmi:uuid="aa862589-a002-411f-9365-e79b8c73f23c" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_e120334_1499417193892_711933_28130"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1504612584780_927647_44062" xmi:uuid="017f7095-f9ce-496e-a84e-c9c60e9be04a" xmi:type="uml:ConnectorEnd">
+          <role href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_2_attr_SYSML_ARM-Oriented_edge-orientation"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_271a0567_1552489594899_89674_94259" xmi:uuid="d3a03fcd-e68f-4ebc-9f39-05a5a6d06a39" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_271a0567_1552489594902_793898_94260" xmi:uuid="858894a2-272c-4bfb-8d60-149f44e0ea0b" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1508429742761_936193_42521"/>
+        </end>
+        <end xmi:id="_18_4_1_271a0567_1552489594903_894967_94261" xmi:uuid="481cc926-eb46-4d06-a5ad-e5704966ff4b" xmi:type="uml:ConnectorEnd">
+          <role href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_8db01ea_1513939809341_358030_102979"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1504535873454_162457_43716" xmi:uuid="e19c7453-3569-4d82-9c9a-e6af87fd7289" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1504535873454_39848_43717" xmi:uuid="4bea2fcb-d102-4f82-8917-77e08be802f0" xmi:type="uml:ConnectorEnd">
+          <role href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_2_attr_SYSML_ARM-Path-edge_list"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1504535873454_896144_43718" xmi:uuid="b9fb9ec2-701c-4846-a88d-cb87a963488a" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1504535841536_741715_43454"/>
+        </end>
+      </ownedConnector>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_8db01ea_1508419307116_396335_38629" xmi:uuid="34f3547f-1388-42b8-a8bf-d1655571ed72" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1508419307116_133775_38630"/>
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1508419307038_713768_38625"/>
+      <ownedEnd xmi:id="_18_4_1_8db01ea_1508419307116_133775_38630" xmi:uuid="8d1e6127-5be6-4ae8-ba6d-9d9278d39c9c" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193274_958104_23888"/>
+        <association xmi:idref="_18_4_1_8db01ea_1508419307116_396335_38629"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193274_958104_23888" xmi:uuid="5a5cb5c7-f773-4b6b-b753-797e9dc18c5d" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_0_2_8db01ea_1456412537072_644137_43497" xmi:uuid="a8445388-78fa-4b3e-86fb-cf0223d5c8d6" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193274_958104_23888"/>
+        <body>A TopologicalRepresentationItem is a type of RepresentationItem that represents a single element of the topology, or connectivity, of the entities that make up the representation of an object. A TopologicalRepresentationItem is either a ConnectedEdgeSet or an Edge or a Vertex or a Path.</body>
+      </ownedComment>
+      <name>TopologicalRepresentationItem</name>
+      <generalization xmi:id="_18_4_1_e120334_1499417194010_441856_28704" xmi:uuid="550ff5be-979d-4979-b7f3-230c4853c5a9" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193222_666164_23810"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_271a0567_1555059705060_954214_99792" xmi:uuid="a4d030e9-008a-4090-accf-ba27a9d7a503" xmi:type="uml:Generalization">
+        <general href="../ShapeAssociationAndStructure/ShapeAssociationAndStructure.xmi#_18_4_1_271a0567_1555059574899_870009_99787"/>
+      </generalization>
+      <isAbstract>true</isAbstract>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1508419307038_713768_38625" xmi:uuid="4877422d-1dd6-470e-98a9-b8107c0e3a44" xmi:type="uml:Property">
+        <name>topological_representation_item</name>
+        <visibility>protected</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Detailed_topological_model_element"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_8db01ea_1508419307116_396335_38629"/>
+        <redefinedProperty href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_290014c_1507735579049_573722_35994"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1508419354125_221994_38647" xmi:uuid="7647c8f4-cf2c-4779-a044-3451efc0406b" xmi:type="uml:Port">
+        <name>topologicalRepresentationItem</name>
+        <visibility>public</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Detailed_topological_model_element"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1508419438159_691410_38691" xmi:uuid="0941c8a4-8cf8-4a76-8803-3c46413e34ef" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1508419438159_827231_38692" xmi:uuid="4d81869b-d80c-4d3c-afe2-5f1513f44f73" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1508419307038_713768_38625"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1508419438159_161546_38693" xmi:uuid="528fa265-28cb-40a0-9f5c-c2f2d0f6b65e" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1508419354125_221994_38647"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_271a0567_1555313088381_90888_98588" xmi:uuid="c67e4bbf-5d4d-4b03-9c1e-292e8b87dec2" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_271a0567_1555313088381_74921_98589" xmi:uuid="8ce9fe7d-8b10-48cd-9cc4-e31ca0dbc61b" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1508419307038_713768_38625"/>
+        </end>
+        <end xmi:id="_18_4_1_271a0567_1555313088381_776927_98590" xmi:uuid="052cbf80-0a4b-4582-b0ad-0075574ad536" xmi:type="uml:ConnectorEnd">
+          <role href="../ShapeAssociationAndStructure/ShapeAssociationAndStructure.xmi#_18_4_1_271a0567_1555059727075_256988_99795"/>
+        </end>
+      </ownedConnector>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_8db01ea_1508420429947_787407_38766" xmi:uuid="5ad3b9d9-5e54-4b1a-99ff-10e5bb736c82" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1508420429947_116186_38767"/>
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1508420429885_195413_38762"/>
+      <ownedEnd xmi:id="_18_4_1_8db01ea_1508420429947_116186_38767" xmi:uuid="9488431a-f975-4963-8cbf-347a06f8a1d8" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193053_777197_23472"/>
+        <association xmi:idref="_18_4_1_8db01ea_1508420429947_787407_38766"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193054_349108_23474" xmi:uuid="686e7633-3331-40dc-8fc1-950615c8da8c" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_0_2_8db01ea_1454938500126_778308_42792" xmi:uuid="9101a591-2751-4462-8e4f-e1b4aee759b7" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193054_349108_23474"/>
+      </ownedComment>
+      <name>EdgeBasedWeightedGraphRepresentationItemsSelect</name>
+      <isAbstract>true</isAbstract>
+      <ownedAttribute xmi:id="_18_4_1_290014c_1505052724529_927647_32292" xmi:uuid="46b32dae-f0f8-4349-ad83-9c108e4b455c" xmi:type="uml:Port">
+        <name>edgeBasedWeightedGraphRepresentationItemsSelect</name>
+        <visibility>public</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-edge_based_weighted_graph_representation_items"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_8db01ea_1508429742808_321430_42525" xmi:uuid="76c0b24e-0543-4c59-b3ad-f266d23b810a" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1508429742808_838328_42526"/>
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1508429742761_936193_42521"/>
+      <ownedEnd xmi:id="_18_4_1_8db01ea_1508429742808_838328_42526" xmi:uuid="ec9a46f3-62f6-494b-b4a3-0bcef2c32ae4" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193174_913820_23720"/>
+        <association xmi:idref="_18_4_1_8db01ea_1508429742808_321430_42525"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_8db01ea_1590415022310_485159_94257" xmi:uuid="7cd3d6dc-0679-46ab-8161-e5f286019ea0" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1590415022311_52729_94258"/>
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1590415022244_396097_94253"/>
+      <ownedEnd xmi:id="_18_4_1_8db01ea_1590415022311_52729_94258" xmi:uuid="4f4ccd64-9223-4110-b3d8-0ff6eaadc36d" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193054_780176_23475"/>
+        <association xmi:idref="_18_4_1_8db01ea_1590415022310_485159_94257"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193284_834711_23906" xmi:uuid="98791aba-f3a3-41a7-93cc-291ba609023c" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_0_2_8db01ea_1453383949510_779369_45199" xmi:uuid="4780e84e-fca5-4d02-a863-a2d28b6f2530" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193284_834711_23906"/>
+        <body>A Vertex is a type of TopologicalRepresentationItem that is a point of interest in topological space and it has dimensionality 0.</body>
+      </ownedComment>
+      <name>Vertex</name>
+      <generalization xmi:id="_18_4_1_e120334_1499417193905_106992_28199" xmi:uuid="2a20298b-4a68-4380-91c7-17573989bae0" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193179_295269_23733"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417194102_38055_29115" xmi:uuid="449c7b5a-c209-4763-87e3-742d455cbf2d" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_e120334_1499417193274_958104_23888"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1504258830597_625355_35312" xmi:uuid="8662a47b-9a89-4d59-8b7d-c49eea79070b" xmi:type="uml:Port">
+        <name>ver</name>
+        <visibility>public</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Vertex"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1508428955170_803327_41436" xmi:uuid="377897b1-a931-41b3-b9ae-cbb13e507f81" xmi:type="uml:Property">
+        <name>representationItem</name>
+        <visibility>protected</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Vertex"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_8db01ea_1508428955217_92859_41440"/>
+        <redefinedProperty xmi:idref="_18_4_1_8db01ea_1508419307038_713768_38625"/>
+      </ownedAttribute>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1508429009891_820791_41482" xmi:uuid="3fa8bcee-5751-4cd7-8bbc-c7f550738f4b" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1508429009891_108008_41483" xmi:uuid="1156baeb-f449-4a56-899e-86cfce2d8c9a" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1508428955170_803327_41436"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1508429009891_708881_41484" xmi:uuid="e88e6f41-0568-4ba3-b766-aa2621d44c7c" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1504258830597_625355_35312"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_86c026b_1547548730980_659112_104003" xmi:uuid="d2021a4a-36b1-450d-986c-9991003d79ed" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_86c026b_1547548730980_719102_104004" xmi:uuid="902322d7-6083-4f75-aeae-bc2033e43ffc" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1508428955170_803327_41436"/>
+        </end>
+        <end xmi:id="_18_4_1_86c026b_1547548730980_490691_104005" xmi:uuid="e3bee3bc-d568-4d0d-a401-d47d6cb6b2c8" xmi:type="uml:ConnectorEnd">
+          <role href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_8db01ea_1513939809341_358030_102979"/>
+        </end>
+      </ownedConnector>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193053_334749_23473" xmi:uuid="b6fd3939-71b9-4f7c-bfaf-2633b89a40ed" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_0_2_8db01ea_1454938300163_552806_42790" xmi:uuid="d4adeee4-b3ce-47c0-a905-f7ecafec1798" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193053_334749_23473"/>
+        <body>A ConnectedEdgeSubSet is a type of ConnectedEdgeSet that represents a sub-set of a parent ConnectedEdgeSet.</body>
+      </ownedComment>
+      <name>ConnectedEdgeSubSet</name>
+      <generalization xmi:id="_18_4_1_e120334_1499417193537_816450_25795" xmi:uuid="c3697227-4652-4d17-ac4b-7b83a54a18a0" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_e120334_1499417193053_777197_23472"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417193537_484989_25800" xmi:uuid="2b14ccd2-50c4-4bbc-95c5-eb331eef32d8" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_2_8db01ea_1454938392327_663004_42791" xmi:uuid="7c85eda8-01c4-487c-b448-b1136abf0a2c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417193537_484989_25800"/>
+          <body>specifies the parent ConnectedEdgeSet.</body>
+        </ownedComment>
+        <name>ParentEdgeSet</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193053_777197_23472"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193537_303037_25793"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1504777052192_733896_27004" xmi:uuid="efad7571-60bc-402e-a73d-ff476d642ec8" xmi:type="uml:Port">
+        <name>connectedEdgeSubSet</name>
+        <visibility>public</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Connected_edge_sub_set"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1508421407998_720226_39162" xmi:uuid="4ba07429-ee0d-40b5-883b-0165b926c6f3" xmi:type="uml:Property">
+        <name>connected_edge_sub_set</name>
+        <visibility>private</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Connected_edge_sub_set"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_8db01ea_1508421408060_124764_39166"/>
+        <redefinedProperty xmi:idref="_18_4_1_8db01ea_1508420429885_195413_38762"/>
+      </ownedAttribute>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1508421433629_978203_39360" xmi:uuid="6b378388-79d4-4493-b606-fd5537fe6aa2" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1508421433629_444054_39361" xmi:uuid="07f04506-888f-417d-b19b-cf31c24413bc" xmi:type="uml:ConnectorEnd">
+          <partWithPort xmi:idref="_18_4_1_e120334_1499417193537_484989_25800"/>
+          <role xmi:idref="_18_4_1_8db01ea_1504775891198_757289_26441"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1508421433629_466261_39362" xmi:uuid="1a3ed0bc-ac58-42fc-9ae6-87c736af7d61" xmi:type="uml:ConnectorEnd">
+          <role href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_2_attr_SYSML_ARM-Connected_edge_sub_set-parent_edge_set"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1508421476451_4095_39402" xmi:uuid="a9d02556-4d6a-429f-b396-8e3ea3d96aad" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1508421476451_645454_39403" xmi:uuid="bef76c8c-46d9-4195-8a59-feadc844bae1" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1508421407998_720226_39162"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1508421476451_3435_39404" xmi:uuid="62d751fb-4338-4fcd-b9c1-9cbc9eb3f9c8" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1504777052192_733896_27004"/>
+        </end>
+      </ownedConnector>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193638_437391_26552" xmi:uuid="b8709dd0-1543-436a-8140-4ba9f129a7f7" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194449_776676_31755"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417193891_374344_28129"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194449_776676_31755" xmi:uuid="ff6df693-42c5-4451-afda-af474e5d5ae6" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193174_913820_23720"/>
+        <isOrdered>true</isOrdered>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195007_865412_37207" xmi:uuid="465d9cee-f959-4d7a-940f-e8414ba53bff" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417195007_116991_37206" xmi:uuid="019b1eb2-5329-4aef-9d90-83f8c68cc0d5" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193638_437391_26552"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_271a0567_1538757808167_801783_328753" xmi:uuid="bac0cf01-c26d-43d0-91cb-067e04f36719" xmi:type="uml:Package">
+      <name>Constraints</name>
+      <packagedElement xmi:id="_18_4_1_271a0567_1538757900609_712874_328762" xmi:uuid="c5800b04-4f0a-48c2-a85c-8a31a593cda8" xmi:type="uml:Class">
+        <ownedComment xmi:id="_18_4_1_271a0567_1538757900622_468660_328764" xmi:uuid="945889b5-e0ae-415b-b461-10426e797d5a" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_271a0567_1538757900609_712874_328762"/>
+          <body>A transformation to enable the mapping from the Domain to the ARM. The transformation is defined in the OCL constraint code.</body>
+        </ownedComment>
+        <name>CastToPositiveLengthMeasure</name>
+        <ownedRule xmi:id="_18_4_1_271a0567_1538757900616_595078_328763" xmi:uuid="5eff6d6f-f107-4ecb-8614-83a3643efcd9" xmi:type="uml:Constraint">
+          <ownedComment xmi:id="_18_4_1_65b021e_1676138609351_289605_174811" xmi:uuid="cd795a81-10ab-41cc-9240-45d406000c95" xmi:type="uml:Comment">
+            <annotatedElement xmi:idref="_18_4_1_271a0567_1538757900616_595078_328763"/>
+            <body>cast the input into a positive_length_measure.</body>
+          </ownedComment>
+          <name>output</name>
+          <constrainedElement xmi:idref="_18_4_1_271a0567_1538757900609_712874_328762"/>
+          <specification xmi:id="_18_4_1_271a0567_1538757900634_184890_328768" xmi:uuid="3f595f2a-99ec-44c6-b593-37d2a51239fa" xmi:type="uml:OpaqueExpression">
+            <body>output = input.oclAsType(positive_length_measure)</body>
+            <language>OCL2.0</language>
+          </specification>
+        </ownedRule>
+        <ownedAttribute xmi:id="_18_4_1_271a0567_1538757900623_341496_328765" xmi:uuid="9ead3d80-1286-4100-a2fd-99d395c3ecfc" xmi:type="uml:Port">
+          <ownedComment xmi:id="_18_4_1_65b021e_1676138561942_491898_174809" xmi:uuid="1626bd1e-2563-4f52-b1a9-41b827abbc05" xmi:type="uml:Comment">
+            <annotatedElement xmi:idref="_18_4_1_271a0567_1538757900623_341496_328765"/>
+            <body>the positive length measure input.</body>
+          </ownedComment>
+          <name>input</name>
+          <visibility>private</visibility>
+          <type href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_8db01ea_1505833409534_836596_29694"/>
+          <lowerValue xmi:id="_18_4_1_271a0567_1538757900638_119324_328770" xmi:uuid="d7fff0cb-dba4-4a9f-a2ad-e6e049932e19" xmi:type="uml:LiteralInteger"/>
+          <aggregation>composite</aggregation>
+        </ownedAttribute>
+        <ownedAttribute xmi:id="_18_4_1_271a0567_1538757900628_579878_328766" xmi:uuid="055584d5-ffd6-4dd0-bac5-733e1c90fc89" xmi:type="uml:Port">
+          <ownedComment xmi:id="_18_4_1_65b021e_1676138572281_59563_174810" xmi:uuid="d4016cbd-a5e4-4b2d-bfe9-c7629f44646a" xmi:type="uml:Comment">
+            <annotatedElement xmi:idref="_18_4_1_271a0567_1538757900628_579878_328766"/>
+            <body>the positive length measure output.</body>
+          </ownedComment>
+          <name>output</name>
+          <visibility>private</visibility>
+          <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-positive_length_measure"/>
+          <lowerValue xmi:id="_18_4_1_271a0567_1538757900638_990759_328773" xmi:uuid="734ecd88-75e7-44f1-abe9-91b6cb5abcdb" xmi:type="uml:LiteralInteger"/>
+          <isReadOnly>true</isReadOnly>
+          <aggregation>composite</aggregation>
+        </ownedAttribute>
+      </packagedElement>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193538_722792_25802" xmi:uuid="c1ab6055-6cc7-4846-a8c3-6d54471de139" xmi:type="uml:Association">
+      <generalization xmi:id="_18_4_1_e120334_1499417194357_622706_31056" xmi:uuid="749e703d-5c4f-43ec-94c7-4b87bd81afaa" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417194005_233804_28686"/>
+      </generalization>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194357_429479_31057"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417193538_261568_25810"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194357_429479_31057" xmi:uuid="aca3e0f9-a412-493a-b06b-140b853ce492" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193054_780176_23475"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194957_341474_36683" xmi:uuid="dd2f7ea4-1bd9-4566-8bdf-d0cd0b840599" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194957_831179_36682" xmi:uuid="1244896a-2c7f-4f19-9b0b-69d834565fa1" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193538_722792_25802"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193639_816650_26555" xmi:uuid="c3156c0b-097c-4e7e-a537-1ae759515696" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194449_712015_31756"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194084_293691_29031"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194449_712015_31756" xmi:uuid="9c3d6b0c-1ef3-42a2-a38e-2c86f0bd88c7" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193258_919763_23864"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195007_652530_37209" xmi:uuid="1963d1b0-684b-4e9c-93fa-e446734f290e" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417195007_6435_37208" xmi:uuid="b11887e5-fe1d-47ea-a5fa-c884357fbaed" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193639_816650_26555"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193082_550704_23533" xmi:uuid="c382a2ce-4ec0-4852-9f18-7a652c713027" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_0_2_8db01ea_1453383723973_606813_45186" xmi:uuid="a22970ca-de7f-48f6-882b-de7d45421739" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193082_550704_23533"/>
+        <body>An Edge is a type of TopologicalRepresentationItem that is an oriented, bounded, one-dimensional manifold connecting two vertices. The topological sense of the Edge is from the EdgeStart to the EdgeEnd.</body>
+      </ownedComment>
+      <name>Edge</name>
+      <generalization xmi:id="_18_4_1_e120334_1499417193639_691149_26557" xmi:uuid="4d43869d-807e-4175-94bb-f65321a5ad77" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193179_295269_23733"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193639_11141_26558" xmi:uuid="ac0160e5-a269-4f27-b5db-e781a198caba" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_e120334_1499417193274_958104_23888"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417193639_122142_26560" xmi:uuid="2b6c3416-c062-4ef5-b0ab-90f81c1b6e6c" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_2_8db01ea_1453383876514_370019_45197" xmi:uuid="e4daa963-be49-4990-9202-8791a383c78a" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417193639_122142_26560"/>
+          <body>the Vertex defining the start point of the Edge.</body>
+        </ownedComment>
+        <name>EdgeStart</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193284_834711_23906"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193639_683636_26556"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417193640_982754_26561" xmi:uuid="535f30b8-cd95-4583-89af-357af3a38c87" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_2_8db01ea_1453383900691_266886_45198" xmi:uuid="f7a5c97a-2ab0-4d8e-b2b5-f76157ddc393" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417193640_982754_26561"/>
+          <body>the Vertex defining the end point of the Edge; this may coincide with the start point if the Edge forms a closed loop.</body>
+        </ownedComment>
+        <name>EdgeEnd</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193284_834711_23906"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193639_181618_26559"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1504257778163_120959_33945" xmi:uuid="1e6dba0b-800d-46b4-a480-acf176f90046" xmi:type="uml:Port">
+        <name>edge</name>
+        <visibility>public</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Edge"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1508422993244_528485_39588" xmi:uuid="4e44863d-4865-42dc-a7a9-fba59821c9e4" xmi:type="uml:Property">
+        <name>edge_</name>
+        <visibility>protected</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Edge"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_8db01ea_1508422993306_115743_39592"/>
+        <redefinedProperty xmi:idref="_18_4_1_8db01ea_1508419307038_713768_38625"/>
+      </ownedAttribute>
+      <ownedConnector xmi:id="_18_4_1_86c026b_1547548730978_578_103999" xmi:uuid="827ebb29-73bf-40fd-bc90-562db96f110e" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_86c026b_1547548730978_677036_104000" xmi:uuid="bb62deaa-aec0-42fa-8b5f-cd4b6987522d" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1508422993244_528485_39588"/>
+        </end>
+        <end xmi:id="_18_4_1_86c026b_1547548730978_232438_104001" xmi:uuid="7042e924-6ed3-4c97-99d1-e685d53ed2c5" xmi:type="uml:ConnectorEnd">
+          <role href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_8db01ea_1513939809341_358030_102979"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1508423067703_9876_39869" xmi:uuid="89f75e4c-fed0-48ed-b2d5-2857ee686ace" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1508423067703_40740_39870" xmi:uuid="65996823-b330-4de1-b100-0933f89bda0c" xmi:type="uml:ConnectorEnd">
+          <partWithPort xmi:idref="_18_4_1_e120334_1499417193639_122142_26560"/>
+          <role xmi:idref="_18_4_1_8db01ea_1504258830597_625355_35312"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1508423067703_299453_39871" xmi:uuid="b325f31d-3cac-4cde-9585-60185f573aab" xmi:type="uml:ConnectorEnd">
+          <role href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_2_attr_SYSML_ARM-Edge-edge_start"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1508423054100_360016_39829" xmi:uuid="b77633c2-dd97-446b-a89f-01b1e415e3ab" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1508423054100_483277_39830" xmi:uuid="e1598746-bef4-4a59-a61f-2132bf23efb3" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1508422993244_528485_39588"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1508423054100_132769_39831" xmi:uuid="8c88f842-d0b6-42a1-a382-5f69aff78467" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1504257778163_120959_33945"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1508423060886_802632_39845" xmi:uuid="cc505d1f-ed89-4c17-84e4-b2ec7a4a9130" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1508423060886_318507_39846" xmi:uuid="050977f3-d972-4c85-8dab-c6b6f07a9ccb" xmi:type="uml:ConnectorEnd">
+          <partWithPort xmi:idref="_18_4_1_e120334_1499417193640_982754_26561"/>
+          <role xmi:idref="_18_4_1_8db01ea_1504258830597_625355_35312"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1508423060886_450124_39847" xmi:uuid="050284f5-1ee4-47f7-bf8e-acf824f099bc" xmi:type="uml:ConnectorEnd">
+          <role href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_2_attr_SYSML_ARM-Edge-edge_end"/>
+        </end>
+      </ownedConnector>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193537_303037_25793" xmi:uuid="c79c0a90-2b09-4b8d-804c-31879df97534" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194357_738191_31048"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417193537_484989_25800"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194357_738191_31048" xmi:uuid="f1dd8711-9923-43d6-8132-e52fa6a90fe9" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193053_334749_23473"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194957_554477_36679" xmi:uuid="b74c0738-e7af-4604-b79e-52839419203b" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194957_921862_36678" xmi:uuid="7057ce1d-12a0-4a91-bd27-272488b687d9" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193537_303037_25793"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_8db01ea_1508422993306_115743_39592" xmi:uuid="dca3baef-90ac-45b1-8fd5-7793f4786d62" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1508422993306_796317_39593"/>
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1508422993244_528485_39588"/>
+      <ownedEnd xmi:id="_18_4_1_8db01ea_1508422993306_796317_39593" xmi:uuid="23c4410d-f825-4dfa-9adc-d4aec08eac6e" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193082_550704_23533"/>
+        <association xmi:idref="_18_4_1_8db01ea_1508422993306_115743_39592"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_8db01ea_1508423312857_945403_39975" xmi:uuid="e12af08d-b32d-4392-9a8e-08ed81cf7c5d" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1508423312857_102797_39976"/>
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1508423312794_396810_39971"/>
+      <ownedEnd xmi:id="_18_4_1_8db01ea_1508423312857_102797_39976" xmi:uuid="da042bc1-d2ea-4493-8716-0e75a7d92943" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193258_919763_23864"/>
+        <association xmi:idref="_18_4_1_8db01ea_1508423312857_945403_39975"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193639_181618_26559" xmi:uuid="e13e0505-073e-4c1f-b807-28f786e441b2" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194450_74865_31758"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417193640_982754_26561"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194450_74865_31758" xmi:uuid="bd57b9a2-63be-435b-a7ee-26a827e04963" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193082_550704_23533"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195007_820560_37213" xmi:uuid="5d8c725e-dd90-4ca6-ae1a-9d206e9f6f50" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417195007_731325_37212" xmi:uuid="bcdf6d99-a5a8-4a2c-afc9-4b89c79e437c" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193639_181618_26559"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193639_683636_26556" xmi:uuid="e96a563b-602b-4c6b-a7fb-b8858187cf9b" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194450_320856_31757"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417193639_122142_26560"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194450_320856_31757" xmi:uuid="901bb14e-a112-4781-a267-8353aa8c7b77" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193082_550704_23533"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195007_748941_37211" xmi:uuid="acb62485-1880-4a41-a1f0-6c2fb46381d5" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417195007_981242_37210" xmi:uuid="a33a2189-3ca3-4ddc-b992-a2a6471dafd1" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193639_683636_26556"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193053_777197_23472" xmi:uuid="ef013133-eecb-454a-a883-758a70013eed" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_0_2_8db01ea_1454420815397_112176_42736" xmi:uuid="e5a7ddd7-3b4f-4598-ab63-1c8c7d61db0f" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193053_777197_23472"/>
+        <body>A ConnectedEdgeSet is a type of TopologicalRepresentationItem that is a set of Edges arcwise connected via their common vertices.</body>
+      </ownedComment>
+      <name>ConnectedEdgeSet</name>
+      <generalization xmi:id="_18_4_1_e120334_1499417193537_326269_25794" xmi:uuid="23c97018-7fc1-45a5-bfa4-90f5254e5e50" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_e120334_1499417193054_349108_23474"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193537_838137_25797" xmi:uuid="d8e4865d-21e9-4028-9fda-1a87cc16133c" xmi:type="uml:Generalization">
+        <general xmi:idref="_18_4_1_e120334_1499417193274_958104_23888"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417193537_419903_25798" xmi:uuid="2cfb4d17-6bac-4531-9f1d-419306b3a84d" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_2_8db01ea_1454938135952_150834_42789" xmi:uuid="f7c78455-1b1c-4473-a175-1b06e765feab" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417193537_419903_25798"/>
+          <body>a set of Edges arcwise connected at common vertices. The domains of the ConnectedEdges shall not intersect.</body>
+        </ownedComment>
+        <name>ConnectedEdges</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193082_550704_23533"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194357_603844_31050" xmi:uuid="dd69b130-051f-48de-9f32-8e9b04f16d79" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193537_277083_25796"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1504775891198_757289_26441" xmi:uuid="90404fc6-77aa-4f74-a503-dfcc704d110a" xmi:type="uml:Port">
+        <name>connectedEdgeSet</name>
+        <visibility>public</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Connected_edge_set"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1508420429885_195413_38762" xmi:uuid="6f96bc2c-97cc-4599-9ca8-cf137b488a71" xmi:type="uml:Property">
+        <name>connected_edge_set</name>
+        <visibility>protected</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Connected_edge_set"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_8db01ea_1508420429947_787407_38766"/>
+        <redefinedProperty xmi:idref="_18_4_1_8db01ea_1508419307038_713768_38625"/>
+      </ownedAttribute>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1504775961137_747740_26495" xmi:uuid="22d1aca0-9af6-4e23-9d00-31a31efb3b49" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1504775961137_117043_26496" xmi:uuid="dec9c553-b010-48dc-b772-59270728330a" xmi:type="uml:ConnectorEnd">
+          <partWithPort xmi:idref="_18_4_1_e120334_1499417193537_419903_25798"/>
+          <role xmi:idref="_18_4_1_8db01ea_1504257778163_120959_33945"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1504775961137_493614_26497" xmi:uuid="6bb929cd-44b4-457d-8097-e6edff85e7da" xmi:type="uml:ConnectorEnd">
+          <role href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_2_attr_SYSML_ARM-Connected_edge_set-connected_edges"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1504775931478_362864_26469" xmi:uuid="5fe83d81-f8f5-4381-879f-c40843b23a17" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1504775931478_499194_26470" xmi:uuid="c7136096-4c85-4c24-af9b-3442b0b9b9ee" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1508420429885_195413_38762"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1504775931478_928389_26471" xmi:uuid="fd46e78f-854c-43a2-8797-c9c12453e277" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1504775891198_757289_26441"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1508487616983_351613_30566" xmi:uuid="f6412b72-e2a8-4dbd-baad-113a5bc966e3" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1508487616983_794294_30567" xmi:uuid="c5e8f2d9-b291-46bf-8b58-84cc626fa993" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1508420429885_195413_38762"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1508487616983_593018_30568" xmi:uuid="6e7b63fd-1691-46cd-8351-2e92adb4b762" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_290014c_1505052724529_927647_32292"/>
+        </end>
+      </ownedConnector>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_8db01ea_1508421408060_124764_39166" xmi:uuid="f3ced419-3f44-498a-8be3-03e556640004" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1508421408060_89060_39167"/>
+      <memberEnd xmi:idref="_18_4_1_8db01ea_1508421407998_720226_39162"/>
+      <ownedEnd xmi:id="_18_4_1_8db01ea_1508421408060_89060_39167" xmi:uuid="c395fa1e-20b3-4444-8a76-a27d3a4cd582" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193053_334749_23473"/>
+        <association xmi:idref="_18_4_1_8db01ea_1508421408060_124764_39166"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193054_780176_23475" xmi:uuid="fddf9c8f-6022-40c5-b5bd-c67af64e5f1c" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_0_2_8db01ea_1456410689306_853004_43445" xmi:uuid="51f621de-973d-4b0d-a41c-7412d15b9f33" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193054_780176_23475"/>
+        <body>An EdgeBasedTopologicalRepresentationWithLengthConstraint is a type of GeometricRepresentation that has as its items one ConnectedEdgeSet and as needed additional Paths and VertexPoints that are within the domain of the ConnectedEdgeSet. An EdgeBasedTopologicalRepresentationWithLengthConstraint might define a sub-domain of another EdgeBasedTopologicalRepresentationWithLengthConstraint by using a ConnectedEdgeSubSet. In this case both EdgeBasedTopologicalRepresentationWithLengthConstraints shall share the same RepresentationContext. The geometry of an EdgeBasedTopologicalRepresentationWithLengthConstraint is defined by unspecific points and curves that are independent of any specific coordinates. Only the lengths of the curves are constrained to specific values.</body>
+      </ownedComment>
+      <name>EdgeBasedTopologicalRepresentationWithLengthConstraint</name>
+      <ownedRule xmi:id="_18_4_1_8db01ea_1588667482726_162898_88228" xmi:uuid="2937f930-1a8a-438b-abea-e21d320ced66" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_8db01ea_1588667521029_407159_88232" xmi:uuid="4b185423-19f9-4a0c-a82f-ffb27a11cc5c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_8db01ea_1588667482726_162898_88228"/>
+          <body>if the SingleSet is of type ConnectedEdgeSubSet then the ParentEdgeSet shall be an item within the same RepresentationContext of this Representation. &lt;note&gt;SingleSet: an OCL variable that provides the single ConnectedEdgeSet. &lt;/note&gt;</body>
+        </ownedComment>
+        <name>WR2</name>
+        <constrainedElement xmi:idref="_18_4_1_e120334_1499417193054_780176_23475"/>
+        <specification xmi:id="_18_4_1_8db01ea_1588667482728_939039_88229" xmi:uuid="ebc4b24b-8a9b-49be-8c83-a27e96e4e5d5" xmi:type="uml:OpaqueExpression">
+          <ownedComment xmi:id="_18_4_1_271a0567_1590320067343_61489_95293" xmi:uuid="d499bb1d-c6bd-46e6-9afb-83231147724b" xmi:type="uml:Comment">
+            <annotatedElement xmi:idref="_18_4_1_8db01ea_1588667482728_939039_88229"/>
+            <body>NOT ('TOPOLOGY_SCHEMA.CONNECTED_EDGE_SUB_SET' IN TYPEOF (single_set[1])) XOR item_in_context(single_set[1]\connected_edge_sub_set.parent_edge_set, SELF\representation.context_of_items) with single_set : SET[1:1] OF Connected_edge_set := QUERY( item &lt;* SELF.items| ('ELEMENTAL_TOPOLOGY_ARM.CONNECTED_EDGE_SET' IN TYPEOF(item)) );</body>
+          </ownedComment>
+          <body>let SingleSet : Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSubSet = self.Items-&gt;select(i | i.oclIsKindOf(Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSet))-&gt;asSequence()-&gt;at(1).oclAsType(Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSubSet) in if SingleSet.oclIsTypeOf(Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSubSet) then self.ContextOfItems.Items-&gt;includes(SingleSet.ParentEdgeSet) else true endif</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <ownedRule xmi:id="_18_4_1_8db01ea_1588861318671_792210_89663" xmi:uuid="7c3f75ed-5099-485f-879c-9dfb80196f14" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_8db01ea_1588861344553_119113_89667" xmi:uuid="74387059-5553-4de8-ac6f-5571fb51f9f5" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_8db01ea_1588861318671_792210_89663"/>
+          <body>if the SingleSet is of type ConnectedEdgeSubSet then all its edges shall be of type EdgeBoundedCurveWithLength or of type SubEdge. &lt;note&gt;SingleSet: an OCL variable that provides the single ConnectedEdgeSet. &lt;/note&gt;</body>
+        </ownedComment>
+        <name>WR4</name>
+        <constrainedElement xmi:idref="_18_4_1_e120334_1499417193054_780176_23475"/>
+        <specification xmi:id="_18_4_1_8db01ea_1588861318671_378818_89664" xmi:uuid="2abb9689-2a9c-472e-901f-36f2f9c9cb69" xmi:type="uml:OpaqueExpression">
+          <ownedComment xmi:id="_18_4_1_271a0567_1590320027454_626106_95291" xmi:uuid="c3cf43d1-5914-4306-8c20-eebd54a384c3" xmi:type="uml:Comment">
+            <annotatedElement xmi:idref="_18_4_1_8db01ea_1588861318671_378818_89664"/>
+            <body>NOT ('TOPOLOGY_SCHEMA.CONNECTED_EDGE_SUB_SET' IN TYPEOF(single_set[1]) ) XOR ( SIZEOF ( QUERY ( ed &lt;* single_set[1].connected_edges | NOT ( ('EDGE_BASED_TOPOLOGICAL_REPRESENTATION_WITH_LENGTH_CONSTRAINT_MIM.EDGE_BOUNDED_CURVE_WITH_LENGTH' IN TYPEOF(ed) ) OR ('TOPOLOGY_SCHEMA.SUB_EDGE' IN TYPEOF(ed) ) ) ) ) = 0 ); with single_set : SET[1:1] OF Connected_edge_set := QUERY( item &lt;* SELF.items| ('ELEMENTAL_TOPOLOGY_ARM.CONNECTED_EDGE_SET' IN TYPEOF(item)) );</body>
+          </ownedComment>
+          <body>let SingleSet : Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSet = self.Items-&gt;select(i | i.oclIsKindOf(Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSet))-&gt;asSequence()-&gt;at(1).oclAsType(Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSubSet) in if SingleSet.oclIsTypeOf(Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSubSet) then SingleSet.ConnectedEdges-&gt;forAll(e |e.oclIsTypeOf(Application_protocols::AP242::Domain_model::RepresentationAndExternalElementReference::EdgeBoundedCurveWithLength) or e.oclIsTypeOf(Application_protocols::AP242::Domain_model::Topology::SubEdge)) else true endif</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <ownedRule xmi:id="_18_4_1_8db01ea_1588859582083_810508_89307" xmi:uuid="82995fec-c8dc-499e-9019-cfdd85a3173e" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_8db01ea_1588859648527_168550_89321" xmi:uuid="457da97d-ee22-492f-9e64-ec8a57730cfb" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_8db01ea_1588859582083_810508_89307"/>
+          <body>if the SingleSet is not of type ConnectedEdgeSubSet then all its edges shall be of type EdgeBoundedCurveWithLength. &lt;note&gt;SingleSet: an OCL variable that provides the single ConnectedEdgeSet. &lt;/note&gt;</body>
+        </ownedComment>
+        <name>WR3</name>
+        <constrainedElement xmi:idref="_18_4_1_e120334_1499417193054_780176_23475"/>
+        <specification xmi:id="_18_4_1_8db01ea_1588859582083_543837_89308" xmi:uuid="a6a53bad-e6d6-43a9-91b7-62adea5750ad" xmi:type="uml:OpaqueExpression">
+          <ownedComment xmi:id="_18_4_1_271a0567_1590320044828_887029_95292" xmi:uuid="5dbea002-3888-414a-bf9c-472cb3f664c0" xmi:type="uml:Comment">
+            <annotatedElement xmi:idref="_18_4_1_8db01ea_1588859582083_543837_89308"/>
+            <body>('TOPOLOGY_SCHEMA.CONNECTED_EDGE_SUB_SET' IN TYPEOF (single_set[1])) XOR ( SIZEOF ( QUERY ( ed &lt;* single_set[1].connected_edges | NOT ('EDGE_BASED_TOPOLOGICAL_REPRESENTATION_WITH_LENGTH_CONSTRAINT_MIM.EDGE_BOUNDED_CURVE_WITH_LENGTH' IN TYPEOF(ed)) ) ) = 0 ); with single_set : SET[1:1] OF Connected_edge_set := QUERY( item &lt;* SELF.items| ('ELEMENTAL_TOPOLOGY_ARM.CONNECTED_EDGE_SET' IN TYPEOF(item)) );</body>
+          </ownedComment>
+          <body>let SingleSet : Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSet = self.Items-&gt;select(i | i.oclIsKindOf(Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSet))-&gt;asSequence()-&gt;at(1).oclAsType(Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSet) in if not SingleSet.oclIsTypeOf(Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSubSet) then SingleSet.ConnectedEdges-&gt;forAll(e |e.oclIsTypeOf(Application_protocols::AP242::Domain_model::RepresentationAndExternalElementReference::EdgeBoundedCurveWithLength)) else true endif</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <ownedRule xmi:id="_18_4_1_8db01ea_1588862015490_17267_89692" xmi:uuid="8b925b1d-3e59-4bd6-be7b-918a204ec9dc" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_8db01ea_1588864192723_894707_89723" xmi:uuid="1ed6932b-a701-4d2c-8b11-e2da544d71be" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_8db01ea_1588862015490_17267_89692"/>
+          <body>all VertexPoints in the direct items shall have a VertexGeometry of type PointOnCurve. </body>
+        </ownedComment>
+        <name>WR6</name>
+        <constrainedElement xmi:idref="_18_4_1_e120334_1499417193054_780176_23475"/>
+        <specification xmi:id="_18_4_1_8db01ea_1588862015490_430452_89693" xmi:uuid="e11c034d-d65e-4373-bf29-a8b4d7150413" xmi:type="uml:OpaqueExpression">
+          <ownedComment xmi:id="_18_4_1_271a0567_1590320145583_202973_95294" xmi:uuid="495752cf-922c-45d9-bf1c-bd7642bea3df" xmi:type="uml:Comment">
+            <annotatedElement xmi:idref="_18_4_1_8db01ea_1588862015490_430452_89693"/>
+            <body>SIZEOF ( QUERY ( vp &lt;* SELF.items | ('TOPOLOGY_SCHEMA.VERTEX_POINT' IN TYPEOF(vp) ) AND NOT ( 'GEOMETRY_SCHEMA.POINT_ON_CURVE' IN TYPEOF(vp.vertex_geometry) ) ) ) = 0;</body>
+          </ownedComment>
+          <body>self.Items-&gt;select(i | i.oclIsKindOf(Application_protocols::AP242::Domain_model::RepresentationAndExternalElementReference::VertexPoint))-&gt;forAll(vp | vp.oclAsType(Application_protocols::AP242::Domain_model::RepresentationAndExternalElementReference::VertexPoint).VertexGeometry.oclIsTypeOf(Application_protocols::AP242::Domain_model::CompositeStructuralShapeAndStructure::PointOnCurve))</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <ownedRule xmi:id="_18_0_2_8db01ea_1460462398889_52022_47565" xmi:uuid="b901ba53-d79d-44a4-9693-75d67c691b18" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_0_2_8db01ea_1460462436797_526184_47568" xmi:uuid="d35895ff-db72-4a6a-81d7-962ecb8ce163" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_0_2_8db01ea_1460462398889_52022_47565"/>
+          <body>the items attribute shall contain a single ConnectedEdgeSet.</body>
+        </ownedComment>
+        <name>WR1</name>
+        <constrainedElement xmi:idref="_18_4_1_e120334_1499417193054_780176_23475"/>
+        <specification xmi:id="_18_4_1_8db01ea_1513007290161_310582_57474" xmi:uuid="65fb7541-682c-4cea-9fd9-f41ab9716659" xmi:type="uml:OpaqueExpression">
+          <body>self.Items-&gt;select(i | i.oclIsKindOf(Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSet))-&gt;size() = 1</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <ownedRule xmi:id="_18_4_1_8db01ea_1588861806174_957700_89687" xmi:uuid="ec2e11fc-4aca-4acc-b5c9-8c90bccae129" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_8db01ea_1588861977225_755824_89691" xmi:uuid="1e6136f0-7531-46ad-a1db-74ab6e6024eb" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_8db01ea_1588861806174_957700_89687"/>
+          <body>all Paths in the direct items shall be defined by Edges of the SingleSet or a Subedges of it. &lt;note&gt;SingleSet: an OCL variable that provides the single ConnectedEdgeSet. &lt;/note&gt;</body>
+        </ownedComment>
+        <name>WR5</name>
+        <constrainedElement xmi:idref="_18_4_1_e120334_1499417193054_780176_23475"/>
+        <specification xmi:id="_18_4_1_8db01ea_1588861806174_127283_89688" xmi:uuid="cbd17562-9ea4-4e1d-818b-928589cc5ab1" xmi:type="uml:OpaqueExpression">
+          <ownedComment xmi:id="_18_4_1_271a0567_1590320008528_58435_95290" xmi:uuid="7b28271f-52e0-4543-bfe9-68d2ffa5a6fa" xmi:type="uml:Comment">
+            <annotatedElement xmi:idref="_18_4_1_8db01ea_1588861806174_127283_89688"/>
+            <body>SIZEOF ( QUERY ( pa &lt;* SELF.items | ('TOPOLOGY_SCHEMA.PATH' IN TYPEOF(pa)) AND NOT ( SIZEOF ( QUERY ( oe &lt;* pa\path.edge_list | NOT (oe.edge_definition IN single_set[1].connected_edges ) OR NOT (oe.edge_definition\subedge.parent_edge IN single_set[1].connected_edges ) ) ) = 0 ) ) ) = 0; with single_set : SET[1:1] OF Connected_edge_set := QUERY( item &lt;* SELF.items| ('ELEMENTAL_TOPOLOGY_ARM.CONNECTED_EDGE_SET' IN TYPEOF(item)) );</body>
+          </ownedComment>
+          <body>let SingleSet : Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSet = self.Items-&gt;select(i | i.oclIsKindOf(Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSet))-&gt;asSequence()-&gt;at(1).oclAsType(Application_protocols::AP242::Domain_model::Topology::ConnectedEdgeSet) in self.Items-&gt;select(i | i.oclIsKindOf(Application_protocols::AP242::Domain_model::Topology::Path))-&gt;forAll(p | p.oclAsType(Application_protocols::AP242::Domain_model::Topology::Path).EdgeList-&gt;forAll(e | SingleSet.ConnectedEdges-&gt;includes(e)))</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <generalization xmi:id="_18_4_1_e120334_1499417193538_775630_25807" xmi:uuid="295feec7-6f26-466f-bb4d-eda7b8755d73" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193113_970216_23593"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193538_803849_25809" xmi:uuid="a517d3c7-c29b-4c46-8fa1-358deca2fa8e" xmi:type="uml:Generalization">
+        <general href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417193115_770781_23599"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417193538_261568_25810" xmi:uuid="cb07bf5f-dc27-4900-b63a-a979cb0f7bf4" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_2_8db01ea_1455006284134_221478_45372" xmi:uuid="df2e866b-3efd-4cf2-a5f8-5aa0620c9c3c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417193538_261568_25810"/>
+          <body>an inherited set attribute whose members shall be of type ConnectedEdgeSet, Path or VertexPoint only.</body>
+        </ownedComment>
+        <name>Items</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193054_349108_23474"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194358_61004_31059" xmi:uuid="f5b2e718-d62b-484f-8964-58009f019de8" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193538_722792_25802"/>
+        <redefinedProperty href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_e120334_1499417194007_289896_28693"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1504780251897_322679_29963" xmi:uuid="01b7ccce-7a73-4760-ac6e-b0eda023511a" xmi:type="uml:Port">
+        <name>edgeBasedTopologicalRepresentationWithLengthConstraint</name>
+        <visibility>public</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Edge_based_topological_representation_with_length_constraint"/>
+        <aggregation>composite</aggregation>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_8db01ea_1590415022244_396097_94253" xmi:uuid="e64e0d08-40c0-4276-9313-d5bd6b31b768" xmi:type="uml:Property">
+        <name>representation_</name>
+        <visibility>private</visibility>
+        <type href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_SYSML_ARM-Edge_based_topological_representation_with_length_constraint"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_8db01ea_1590415022310_485159_94257"/>
+        <redefinedProperty href="../RepresentationAndExternalElementReference/RepresentationAndExternalElementReference.xmi#_18_4_1_271a0567_1523636325713_934714_227097"/>
+      </ownedAttribute>
+      <ownedConnector xmi:id="_18_4_1_290014c_1505052991886_81336_32372" xmi:uuid="787791ed-f009-4c7d-8e62-cf81d99b5388" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_290014c_1505052991886_449050_32373" xmi:uuid="445d1139-2b00-454e-babd-80f61ebd7243" xmi:type="uml:ConnectorEnd">
+          <partWithPort xmi:idref="_18_4_1_e120334_1499417193538_261568_25810"/>
+          <role xmi:idref="_18_4_1_290014c_1505052724529_927647_32292"/>
+        </end>
+        <end xmi:id="_18_4_1_290014c_1505052991886_48558_32374" xmi:uuid="a4de3330-622b-442e-b7da-53ced9078ba8" xmi:type="uml:ConnectorEnd">
+          <role href="../../../../SysML_ARM/SYSML_ARM_AP242.xmi#_2_attr_SYSML_ARM-Edge_based_topological_representation_with_length_constraint-items"/>
+        </end>
+      </ownedConnector>
+      <ownedConnector xmi:id="_18_4_1_8db01ea_1590415083799_545698_94300" xmi:uuid="cf3d3219-60ff-433a-aa58-a2e3a658b81b" xmi:type="uml:Connector">
+        <visibility>public</visibility>
+        <end xmi:id="_18_4_1_8db01ea_1590415083799_346019_94301" xmi:uuid="75fab9bc-9cfd-46b2-bb8c-0993b9ad7f98" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1590415022244_396097_94253"/>
+        </end>
+        <end xmi:id="_18_4_1_8db01ea_1590415083799_74297_94302" xmi:uuid="5a946026-0e20-42cd-b9df-42a2901ea34c" xmi:type="uml:ConnectorEnd">
+          <role xmi:idref="_18_4_1_8db01ea_1504780251897_322679_29963"/>
+        </end>
+      </ownedConnector>
+    </packagedElement>
+  </uml:Package>
+</xmi:XMI>

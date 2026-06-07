@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import axios from 'axios';
 import * as d3 from 'd3';
 import {
   Zap, Search, Factory, Eye,
@@ -7,7 +6,7 @@ import {
   CheckCircle, Minus, AlertTriangle,
   Info,
 } from 'lucide-react';
-import config from '../config';
+import { API_METHODS } from '../services/apiClient';
 
 // ============================================================
 // Corporate Design Tokens — TCS Blue / Infineon Brand System
@@ -442,11 +441,11 @@ const RecommendationsTab = ({ setActiveTab }) => {
     try {
       let resp;
       if (activeService === 'change-impact') {
-        resp = await axios.post(`${config.apiUrl}/recommendations/change-impact`, { change_name: inputValue.trim() });
+        resp = await API_METHODS.recommendations.changeImpact(inputValue.trim());
       } else if (activeService === 'similar-parts') {
-        resp = await axios.post(`${config.apiUrl}/recommendations/similar-parts`, { part_name: inputValue.trim(), top_n: topN });
+        resp = await API_METHODS.recommendations.similarParts(inputValue.trim(), topN);
       } else if (activeService === 'manufacturing') {
-        resp = await axios.post(`${config.apiUrl}/recommendations/manufacturing`, { part_name: inputValue.trim() });
+        resp = await API_METHODS.recommendations.manufacturing(inputValue.trim());
       }
       setResult(resp.data);
     } catch (err) {

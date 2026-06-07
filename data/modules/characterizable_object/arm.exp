@@ -1,0 +1,33 @@
+(*
+   ISO TC184/SC4/WG12 N11545 - ISO/TS 10303-1765 Characterizable object - EXPRESS ARM
+   Supersedes ISO TC184/SC4/WG12 N10537
+*)
+SCHEMA Characterizable_object_arm;
+USE FROM Activity_arm;      -- ISO/TS 10303-1047
+USE FROM Shape_property_assignment_arm; -- ISO/TS 10303-1032
+USE FROM Support_resource_arm;
+TYPE characterizable_object_shape_type_enumeration = EXTENSIBLE ENUMERATION OF ( 
+  unspecified ); 
+END_TYPE;
+TYPE co_activity_item = SELECT BASED_ON activity_item WITH (
+   Characterizable_object,
+   Characterizable_object_relationship);
+END_TYPE;
+ENTITY Characterizable_object;
+  name : label;
+  description : OPTIONAL text;
+  shape_type : OPTIONAL characterizable_object_shape_type_enumeration;
+  primary_shape_representation : OPTIONAL shape_model;
+  auxiliary_shape_representations : OPTIONAL SET[1:?] OF shape_model;
+WHERE
+  WR1: NOT (EXISTS(auxiliary_shape_representations)) OR EXISTS(primary_shape_representation);
+END_ENTITY;
+ENTITY Characterizable_object_relationship;
+  name : label;
+  description : OPTIONAL text;
+  relating_object : Characterizable_object;
+  related_object : Characterizable_object;
+--IP1: 
+END_ENTITY;
+ 
+END_SCHEMA;

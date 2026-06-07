@@ -1,0 +1,2158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001" xmlns:sysml="http://www.omg.org/spec/SysML/20150709/SysML" xmlns:StandardProfile="http://www.omg.org/spec/UML/20131001/StandardProfile">
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_e120334_1499417194136_576963_29245application1" xmi:uuid="16871b20-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193292_820968_23921"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_19_0_4_b1702d9_1651594248353_799604_88067application1" xmi:uuid="16872040-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_19_0_4_b1702d9_1651594248352_391956_88065"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_19_0_4_b1702d9_1659094024835_716499_58817application1" xmi:uuid="16872210-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_19_0_4_b1702d9_1659094024832_690472_58816"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_18_4_1_e120334_1499417194126_679733_29215application1" xmi:uuid="16872340-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193290_721626_23917"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_19_0_4_b1702d9_1651678794636_80290_62219application1" xmi:uuid="16872630-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_19_0_4_b1702d9_1651678794616_161964_62196"/>
+  </StandardProfile:Auxiliary>
+  <StandardProfile:Auxiliary xmi:id="_19_0_4_b1702d9_1665676763420_378736_58984application1" xmi:uuid="aa0db1a0-b2f4-013c-7b7c-089a2f3f1c8a">
+    <base_Class xmi:idref="_19_0_4_b1702d9_1665676763419_25158_58983"/>
+  </StandardProfile:Auxiliary>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417194134_49705_29236" xmi:uuid="16871480-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417194136_415249_29244" xmi:uuid="16871530-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193291_23172_23920"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417194123_150306_29206" xmi:uuid="168715d0-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193288_663519_23915"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417194129_789087_29222" xmi:uuid="168718b0-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193290_559728_23918"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417194126_315378_29214" xmi:uuid="16871950-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193289_303822_23916"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417194138_595101_29252" xmi:uuid="168719f0-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193293_337205_23922"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417194136_576963_29245" xmi:uuid="16871a90-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193292_820968_23921"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_19_0_4_b1702d9_1651589658879_302797_59498" xmi:uuid="16871bd0-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_19_0_4_b1702d9_1651591326090_812565_63494" xmi:uuid="16871c60-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_19_0_4_b1702d9_1651591325047_670311_63349"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_19_0_4_b1702d9_1651595262488_855184_88545" xmi:uuid="16871d00-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_19_0_4_b1702d9_1651595261926_577498_88424"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_19_0_4_b1702d9_1651594248353_799604_88067" xmi:uuid="16871fa0-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_19_0_4_b1702d9_1651594248352_391956_88065"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_19_0_4_b1702d9_1651678630696_271817_59664" xmi:uuid="168720e0-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_19_0_4_b1702d9_1651678629998_195485_59519"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_19_0_4_b1702d9_1659094024835_716499_58817" xmi:uuid="16872170-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_19_0_4_b1702d9_1659094024832_690472_58816"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_18_4_1_e120334_1499417194126_679733_29215" xmi:uuid="168722a0-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_18_4_1_e120334_1499417193290_721626_23917"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_19_0_4_b1702d9_1651678794636_80290_62219" xmi:uuid="16872590-fa3a-013a-0470-52540000fd3c">
+    <base_Class xmi:idref="_19_0_4_b1702d9_1651678794616_161964_62196"/>
+  </sysml:Block>
+  <sysml:Block xmi:id="_19_0_4_b1702d9_1665676763420_378736_58984" xmi:uuid="aa0da780-b2f4-013c-7b7c-089a2f3f1c8a">
+    <base_Class xmi:idref="_19_0_4_b1702d9_1665676763419_25158_58983"/>
+  </sysml:Block>
+  <uml:Package xmi:id="_18_4_1_e120334_1499422794447_305442_26067" xmi:uuid="2929befc-851b-4d9b-8676-d0f2771a15d3" xmi:type="uml:Package">
+    <ownedComment xmi:id="_18_4_1_8e001ed_1510149576178_442008_31075" xmi:uuid="5a55a12c-955d-4bd6-9fdc-1b15d9ddac4a" xmi:type="uml:Comment">
+      <annotatedElement xmi:idref="_18_4_1_e120334_1499422794447_305442_26067"/>
+      <body>This capability represents information concerning work order and work request information. The capability allow to collect and structure work requests in order to elaborate work order that justify change activities. The figure below provides an overview of the capability. &lt;figuresysml&gt;&lt;id&gt;_19_0_4_b1702d9_1665508803297_80683_59040&lt;/id&gt;Simplified overview of the AP242 work management Domain model&lt;/figuresysml&gt;</body>
+    </ownedComment>
+    <name>WorkManagement</name>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193318_314177_24031" xmi:uuid="057693c4-13e0-45f4-9263-c7176e5fdf92" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194178_474831_29567"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194133_332689_29234"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194178_474831_29567" xmi:uuid="07da8a73-a374-4fda-bb20-9177108b411e" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194858_551795_35611" xmi:uuid="542280bd-e2a7-4f63-9da5-d2a71d57228e" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194858_559618_35610" xmi:uuid="20e79aee-5cec-48ac-ae3b-84343eacab56" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193318_314177_24031"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417194130_205316_29225" xmi:uuid="0bf9f7e9-2eb5-498c-97e4-79f5e7e50c7e" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194847_801048_35498"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194137_332796_29250"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194847_801048_35498" xmi:uuid="5c01ff2f-e1a0-4e7a-9c54-a6cfdb16591f" xmi:type="uml:Property">
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193293_337205_23922"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195110_915310_38271" xmi:uuid="0bc2606a-b0db-413e-8ef9-9d66d42672f8" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417195110_715075_38270" xmi:uuid="5b059856-1e64-4eee-a963-1375af800788" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417194130_205316_29225"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651594185008_404789_88038" xmi:uuid="0d6679c6-62bf-4ee9-85d1-02453eea4daf" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651594185009_961020_88040"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651594185009_410701_88039"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651594185009_961020_88040" xmi:uuid="81dc6390-945b-4afd-9429-761f37a086f8" xmi:type="uml:Property">
+        <visibility>public</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651591325047_670311_63349"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651684863538_488899_65935" xmi:uuid="3b1199ed-d3ae-486c-9807-8a7a3b07e798" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651684863538_978923_65936" xmi:uuid="75610690-4886-43c0-a19a-4309178da2b6" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_19_0_4_b1702d9_1651594185008_404789_88038"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651589681752_873377_63255" xmi:uuid="0e293052-1e76-4b94-9a76-7d2766c45349" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651589681752_742385_63256"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651589657072_712083_59312"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651589681752_742385_63256" xmi:uuid="6a4f8404-80b0-484e-9cac-e251e91cde6a" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651589681752_873377_63255"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193505_418384_25505" xmi:uuid="0e2ef0fc-5c67-4921-93cf-3c2c6ab8b9f0" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194332_100104_30838"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194127_741924_29219"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194332_100104_30838" xmi:uuid="f8af44ee-8012-450f-9b14-1089930a1d3c" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_559728_23918"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194944_114663_36547" xmi:uuid="49f74174-aaa5-430e-bc66-d94f190a7634" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193505_418384_25505"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193293_337205_23922" xmi:uuid="13ea7923-5167-4db4-899a-055f299d8b4e" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_0_5_45e01bd_1455707107140_540321_42726" xmi:uuid="f9fe72e9-9070-4b37-98cd-c7775ed8dd99" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193293_337205_23922"/>
+        <body>A WorkRequestRelationship is a relationship between two WorkRequest objects.</body>
+      </ownedComment>
+      <name>WorkRequestRelationship</name>
+      <ownedRule xmi:id="_18_0_5_45e01bd_1459333521945_331139_42767" xmi:uuid="9f071be3-b717-477c-bf17-d7ec036134ba" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_65b021e_1671209121676_717789_163110" xmi:uuid="3e5c6201-3071-4670-a3cd-b1ef802399a9" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_65b021e_1671209121676_280887_163111" xmi:uuid="99491513-fdfd-45f8-87ea-3473e5e19bed" xmi:type="uml:Comment">
+            <body>WR1: Relating :&lt;&gt;: Related;</body>
+          </ownedComment>
+          <body>EXPRESS</body>
+        </ownedComment>
+        <ownedComment xmi:id="_18_0_5_45e01bd_1459333554168_281246_42769" xmi:uuid="4ed188d2-dd82-486f-9bc4-e334677558f6" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_0_5_45e01bd_1459333521945_331139_42767"/>
+          <body>the related WorkRequest and the relating WorkRequest shall be different.</body>
+        </ownedComment>
+        <ownedComment xmi:id="_18_4_1_65b021e_1671209121675_230652_163108" xmi:uuid="acb80e20-12a1-4586-b4d0-28cf33826816" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_65b021e_1671209121676_111975_163109" xmi:uuid="5a75c0be-2edf-4730-ac70-72bb310f8c4c" xmi:type="uml:Comment">
+            <body> &lt;sch:rule context="//WorkRequestRelationship[@uid]"&gt;&#13; &lt;sch:let name="entity_name" value="if(@xsi:type) then substring-after(@xsi:type,':') else name()"/&gt;&#13; &lt;sch:let name="uid" value="@uid"/&gt;&#13; &lt;sch:let name="uidRelating" value="../@uid"/&gt;&#13; &lt;sch:let name="uidRelated" value="Related/@uidRef"/&gt;&#13; &lt;sch:assert test="not(../@uid = Related/@uidRef)"&gt;&#13; The related WorkRequest and the relating WorkRequest shall be different. &#13; {&#13; -entity_name:&lt;sch:value-of select="$entity_name"/&gt;&#13; -entity_uid:&lt;sch:value-of select="$uid"/&gt; &#13; -rule_name:WorkRequestRelationship.WR1&#13; -relating:&lt;sch:value-of select="$uidRelating"/&gt;&#13; -related:&lt;sch:value-of select="$uidRelated"/&gt;&#13; }&#13; &lt;/sch:assert&gt;&#13; &lt;/sch:rule&gt;</body>
+          </ownedComment>
+          <body>Schematron</body>
+        </ownedComment>
+        <name>WR1</name>
+        <constrainedElement xmi:idref="_18_4_1_e120334_1499417193293_337205_23922"/>
+        <specification xmi:id="_18_4_1_271a0567_1509117489066_521429_31646" xmi:uuid="5fd02914-da23-4740-ac58-54aba0a0c7e8" xmi:type="uml:OpaqueExpression">
+          <body>self.Relating &lt;&gt; self.Related</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <generalization xmi:id="_18_4_1_65b021e_1675863858547_419829_164155" xmi:uuid="0680b8e7-8dd3-4415-b2ba-f8a144a9dd72" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1665676763419_25158_58983"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375107168_490097_163676" xmi:uuid="1be5f569-c314-4f2c-8e7c-6481f9232652" xmi:type="uml:Generalization">
+        <general href="../DocumentManagement/DocumentManagement.xmi#_18_4_1_e120334_1499417193076_372354_23525"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1687944673996_625942_162773" xmi:uuid="390a4591-a5db-4bcf-b76a-95fda19914c9" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1659094024832_690472_58816"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375106592_956152_163628" xmi:uuid="5498bfae-e297-4db6-997a-cff26efdb8af" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193012_865292_23378"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375107357_203991_163692" xmi:uuid="70be601f-4e17-4a25-b6cb-963dd0fca652" xmi:type="uml:Generalization">
+        <general href="../RequirementManagementAndVAndV/RequirementManagementAndVAndV.xmi#_18_4_1_8e001ed_1513262749828_373119_62494"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193969_217240_28522" xmi:uuid="7e6f20d1-7270-4aa4-aaff-79428fbe1de8" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193203_213100_23783"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375106474_552106_163615" xmi:uuid="8559b3fc-2f8e-40a7-a042-3e6a90bd4cfa" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193010_433732_23374"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375107466_346387_163703" xmi:uuid="8c793725-9f7c-4eda-8642-40f5fb75d086" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193108_431766_23587"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193650_620132_26655" xmi:uuid="9cb9c973-4cc7-479c-86f1-210bd4d4227c" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193085_557055_23539"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375106699_539566_163641" xmi:uuid="9e00c461-cc2d-4979-9fe2-76f3cf657277" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193019_931725_23396"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375106865_875066_163654" xmi:uuid="b8aabae5-d05d-4af6-8415-693aa38c3618" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193051_3879_23469"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1721221107933_69504_148857" xmi:uuid="ce27f6b8-a79f-4c8a-bcfd-af5022f04940" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_65b021e_1719937007191_236673_147578"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375107018_186100_163666" xmi:uuid="d5a6981a-0c96-4c25-8661-a129afa43260" xmi:type="uml:Generalization">
+        <general href="../DeltaChange/DeltaChange.xmi#_18_4_1_e120334_1499417193066_641486_23510"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375107571_711977_163715" xmi:uuid="d74debb2-03c4-4f8c-8dff-c11b0e3e8916" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193131_678926_23622"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194136_302917_29246" xmi:uuid="c121a18a-1448-4c64-9263-2415d08d6c52" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455707131026_666597_42727" xmi:uuid="0abb384f-3680-4290-8119-3fd8138ac00d" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194136_302917_29246"/>
+          <body> the identifier or set of identifiers for the WorkRequestRelationship. The value of this attribute need not be specified. &lt;note&gt; This attribute supports multi-identification in different contexts as described in Fundamental concepts and assumptions.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Id</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193119_518292_23608"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194852_850967_35549" xmi:uuid="73dc490c-2274-46e7-980b-a4507f19c937" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193740_354858_27279"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194136_672103_29247" xmi:uuid="a6649e97-9a28-46be-835a-70dc72c6504a" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455707141800_974139_42728" xmi:uuid="4cf99a02-d654-4ddd-8374-002d690c496c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194136_672103_29247"/>
+          <body> the text or the set of texts that provide further information about the WorkRequestRelationship. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Description</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194852_885999_35552" xmi:uuid="398ccb99-f13a-43bf-82a9-d704f299c2df" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193596_587521_26211"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194137_462439_29248" xmi:uuid="44a36c36-ce10-43e8-b47f-e75051a43494" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455707151865_574682_42729" xmi:uuid="ad027ff1-1591-433e-8d89-3a9710585961" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194137_462439_29248"/>
+          <body> the classifications of the WorkRequestRelationship. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>ClassifiedAs</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193038_880755_23447"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194853_163302_35555" xmi:uuid="da872784-857c-4d47-8fb6-cdcf592adfd2" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194853_263258_35554" xmi:uuid="3dece5f8-0104-469a-a2fe-37ca35a9a8e5" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193473_920189_25317"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194137_682005_29249" xmi:uuid="b6ee19a3-db93-4b6e-95a5-591896297a2c" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455707181833_86271_42730" xmi:uuid="69dfb41b-fbfd-4ae5-9a5b-434cc4eadf37" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194137_682005_29249"/>
+          <body> the meaning of the relationship. Where applicable, the following values shall be used: &lt;ul&gt;&lt;li&gt;'dependency': The related WorkRequest is dependent on the relating WorkRequest.&lt;/li&gt;&lt;/ul&gt; </body>
+        </ownedComment>
+        <name>RelationType</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193042_855579_23449"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193506_444642_25513"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194138_19934_29251" xmi:uuid="27c013e8-0013-4cda-b7ff-c8a041d76cad" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455707229523_350939_42732" xmi:uuid="d54ea763-3411-4218-9413-4276cf83a7ff" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194138_19934_29251"/>
+          <body> the other object of WorkRequest that is part of the relationship. &lt;note&gt; The semantics of this attribute are defined by the attribute RelationType.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Related</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <association xmi:idref="_18_4_1_e120334_1499417194129_961691_29224"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194137_332796_29250" xmi:uuid="b539da98-f4f3-439a-abce-64913393edda" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455707205791_661694_42731" xmi:uuid="3ce7230a-a54a-4819-ab0c-fe0ee9da1b6b" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194137_332796_29250"/>
+          <body> one object of WorkRequest that is part of the relationship. &lt;note&gt; The semantics of this attribute are defined by the attribute RelationType.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Relating</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <association xmi:idref="_18_4_1_e120334_1499417194130_205316_29225"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193473_920189_25317" xmi:uuid="14cdf3b5-a7ae-40c2-89fb-1b5465db1470" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194294_227156_30643"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194137_462439_29248"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194294_227156_30643" xmi:uuid="8af226a3-1b4f-498a-b895-2b3f39c29845" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193293_337205_23922"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194913_903922_36205" xmi:uuid="d3e5e344-3374-4f94-b6fb-cd2515f595d3" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194913_232796_36204" xmi:uuid="1fab30b3-2767-4444-837f-8a35e4cfeea8" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193473_920189_25317"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651679559356_465502_65151" xmi:uuid="16b71a7a-57e5-426a-b672-d43d2156c84f" xmi:type="uml:Association">
+      <ownedComment xmi:id="_19_0_4_b1702d9_1651681255596_916488_65598" xmi:uuid="eee7441a-5cbd-4ec4-b9e4-102cc3e54920" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_19_0_4_b1702d9_1651679559356_465502_65151"/>
+      </ownedComment>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651679559356_990175_65152"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651678630693_102597_59630"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651679559356_990175_65152" xmi:uuid="3856dc83-ec12-4c79-9cd4-0dcc80943bab" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651678629998_195485_59519"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651684432018_193637_65837" xmi:uuid="6d0dbacf-2798-475a-86e0-3401fe88883c" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651684432019_470157_65838" xmi:uuid="f71f1b41-2d1b-4d10-9815-b517d1e46841" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_19_0_4_b1702d9_1651679559356_465502_65151"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193601_839262_26240" xmi:uuid="19c54330-3d1f-4f30-b228-0d0840723bd0" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194417_509718_31501"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194130_910738_29227"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194417_509718_31501" xmi:uuid="c1fb8791-1aa6-4570-9c00-8e714513d3a6" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194992_130960_37065" xmi:uuid="ad905995-8add-4ed0-9942-cee1d986298e" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193601_839262_26240"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417194120_484237_29196" xmi:uuid="1a714ec6-d347-452e-b66d-122aa9cec479" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194841_928473_35435"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194123_597817_29204"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194841_928473_35435" xmi:uuid="e1afa72f-3a47-452b-966f-3fd7ff057187" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193288_663519_23915"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195109_777027_38259" xmi:uuid="2e5f509d-17dc-47bd-8d96-dd909f441b92" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417195109_755285_38258" xmi:uuid="c3f8db1f-1976-430b-a357-26bd9fb0ab55" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417194120_484237_29196"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193292_820968_23921" xmi:uuid="1f47465f-a880-4f71-8c17-568e96a2d9db" xmi:type="uml:Class">
+      <name>WorkRequestAssignmentSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193497_11891_25463" xmi:uuid="20710524-62e0-4377-be67-e9fef890bc9e" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194324_906262_30798"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194125_625076_29211"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194324_906262_30798" xmi:uuid="f3207e5b-a88d-451b-8752-ea108014b0ef" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193289_303822_23916"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194937_898604_36467" xmi:uuid="548ef745-e08c-4f28-afbb-137e2cdcb92f" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193497_11891_25463"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417194134_951283_29237" xmi:uuid="22d0b23a-028d-4dfe-81aa-e6e7efd05558" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194850_816885_35529"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194136_881028_29243"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194850_816885_35529" xmi:uuid="26fe3273-60ed-4d03-89e9-14f7056c6e98" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193291_23172_23920"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195110_83338_38273" xmi:uuid="4b52dd35-0e95-4aa9-8538-2b07f7f3e0d2" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417195110_485439_38272" xmi:uuid="8908bbd2-ef2d-4141-bc1d-8f39360ce589" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417194134_951283_29237"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651595261926_577498_88424" xmi:uuid="28361257-0539-48be-a6b3-c5892fd44dac" xmi:type="uml:Class">
+      <ownedComment xmi:id="_19_0_4_b1702d9_1651595262485_782597_88520" xmi:uuid="331193ff-450a-48dc-a56e-c1a01d1507a1" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_19_0_4_b1702d9_1651595261926_577498_88424"/>
+        <body>An ObservationRelationship is a relationship between two Observation objects.</body>
+      </ownedComment>
+      <name>ObservationRelationship</name>
+      <ownedRule xmi:id="_19_0_4_b1702d9_1651595261927_893265_88428" xmi:uuid="891e0e08-fe6a-4295-bcec-42a13b0ab12f" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_65b021e_1671209121683_112013_163114" xmi:uuid="a5f651b8-f1f5-4c61-aadc-7b5d90fba281" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_65b021e_1671209121683_65128_163115" xmi:uuid="a8595235-cdb8-4c40-a722-27641be7f5a8" xmi:type="uml:Comment">
+            <body>WR1: Relating :&lt;&gt;: Related;</body>
+          </ownedComment>
+          <body>EXPRESS</body>
+        </ownedComment>
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651595262489_399318_88559" xmi:uuid="c043053c-db23-46b6-be84-02a7ef56fbc7" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651595261927_893265_88428"/>
+          <body>the related Observation and the relating Observation shall be different.</body>
+        </ownedComment>
+        <ownedComment xmi:id="_18_4_1_65b021e_1671209121682_863389_163112" xmi:uuid="ee2fb9a5-84cd-4dc8-95ec-a2c72af2e852" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_65b021e_1671209121683_898272_163113" xmi:uuid="50e4e937-c964-4f0e-84db-f881df4f4c64" xmi:type="uml:Comment">
+            <body> &lt;sch:rule context="//ObservationRelationship[@uid]"&gt;&#13; &lt;sch:let name="entity_name" value="if(@xsi:type) then substring-after(@xsi:type,':') else name()"/&gt;&#13; &lt;sch:let name="uid" value="@uid"/&gt;&#13; &lt;sch:let name="uidRelating" value="../@uid"/&gt;&#13; &lt;sch:let name="uidRelated" value="Related/@uidRef"/&gt;&#13; &lt;sch:assert test="not(../@uid = Related/@uidRef)"&gt;&#13; The related Observation and the relating Observation shall be different. &#13; {&#13; -entity_name:&lt;sch:value-of select="$entity_name"/&gt;&#13; -entity_uid:&lt;sch:value-of select="$uid"/&gt; &#13; -rule_name:ObservationRelationship.WR1&#13; -relating:&lt;sch:value-of select="$uidRelating"/&gt;&#13; -related:&lt;sch:value-of select="$uidRelated"/&gt;&#13; }&#13; &lt;/sch:assert&gt;&#13; &lt;/sch:rule&gt;</body>
+          </ownedComment>
+          <body>Schematron</body>
+        </ownedComment>
+        <name>WR1</name>
+        <constrainedElement xmi:idref="_19_0_4_b1702d9_1651595261926_577498_88424"/>
+        <specification xmi:id="_19_0_4_b1702d9_1651595262489_473419_88558" xmi:uuid="cd0256d4-dbd4-4945-b189-d5e783084fd9" xmi:type="uml:OpaqueExpression">
+          <body>self.Relating &lt;&gt; self.Related</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <generalization xmi:id="_19_0_4_b1702d9_1679048789443_289470_59925" xmi:uuid="02cc71b9-ddf5-4d65-bdcd-770be8101b1e" xmi:type="uml:Generalization">
+        <general href="../RequirementManagementAndVAndV/RequirementManagementAndVAndV.xmi#_18_4_1_8e001ed_1513262749828_373119_62494"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1679048803983_273875_59947" xmi:uuid="34da5ce2-2ff5-4fed-8103-fc52dde430b5" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193131_678926_23622"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1679048703375_643660_59855" xmi:uuid="50048f0a-e4e9-4545-97ba-1618ed4847de" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193012_865292_23378"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651595262488_967641_88544" xmi:uuid="50e54002-4975-4235-8d20-09ec6d84bfc1" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193203_213100_23783"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1679048763733_94161_59899" xmi:uuid="5cac38d5-11d5-42f0-a738-2a49437fe8b8" xmi:type="uml:Generalization">
+        <general href="../DeltaChange/DeltaChange.xmi#_18_4_1_e120334_1499417193066_641486_23510"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1679048178167_246604_59126" xmi:uuid="65ca22db-a15e-4304-9872-e279ff390ad7" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193010_433732_23374"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1679048723788_263400_59880" xmi:uuid="6e394f8f-a423-4683-93ac-e3933ded48ab" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193051_3879_23469"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651595262488_952264_88543" xmi:uuid="ac9b8f25-30d7-41b0-aea7-51740591d1e6" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193085_557055_23539"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1679048818656_681451_59958" xmi:uuid="b1924a5c-e2e2-4d90-8ffa-d1e0e4abd72e" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1665676763419_25158_58983"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1679048776774_296819_59910" xmi:uuid="b8cd3f3e-a365-406f-9fad-41970aad63c9" xmi:type="uml:Generalization">
+        <general href="../DocumentManagement/DocumentManagement.xmi#_18_4_1_e120334_1499417193076_372354_23525"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1687944429010_65957_162760" xmi:uuid="c5f8d118-ba31-402d-9003-fdfd06b935ee" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1659094024832_690472_58816"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1679048796741_11725_59936" xmi:uuid="f1b8048e-672e-42d8-95da-6df4fc21cf63" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193108_431766_23587"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1721221107531_954567_148821" xmi:uuid="fe802275-e4cc-4c05-96ac-3bfc94dc3072" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_65b021e_1719937007191_236673_147578"/>
+      </generalization>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651595261927_840997_88425" xmi:uuid="9053d391-f217-473b-afcc-88c444102ebe" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651595262488_595407_88547" xmi:uuid="4999e209-0b91-4a06-be24-d0b9a5a3d523" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651595261927_840997_88425"/>
+          <body> the text or the set of texts that provide further information about the ObservationRelationship. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Description</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651595262488_652961_88548" xmi:uuid="9975aed6-7585-4b70-8958-dc3e48420132" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651595272043_428922_90493"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651595261927_773947_88426" xmi:uuid="ac5829b8-d949-43ba-b935-b5fc88624cde" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651595262488_176563_88551" xmi:uuid="eba08f15-4fb5-407b-9bc1-41736bc24846" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651595261927_773947_88426"/>
+          <body> the classifications of the ObservationRelationship. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>ClassifiedAs</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193038_880755_23447"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651595262488_622358_88552" xmi:uuid="f1fd2013-f542-468f-bb82-7e752adefe75" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651595262488_283037_88550" xmi:uuid="851f0b12-ef4f-459e-b0e4-f83429d53fc3" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651595261927_532566_88427" xmi:uuid="7896743a-86f1-4d57-97a7-c783f31ca28a" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651595262488_842504_88555" xmi:uuid="49645f3e-d699-4d0a-926a-1eb5967bf56c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651595261927_532566_88427"/>
+          <body> the meaning of the relationship. Where applicable, the following values shall be used: &lt;ul&gt;&lt;li&gt;'dependency': The related Observation is dependent on the relating Observation.&lt;/li&gt;&lt;/ul&gt; </body>
+        </ownedComment>
+        <name>RelationType</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193042_855579_23449"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651595262485_7554_88522" xmi:uuid="897dd8b7-07f4-4bbe-9c2f-fabd30e11d48" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651595262508_556696_88651" xmi:uuid="b5089c9b-9e76-462b-9806-07f17105f40c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651595262485_7554_88522"/>
+          <body> the identifier or set of identifiers for the ObservationRelationship. The value of this attribute need not be specified. &lt;note&gt; This attribute supports multi-identification in different contexts as described in Fundamental concepts and assumptions.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Id</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193119_518292_23608"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651595262508_848192_88652" xmi:uuid="48b9b1bf-b365-445d-bbbb-178dcb84287f" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651595272045_172632_90496"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651595262486_644381_88524" xmi:uuid="42957993-13fd-4fcb-a097-842df757e528" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651595262509_888456_88659" xmi:uuid="3956efac-16ae-4b3d-aae3-ce8a020ff5fc" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651595262486_644381_88524"/>
+          <body> the other object of Observation that is part of the relationship. &lt;note&gt; The semantics of this attribute are defined by the attribute RelationType.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Related</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651595429749_440925_90574"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651595262485_476017_88523" xmi:uuid="59b1dcae-d7ae-44db-bb5f-91aee5fdaeab" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651595262509_247144_88655" xmi:uuid="c117252a-d863-4303-9a51-dfeffbfc7e8b" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651595262485_476017_88523"/>
+          <body> one object of Observation that is part of the relationship. &lt;note&gt; The semantics of this attribute are defined by the attribute RelationType.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Relating</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651595422496_662144_90550"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193731_794688_27229" xmi:uuid="2f5eb616-cc9f-46c2-9f30-decc19614586" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194523_322727_32427"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194130_981114_29226"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194523_322727_32427" xmi:uuid="70f3b125-f61e-4004-accd-8418eeb8d165" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195032_771316_37465" xmi:uuid="4eff1fb5-d91b-401b-9eac-a4046de5b62d" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193731_794688_27229"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651754273884_175336_66125" xmi:uuid="32b4fe87-387d-4e21-851c-664dd30fa8c9" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651754273884_377193_66127"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651754273884_388515_66126"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651754273884_377193_66127" xmi:uuid="69dc9509-ef8f-4eef-8deb-9b5856d16da2" xmi:type="uml:Property">
+        <visibility>public</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651754708428_143557_66157" xmi:uuid="4ee89609-bb6f-46c6-b189-bfacb88a6a04" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651754708429_891646_66158" xmi:uuid="e40f8677-26ed-4bd3-99d5-fea8625d6e7c" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_19_0_4_b1702d9_1651754273884_175336_66125"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651591340794_965359_65901" xmi:uuid="403c6816-d36f-432a-91f2-a3d40e9893ce" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651591340794_72041_65902"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651591325049_386771_63351"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651591340794_72041_65902" xmi:uuid="98ac951d-a526-4b8e-a202-6963d537acbf" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651591325047_670311_63349"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651591340794_965359_65901"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417194129_961691_29224" xmi:uuid="412ef1e0-b8c5-48e8-b79d-5cf874a93d1f" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194847_474604_35497"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194138_19934_29251"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194847_474604_35497" xmi:uuid="2fdd8573-57d6-4ba6-b814-c0e46a09c42e" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193293_337205_23922"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195110_510267_38269" xmi:uuid="23b61cd7-5b15-4a90-975c-523c418bff76" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417195110_8616_38268" xmi:uuid="69eb78f6-bf70-4407-957a-0d90a725e369" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417194129_961691_29224"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651763074694_753343_66359" xmi:uuid="4183bec1-c66f-4822-8397-5929a6eee77b" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651763074694_265686_66360"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651763055765_860642_66356"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651763074694_265686_66360" xmi:uuid="c0b58ba7-8f5c-4747-ae5e-43771b48f61a" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651763074694_753343_66359"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193994_931612_28641" xmi:uuid="48c182d0-b25e-4dd4-902c-f39600e912a2" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194745_666393_34479"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194123_58450_29205"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194745_666393_34479" xmi:uuid="39892b1a-31ea-49c0-a232-1cd48f59aaca" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193288_663519_23915"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195095_951802_38113" xmi:uuid="5aafb729-abd9-4fad-95fc-590e438671c6" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193994_931612_28641"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193592_591367_26189" xmi:uuid="51c7a93d-ded2-468f-9488-cbc1f4a256e9" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194407_639186_31450"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194127_757849_29217"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194407_639186_31450" xmi:uuid="633ab201-95cd-419c-98bc-32e459dbe28c" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_559728_23918"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194983_797032_36963" xmi:uuid="9cc42499-3e1e-4d2a-9bdf-60b06384832e" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193592_591367_26189"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193476_585001_25337" xmi:uuid="555bd090-6704-4665-b748-39129cf207b3" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194298_673820_30662"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194122_265846_29202"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194298_673820_30662" xmi:uuid="e828fdd0-1fba-4bdc-9f85-3d6aaaa8092e" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193288_663519_23915"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194917_296202_36243" xmi:uuid="69a3771a-5c8d-4763-a2e4-ed89de2ccb95" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194917_461673_36242" xmi:uuid="ed65e7b0-3166-490f-934f-657f5e7ce8cc" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193476_585001_25337"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417194123_281315_29207" xmi:uuid="56a63819-67e2-4ec2-9a0f-8ffbea43ef80" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194843_788586_35459"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194125_945373_29213"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194843_788586_35459" xmi:uuid="69193e23-0eda-4476-9457-30a7a9e0e82c" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193289_303822_23916"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195109_500806_38265" xmi:uuid="edb469b9-1342-4fd2-a54e-6cf37e705cf3" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417195109_777318_38264" xmi:uuid="24a8a898-2c38-4aeb-a116-9f45d6249f9b" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417194123_281315_29207"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1665676763419_25158_58983" xmi:uuid="5820d3ea-e456-4a59-838c-a1efbf67b893" xmi:type="uml:Class">
+      <name>ObservationContextSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193289_303822_23916" xmi:uuid="5bfb0bcb-eb5b-439e-b879-925e7b337ae6" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_0_5_45e01bd_1455706478020_765405_42694" xmi:uuid="8c591de6-88d4-409e-908e-423f8279a90e" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193289_303822_23916"/>
+        <body>A WorkOrderAssignment is an association of a WorkOrder with activity data objects listed in WorkOrderAssignmentSelect that are subjects of this WorkOrder.</body>
+      </ownedComment>
+      <name>WorkOrderAssignment</name>
+      <generalization xmi:id="_18_4_1_e120334_1499417193319_477031_24043" xmi:uuid="15e90ace-08e0-4b75-bde2-a4a17d0c5f96" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193010_433732_23374"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193396_647702_24758" xmi:uuid="197ad0f9-3701-480b-90f1-f3745a8c7d66" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193024_414882_23411"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193530_516527_25735" xmi:uuid="362c8fed-3d49-48da-b551-8be641a4419b" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193051_3879_23469"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193620_745553_26383" xmi:uuid="3818d232-a33d-4ec0-b9d1-5d69a2503978" xmi:type="uml:Generalization">
+        <general href="../DocumentManagement/DocumentManagement.xmi#_18_4_1_e120334_1499417193076_372354_23525"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1675863858521_669194_164152" xmi:uuid="3b4938a8-c2f9-4693-aee6-f47a9d507676" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1665676763419_25158_58983"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193372_392360_24555" xmi:uuid="641518bc-66d9-4c91-ba15-835d391207e2" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193019_931725_23396"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193969_646705_28525" xmi:uuid="7c002c51-7109-4d65-971a-75246f38797d" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193203_213100_23783"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193650_166526_26653" xmi:uuid="970de4d4-3fdd-4670-8bc5-674fddac5fe0" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193085_557055_23539"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1663409220332_173854_162173" xmi:uuid="a2ef9fea-9764-4e41-8184-4ab3365672e5" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1659094024832_690472_58816"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_8e001ed_1500554970213_27487_27927" xmi:uuid="aa6cc06b-51fd-433e-a5bf-0c3d71dadf19" xmi:type="uml:Generalization">
+        <general href="../DeltaChange/DeltaChange.xmi#_18_4_1_e120334_1499691165239_904252_31960"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193526_501465_25669" xmi:uuid="ba125bfe-b5d5-45eb-af0d-b9b67df9f12f" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193050_963088_23467"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193333_243501_24216" xmi:uuid="cda77cba-f7cb-4575-830c-0c7e8e34ab11" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193012_865292_23378"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193703_536051_27030" xmi:uuid="d961af65-96ef-4813-b0e5-dbf73ca18720" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193108_431766_23587"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194124_189222_29208" xmi:uuid="731b8166-45a7-4cae-bf30-86defea32b36" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706501680_807912_42695" xmi:uuid="0d476246-7d43-4e5a-8359-6041400b7071" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194124_189222_29208"/>
+          <body> the identifier or set of identifiers for the WorkOrderAssignment. The value of this attribute need not be specified. &lt;note&gt; This attribute supports multi-identification in different contexts as described in Fundamental concepts and assumptions.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Id</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193119_518292_23608"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194844_932278_35461" xmi:uuid="001763fc-5846-41e4-af7b-7f7bd59fb8df" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193747_156935_27313"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194124_562044_29209" xmi:uuid="a6cd998e-59ea-4e27-a035-88cc83b27d3f" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706511749_301039_42696" xmi:uuid="20d9dd2f-cd9a-4345-be6b-25eaa8ce2baf" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194124_562044_29209"/>
+          <body> the text or the set of texts that provide further information about the WorkOrderAssignment. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Description</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194844_128231_35464" xmi:uuid="1383ed68-ad25-4f45-bd77-ba774ce54d73" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193582_685059_26130"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194124_501112_29210" xmi:uuid="63beb824-8def-4441-ace1-6eefa3524c1b" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706521531_865911_42697" xmi:uuid="5ce66700-1943-48fe-baab-2da1acb407e1" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194124_501112_29210"/>
+          <body> the classifications of the WorkOrderAssignment. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>ClassifiedAs</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193038_880755_23447"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194844_430750_35467" xmi:uuid="8245cb7d-1ae8-4617-919d-6a67e96e80a5" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194844_346640_35466" xmi:uuid="c6b93b89-febd-435f-b8dc-4ef04fb784a3" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193468_115252_25288"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194125_625076_29211" xmi:uuid="a4ff82d3-615c-4153-8efa-2f7594010253" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706530109_273659_42698" xmi:uuid="166fbc20-36fa-4621-8f39-7f8fd0826a65" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194125_625076_29211"/>
+          <body> the meaning of the association.</body>
+        </ownedComment>
+        <name>Role</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193042_855579_23449"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193497_11891_25463"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194125_294721_29212" xmi:uuid="929b7bb0-8945-4a97-8bf8-be21d4f3128d" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706542160_360259_42699" xmi:uuid="3d77e605-ab7e-44e6-a0dd-67b36a936c30" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194125_294721_29212"/>
+          <body> the WorkOrder for which a set of items is being identified.</body>
+        </ownedComment>
+        <name>AssignedWorkOrder</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193288_663519_23915"/>
+        <association xmi:idref="_18_4_1_e120334_1499417194121_217196_29198"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194125_945373_29213" xmi:uuid="5fdf4fcd-90c3-4524-a3ad-56486b39a8d6" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706554237_850490_42700" xmi:uuid="0ad89d65-dd0a-45a3-96a0-ef3109c4428f" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194125_945373_29213"/>
+          <body>the Activity or ActivityMethod that is affected by the WorkOrder.</body>
+        </ownedComment>
+        <name>AssignedTo</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193290_721626_23917"/>
+        <association xmi:idref="_18_4_1_e120334_1499417194123_281315_29207"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193498_127846_25466" xmi:uuid="5bfe7090-d713-4bec-bdcb-49be6cad3fd8" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194325_533237_30801"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194131_581515_29230"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194325_533237_30801" xmi:uuid="6381aaf5-32fb-4438-ae1f-998b3ab3247a" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194938_477241_36473" xmi:uuid="4f201a21-47cb-421c-b1ef-c64716324663" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193498_127846_25466"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651678644728_491895_62068" xmi:uuid="5cefbbfe-58f0-43e9-9c80-6a0ba4d3a1b4" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651678644728_932452_62069"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651678629999_457283_59520"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651678644728_932452_62069" xmi:uuid="3f98378e-bf75-49b5-ab5a-b25f8e59fb61" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651678629998_195485_59519"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651678644728_491895_62068"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417194121_398815_29197" xmi:uuid="5f49ca4d-cba5-41a7-8af2-a203faf980e7" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194841_693858_35436"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194128_819382_29220"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194841_693858_35436" xmi:uuid="1b73e0d2-44cc-477e-abfd-8a19f37cf79c" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_559728_23918"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195109_103200_38261" xmi:uuid="954e6bd1-5cfd-43a3-8a1a-2251300944de" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417195109_693710_38260" xmi:uuid="63b0bb84-3fe1-46a2-9507-6bb42875659f" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417194121_398815_29197"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193996_67216_28648" xmi:uuid="6140bfba-5f89-4422-8ae8-40670eda8972" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194746_410259_34486"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194133_361378_29233"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194746_410259_34486" xmi:uuid="af1e094f-9f40-4e59-9fc7-fa49a5d506b8" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195096_724430_38127" xmi:uuid="2082a350-9c57-4f42-9faa-ebb18da43582" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193996_67216_28648"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651678629998_195485_59519" xmi:uuid="621d396e-4208-4f92-96a8-d64e95d06403" xmi:type="uml:Class">
+      <ownedComment xmi:id="_19_0_4_b1702d9_1651678630693_768665_59628" xmi:uuid="c1c21f33-f51d-4fac-b349-fb2933b1f288" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_19_0_4_b1702d9_1651678629998_195485_59519"/>
+        <body>An ObservationAssignment is an association of an Observation with any item that an observation can be made about, or any item that can be used as part of the observation.</body>
+      </ownedComment>
+      <name>ObservationAssignment</name>
+      <generalization xmi:id="_19_0_4_b1702d9_1651678630696_649992_59659" xmi:uuid="0b420589-171e-4164-b161-def7ccfa7d2f" xmi:type="uml:Generalization">
+        <general href="../DocumentManagement/DocumentManagement.xmi#_18_4_1_e120334_1499417193076_372354_23525"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651678630696_989386_59654" xmi:uuid="14e5b0bf-b1cd-41ab-b7b2-9abc2c56baa2" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193012_865292_23378"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651678630696_384313_59660" xmi:uuid="286d5d47-e36c-4514-8091-b58e3aa5d0f4" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193085_557055_23539"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651678630696_460434_59661" xmi:uuid="36fe20e5-04c4-4741-bc7d-b19920d0b32e" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193108_431766_23587"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651678630696_476181_59657" xmi:uuid="3f05009d-b1d0-4041-9943-983618f595fc" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193050_963088_23467"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651678630696_917532_59662" xmi:uuid="6f1e9962-d6d2-40b1-8e0b-dfcf2ecfbc92" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193203_213100_23783"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651678630696_515580_59656" xmi:uuid="74e7fae6-39f4-44fd-8777-bbd3e1d15455" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193024_414882_23411"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1663409219898_666930_162128" xmi:uuid="ac51b417-244c-4ec1-93e9-4dae04efe57a" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1659094024832_690472_58816"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651678630696_95238_59655" xmi:uuid="b49c6a24-9983-4a97-828f-11d353c28e13" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193019_931725_23396"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651678630696_561295_59653" xmi:uuid="c8152477-b08f-48e1-afe6-6ccd95b40b24" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193010_433732_23374"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651678630696_507637_59658" xmi:uuid="dc6b6185-b2eb-4f2f-b225-32744c96130c" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193051_3879_23469"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651678630696_893691_59663" xmi:uuid="eb87d95f-d679-419d-b58b-56f9135a0cd2" xmi:type="uml:Generalization">
+        <general href="../DeltaChange/DeltaChange.xmi#_18_4_1_e120334_1499691165239_904252_31960"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1675863858035_665688_164109" xmi:uuid="ec9cbd89-afa7-4110-b7ed-d1c0d2029c8c" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1665676763419_25158_58983"/>
+      </generalization>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651678630000_862100_59522" xmi:uuid="d0cc95ad-52be-46f8-9439-e4ed0eba58b7" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651678630696_798430_59674" xmi:uuid="fd486587-c164-4b5c-b620-6869ac920f7c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651678630000_862100_59522"/>
+          <body> the classifications of the ObservationAssignment. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>ClassifiedAs</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193038_880755_23447"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651678630697_356813_59675" xmi:uuid="a2f0475f-46ca-4aa0-9b87-738a9cc679a7" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651678630696_411693_59673" xmi:uuid="b7e9f3a1-2f9f-43bd-b344-b19d2bad6f36" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651678630000_934328_59523" xmi:uuid="b040f8de-8f5c-420c-82ce-24f641554c99" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651680821991_205042_65583" xmi:uuid="05d916b9-449d-47df-8b0d-0c24223007a3" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651678630000_934328_59523"/>
+        </ownedComment>
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651678630697_833756_59678" xmi:uuid="a4c4feea-47b8-4bf1-940b-214188ec405b" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651678630000_934328_59523"/>
+          <body>the meaning of the association.</body>
+        </ownedComment>
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651680899337_813201_65587" xmi:uuid="ada0818b-c3ae-4f0e-a961-01a1034c68a9" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651678630000_934328_59523"/>
+        </ownedComment>
+        <name>Role</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193042_855579_23449"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651678630693_102597_59630" xmi:uuid="82587ab7-b2bc-4978-80ce-d8d4023bc9a0" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651678630714_765478_59810" xmi:uuid="bce0920a-e54f-41ed-8bad-d0660535a479" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651678630693_102597_59630"/>
+          <body>the Observation that applies to or is relevant to the assigned item.</body>
+        </ownedComment>
+        <name>AssignedObservation</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651679559356_465502_65151"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651678629999_457283_59520" xmi:uuid="8c07d780-cef1-4d13-8391-c6cb0bccad31" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651678630696_402665_59666" xmi:uuid="2d918875-88c6-4437-81e7-ccc63de41787" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651678629999_457283_59520"/>
+          <body> the identifier or set of identifiers for the ObservationAssignment. The value of this attribute need not be specified. &lt;note&gt; This attribute supports multi-identification in different contexts as described in Fundamental concepts and assumptions.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Id</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193119_518292_23608"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651678630696_753399_59667" xmi:uuid="0ec33a3c-c27c-4e15-bf03-858e176a3e17" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651678644728_491895_62068"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651678630000_553872_59521" xmi:uuid="8d8b6754-cf27-4f42-8c54-652e9876fb86" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651678630696_188528_59670" xmi:uuid="76f99ef6-f24e-4bc3-8c99-aec5b48e8378" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651678630000_553872_59521"/>
+          <body> the text or the set of texts that provide further information about the ObservationAssignment. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Description</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651678630696_482567_59671" xmi:uuid="f2855943-6786-47d2-bca4-cc08b639f23a" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651678644729_594211_62071"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651678630693_631002_59631" xmi:uuid="76ca0efd-e8fc-43b7-bed3-ee8a9fe0fe2e" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651678630714_606677_59814" xmi:uuid="97275e70-5459-4bfe-9e64-ecd0293d2e04" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651678630693_631002_59631"/>
+          <body>the item that can be observed, or the item that can be used as part of the observation.</body>
+        </ownedComment>
+        <name>AssignedTo</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651678794616_161964_62196"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651679506280_802316_65131"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193496_43422_25453" xmi:uuid="6231d6c8-b9ae-47d7-87ff-e5973be6e3dc" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194322_64865_30789"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194135_118080_29241"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194322_64865_30789" xmi:uuid="d8151d43-9bdf-4b18-8988-91378ef80a37" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193291_23172_23920"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194935_560991_36449" xmi:uuid="7d1db893-a360-4c97-b2c2-9eb8597c6d57" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193496_43422_25453"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651589657065_278453_59308" xmi:uuid="66dc2fbc-7a65-48c9-b62c-2a637a17a9d0" xmi:type="uml:Class">
+      <ownedComment xmi:id="_19_0_4_b1702d9_1651589658864_67907_59445" xmi:uuid="eebd2d5d-bb9a-46e8-b482-7594c1f87341" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+        <body>An Observation is a record of something that occures or has occured during the life of a product or its support environment. Its use is restricted to observations not directly represented in the data model, and should not be used where some other reporting data structure is defined.</body>
+      </ownedComment>
+      <name>Observation</name>
+      <generalization xmi:id="_19_0_4_b1702d9_1651589658878_26341_59495" xmi:uuid="099f35e5-75b5-4951-bc63-b559616d79f8" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_8e001ed_1513076037040_166958_42165"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651589658878_334298_59491" xmi:uuid="0ce94c9b-8a69-4e0b-8481-612646605d1a" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193203_213100_23783"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651589658878_163341_59496" xmi:uuid="198d9230-393c-4f7f-a658-01b99a2a1a6b" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_8e001ed_1513076037039_374921_42164"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651589658876_541090_59484" xmi:uuid="2e8c7a95-9356-4c48-b871-4acdf03632a4" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193012_865292_23378"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1675863858024_168298_164108" xmi:uuid="588dd258-0b4c-459c-a3b2-b1b2eacd64e7" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1665676763419_25158_58983"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1663409219890_203746_162127" xmi:uuid="62fdee80-bc90-4ffe-b426-c15028c6f3b8" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1659094024832_690472_58816"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651589658878_645428_59489" xmi:uuid="760710f1-a943-47b4-ad9a-4a99ed0e340e" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193108_431766_23587"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651589658877_808342_59485" xmi:uuid="83e097d4-2ba8-4bc5-b9fc-f88d2bc99250" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193019_931725_23396"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651589658877_743333_59487" xmi:uuid="bb995c73-a886-4f64-b759-f67f9e65b9e1" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193057_275822_23483"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651589658878_959807_59493" xmi:uuid="bd741867-1769-419f-876a-a7efeb10fc4e" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193239_422374_23834"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651589658878_298304_59490" xmi:uuid="bfd1af76-c495-4d28-932a-2289f6df46e2" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193131_678926_23622"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651589658878_865157_59494" xmi:uuid="c8798c2c-49a4-4676-ac3e-0fcff7f43965" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193259_964911_23867"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651589658878_184521_59488" xmi:uuid="d5733ab9-1b57-42c4-ba8b-36fb8a13f8fb" xmi:type="uml:Generalization">
+        <general href="../DocumentManagement/DocumentManagement.xmi#_18_4_1_e120334_1499417193076_372354_23525"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651589658877_368033_59486" xmi:uuid="d906b202-66e9-44ef-879a-56353af37f1f" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193051_3879_23469"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651589658878_875481_59497" xmi:uuid="e5a70516-c47d-41ed-a704-050997391bc9" xmi:type="uml:Generalization">
+        <general href="../Message/Message.xmi#_18_4_1_8e001ed_1513936657024_428700_60344"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1659098321788_684941_59972" xmi:uuid="ea9f5f76-0c9a-44c5-9b3d-4ebfd9d8a4f3" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193010_433732_23374"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651589658878_108109_59492" xmi:uuid="f018c291-3b47-4ece-9ec2-35b16b89e2ad" xmi:type="uml:Generalization">
+        <general href="../RequirementManagementAndVAndV/RequirementManagementAndVAndV.xmi#_18_4_1_e120334_1499417193226_546395_23815"/>
+      </generalization>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651589657072_92741_59313" xmi:uuid="16a80c1a-ea4e-48f6-9863-df8b7ddeba31" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651589658883_228281_59516" xmi:uuid="06bc19be-42a6-411f-9ba3-1d88863837b6" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651589657072_92741_59313"/>
+          <body> the classifications of the Observation. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>ClassifiedAs</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193038_880755_23447"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651589658883_593113_59517" xmi:uuid="5cab2949-fed4-465a-9a48-dcc8e2e4e419" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651589658883_226861_59515" xmi:uuid="1aa0ea9a-4106-4513-96f8-c59994564c21" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651589657072_185148_59314" xmi:uuid="6e07dbfc-8465-42a6-93c2-b8163ef4993c" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651589658883_136679_59520" xmi:uuid="913cd8da-6ef5-453f-be75-71e58447c14c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651589657072_185148_59314"/>
+          <body> the intention of the Observation.</body>
+        </ownedComment>
+        <name>ObservationType</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193042_855579_23449"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651589657073_142983_59315" xmi:uuid="b55d6c95-c5bb-4acf-9a6b-e219b6270ad2" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651589658883_878756_59524" xmi:uuid="8d504c57-5d3c-43de-8d06-348ac18dd5a0" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651589657073_142983_59315"/>
+          <body> the text that provides a user interpretable designation for the level of completion of the study and resolution of the Observation. &lt;example&gt; The designations 'drafted', 'issued', 'deferred', 'proposed', 'in-work', 'completed', 'resolved', 'canceled', and 'rejected' are examples of observation Status. &lt;/example&gt; The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Status</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193042_855579_23449"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651589658883_85365_59525" xmi:uuid="348bd38f-7515-48e2-8147-31450fc46290" xmi:type="uml:LiteralInteger"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651589658865_601787_59448" xmi:uuid="ef762b20-e856-4da6-a311-a63e9baa0071" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651589658946_486625_59735" xmi:uuid="5d343b41-aa35-4c54-aaf0-be7def9cba03" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651589658865_601787_59448"/>
+          <body>the person or equipment that did the observing.</body>
+        </ownedComment>
+        <name>ObservedBy</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651594248352_391956_88065"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651589681754_83399_63261"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651589658865_280075_59449" xmi:uuid="15a0af12-54ef-4042-9ecb-506c04eafd82" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651589658946_688830_59739" xmi:uuid="03a5cca2-34dc-482a-8901-42eb7a9ca2cf" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651589658865_280075_59449"/>
+          <body>the context in which the observation is made. The value of this attribute need not be specified.&lt;example&gt; A problem is found during a product design. The set of contexts can include the affected product, product configuration, or project, the affected parts or assemblies including geometry&lt;/example&gt;&lt;example&gt; A problem is found during a maintenance operation. The set of contexts can include the equipment being maintained, the end product the equipment is fitted to, the activity being undertaken, the manual that describes the activity and the resources being used. &lt;/example&gt;</body>
+        </ownedComment>
+        <name>ObservationContext</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1665676763419_25158_58983"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651589658947_650446_59740" xmi:uuid="b54153af-baf1-41a8-90e9-df063dee5c09" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651589658946_9394_59738" xmi:uuid="3c10a8a5-4978-44c6-8788-9397fdff41b5" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_19_0_4_b1702d9_1651679981632_97110_65385"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651589657070_573792_59309" xmi:uuid="56f706d9-1656-4f4f-a15e-560c3ee28082" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651589658880_690460_59500" xmi:uuid="93c9c648-1d25-43c9-b5c4-c549acfe0185" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651589657070_573792_59309"/>
+          <body> the identifier or set of identifiers for the Observation. &lt;note&gt; This attribute supports multi-identification in different contexts as described in Fundamental concepts and assumptions.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Id</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193119_518292_23608"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651589681743_722089_63246"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651763055765_860642_66356" xmi:uuid="c77365f1-d5b2-44f8-87bb-77fdfc2d211a" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1659091115855_476173_58670" xmi:uuid="d1ac4bb4-6c10-4264-bef2-0f7c812fc192" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651763055765_860642_66356"/>
+          <body> the words or set of words by which the Observation is known. The value of this attribute need not be specified. &lt;note&gt; This attribute supports multiple names in different contexts as well as multi-linguism.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Name</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651763078972_101610_66362" xmi:uuid="c35c6f6b-35f4-4e60-9ff1-4604d6048ef9" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651763074694_753343_66359"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651589657071_607713_59310" xmi:uuid="01cf90e6-b19b-40c7-af94-9b1d5dffdc59" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651589658881_725608_59504" xmi:uuid="677ed981-1cbe-403c-b973-82086d51d932" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651589657071_607713_59310"/>
+          <body> the text or the set of texts that provide further information about the Observation. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Description</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651589658881_414866_59505" xmi:uuid="b3fce08c-bfce-496c-836d-ca8d07a6514a" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651589681749_920853_63249"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651589657072_109476_59311" xmi:uuid="822e28f6-2001-47e4-89bd-df6fe7dd87c6" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651589658882_102106_59508" xmi:uuid="da86cbd6-6ea5-4903-ba6d-bdcdd8423ec1" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651589657072_109476_59311"/>
+          <body> the identification or set of identifications of a specific version of the Observation. The value of this attribute need not be specified. &lt;note&gt; This attribute supports multi-identification in different contexts as described in Fundamental concepts and assumptions. &lt;/note&gt;</body>
+        </ownedComment>
+        <name>VersionId</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193119_518292_23608"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651589658882_737332_59509" xmi:uuid="97d21677-5f19-4d95-8264-b0efc0c0428e" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651589681750_468824_63252"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651589658865_555762_59447" xmi:uuid="95f78c7b-bb9a-4cd6-b50d-1a9cf201e11d" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651589658946_318857_59731" xmi:uuid="44b127ab-a43f-4679-8db5-d0d25fcffb13" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651589658865_555762_59447"/>
+          <body> the personnel that shall be informed about the Observation and the date when the personnel or organization shall be informed. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>NotifiedPersons</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193062_260588_23499"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651589658946_346919_59732" xmi:uuid="f0f0e6d0-4f3e-4d3c-aeb6-4d73c4b3f47a" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651589658946_77796_59730" xmi:uuid="2531fd73-2819-4ac9-a420-923424f4a696" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651589681753_565139_63258"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651754273884_388515_66126" xmi:uuid="d837bff7-c600-4409-be2a-8f211b8ad707" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651754765446_23043_66165" xmi:uuid="7d80884c-cd9c-456a-821e-357e69d7ce03" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651754273884_388515_66126"/>
+          <body>the ActualActivity that was being performed when the observation was made. The value of this attribute need not be specified.&lt;example&gt; An unexpected problem may be found during a maintenance activity, in which case the ActualActivity is the maintenance activity itself. &lt;/example&gt;&lt;example&gt; Aircraft health monitoring data is collected during a flight. The flight profile may be recorded using the ActualActivity. &lt;/example&gt;</body>
+        </ownedComment>
+        <name>AssociatedActivity</name>
+        <visibility>public</visibility>
+        <type href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193014_295867_23381"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651754628788_422161_66145" xmi:uuid="810b4474-de71-4359-916e-b6c471786d02" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651754273884_175336_66125"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651589657072_712083_59312" xmi:uuid="3cbb9d82-03af-400f-a98e-556abeca76d5" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651589658882_261084_59512" xmi:uuid="1a09772f-4f11-42e6-b152-127bd4c2d48f" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651589657072_712083_59312"/>
+          <body> the object or set of objects held externally to the exchange file for which this object is a proxy. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>SameAs</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193214_230770_23795"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651589658882_670252_59513" xmi:uuid="b2c86d10-c040-49fc-b4ac-cc6b151d7cc4" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651589658882_159887_59511" xmi:uuid="ae61d190-83e4-43b3-b534-e97c47e9604b" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651589681752_873377_63255"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193603_642541_26251" xmi:uuid="6848ba4f-d591-4b32-b3f2-ca2694b1b767" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194420_834967_31512"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194121_47931_29200"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194420_834967_31512" xmi:uuid="c8d38e1b-8135-4735-870a-7e5429aa8a86" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193288_663519_23915"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194994_325454_37087" xmi:uuid="360ac109-a1d9-4f9c-9be3-fef042dce5a9" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193603_642541_26251"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651595272045_172632_90496" xmi:uuid="687c5c56-8666-4d01-b88c-e0bdf42248b8" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651595272045_534135_90497"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651595262485_7554_88522"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651595272045_534135_90497" xmi:uuid="b284eb25-04fd-4ac0-a845-411a0d901600" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651595261926_577498_88424"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651595272045_172632_90496"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1659094024832_690472_58816" xmi:uuid="6a423b78-27bd-41e3-84ae-d357541a753c" xmi:type="uml:Class">
+      <name>ObservationConsequenceSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651594248352_391956_88065" xmi:uuid="6d7b2b08-5970-4b8f-b497-dfc78b486016" xmi:type="uml:Class">
+      <name>ObserverSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193290_179454_23919" xmi:uuid="6d83044e-61f1-4a5c-984e-db435991b745" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_0_5_45e01bd_1455706763320_988454_42708" xmi:uuid="fd396499-9d37-474e-a8e2-ffb7921b8072" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <body>A WorkRequest is a solicitation for some work to be done. &lt;note&gt; These requests may not be acted upon depending on the authorization granted to the request or its associated WorkOrder. &lt;/note&gt;</body>
+      </ownedComment>
+      <name>WorkRequest</name>
+      <generalization xmi:id="_18_4_1_e120334_1499417193549_37629_25885" xmi:uuid="003a237e-61d5-44a6-8dbe-cc0c96964488" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193057_275822_23483"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_8e001ed_1513961540285_839204_94238" xmi:uuid="009e7a56-dd82-4b0b-92d6-e3c5c5ea3ad8" xmi:type="uml:Generalization">
+        <general href="../Message/Message.xmi#_18_4_1_8e001ed_1513936657024_428700_60344"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193333_635500_24223" xmi:uuid="05ccf2c3-84d8-47c2-b37a-392960116a62" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193012_865292_23378"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193374_741745_24587" xmi:uuid="12199362-cf1b-4a0d-ab8b-b250376d522b" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193019_931725_23396"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193531_310319_25748" xmi:uuid="16469705-48af-4f84-93cc-c4d188f59965" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193051_3879_23469"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_8e001ed_1513960560188_607370_92548" xmi:uuid="2f1fd55e-6749-45e1-9e3a-219617338e6e" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_8e001ed_1513076037039_374921_42164"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417194019_703321_28748" xmi:uuid="4054e2e2-09cf-4cba-a826-14403a1cf6e0" xmi:type="uml:Generalization">
+        <general href="../RequirementManagementAndVAndV/RequirementManagementAndVAndV.xmi#_18_4_1_e120334_1499417193226_546395_23815"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193777_917109_27487" xmi:uuid="4ebf4b81-d0ed-47b9-baac-52e3d6ec7a69" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193131_678926_23622"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193704_455493_27036" xmi:uuid="62048999-fca2-4443-bcde-bee583d33d84" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193108_431766_23587"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1666195788048_297370_162774" xmi:uuid="9820358e-6197-4cec-87a4-77535c646658" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1665676763419_25158_58983"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417194088_213971_29044" xmi:uuid="a6588dd8-0687-4edc-a9fd-2aa6ee7f8b4f" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193259_964911_23867"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_8e001ed_1513960553112_893758_92542" xmi:uuid="a9e296bd-0004-47c2-b817-fce7b5b548ce" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_8e001ed_1513076037040_166958_42165"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417194046_524587_28872" xmi:uuid="c417336c-4f29-4dca-b647-8330b67da6fd" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193239_422374_23834"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193968_829947_28507" xmi:uuid="cd399be5-7c0a-4c2e-8a74-01d7131379c1" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193203_213100_23783"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193621_774306_26400" xmi:uuid="fc011d3d-27c7-4d79-8b71-b393c0201efd" xmi:type="uml:Generalization">
+        <general href="../DocumentManagement/DocumentManagement.xmi#_18_4_1_e120334_1499417193076_372354_23525"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194130_981114_29226" xmi:uuid="4b38641c-14a8-49f5-91db-d2ecbc90a460" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706784103_665162_42709" xmi:uuid="91d8b099-e99f-4d9d-94fe-2c1571409164" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194130_981114_29226"/>
+          <body> the identifier or set of identifiers for the WorkRequest. &lt;note&gt; This attribute supports multi-identification in different contexts as described in Fundamental concepts and assumptions.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Id</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193119_518292_23608"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193731_794688_27229"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194130_910738_29227" xmi:uuid="6f858873-736f-4f5f-8a4b-8d4d8852dcdf" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706794984_916211_42710" xmi:uuid="a9b76daa-3110-4573-9eb4-db5c09e33999" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194130_910738_29227"/>
+          <body> the text or the set of texts that provide further information about the WorkRequest. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Description</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194848_781689_35503" xmi:uuid="22d99089-2ec0-461f-aa1f-e1ca88544fe9" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193601_839262_26240"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194131_447210_29228" xmi:uuid="9f0a9b24-baf1-4b3c-b898-3540482d3839" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706812746_487413_42711" xmi:uuid="fff7672c-6fcb-4104-ab9a-a9400f2b8fde" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194131_447210_29228"/>
+          <body> the identification or set of identifications of a specific version of the WorkRequest. The value of this attribute need not be specified. &lt;note&gt;This attribute supports multi-identification in different contexts as described in Fundamental concepts and assumptions.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>VersionId</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193119_518292_23608"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194848_909268_35506" xmi:uuid="221fca2f-6eab-407d-8c44-ad12f8c342b5" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193748_386027_27315"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194131_611009_29229" xmi:uuid="4f4f27b5-8482-41ae-9bf9-d73781e7ec28" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706822808_110189_42712" xmi:uuid="007f0884-82c9-4c8a-b315-297f1ff7bceb" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194131_611009_29229"/>
+          <body> the classifications of the WorkRequest. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>ClassifiedAs</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193038_880755_23447"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194848_116255_35509" xmi:uuid="81fdde2a-c202-4875-b9fa-9a934e6be08e" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194848_320583_35508" xmi:uuid="813810d7-9346-4f27-bf0e-a08af256e0b5" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193467_624970_25281"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194131_581515_29230" xmi:uuid="def223f2-d8a2-47f9-9944-675a9e88c4bd" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706887775_629191_42713" xmi:uuid="7216c117-af5b-4d51-b75d-2e97cedaee2d" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194131_581515_29230"/>
+          <body> the intention of the WorkRequest. Where applicable, the following values shall be used: &lt;ul&gt;&lt;li&gt;'change of standard': A request to translate a change to a standard into action; &lt;/li&gt;&lt;li&gt;'cost reduction': A request aimed at reducing the engineering and manufacturing costs of an item; &lt;/li&gt;&lt;li&gt;'customer rejection': A request resulting from a rejection by a customer; &lt;/li&gt;&lt;li&gt;'customer request': A request for an activity that is necessary to solve the request of a customer; &lt;/li&gt;&lt;li&gt;'durability improvement': A request aimed at extending the life time of an item; &lt;/li&gt;&lt;li&gt;'government regulation': A request resulting from legal requirements; &lt;/li&gt;&lt;li&gt;'procurement alignment': A request to adjust the purchasing process of different items; &lt;/li&gt;&lt;li&gt;'production alignment': A request to adjust the manufacturing process of different items; &lt;/li&gt;&lt;li&gt;'production relief': A request aimed at achieving a simpler assembly and production process; &lt;/li&gt;&lt;li&gt;'production requirement': A request for an activity that is necessary from a production point of view; &lt;/li&gt;&lt;li&gt;'quality improvement': A request aimed at increasing the quality of an item; &lt;/li&gt;&lt;li&gt;'security reason': A request for an activity that is necessary from a security point of view; &lt;/li&gt;&lt;li&gt;'standardization': A request to unify variants of an item; &lt;/li&gt;&lt;li&gt;'supplier request': A request for an activity necessary to solve the request of a supplier; &lt;/li&gt;&lt;li&gt;'technical improvement': A request aimed at improving the technical aspects of an item; &lt;/li&gt;&lt;li&gt;'tool improvement': A request aimed at increasing the useful life of a tool.&lt;/li&gt;&lt;/ul&gt;</body>
+        </ownedComment>
+        <name>RequestType</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193042_855579_23449"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193498_127846_25466"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194132_190509_29231" xmi:uuid="e41ab548-b86c-4a1d-a841-45e817e3eab2" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706911277_382206_42714" xmi:uuid="bdf9c951-a745-4524-84b6-b9c84faabfe6" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194132_190509_29231"/>
+          <body> the personnel that shall be informed about the WorkRequest and the date when the personnel or organization shall be informed. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>NotifiedPersons</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193062_260588_23499"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194849_318959_35515" xmi:uuid="803a8779-6100-4a7f-bf58-e53879ff9cdf" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194849_760377_35514" xmi:uuid="13100366-4cc2-49f2-aeb6-4fa851b573f1" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193564_760543_26002"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194132_565912_29232" xmi:uuid="bcd064a9-09f8-4217-8a6f-efa49ab61f94" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706928352_265048_42715" xmi:uuid="240cc131-cc12-4dd5-8a4c-c4a99014844a" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194132_565912_29232"/>
+          <body> the person or organization who issued the WorkRequest and the date when this person or organization issued the WorkRequest.</body>
+        </ownedComment>
+        <name>Requestor</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193062_260588_23499"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193564_272997_26004"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194133_361378_29233" xmi:uuid="20b16c99-a1e1-4d2d-9336-20751bb78445" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706939835_791339_42716" xmi:uuid="7392b7f0-8436-4a5d-a531-55ff361d55e2" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194133_361378_29233"/>
+          <body> the object or set of objects held externally to the exchange file for which this object is a proxy. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>SameAs</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193214_230770_23795"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194849_590545_35521" xmi:uuid="fdc6a3fb-8e05-4112-85a7-e189ed04fdba" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194849_315690_35520" xmi:uuid="b7700b88-d940-4094-a7f6-70d279c7b264" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193996_67216_28648"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194133_332689_29234" xmi:uuid="74154830-87c3-4c50-9bc2-9fdf40a86b2a" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706951813_941474_42717" xmi:uuid="e3b9127b-2d67-4f0c-b116-d1cf7888c33c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194133_332689_29234"/>
+          <body> the objects that are subject to the WorkRequest. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Scope</name>
+        <visibility>public</visibility>
+        <type href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193010_433732_23374"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194850_791020_35524" xmi:uuid="3596d85e-07fd-479e-8b8b-dfca3bdcc7f6" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194850_137912_35523" xmi:uuid="0778bde7-bf03-4c8d-a14c-484c81cebbcd" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193318_314177_24031"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194133_965583_29235" xmi:uuid="92aa2e0c-4910-4aba-b2d5-a38bf085526b" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706966074_995382_42718" xmi:uuid="c76ee944-bf65-4d60-a029-ca88499bcf37" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194133_965583_29235"/>
+          <body> the text that provides a user interpretable designation for the level of completion of the study and resolution of the WorkRequest. &lt;example&gt;The designations 'drafted', 'issued', 'deferred', 'proposed', 'in-work', 'completed', 'resolved', 'cancelled', and 'rejected' are examples of request Status.&lt;/example&gt; The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Status</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193042_855579_23449"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194850_914761_35527" xmi:uuid="92a45baf-30db-4624-816d-9995339b2c7e" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193502_47156_25487"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193290_721626_23917" xmi:uuid="6dafef81-71f6-4b5a-9ab2-12bc48ab1799" xmi:type="uml:Class">
+      <name>WorkOrderAssignmentSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651591620366_887006_65961" xmi:uuid="6dd00cb4-3632-4c32-87d3-a6c8d9f46016" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651591620367_154592_65963"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651591620367_263965_65962"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651591620367_154592_65963" xmi:uuid="37c842f8-3063-4c61-aebe-a1c1869a0bf3" xmi:type="uml:Property">
+        <visibility>public</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651591325047_670311_63349"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651684692566_972393_65909" xmi:uuid="fbb7a4a7-3a3f-4fcb-9504-6bec278bc61d" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651684692566_255975_65910" xmi:uuid="dc24ccb2-ce87-46e3-9d4f-85fb0f29fee2" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651591620366_887006_65961"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193506_444642_25513" xmi:uuid="70868cba-aea1-482d-9cf2-72ed00c39d79" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194333_622333_30846"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194137_682005_29249"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194333_622333_30846" xmi:uuid="0723f723-854d-4fbc-b8da-da64ee698878" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193293_337205_23922"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194946_710885_36563" xmi:uuid="abc3c6d5-51e6-4aae-a208-b39e66db8338" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193506_444642_25513"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193740_964995_27275" xmi:uuid="743100ea-1e88-497f-a0d3-5c3de82011ef" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194533_863770_32472"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194122_588057_29201"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194533_863770_32472" xmi:uuid="80bd98c7-c855-4fc5-a1a9-d7119a0c3b0e" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193288_663519_23915"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195041_251543_37553" xmi:uuid="3950f06e-38ff-4980-9a4d-151dcf99660b" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193740_964995_27275"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193486_521246_25401" xmi:uuid="7f09c7fa-9e58-4e73-818f-173c49e30fe3" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194311_12514_30724"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194135_612315_29240"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194311_12514_30724" xmi:uuid="b711d0ed-4e5b-47ba-87f5-e5184c166975" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193291_23172_23920"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194928_95954_36367" xmi:uuid="c7474520-c9de-4c52-9d5e-aef28204ba01" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194928_43721_36366" xmi:uuid="1182b8de-305b-4c0c-9907-b1f96dd7a0ec" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193486_521246_25401"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193502_47156_25487" xmi:uuid="82446b88-e5d0-4c53-9d16-7482702faa64" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194329_803881_30822"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194133_965583_29235"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194329_803881_30822" xmi:uuid="814c315c-6d79-42cf-8958-b4aba50910f3" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194942_717651_36515" xmi:uuid="11c3c3ef-3324-4f66-917d-2484f025107a" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193502_47156_25487"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193596_587521_26211" xmi:uuid="8398c4f7-b5c4-45f2-890b-e982ee5ed559" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194412_795453_31472"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194136_672103_29247"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194412_795453_31472" xmi:uuid="c29ca7fc-a676-431f-8ed5-3db6b0e2988d" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193293_337205_23922"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194987_692648_37007" xmi:uuid="829c46f5-bd7c-446b-a666-a47957f13cd4" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193596_587521_26211"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193746_757000_27306" xmi:uuid="8459f198-513e-45f8-931d-eff4e685d427" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194539_876585_32503"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194134_566096_29238"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194539_876585_32503" xmi:uuid="d2549d66-ec89-461e-b2ef-0ce402a76eef" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193291_23172_23920"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195047_675885_37615" xmi:uuid="8fdef9d4-4b39-4bce-9ef3-12f1d58e717f" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193746_757000_27306"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193467_624970_25281" xmi:uuid="84abe6e9-05d8-40f3-83ef-3ef7c99b637a" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194288_90471_30610"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194131_611009_29229"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194288_90471_30610" xmi:uuid="ff8370dc-3234-4baf-bdfd-69e9dd54fe7b" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194907_609119_36139" xmi:uuid="eaff41e2-0ff4-4d67-86cb-586a7dea752e" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194907_529950_36138" xmi:uuid="af14525f-da78-402a-91a6-9ad021f3dd63" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193467_624970_25281"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417194121_217196_29198" xmi:uuid="85dbfd02-1426-4f37-88a5-24a1f69e214c" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194841_539863_35437"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194125_294721_29212"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194841_539863_35437" xmi:uuid="530e9bc4-e9d4-4e20-8de1-c54ed1943e13" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193289_303822_23916"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195109_25866_38263" xmi:uuid="035fe5ab-c0cd-43e0-8f85-e6e9575db603" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417195109_93315_38262" xmi:uuid="5d82982e-7982-48fb-ba1c-42b681f032c4" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417194121_217196_29198"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193564_272997_26004" xmi:uuid="8a91c7f2-9744-4011-9d10-f39b69bef322" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194380_247834_31262"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194132_565912_29232"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194380_247834_31262" xmi:uuid="3833f780-578c-40ce-b82d-83b732149352" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194966_410682_36777" xmi:uuid="521340a8-4d41-4faa-9304-06f66b39cb9b" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193564_272997_26004"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193737_155889_27262" xmi:uuid="8cb585df-61c1-44c5-9dd6-9d8a42c85208" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194530_72408_32460"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194121_339323_29199"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194530_72408_32460" xmi:uuid="86e517d2-02b1-4213-a2f8-a50633f6ce92" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193288_663519_23915"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195038_82334_37529" xmi:uuid="a0d8df7c-451d-48bc-9afb-7d5226b6bdcd" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193737_155889_27262"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651589681754_83399_63261" xmi:uuid="8cd19e52-1e08-4db7-8895-0efce230a662" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651589681754_449635_63262"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651589658865_601787_59448"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651589681754_449635_63262" xmi:uuid="6644d2ee-e843-47a1-ae38-7008f3734c79" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651684035396_182549_65771" xmi:uuid="5894ff95-647a-4115-a6a3-0c9936f0d39a" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651684035397_491833_65772" xmi:uuid="78298d54-578f-480a-9f6e-396716af9939" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_19_0_4_b1702d9_1651589681754_83399_63261"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193748_781647_27318" xmi:uuid="8d23b056-6495-4295-89b0-f87a6b4aa576" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194542_756841_32515"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194126_68546_29216"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194542_756841_32515" xmi:uuid="c79afc75-6c0b-4ad1-bad2-d4ac4db11886" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_559728_23918"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195049_105569_37639" xmi:uuid="1eb97743-468b-4c68-a045-44687de7f779" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193748_781647_27318"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651679981632_97110_65385" xmi:uuid="94187256-41a9-40c5-b932-b54bebb66436" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651679981632_271187_65386"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651589658865_280075_59449"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651679981632_271187_65386" xmi:uuid="a5868fbc-e339-4694-9533-bb92c53678f6" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651684584778_820380_65889" xmi:uuid="99bc3dd5-c7f8-48f7-995b-3cadd5219204" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651684584778_442282_65890" xmi:uuid="ce2af56f-4cb2-4433-a08f-60d6a295a6e6" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_19_0_4_b1702d9_1651679981632_97110_65385"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193510_786392_25536" xmi:uuid="95e768a7-d244-490f-a008-68596af592e7" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194338_764492_30869"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194122_854507_29203"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194338_764492_30869" xmi:uuid="158f275f-641d-4a53-a5b8-cc28952f151b" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193288_663519_23915"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194950_876915_36609" xmi:uuid="49b5322d-142c-4546-be18-16d1138a132b" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193510_786392_25536"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651595272043_428922_90493" xmi:uuid="9ddfdaaf-c888-4ad5-88a2-f67bf45c9f8d" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651595272044_790072_90494"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651595261927_840997_88425"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651595272044_790072_90494" xmi:uuid="68cbbdd6-7c59-44af-b647-e07eb3de2e6a" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651595261926_577498_88424"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651595272043_428922_90493"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651595422496_662144_90550" xmi:uuid="a126347f-36e0-41e2-89b3-a5e872f34017" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651595422496_470030_90551"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651595262485_476017_88523"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651595422496_470030_90551" xmi:uuid="bcd01818-bd40-4822-afc2-15a0ab520ca8" xmi:type="uml:Property">
+        <visibility>public</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651595261926_577498_88424"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651682808252_883510_65670" xmi:uuid="0fcdee55-37f0-4a35-94dd-b0d5bc24a1e5" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651682808252_956217_65671" xmi:uuid="2fbd42be-3a37-4df3-ab9b-e8f40821e489" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651595422496_662144_90550"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193740_354858_27279" xmi:uuid="a199d28d-c507-4150-81d8-92c898029f55" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194534_725112_32476"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194136_302917_29246"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194534_725112_32476" xmi:uuid="36cd6135-5305-4cfb-b485-13d0957905e8" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193293_337205_23922"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195041_1925_37561" xmi:uuid="a8edd863-ba1b-4d7f-a80e-42ec1ec85a41" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193740_354858_27279"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417194129_805926_29223" xmi:uuid="a86410c4-8df2-4506-89cd-99f274f6a5c1" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194847_787199_35496"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194135_486669_29242"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194847_787199_35496" xmi:uuid="51c6ca67-5b13-4fc1-ab97-15359bf8938d" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193291_23172_23920"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195110_309332_38267" xmi:uuid="a907914e-54d4-40d8-a898-a718bf91d8ff" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417195109_116767_38266" xmi:uuid="1c1cedac-584f-4482-8adc-d3ebd6543d04" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417194129_805926_29223"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193748_386027_27315" xmi:uuid="a8c09a94-ebd8-4d72-9ec9-829837a4ca78" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194541_411751_32512"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194131_447210_29228"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194541_411751_32512" xmi:uuid="8333b5d2-7e2d-47dd-9752-4ec07eb06822" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195048_159200_37633" xmi:uuid="e9a4f3e8-9c4d-4c63-bf3a-c992b0c20766" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193748_386027_27315"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193288_663519_23915" xmi:uuid="b67eb9b2-a63c-4779-a4cc-cd6fe816f363" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_0_5_45e01bd_1455706272727_824551_42686" xmi:uuid="afcb0787-c08c-4f33-b2b3-161ad60d388e" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193288_663519_23915"/>
+        <body>A WorkOrder is an authorization for one or more Activity objects to be performed. &lt;note&gt; One or more means that it is controlling the main activity and any sub-activity related to the activity by ActivityRelationship with relationType of 'decomposition'. &lt;/note&gt;</body>
+      </ownedComment>
+      <name>WorkOrder</name>
+      <generalization xmi:id="_18_4_1_e120334_1499417193704_701_27031" xmi:uuid="0b740815-c30c-4458-8c14-8938abef9fe0" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193108_431766_23587"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193370_170296_24499" xmi:uuid="0c6d18e8-afd5-42d8-8a28-7ec4e80652ea" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193019_931725_23396"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193778_159389_27515" xmi:uuid="2204ff0f-cbba-4600-a032-20ba660d64f8" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193131_678926_23622"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_8e001ed_1513960549711_433227_92539" xmi:uuid="32615d2d-92f2-43f1-ab5c-bc53fe1cfba2" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_8e001ed_1513076037040_166958_42165"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417194046_778636_28873" xmi:uuid="3ba43ced-e278-4c29-af20-29b6b97776e7" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193239_422374_23834"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193969_701438_28511" xmi:uuid="5edf2c62-ded5-41ce-ac61-380f09b6dd86" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193203_213100_23783"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1666195788035_10080_162773" xmi:uuid="60542bd0-8a8e-424b-8d6c-b0a4ce259ce1" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1665676763419_25158_58983"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193619_853440_26369" xmi:uuid="692dd36f-6c74-4386-9ef5-ed0ca010faa0" xmi:type="uml:Generalization">
+        <general href="../DocumentManagement/DocumentManagement.xmi#_18_4_1_e120334_1499417193076_372354_23525"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193549_974653_25891" xmi:uuid="7cd70d5b-073c-4772-a22a-a8f93c4a40ec" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193057_275822_23483"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193649_287669_26626" xmi:uuid="bcf7cfde-487e-4ade-8639-c4ec568b9c68" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193085_557055_23539"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417194088_13552_29045" xmi:uuid="ca9dc943-4df7-4ebe-8ebf-831b43b2833f" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193259_964911_23867"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_8e001ed_1513961536728_949779_94235" xmi:uuid="cc5b5764-f888-45dc-9f2b-51a662a55ba9" xmi:type="uml:Generalization">
+        <general href="../Message/Message.xmi#_18_4_1_8e001ed_1513936657024_428700_60344"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_8e001ed_1513960556283_415082_92545" xmi:uuid="df3892d1-124c-4f0f-8d32-c4272716a820" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_8e001ed_1513076037039_374921_42164"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194121_339323_29199" xmi:uuid="f267704f-4dca-4d97-85e2-96e978ba8291" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706293502_274586_42687" xmi:uuid="bb352dd0-c9fc-4a76-8754-e34d818fe823" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194121_339323_29199"/>
+          <body> the identifier or set of identifiers for the WorkOrder. &lt;note&gt; This attribute supports multi-identification in different contexts as described in Fundamental concepts and assumptions.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Id</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193119_518292_23608"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193737_155889_27262"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194121_47931_29200" xmi:uuid="00da1229-b76a-44e5-840a-5ca0e7a3bac6" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706310370_371949_42688" xmi:uuid="967386c3-f595-4aba-898b-c7ccfc1b67de" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194121_47931_29200"/>
+          <body> the text or the set of texts that provide further information about the WorkOrder. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Description</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194842_761211_35442" xmi:uuid="60671811-02fd-468a-8bec-dd3d54ae327f" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193603_642541_26251"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194122_588057_29201" xmi:uuid="d2db0efa-0b69-428c-81f1-0c6023c251cc" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706330742_415657_42689" xmi:uuid="52d46f40-484a-48f2-9039-76e43850d8ab" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194122_588057_29201"/>
+          <body> the identification or set of identifications of a specific version of the WorkOrder. The value of this attribute need not be specified. &lt;note&gt;This attribute supports multi-identification in different contexts as described in Fundamental concepts and assumptions.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>VersionId</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193119_518292_23608"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194842_683402_35445" xmi:uuid="48fc99fc-656d-4d54-8b61-81a379679e8d" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193740_964995_27275"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194122_265846_29202" xmi:uuid="f0aaa567-ae7a-481b-b63f-54b49cc7e193" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706359575_33261_42690" xmi:uuid="a4c59c77-a199-4545-84e3-07bf1310faf5" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194122_265846_29202"/>
+          <body> the classifications of the WorkOrder. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>ClassifiedAs</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193038_880755_23447"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194842_65065_35448" xmi:uuid="89e3b7f5-9214-4f45-9749-1e57cfd0f9db" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194842_433018_35447" xmi:uuid="2884fc0c-6e66-4d79-93ad-667a4eda4338" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193476_585001_25337"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194122_854507_29203" xmi:uuid="bb975ccc-fd8d-4377-8088-51d48042e5c0" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706413313_482467_42691" xmi:uuid="aa3a138e-acaa-44f2-97d9-ea67a2a27245" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194122_854507_29203"/>
+          <body> the OrderType specifies the kind of the WorkOrder. Where applicable, the following values shall be used: &lt;ul&gt;&lt;li&gt;'design deviation permit': An authorization for a deviation from the approved design data; &lt;/li&gt;&lt;li&gt;'design release': An authorization for the design of a product or of an item or to create a bill of material; &lt;/li&gt;&lt;li&gt;'management resolution': An authorization by a committee, such as the board of directors, to design or change an item; &lt;/li&gt;&lt;li&gt;'manufacturing release': An authorization for the manufacturing process of a product or of an item; &lt;/li&gt;&lt;li&gt;'production deviation permit': An authorization for a deviation from the approved manufacturing process.&lt;/li&gt;&lt;/ul&gt; </body>
+        </ownedComment>
+        <name>OrderType</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193042_855579_23449"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193510_786392_25536"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194123_597817_29204" xmi:uuid="ed8a0a4d-06bc-4dbf-b215-7f26f1ed4156" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706445018_172532_42692" xmi:uuid="e9109823-faac-4a1b-b949-b5a7ca7eabed" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194123_597817_29204"/>
+          <body> one or many instances of WorkRequest that define the expected WorkOrder. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>InResponseTo</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194843_882721_35454" xmi:uuid="de313ffc-931d-4841-9292-9914c4bc4e03" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194843_30974_35453" xmi:uuid="677f009a-dc33-44b1-a005-6e8bc5dfd860" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417194120_484237_29196"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194123_58450_29205" xmi:uuid="3772fcd5-38e4-4e9b-b565-36f828a02ad6" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706455156_519756_42693" xmi:uuid="baecb150-1c84-4265-a6e5-6bd6570a3327" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194123_58450_29205"/>
+          <body> the object or set of objects held externally to the exchange file for which this object is a proxy. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>SameAs</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193214_230770_23795"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194843_352958_35457" xmi:uuid="53c11706-38aa-4230-9573-d92b38746bd8" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194843_527617_35456" xmi:uuid="f2588295-779d-47a0-a044-f8520fedc388" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193994_931612_28641"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_271a0567_1593080451029_614815_92037" xmi:uuid="32606e0e-9db7-4189-b53f-f4a5d19d6e40" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_4_1_271a0567_1593080451039_753949_92039" xmi:uuid="18decb20-925f-40ee-b058-5503d7ce9f05" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_271a0567_1593080451029_614815_92037"/>
+          <body> the objects that are subject to the WorkOrder. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Scope</name>
+        <visibility>public</visibility>
+        <type href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193010_433732_23374"/>
+        <lowerValue xmi:id="_18_4_1_271a0567_1593080451040_921395_92040" xmi:uuid="8e522e36-7d2d-49f6-8e3d-a377fcb60422" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_271a0567_1593080451039_853498_92038" xmi:uuid="0f9ff376-f963-4ce9-92d1-f956edcf9eed" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_19_0_4_b1702d9_1651679922906_893539_65363"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651679922906_893539_65363" xmi:uuid="b9cf5a8e-379b-498c-aa02-570fd2a06b7a" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651679922906_496067_65364"/>
+      <memberEnd xmi:idref="_18_4_1_271a0567_1593080451029_614815_92037"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651679922906_496067_65364" xmi:uuid="d3d97a15-6927-4bdc-9061-7f6b231684cd" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193288_663519_23915"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651679922906_893539_65363"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417194120_588155_29195" xmi:uuid="bca2f38b-046d-4071-9f98-d93a8cf97e03" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194841_76713_35434"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194129_169293_29221"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194841_76713_35434" xmi:uuid="5e55a690-b3ec-4fc6-84c9-ca8c631a050c" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_559728_23918"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195109_271828_38257" xmi:uuid="ed4da644-d833-4d8f-854f-b65fd8cd700d" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417195109_617302_38256" xmi:uuid="e4d6cd0e-c02c-41e0-8931-ab3c8dd8d8e4" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417194120_588155_29195"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193468_115252_25288" xmi:uuid="bd221efd-db63-431c-9328-af5ab09891d1" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194289_565101_30616"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194124_501112_29210"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194289_565101_30616" xmi:uuid="0cb8323d-9147-4d6a-9fbe-bc9f985c195e" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193289_303822_23916"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194908_750116_36151" xmi:uuid="c15e1ffb-8b94-4705-8251-28bff71fc93f" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194908_967548_36150" xmi:uuid="b7c700d0-dcf7-48bf-a8c2-1466fbb52c7f" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193468_115252_25288"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651589681750_468824_63252" xmi:uuid="c461f219-75d1-46ac-a715-3c14c28e20b1" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651589681750_694725_63253"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651589657072_109476_59311"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651589681750_694725_63253" xmi:uuid="8563f4bf-facb-45ae-a369-95a2b0c00b66" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651589681750_468824_63252"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651595429749_440925_90574" xmi:uuid="c47da2b7-1dc5-4727-91be-02297a5bc174" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651595429750_774100_90575"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651595262486_644381_88524"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651595429750_774100_90575" xmi:uuid="3a1e3221-e374-4ca0-b3cb-ebdf20574774" xmi:type="uml:Property">
+        <visibility>public</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651595261926_577498_88424"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651682724758_900591_65654" xmi:uuid="28c4876e-b772-4c09-a5eb-c80ff8e5c543" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651682724758_752306_65655" xmi:uuid="4357f0b1-4b3b-4998-a3ba-b01d17a7f180" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_19_0_4_b1702d9_1651595429749_440925_90574"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651589681749_920853_63249" xmi:uuid="c940766c-da40-42e6-9836-f0342fce7fbf" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651589681749_790323_63250"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651589657071_607713_59310"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651589681749_790323_63250" xmi:uuid="33646e9e-c19c-4fdf-850a-25c724935c93" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651589681749_920853_63249"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651591325047_670311_63349" xmi:uuid="ce097616-74bf-4218-a435-5ae5f319cdfb" xmi:type="uml:Class">
+      <ownedComment xmi:id="_19_0_4_b1702d9_1651591326083_597029_63458" xmi:uuid="9c1d8f06-4b63-4b5c-aa5f-639104139c3a" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_19_0_4_b1702d9_1651591325047_670311_63349"/>
+        <body>An ObservationConsequence is an association of an observation to the consequences that follow from it, where those consequences are in the form of an activity to be performed.&lt;note&gt; One of the uses of ObservationConsequence is to close one of the feedback loops from the use of a product to requests for its enhancements. &lt;/note&gt;</body>
+      </ownedComment>
+      <name>ObservationConsequence</name>
+      <generalization xmi:id="_19_0_4_b1702d9_1651591326090_507710_63486" xmi:uuid="04649356-7148-41ce-889b-df3dcc4b6e52" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193024_414882_23411"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651591326090_624625_63493" xmi:uuid="2401e473-9081-41ea-9a3a-3a6b8e59896f" xmi:type="uml:Generalization">
+        <general href="../DeltaChange/DeltaChange.xmi#_18_4_1_e120334_1499691165239_904252_31960"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651591326090_755294_63489" xmi:uuid="3a9b8281-a7ed-454d-8601-1bc4bdf700b7" xmi:type="uml:Generalization">
+        <general href="../DocumentManagement/DocumentManagement.xmi#_18_4_1_e120334_1499417193076_372354_23525"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651591326090_306756_63491" xmi:uuid="4c1e70b7-6bbe-4ec7-adeb-28bc3e8a62e3" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193108_431766_23587"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1666195787894_337680_162763" xmi:uuid="6fc02709-7a5a-42fc-a447-e62c9715b600" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1665676763419_25158_58983"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651591326090_176939_63492" xmi:uuid="910633d9-4f74-4e84-b6e2-71d54fd623c1" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193203_213100_23783"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651591326089_438627_63485" xmi:uuid="b6f3da55-71e8-477c-ac86-310e7c422429" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193019_931725_23396"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1663409219909_930099_162129" xmi:uuid="b8f365a8-a3ed-4205-a383-d1dd348b7b61" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1659094024832_690472_58816"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651591326090_125294_63487" xmi:uuid="bc464f8d-ed5a-4125-82f9-6853dd236be8" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193050_963088_23467"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651591326090_67321_63488" xmi:uuid="bc56c0a4-b1de-4e0e-825a-766e52137f47" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193051_3879_23469"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651591326090_489724_63490" xmi:uuid="c11024b5-7f1b-4087-aff5-34acb72da408" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193085_557055_23539"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651591326089_875671_63483" xmi:uuid="c8497393-2912-4e28-aefc-ae95e9b59c8d" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193010_433732_23374"/>
+      </generalization>
+      <generalization xmi:id="_19_0_4_b1702d9_1651591326089_749700_63484" xmi:uuid="d5d43414-90f1-4ab1-8291-d3f1ff374c31" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193012_865292_23378"/>
+      </generalization>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651591325049_271608_63353" xmi:uuid="8e7345d8-9467-4d95-a2ca-ab82cc7d2016" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651591326092_53606_63508" xmi:uuid="a38c1c14-5790-4823-addd-495d9b3f6882" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651591325049_271608_63353"/>
+          <body>the text that describes the purpose that the ObservationSequqence plays in the link between the Observation and the request it raises.</body>
+        </ownedComment>
+        <name>Role</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193042_855579_23449"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651591325049_347881_63350" xmi:uuid="0f54d60d-a999-480f-a3cc-fcf516cd6422" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651591326090_599912_63496" xmi:uuid="15ce1af1-cdd6-44d5-b308-139ea30aa824" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651591325049_347881_63350"/>
+          <body> the identifier or set of identifiers for the ObservationConsequence. The value of this attribute need not be specified. &lt;note&gt; This attribute supports multi-identification in different contexts as described in Fundamental concepts and assumptions. &lt;/note&gt;</body>
+        </ownedComment>
+        <name>Id</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193119_518292_23608"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651591326091_180295_63497" xmi:uuid="e644c9ab-1733-47ed-aef8-6476faa01c14" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651591340791_434847_65898"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651591325049_386771_63351" xmi:uuid="0590579e-1e43-482e-a2cc-e02594600604" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651591326091_51336_63500" xmi:uuid="c2381e43-7358-4127-9fb7-f874d4635d27" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651591325049_386771_63351"/>
+          <body> the text or the set of texts that provide further information about the ObservationConsequence. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Description</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651591326091_179078_63501" xmi:uuid="1c63afde-a465-4e96-a7c6-f48e951671e2" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651591340794_965359_65901"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651591620367_263965_65962" xmi:uuid="a67bcdad-29f5-4f6b-bc28-be32a0ae3015" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651596730772_776679_90749" xmi:uuid="644a7f69-2fcb-4fa6-9c7b-3af1f78589cb" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651591620367_263965_65962"/>
+          <body>the Observation that leads to the consequence</body>
+        </ownedComment>
+        <name>InferredFrom</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651591620366_887006_65961"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_19_0_4_b1702d9_1651594185009_410701_88039" xmi:uuid="f7473de8-007f-4357-bdd7-13b6217e0960" xmi:type="uml:Property">
+        <ownedComment xmi:id="_19_0_4_b1702d9_1651597031399_825160_90760" xmi:uuid="eaca7423-b23b-4ceb-9055-b6278f2f2fb5" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_19_0_4_b1702d9_1651594185009_410701_88039"/>
+          <body>the activity that the consequence entails.</body>
+        </ownedComment>
+        <name>Request</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1659094024832_690472_58816"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651594185008_404789_88038"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651589681753_565139_63258" xmi:uuid="cf2061dd-0b01-4965-b073-ae36bd425859" xmi:type="uml:Association">
+      <ownedComment xmi:id="_19_0_4_b1702d9_1651681334672_93646_65605" xmi:uuid="fa3e9036-4c52-4ec8-a43a-8a798f50e493" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_19_0_4_b1702d9_1651589681753_565139_63258"/>
+        <body>the personnel that shall be informed about the Observation and the date when the personnel or organization shall be informed. The value of this attribute need not be specified.</body>
+      </ownedComment>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651589681753_716498_63259"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651589658865_555762_59447"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651589681753_716498_63259" xmi:uuid="60b27631-10d9-4820-8ca0-d7b63d5c0677" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651683423591_238181_65753" xmi:uuid="1727ff33-ab4d-4dae-89fd-4e7650bd5465" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651589681753_565139_63258"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193473_71669_25319" xmi:uuid="d35afefc-9d9b-4e63-a6af-c60c2535f6f2" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194295_300430_30645"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194127_749208_29218"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194295_300430_30645" xmi:uuid="07108737-f1b9-4120-944c-570d19542cd1" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_559728_23918"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194914_645832_36209" xmi:uuid="7dd62821-7b23-4d54-97cf-1f0e763f5a32" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194914_124416_36208" xmi:uuid="24adcec3-9cb2-4014-9c6a-5564006c47f3" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193473_71669_25319"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651678794616_161964_62196" xmi:uuid="d3c9fedc-a706-443b-b286-d23f4e1bcae1" xmi:type="uml:Class">
+      <name>ObservationAssignmentSelect</name>
+      <isAbstract>true</isAbstract>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193290_559728_23918" xmi:uuid="d76d1a5f-c64b-456f-aa91-a27f63282427" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_0_5_45e01bd_1455706605216_78187_42701" xmi:uuid="96bebef0-4546-4419-bb70-98f2c2cab2f2" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193290_559728_23918"/>
+        <body>A WorkOrderRelationship is a relationship between two WorkOrder objects.</body>
+      </ownedComment>
+      <name>WorkOrderRelationship</name>
+      <ownedRule xmi:id="_18_0_5_45e01bd_1459333467376_909997_42764" xmi:uuid="9471bff0-6c5f-4bf9-8afc-f9888418b777" xmi:type="uml:Constraint">
+        <ownedComment xmi:id="_18_4_1_65b021e_1671209121694_48764_163118" xmi:uuid="2aa7b4de-2fbc-40fe-b9c9-b744c820295b" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_65b021e_1671209121694_400847_163119" xmi:uuid="609062c2-edd7-42e9-85fc-4ace89ffb588" xmi:type="uml:Comment">
+            <body>WR1: Relating :&lt;&gt;: Related;</body>
+          </ownedComment>
+          <body>EXPRESS</body>
+        </ownedComment>
+        <ownedComment xmi:id="_18_4_1_65b021e_1671209121693_814480_163116" xmi:uuid="410cea70-e982-4cbc-9473-914f934a70a0" xmi:type="uml:Comment">
+          <ownedComment xmi:id="_18_4_1_65b021e_1671209121693_678713_163117" xmi:uuid="84c6d1d8-1c2d-405c-ab16-10c72cb6e042" xmi:type="uml:Comment">
+            <body> &lt;sch:rule context="//WorkOrderRelationship[@uid]"&gt;&#13; &lt;sch:let name="entity_name" value="if(@xsi:type) then substring-after(@xsi:type,':') else name()"/&gt;&#13; &lt;sch:let name="uid" value="@uid"/&gt;&#13; &lt;sch:let name="uidRelating" value="../@uid"/&gt;&#13; &lt;sch:let name="uidRelated" value="Related/@uidRef"/&gt;&#13; &lt;sch:assert test="not(../@uid = Related/@uidRef)"&gt;&#13; The related WorkOrder and the relating WorkOrder shall be different. &#13; {&#13; -entity_name:&lt;sch:value-of select="$entity_name"/&gt;&#13; -entity_uid:&lt;sch:value-of select="$uid"/&gt; &#13; -rule_name:WorkOrderRelationship.WR1&#13; -relating:&lt;sch:value-of select="$uidRelating"/&gt;&#13; -related:&lt;sch:value-of select="$uidRelated"/&gt;&#13; }&#13; &lt;/sch:assert&gt;&#13; &lt;/sch:rule&gt;</body>
+          </ownedComment>
+          <body>Schematron</body>
+        </ownedComment>
+        <ownedComment xmi:id="_18_0_5_45e01bd_1459333501147_49972_42766" xmi:uuid="fa7f0f06-4552-4a82-81a4-2d71148c06b1" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_0_5_45e01bd_1459333467376_909997_42764"/>
+          <body>the related WorkOrder and the relating WorkOrder shall be different.</body>
+        </ownedComment>
+        <name>WR1</name>
+        <constrainedElement xmi:idref="_18_4_1_e120334_1499417193290_559728_23918"/>
+        <specification xmi:id="_18_4_1_271a0567_1509117454535_498435_31636" xmi:uuid="10fe6e73-4709-4e2d-9d2e-cd462da7c6ed" xmi:type="uml:OpaqueExpression">
+          <body>self.Relating &lt;&gt; self.Related</body>
+          <language>OCL2.0</language>
+        </specification>
+      </ownedRule>
+      <generalization xmi:id="_18_4_1_65b021e_1669375106464_628817_163614" xmi:uuid="1004e3ac-3175-4598-942f-e4abb4aaa86a" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193010_433732_23374"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375107651_850878_163724" xmi:uuid="1228ddba-7fca-4ce0-b2fd-52aa3a9a8c5d" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193203_213100_23783"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375107003_400757_163665" xmi:uuid="1337db26-a3c6-4fce-93c8-7baf4af90dc3" xmi:type="uml:Generalization">
+        <general href="../DeltaChange/DeltaChange.xmi#_18_4_1_e120334_1499417193066_641486_23510"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1721221107920_139356_148856" xmi:uuid="13498ea0-a9c7-48d3-9c3e-ce483fd39b33" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_65b021e_1719937007191_236673_147578"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375106581_286960_163627" xmi:uuid="38863206-9c9c-4d57-82d2-dfd7c4a314fe" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193012_865292_23378"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375107346_41141_163691" xmi:uuid="3c11b4f1-4937-49e0-8b2c-f01f8a0c3fec" xmi:type="uml:Generalization">
+        <general href="../RequirementManagementAndVAndV/RequirementManagementAndVAndV.xmi#_18_4_1_8e001ed_1513262749828_373119_62494"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1687944650763_792627_162772" xmi:uuid="63685f00-0b81-4acd-9d64-751bce1c53c7" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1659094024832_690472_58816"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375107152_677369_163675" xmi:uuid="963f9282-bf6c-4e56-9c3d-991c84f18d4c" xmi:type="uml:Generalization">
+        <general href="../DocumentManagement/DocumentManagement.xmi#_18_4_1_e120334_1499417193076_372354_23525"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1675863858529_802474_164153" xmi:uuid="a9cedfae-a8e1-4aba-9535-2ac92c504387" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1665676763419_25158_58983"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193650_619464_26648" xmi:uuid="b5f07f95-407f-4210-9c98-ddf26a9e82ae" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193085_557055_23539"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375107456_721252_163702" xmi:uuid="c04669b0-1f44-4367-8e13-a457abae6cb8" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193108_431766_23587"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375106689_897658_163640" xmi:uuid="d6962013-d947-464b-911a-527e4e1b9710" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193019_931725_23396"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375107562_192014_163714" xmi:uuid="ddedb06d-13a0-4837-b1b4-6bbb8f7d70d1" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193131_678926_23622"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1669375106853_577251_163653" xmi:uuid="f98127f2-8cad-4762-ba33-1af4cf49a7d8" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193051_3879_23469"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194126_68546_29216" xmi:uuid="a4e6505b-6684-4d2d-8225-d9faf1c862c6" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706626153_205092_42702" xmi:uuid="1cacd43e-b847-4fd6-a03b-64130a8bfde3" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194126_68546_29216"/>
+          <body> the identifier or set of identifiers for the WorkOrderRelationship. The value of this attribute need not be specified. &lt;note&gt; This attribute supports multi-identification in different contexts as described in Fundamental concepts and assumptions.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Id</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193119_518292_23608"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194845_205528_35479" xmi:uuid="65397d20-cc54-4021-8d9f-30c185316fdb" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193748_781647_27318"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194127_757849_29217" xmi:uuid="77fbb739-85b7-432e-947e-06c744f9def1" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706636909_37418_42703" xmi:uuid="f3746977-3749-4507-8c02-6961673391a5" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194127_757849_29217"/>
+          <body> the text or the set of texts that provide further information about the WorkOrderRelationship. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Description</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194846_154416_35482" xmi:uuid="7b9115e2-c574-42be-8734-af2c56fa10d0" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193592_591367_26189"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194127_749208_29218" xmi:uuid="b177190e-26c0-4722-835e-5af8357dccf1" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706647436_43662_42704" xmi:uuid="465d38be-43cf-41ee-8cd2-687659d6108c" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194127_749208_29218"/>
+          <body> the classifications of the WorkOrderRelationship. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>ClassifiedAs</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193038_880755_23447"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194846_94751_35485" xmi:uuid="ce4cec0f-a480-4892-a6e9-e1d6bc625b55" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194846_66175_35484" xmi:uuid="1657eb1c-2b56-44a7-98ab-8e9f704010ca" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193473_71669_25319"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194127_741924_29219" xmi:uuid="e20d525d-26a9-4da7-8026-ba510cb35657" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706676383_393371_42705" xmi:uuid="4de85428-4e71-4cb7-a6c8-94dc4c3bff29" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194127_741924_29219"/>
+          <body> the meaning of the relationship. Where applicable, the following values shall be used: &lt;ul&gt;&lt;li&gt;'dependency': The Related WorkOrder is dependent on the Relating WorkOrder.&lt;/li&gt;&lt;/ul&gt; </body>
+        </ownedComment>
+        <name>RelationType</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193042_855579_23449"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193505_418384_25505"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194128_819382_29220" xmi:uuid="0ec280d5-c6ac-44cb-b767-a9d9622cc2c9" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706707309_731381_42706" xmi:uuid="2caa9584-16ab-46ba-b30f-681472443299" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194128_819382_29220"/>
+          <body> one object of WorkOrder that is part of the relationship. &lt;note&gt; The semantics of this attribute are defined by the attribute RelationType.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Relating</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193288_663519_23915"/>
+        <association xmi:idref="_18_4_1_e120334_1499417194121_398815_29197"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194129_169293_29221" xmi:uuid="b1f5e5c1-cbd6-41b8-ad55-c4360a5247f1" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455706728020_963010_42707" xmi:uuid="70dc9219-1962-4421-b290-a982d2aba8f8" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194129_169293_29221"/>
+          <body> the other object of WorkOrder that is part of the relationship. &lt;note&gt; The semantics of this attribute are defined by the attribute RelationType.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Related</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193288_663519_23915"/>
+        <association xmi:idref="_18_4_1_e120334_1499417194120_588155_29195"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193581_21786_26127" xmi:uuid="d8d16677-45db-4455-9c39-fa61af9051b2" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194395_596950_31388"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194134_903897_29239"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194395_596950_31388" xmi:uuid="761e5bdb-8aec-4d0e-9911-d3df7304302e" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193291_23172_23920"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194971_386352_36839" xmi:uuid="c172c839-6298-4118-b695-be3cd706e05e" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193581_21786_26127"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651679506280_802316_65131" xmi:uuid="dbcbd607-a0e0-463f-a693-ee657d0af6f4" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651679506280_331227_65132"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651678630693_631002_59631"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651679506280_331227_65132" xmi:uuid="36990ef1-017e-4155-8381-4cf8208459ed" xmi:type="uml:Property">
+        <visibility>public</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651678629998_195485_59519"/>
+        <lowerValue xmi:id="_19_0_4_b1702d9_1651684455204_78402_65851" xmi:uuid="554020d3-b270-43c3-be70-6b5e60d5fde1" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_19_0_4_b1702d9_1651684455204_44304_65852" xmi:uuid="70e1d2c1-eec7-4996-91c3-c5bc73ed7055" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_19_0_4_b1702d9_1651679506280_802316_65131"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193747_156935_27313" xmi:uuid="ec1efe03-0f23-4ea1-8a3e-43c31bb7c49c" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194541_349602_32510"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194124_189222_29208"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194541_349602_32510" xmi:uuid="eedc540e-e602-4299-9cc0-4c1ece87f023" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193289_303822_23916"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417195048_879462_37629" xmi:uuid="6c300cd0-8c5d-450e-8371-6457e93f5240" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193747_156935_27313"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193564_760543_26002" xmi:uuid="ee69352d-d376-4f71-ad51-f5824fc971cd" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194380_381597_31260"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194132_190509_29231"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194380_381597_31260" xmi:uuid="652f3d9b-3884-441a-b3a1-01a74d9d2baa" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194965_280152_36773" xmi:uuid="f4f06aa1-eb3d-4cf7-b093-c078d2a110eb" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193564_760543_26002"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651678644729_594211_62071" xmi:uuid="efba5bbe-e5f9-46c1-bb7b-0970e9518c52" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651678644729_225639_62072"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651678630000_553872_59521"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651678644729_225639_62072" xmi:uuid="cc218df8-19d7-4607-9b3a-b9d91a536348" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651678629998_195485_59519"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651678644729_594211_62071"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651589681743_722089_63246" xmi:uuid="f2a100ac-b9c3-4739-9c5d-362d9c513505" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651589681743_133923_63247"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651589657070_573792_59309"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651589681743_133923_63247" xmi:uuid="95a78e66-1133-4288-9713-0b115c0492ce" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651589657065_278453_59308"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651589681743_722089_63246"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193291_23172_23920" xmi:uuid="f75140f2-ec6b-4e2e-a80a-168c555ef4a3" xmi:type="uml:Class">
+      <ownedComment xmi:id="_18_0_5_45e01bd_1455707002992_689888_42719" xmi:uuid="bd0a2b01-dbf3-4462-91c3-e24bf71e3ff2" xmi:type="uml:Comment">
+        <annotatedElement xmi:idref="_18_4_1_e120334_1499417193291_23172_23920"/>
+        <body>A WorkRequestAssignment is an association of a WorkRequest with the product or activity data objects that are subjects of this WorkRequest.</body>
+      </ownedComment>
+      <name>WorkRequestAssignment</name>
+      <generalization xmi:id="_18_4_1_e120334_1499417193334_836016_24244" xmi:uuid="25de6374-3cd5-4b80-bfa9-bcfcaff58690" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193012_865292_23378"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193531_369880_25756" xmi:uuid="27006dbb-c759-481b-ac14-481e4b8310b7" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193051_3879_23469"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193526_231780_25664" xmi:uuid="36c5eca4-b91f-4183-9b23-07c8deaa4851" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193050_963088_23467"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193322_399988_24111" xmi:uuid="66af2967-7b11-4981-bc26-4cc05d31d016" xmi:type="uml:Generalization">
+        <general href="../Activity/Activity.xmi#_18_4_1_e120334_1499417193010_433732_23374"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193704_988873_27032" xmi:uuid="69caec88-d6de-4641-8aeb-31db3c9aaac6" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193108_431766_23587"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_8e001ed_1500554986004_132625_27942" xmi:uuid="936ad9af-ee5b-489c-931f-bfd1cbee3776" xmi:type="uml:Generalization">
+        <general href="../DeltaChange/DeltaChange.xmi#_18_4_1_e120334_1499691165239_904252_31960"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1675863858539_928244_164154" xmi:uuid="93be80bb-6e98-49e6-95c4-a6b22cca26ab" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1665676763419_25158_58983"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193397_80546_24783" xmi:uuid="a7833341-da86-4e90-9a2f-f6403afcb3d3" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193024_414882_23411"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193623_42612_26441" xmi:uuid="aeb10217-5252-45a2-b184-fca8340101cf" xmi:type="uml:Generalization">
+        <general href="../DocumentManagement/DocumentManagement.xmi#_18_4_1_e120334_1499417193076_372354_23525"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193970_104048_28531" xmi:uuid="b99e8fc3-c389-4bdd-b76a-cf38dc00e653" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193203_213100_23783"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193653_838682_26698" xmi:uuid="c08cc300-672a-4c99-a05e-537eaf28afdc" xmi:type="uml:Generalization">
+        <general href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193085_557055_23539"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_e120334_1499417193370_913681_24504" xmi:uuid="c25b7261-1c19-4633-9e1c-5f0f24ef5d55" xmi:type="uml:Generalization">
+        <general href="../ManagementResources/ManagementResources.xmi#_18_4_1_e120334_1499417193019_931725_23396"/>
+      </generalization>
+      <generalization xmi:id="_18_4_1_65b021e_1663409220339_26464_162174" xmi:uuid="d6fb864f-71ec-4464-a1c2-57c156a1d70f" xmi:type="uml:Generalization">
+        <general xmi:idref="_19_0_4_b1702d9_1659094024832_690472_58816"/>
+      </generalization>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194134_566096_29238" xmi:uuid="825061c5-79c2-4352-a11c-26e6df371a72" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455707024635_10009_42720" xmi:uuid="5fa8a274-535e-4f7d-8e00-05655f61a0d7" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194134_566096_29238"/>
+          <body> the identifier or set of identifiers for the WorkRequestAssignment. The value of this attribute need not be specified. &lt;note&gt; This attribute supports multi-identification in different contexts as described in Fundamental concepts and assumptions.&lt;/note&gt;</body>
+        </ownedComment>
+        <name>Id</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193119_518292_23608"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194850_930930_35531" xmi:uuid="887cba1d-288b-4335-aacf-3ae61db30603" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193746_757000_27306"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194134_903897_29239" xmi:uuid="7c542c7c-cec0-4add-9402-5d7ab5f3137e" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455707035258_833070_42721" xmi:uuid="6c4afe8d-673d-43eb-8e26-76076cf0a4d3" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194134_903897_29239"/>
+          <body> the text or the set of texts that provide further information about the WorkRequestAssignment. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>Description</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193068_300298_23514"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194851_824102_35534" xmi:uuid="4dff068f-aa84-40d3-a428-8cffc6919d33" xmi:type="uml:LiteralInteger"/>
+        <aggregation>composite</aggregation>
+        <association xmi:idref="_18_4_1_e120334_1499417193581_21786_26127"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194135_612315_29240" xmi:uuid="1dfe0e45-a9ce-46b7-9e8d-7ad169118bd7" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455707050300_773709_42722" xmi:uuid="fcbf05a2-d7df-49a4-877c-292b60265d38" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194135_612315_29240"/>
+          <body> the classifications of the WorkRequestAssignment. The value of this attribute need not be specified.</body>
+        </ownedComment>
+        <name>ClassifiedAs</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193038_880755_23447"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194851_859695_35537" xmi:uuid="db33029d-eef3-4bd4-b5e5-f8cae22fd707" xmi:type="uml:LiteralInteger"/>
+        <upperValue xmi:id="_18_4_1_e120334_1499417194851_261970_35536" xmi:uuid="d8a41df8-3bfe-4769-8ebf-b8b0a719423c" xmi:type="uml:LiteralUnlimitedNatural">
+          <value>*</value>
+        </upperValue>
+        <association xmi:idref="_18_4_1_e120334_1499417193486_521246_25401"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194135_118080_29241" xmi:uuid="a07d3378-2374-4763-9c93-798dc2356b08" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455707066153_361369_42723" xmi:uuid="18709b68-a30b-4822-853f-9b43f3d2dd84" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194135_118080_29241"/>
+          <body> the meaning of the association.</body>
+        </ownedComment>
+        <name>Role</name>
+        <visibility>public</visibility>
+        <type href="../CommonResources/CommonResources.xmi#_18_4_1_e120334_1499417193042_855579_23449"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193496_43422_25453"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194135_486669_29242" xmi:uuid="de8e9eef-d5c5-46cb-a624-9bf770e486f5" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455707076297_585733_42724" xmi:uuid="499d1b29-d37f-41fd-93fc-976c60a1994d" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194135_486669_29242"/>
+          <body> the WorkRequest for which a set of items is being identified.</body>
+        </ownedComment>
+        <name>AssignedWorkRequest</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193290_179454_23919"/>
+        <association xmi:idref="_18_4_1_e120334_1499417194129_805926_29223"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_18_4_1_e120334_1499417194136_881028_29243" xmi:uuid="3db6a908-8ba2-4615-9884-1b6890847251" xmi:type="uml:Property">
+        <ownedComment xmi:id="_18_0_5_45e01bd_1455707086667_395791_42725" xmi:uuid="5b2b0610-499a-4b02-8af7-9b04904a1faa" xmi:type="uml:Comment">
+          <annotatedElement xmi:idref="_18_4_1_e120334_1499417194136_881028_29243"/>
+          <body> the item that is affected by the WorkRequest.</body>
+        </ownedComment>
+        <name>AssignedTo</name>
+        <visibility>public</visibility>
+        <type xmi:idref="_18_4_1_e120334_1499417193292_820968_23921"/>
+        <association xmi:idref="_18_4_1_e120334_1499417194134_951283_29237"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:id="_18_4_1_e120334_1499417193582_685059_26130" xmi:uuid="fa8adfbf-2f17-4f1f-acf8-07e8727c9461" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194395_451679_31391"/>
+      <memberEnd xmi:idref="_18_4_1_e120334_1499417194124_562044_29209"/>
+      <ownedEnd xmi:id="_18_4_1_e120334_1499417194395_451679_31391" xmi:uuid="4997882a-9c98-4178-96bb-1c08ee17a33a" xmi:type="uml:Property">
+        <type xmi:idref="_18_4_1_e120334_1499417193289_303822_23916"/>
+        <lowerValue xmi:id="_18_4_1_e120334_1499417194972_215770_36845" xmi:uuid="ed7c05c4-e5db-4ea8-be8b-3329673de16a" xmi:type="uml:LiteralInteger"/>
+        <association xmi:idref="_18_4_1_e120334_1499417193582_685059_26130"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:id="_19_0_4_b1702d9_1651591340791_434847_65898" xmi:uuid="ffed3298-2bc2-4a58-8148-921b49ed5edb" xmi:type="uml:Association">
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651591340792_964462_65899"/>
+      <memberEnd xmi:idref="_19_0_4_b1702d9_1651591325049_347881_63350"/>
+      <ownedEnd xmi:id="_19_0_4_b1702d9_1651591340792_964462_65899" xmi:uuid="4ba7b339-945e-4b03-8742-030dae5bb894" xmi:type="uml:Property">
+        <visibility>private</visibility>
+        <type xmi:idref="_19_0_4_b1702d9_1651591325047_670311_63349"/>
+        <association xmi:idref="_19_0_4_b1702d9_1651591340791_434847_65898"/>
+      </ownedEnd>
+    </packagedElement>
+  </uml:Package>
+</xmi:XMI>

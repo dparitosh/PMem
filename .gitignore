@@ -1,58 +1,77 @@
-# Environment variables
-.env
-.env.local
-.env.*.local
-*.env
-backend/backend/azure.txt
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
 
-# Node
-node_modules/
-npm-debug.log
-yarn-error.log
-.npm
-.yarn
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.dt_venv/
+
+# Local environment
+.env
 
 # IDE
 .vscode/
 .idea/
-.agents/
-.codex/
 *.swp
 *.swo
 *~
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Logs
+logs/
+*.log
+
+# Runtime data
+uploads/
+ontology_uploads/
+outputs/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Build outputs
+# Build
+.dist/
 build/
 dist/
-frontend/build/
-*.egg-info/
-__pycache__/
-*.pyc
-.pytest_cache/
 
-# Logs
-logs/
-backend/logs/
-backend/backend/logs/
-*.log
-
-# Temporary files
-*.tmp
-*.temp
-*.bak
+# Cache
 .cache/
-
-# Local runtime and generated test artifacts
-.dt_venv/
-backend/.dt_venv/
-backend/uploads/
-backend/cat_test_results/
-frontend/playwright-report/
-frontend/test-results/
-frontend/test-screenshots*/
-frontend/test-ontology-screenshots/
-frontend/test-stage-*/
+.npm/
+*.cache

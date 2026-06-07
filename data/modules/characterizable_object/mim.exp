@@ -1,0 +1,19 @@
+(*
+   ISO TC184/SC4/WG12 N11546 - ISO/TS 10303-1765 Characterizable object - EXPRESS MIM
+   Supersedes ISO TC184/SC4/WG12 N10538
+*)
+
+SCHEMA Characterizable_object_mim;
+
+USE FROM Activity_mim;      -- ISO/TS 10303-1047
+USE FROM product_property_definition_schema   -- ISO 10303-41
+  (characterized_object, characterized_object_relationship);
+USE FROM Shape_property_assignment_mim; -- ISO/TS 10303-1032
+USE FROM Support_resource_mim;   -- ISO 10303-41
+
+TYPE co_action_items = SELECT BASED_ON action_items WITH
+  (characterized_object,
+   characterized_object_relationship);
+END_TYPE;
+ 
+END_SCHEMA;

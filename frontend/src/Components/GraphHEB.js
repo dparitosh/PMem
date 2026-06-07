@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo, startTransition } from 'react';
 import * as d3 from 'd3';
 import '../CSS/GraphHEB.css';
-import axios from 'axios';
-import config from '../config';
 import { useSchema } from '../SchemaContext';
+import { useOntologies } from '../contexts/OntologyContext';
 import { logger } from '../utils/logger';
-import { calculateTooltipPosition } from '../utils/tooltipPositioning';
-import { safeGet, safeIndex, compact, safeString } from '../utils/safeAccess';
+import { safeGet, safeString } from '../utils/safeAccess';
+import { buildUrl, replaceParams, API } from '../config';
+import { apiClient } from '../services/apiClient';
+import { buildTooltipHeader } from './tooltipBuilder';
 
 // Security: HTML-escape utility for tooltip interpolation
 const escapeHtml = (str) => {
@@ -24,7 +25,7 @@ const escapeHtml = (str) => {
 // DISPLAY_NAME_PROPERTY  — priority-ordered list of node properties to try.
 //   The first property found on a node is used as the display name.
 //   Set to [] (empty array) to rely solely on the Neo4j label.
-const DISPLAY_NAME_PROPERTY = ['name', 'title', 'code', 'key', 'abbreviation', 'id'];
+const DISPLAY_NAME_PROPERTY = ['name', 'title', 'code', 'key', 'abbreviation'];
 // const DISPLAY_NAME_PROPERTY = ['title', 'name'];
 // const DISPLAY_NAME_PROPERTY = [];                // ← Neo4j label only
 //
@@ -39,54 +40,15 @@ const DISPLAY_MODE = 'property-only';
 // const DISPLAY_MODE = 'property-only';
 // ───────────────────────────────────────────────────────────────────────────
 
-// 🔧 LOW PRIORITY: Define constants for magic numbers
+// Define constants for graph tuning values.
 // These improve readability and maintainability
 const HIGHLIGHT_AUTO_CLEAR_MS = 15000;        // 15 seconds - clear highlight after timeout
 const ENTITY_EXTRACTION_DELAY_MS = 500;       // 500ms - allow text selection to settle
 const TREE_ROW_HEIGHT_PX = 40;                // 40px - height of each tree row
 const TREE_INDENT_WIDTH_PX = 30;              // 30px - indent per tree level
 const TREE_LAYOUT_PADDING_PX = 40;            // 40px - padding from edges
-const TREE_HEADER_HEIGHT_PX = 30;             // 30px - header row height
 const TREE_DEFAULT_HEIGHT_PX = 600;           // 600px - default tree container height
 const TREE_MIN_CONTENT_HEIGHT_PX = 560;       // 560px - minimum height before scrolling
-const TREE_LABEL_MAX_LENGTH = 30;             // 30 chars - truncate long labels
-const LARGE_DATASET_THRESHOLD = 500;          // 500 nodes - threshold for performance warning
-const TREE_BUTTON_WIDTH_PX = 140;             // 140px - width of tree action buttons
-
-const NAV_ITEMS = [
-  { id: 'whereused', label: 'Where Used', icon: '↗' },
-  { id: 'table', label: 'Table', icon: '▦' },
-  { id: 'reports', label: 'Reports', icon: '▲' },
-  { id: 'ingestion', label: 'Data Import', icon: '↓' },
-  { id: 'ontology', label: 'Ontology Mapper', icon: '◆' },
-  { id: 'recommendations', label: 'Recommendations', icon: '★' },
-];
-
-const toolbarControlStyle = {
-  height: '34px',
-  padding: '6px 10px',
-  borderRadius: '6px',
-  border: '1px solid #004B87',
-  backgroundColor: '#fff',
-  color: '#1f2933',
-  cursor: 'pointer',
-  fontSize: '13px',
-  fontWeight: 500,
-  transition: 'border-color .15s ease, box-shadow .15s ease',
-};
-
-const toolbarButtonStyle = {
-  height: '34px',
-  padding: '6px 12px',
-  border: '1px solid #004B87',
-  borderRadius: '6px',
-  background: '#004B87',
-  color: '#fff',
-  fontSize: '13px',
-  fontWeight: 600,
-  cursor: 'pointer',
-  boxShadow: '0 2px 6px rgba(0,75,135,.24)',
-};
 
 // Helper: resolve the first matching property from DISPLAY_NAME_PROPERTY list
 const resolveDisplayProp = (props) => {
@@ -125,49 +87,8 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 const performanceLog = isDevelopment ? logger.render : () => {};
 const performanceWarn = isDevelopment ? logger.warn : () => {};
 
-// Performance: Create a single axios instance with optimized defaults
-const apiClient = axios.create({
-  baseURL: config.apiUrl,
-  timeout: 30000, // 10 second timeout
-  headers: {
-    'Content-Type': 'application/json',
-  }
-});
+// Performance: (legacy) caching removed — unused in current code
 
-// Performance: Add request/response interceptors for caching
-const requestCache = new Map();
-apiClient.interceptors.request.use((config) => {
-  if (config.method === 'get') {
-    const cacheKey = config.url + JSON.stringify(config.params);
-    if (requestCache.has(cacheKey)) {
-      return Promise.reject({ cached: true, data: requestCache.get(cacheKey) });
-    }
-  }
-  return config;
-});
-
-// ─── Cache cleanup tracking ───
-const cacheTimeouts = new Set();
-
-apiClient.interceptors.response.use((response) => {
-  if (response.config.method === 'get') {
-    const cacheKey = response.config.url + JSON.stringify(response.config.params);
-    requestCache.set(cacheKey, response.data);
-    // Cache for 5 minutes - track timeout for cleanup
-    const timeoutId = setTimeout(() => {
-      requestCache.delete(cacheKey);
-      cacheTimeouts.delete(timeoutId);
-    }, 300000);
-    cacheTimeouts.add(timeoutId);
-  }
-  return response;
-}, (error) => {
-  if (error.cached) {
-    return Promise.resolve({ data: error.data });
-  }
-  return Promise.reject(error);
-});
- 
 // ── RecPanelResult: recommendation slide-in panel results renderer ────────────
 const _PILL = (c) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, background: c, color: '#fff', marginRight: '4px', marginBottom: '3px' });
 const _ROW  = { padding: '6px 0', borderBottom: '1px solid #f0f0f0', fontSize: '12px' };
@@ -231,13 +152,13 @@ function RecPanelResult({ service, data, setRecPanel, setActiveTab }) {
 // ───────────────────────────────────────────────────────────────────────────────
 
 // Define constants for D3 parameters and styling
-const LINK_COLOR = '';
-const LINK_OPACITY = 0.6;
-const LINK_STROKE_WIDTH = 2;
+const LINK_COLOR = '#4A90E2';        // ✅ Blue - visible on both light & dark backgrounds
+const LINK_OPACITY = 0.8;            // ✅ Increased from 0.6 for better visibility
+const LINK_STROKE_WIDTH = 3;         // ✅ Increased from 2 for clarity
 const NODE_RADIUS = 14;
 const LINK_DISTANCE = 100;
-const CHARGE_STRENGTH = -300;
-const COLLIDE_RADIUS = 60;
+const CHARGE_STRENGTH = -150;        // ✅ Reduced from -300 to prevent node separation
+const COLLIDE_RADIUS = 40;           // ✅ Reduced from 60 to allow denser graph
 const ALPHA_TARGET_DRAG = 0.3;
 const ALPHA_TARGET_END = 0;
 
@@ -254,16 +175,6 @@ const ARROW_HEAD_LENGTH = 8;
 const ARROW_HEAD_WIDTH = 4;
 const ARROW_REF_X = NODE_RADIUS + 3; // Adjust so arrow starts slightly after node boundary
 
-// ──── UNICODE CHARACTERS (ASCII-safe escape sequences) ────────────────────
-// Use these constants instead of literal emoji/special chars so the code
-// survives copy-paste across systems with different encodings.
-const ICON_TOOLS      = '\u{1F6E0}';  // 🛠  wrench
-// eslint-disable-next-line no-unused-vars
-const ICON_CHART      = '\u{1F4CA}';  // 📊  bar chart
-const ICON_GLOBE      = '\u{1F310}';  // 🌐  globe
-const ICON_CLIPBOARD  = '\u{1F4CB}';  // 📋  clipboard
-const ICON_REFRESH    = '\u{1F504}';  // 🔄  anticlockwise arrows
-const ICON_HOURGLASS  = '\u23F3';     // ⏳  hourglass
 const CHAR_TIMES      = '\u00D7';     // ×   multiplication sign (close button)
 const CHAR_MINUS      = '\u2212';     // −   minus sign
 const CHAR_BULLET     = '\u2022';     // •   bullet
@@ -318,7 +229,6 @@ const createNodeSearchFunction = () => {
 const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTab, setVisibleRelationships, chatResults }) => {
   const svgRef = useRef();
   const tooltipRef = useRef();
-  const relationTooltipRef = useRef();
   const [tooltipDocked, setTooltipDocked] = useState(true);
   const tooltipDockedRef = useRef(tooltipDocked);
   useEffect(() => { tooltipDockedRef.current = tooltipDocked; }, [tooltipDocked]);
@@ -329,12 +239,27 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const timeoutsRef = useRef(new Set()); // Track active timeouts for cleanup
 
   // Helper: build close button HTML for tooltips
-  const tooltipCloseBtn = `<button onclick="this.closest('.tooltip').style.opacity='0';this.closest('.tooltip').style.pointerEvents='none'" style="position:absolute;top:6px;right:8px;background:none;border:none;color:white;font-size:16px;cursor:pointer;line-height:1;padding:0 2px;opacity:0.85;">&times;</button>`;
+  const tooltipCloseBtn = `<button class="dt-tooltip-close" style="position:absolute;top:6px;right:8px;background:none;border:none;color:white;font-size:16px;cursor:pointer;line-height:1;padding:0 2px;opacity:0.85;">&times;</button>`;
+
+  // Helper: attach close handler to tooltip element (clears active tooltip state)
+  const applyTooltipCloseHandler = (tooltipEl) => {
+    if (!tooltipEl) return;
+    const closeBtn = tooltipEl.querySelector('.dt-tooltip-close');
+    if (!closeBtn) return;
+    // Remove previous listener if present
+    closeBtn.replaceWith(closeBtn.cloneNode(true));
+    const newBtn = tooltipEl.querySelector('.dt-tooltip-close');
+    newBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      tooltipEl.style.opacity = '0';
+      tooltipEl.style.pointerEvents = 'none';
+      activeTooltipNodeRef.current = null;
+    });
+  };
 
   // Helper: hide both tooltips
   const hideAllTooltips = () => {
     if (tooltipRef.current) { tooltipRef.current.style.opacity = '0'; tooltipRef.current.style.pointerEvents = 'none'; }
-    if (relationTooltipRef.current) { relationTooltipRef.current.style.opacity = '0'; relationTooltipRef.current.style.pointerEvents = 'none'; }
     activeTooltipNodeRef.current = null;
   };
 
@@ -347,16 +272,19 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     const parentEl = svg.parentElement || svg.offsetParent;
     if (!parentEl) return;
     const parentRect = parentEl.getBoundingClientRect();
-    const panelWidth = 340;
-    const panelHeight = Math.max(100, svgRect.height);
+    const panelWidth = 360;
+    const panelHeight = Math.max(120, svgRect.height);
+    // Dock tooltip to right side of the SVG canvas
     let panelTop = Math.max(0, Math.round(svgRect.top - parentRect.top));
     let panelLeft = Math.max(0, Math.round(svgRect.right - parentRect.left - panelWidth));
     if (svgRect.width < panelWidth) panelLeft = Math.max(0, Math.round(svgRect.left - parentRect.left));
     el.style.position = 'absolute';
     el.style.top = panelTop + 'px';
     el.style.left = panelLeft + 'px';
+    el.style.right = 'auto';
     el.style.width = panelWidth + 'px';
-    el.style.height = panelHeight + 'px';
+    el.style.maxHeight = Math.min(panelHeight, window.innerHeight - 40) + 'px';
+    el.style.overflowY = 'auto';
   }, []);
 
   useEffect(() => {
@@ -447,7 +375,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
         : service === 'similar-parts'
         ? { part_name: nodeName, top_n: 10 }
         : { part_name: nodeName };
-      axios.post(`${config.apiUrl}${endpoint}`, body)
+      apiClient.post(buildUrl(endpoint), body)
         .then(resp => setRecPanel(prev => ({ ...prev, loading: false, result: resp.data })))
         .catch(err => setRecPanel(prev => ({ ...prev, loading: false, error: err.response?.data?.detail || err.message || 'Request failed' })));
     };
@@ -492,7 +420,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       if (!names || names.length === 0) return;
       setSearchLoading(true);
       try {
-        const response = await apiClient.post('/graphfilter-multi', { names });
+        const response = await apiClient.post(API.graph.graphfilterMulti, { names });
         const results = response.data?.results || [];
 
         const nodesMap = new Map();
@@ -617,8 +545,8 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     const btnStyle = 'display:inline-block;padding:4px 10px;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;margin-right:6px;color:#fff;';    return `
       <div style="padding:6px 8px 4px;margin-bottom:4px;border-bottom:1px solid #e2e6ea;display:flex;flex-wrap:wrap;gap:4px;">
         <button onclick="window.__dt_rec_action('change-impact','${escapedName}')" style="${btnStyle}background:#e74c3c;" title="Change Impact Analysis">Impact</button>
-        <button onclick="window.__dt_rec_action('similar-parts','${escapedName}')" style="${btnStyle}background:#004B87;" title="Find Similar Parts">🔍 Similar</button>
-        <button onclick="window.__dt_rec_action('manufacturing','${escapedName}')" style="${btnStyle}background:#27ae60;" title="Manufacturing Processes">🏭 Process</button>
+        <button onclick="window.__dt_rec_action('similar-parts','${escapedName}')" style="${btnStyle}background:#004B87;" title="Find Similar Parts">[FIND] Similar</button>
+        <button onclick="window.__dt_rec_action('manufacturing','${escapedName}')" style="${btnStyle}background:#27ae60;" title="Manufacturing Processes">[MFG] Process</button>
       </div>`;
   };
 
@@ -656,6 +584,33 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   // ── Recommendation: slide-in panel state ──
   const [recPanel, setRecPanel] = useState({ open: false, service: null, nodeName: '', loading: false, result: null, error: '' });
   const primaryButtonColor = 'rgb(10, 130, 118)';
+
+  useEffect(() => {
+    const handleSchemaCleaned = () => {
+      const empty = { nodes: [], links: [] };
+      setGraphData(empty);
+      setFilteredData(empty);
+      setFullDataset(empty);
+      setInitialData(empty);
+      setSearchResultData(empty);
+      setSearchQuery('');
+      setSearchInput('');
+      setAvailableLabels([]);
+      setSelectedLabelFilter('ALL');
+      setExpandedNodes(new Set());
+      setLoadingNodes(new Set());
+      setNodeExpansions(new Map());
+      setTreeExpandedNodes(new Set());
+      setSelectedOntology('ALL');
+      selectedOntologyRef.current = 'ALL';
+      setStepParts([]);
+      setSelectedStepPart('ALL');
+      setError(null);
+      setData(empty);
+    };
+    window.addEventListener('dt-schema-cleaned', handleSchemaCleaned);
+    return () => window.removeEventListener('dt-schema-cleaned', handleSchemaCleaned);
+  }, [setData]);
   // New keyword-based dual-node comparison (graphfilter) states
   const [compareTermA, setCompareTermA] = useState('');
   const [compareTermB, setCompareTermB] = useState('');
@@ -669,14 +624,26 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const [searchResultData, setSearchResultData] = useState({ nodes: [], links: [] });
   const [availableLabels, setAvailableLabels] = useState([]);
   const [selectedLabelFilter, setSelectedLabelFilter] = useState('ALL');
+  // ── Graph View Mode: 'ontology' = Ontology Graph Visualization, 'individual' = Contextual Individual Graph View
+  const [graphViewMode, setGraphViewMode] = useState('ontology');
+  const graphViewModeRef = useRef('ontology');
   // Ontology viewer state
   const [selectedOntology, setSelectedOntology] = useState('ALL');
-  // Ontology options are always loaded dynamically from backend
-  const [ontologyOptions, setOntologyOptions] = useState([]);
-  const [ontologyLoading, setOntologyLoading] = useState(false);
+  const selectedOntologyRef = useRef('ALL');
+  const lastNeo4jConnectedRef = useRef(null);
+  // Local loading state for ontology-specific operations (separate from context loading)
+  const [, setOntologyLoading] = useState(false);
+  const [ontologyGraphMessage, setOntologyGraphMessage] = useState('');
+  // Ontology options loaded from centralized context (shared across all components)
+  const {
+    ontologies: ontologyOptions,
+    loading: ontologyLoading,
+    error: ontologyError,
+  } = useOntologies();
   const [stepParts, setStepParts] = useState([]); // available STEP part names
   const [selectedStepPart, setSelectedStepPart] = useState('ALL');
   const [stepPartsLoading, setStepPartsLoading] = useState(false);
+  const [stepPartsError, setStepPartsError] = useState(null);
   // Performance: Debounced search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300); // 300ms delay
   // Performance: Memoized search function
@@ -686,7 +653,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   // eslint-disable-next-line no-unused-vars
   const performComparativeSearch = useCallback(async (nodeType, name, version) => {
     try {
-      const response = await apiClient.post('/comparative-search', {
+      const response = await apiClient.post(API.graph.comparativeSearch, {
         nodeType: nodeType.trim(),
         name: name.trim(),
         version: version.trim()
@@ -756,25 +723,33 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const getNodeColor = useCallback((label) => {
     if (!label) return '#808080'; // Gray fallback for undefined labels
 
-    // Explicit color map for known ontology labels
+    // Explicit color map for known ontology labels - optimized for clarity
     const colorMap = {
-      'OntologyClass':    '#2E86C1', // blue
-      'Class':            '#1A5276', // dark blue
-      'OntologyProperty': '#E67E22', // orange
-      'ObjectProperty':   '#D4AC0D', // gold
-      'Relationship':     '#28B463', // green
-      'Individual':       '#FF6F61', // coral
-      'Annotation':       '#E74C3C', // red
-      'Resource':         '#5C3317', // dark brown
-      'Datum':            '#17A589', // teal
-      'Dimension':        '#CA6F1E', // burnt orange
-      'GeometricTolerance':'#2471A3',// steel blue
-      'Part':             '#1E8449', // forest green
-      'Property':         '#884EA0', // medium purple
-      'PLMXMLFile':       '#D35400', // pumpkin
-      'StepFile':         '#2C3E50', // dark slate
-      'StepInstance':     '#148F77', // dark teal
-      'SurfaceFinish':    '#7D3C98', // dark violet
+      // Ontology Schema Layer (Classes and Properties)
+      'OntologyClass':     '#003D82', // Deep blue - ontology classes
+      'Class':             '#0056B3', // Standard blue - classes
+      'ObjectProperty':    '#E67E22', // Orange - object properties (relationships)
+      'DatatypeProperty':  '#F39C12', // Gold - datatype properties
+      'OntologyProperty':  '#E67E22', // Orange - generic ontology properties
+      'Property':          '#E67E22', // Orange - properties
+      'Relationship':      '#27AE60', // Green - relationships
+      'Annotation':        '#C0392B', // Dark red - annotations
+      
+      // Instance Data Layer
+      'Individual':        '#27AE60', // Green - individual instances
+      'Resource':          '#16A085', // Teal - resources
+      'Datum':             '#16A085', // Teal - data
+      
+      // CAD/PLM Specific
+      'Part':              '#2E8B57', // Sea green - parts
+      'SurfaceFinish':     '#9B59B6', // Purple - surface finishes
+      'Dimension':         '#2980B9', // Lighter blue - dimensions
+      'GeometricTolerance':'#34495E', // Dark slate - tolerances
+      
+      // File Types
+      'PLMXMLFile':        '#D35400', // Pumpkin - PLMXML files
+      'StepFile':          '#7F8C8D', // Slate - STEP files
+      'StepInstance':      '#34495E', // Dark slate - STEP instances
     };
 
     if (colorMap[label]) return colorMap[label];
@@ -1218,7 +1193,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     if (!trimmed) return;
     setIsCompareSearching(prev => ({ ...prev, [side]: true }));
     try {
-      const response = await apiClient.post('/graphfilter', { search: trimmed.toLowerCase() });
+      const response = await apiClient.post(API.graph.graphfilter, { search: trimmed.toLowerCase() });
       const records = response.data?.results || [];
       const nodesMap = new Map();
       records.forEach(record => {
@@ -1435,7 +1410,8 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
   // Heuristic fallback when configured property list yields nothing
   const displayValue = propValue ??
-    (props.name ?? props.Name ?? props.PartName ?? props.CADDocumentName ?? props.ObjectType ?? null);
+    (props.name ?? props.Name ?? props.PartName ?? props.CADDocumentName ?? props.ObjectType ??
+     props.id ?? props.identifier ?? props.uuid ?? null);
 
   return formatNodeDisplay(nodeLabel, displayValue != null ? String(displayValue) : null);
 }, [schemaDisplayName]);
@@ -1694,7 +1670,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       .attr('font-size', '18px')
       .attr('font-weight', 'bold')
       .attr('fill', 'white')
-      .text(ICON_CLIPBOARD + ' Hierarchical Data View');
+      .text('Hierarchical Data View');
     
     // Item count badge
     headerGroup.append('circle')
@@ -1939,6 +1915,8 @@ const getPrimaryNodeLabel = useCallback((d) => {
             } else {
               try { makeTooltipDraggable(tooltipEl); } catch (e) { /* ignore */ }
             }
+            // Attach close handler
+            try { applyTooltipCloseHandler(tooltipEl); } catch (e) { /* ignore */ }
           }
         });
 
@@ -2539,7 +2517,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       
       try {
         performanceLog('[API] Making API call to /graphvis...');
-        const response = await apiClient.get('/graphvis');
+        const response = await apiClient.get(API.graph.graphvis);
         performanceLog('[DATA] API Response received:', {
           status: response.status,
           dataExists: !!response.data,
@@ -2635,6 +2613,91 @@ const getPrimaryNodeLabel = useCallback((d) => {
 // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
 
+  // Monitor Neo4j connection health and refresh graph if reconnected
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const response = await apiClient.get(API.graph.neo4jHealth);
+        const connected = response.data?.neo4j_connected === true;
+        const previousConnected = lastNeo4jConnectedRef.current;
+        lastNeo4jConnectedRef.current = connected;
+
+        if (connected && previousConnected === false && graphData.nodes.length === 0) {
+          // Connection was restored but graph is empty - trigger refresh
+          logger.data('Neo4j reconnected, refreshing graph...');
+          const graphResponse = await apiClient.get(API.graph.graphvis);
+          if (graphResponse.data?.results?.length > 0) {
+            // Process and update graph
+            const nodesMap = new Map();
+            const rawLinks = new Map();
+            
+            graphResponse.data.results.forEach(record => {
+              const n = record['n'];
+              const r = record['r'];
+              const m = record['m'];
+              
+              if (n) {
+                const nodeIdN = n.elementId;
+                if (!nodesMap.has(nodeIdN)) {
+                  nodesMap.set(nodeIdN, {
+                    ...n.properties,
+                    elementId: nodeIdN,
+                    labels: n.labels || ['Node'],
+                    label: n.labels?.[0] || 'Node',
+                  });
+                }
+              }
+              
+              if (r && m) {
+                const nodeIdM = m.elementId;
+                if (!nodesMap.has(nodeIdM)) {
+                  nodesMap.set(nodeIdM, {
+                    ...m.properties,
+                    elementId: nodeIdM,
+                    labels: m.labels || ['Node'],
+                    label: m.labels?.[0] || 'Node',
+                  });
+                }
+                
+                const linkId = r.elementId;
+                if (!rawLinks.has(linkId)) {
+                  rawLinks.set(linkId, {
+                    elementId: linkId,
+                    source: r.start,
+                    target: r.end,
+                    type: r.type,
+                    properties: r.properties,
+                  });
+                }
+              }
+            });
+            
+            const nodes = Array.from(nodesMap.values());
+            const finalLinks = Array.from(rawLinks.values());
+            const existingNodeIds = new Set(nodes.map(node => node.elementId));
+            const validatedLinks = finalLinks.filter(link => 
+              existingNodeIds.has(link.source) && existingNodeIds.has(link.target)
+            );
+            
+            startTransition(() => {
+              const dataSet = { nodes, links: validatedLinks };
+              setData(dataSet);
+              setGraphData(dataSet);
+              setFilteredData(dataSet);
+              setFullDataset(dataSet);
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn('Health check error:', err.message);
+      }
+    };
+
+    // Check health every 30 seconds
+    const healthCheckInterval = setInterval(checkHealth, 30000);
+    return () => clearInterval(healthCheckInterval);
+  }, [graphData.nodes.length, setData]);
+
  
   // Performance: Optimized search with debouncing and caching
   useEffect(() => {
@@ -2662,7 +2725,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       setSearchLoading(true);
       
       try {
-        const response = await apiClient.post('/graphfilter', {
+        const response = await apiClient.post(API.graph.graphfilter, {
           search: debouncedSearchQuery.toLowerCase()
         }, { signal: abortController.signal });
         
@@ -2856,6 +2919,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
   const fetchOntologyGraph = useCallback(async (ontologyType, partName) => {
     if (ontologyType === 'ALL') {
       // Reset to initial full graph
+      setOntologyGraphMessage('');
       setFilteredData(initialData);
       setGraphData(initialData);
       setFullDataset(initialData);
@@ -2867,17 +2931,22 @@ const getPrimaryNodeLabel = useCallback((d) => {
     }
 
     setOntologyLoading(true);
+    setOntologyGraphMessage('');
     try {
-      let url;
+      let response;
       if (ontologyType === 'step' && partName && partName !== 'ALL') {
-        url = `${config.apiUrl}/ontology/step/${encodeURIComponent(partName)}`;
+        const endpointPath = replaceParams(API.graph.ontologyStepPart, { part: encodeURIComponent(partName) });
+        response = await apiClient.get(endpointPath);
+      } else if (ontologyType.endsWith('_instances')) {
+        // pattern: 'ap242_instances' -> call instances endpoint for 'ap242'
+        const base = ontologyType.replace(/_instances$/, '');
+        response = await apiClient.getOntologyInstances(base, { include_rels: true, limit: 1000 });
       } else if (ontologyType === 'mbse_instances') {
-        url = `${config.apiUrl}/ontology/mbse-instances`;
+        response = await apiClient.get(API.graph.ontologyMbseInstances);
       } else {
-        url = `${config.apiUrl}/ontology/${ontologyType}`;
+        const endpointPath = replaceParams(API.graph.graphvisByOntology, { prefix: ontologyType });
+        response = await apiClient.get(endpointPath);
       }
-
-      const response = await axios.get(url);
       if (response.data?.results?.length > 0) {
         const nodesMap = new Map();
         const rawLinks = new Map();
@@ -2924,9 +2993,32 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
         const nodes = Array.from(nodesMap.values());
         const existingNodeIds = new Set(nodes.map(node => node.elementId));
+        
+        const sampleLinks = Array.from(rawLinks.values()).slice(0, 2);
+        logger.ontology('[ONTOLOGY] Graph payload sample', {
+          nodes: nodes.slice(0, 2).map(n => ({ elementId: n.elementId, label: n.label })),
+          nodeCount: nodes.length,
+          rawLinkCount: rawLinks.size,
+          links: sampleLinks.map(l => ({
+          source: l.source, 
+          target: l.target,
+          sourceExists: existingNodeIds.has(l.source),
+          targetExists: existingNodeIds.has(l.target)
+          })),
+        });
+        
         const validatedLinks = Array.from(rawLinks.values()).filter(link =>
           existingNodeIds.has(link.source) && existingNodeIds.has(link.target)
         );
+        
+        logger.ontology('[ONTOLOGY] Validated graph links', validatedLinks.length);
+        if (nodes.length > 0 && rawLinks.size > 0 && validatedLinks.length === 0) {
+          setOntologyGraphMessage('Ontology has relationships, but visualization could not match relationship source/target IDs.');
+        } else if (nodes.length > 0 && validatedLinks.length === 0) {
+          setOntologyGraphMessage('Ontology has classes but no relationships.');
+        } else {
+          setOntologyGraphMessage('');
+        }
 
         const dataSet = { nodes, links: validatedLinks };
         setFilteredData(dataSet);
@@ -2937,6 +3029,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         logger.render(`[ONTOLOGY] Loaded ${ontologyType}: ${nodes.length} nodes, ${validatedLinks.length} links`);
       } else {
         const empty = { nodes: [], links: [] };
+        setOntologyGraphMessage(response.data?.message || response.data?.error || 'Neo4j query returned zero records.');
         setFilteredData(empty);
         setGraphData(empty);
         setFullDataset(empty);
@@ -2945,31 +3038,119 @@ const getPrimaryNodeLabel = useCallback((d) => {
       }
     } catch (err) {
       logger.error('[ONTOLOGY] Fetch error:', err);
+      setOntologyGraphMessage(err?.response?.data?.detail || err?.message || 'Visualization received empty graph.');
     } finally {
       setOntologyLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData]);
 
-  // Load data-view ontology options from backend (includes dynamic MBSE entries).
-  useEffect(() => {
-    let isMounted = true;
-    const loadOntologyOptions = async () => {
-      try {
-        const res = await axios.get(`${config.apiUrl}/ontology/options`);
-        if (isMounted && res.data?.options?.length) {
-          setOntologyOptions(res.data.options);
-        }
-      } catch (err) {
-        logger.error('[ONTOLOGY] Failed to load ontology options:', err);
+  // Ontology options are now loaded from centralized OntologyContext
+  // This eliminates duplicate polling and API calls across components
+
+  // Keep selectedOntologyRef in sync so graphViewMode effect can read latest value without stale closure
+  useEffect(() => { selectedOntologyRef.current = selectedOntology; }, [selectedOntology]);
+
+  // Build dataset for Contextual Individual Graph View from the latest graph snapshot
+  const buildIndividualViewDataset = useCallback((sourceData) => {
+    const nodes = sourceData?.nodes || [];
+    const links = sourceData?.links || [];
+
+    // Filter out ONLY ontology/schema nodes - keep everything else (all instance data)
+    const indNodes = nodes.filter(n => {
+      const labels = n.labels || [];
+      // Exclude pure ontology/schema nodes
+      if (labels.includes('OntologyClass') || labels.includes('ObjectProperty') || labels.includes('DatatypeProperty')) {
+        return false;
       }
-    };
-    loadOntologyOptions();
-    return () => { isMounted = false; };
+      // Include everything else (all instance nodes, data, etc.)
+      return true;
+    });
+
+    const indIds = new Set(indNodes.map(n => n.elementId));
+    // After D3 simulation runs, link.source/target are mutated to node objects — handle both
+    const getLinkEndId = (endpoint) =>
+      typeof endpoint === 'object' ? (endpoint?.elementId || endpoint?.id) : endpoint;
+
+    // Include all links where at least one endpoint is an individual/instance node
+    const indLinks = links.filter(l => {
+      const srcId = getLinkEndId(l.source);
+      const tgtId = getLinkEndId(l.target);
+      return indIds.has(srcId) || indIds.has(tgtId);
+    });
+
+    // Also bring in neighbor nodes referenced by those links so the connected graph is visible
+    const referencedNodeIds = new Set();
+    indLinks.forEach(l => {
+      referencedNodeIds.add(getLinkEndId(l.source));
+      referencedNodeIds.add(getLinkEndId(l.target));
+    });
+
+    const allNodeIds = new Set([...indIds, ...referencedNodeIds]);
+    const allNodes = nodes.filter(n => allNodeIds.has(n.elementId));
+
+    return { nodes: allNodes, links: indLinks };
   }, []);
+
+  // When graph view mode switches, load the appropriate dataset
+  useEffect(() => {
+    graphViewModeRef.current = graphViewMode;
+    setSearchQuery('');
+    setSearchInput('');
+    setSelectedLabelFilter('ALL');
+    setAvailableLabels([]);
+    setSearchResultData({ nodes: [], links: [] });
+    setExpandedNodes(new Set());
+    setNodeExpansions(new Map());
+
+    if (graphViewMode === 'individual') {
+      const dataSet = buildIndividualViewDataset(initialData);
+      startTransition(() => {
+        setFilteredData(dataSet);
+        setGraphData(dataSet);
+        setFullDataset(dataSet);
+        setData(dataSet);
+      });
+      // Defer parent setState — must NOT be called inside a state updater or during render
+      if (setSearchResults) setTimeout(() => setSearchResults(dataSet.nodes), 0);
+    } else {
+      // Ontology mode — restore or refetch based on active ontology selection.
+      const selected = selectedOntologyRef.current || 'ALL';
+      if (selected === 'ALL') {
+        // Already on ALL — selectedOntology effect won't re-fire, so restore manually.
+        startTransition(() => {
+          setFilteredData(initialData);
+          setGraphData(initialData);
+          setFullDataset(initialData);
+          setData(initialData);
+        });
+        if (setSearchResults) setTimeout(() => setSearchResults(initialData.nodes), 0);
+      } else {
+        // Force refresh since selectedOntology effect does not run on graphViewMode changes.
+        const part = selected === 'step' ? selectedStepPart : 'ALL';
+        fetchOntologyGraph(selected, part);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphViewMode, buildIndividualViewDataset]);
+
+  // Keep Individual view in sync when fresh initial graph data arrives.
+  useEffect(() => {
+    if (graphViewModeRef.current !== 'individual') return;
+    const dataSet = buildIndividualViewDataset(initialData);
+    startTransition(() => {
+      setFilteredData(dataSet);
+      setGraphData(dataSet);
+      setFullDataset(dataSet);
+      setData(dataSet);
+    });
+    if (setSearchResults) setTimeout(() => setSearchResults(dataSet.nodes), 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData, buildIndividualViewDataset]);
 
   // When ontology selection changes, fetch graph and optionally fetch STEP parts
   useEffect(() => {
+    if (graphViewModeRef.current === 'individual') return; // individual mode manages its own data
     // Clear search state when switching ontology
     setSearchQuery('');
     setSearchInput('');
@@ -2982,16 +3163,26 @@ const getPrimaryNodeLabel = useCallback((d) => {
     if (selectedOntology === 'step') {
       // Fetch STEP parts list for secondary filter
       setStepPartsLoading(true);
-      axios.get(`${config.apiUrl}/ontology/step/parts`)
+      setStepPartsError(null);
+      apiClient.get(API.graph.stepParts)
         .then(res => {
-          setStepParts(res.data?.parts || []);
+          const parts = res.data?.parts || [];
+          setStepParts(parts);
           setSelectedStepPart('ALL');
+          if (parts.length === 0) {
+            setStepPartsError('No STEP parts available');
+          }
         })
-        .catch(err => logger.error('[ONTOLOGY] Failed to fetch STEP parts:', err))
+        .catch(err => {
+          const errorMsg = err.response?.data?.detail || err.message || 'Failed to fetch STEP parts';
+          setStepPartsError(errorMsg);
+          logger.error('[ONTOLOGY] Failed to fetch STEP parts:', err);
+        })
         .finally(() => setStepPartsLoading(false));
     } else {
       setStepParts([]);
       setSelectedStepPart('ALL');
+      setStepPartsError(null);
     }
 
     fetchOntologyGraph(selectedOntology, 'ALL');
@@ -2999,6 +3190,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
   // When STEP part sub-filter changes, fetch that specific part's graph
   useEffect(() => {
+    if (graphViewModeRef.current === 'individual') return;
     if (selectedOntology !== 'step') return;
     // Skip if 'ALL' — the main ontology useEffect already handles that
     if (selectedStepPart === 'ALL') return;
@@ -3038,7 +3230,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     const addedLinkIds = new Set();
     
     try {
-      const response = await axios.get(`${config.apiUrl}/graphtraverse/${nodeId}`);
+      const response = await apiClient.get(replaceParams(API.graph.graphtraverseNode, { node_id: nodeId }));
       
       if (response.data && response.data.results) {
         // Start with ONLY the current search results, not all filteredData
@@ -3329,18 +3521,10 @@ const boundaryForce = (width, height) => {
 
     if (!gRef.current) {
       svg.selectAll('*').remove(); // Clear existing content on first render
-      gRef.current = svg.append('g'); // Main group for graph elements
-      // Initialize zoom behavior on the parent SVG
-      svg.call(d3.zoom()
-        .scaleExtent([0.1, 5])
-        .on('zoom', ({ transform }) => {
-          gRef.current.attr('transform', transform);
-        })
-      );
- 
-      // ENHANCEMENT: Define Arrowhead Marker in SVG defs
+      
+      // Define Arrowhead Marker in SVG defs BEFORE creating main group
       const defs = svg.append("defs"); // Append defs directly to SVG
- 
+      
       defs.append("marker")
         .attr("id", "arrowhead") // Unique ID for the marker
         .attr("viewBox", `0 -${ARROW_HEAD_WIDTH / 2} ${ARROW_HEAD_LENGTH} ${ARROW_HEAD_WIDTH}`) // Viewbox for the marker content
@@ -3352,8 +3536,19 @@ const boundaryForce = (width, height) => {
         .append("path")
           .attr("d", `M0,-${ARROW_HEAD_WIDTH / 2}L${ARROW_HEAD_LENGTH},0L0,${ARROW_HEAD_WIDTH / 2}`) // Triangle shape
           .attr("fill", LINK_COLOR || '#999'); // Fill color of the arrow
+      
+      logger.render('D3 Arrowhead Marker defined in defs');
+      
+      gRef.current = svg.append('g'); // Main group for graph elements
+      // Initialize zoom behavior on the parent SVG
+      svg.call(d3.zoom()
+        .scaleExtent([0.1, 5])
+        .on('zoom', ({ transform }) => {
+          gRef.current.attr('transform', transform);
+        })
+      );
 
-      logger.render('D3 SVG and Arrowhead Marker initialized.');
+      logger.render('D3 SVG initialized with marker in persistent defs.');
     }
 
     // Check if we have data to render - use full dataset if filteredData is empty and we have graphData
@@ -3363,7 +3558,9 @@ const boundaryForce = (width, height) => {
                       { nodes: [], links: [] };
 
     if (!hasData) {
-      gRef.current.selectAll('*').remove();
+      if (gRef.current) {
+        gRef.current.selectAll('*').remove();  // Only clear graph content
+      }
       if (simulationRef.current) {
         simulationRef.current.stop();
       }
@@ -3372,6 +3569,16 @@ const boundaryForce = (width, height) => {
     }
 
     logger.render(`[DATA] Rendering with ${renderData.nodes.length} nodes, ${renderData.links.length} links`);
+    
+    if (renderData.links && renderData.links.length > 0) {
+      const sample = renderData.links.slice(0, 2);
+      logger.render('[RENDER] Sample links with source/target:', sample.map(l => ({
+        elementId: l.elementId,
+        source: l.source,
+        target: l.target,
+        type: l.type
+      })));
+    }
     
     // Performance warning for large graphs
     if (renderData.nodes.length > 500) {
@@ -3389,7 +3596,7 @@ const boundaryForce = (width, height) => {
       svg.selectAll('.node-count-display').remove();
       // Clear only graph content, preserve defs
       if (gRef.current) {
-        gRef.current.selectAll('*').remove();
+        gRef.current.selectAll('*').remove();  // Only clear gRef content, not defs
       }
       // Render indented tree layout using the correct data
       logger.render(`[TREE] Rendering tree with ${renderData.nodes.length} nodes`);
@@ -3401,7 +3608,7 @@ const boundaryForce = (width, height) => {
     // Force-directed layout (original code)
     // Clear tree layout content and ensure proper group structure
     if (gRef.current) {
-      gRef.current.selectAll('*').remove();
+      gRef.current.selectAll('*').remove();  // Only clear graph content, not defs
     } else {
       gRef.current = svg.append('g');
     }
@@ -3438,6 +3645,12 @@ const boundaryForce = (width, height) => {
 
     // --- Process links for bidirectional relationship separation ---
     const processedLinks = processLinksForOffset([...renderData.links]);
+    
+    logger.render('[LINK PROCESSING]', {
+      inputLinks: renderData.links.length,
+      processedLinks: processedLinks.length,
+      sample: processedLinks.slice(0, 2).map(l => ({ source: l.source, target: l.target, type: l.type }))
+    });
 
     // --- Initialize/Update Simulation ---
     if (!simulationRef.current) {
@@ -3494,6 +3707,7 @@ const boundaryForce = (width, height) => {
       .data(processedLinks, d => d.elementId)
       .join(
         enter => {
+          logger.render('[LINK] Creating new links with marker-end attribute', enter.size());
           const group = enter.append('path')
             .attr('class', 'link')
             .attr('stroke', LINK_COLOR || '#999')
@@ -3509,10 +3723,12 @@ const boundaryForce = (width, height) => {
                 hideAllTooltips();
               }
               activeTooltipNodeRef.current = linkId;
-
-              d3.select(relationTooltipRef.current).style('z-index', 12).style('pointer-events', 'auto');
-              d3.select(relationTooltipRef.current).style('opacity', 0.9);
-              
+              // Use the single right-docked tooltip for relationships as well
+              if (tooltipRef.current) {
+                tooltipRef.current.style.zIndex = 12;
+                tooltipRef.current.style.pointerEvents = 'auto';
+                tooltipRef.current.style.opacity = 0.9;
+              }
               // Get relationship type from your query
               const relationshipType = d.type || 'Relationship';
               
@@ -3543,20 +3759,9 @@ const boundaryForce = (width, height) => {
                 <strong style="color: #28A745;">To:</strong> ${tgtLabel}
               </div>`;
               
-              // Only exclude D3/graph-library internals — ALL real relationship properties will be shown
-              const excludedProps = [
-                'source', 'target', 'index',                                           // D3 link internals
-                'start', 'end',                                                        // Neo4j relationship endpoints
-                'elementId', 'elementID', 'identity', 'properties', '__typename',       // driver metadata
-              ];
-              
-              // Get all enumerable own properties
+              // Show all enumerable own properties (exclude only functions)
               const allProps = Object.keys(props)
-                .filter(k => {
-                  if (excludedProps.includes(k)) return false;
-                  if (typeof props[k] === 'function') return false;
-                  return true;
-                })
+                .filter(k => typeof props[k] !== 'function')
                 .map(k => [k, props[k]]);
               
               // Show ALL relationship properties from your query
@@ -3585,14 +3790,11 @@ const boundaryForce = (width, height) => {
                 tooltipContent += `<div style="margin-top: 8px; padding: 12px; font-size: 12px; color: #95a5a6; font-style: italic; text-align: center;">No properties available</div>`;
               }
               
-              // Apply smart positioning that respects viewport boundaries
-              const tooltipEl = relationTooltipRef.current;
-              if (tooltipEl) {
-                const { x, y } = calculateTooltipPosition(event.pageX, event.pageY, tooltipEl, svgRef.current);
-                d3.select(tooltipEl)
-                  .html(tooltipContent)
-                  .style('left', `${x}px`)
-                  .style('top', `${y}px`);
+              // Dock tooltip on the right side of the canvas
+              if (tooltipRef.current) {
+                repositionTooltip();
+                  tooltipRef.current.innerHTML = tooltipContent;
+                  try { applyTooltipCloseHandler(tooltipRef.current); } catch (e) { /* ignore */ }
               }
             })
           
@@ -3778,15 +3980,7 @@ const boundaryForce = (width, height) => {
               : d;
             
             // HEADER: Show the node label/type with close button
-            let tooltipContent = `
-              <div style="position:relative; background: linear-gradient(135deg, #0066B3 0%, #28A745 100%); color: white; padding: 8px 12px; margin: -8px -8px 8px -8px; font-weight: bold; border-radius: 4px 4px 0 0;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <i class="fas fa-tag" style="font-size: 16px;"></i>
-                  <span>${nodeType}</span>
-                </div>
-                ${tooltipCloseBtn}
-              </div>
-            `;
+            let tooltipContent = buildTooltipHeader(nodeType, tooltipCloseBtn);
             // Recommendation action buttons (top, right after header)
             tooltipContent += buildRecActionBar(d.name || props.name, d.labels);
             
@@ -3808,7 +4002,7 @@ const boundaryForce = (width, height) => {
             
             // Show ALL properties from your query
             if (allProps.length > 0) {
-              tooltipContent += `<div style="margin-top: 8px; padding: 8px; font-size: 12px; max-height: 300px; overflow-y: auto;">`;
+              tooltipContent += `<div style="margin-top: 8px; padding: 8px; font-size: 12px; max-height: 200px; overflow-y: auto;">`;
               allProps.forEach(([k, v]) => {
                 const formattedKey = escapeHtml(k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()));
                 let formattedValue = v;
@@ -3828,14 +4022,105 @@ const boundaryForce = (width, height) => {
               tooltipContent += `<div style="margin-top: 8px; padding: 12px; font-size: 12px; color: #95a5a6; font-style: italic; text-align: center;">No properties available</div>`;
             }
             
-            // Apply smart positioning that respects viewport boundaries
-            const tooltipEl = tooltipRef.current;
-            if (tooltipEl) {
-              const { x, y } = calculateTooltipPosition(event.pageX, event.pageY, tooltipEl, svgRef.current);
-              d3.select(tooltipEl)
-                .html(tooltipContent)
-                .style('left', `${x}px`)
-                .style('top', `${y}px`);
+            // Get all connected links for use in multiple sections below
+            const connectedLinks = (filteredData.links || []).filter(link => 
+              link.source === d.elementId || link.target === d.elementId
+            );
+            
+            // SECTION: Ontology Metadata (for OntologyClass nodes)
+            if (nodeType === 'OntologyClass') {
+              tooltipContent += `<div style="margin-top: 12px; padding-top: 12px; border-top: 2px solid #e0e0e0;">
+                <div style="font-weight: bold; color: #0066B3; margin-bottom: 8px; font-size: 12px;">
+                  <i class="fas fa-cube" style="margin-right: 4px;"></i>Ontology Metadata
+                </div>`;
+              
+              // Show concept type
+              if (props.concept_type) {
+                tooltipContent += `<div style="margin: 4px 0; font-size: 11px; color: #555;">
+                  <strong>Type:</strong> <span style="color: #e74c3c;">${escapeHtml(props.concept_type)}</span>
+                </div>`;
+              }
+              
+              // Show namespace
+              if (props.namespace) {
+                tooltipContent += `<div style="margin: 4px 0; font-size: 11px; color: #555; word-break: break-word;">
+                  <strong>Namespace:</strong> <code style="background: #f5f5f5; padding: 2px 4px; border-radius: 2px; font-size: 10px;">${escapeHtml(props.namespace)}</code>
+                </div>`;
+              }
+              
+              // Show ontology ID and prefix
+              if (props.ontology_id || props.prefix) {
+                tooltipContent += `<div style="margin: 4px 0; font-size: 11px; color: #555;">
+                  <strong>Ontology:</strong> <span style="color: #28A745;">[${escapeHtml(props.prefix || 'unknown')}]</span>
+                </div>`;
+              }
+              
+              tooltipContent += `</div>`;
+            }
+            
+            // SECTION: Data Properties (OntologyProperty nodes with PROPERTY_OF relationship)
+            const dataProperties = connectedLinks.filter(link => 
+              (link.type === 'PROPERTY_OF' && link.source === d.elementId) ||
+              (link.type === 'PROPERTY_OF' && link.target === d.elementId)
+            );
+            
+            if (dataProperties.length > 0) {
+              tooltipContent += `<div style="margin-top: 12px; padding-top: 12px; border-top: 2px solid #e0e0e0;">
+                <div style="font-weight: bold; color: #28A745; margin-bottom: 8px; font-size: 12px;">
+                  <i class="fas fa-list" style="margin-right: 4px;"></i>Data Properties (${dataProperties.length})
+                </div>`;
+              
+              dataProperties.forEach(link => {
+                const isPropOwner = link.source === d.elementId;
+                const propNodeId = isPropOwner ? link.target : link.source;
+                const propNode = (filteredData.nodes || []).find(n => n.elementId === propNodeId);
+                const propName = propNode?.name || 'Unknown';
+                
+                tooltipContent += `<div style="margin: 4px 0; padding: 4px; background: #f0f8f0; border-left: 3px solid #28A745; font-size: 11px;">
+                  <strong style="color: #28A745;">⚙</strong> ${escapeHtml(propName)}
+                </div>`;
+              });
+              
+              tooltipContent += `</div>`;
+            }
+            
+            // SECTION: Other Relationships (non-PROPERTY_OF)
+            const otherRelationships = connectedLinks.filter(link => link.type !== 'PROPERTY_OF');
+            
+            if (otherRelationships.length > 0) {
+              tooltipContent += `<div style="margin-top: 12px; padding-top: 12px; border-top: 2px solid #e0e0e0;">
+                <div style="font-weight: bold; color: #0066B3; margin-bottom: 8px; font-size: 12px;">
+                  <i class="fas fa-link" style="margin-right: 4px;"></i>Relationships (${otherRelationships.length})
+                </div>`;
+              
+              otherRelationships.forEach(link => {
+                const isOutgoing = link.source === d.elementId;
+                const otherNodeId = isOutgoing ? link.target : link.source;
+                const otherNode = (filteredData.nodes || []).find(n => n.elementId === otherNodeId);
+                const otherNodeName = otherNode?.name || otherNode?.label || 'Unknown';
+                const otherNodeType = otherNode?.label || otherNode?.labels?.[0] || 'Node';
+                const relationshipType = escapeHtml(link.type || 'UNKNOWN');
+                const arrow = isOutgoing ? '→' : '←';
+                
+                tooltipContent += `<div style="margin: 6px 0; padding: 6px; background: #f5f5f5; border-radius: 3px; font-size: 11px;">
+                  <div style="color: #555; margin-bottom: 2px;">
+                    <strong style="color: #28A745;">${arrow}</strong>
+                    <strong style="color: #e74c3c;">${relationshipType}</strong>
+                  </div>
+                  <div style="color: #0066B3; font-weight: 500; margin-left: 16px;">
+                    [${escapeHtml(otherNodeType)}] ${escapeHtml(otherNodeName)}
+                  </div>
+                </div>`;
+              });
+              
+              tooltipContent += `</div>`;
+            }
+            
+            // Dock tooltip on the right side of the canvas
+            if (tooltipRef.current) {
+              repositionTooltip();
+              tooltipRef.current.innerHTML = tooltipContent;
+              try { applyTooltipCloseHandler(tooltipRef.current); } catch (e) { /* ignore */ }
             }
           })
           .on('mouseout', function () {
@@ -4053,7 +4338,7 @@ const boundaryForce = (width, height) => {
     setNodeExpansions(new Map());
   }, [searchQuery]);
 
-  // ✅ CLEANUP: Final cleanup on component unmount
+  // [OK] CLEANUP: Final cleanup on component unmount
   useEffect(() => {
     const timeouts = timeoutsRef.current;
     const simulation = simulationRef.current;
@@ -4075,7 +4360,6 @@ const boundaryForce = (width, height) => {
     };
   }, []);
 
-  
   return (
     <div
       className="graph-heb-root"
@@ -4100,12 +4384,94 @@ const boundaryForce = (width, height) => {
           padding:'10px 14px',
           background:'#ffffff',
           border:'1px solid #e2e6ea',
-          borderRadius:'0',
+          borderRadius:'8px',
           boxShadow:'0 2px 6px rgba(0,0,0,0.08)',
           zIndex:1500, // raise above potential header overlay
           position:'relative'
         }}
       >
+        <div className="dropdown" style={{ position:'relative' }}>
+          <button
+            className="btn btn-sm dropdown-toggle"
+            type="button"
+            title="Graph tools"
+            onClick={(e)=>{
+              const menu = e.currentTarget.nextSibling; if(menu) menu.classList.toggle('show');
+            }}
+            style={{
+              backgroundColor:'#fff',
+              color:'#004B87',
+              fontWeight:700,
+              border:'1px solid #cfd6dc',
+              borderRadius:6,
+              padding:'5px 9px',
+              fontSize:12,
+              lineHeight:1.2
+            }}
+          >Tools</button>
+          <div
+            className="dropdown-menu p-1"
+            style={{
+              minWidth:150,
+              background:'#fff',
+              color:'#243b53',
+              border:'1px solid #cfd6dc',
+              boxShadow:'0 4px 12px rgba(16,42,67,0.14)',
+              position:'absolute',
+              top:'100%',
+              left:0,
+              marginTop:4,
+              zIndex:2000
+            }}
+          >
+            {[
+              ['Where Used', 'whereused'],
+              ['Table View', 'table'],
+              ['Reports', 'reports'],
+              ['Data Import', 'ingestion'],
+              ['Map & Align', 'ontology'],
+              ['Recommendations', 'recommendations'],
+              ['Admin', 'admin'],
+            ].map(([label, target]) => (
+              <button
+                key={target}
+                className="dropdown-item"
+                style={{ color:'#243b53', fontSize:12, fontWeight:600, cursor:'pointer', padding:'5px 8px' }}
+                onClick={(e)=>{
+                  e.currentTarget.closest('.dropdown-menu')?.classList.remove('show');
+                  if(typeof setActiveTab==='function'){ setActiveTab(target); }
+                }}
+              >{label}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{ width: 1, height: 24, background: '#d0d7de', margin: '0 2px' }} />
+        {/* ── Graph View Mode selector ─────────────────────────────────── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <i className="fas fa-layer-group" style={{ fontSize: '14px', color: '#004B87' }}></i>
+          <select
+            value={graphViewMode}
+            onChange={e => setGraphViewMode(e.target.value)}
+            style={{
+              padding: '6px 10px',
+              borderRadius: '6px',
+              border: '1px solid #cfd6dc',
+              backgroundColor: '#fff',
+              color: '#333',
+              cursor: 'pointer',
+              fontSize: '13px',
+              fontWeight: 500,
+              minWidth: '240px',
+              transition: 'all .2s ease'
+            }}
+            title="Switch between Ontology Graph and Individual Contextual Graph"
+          >
+            <option value="ontology" style={{color:'#333', fontWeight:600}}>Ontology Graph Visualization</option>
+            <option value="individual" style={{color:'#333', fontWeight:600}}>Contextual Individual Graph View</option>
+          </select>
+        </div>
+        {/* Divider */}
+        <div style={{ width: 1, height: 28, background: '#d0d7de', margin: '0 2px' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <i className="fas fa-search" style={{ fontSize: '18px', color: '#555' }}></i>
           <input
@@ -4113,14 +4479,15 @@ const boundaryForce = (width, height) => {
             placeholder="Search nodes..."
             value={searchInput}
             style={{
-              height: '34px',
               padding: '6px 10px',
               borderRadius: '6px',
               border: '1px solid #cfd6dc',
               minWidth: '190px',
-              fontSize: '14px',
+              fontSize: '13px',
+              fontWeight: 500,
               lineHeight: 1.2,
-              background: '#fff'
+              background: '#fff',
+              color: '#333'
             }}
             onChange={e => setSearchInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') setSearchQuery(e.target.value); }}
@@ -4136,12 +4503,20 @@ const boundaryForce = (width, height) => {
               value={selectedLabelFilter}
               onChange={e => setSelectedLabelFilter(e.target.value)}
               style={{
-                ...toolbarControlStyle,
+                padding: '6px 10px',
+                borderRadius: '6px',
+                border: '1px solid #cfd6dc',
+                backgroundColor: '#fff',
+                color: '#333',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 500,
                 minWidth: '150px',
+                transition: 'all .2s ease'
               }}
               title="Filter search results by node label"
             >
-              <option value="ALL">All Labels ({searchResultData.nodes.length})</option>
+              <option key="ALL" value="ALL">All Labels ({searchResultData.nodes.length})</option>
               {availableLabels.map(label => {
                 const count = searchResultData.nodes.filter(n => (n.labels || []).includes(label)).length;
                 return (
@@ -4160,67 +4535,94 @@ const boundaryForce = (width, height) => {
             onChange={(e) => handleLayoutChange(e.target.value)}
             disabled={isLayoutSwitching || searchLoading}
             style={{
-              ...toolbarControlStyle,
-              backgroundColor: isLayoutSwitching ? '#f1f3f5' : '#fff',
-              color: isLayoutSwitching ? '#6b7280' : '#1f2933',
+              padding: '6px 10px',
+              borderRadius: '6px',
+              border: '1px solid #cfd6dc',
+              backgroundColor: '#fff',
+              color: '#333',
               cursor: isLayoutSwitching ? 'not-allowed' : 'pointer',
-              fontSize: '14px',
+              fontSize: '13px',
+              fontWeight: 500,
               minWidth: '180px',
+              transition: 'all .2s ease',
+              opacity: isLayoutSwitching ? 0.6 : 1
             }}
             title={isLayoutSwitching ? 'Layout switching in progress...' : 'Select graph layout type'}
           >
-            <option value="force-directed" style={{color:'#333'}}>{ICON_GLOBE} Force-Directed Graph</option>
-            <option value="indented-tree" style={{color:'#333'}}>{ICON_CLIPBOARD} Indented Tree Layout</option>
+            <option key="force-directed" value="force-directed" style={{color:'#333'}}>Force-Directed Graph</option>
+            <option key="indented-tree" value="indented-tree" style={{color:'#333'}}>Indented Tree Layout</option>
           </select>
         </div>
-        {/* Ontology selector dropdown */}
+        
+        {/* Ontology selector dropdown — only in Ontology Graph mode */}
+        {graphViewMode === 'ontology' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <i className="fas fa-project-diagram" style={{ fontSize: '14px', color: '#555' }}></i>
-          <select
-            value={selectedOntology}
-            onChange={e => setSelectedOntology(e.target.value)}
-            disabled={ontologyLoading}
-            style={{
-              ...toolbarControlStyle,
-              backgroundColor: ontologyLoading ? '#f1f3f5' : '#fff',
-              color: ontologyLoading ? '#6b7280' : '#1f2933',
-              cursor: ontologyLoading ? 'not-allowed' : 'pointer',
-              minWidth: '140px',
-            }}
-            title="Select ontology to view"
-          >
-            {ontologyOptions.map((opt) => (
-              <option key={opt.value} value={opt.value} style={{color:'#333'}}>
-                {opt.prefix ? `[${opt.prefix}] ` : ''}{opt.label}{opt.type ? ` (${opt.type})` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-        {/* STEP part sub-filter — only visible when STEP ontology is selected */}
-        {selectedOntology === 'step' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <i className="fas fa-cogs" style={{ fontSize: '14px', color: '#555' }}></i>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <select
-              value={selectedStepPart}
-              onChange={e => setSelectedStepPart(e.target.value)}
-              disabled={stepPartsLoading || ontologyLoading}
+              value={selectedOntology}
+              onChange={e => setSelectedOntology(e.target.value)}
+              disabled={ontologyLoading || !!ontologyError}
               style={{
-                ...toolbarControlStyle,
-                backgroundColor: (stepPartsLoading || ontologyLoading) ? '#f1f3f5' : '#fff',
-                color: (stepPartsLoading || ontologyLoading) ? '#6b7280' : '#1f2933',
-                cursor: stepPartsLoading ? 'not-allowed' : 'pointer',
+                padding: '6px 10px',
+                borderRadius: '6px',
+                border: ontologyError ? '1px solid #D32F2F' : '1px solid #cfd6dc',
+                backgroundColor: '#fff',
+                color: '#333',
+                cursor: ontologyLoading || ontologyError ? 'not-allowed' : 'pointer',
+                fontSize: '13px',
+                fontWeight: 500,
                 minWidth: '200px',
-                maxWidth: '320px',
+                transition: 'all .2s ease',
+                opacity: ontologyLoading || ontologyError ? 0.6 : 1
               }}
-              title="Filter STEP data by part"
+              title={ontologyError ? ontologyError : "Select ontology to view"}
             >
-              <option value="ALL" style={{color:'#333'}}>All Parts{stepParts.length > 0 ? ` (${stepParts.length})` : ''}</option>
-              {stepParts.map(part => (
-                <option key={part} value={part} style={{color:'#333'}}>
-                  {part.replace(/_/g, ' ')}
+              <option value="ALL" style={{color:'#333', fontWeight:600}}>— All Ontologies (Full Graph) —</option>
+              {ontologyOptions.filter(o => o.value !== 'ALL' && !o.disabled).map((opt, idx) => (
+                <option key={opt.value || `ontology-opt-${idx}`} value={opt.value} style={{color:'#333'}}>
+                  {opt.prefix ? `[${opt.prefix}] ` : ''}{opt.label}{opt.type ? ` · ${opt.type}` : ''}{Number(opt.relationship_count || 0) === 0 ? ' · classes only' : ''}
                 </option>
               ))}
             </select>
+            {ontologyError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>Warning: {ontologyError}</span>}
+          </div>
+        </div>
+        )}
+        {/* STEP part sub-filter — only in Ontology mode and STEP selected */}
+        {graphViewMode === 'ontology' && selectedOntology === 'step' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <i className="fas fa-cogs" style={{ fontSize: '14px', color: '#555' }}></i>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <select
+                value={selectedStepPart}
+                onChange={e => setSelectedStepPart(e.target.value)}
+                disabled={stepPartsLoading || ontologyLoading || !!stepPartsError}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  border: stepPartsError ? '1px solid #D32F2F' : '1px solid #cfd6dc',
+                  backgroundColor: '#fff',
+                  color: '#333',
+                  cursor: stepPartsLoading || ontologyLoading || stepPartsError ? 'not-allowed' : 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  minWidth: '200px',
+                  maxWidth: '320px',
+                  transition: 'all .2s ease',
+                  opacity: stepPartsLoading || ontologyLoading || stepPartsError ? 0.6 : 1
+                }}
+                title={stepPartsError ? stepPartsError : "Filter STEP data by part"}
+              >
+                <option key="ALL" value="ALL" style={{color:'#333'}}>All Parts{stepParts.length > 0 ? ` (${stepParts.length})` : ''}</option>
+                {stepParts.map(part => (
+                  <option key={part} value={part} style={{color:'#333'}}>
+                    {part.replace(/_/g, ' ')}
+                  </option>
+                ))}
+              </select>
+              {stepPartsError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>Warning: {stepPartsError}</span>}
+            </div>
           </div>
         )}
         {(searchLoading || isLayoutSwitching || ontologyLoading) && (
@@ -4229,9 +4631,16 @@ const boundaryForce = (width, height) => {
             {searchLoading ? 'Searching...' : ontologyLoading ? 'Loading ontology...' : 'Switching layout...'}
           </div>
         )}
-        {(searchQuery || selectedOntology !== 'ALL') && (
+        {ontologyGraphMessage && (
+          <div style={{fontSize:12, color:'#8a5a00', background:'#fff8e1', border:'1px solid #ffe082', borderRadius:5, padding:'5px 8px'}}>
+            {ontologyGraphMessage}
+          </div>
+        )}
+        {(searchQuery || selectedOntology !== 'ALL' || graphViewMode !== 'ontology') && (
           <button
             onClick={() => {
+              setGraphViewMode('ontology');
+              graphViewModeRef.current = 'ontology';
               setSearchQuery('');
               setSearchInput('');
               setSelectedLabelFilter('ALL');
@@ -4248,54 +4657,14 @@ const boundaryForce = (width, height) => {
               setFullDataset(initialData);
               if (setSearchResults) setSearchResults(initialData.nodes);
             }}
-            style={toolbarButtonStyle}
-          >{ICON_REFRESH} Reset</button>
+            style={{padding:'6px 12px', border:'none', borderRadius:'6px', backgroundColor:'#004B87', color:'#fff', fontSize:'13px', fontWeight:600, cursor:'pointer', transition:'all .2s ease'}}
+          >Reset</button>
         )}
         <button
           onClick={toggleChat}
-          style={toolbarButtonStyle}
+          style={{padding:'6px 12px', border:'none', borderRadius:'6px', backgroundColor:'#004B87', color:'#fff', fontSize:'13px', fontWeight:600, cursor:'pointer', transition:'all .2s ease'}}
           title={showChat ? 'Hide chat assistant' : 'Show chat assistant'}
         >{showChat ? 'Hide Chat' : 'Show Chat'}</button>
-        <div className="dropdown" style={{ position:'relative', marginLeft:'auto' }}>
-          <button
-            className="btn btn-sm dropdown-toggle"
-            type="button"
-            onClick={(e)=>{
-              const menu = e.currentTarget.nextSibling; if(menu) menu.classList.toggle('show');
-            }}
-            style={toolbarButtonStyle}
-          >{ICON_TOOLS} Tools</button>
-          <div
-            className="dropdown-menu p-1"
-            style={{
-              minWidth:210,
-              background:'#fff',
-              color:'#1f2933',
-              border:'1px solid #d9e2ec',
-              borderRadius:'6px',
-              boxShadow:'0 8px 24px rgba(0,0,0,0.18)',
-              position:'absolute',
-              top:'100%',
-              right:0,
-              left:'auto',
-              marginTop:4
-            }}
-          >
-            {NAV_ITEMS.map(item => (
-              <button
-                key={item.id}
-                className="dropdown-item"
-                style={{ color:'#1f2933', fontSize:13, fontWeight:500, cursor:'pointer', borderRadius:4, padding:'7px 10px' }}
-                onClick={(e)=>{
-                  e.currentTarget.closest('.dropdown-menu')?.classList.remove('show');
-                  if(typeof setActiveTab==='function'){ setActiveTab(item.id); }
-                }}
-              >
-                <span style={{ display:'inline-block', width:20 }}>{item.icon}</span>{item.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
       {isLoading && (
         <div className="loading-state" style={{ 
@@ -4313,7 +4682,7 @@ const boundaryForce = (width, height) => {
           border: '1px solid rgba(0,0,0,0.1)',
           minWidth: '280px'
         }}>
-          <div style={{ marginBottom: '16px', fontSize: '48px' }}>{ICON_HOURGLASS}</div>
+          <div style={{ marginBottom: '12px', fontSize: '13px', fontWeight: 700, color: '#52606d' }}>Loading graph</div>
           <div style={{ fontSize: '18px', fontWeight: '600', color: '#2C2C2C', marginBottom: '8px' }}>Loading Graph Data</div>
           <div style={{ fontSize: '14px', color: '#7f8c8d' }}>Please wait while we fetch your data...</div>
         </div>
@@ -4383,30 +4752,16 @@ const boundaryForce = (width, height) => {
         </div>
       )}
  
-  {/* Offset SVG slightly so internal graph/tree headers don't visually collide with the toolbar */}
   <svg ref={svgRef} style={{ width: '100%', height: '100%', flexGrow: 1, margin: 0, padding: 0 }}></svg>
  
       <div ref={tooltipRef} className="tooltip" style={{
         position: 'absolute', 
-        opacity: 0, 
+        opacity: 1, 
         background: 'rgba(0,0,0,0.7)', 
         color: 'white',
         padding: '8px', 
         borderRadius: '4px', 
-        pointerEvents: 'none', 
-        maxWidth: '300px', 
-        fontSize: '0.8em', 
-        zIndex: 12,
-        display: 'block'
-      }} />
-      <div ref={relationTooltipRef} className="tooltip" style={{
-        position: 'absolute', 
-        opacity: 0, 
-        background: 'rgba(0,0,0,0.7)', 
-        color: 'white',
-        padding: '8px', 
-        borderRadius: '4px', 
-        pointerEvents: 'none', 
+        pointerEvents: 'auto', 
         maxWidth: '300px', 
         fontSize: '0.8em', 
         zIndex: 12,
@@ -4429,7 +4784,7 @@ const boundaryForce = (width, height) => {
           }}>
             <div style={{ fontWeight: 700, fontSize: '14px' }}>
               {recPanel.service === 'change-impact' ? 'Change Impact' :
-               recPanel.service === 'similar-parts' ? '🔍 Similar Parts' : '🏭 Manufacturing'}
+               recPanel.service === 'similar-parts' ? '[FIND] Similar Parts' : '[MFG] Manufacturing'}
             </div>
             <button onClick={() => setRecPanel({ open: false, service: null, nodeName: '', loading: false, result: null, error: '' })}
               style={{ background: 'none', border: 'none', color: '#fff', fontSize: '18px', cursor: 'pointer', padding: '0 4px' }}>&times;</button>
@@ -4652,7 +5007,7 @@ if (!document.head.querySelector('style[data-spinner]')) {
   document.head.appendChild(spinnerStyles);
 }
 
-// 🔒 MEDIUM PRIORITY: Memoize component to prevent unnecessary re-renders
+// Memoize component to prevent unnecessary re-renders.
 export default React.memo(GraphHEB, (prevProps, nextProps) => {
   // Custom comparison: only re-render if specific props change
   return (

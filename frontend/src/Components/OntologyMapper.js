@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Download } from 'lucide-react';
+import { API_METHODS } from '../services/apiClient';
+import { useOntologies } from '../contexts/OntologyContext';
 
 // ── Design tokens (corporate palette) ─────────────────────────────────────────
 const C = {
@@ -7,6 +9,7 @@ const C = {
   primaryDark:  '#003366',
   primaryLight: '#E8F1FC',
   green:        '#28A745',
+  red:          '#D32F2F',
   textPrimary:  '#1A2B3C',
   textSec:      '#6C757D',
   textMuted:    '#ADB5BD',
@@ -26,8 +29,15 @@ const REL_COLORS = {
   mapsTo:          { bg: '#CCE5FF', text: '#004085', border: '#B8DAFF' },
 };
 
-// API Base URL
-const API_BASE_URL = 'http://localhost:8000';
+const SOURCE_FORMATS = [
+  { id: 'plmxml', label: 'PLMXML' },
+  { id: 'step', label: 'STEP' },
+  { id: 'xmi', label: 'XMI' },
+  { id: 'xml', label: 'XML' },
+  { id: 'json', label: 'JSON' },
+  { id: 'csv', label: 'CSV' },
+  { id: 'excel', label: 'Excel' },
+];
 
 // ── CSV export ─────────────────────────────────────────────────────────────────
 function exportCSV(rows, headers, filename) {
@@ -125,7 +135,7 @@ function DataDictionaryTable({ nodes, filter, prefixFilter, onPrefixFilterChange
               onChange={e => onPrefixFilterChange(e.target.value || null)}
               style={{ padding: '5px 10px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', cursor: 'pointer', background: C.surface }}
             >
-              <option value="">All Prefixes</option>
+              <option key="all" value="">All Prefixes</option>
               {uniquePrefixes.map(prefix => (
                 <option key={prefix} value={prefix}>{prefix}</option>
               ))}
@@ -268,11 +278,12 @@ function VocabularyTable({ edges, filter }) {
               <tr><td colSpan={4} style={{ ...TD(), textAlign: 'center', color: C.textMuted, padding: '32px' }}>No mappings match the filter.</td></tr>
             )}
             {visible.map((e, i) => {
-              const selected = selectedRow === e.source_term + e.target_term;
+              const rowId = `${e.source_term}__${e.mapping_type}__${e.target_term}`;
+              const selected = selectedRow === rowId;
               return (
                 <React.Fragment key={e.source_term + '-' + e.mapping_type + '-' + e.target_term}>
                   <tr
-                    onClick={() => setSelectedRow(selected ? null : e.source_term + e.target_term)}
+                    onClick={() => setSelectedRow(selected ? null : rowId)}
                     style={{ background: selected ? C.primaryLight : i % 2 === 0 ? C.surface : C.bg, cursor: 'pointer' }}
                     onMouseEnter={ev => { if (!selected) ev.currentTarget.style.background = C.primaryLight; }}
                     onMouseLeave={ev => { if (!selected) ev.currentTarget.style.background = i % 2 === 0 ? C.surface : C.bg; }}
@@ -323,22 +334,42 @@ function VocabularyTable({ edges, filter }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function OntologyMapper() {
   const [data, setData] = useState({ nodes: [], edges: [] });
+  const [mappingEdges, setMappingEdges] = useState([]);
+  const [vocabEdges, setVocabEdges] = useState([]);
+  const [sourceOntologyPrefix, setSourceOntologyPrefix] = useState('');
+  const [targetOntologyPrefix, setTargetOntologyPrefix] = useState('');
+  const [sourceOntologyDictionary, setSourceOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
+  const [targetOntologyDictionary, setTargetOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedMapping, setSelectedMapping] = useState('plmxml');
-  const [selectedMappingType, setSelectedMappingType] = useState('plmxml');
-  const [selectedOntologyApi, setSelectedOntologyApi] = useState('ap239');
+  const [selectedMapping, setSelectedMapping] = useState('');
+  const [selectedMappingType, setSelectedMappingType] = useState('');
+  const [selectedOntologyApi, setSelectedOntologyApi] = useState('');
   const [activeView, setActiveView] = useState('dictionary');
   const [filter, setFilter] = useState('');
   const [prefixFilter, setPrefixFilter] = useState(null);
   const [mappingOptions, setMappingOptions] = useState([]);
-  const [ontologyDictionary, setOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
-  const [ontologyMappings, setOntologyMappings] = useState({});
+  const [mappingOptionsError, setMappingOptionsError] = useState(null);
+  const [, setOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
   const [sourceEntityType, setSourceEntityType] = useState('');
   const [targetEntityType, setTargetEntityType] = useState('');
   const [mapBusy, setMapBusy] = useState(false);
   const [mapMessage, setMapMessage] = useState(null);
+  const [mergeFromId, setMergeFromId] = useState('');
+  const [mergeToId, setMergeToId] = useState('');
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeResult, setMergeResult] = useState(null);
+
+  const sourceEntityOptions = useMemo(() => {
+    const entities = (sourceOntologyDictionary && sourceOntologyDictionary.entities) || {};
+    return Object.keys(entities).sort();
+  }, [sourceOntologyDictionary]);
+
+  const targetEntityOptions = useMemo(() => {
+    const entities = (targetOntologyDictionary && targetOntologyDictionary.entities) || {};
+    return Object.keys(entities).sort();
+  }, [targetOntologyDictionary]);
 
   const normalizeSourceFormat = (rawType, ontologyId) => {
     const valid = new Set(['plmxml', 'step', 'xmi', 'xml']);
@@ -357,151 +388,204 @@ export default function OntologyMapper() {
     return 'plmxml';
   };
 
-  useEffect(() => {
-    // Load available mapping options from dynamic endpoint
-    const loadMappingOptions = async () => {
-      try {
-        // Try new dynamic endpoint first
-        const res = await fetch(`${API_BASE_URL}/ontologies/available`);
-        if (res.ok) {
-          const json = await res.json();
-          // Transform dynamic ontologies to mapping options format
-          // IMPORTANT: Store both id (display) and type (for API calls)
-          const options = json.ontologies.map(ont => ({
-            value: ont.id,
-            type: normalizeSourceFormat(ont.type, ont.id),
-            ontologyKey: (String(ont.id || '').toLowerCase().includes('ap239') || String(ont.name || '').toLowerCase().includes('ap239')) ? 'ap239' : 'ap239',
-            label: ont.name,
-            source: ont.source,
-            usageCount: ont.usageCount,
-          }));
-          setMappingOptions(options);
-          // Set initial selection to first option's type
-          if (options.length > 0) {
-            setSelectedMapping(options[0].value);
-            setSelectedMappingType(options[0].type);
-            setSelectedOntologyApi(options[0].ontologyKey || 'ap239');
-          }
-          return;
-        }
-      } catch (e) {
-        console.warn('Failed to load dynamic ontologies', e);
-      }
+  const buildOntologyOptions = useCallback((ontologies = []) => {
+    const allOptions = ontologies.map(ont => ({
+      value: ont.ontology_id || ont.id,
+      type: normalizeSourceFormat(ont.file_type || ont.type, ont.ontology_id || ont.id),
+      ontologyKey: ont.prefix || '',
+      label: `${ont.ontology_name || ont.name || ont.ontology_id} [${ont.prefix || ''}]`,
+      prefix: ont.prefix || '',
+      uploaded_at: ont.uploaded_at || '',
+      source: ont.source,
+      usageCount: ont.usageCount,
+    }));
 
-      // Fallback to old endpoint if new one fails
-      try {
-        const res = await fetch(`${API_BASE_URL}/ontology-mapper/options`);
-        if (res.ok) {
-          const json = await res.json();
-          const fallbackOptions = (json.options || []).map(opt => ({
-            ...opt,
-            type: normalizeSourceFormat(opt.type, opt.value || opt.id),
-            ontologyKey: 'ap239',
-          }));
-          setMappingOptions(fallbackOptions);
-          if (fallbackOptions.length > 0) {
-            setSelectedMapping(fallbackOptions[0].value || fallbackOptions[0].type || 'plmxml');
-            setSelectedMappingType(fallbackOptions[0].type || 'plmxml');
-            setSelectedOntologyApi('ap239');
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to load mapping options', e);
+    // Deduplicate by ontology prefix and keep the newest upload.
+    const byPrefix = new Map();
+    allOptions.forEach((o) => {
+      if (!byPrefix.has(o.prefix) || o.uploaded_at > byPrefix.get(o.prefix).uploaded_at) {
+        byPrefix.set(o.prefix, o);
       }
-    };
-    loadMappingOptions();
+    });
+    return Array.from(byPrefix.values());
   }, []);
 
+  const parseLegacyMappingKey = (key = '') => {
+    const value = String(key);
+    const tokens = value.split('_').filter(Boolean);
+    if (tokens.length >= 3) {
+      return {
+        source: tokens[0],
+        mappingType: tokens[tokens.length - 2],
+        targetFromKey: tokens[tokens.length - 1],
+      };
+    }
+    return {
+      source: value,
+      mappingType: 'mapsTo',
+      targetFromKey: '',
+    };
+  };
+
+  // Get ontology options from centralized context (shared across all components)
+  const { ontologies: contextOntologies, fetchOntologies } = useOntologies();
+
   useEffect(() => {
+    // Load available mapping options from centralized context
+    // Important: do NOT overwrite Alignment source/target selections on unrelated state changes.
+    try {
+      setMappingOptionsError(null);
+      const options = buildOntologyOptions(contextOntologies || []);
+      setMappingOptions(options);
+
+      if (options.length === 0) {
+        setMappingOptionsError('No ontologies available. Please upload an ontology first.');
+        return;
+      }
+
+      // Initialize defaults only once (or if current selection no longer exists)
+      const hasSelectedMapping = !!selectedMapping && options.some((o) => o.value === selectedMapping);
+      const selectedOption = hasSelectedMapping ? options.find((o) => o.value === selectedMapping) : options[0];
+      if (!hasSelectedMapping) {
+        setSelectedMapping(selectedOption.value);
+      }
+
+      if (!selectedOntologyApi) {
+        setSelectedOntologyApi(selectedOption.prefix || selectedOption.ontologyKey || selectedOption.value || '');
+      }
+
+      if (!selectedMappingType) {
+        setSelectedMappingType(selectedOption.type);
+      }
+
+      // Alignment prefixes should be user-controlled; only set if empty
+      if (!sourceOntologyPrefix) {
+        setSourceOntologyPrefix(selectedOption.prefix || '');
+      }
+      if (!targetOntologyPrefix) {
+        setTargetOntologyPrefix(selectedOption.prefix || '');
+      }
+    } catch (e) {
+      const errorMsg = e.message || 'Failed to process ontologies';
+      setMappingOptionsError(errorMsg);
+      console.warn('Failed to process ontologies:', e);
+    }
+  }, [contextOntologies, buildOntologyOptions, selectedMapping, selectedMappingType, selectedOntologyApi, sourceOntologyPrefix, targetOntologyPrefix]);
+
+  useEffect(() => {
+    if (!selectedMappingType) {
+      setSelectedMappingType(SOURCE_FORMATS[0].id);
+    }
+  }, [selectedMappingType]);
+
+  useEffect(() => {
+    if (!selectedOntologyApi || !selectedMappingType) {
+      return;
+    }
     // Load data dictionary and vocabulary for selected mapping
-    // Step 3: load selected ontology dictionary and mapping rules from /api/v1/ontology/{ontology}/...
     const loadMappingData = async () => {
       setLoading(true);
       setError(null);
       try {
-        const [dictRes, mapRes, statsRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/v1/ontology/${selectedOntologyApi}/data-dictionary`),
-          fetch(`${API_BASE_URL}/api/v1/ontology/${selectedOntologyApi}/mappings/${selectedMappingType}`),
-          fetch(`${API_BASE_URL}/ontology-mapper/${selectedMappingType}/stats`),
+        // Use selectedOntologyApi (the currently selected uploaded ontology prefix).
+        // The backend now supports any prefix via generic /{prefix}/data-dictionary routes.
+        const [dictRes, mapRes] = await Promise.allSettled([
+          API_METHODS.ontology.getDataDictionary(selectedOntologyApi),
+          API_METHODS.ontology.getMappings(targetOntologyPrefix || selectedOntologyApi, selectedMappingType),
         ]);
 
-        if (dictRes.ok && mapRes.ok) {
-          const dictJson = await dictRes.json();
-          const mapJson = await mapRes.json();
-          const statsJson = statsRes.ok ? await statsRes.json() : null;
+        const dictData = (dictRes.status === 'fulfilled' ? dictRes.value.data.data : null) || {};
+        const entities = dictData.entities || {};
+        const mapPayload = (mapRes.status === 'fulfilled' ? mapRes.value.data : null) || {};
+        const mappings = mapPayload.mappings || {};
+        const mappingEdges = Array.isArray(mapPayload.mapping_edges) ? mapPayload.mapping_edges : null;
 
-          const dictData = dictJson.data || {};
-          const entities = dictData.entities || {};
-          const mappings = mapJson.mappings || {};
+        const nodes = Object.keys(entities).map((entityKey) => ({
+          term_id: `${selectedOntologyApi}:${entityKey}`,
+          label: entityKey,
+          ontology_prefix: selectedOntologyApi,
+        }));
 
-          const nodes = Object.keys(entities).map((entityKey) => ({
-            term_id: `${selectedOntologyApi}:${entityKey}`,
-            label: entityKey,
-            ontology_prefix: selectedOntologyApi,
-          }));
+        const edges = mappingEdges && mappingEdges.length > 0
+          ? mappingEdges.map((edge) => ({
+              source_term: edge.source_term || `${selectedMappingType}:${edge.source_label || ''}`,
+              source_label: edge.source_label || edge.source_term || '',
+              target_term: edge.target_term || `${targetOntologyPrefix || selectedOntologyApi}:${edge.target_label || ''}`,
+              target_label: edge.target_label || edge.target_term || '',
+              mapping_type: edge.mapping_type || 'mapsTo',
+            }))
+          : Object.entries(mappings).map(([sourceKey, targetType]) => {
+              const parsed = parseLegacyMappingKey(sourceKey);
+              const resolvedTarget = targetType || parsed.targetFromKey || '';
+              return {
+                source_term: `${selectedMappingType}:${parsed.source}`,
+                source_label: parsed.source,
+                target_term: `${targetOntologyPrefix || selectedOntologyApi}:${resolvedTarget}`,
+                target_label: resolvedTarget,
+                mapping_type: parsed.mappingType,
+              };
+            });
 
-          const edges = Object.entries(mappings).map(([sourceType, targetType]) => ({
-            source_term: `${selectedMappingType}:${sourceType}`,
-            source_label: sourceType,
-            target_term: `${selectedOntologyApi}:${targetType}`,
-            target_label: targetType,
-            mapping_type: 'mapsTo',
-          }));
+        const rels = dictData.relationships || {};
+        const vocabFromDict = Object.values(rels).flatMap((rel) =>
+          (rel.connections || []).map((conn) => ({
+            source_term: `${selectedOntologyApi}:${conn.from}`,
+            source_label: conn.from,
+            target_term: `${selectedOntologyApi}:${conn.to}`,
+            target_label: conn.to,
+            mapping_type: rel.type || 'relatedTo',
+          }))
+        );
 
-          setOntologyDictionary(dictData);
-          setOntologyMappings(mappings);
-          setData({ nodes, edges });
-          setStats(statsJson || {
-            total_terms: nodes.length,
-            total_vocabulary_mappings: edges.length,
-          });
-          return;
-        }
-
-        // Fallback to legacy endpoints if the v1 ontology path is unavailable
-        const [legacyDictRes, legacyVocabRes, legacyStatsRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/ontology-mapper/${selectedMappingType}/data-dictionary`),
-          fetch(`${API_BASE_URL}/ontology-mapper/${selectedMappingType}/vocabulary`),
-          fetch(`${API_BASE_URL}/ontology-mapper/${selectedMappingType}/stats`),
-        ]);
-
-        if (!legacyDictRes.ok || !legacyVocabRes.ok) {
-          throw new Error('Failed to load ontology data');
-        }
-
-        const legacyDictJson = await legacyDictRes.json();
-        const legacyVocabJson = await legacyVocabRes.json();
-        const legacyStatsJson = legacyStatsRes.ok ? await legacyStatsRes.json() : null;
-
-        setOntologyDictionary({ entities: {}, relationships: {}, properties: {} });
-        setOntologyMappings({});
-        setData({
-          nodes: legacyDictJson.terms || [],
-          edges: legacyVocabJson.mappings || [],
+        setOntologyDictionary(dictData);
+        setData({ nodes, edges });
+        setMappingEdges(edges);
+        setVocabEdges(vocabFromDict);
+        setStats({
+          total_terms: nodes.length,
+          total_vocabulary_mappings: vocabFromDict.length,
         });
-        setStats(legacyStatsJson);
       } catch (e) {
         console.error('Error loading ontology data:', e);
-        setError(e.message);
+        setError(e.response?.data?.detail || e.message || 'Failed to load ontology data.');
       } finally {
         setLoading(false);
       }
     };
 
     loadMappingData();
-  }, [selectedMappingType, selectedOntologyApi]);
+  }, [selectedMappingType, selectedOntologyApi, targetOntologyPrefix]);
 
   useEffect(() => {
-    const sources = Object.keys(ontologyMappings || {});
-    const targets = Object.keys((ontologyDictionary && ontologyDictionary.entities) || {});
+    const loadSide = async (prefix, setter) => {
+      if (!prefix) {
+        setter({ entities: {}, relationships: {}, properties: {} });
+        return;
+      }
+      try {
+        const res = await API_METHODS.ontology.getDataDictionary(prefix);
+        const dictData = res?.data?.data || {};
+        setter(dictData);
+      } catch {
+        setter({ entities: {}, relationships: {}, properties: {}, _error: true });
+      }
+    };
 
-    if (sources.length > 0 && !sourceEntityType) {
+    loadSide(sourceOntologyPrefix, setSourceOntologyDictionary);
+    loadSide(targetOntologyPrefix, setTargetOntologyDictionary);
+  }, [sourceOntologyPrefix, targetOntologyPrefix]);
+
+  useEffect(() => {
+    const sources = sourceEntityOptions;
+    const targets = targetEntityOptions;
+
+    if (sources.length > 0 && (!sourceEntityType || !sources.includes(sourceEntityType))) {
       setSourceEntityType(sources[0]);
     }
-    if (targets.length > 0 && !targetEntityType) {
+    if (targets.length > 0 && (!targetEntityType || !targets.includes(targetEntityType))) {
       setTargetEntityType(targets[0]);
     }
-  }, [ontologyMappings, ontologyDictionary, sourceEntityType, targetEntityType]);
+  }, [sourceEntityOptions, targetEntityOptions, sourceEntityType, targetEntityType]);
 
   const handleMapEntity = async () => {
     if (!sourceEntityType || !targetEntityType) {
@@ -512,30 +596,24 @@ export default function OntologyMapper() {
     setMapBusy(true);
     setMapMessage(null);
     try {
-      // Step 5: perform alignment mapping via /api/v1/ontology/{ontology}/map-entity
-      const res = await fetch(`${API_BASE_URL}/api/v1/ontology/${selectedOntologyApi}/map-entity`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entity: {
-            id: `ui-map-${Date.now()}`,
-            name: sourceEntityType,
-            type: sourceEntityType,
-            properties: {
-              selected_target: targetEntityType,
-              mapped_from_ui: true,
-            },
+      // Step 5: perform alignment mapping via /api/v1/ontology/{prefix}/map-entity
+      const json = await API_METHODS.ontology.mapEntity(targetOntologyPrefix || selectedOntologyApi, {
+        entity: {
+          id: `ui-map-${Date.now()}`,
+          name: sourceEntityType,
+          type: sourceEntityType,
+          properties: {
+            selected_target: targetEntityType,
+            mapped_from_ui: true,
+            source_ontology: sourceOntologyPrefix,
+            target_ontology: targetOntologyPrefix,
           },
-          source_format: selectedMappingType,
-        }),
+        },
+        source_format: selectedMappingType,
       });
 
-      if (!res.ok) {
-        throw new Error(`Mapping API returned ${res.status}`);
-      }
-
-      const json = await res.json();
-      const mappedType = json?.mapped_entity?.type || '(unknown)';
+      const mapRes = json.data || {};
+      const mappedType = mapRes?.mapped_entity?.type || '(unknown)';
       const match = mappedType === targetEntityType;
 
       setMapMessage({
@@ -545,16 +623,52 @@ export default function OntologyMapper() {
           : `Mapped by API to ${mappedType} (selected target was ${targetEntityType})`,
       });
     } catch (e) {
-      setMapMessage({ kind: 'error', text: e.message || 'Failed to map entity.' });
+      setMapMessage({ kind: 'error', text: e.response?.data?.detail || e.message || 'Failed to map entity.' });
     } finally {
       setMapBusy(false);
     }
   };
 
+  const handleMerge = async () => {
+    if (!mergeFromId || !mergeToId) {
+      setMergeResult({ kind: 'error', text: 'Select both a source (FROM) and a destination (INTO) ontology.' });
+      return;
+    }
+    if (mergeFromId === mergeToId) {
+      setMergeResult({ kind: 'error', text: 'FROM and INTO ontologies must be different.' });
+      return;
+    }
+    setMergeBusy(true);
+    setMergeResult(null);
+    try {
+      const res = await API_METHODS.ontology.merge(mergeFromId, mergeToId);
+      const d = res.data || {};
+      setMergeResult({ kind: 'success', text: d.message || 'Merge complete.', nodes: d.nodes_updated });
+      // Reload ontology options from context after merge
+      const refreshedOntologies = await fetchOntologies();
+      const opts = buildOntologyOptions(refreshedOntologies || []);
+      setMappingOptions(opts);
+      if (opts.length > 0) {
+        const stillSelected = opts.find((o) => o.value === selectedMapping);
+        const next = stillSelected || opts[0];
+        setSelectedMapping(next.value);
+        setSelectedMappingType(next.type);
+        setSelectedOntologyApi(next.prefix || next.ontologyKey || next.value || '');
+      }
+      setMergeFromId('');
+      setMergeToId('');
+    } catch (e) {
+      const detail = e.response?.data?.detail || e.message || 'Merge failed.';
+      setMergeResult({ kind: 'error', text: detail });
+    } finally {
+      setMergeBusy(false);
+    }
+  };
+
   const VIEWS = [
-    { id: 'dictionary', label: '📖 Data Dictionary' },
-    { id: 'vocabulary', label: '🔗 Mapping Vocabulary' },
-    { id: 'alignment', label: '🔄 Ontology Alignment' },
+    { id: 'dictionary', label: '[DOC] Data Dictionary' },
+    { id: 'vocabulary', label: '[MAP] Mapping Vocabulary' },
+    { id: 'alignment', label: '[SYNC] Ontology Alignment' },
   ];
 
   return (
@@ -568,38 +682,50 @@ export default function OntologyMapper() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span style={{ fontSize: '22px' }}>🗺️</span>
           <div>
-            <div style={{ fontWeight: 800, fontSize: '16px', color: C.textPrimary }}>Ontology Mapper</div>
-            <div style={{ fontSize: '12px', color: C.textSec }}>RML / TTL Mapping — Data Dictionary &amp; Vocabulary</div>
+            <div style={{ fontWeight: 800, fontSize: '16px', color: C.textPrimary }}>Semantic Bridge</div>
+            <div style={{ fontSize: '12px', color: C.textSec }}>Semantic Mapping — Data Dictionary &amp; Vocabulary</div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <select
-            value={selectedMapping}
-            onChange={e => {
-              const selected = e.target.value;
-              setSelectedMapping(selected);
-              // ✅ Find the type for this ontology ID and use it for API calls
-              const selectedOption = mappingOptions.find(opt => opt.value === selected);
-              if (selectedOption) {
-                setSelectedMappingType(selectedOption.type);
-                setSelectedOntologyApi(selectedOption.ontologyKey || 'ap239');
-              }
-              setFilter('');
-            }}
-            style={{ padding: '7px 12px', background: C.surface, border: `1px solid ${C.borderDark}`, color: C.textPrimary, borderRadius: '6px', fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}
-          >
-            {Array.from(new Map(mappingOptions.map(o => [o.value, o])).values()).map(o => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-                {o.usageCount ? ` (used ${o.usageCount}x)` : ''}
-                {o.source === 'dynamic' ? ' ✓' : ''}
-              </option>
-            ))}
-          </select>
-          {stats && (
-            <div style={{ fontSize: '12px', color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '20px', padding: '4px 12px' }}>
-              {stats.total_terms} terms · {stats.total_vocabulary_mappings} mappings
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', flexDirection: 'column', alignItems: 'flex-start' }}>
+          {mappingOptionsError && (
+            <div style={{ color: C.red, fontSize: '12px', padding: '8px 12px', background: '#FFE5E5', border: `1px solid ${C.red}`, borderRadius: '6px' }}>
+              ⚠️ {mappingOptionsError}
             </div>
+          )}
+
+          {activeView !== 'alignment' && (
+            <>
+              <select
+                value={selectedMapping}
+                onChange={e => {
+                  const selected = e.target.value;
+                  setSelectedMapping(selected);
+                  // [OK] Find the type for this ontology ID and use it for API calls
+                  const selectedOption = mappingOptions.find(opt => opt.value === selected);
+                  if (selectedOption) {
+                    setSelectedOntologyApi(selectedOption.prefix || selectedOption.ontologyKey || selectedOption.value || '');
+
+                    setSourceOntologyPrefix(selectedOption.prefix || '');
+                    setTargetOntologyPrefix(selectedOption.prefix || '');
+                  }
+                  setFilter('');
+                }}
+                disabled={mappingOptions.length === 0}
+                style={{ padding: '7px 12px', background: C.surface, border: `1px solid ${mappingOptionsError ? C.red : C.borderDark}`, color: C.textPrimary, borderRadius: '6px', fontWeight: 600, fontSize: '13px', cursor: mappingOptions.length === 0 ? 'not-allowed' : 'pointer', opacity: mappingOptions.length === 0 ? 0.6 : 1 }}
+              >
+                <option value="">{mappingOptions.length === 0 ? '— No ontologies loaded —' : '— Select ontology —'}</option>
+                {Array.from(new Map(mappingOptions.map(o => [o.prefix, o])).values()).map((o, idx) => (
+                  <option key={o.value || `mapping-${idx}`} value={o.value}>
+                    {o.label}{o.usageCount ? ` (used ${o.usageCount}x)` : ''}
+                  </option>
+                ))}
+              </select>
+              {stats && (
+                <div style={{ fontSize: '12px', color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '20px', padding: '4px 12px' }}>
+                  {stats.total_terms} terms · {stats.total_vocabulary_mappings} mapping edges
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -634,7 +760,7 @@ export default function OntologyMapper() {
 
             {/* Search / filter */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: 1, minWidth: '200px', maxWidth: '380px', background: C.surface, border: `1px solid ${C.borderDark}`, borderRadius: '5px', padding: '6px 8px' }}>
-              <span style={{ fontSize: '10px', color: C.textMuted, flexShrink: 0 }}>🔍</span>
+              <span style={{ fontSize: '10px', color: C.textMuted, flexShrink: 0 }}>[FIND]</span>
               <input
                 type="text" value={filter}
                 placeholder={activeView === 'dictionary' ? 'Filter terms…' : 'Filter mappings…'}
@@ -667,40 +793,133 @@ export default function OntologyMapper() {
             <DataDictionaryTable nodes={data.nodes} filter={filter} prefixFilter={prefixFilter} onPrefixFilterChange={setPrefixFilter} />
           )}
           {activeView === 'vocabulary' && (
-            <VocabularyTable edges={data.edges} filter={filter} />
+            <VocabularyTable edges={vocabEdges} filter={filter} />
           )}
           {activeView === 'alignment' && (
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '16px', minHeight: '400px' }}>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: C.textPrimary, marginBottom: '12px' }}>Ontology Alignment View</div>
-              <p style={{ fontSize: '12px', color: C.textSec, marginBottom: '16px' }}>Step 3 loads dictionary from /api/v1/ontology/{selectedOntologyApi}/data-dictionary, Step 4 lets you choose source/target entities, and Step 5 runs /api/v1/ontology/{selectedOntologyApi}/map-entity.</p>
-              
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: C.textPrimary, display: 'block', marginBottom: '6px' }}>All Ontologies:</label>
-                <select
-                  value={selectedMapping}
-                  onChange={e => {
-                    const selected = e.target.value;
-                    setSelectedMapping(selected);
-                    const selectedOption = mappingOptions.find(opt => opt.value === selected);
-                    if (selectedOption) {
-                      setSelectedMappingType(selectedOption.type);
-                      setSelectedOntologyApi(selectedOption.ontologyKey || 'ap239');
-                    }
-                  }}
-                  style={{ padding: '8px 12px', fontSize: '13px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', cursor: 'pointer', background: C.surface, minWidth: '300px' }}
-                >
-                  {mappingOptions.map(o => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                      {o.usageCount ? ` (used ${o.usageCount}x)` : ''}
-                      {o.source === 'dynamic' ? ' ✓ in Neo4j' : ''}
-                    </option>
-                  ))}
-                </select>
+
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '14px', alignItems: 'end' }}>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 700, color: C.textSec, display: 'block', marginBottom: '4px' }}>Source Ontology</label>
+                  <select
+                    value={sourceOntologyPrefix}
+                    onChange={(e) => setSourceOntologyPrefix(e.target.value)}
+                    style={{ padding: '7px 10px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface, minWidth: '240px' }}
+                  >
+                    <option value="">— Select source —</option>
+                    {mappingOptions.filter(o => o.prefix).map(o => (
+                      <option key={`src-${o.value}`} value={o.prefix}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 700, color: C.textSec, display: 'block', marginBottom: '4px' }}>Target Ontology</label>
+                  <select
+                    value={targetOntologyPrefix}
+                    onChange={(e) => setTargetOntologyPrefix(e.target.value)}
+                    style={{ padding: '7px 10px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface, minWidth: '240px' }}
+                  >
+                    <option value="">— Select target —</option>
+                    {mappingOptions.filter(o => o.prefix).map(o => (
+                      <option key={`tgt-${o.value}`} value={o.prefix}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 700, color: C.textSec, display: 'block', marginBottom: '4px' }}>Source System</label>
+                  <select
+                    value={selectedMappingType}
+                    onChange={e => setSelectedMappingType(e.target.value)}
+                    style={{ padding: '7px 10px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface, minWidth: '160px' }}
+                    title="Drives /mappings/{source_format}"
+                  >
+                    {SOURCE_FORMATS.map((opt) => (
+                      <option key={opt.id} value={opt.id}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
+              {(sourceOntologyPrefix && sourceOntologyDictionary?._error) || (targetOntologyPrefix && targetOntologyDictionary?._error) ? (
+                <div style={{ marginBottom: '14px', padding: '10px 12px', borderRadius: '6px', border: `1px solid ${C.red}`, background: '#FFE5E5', color: C.red, fontSize: '12px', fontWeight: 600 }}>
+                  Failed to load one or more data dictionaries for the selected source/target ontologies.
+                </div>
+              ) : null}
+
+              {/* ── Merge Ontologies ────────────────────────────────────────── */}
+              <div style={{ marginBottom: '20px', border: `2px solid ${C.primary}`, borderRadius: '8px', padding: '16px', background: C.primaryLight }}>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>[LINK] Merge Ontologies</div>
+                <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '14px' }}>
+                  All nodes from the <strong>FROM</strong> ontology will be re-stamped with the prefix of the <strong>INTO</strong> ontology and unified in Neo4j.
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto', gap: '10px', alignItems: 'end' }}>
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>FROM (merge source)</label>
+                    <select
+                      value={mergeFromId}
+                      onChange={e => setMergeFromId(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }}
+                    >
+                      <option value="">— Select source ontology —</option>
+                      {mappingOptions.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ fontSize: '20px', color: C.primary, paddingBottom: '2px', alignSelf: 'center' }}>→</div>
+                  <div>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>INTO (merge destination)</label>
+                    <select
+                      value={mergeToId}
+                      onChange={e => setMergeToId(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }}
+                    >
+                      <option value="">— Select destination ontology —</option>
+                      {mappingOptions.filter(o => o.value !== mergeFromId).map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    onClick={handleMerge}
+                    disabled={mergeBusy || !mergeFromId || !mergeToId}
+                    style={{
+                      padding: '8px 18px',
+                      border: 'none',
+                      borderRadius: '6px',
+                      background: mergeBusy || !mergeFromId || !mergeToId ? C.textMuted : C.primaryDark,
+                      color: '#fff',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      cursor: mergeBusy || !mergeFromId || !mergeToId ? 'not-allowed' : 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {mergeBusy ? '[WAIT] Merging…' : '[LINK] Merge'}
+                  </button>
+                </div>
+                {mergeResult && (
+                  <div style={{
+                    marginTop: '12px',
+                    padding: '10px 14px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    background: mergeResult.kind === 'error' ? '#FFEBEE' : '#E8F5E9',
+                    color: mergeResult.kind === 'error' ? '#B42318' : '#067647',
+                    border: `1px solid ${mergeResult.kind === 'error' ? '#FFCDD2' : '#C8E6C9'}`,
+                  }}>
+                    {mergeResult.text}
+                    {mergeResult.nodes !== undefined && ` (${mergeResult.nodes} nodes updated)`}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Entity Mapper ───────────────────────────────────────────── */}
+              <div style={{ fontSize: '13px', fontWeight: 600, color: C.textPrimary, marginBottom: '10px' }}>[FIND] Map Individual Entity</div>
               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px', marginBottom: '16px', background: C.bg }}>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary, marginBottom: '10px' }}>Map Entity (Step 4 & 5)</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
                   <div>
                     <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source Entity</label>
@@ -709,8 +928,8 @@ export default function OntologyMapper() {
                       onChange={(e) => setSourceEntityType(e.target.value)}
                       style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }}
                     >
-                      <option value="">Select source entity</option>
-                      {Object.keys(ontologyMappings || {}).map((src) => (
+                      <option key="select-src" value="">Select source entity</option>
+                      {sourceEntityOptions.map((src) => (
                         <option key={src} value={src}>{src}</option>
                       ))}
                     </select>
@@ -722,8 +941,8 @@ export default function OntologyMapper() {
                       onChange={(e) => setTargetEntityType(e.target.value)}
                       style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }}
                     >
-                      <option value="">Select target entity</option>
-                      {Object.keys((ontologyDictionary && ontologyDictionary.entities) || {}).map((target) => (
+                      <option key="select-target" value="">Select target entity</option>
+                      {targetEntityOptions.map((target) => (
                         <option key={target} value={target}>{target}</option>
                       ))}
                     </select>
@@ -756,6 +975,7 @@ export default function OntologyMapper() {
                 )}
               </div>
 
+              {/* ── Mapping Table ───────────────────────────────────────────── */}
               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'auto', maxHeight: '500px' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
@@ -766,9 +986,9 @@ export default function OntologyMapper() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.edges && data.edges.length > 0 ? (
-                      data.edges.map((edge, i) => (
-                        <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
+                    {(mappingEdges || []).filter(edge => String(edge.mapping_type || '').toLowerCase() !== 'property_of').length > 0 ? (
+                      (mappingEdges || []).filter(edge => String(edge.mapping_type || '').toLowerCase() !== 'property_of').map((edge, i) => (
+                        <tr key={`${edge.source_term}-${edge.mapping_type}-${edge.target_term}`} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
                           <td style={TD()}>
                             <div style={{ fontWeight: 600, fontSize: '12px' }}>{edge.source_label || edge.source_term.split(':').pop()}</div>
                             <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace' }}>{edge.source_term}</div>
@@ -789,7 +1009,7 @@ export default function OntologyMapper() {
                         </tr>
                       ))
                     ) : (
-                      <tr><td colSpan={3} style={{ ...TD(), textAlign: 'center', color: C.textMuted, padding: '24px' }}>No mapping relationships for this ontology.</td></tr>
+                      <tr><td colSpan={3} style={{ ...TD(), textAlign: 'center', color: C.textMuted, padding: '24px' }}>No entity-to-entity mappings available for this ontology.</td></tr>
                     )}
                   </tbody>
                 </table>
