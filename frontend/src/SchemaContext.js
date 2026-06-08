@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { API, buildUrl } from './config';
 import { apiClient } from './services/apiClient';
+import logger from './utils/logger';
 
 const SchemaContext = createContext(null);
 
@@ -44,7 +45,7 @@ export function SchemaProvider({ children }) {
           }
         }
       } catch (err) {
-        console.warn('Failed to fetch graph schema:', err.message);
+        logger.warn('Failed to fetch graph schema:', err.message);
       } finally {
         if (!cancelled) setSchemaLoading(false);
       }

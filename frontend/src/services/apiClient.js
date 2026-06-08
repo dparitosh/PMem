@@ -6,6 +6,7 @@
 
 import axios from 'axios';
 import { config, API, buildUrl, replaceParams } from '../config';
+import logger from '../utils/logger';
 
 /**
  * Create axios instance with base configuration
@@ -55,8 +56,7 @@ apiClient.interceptors.request.use(
     return requestConfig;
   },
   (error) => {
-    // eslint-disable-next-line no-console
-    console.error('[API] Request Error:', error);
+    logger.error('[API] Request Error:', error);
     return Promise.reject(error);
   }
 );
@@ -86,8 +86,7 @@ apiClient.interceptors.response.use(
       requestConfig.__retryCount = retryCount + 1;
       const backoff = RETRY_BASE_DELAY_MS * requestConfig.__retryCount;
       if (config.debug) {
-        // eslint-disable-next-line no-console
-        console.warn(`[API] transient network error, retry ${requestConfig.__retryCount}/${MAX_GET_RETRIES}:`, {
+        logger.warn(`[API] transient network error, retry ${requestConfig.__retryCount}/${MAX_GET_RETRIES}:`, {
           url: requestConfig.url,
           method,
           backoff,
@@ -106,8 +105,7 @@ apiClient.interceptors.response.use(
     };
 
     if (config.debug) {
-      // eslint-disable-next-line no-console
-      console.error('[API] Response Error:', errorInfo);
+      logger.error('[API] Response Error:', errorInfo);
     }
 
     // Handle specific status codes
@@ -115,12 +113,11 @@ apiClient.interceptors.response.use(
       // Unauthorized - could trigger logout
       // dispatch(logout());
     } else if (error.response?.status === 403) {
-      // Forbidden
-      console.warn('[API] Access forbidden');
+      logger.warn('[API] Access forbidden');
     } else if (error.response?.status === 404) {
-      console.warn('[API] Resource not found');
+      logger.warn('[API] Resource not found');
     } else if (error.response?.status === 500) {
-      console.error('[API] Server error');
+      logger.error('[API] Server error');
     }
 
     return Promise.reject(error);
@@ -202,6 +199,8 @@ export const ontologyAPI = {
     apiClient.get(buildUrl(replaceParams(API.ontology.get, { ontology: ontologyId }))),
   getDataDictionary: (ontologyId) => 
     apiClient.get(buildUrl(replaceParams(API.ontology.dataDictionary, { ontology: ontologyId }))),
+  getTaxonomy: (ontologyId) =>
+    apiClient.get(buildUrl(replaceParams(API.ontology.taxonomy, { ontology: ontologyId }))),
   getMappings: (ontologyId, mappingType) => 
     apiClient.get(buildUrl(replaceParams(API.ontology.mappings, { 
       ontology: ontologyId, 
@@ -220,6 +219,20 @@ export const ontologyAPI = {
       ...(options || {}),
     }),
   cleanupOldXsd: (body) => apiClient.post(buildUrl(API.ontology.cleanupOldXsd), body),
+  extract3dxml: (file, metadata = {}) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    Object.entries(metadata).forEach(([key, value]) => {
+      formData.append(key, value);
+    });
+    return apiClient.post(buildUrl(API.ontology.extract3dxml), formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000,
+    });
+  },
+  get3dxmlStatus: (taskId) =>
+    apiClient.get(buildUrl(replaceParams(API.ontology.threeDxmlStatus, { task_id: taskId }))),
+  get3dxmlFormats: () => apiClient.get(buildUrl(API.ontology.threeDxmlFormats)),
 };
 
 // ========== DATA IMPORT ENDPOINTS ==========

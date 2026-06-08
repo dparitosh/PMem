@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { healthAPI } from '../services/apiClient';
 import Chatbot from './Chatbot';
 import ErrorBoundary from './ErrorBoundary';
+import logger from '../utils/logger';
 
 const DASHBOARD_ENABLED = true;
 
@@ -14,9 +16,13 @@ function fmt(n) {
 function SectionTitle({ children }) {
   return (
     <div style={{
-      fontSize: 13, fontWeight: 700, color: '#004B87',
-      borderBottom: '2px solid #004B87', paddingBottom: 4, marginBottom: 10,
-      textTransform: 'uppercase', letterSpacing: '0.05em',
+      fontSize: 10,
+      fontWeight: 800,
+      color: '#0f7c82',
+      paddingBottom: 4,
+      marginBottom: 10,
+      textTransform: 'uppercase',
+      letterSpacing: '0.1em',
     }}>
       {children}
     </div>
@@ -125,7 +131,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
       setMetrics(response.data);
       setLastRefreshed(new Date());
     } catch (error) {
-      console.error('Failed to load metrics:', error);
+      logger.error('Failed to load metrics:', error);
       setMetrics({
         total_nodes: 0,
         total_relationships: 0,
@@ -145,7 +151,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
       const response = await healthAPI.ontologiesAvailable();
       setOntologies(response.data.ontologies || []);
     } catch (error) {
-      console.error('Failed to load ontologies:', error);
+      logger.error('Failed to load ontologies:', error);
       setOntologies([]);
     } finally {
       setOntologiesLoading(false);
@@ -209,21 +215,19 @@ export default function LandingPage({ setChatResults, onNavigate }) {
   return (
     <div style={{
       height: '100%', display: 'flex', flexDirection: 'column',
-      background: '#f4f6fa', overflow: 'hidden',
+      background: 'linear-gradient(180deg, #f3f7fb 0%, #f8fafc 100%)', overflow: 'hidden',
     }}>
       {/* ── Top hero bar ───────────────────────────────────────────── */}
       <div style={{
-        background: 'linear-gradient(135deg, #004B87 0%, #1a6fb5 100%)',
-        color: '#fff', padding: '12px 20px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        background: 'linear-gradient(135deg, #081a2f 0%, #133457 58%, #1d4f7a 100%)',
+        color: '#fff', padding: '16px 20px',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
         flexShrink: 0,
+        boxShadow: '0 12px 28px rgba(8, 26, 47, 0.16)',
       }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-0.02em' }}>
-            Digital Engineering Ontology Hub
-          </div>
-          <div style={{ fontSize: 11, color: '#b8d4f0', marginTop: 2 }}>
-            Knowledge graph · Digital thread · Traceability · Recommendations
+          <div style={{ fontSize: 13, color: '#d8e6f2', maxWidth: 560, lineHeight: 1.45 }}>
+            Govern ontology assets and expose traceable product knowledge across PLM, MBSE, and manufacturing.
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -235,12 +239,15 @@ export default function LandingPage({ setChatResults, onNavigate }) {
           <button
             onClick={() => { loadMetrics(); loadOntologies(); }}
             style={{
-              background: 'rgba(255,255,255,0.15)', color: '#fff',
-              border: '1px solid rgba(255,255,255,0.3)',
-              borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer',
+              background: 'rgba(255,255,255,0.08)', color: '#fff',
+              border: '1px solid rgba(154,217,226,0.3)',
+              borderRadius: 10, padding: '7px 12px', fontSize: 11, fontWeight: 800, cursor: 'pointer',
             }}
           >
-            ↻ Refresh
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <RefreshCw size={12} />
+              <span>Refresh</span>
+            </span>
           </button>
         </div>
       </div>
@@ -252,18 +259,21 @@ export default function LandingPage({ setChatResults, onNavigate }) {
         <div style={{
           width: 380, minWidth: 300, maxWidth: 460, flexShrink: 0,
           display: 'flex', flexDirection: 'column', gap: 0,
-          borderRight: '1px solid #e2e6ea', background: '#fff', overflow: 'hidden',
+          borderRight: '1px solid rgba(139, 160, 184, 0.16)',
+          background: 'rgba(255,255,255,0.84)',
+          overflow: 'hidden',
+          backdropFilter: 'blur(16px)',
         }}>
 
           {/* Ontology list */}
-          <div style={{ flexShrink: 0, padding: '12px 14px', borderBottom: '1px solid #e8edf3' }}>
-            <SectionTitle>Ontologies</SectionTitle>
+          <div style={{ flexShrink: 0, padding: '14px 14px', borderBottom: '1px solid rgba(139, 160, 184, 0.12)' }}>
+            <SectionTitle>Ontology Registry</SectionTitle>
             <OntologyList ontologies={ontologies} loading={ontologiesLoading} />
           </div>
 
           {/* Ontology breakdown */}
-          <div style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto', padding: '12px 14px' }}>
-            <SectionTitle>Graph Metrics</SectionTitle>
+          <div style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto', padding: '14px' }}>
+            <SectionTitle>Graph Profile</SectionTitle>
 
             {metricsLoading ? (
               <div style={{ color: '#888', fontSize: 12 }}>Loading metrics…</div>
@@ -277,47 +287,14 @@ export default function LandingPage({ setChatResults, onNavigate }) {
                     colLabel="Nodes"
                   />
                 )}
-                <BreakdownTable
-                  title="Top Node Labels"
-                  rows={metrics?.node_labels || []}
-                  colKey="label"
-                  colLabel="Count"
-                />
-                <BreakdownTable
-                  title="Top Relationship Types"
-                  rows={metrics?.relationship_types || []}
-                  colKey="type"
-                  colLabel="Count"
-                />
-
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#333', marginBottom: 4 }}>
-                    Protege-style Ontology KPIs
-                  </div>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                      <thead>
-                        <tr style={{ background: '#f0f2f5' }}>
-                          <th style={{ padding: '4px 8px', textAlign: 'left', color: '#333' }}>Metric</th>
-                          <th style={{ padding: '4px 8px', textAlign: 'right', color: '#333' }}>Value</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          ['Classes', metrics?.ontology_kpis?.classes],
-                          ['Axiom Proxy Count', metrics?.ontology_kpis?.axiom_proxy_count],
-                          ['Class/Property Ratio', metrics?.ontology_kpis?.class_to_property_ratio],
-                        ].map(([k, v], i) => (
-                          <tr key={k} style={{ background: i % 2 === 0 ? '#fff' : '#f8f9fa' }}>
-                            <td style={{ padding: '4px 8px', color: '#004B87', fontWeight: 500 }}>{k}</td>
-                            <td style={{ padding: '4px 8px', textAlign: 'right', color: '#333' }}>{fmt(v)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
+                {!metrics?.ontology_breakdown?.length && (
+                  <BreakdownTable
+                    title="Top Node Labels"
+                    rows={metrics?.node_labels || []}
+                    colKey="label"
+                    colLabel="Count"
+                  />
+                )}
               </>
             )}
           </div>

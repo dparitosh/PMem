@@ -297,71 +297,12 @@ def _llm_settings() -> dict:
 
 
 def _workflow_registry() -> list[dict]:
-    return [
-        {
-            "id": "ontology.create",
-            "label": "Create Ontology",
-            "category": "Ontology",
-            "inputs": "EXPRESS, XSD, OWL, CSV, namespace metadata",
-            "outputs": "OWL/TTL ontology, prefix registry, retained artifact",
-            "writes_to_neo4j": False,
-            "retains_artifacts": True,
-        },
-        {
-            "id": "instance.import",
-            "label": "Import Instance Graph",
-            "category": "Import",
-            "inputs": "STEP, STP, STPX, PLMXML, XMI, CSV",
-            "outputs": "Neo4j instance graph, parse report, retained artifact",
-            "writes_to_neo4j": True,
-            "retains_artifacts": True,
-        },
-        {
-            "id": "instance.link",
-            "label": "Link Instances to Ontology",
-            "category": "Mapping",
-            "inputs": "Instance graph, ontology, mapping rules",
-            "outputs": "Semantic links, alignment report",
-            "writes_to_neo4j": True,
-            "retains_artifacts": True,
-        },
-        {
-            "id": "ontology.validate",
-            "label": "Validate Ontology",
-            "category": "Quality",
-            "inputs": "Ontology, SHACL/rules profile",
-            "outputs": "Validation issues, quality score",
-            "writes_to_neo4j": False,
-            "retains_artifacts": True,
-        },
-        {
-            "id": "ontology.merge",
-            "label": "Merge Ontologies",
-            "category": "Ontology",
-            "inputs": "Source ontology, target ontology, merge policy",
-            "outputs": "Merged ontology, conflict report",
-            "writes_to_neo4j": True,
-            "retains_artifacts": True,
-        },
-        {
-            "id": "dictionary.generate",
-            "label": "Generate Data Dictionary",
-            "category": "Governance",
-            "inputs": "Ontology or namespace",
-            "outputs": "Data dictionary, taxonomy terms",
-            "writes_to_neo4j": False,
-            "retains_artifacts": True,
-        },
-        {
-            "id": "artifact.export",
-            "label": "Export Artifacts",
-            "category": "Reports",
-            "inputs": "Ontology, graph, validation run",
-            "outputs": "TTL, JSON, CSV, report bundle",
-            "writes_to_neo4j": False,
-            "retains_artifacts": True,
-        },
-    ]
+    try:
+        from backend.Services.workflow_registry import get_workflow_registry
+    except ImportError:
+        from Services.workflow_registry import get_workflow_registry
+
+    return get_workflow_registry()
 
 
 def _package_registry() -> list[dict]:

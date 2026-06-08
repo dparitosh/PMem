@@ -1,20 +1,20 @@
 import {
-  BarChart3,
-  DatabaseZap,
-  FileInput,
-  Gauge,
+  FileBarChart2,
+  GitFork,
+  LayoutDashboard,
   Network,
-  PanelsTopLeft,
   Settings,
+  Sparkles,
+  UploadCloud,
 } from 'lucide-react';
 
 export const navigationItems = [
-  { id: 'workspace', label: 'Workspace', icon: PanelsTopLeft },
-  { id: 'import', label: 'Import', icon: FileInput },
-  { id: 'ontology', label: 'Ontology Studio', icon: DatabaseZap },
-  { id: 'graph', label: 'Graph Explorer', icon: Network },
-  { id: 'quality', label: 'Quality', icon: Gauge },
-  { id: 'reports', label: 'Reports', icon: BarChart3 },
+  { id: 'workspace', label: 'Workspace', icon: LayoutDashboard },
+  { id: 'import', label: 'Import', icon: UploadCloud },
+  { id: 'ontology', label: 'Ontology Studio', icon: Network },
+  { id: 'graph', label: 'Graph Explorer', icon: GitFork },
+  { id: 'quality', label: 'Recommendations', icon: Sparkles },
+  { id: 'reports', label: 'Reports', icon: FileBarChart2 },
   { id: 'admin', label: 'Admin', icon: Settings },
 ];
 

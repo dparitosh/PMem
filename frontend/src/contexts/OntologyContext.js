@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { API_METHODS } from '../services/apiClient';
+import logger from '../utils/logger';
 
 /**
  * Centralized Ontology Context
@@ -40,7 +41,7 @@ export const OntologyProvider = ({ children }) => {
     } catch (err) {
       const errorMsg = err.response?.data?.detail || err.message || 'Failed to load ontologies';
       setError(errorMsg);
-      console.error('[OntologyContext] Failed to fetch ontologies:', err);
+      logger.error('[OntologyContext] Failed to fetch ontologies:', err);
       return [];
     }
   }, []);

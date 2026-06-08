@@ -39,6 +39,9 @@ const HEALTH_ENDPOINTS = {
 const GRAPH_ENDPOINTS = {
   graphvis: process.env.REACT_APP_API_GRAPHVIS || '/graphvis',
   graphvisByOntology: process.env.REACT_APP_API_GRAPHVIS_BY_ONTOLOGY || '/graphvis/by-ontology/{prefix}',
+  graphView: process.env.REACT_APP_API_GRAPH_VIEW || '/api/v1/graph/view',
+  graphOntologyView: process.env.REACT_APP_API_GRAPH_ONTOLOGY_VIEW || '/api/v1/graph/view/ontology/{prefix}',
+  contextualSubgraph: process.env.REACT_APP_API_CONTEXTUAL_SUBGRAPH || '/api/v1/graph/contextual-subgraph',
   ontologiesList: process.env.REACT_APP_API_ONTOLOGIES_LIST || '/ontologies/list',
   neo4jHealth: process.env.REACT_APP_API_NEO4J_HEALTH || '/health/neo4j',
   graphfilter: process.env.REACT_APP_API_GRAPHFILTER || '/graphfilter',
@@ -86,6 +89,7 @@ const ONTOLOGY_ENDPOINTS = {
   upload: process.env.REACT_APP_API_ONTOLOGY_UPLOAD || '/api/v1/ontology/upload',
   registered: process.env.REACT_APP_API_ONTOLOGY_REGISTERED || '/api/v1/ontology/registered',
   get: process.env.REACT_APP_API_ONTOLOGY_GET || '/api/v1/ontology',
+  taxonomy: process.env.REACT_APP_API_ONTOLOGY_TAXONOMY || '/api/v1/ontology/{ontology}/taxonomy',
   dataDictionary: process.env.REACT_APP_API_ONTOLOGY_DATA_DICTIONARY || '/api/v1/ontology/{ontology}/data-dictionary',
   prefixDataDictionary: process.env.REACT_APP_API_ONTOLOGY_PREFIX_DATA_DICTIONARY || '/api/v1/ontology/{prefix}/data-dictionary',
   mappings: process.env.REACT_APP_API_ONTOLOGY_MAPPINGS || '/api/v1/ontology/{ontology}/mappings/{type}',

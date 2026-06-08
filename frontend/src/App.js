@@ -6,6 +6,7 @@ import LandingPage from './Components/LandingPage';
 import { SchemaProvider } from './SchemaContext';
 import { OntologyProvider } from './contexts/OntologyContext';
 import { Suspense, lazy, useCallback, useState } from 'react';
+import { ArrowRight } from 'lucide-react';
 import AppShell from './app/AppShell';
 import { normalizePage } from './app/navigation';
 
@@ -118,33 +119,39 @@ function App() {
           <SchemaProvider>
             <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{
-                height: '8vh',
-                backgroundColor: '#2c3e50',
+                minHeight: 82,
+                background: 'linear-gradient(135deg, #081a2f 0%, #133457 56%, #1d4f7a 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                paddingLeft: 20,
-                paddingRight: 20,
-                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                paddingLeft: 24,
+                paddingRight: 24,
+                boxShadow: '0 16px 36px rgba(8, 26, 47, 0.24)',
                 flexShrink: 0,
               }}>
-                <h1 style={{ color: 'white', margin: 0, fontSize: 20, fontWeight: 600 }}>
-                  DEPO: Digital Engineering Product Ontology Knowledge Graph
-                </h1>
+                <div>
+                  <h1 style={{ color: 'white', margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em' }}>
+                    DEPO Digital Thread Platform
+                  </h1>
+                </div>
                 <button
                   onClick={() => handleNavigate('graph')}
                   style={{
-                    background: 'rgba(255,255,255,0.15)',
+                    background: 'rgba(255,255,255,0.1)',
                     color: '#fff',
-                    border: '1px solid rgba(255,255,255,0.4)',
-                    borderRadius: 6,
-                    padding: '5px 16px',
+                    border: '1px solid rgba(154,217,226,0.3)',
+                    borderRadius: 12,
+                    padding: '10px 18px',
                     fontSize: 13,
-                    fontWeight: 600,
+                    fontWeight: 800,
                     cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
                   }}
                 >
-                  Graph Explorer
+                  <span>Open workspace</span>
+                  <ArrowRight size={14} />
                 </button>
               </div>
               <div style={{ flex: '1 1 0', minHeight: 0 }}>

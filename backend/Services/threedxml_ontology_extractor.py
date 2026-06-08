@@ -18,9 +18,14 @@ from typing import Dict, List, Set, Tuple, Any
 from pathlib import Path
 from collections import defaultdict
 
-from Services.splm_ontology_extractor import (
-    OntologyExtractor, OntologyFormat, Entity, Attribute, RelationshipDef
-)
+try:
+    from .ontology_extractor import (
+        OntologyExtractor, OntologyFormat, Entity, Attribute, RelationshipDef
+    )
+except Exception:
+    from Services.ontology_extractor import (
+        OntologyExtractor, OntologyFormat, Entity, Attribute, RelationshipDef
+    )
 
 logger = logging.getLogger(__name__)
 

@@ -188,6 +188,10 @@ class OntologyValidator:
 
         return report
 
+    def validate_file(self, file_path: str) -> ValidationReport:
+        """Backward-compatible file validator used by OWL generation services."""
+        return self.validate(file_path, is_content=False)
+
     # ── Private check methods ─────────────────────────────────────────────────
 
     def _check_header(self, g: Graph, report: ValidationReport):

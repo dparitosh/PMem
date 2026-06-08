@@ -4,49 +4,52 @@
  */
 
 const isDevelopment = process.env.NODE_ENV === 'development';
+const isVerboseLoggingEnabled = process.env.REACT_APP_VERBOSE_LOGS === 'true';
+const canDebugLog = isDevelopment && isVerboseLoggingEnabled;
 
 export const logger = {
-  // Development-only logs (disabled in production)
+  // Verbose logs are opt-in during development
   render: (...args) => {
-    if (isDevelopment) console.log('[RENDER]', ...args);
+    if (canDebugLog) console.log('[RENDER]', ...args);
   },
 
   data: (...args) => {
-    if (isDevelopment) console.log('[DATA]', ...args);
+    if (canDebugLog) console.log('[DATA]', ...args);
   },
 
   search: (...args) => {
-    if (isDevelopment) console.log('[SEARCH]', ...args);
+    if (canDebugLog) console.log('[SEARCH]', ...args);
   },
 
   sync: (...args) => {
-    if (isDevelopment) console.log('[SYNC]', ...args);
+    if (canDebugLog) console.log('[SYNC]', ...args);
   },
 
   api: (...args) => {
-    if (isDevelopment) console.log('[API]', ...args);
+    if (canDebugLog) console.log('[API]', ...args);
   },
 
   ontology: (...args) => {
-    if (isDevelopment) console.log('[ONTOLOGY]', ...args);
+    if (canDebugLog) console.log('[ONTOLOGY]', ...args);
   },
 
-  // Always logged
+  // Warnings are also opt-in for verbose local debugging
   warn: (...args) => {
-    console.warn('[WARN]', ...args);
+    if (canDebugLog) console.warn('[WARN]', ...args);
   },
 
+  // Errors remain visible
   error: (...args) => {
     console.error('[ERROR]', ...args);
   },
 
   // Performance measurement
   time: (label) => {
-    if (isDevelopment) console.time(label);
+    if (canDebugLog) console.time(label);
   },
 
   timeEnd: (label) => {
-    if (isDevelopment) console.timeEnd(label);
+    if (canDebugLog) console.timeEnd(label);
   },
 };
 

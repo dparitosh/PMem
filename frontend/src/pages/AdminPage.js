@@ -3,7 +3,6 @@ import { Bot } from 'lucide-react';
 import AdminPanel from '../Components/AdminPanel';
 import { API_METHODS } from '../services/apiClient';
 import KpiStrip from '../widgets/KpiStrip';
-import PageHeader from '../widgets/PageHeader';
 import RegistryWidget from '../widgets/RegistryWidget';
 import { widgetCardStyle, widgetColors } from '../widgets/widgetStyles';
 
@@ -96,16 +95,6 @@ export default function AdminPage({ onSchemaCleaned }) {
 
   return (
     <div className="depo-page">
-      <PageHeader
-        eyebrow="Operations and platform registry"
-        title="Operate services, datasources, agents, and workflow capabilities from one catalog"
-        summary="Admin is the control room for runtime health and governed capabilities. Destructive actions stay isolated in Operations; registry data remains read-only for this phase."
-        insights={[
-          { label: 'Service standard', value: 'Every runtime has owner, endpoint, status, and health path' },
-          { label: 'Governance rule', value: 'Frontend never connects directly to Neo4j' },
-          { label: 'Change scope', value: 'Read-only registry first; config writes stay deferred' },
-        ]}
-      />
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button
           type="button"

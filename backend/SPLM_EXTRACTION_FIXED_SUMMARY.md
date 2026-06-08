@@ -200,7 +200,7 @@ OntologyExtractor (ABC - abstract base)
 
 ## Files Modified
 
-### backend/Services/splm_ontology_extractor.py (KEY FILE)
+### backend/Services/ontology_extractor.py (KEY FILE)
 - **Removed:** `_extract_business_objects()` (dead code)
 - **Removed:** `_parse_business_excel()` (incorrect logic)
 - **Removed:** `_parse_excel_sheet()` (deprecated)

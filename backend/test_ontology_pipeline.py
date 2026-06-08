@@ -28,7 +28,7 @@ if env_file.exists():
     load_dotenv(env_file)
 
 # Direct imports from backend modules
-from Services.splm_ontology_extractor import (
+from Services.ontology_extractor import (
     extract_ontology,
     OntologyFormat,
     OntologyExtractorFactory

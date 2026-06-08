@@ -7,6 +7,7 @@ import os
 import json
 import time
 import shutil
+import tempfile
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -835,6 +836,7 @@ RETURN count(r) AS count
             # Parse entities
             rows: list = []
             xmi_relationships: list = []
+            extracted_relationships: list = []
             if file_type == 'xsd':
                 try:
                     from .ap239_parser import parse_ap239_xsd
@@ -850,6 +852,19 @@ RETURN count(r) AS count
             elif file_type == 'ontology':
                 from .unified_data_import import FileFormatDetector
                 rows, _ = FileFormatDetector.parse_rdf(file_content, file_path.name)
+            elif file_type == '3dxml':
+                try:
+                    from .threedxml_ontology_extractor import ThreeDXMLExtractor
+                except Exception:
+                    from backend.Services.threedxml_ontology_extractor import ThreeDXMLExtractor
+
+                with tempfile.TemporaryDirectory(prefix='threedxml_') as temp_dir:
+                    temp_file_path = Path(temp_dir) / file_path.name
+                    temp_file_path.write_bytes(file_content)
+                    extractor = ThreeDXMLExtractor(temp_dir)
+                    extracted = extractor.extract()
+                    rows = list((extracted or {}).get('entities', {}).values())
+                    extracted_relationships = list(extractor.relationships or [])
             else:
                 return {'status': 'error', 'error': f"Unsupported file type for Neo4j push: {file_type}"}
 
@@ -879,15 +894,26 @@ RETURN count(r) AS count
                 name = _resolve_row_name(r)
                 if not name:
                     continue
-                concept_type = str(r.get('concept_type') or r.get('type') or 'Unknown')
+                concept_type = str(
+                    r.get('concept_type')
+                    or r.get('entity_type')
+                    or r.get('type')
+                    or 'Unknown'
+                )
                 namespace = str(r.get('namespace', prefix))
                 valid_rows.append({
                     'name': name,
                     'concept_type': concept_type,
                     'namespace': namespace,
                 })
+                attributes = r.get('attributes') if isinstance(r.get('attributes'), dict) else {}
+                for attr_name in attributes.keys():
+                    if attr_name and str(attr_name).strip():
+                        property_rows.append({'class_name': name, 'prop_name': str(attr_name)})
                 # Collect non-empty extra keys as OntologyProperty candidates
                 for key, val in r.items():
+                    if key in {'attributes', 'metadata', 'relationships'}:
+                        continue
                     if key not in _SKIP_KEYS and val is not None and str(val).strip():
                         property_rows.append({'class_name': name, 'prop_name': str(key)})
 
@@ -934,11 +960,33 @@ RETURN count(c) AS merged
             node_type_label = "OntologyClass" if determined_schema_type == "schema" else "Instance"
             logger.info(f"Neo4j push: {merged} {node_type_label} nodes merged for {ontology_id} v{version} (schema_type={determined_schema_type})")
 
-            # For XMI schema uploads, create class-to-class relationships from parsed XMI links.
-            if determined_schema_type == "schema" and xmi_relationships:
+            relationship_sources = []
+            if xmi_relationships:
+                relationship_sources.extend(
+                    {
+                        "from_label": (rel.get("from_label") or "").strip(),
+                        "to_label": (rel.get("to_label") or "").strip(),
+                        "type": (rel.get("type") or "RELATED_TO").strip() or "RELATED_TO",
+                    }
+                    for rel in xmi_relationships
+                )
+            if extracted_relationships:
+                relationship_sources.extend(
+                    {
+                        "from_label": (rel.source or "").strip(),
+                        "to_label": (rel.target or "").strip(),
+                        "type": (rel.relation_type or "RELATED_TO").strip() or "RELATED_TO",
+                    }
+                    for rel in extracted_relationships
+                )
+
+            relationship_total = 0
+
+            # For structured schema uploads, create class-to-class relationships from parsed links.
+            if determined_schema_type == "schema" and relationship_sources:
                 class_names = {row["name"] for row in valid_rows}
                 rel_groups: Dict[str, set] = {}
-                for rel in xmi_relationships:
+                for rel in relationship_sources:
                     from_label = (rel.get("from_label") or "").strip()
                     to_label = (rel.get("to_label") or "").strip()
                     if not from_label or not to_label:
@@ -961,6 +1009,7 @@ MERGE (a)-[:{rel_type}]->(b)
                     graph.query(rel_cypher, params={"rows": rel_rows, "prefix": prefix})
                     rel_total += len(rel_rows)
                 if rel_total:
+                    relationship_total = rel_total
                     logger.info(f"Neo4j push: {rel_total} OntologyClass relationships merged for {ontology_id}")
 
             # MERGE OntologyProperty nodes and link them to their OntologyClass
@@ -1001,11 +1050,15 @@ MERGE (p)-[:PROPERTY_OF]->(c)
                     logger.warning(f"OntologyProperty merge skipped: {prop_err}")
 
             # Update metadata status
-            cls._update_status(ontology_id, 'pushed_to_neo4j', {'neo4j_nodes_merged': merged})
+            cls._update_status(ontology_id, 'pushed_to_neo4j', {
+                'neo4j_nodes_merged': merged,
+                'neo4j_relationships_merged': relationship_total,
+            })
 
             return {
                 'status': 'success',
                 'nodes_merged': merged,
+                'relationships_merged': relationship_total,
                 'ontology_id': ontology_id,
                 'version': version,
             }

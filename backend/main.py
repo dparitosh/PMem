@@ -1217,6 +1217,44 @@ async def get_entire_graph():
         return {"results": [], "message": "Neo4j database temporarily unavailable. Graph will display when database is connected."}
 
 
+@app.get("/api/v1/graph/view")
+async def get_graph_view(limit: int = 1000):
+    """Return a visualization-ready graph payload using the official Neo4j driver."""
+    try:
+        from backend.Services.graph_view_service import GraphViewService
+    except Exception:
+        from Services.graph_view_service import GraphViewService
+
+    return GraphViewService.get_graph_overview(limit=limit)
+
+
+@app.get("/api/v1/graph/view/ontology/{prefix}")
+async def get_virtual_ontology_view(prefix: str, limit: int = 1000):
+    """Return a generated ontology-centric graph view without mutating base data."""
+    try:
+        from backend.Services.graph_view_service import GraphViewService
+    except Exception:
+        from Services.graph_view_service import GraphViewService
+
+    return GraphViewService.get_virtual_ontology_view(prefix=prefix, limit=limit)
+
+
+@app.get("/api/v1/graph/contextual-subgraph")
+async def get_contextual_subgraph(search: str = "", ontology_prefix: str = "", import_id: str = "", limit: int = 400):
+    """Return a contextual subgraph for GraphRAG-style inspection."""
+    try:
+        from backend.Services.graph_view_service import GraphViewService
+    except Exception:
+        from Services.graph_view_service import GraphViewService
+
+    return GraphViewService.get_contextual_subgraph(
+        search=search,
+        ontology_prefix=ontology_prefix,
+        import_id=import_id,
+        limit=limit,
+    )
+
+
 @app.get("/graphvis/by-ontology/{prefix}")
 async def get_graph_by_ontology(prefix: str):
     """Get graph filtered by ontology prefix - shows OntologyClass and Instance nodes."""
@@ -1518,6 +1556,19 @@ async def ontology_debug_payload(ontology_id: str):
 @app.get("/api/v1/ontology/{ontology_id}/debug")
 async def debug_ontology(ontology_id: str):
     return await ontology_debug_payload(ontology_id)
+
+
+@app.get("/api/v1/ontology/{ontology_id}/taxonomy")
+async def get_uploaded_ontology_taxonomy(ontology_id: str):
+    """Return extracted taxonomy terms and hierarchy links for an uploaded ontology."""
+    try:
+        from backend.Services.ontology_taxonomy_service import OntologyTaxonomyService
+
+        return OntologyTaxonomyService.get_taxonomy(ontology_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        safe_error("/api/v1/ontology/{ontology_id}/taxonomy", e)
 
 
 @app.get("/ontology/registered")
@@ -3195,18 +3246,9 @@ def get_import_artifacts(task_id: str):
 @app.get("/api/v1/workflows/options")
 def get_workflow_options():
     """Return executable semantic workflow IDs."""
-    return {
-        "workflows": [
-            {"id": "instance.import", "status": "existing_import_pipeline"},
-            {"id": "ontology.create", "status": "existing_upload_pipeline"},
-            {"id": "instance.link", "status": "artifact_report"},
-            {"id": "ontology.merge", "status": "artifact_report"},
-            {"id": "ontology.validate", "status": "artifact_report"},
-            {"id": "dictionary.generate", "status": "artifact_report"},
-            {"id": "taxonomy.generate", "status": "artifact_report"},
-            {"id": "graph.chunk", "status": "artifact_report"},
-        ]
-    }
+    from backend.Services.workflow_registry import get_workflow_options as list_workflow_options
+
+    return {"workflows": list_workflow_options()}
 
 
 @app.post("/api/v1/workflows/execute")

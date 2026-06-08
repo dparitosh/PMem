@@ -15,9 +15,16 @@ export default function AppShell({
   return (
     <div className="depo-shell">
       <nav className="depo-rail" aria-label="Application navigation">
-        <div className="depo-rail__brand">DEPO</div>
+        <div className="depo-rail__brand">
+          <div className="depo-rail__brand-mark" aria-hidden="true">D</div>
+          <div className="depo-rail__brand-text">
+            <div className="depo-rail__brand-name">DEPO</div>
+            <div className="depo-rail__brand-meta">Digital Thread</div>
+          </div>
+        </div>
         <button type="button" className="depo-rail__button" title="Home" onClick={onHome}>
           <Home size={15} />
+          <span>Home</span>
         </button>
         {navigationItems.map((item) => {
           const Icon = item.icon;
@@ -31,7 +38,8 @@ export default function AppShell({
               aria-label={item.label}
               onClick={() => onPageChange(item.id)}
             >
-              <Icon size={15} />
+              <Icon size={16} />
+              <span>{item.label}</span>
             </button>
           );
         })}
@@ -40,11 +48,9 @@ export default function AppShell({
       <header className="depo-topbar">
         <div className="depo-topbar__title">
           <h1>{pageLabel(activePage)}</h1>
-          <div className="depo-topbar__context">Workspace: Lab Sandbox | Dataset: Current graph | Ontology: Active context</div>
         </div>
-        <input className="depo-topbar__search" placeholder="Search graph, ontology, workflow, service" />
         <div className="depo-topbar__actions">
-          <span className="depo-status">API online</span>
+          <span className="depo-status">Online</span>
           <button type="button" className="depo-icon-button" title="Toggle chat" onClick={onToggleChat}>
             <MessageSquare size={16} fill={showChat ? '#eef5fb' : 'none'} />
           </button>

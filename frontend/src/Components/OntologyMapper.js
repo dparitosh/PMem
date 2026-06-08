@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Download } from 'lucide-react';
+import { Download, Network, Search } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import { useOntologies } from '../contexts/OntologyContext';
 
@@ -38,6 +38,12 @@ const SOURCE_FORMATS = [
   { id: 'csv', label: 'CSV' },
   { id: 'excel', label: 'Excel' },
 ];
+
+const TAXONOMY_HIERARCHY_TYPES = new Set(['subClassOf', 'broader', 'narrower', 'isA', 'parentOf', 'relatedTo', 'containedBy']);
+const TAXONOMY_MAX_ROOTS = 18;
+const TAXONOMY_MAX_CHILDREN = 12;
+const TAXONOMY_MAX_DEPTH = 3;
+const TAXONOMY_MAX_RENDERED_NODES = 220;
 
 // ── CSV export ─────────────────────────────────────────────────────────────────
 function exportCSV(rows, headers, filename) {
@@ -331,11 +337,290 @@ function VocabularyTable({ edges, filter }) {
   );
 }
 
+function TaxonomyView({ nodes, edges, filter, taxonomy }) {
+  const lc = filter.toLowerCase();
+  const taxonomyNodes = taxonomy?.nodes?.length ? taxonomy.nodes : nodes;
+  const taxonomyEdges = taxonomy?.edges?.length ? taxonomy.edges : edges;
+  const taxonomySummary = taxonomy?.summary || null;
+  const visibleNodes = useMemo(() => {
+    if (!lc) return taxonomyNodes;
+    return taxonomyNodes.filter((node) =>
+      node.term_id.toLowerCase().includes(lc) ||
+      (node.label || '').toLowerCase().includes(lc) ||
+      (node.ontology_prefix || '').toLowerCase().includes(lc)
+    );
+  }, [taxonomyNodes, lc]);
+
+  const prefixGroups = useMemo(() => {
+    const groups = new Map();
+    visibleNodes.forEach((node) => {
+      const prefix = node.ontology_prefix || 'unassigned';
+      if (!groups.has(prefix)) groups.set(prefix, []);
+      groups.get(prefix).push(node);
+    });
+    return Array.from(groups.entries()).map(([prefix, terms]) => ({
+      prefix,
+      terms: terms.sort((a, b) => (a.label || a.term_id).localeCompare(b.label || b.term_id)),
+    }));
+  }, [visibleNodes]);
+
+  const hierarchyModel = useMemo(() => {
+    const visibleIds = new Set(visibleNodes.map((node) => node.term_id));
+    const childrenByParent = new Map();
+    const parentIds = new Set();
+    const labelsById = new Map(
+      visibleNodes.map((node) => [node.term_id, node.label || node.term_id])
+    );
+
+    taxonomyEdges.forEach((edge) => {
+      if (!TAXONOMY_HIERARCHY_TYPES.has(edge.mapping_type)) return;
+      if (!visibleIds.has(edge.source_term) || !visibleIds.has(edge.target_term)) return;
+      if (!childrenByParent.has(edge.target_term)) childrenByParent.set(edge.target_term, []);
+      childrenByParent.get(edge.target_term).push(edge.source_term);
+      parentIds.add(edge.source_term);
+    });
+
+    const roots = visibleNodes
+      .filter((node) => !parentIds.has(node.term_id))
+      .map((node) => node.term_id)
+      .sort((left, right) => {
+        return (labelsById.get(left) || left).localeCompare(labelsById.get(right) || right);
+      });
+
+    childrenByParent.forEach((children, key) => {
+      children.sort((left, right) => {
+        return (labelsById.get(left) || left).localeCompare(labelsById.get(right) || right);
+      });
+      childrenByParent.set(key, children);
+    });
+
+    return { childrenByParent, roots };
+  }, [visibleNodes, taxonomyEdges]);
+
+  const relationCount = taxonomySummary?.taxonomy_links ?? taxonomyEdges.filter((edge) =>
+    TAXONOMY_HIERARCHY_TYPES.has(edge.mapping_type)
+  ).length;
+
+  const nodeById = useMemo(
+    () => new Map(visibleNodes.map((node) => [node.term_id, node])),
+    [visibleNodes]
+  );
+
+  let renderedNodeCount = 0;
+  const renderTree = (termId, depth = 0, seen = new Set()) => {
+    if (renderedNodeCount >= TAXONOMY_MAX_RENDERED_NODES || depth > TAXONOMY_MAX_DEPTH) return null;
+    if (seen.has(termId)) return null;
+    const term = nodeById.get(termId);
+    if (!term) return null;
+
+    renderedNodeCount += 1;
+    const nextSeen = new Set(seen);
+    nextSeen.add(termId);
+    const children = hierarchyModel.childrenByParent.get(termId) || [];
+    const childrenToRender = depth >= TAXONOMY_MAX_DEPTH
+      ? []
+      : children.slice(0, TAXONOMY_MAX_CHILDREN);
+    const hiddenChildrenCount = Math.max(children.length - childrenToRender.length, 0);
+
+    return (
+      <div key={`${termId}-${depth}`} style={{ display: 'grid', gap: '6px' }}>
+        <div
+          title={term.term_id}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `${16 + (depth * 18)}px minmax(0, 1fr)`,
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <span style={{
+              width: depth === 0 ? 8 : 10,
+              height: depth === 0 ? 8 : 2,
+              borderRadius: depth === 0 ? '999px' : '999px',
+              background: depth === 0 ? C.primary : C.borderDark,
+              display: 'inline-block',
+            }} />
+          </div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            minWidth: 0,
+            flexWrap: 'wrap',
+          }}>
+            <span style={{
+              fontSize: '12px',
+              fontWeight: depth < 2 ? 700 : 600,
+              color: C.textPrimary,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+              {term.label || term.term_id.split(':').pop()}
+            </span>
+            <span style={{
+              fontSize: '10px',
+              color: C.textSec,
+              background: C.bg,
+              border: `1px solid ${C.border}`,
+              borderRadius: '999px',
+              padding: '2px 6px',
+              whiteSpace: 'nowrap',
+            }}>
+              {children.length} child{children.length === 1 ? '' : 'ren'}
+            </span>
+          </div>
+        </div>
+        {childrenToRender.length > 0 && (
+          <div style={{ display: 'grid', gap: '6px' }}>
+            {childrenToRender.map((childId) => renderTree(childId, depth + 1, nextSeen))}
+          </div>
+        )}
+        {(hiddenChildrenCount > 0 || depth === TAXONOMY_MAX_DEPTH) && (
+          <div style={{ paddingLeft: `${24 + (depth * 18)}px`, fontSize: '11px', color: C.textMuted }}>
+            {depth === TAXONOMY_MAX_DEPTH
+              ? 'Refine the filter to inspect deeper taxonomy branches.'
+              : `${hiddenChildrenCount} additional child nodes hidden until you narrow the filter.`}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: '10px' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+        gap: '1px',
+        border: `1px solid ${C.border}`,
+        borderRadius: '8px',
+        overflow: 'hidden',
+        background: C.border,
+      }}>
+        {[
+          { label: 'Terms', value: visibleNodes.length },
+          { label: 'Namespaces', value: prefixGroups.length },
+          { label: 'Taxonomy Links', value: relationCount },
+        ].map((item) => (
+          <div key={item.label} style={{ background: C.surface, padding: '10px 12px' }}>
+            <div style={{ fontSize: '10px', fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>{item.label}</div>
+            <div style={{ fontSize: '22px', fontWeight: 800, color: C.textPrimary, marginTop: '4px' }}>{item.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', background: C.surface, overflow: 'hidden' }}>
+        <div style={{ padding: '9px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary }}>Taxonomy Browser</span>
+          {taxonomy?.extraction_source && (
+            <span style={{ fontSize: '10px', fontWeight: 700, color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
+              Source: {taxonomy.extraction_source}
+            </span>
+          )}
+        </div>
+        <div style={{ maxHeight: '520px', overflow: 'auto', padding: '10px 12px', display: 'grid', gap: '10px' }}>
+          {relationCount > 0 && visibleNodes.length > TAXONOMY_MAX_RENDERED_NODES && (
+            <div style={{
+              padding: '10px 12px',
+              borderRadius: '8px',
+              border: `1px solid ${C.border}`,
+              background: C.bg,
+              color: C.textSec,
+              fontSize: '12px',
+            }}>
+              Showing a compact taxonomy outline for this ontology. Use the filter to inspect a narrower branch.
+            </div>
+          )}
+          {prefixGroups.length === 0 && (
+            <div style={{ color: C.textMuted, fontSize: '13px', padding: '24px', textAlign: 'center' }}>
+              No taxonomy terms match the current filter.
+            </div>
+          )}
+          {prefixGroups.map(({ prefix, terms }) => {
+            const prefixTermIds = new Set(terms.map((term) => term.term_id));
+            const prefixRoots = hierarchyModel.roots.filter((termId) => prefixTermIds.has(termId));
+            const hasHierarchy = relationCount > 0 && prefixRoots.length > 0;
+            return (
+              <section key={prefix} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
+                <div style={{ background: C.bg, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: C.primary }}>{prefix}</span>
+                  <span style={{ fontSize: '11px', color: C.textSec }}>{terms.length} terms</span>
+                </div>
+                <div style={{ padding: '8px 10px', display: 'grid', gap: '8px' }}>
+                  {hasHierarchy ? prefixRoots.slice(0, TAXONOMY_MAX_ROOTS).map((termId) => (
+                    <div key={`${prefix}-${termId}`} style={{ padding: '4px 0' }}>
+                      {renderTree(termId)}
+                    </div>
+                  )) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                      {terms.slice(0, 80).map((term) => (
+                        <span
+                          key={term.term_id}
+                          title={term.term_id}
+                          style={{
+                            fontSize: '11px',
+                            color: C.textPrimary,
+                            background: C.bg,
+                            border: `1px solid ${C.border}`,
+                            borderRadius: '999px',
+                            padding: '3px 7px',
+                            maxWidth: '220px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {term.label || term.term_id.split(':').pop()}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {hasHierarchy && prefixRoots.length > TAXONOMY_MAX_ROOTS && (
+                    <div style={{ fontSize: '11px', color: C.textMuted }}>
+                      {prefixRoots.length - TAXONOMY_MAX_ROOTS} additional root branches hidden until you narrow the filter.
+                    </div>
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function buildFallbackDictionaryFromTaxonomy(taxonomyPayload, prefixHint = '') {
+  const taxonomyNodes = taxonomyPayload?.nodes || [];
+  const entities = Object.fromEntries(
+    taxonomyNodes.map((node) => {
+      const key = node.label || node.term_id?.split(':').pop() || node.term_id;
+      return [key, {
+        id: node.term_id,
+        label: node.label || key,
+        definition: node.definition || '',
+        ontology_prefix: node.ontology_prefix || prefixHint,
+      }];
+    })
+  );
+
+  return {
+    entities,
+    relationships: {},
+    properties: {},
+    _source: 'taxonomy_fallback',
+  };
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function OntologyMapper() {
   const [data, setData] = useState({ nodes: [], edges: [] });
   const [mappingEdges, setMappingEdges] = useState([]);
   const [vocabEdges, setVocabEdges] = useState([]);
+  const [taxonomy, setTaxonomy] = useState(null);
   const [sourceOntologyPrefix, setSourceOntologyPrefix] = useState('');
   const [targetOntologyPrefix, setTargetOntologyPrefix] = useState('');
   const [sourceOntologyDictionary, setSourceOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
@@ -463,7 +748,7 @@ export default function OntologyMapper() {
         setSourceOntologyPrefix(selectedOption.prefix || '');
       }
       if (!targetOntologyPrefix) {
-        setTargetOntologyPrefix(selectedOption.prefix || '');
+        setTargetOntologyPrefix('');
       }
     } catch (e) {
       const errorMsg = e.message || 'Failed to process ontologies';
@@ -482,29 +767,39 @@ export default function OntologyMapper() {
     if (!selectedOntologyApi || !selectedMappingType) {
       return;
     }
+    let cancelled = false;
     // Load data dictionary and vocabulary for selected mapping
     const loadMappingData = async () => {
-      setLoading(true);
-      setError(null);
+      if (!cancelled) {
+        setLoading(true);
+        setError(null);
+      }
       try {
         // Use selectedOntologyApi (the currently selected uploaded ontology prefix).
         // The backend now supports any prefix via generic /{prefix}/data-dictionary routes.
-        const [dictRes, mapRes] = await Promise.allSettled([
+        const [dictRes, mapRes, taxonomyRes] = await Promise.allSettled([
           API_METHODS.ontology.getDataDictionary(selectedOntologyApi),
           API_METHODS.ontology.getMappings(targetOntologyPrefix || selectedOntologyApi, selectedMappingType),
+          API_METHODS.ontology.getTaxonomy(selectedMapping || selectedOntologyApi),
         ]);
 
-        const dictData = (dictRes.status === 'fulfilled' ? dictRes.value.data.data : null) || {};
+        const taxonomyData = taxonomyRes.status === 'fulfilled' ? taxonomyRes.value.data : null;
+        const dictDataRaw = (dictRes.status === 'fulfilled' ? dictRes.value.data.data : null) || {};
+        const dictData = Object.keys(dictDataRaw.entities || {}).length > 0
+          ? dictDataRaw
+          : (taxonomyData ? buildFallbackDictionaryFromTaxonomy(taxonomyData, selectedOntologyApi) : dictDataRaw);
         const entities = dictData.entities || {};
         const mapPayload = (mapRes.status === 'fulfilled' ? mapRes.value.data : null) || {};
         const mappings = mapPayload.mappings || {};
         const mappingEdges = Array.isArray(mapPayload.mapping_edges) ? mapPayload.mapping_edges : null;
 
-        const nodes = Object.keys(entities).map((entityKey) => ({
-          term_id: `${selectedOntologyApi}:${entityKey}`,
-          label: entityKey,
-          ontology_prefix: selectedOntologyApi,
-        }));
+        const nodes = taxonomyData?.nodes?.length
+          ? taxonomyData.nodes
+          : Object.keys(entities).map((entityKey) => ({
+              term_id: `${selectedOntologyApi}:${entityKey}`,
+              label: entityKey,
+              ontology_prefix: selectedOntologyApi,
+            }));
 
         const edges = mappingEdges && mappingEdges.length > 0
           ? mappingEdges.map((edge) => ({
@@ -537,43 +832,79 @@ export default function OntologyMapper() {
           }))
         );
 
+        if (cancelled) return;
         setOntologyDictionary(dictData);
         setData({ nodes, edges });
         setMappingEdges(edges);
         setVocabEdges(vocabFromDict);
+        setTaxonomy(taxonomyData);
         setStats({
-          total_terms: nodes.length,
+          total_terms: taxonomyData
+            ? taxonomyData?.summary?.terms ?? nodes.length
+            : nodes.length,
           total_vocabulary_mappings: vocabFromDict.length,
         });
       } catch (e) {
+        if (cancelled) return;
         console.error('Error loading ontology data:', e);
         setError(e.response?.data?.detail || e.message || 'Failed to load ontology data.');
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     loadMappingData();
-  }, [selectedMappingType, selectedOntologyApi, targetOntologyPrefix]);
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMapping, selectedMappingType, selectedOntologyApi, targetOntologyPrefix]);
 
   useEffect(() => {
+    let cancelled = false;
     const loadSide = async (prefix, setter) => {
       if (!prefix) {
-        setter({ entities: {}, relationships: {}, properties: {} });
+        if (!cancelled) {
+          setter({ entities: {}, relationships: {}, properties: {} });
+        }
         return;
       }
       try {
         const res = await API_METHODS.ontology.getDataDictionary(prefix);
         const dictData = res?.data?.data || {};
-        setter(dictData);
+        if (Object.keys(dictData.entities || {}).length > 0) {
+          if (!cancelled) {
+            setter(dictData);
+          }
+          return;
+        }
+        throw new Error('Empty data dictionary');
       } catch {
-        setter({ entities: {}, relationships: {}, properties: {}, _error: true });
+        const option = mappingOptions.find((item) => item.prefix === prefix);
+        if (option?.value) {
+          try {
+            const taxonomyRes = await API_METHODS.ontology.getTaxonomy(option.value);
+            if (!cancelled) {
+              setter(buildFallbackDictionaryFromTaxonomy(taxonomyRes?.data, prefix));
+            }
+            return;
+          } catch {
+            // Continue to empty fallback below.
+          }
+        }
+        if (!cancelled) {
+          setter({ entities: {}, relationships: {}, properties: {}, _error: true });
+        }
       }
     };
 
     loadSide(sourceOntologyPrefix, setSourceOntologyDictionary);
     loadSide(targetOntologyPrefix, setTargetOntologyDictionary);
-  }, [sourceOntologyPrefix, targetOntologyPrefix]);
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceOntologyPrefix, targetOntologyPrefix, mappingOptions]);
 
   useEffect(() => {
     const sources = sourceEntityOptions;
@@ -586,6 +917,12 @@ export default function OntologyMapper() {
       setTargetEntityType(targets[0]);
     }
   }, [sourceEntityOptions, targetEntityOptions, sourceEntityType, targetEntityType]);
+
+  useEffect(() => {
+    if (sourceOntologyPrefix && targetOntologyPrefix && sourceOntologyPrefix === targetOntologyPrefix) {
+      setTargetOntologyPrefix('');
+    }
+  }, [sourceOntologyPrefix, targetOntologyPrefix]);
 
   const handleMapEntity = async () => {
     if (!sourceEntityType || !targetEntityType) {
@@ -666,24 +1003,36 @@ export default function OntologyMapper() {
   };
 
   const VIEWS = [
-    { id: 'dictionary', label: '[DOC] Data Dictionary' },
-    { id: 'vocabulary', label: '[MAP] Mapping Vocabulary' },
-    { id: 'alignment', label: '[SYNC] Ontology Alignment' },
+    { id: 'dictionary', label: 'Data Dictionary' },
+    { id: 'taxonomy', label: 'Taxonomy' },
+    { id: 'vocabulary', label: 'Mapping Vocabulary' },
+    { id: 'alignment', label: 'Ontology Alignment' },
   ];
 
   return (
-    <div style={{ background: C.bg, minHeight: '100%', padding: '20px 24px', boxSizing: 'border-box' }}>
+    <div style={{ background: C.bg, minHeight: '100%', padding: '10px', boxSizing: 'border-box' }}>
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        flexWrap: 'wrap', gap: '12px', marginBottom: '20px',
-        background: C.surface, border: `1px solid ${C.border}`, borderRadius: '10px', padding: '14px 18px',
+        flexWrap: 'wrap', gap: '10px', marginBottom: '10px',
+        background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px 12px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '22px' }}>🗺️</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            display: 'grid',
+            placeItems: 'center',
+            background: C.primaryLight,
+            color: C.primary,
+            flex: '0 0 auto',
+          }}>
+            <Network size={16} strokeWidth={2.4} />
+          </div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: '16px', color: C.textPrimary }}>Semantic Bridge</div>
-            <div style={{ fontSize: '12px', color: C.textSec }}>Semantic Mapping — Data Dictionary &amp; Vocabulary</div>
+            <div style={{ fontWeight: 800, fontSize: '14px', color: C.textPrimary }}>Active Ontology</div>
+            <div style={{ fontSize: '11px', color: C.textSec }}>Dictionary, vocabulary mappings, and ontology alignment</div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -706,7 +1055,7 @@ export default function OntologyMapper() {
                     setSelectedOntologyApi(selectedOption.prefix || selectedOption.ontologyKey || selectedOption.value || '');
 
                     setSourceOntologyPrefix(selectedOption.prefix || '');
-                    setTargetOntologyPrefix(selectedOption.prefix || '');
+                    setTargetOntologyPrefix('');
                   }
                   setFilter('');
                 }}
@@ -760,10 +1109,21 @@ export default function OntologyMapper() {
 
             {/* Search / filter */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: 1, minWidth: '200px', maxWidth: '380px', background: C.surface, border: `1px solid ${C.borderDark}`, borderRadius: '5px', padding: '6px 8px' }}>
-              <span style={{ fontSize: '10px', color: C.textMuted, flexShrink: 0 }}>[FIND]</span>
+              <Search
+                size={13}
+                color={C.textMuted}
+                strokeWidth={2.2}
+                style={{
+                  width: 13,
+                  height: 13,
+                  minWidth: 13,
+                  flex: '0 0 13px',
+                  background: 'transparent',
+                }}
+              />
               <input
                 type="text" value={filter}
-                placeholder={activeView === 'dictionary' ? 'Filter terms…' : 'Filter mappings…'}
+                placeholder={activeView === 'vocabulary' ? 'Filter mappings…' : 'Filter terms…'}
                 onChange={e => setFilter(e.target.value)}
                 style={{ border: 'none', outline: 'none', fontSize: '13px', lineHeight: '1.4', flex: 1, background: 'transparent', color: C.textPrimary, minHeight: '20px' }}
               />
@@ -791,6 +1151,9 @@ export default function OntologyMapper() {
 
           {activeView === 'dictionary' && (
             <DataDictionaryTable nodes={data.nodes} filter={filter} prefixFilter={prefixFilter} onPrefixFilterChange={setPrefixFilter} />
+          )}
+          {activeView === 'taxonomy' && (
+            <TaxonomyView nodes={data.nodes} edges={vocabEdges} filter={filter} taxonomy={taxonomy} />
           )}
           {activeView === 'vocabulary' && (
             <VocabularyTable edges={vocabEdges} filter={filter} />
@@ -821,7 +1184,7 @@ export default function OntologyMapper() {
                     style={{ padding: '7px 10px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface, minWidth: '240px' }}
                   >
                     <option value="">— Select target —</option>
-                    {mappingOptions.filter(o => o.prefix).map(o => (
+                    {mappingOptions.filter(o => o.prefix && o.prefix !== sourceOntologyPrefix).map(o => (
                       <option key={`tgt-${o.value}`} value={o.prefix}>{o.label}</option>
                     ))}
                   </select>
@@ -850,7 +1213,7 @@ export default function OntologyMapper() {
 
               {/* ── Merge Ontologies ────────────────────────────────────────── */}
               <div style={{ marginBottom: '20px', border: `2px solid ${C.primary}`, borderRadius: '8px', padding: '16px', background: C.primaryLight }}>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>[LINK] Merge Ontologies</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>Merge Ontologies</div>
                 <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '14px' }}>
                   All nodes from the <strong>FROM</strong> ontology will be re-stamped with the prefix of the <strong>INTO</strong> ontology and unified in Neo4j.
                 </div>
@@ -897,7 +1260,7 @@ export default function OntologyMapper() {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {mergeBusy ? '[WAIT] Merging…' : '[LINK] Merge'}
+                    {mergeBusy ? 'Merging…' : 'Merge'}
                   </button>
                 </div>
                 {mergeResult && (
@@ -918,7 +1281,7 @@ export default function OntologyMapper() {
               </div>
 
               {/* ── Entity Mapper ───────────────────────────────────────────── */}
-              <div style={{ fontSize: '13px', fontWeight: 600, color: C.textPrimary, marginBottom: '10px' }}>[FIND] Map Individual Entity</div>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: C.textPrimary, marginBottom: '10px' }}>Map Individual Entity</div>
               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px', marginBottom: '16px', background: C.bg }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
                   <div>

@@ -85,6 +85,7 @@ class FileType(Enum):
     XML = 'xml'
     XMI = 'xmi'
     XSD = 'xsd'
+    THREEDXML = '3dxml'
     ONTOLOGY = 'ontology'
 
 
@@ -128,6 +129,7 @@ class FileFormatDetector:
         '.xmi': FileType.XMI,
         '.mdxml': FileType.XMI,
         '.xsd': FileType.XSD,
+        '.3dxml': FileType.THREEDXML,
         '.owl': FileType.ONTOLOGY,
         '.rdf': FileType.ONTOLOGY,
         '.ttl': FileType.ONTOLOGY,
@@ -2165,7 +2167,7 @@ class UnifiedDataImportService:
             UNWIND $rows AS row
             MATCH (a{_label_hint} {{import_row_key: row.from_key, import_id: row.import_id}})
             MATCH (b{_label_hint} {{import_row_key: row.to_id, import_id: row.import_id}})
-            MERGE (a)-[:REFERENCES {target_source_id: row.to_id}]->(b)
+            MERGE (a)-[:REFERENCES {{target_source_id: row.to_id}}]->(b)
             """
             try:
                 ref_rows_scoped = [{**rr, 'import_id': task_id} for rr in step_ref_rows]

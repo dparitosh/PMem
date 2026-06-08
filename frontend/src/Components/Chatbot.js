@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
+import { Sparkles } from 'lucide-react';
 import '../CSS/chat.css';
 import { API, buildUrl } from '../config';
 import { validateChatInput, ValidationError } from '../utils/validation';
@@ -77,14 +78,11 @@ const Chatbot = ({ setChatResults }) => {
     };
 
     const [sampleQueries, setSampleQueries] = useState([
-        'What are all the parts in the 5 HP MOTOR ASSEMBLY and in what sequence are they assembled?',
-        'Show the complete assembly operation sequence for 5 HP MOTOR ASSEMBLY',
+        'Show the assembly sequence for 5 HP MOTOR ASSEMBLY',
         'Recommend manufacturing processes for ROTOR SHAFT',
-        'Find parts similar to LAMINATED ROTOR CORE that could be substituted',
-        'What SysML requirements relate to the Variable Speed Drive?',
-        'Show all use cases and actors in the Sugar Production Plant MBSE model',
+        'Find substitute candidates for LAMINATED ROTOR CORE',
+        'Show SysML requirements linked to the Variable Speed Drive',
         'Analyse change impact if ROTOR SHAFT is modified',
-        'Analyse change impact if THREE PHASE WINDINGS is modified',
     ]);
 
     // [OK] SECURE: Input validation + error handling
@@ -253,7 +251,8 @@ const Chatbot = ({ setChatResults }) => {
                 flexShrink: 0,
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 15, fontWeight: 700 }}>[AI] Knowledge Assistant</span>
+                    <Sparkles size={14} />
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>Assistant</span>
                     {chatMessages.length > 0 && (
                         <span style={{
                             background: 'rgba(255,255,255,0.2)', borderRadius: 10,
@@ -282,7 +281,7 @@ const Chatbot = ({ setChatResults }) => {
                     padding: '5px 14px', fontSize: 12, fontWeight: 600,
                     display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
                 }}>
-                    <span style={{ animation: 'pulse 1.4s ease infinite', display: 'inline-block' }}>[*]</span>
+                    <span style={{ animation: 'pulse 1.4s ease infinite', display: 'inline-block' }}>...</span>
                     {statusLabel}
                 </div>
             )}
@@ -304,11 +303,8 @@ const Chatbot = ({ setChatResults }) => {
                             paddingTop: '20px',
                             fontSize: '13px'
                         }}>
-                            <p style={{ margin: '0 0 12px', fontWeight: 600, color: '#004B87' }}>
-                                Motor Assembly · SysML MBSE · Process Planning · Change Impact
-                            </p>
                             <p style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>
-                                Select a query below or type your own question.
+                                Ask a question or start from a sample prompt.
                             </p>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, textAlign: 'left' }}>
                                 {sampleQueries.map((query, idx) => (
