@@ -64,9 +64,9 @@ if CENTRALIZED_CONFIG_AVAILABLE:
     try:
         NEO4J_QUERY_TIMEOUT = get_config().query_timeout
     except Exception:
-        NEO4J_QUERY_TIMEOUT = int(os.getenv("NEO4J_QUERY_TIMEOUT", "30"))
+        NEO4J_QUERY_TIMEOUT = int(os.getenv("NEO4J_QUERY_TIMEOUT", os.getenv("NEO4J_IMPORT_QUERY_TIMEOUT", "30")))
 else:
-    NEO4J_QUERY_TIMEOUT = int(os.getenv("NEO4J_QUERY_TIMEOUT", "30"))
+    NEO4J_QUERY_TIMEOUT = int(os.getenv("NEO4J_QUERY_TIMEOUT", os.getenv("NEO4J_IMPORT_QUERY_TIMEOUT", "30")))
 
 NEO4J_DRIVER_TIMEOUT = 60  # Connection timeout (seconds)
 

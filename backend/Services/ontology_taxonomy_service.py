@@ -64,6 +64,20 @@ def _definition(graph: Graph, uri: URIRef) -> str:
 
 class OntologyTaxonomyService:
     @staticmethod
+    def _semantic_context(ontology_identifier: str) -> Dict[str, Any]:
+        meta = OntologyTaxonomyService._resolve_metadata(ontology_identifier)
+        file_path = Path(meta.get("file_path", ""))
+        if not file_path.exists():
+            raise ValueError(f"Ontology file is missing: {ontology_identifier}")
+
+        prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
+        return {
+            "meta": meta,
+            "file_path": file_path,
+            "prefix": prefix,
+        }
+
+    @staticmethod
     def _resolve_metadata(identifier: str) -> Dict[str, Any]:
         direct = OntologyUploadManager.get_ontology(identifier)
         if direct.get("status") == "success":
@@ -264,15 +278,13 @@ class OntologyTaxonomyService:
 
     @classmethod
     def get_taxonomy(cls, ontology_identifier: str) -> Dict[str, Any]:
-        meta = cls._resolve_metadata(ontology_identifier)
-        file_path = Path(meta.get("file_path", ""))
-        if not file_path.exists():
-            raise ValueError(f"Ontology file is missing: {ontology_identifier}")
+        context = cls._semantic_context(ontology_identifier)
+        meta = context["meta"]
+        file_path = context["file_path"]
 
         parsed = cls._parse_rdf(meta, file_path)
         if not parsed:
-            prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
-            parsed = cls._xml_terms(file_path, prefix)
+            parsed = cls._xml_terms(file_path, context["prefix"])
         if not parsed.get("nodes"):
             parsed = cls._text_terms(meta, file_path)
 
@@ -295,17 +307,13 @@ class OntologyTaxonomyService:
     @classmethod
     def get_reasoning(cls, ontology_identifier: str) -> Dict[str, Any]:
         """Return Owlready2-backed ontology semantics for the registered ontology."""
-        meta = cls._resolve_metadata(ontology_identifier)
-        file_path = Path(meta.get("file_path", ""))
-        if not file_path.exists():
-            raise ValueError(f"Ontology file is missing: {ontology_identifier}")
-
-        prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
-        result = OwlreadyOntologyRuntime.inspect_ontology(file_path, prefix)
+        context = cls._semantic_context(ontology_identifier)
+        meta = context["meta"]
+        result = OwlreadyOntologyRuntime.inspect_ontology(context["file_path"], context["prefix"])
         result.update({
             "ontology_id": meta.get("ontology_id"),
             "ontology_name": meta.get("ontology_name"),
-            "prefix": prefix,
+            "prefix": context["prefix"],
             "source_filename": meta.get("original_filename") or meta.get("stored_filename"),
         })
         return result

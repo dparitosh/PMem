@@ -68,7 +68,7 @@ export const workflowCatalog = [
     execution: 'File upload',
     prerequisite: 'Choose one or more files',
     icon: Database,
-    stages: ['Upload', 'Parse preview', 'Map optional or required ontology', 'Load to Neo4j'],
+    stages: ['Upload', 'Parse & preview', 'Map & validate', 'Load & verify'],
     writes_to_neo4j: true,
     retains_artifacts: true,
   },
@@ -216,6 +216,15 @@ export const mergeWorkflowRuntimeOptions = (catalog, runtimeOptions = []) => {
 
 export const getWorkflowById = (workflowId) =>
   workflowCatalog.find(workflow => workflow.id === workflowId) || null;
+
+export const getWorkflowMap = () =>
+  Object.fromEntries(workflowCatalog.map(workflow => [workflow.id, workflow]));
+
+export const resolveWorkflow = (workflowId, fallback = null) => {
+  const lookup = getWorkflowById(workflowId);
+  if (lookup) return lookup;
+  return fallback;
+};
 
 export const getWorkflowDisplayName = (workflowId) => {
   const workflow = getWorkflowById(workflowId);

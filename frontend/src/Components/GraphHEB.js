@@ -417,6 +417,8 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const activeTooltipNodeRef = useRef(null); // Track which node/link the tooltip is showing for
   const timeoutsRef = useRef(new Set()); // Track active timeouts for cleanup
   const lastCenteredSearchRef = useRef('');
+  const previousSearchQueryRef = useRef('');
+  const userInteractedWithGraphRef = useRef(false);
 
   // Helper: build close button HTML for tooltips
   const tooltipCloseBtn = `<button class="dt-tooltip-close" style="position:absolute;top:6px;right:8px;background:none;border:none;color:white;font-size:16px;cursor:pointer;line-height:1;padding:0 2px;opacity:0.85;">&times;</button>`;
@@ -765,6 +767,48 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const [recPanel, setRecPanel] = useState({ open: false, service: null, nodeName: '', loading: false, result: null, error: '' });
   const primaryButtonColor = TCS_GRAPH_THEME.primary;
 
+  const resetGraphSelectionState = useCallback((options = {}) => {
+    const {
+      resetOntology = true,
+      resetStepPart = true,
+      resetSearch = true,
+      resetExpansion = true,
+      resetLabels = true,
+      resetInteraction = true,
+      dataOverride = null,
+    } = options;
+
+    if (resetSearch) {
+      setSearchQuery('');
+      setSearchInput('');
+      setSearchResultData({ nodes: [], links: [] });
+    }
+    if (resetLabels) {
+      setAvailableLabels([]);
+      setSelectedLabelFilter('ALL');
+    }
+    if (resetExpansion) {
+      setExpandedNodes(new Set());
+      setNodeExpansions(new Map());
+      setTreeExpandedNodes(new Set());
+    }
+    if (resetOntology) {
+      setSelectedOntology('ALL');
+      selectedOntologyRef.current = 'ALL';
+      setStepParts([]);
+    }
+    if (resetStepPart) {
+      setSelectedStepPart('ALL');
+    }
+    if (resetInteraction) {
+      userInteractedWithGraphRef.current = false;
+      lastCenteredSearchRef.current = '';
+    }
+    if (dataOverride) {
+      setData(dataOverride);
+    }
+  }, [setData]);
+
   useEffect(() => {
     const handleSchemaCleaned = () => {
       const empty = { nodes: [], links: [] };
@@ -772,25 +816,13 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       setFilteredData(empty);
       setFullDataset(empty);
       setInitialData(empty);
-      setSearchResultData(empty);
-      setSearchQuery('');
-      setSearchInput('');
-      setAvailableLabels([]);
-      setSelectedLabelFilter('ALL');
-      setExpandedNodes(new Set());
       setLoadingNodes(new Set());
-      setNodeExpansions(new Map());
-      setTreeExpandedNodes(new Set());
-      setSelectedOntology('ALL');
-      selectedOntologyRef.current = 'ALL';
-      setStepParts([]);
-      setSelectedStepPart('ALL');
       setError(null);
-      setData(empty);
+      resetGraphSelectionState({ dataOverride: empty });
     };
     window.addEventListener('dt-schema-cleaned', handleSchemaCleaned);
     return () => window.removeEventListener('dt-schema-cleaned', handleSchemaCleaned);
-  }, [setData]);
+  }, [resetGraphSelectionState, setData]);
   // New keyword-based dual-node comparison (graphfilter) states
   const [compareTermA, setCompareTermA] = useState('');
   const [compareTermB, setCompareTermB] = useState('');
@@ -3192,13 +3224,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
   // When graph view mode switches, load the appropriate dataset
   useEffect(() => {
     graphViewModeRef.current = graphViewMode;
-    setSearchQuery('');
-    setSearchInput('');
-    setSelectedLabelFilter('ALL');
-    setAvailableLabels([]);
-    setSearchResultData({ nodes: [], links: [] });
-    setExpandedNodes(new Set());
-    setNodeExpansions(new Map());
+    resetGraphSelectionState({ resetOntology: false, resetStepPart: false });
 
     if (graphViewMode === 'individual') {
       const dataSet = buildIndividualViewDataset(initialData);
@@ -3234,7 +3260,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphViewMode, buildIndividualViewDataset, ontologyOptions]);
+  }, [graphViewMode, buildIndividualViewDataset, ontologyOptions, resetGraphSelectionState]);
 
   // Keep Individual view in sync when fresh initial graph data arrives.
   useEffect(() => {
@@ -3254,13 +3280,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
   useEffect(() => {
     if (graphViewModeRef.current === 'individual') return; // individual mode manages its own data
     // Clear search state when switching ontology
-    setSearchQuery('');
-    setSearchInput('');
-    setSelectedLabelFilter('ALL');
-    setAvailableLabels([]);
-    setSearchResultData({ nodes: [], links: [] });
-    setExpandedNodes(new Set());
-    setNodeExpansions(new Map());
+    resetGraphSelectionState({ resetOntology: false, resetStepPart: false });
 
     if (selectedOntology === 'step') {
       // Fetch STEP parts list for secondary filter
@@ -3288,7 +3308,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     }
 
     fetchOntologyGraph(selectedOntology, 'ALL');
-  }, [selectedOntology, fetchOntologyGraph]);
+  }, [selectedOntology, fetchOntologyGraph, resetGraphSelectionState]);
 
   // When STEP part sub-filter changes, fetch that specific part's graph
   useEffect(() => {
@@ -3654,6 +3674,7 @@ const boundaryForce = (width, height) => {
       svg.call(d3.zoom()
         .scaleExtent([0.1, 5])
         .on('zoom', ({ transform }) => {
+          userInteractedWithGraphRef.current = true;
           gRef.current.attr('transform', transform);
         })
       );
@@ -3750,6 +3771,7 @@ const boundaryForce = (width, height) => {
     svg.call(d3.zoom()
       .scaleExtent([0.1, 5])
       .on('zoom', ({ transform }) => {
+        userInteractedWithGraphRef.current = true;
         gRef.current.attr('transform', transform);
       })
     );
@@ -4393,7 +4415,12 @@ const boundaryForce = (width, height) => {
     });
 
     // Center the view on search results
-    if (searchQuery && filteredData.nodes.length > 0 && lastCenteredSearchRef.current !== searchQuery) {
+    if (
+      searchQuery &&
+      filteredData.nodes.length > 0 &&
+      lastCenteredSearchRef.current !== searchQuery &&
+      !userInteractedWithGraphRef.current
+    ) {
       // Calculate the bounding box of all nodes
       const nodePositions = filteredData.nodes.map(d => ({x: d.x || 0, y: d.y || 0}));
       const minX = Math.min(...nodePositions.map(d => d.x));
@@ -4416,6 +4443,7 @@ const boundaryForce = (width, height) => {
       lastCenteredSearchRef.current = searchQuery;
     } else if (!searchQuery && lastCenteredSearchRef.current) {
       lastCenteredSearchRef.current = '';
+      userInteractedWithGraphRef.current = false;
     }
  
     // Performance monitoring
@@ -4504,8 +4532,7 @@ const boundaryForce = (width, height) => {
     const handleKeyPress = (event) => {
       if (event.key === 'Escape') {
         // Collapse all nodes and reset to original search results
-        setExpandedNodes(new Set());
-        setNodeExpansions(new Map());
+        resetGraphSelectionState({ resetOntology: false, resetStepPart: false, resetSearch: false, resetLabels: false });
         setFilteredData(graphData);
         setFullDataset(graphData);
         setData(graphData);
@@ -4518,13 +4545,17 @@ const boundaryForce = (width, height) => {
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphData]);
+  }, [graphData, resetGraphSelectionState]);
 
-  // Reset expanded nodes when search query changes
+  // Preserve expand/collapse state while search text changes; only reset when
+  // the search is explicitly cleared so the canvas does not jump on small edits.
   useEffect(() => {
-    setExpandedNodes(new Set());
-    setNodeExpansions(new Map());
-  }, [searchQuery]);
+    const previousSearchQuery = previousSearchQueryRef.current;
+    if (previousSearchQuery && !searchQuery) {
+      resetGraphSelectionState({ resetOntology: false, resetStepPart: false, resetSearch: false, resetLabels: false });
+    }
+    previousSearchQueryRef.current = searchQuery;
+  }, [searchQuery, resetGraphSelectionState]);
 
   // [OK] CLEANUP: Final cleanup on component unmount
   useEffect(() => {
@@ -4919,17 +4950,7 @@ const boundaryForce = (width, height) => {
             onClick={() => {
               setGraphViewMode('ontology');
               graphViewModeRef.current = 'ontology';
-              setSearchQuery('');
-              setSearchInput('');
-              setSelectedLabelFilter('ALL');
-              setAvailableLabels([]);
-              setSearchResultData({ nodes: [], links: [] });
-              setSelectedOntology('ALL');
-              setSelectedStepPart('ALL');
-              setStepParts([]);
-              setExpandedNodes(new Set());
-              setNodeExpansions(new Map());
-              setData(initialData);
+              resetGraphSelectionState({ dataOverride: initialData });
               setGraphData(initialData);
               setFilteredData(initialData);
               setFullDataset(initialData);

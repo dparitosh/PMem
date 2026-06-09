@@ -176,6 +176,42 @@ def test_taxonomy_payload_includes_reasoning_summary(tmp_path: Path, monkeypatch
     assert reasoning["summary"]["subclass_edges"] == 1
 
 
+def test_taxonomy_and_reasoning_share_the_same_context_resolution(tmp_path: Path, monkeypatch):
+    owl_path = tmp_path / "shared.owl"
+    owl_path.write_text(
+        """<?xml version="1.0"?>
+        <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+                 xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+                 xmlns:owl="http://www.w3.org/2002/07/owl#">
+          <owl:Ontology rdf:about="http://example.com/shared"/>
+          <owl:Class rdf:about="http://example.com/shared#Thing">
+            <rdfs:label>Thing</rdfs:label>
+          </owl:Class>
+        </rdf:RDF>
+        """,
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        OntologyTaxonomyService,
+        "_resolve_metadata",
+        staticmethod(lambda _identifier: {
+            "ontology_id": "shared_1",
+            "ontology_name": "Shared",
+            "prefix": "shared",
+            "file_path": str(owl_path),
+            "original_filename": "shared.owl",
+        }),
+    )
+
+    taxonomy = OntologyTaxonomyService.get_taxonomy("shared_1")
+    reasoning = OntologyTaxonomyService.get_reasoning("shared_1")
+
+    assert taxonomy["prefix"] == "shared"
+    assert reasoning["prefix"] == "shared"
+    assert taxonomy["ontology_id"] == reasoning["ontology_id"] == "shared_1"
+
+
 def test_owlready_unsupported_payload_is_structured(tmp_path: Path):
     if not OwlreadyOntologyRuntime.is_available():
         import pytest

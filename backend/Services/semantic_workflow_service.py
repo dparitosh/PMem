@@ -107,6 +107,7 @@ class SemanticWorkflowService:
             "taxonomy.generate": cls.generate_taxonomy,
             "graph.chunk": cls.chunk_graph,
         }
+        workflow_id = str(workflow_id or "").strip()
         handler = handlers.get(workflow_id)
         if not handler:
             raise ValueError(f"Unsupported workflow: {workflow_id}")

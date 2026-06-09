@@ -117,6 +117,20 @@ def get_workflow_registry() -> List[Dict[str, Any]]:
     return [dict(workflow) for workflow in WORKFLOW_REGISTRY]
 
 
+def get_workflow_by_id(workflow_id: str) -> Dict[str, Any] | None:
+    lookup = str(workflow_id or "").strip()
+    if not lookup:
+        return None
+    for workflow in WORKFLOW_REGISTRY:
+        if workflow["id"] == lookup:
+            return dict(workflow)
+    return None
+
+
+def get_workflow_map() -> Dict[str, Dict[str, Any]]:
+    return {workflow["id"]: dict(workflow) for workflow in WORKFLOW_REGISTRY}
+
+
 def get_workflow_options() -> List[Dict[str, str]]:
     return [
         {

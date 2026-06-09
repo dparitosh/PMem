@@ -73,7 +73,9 @@ from enum import Enum
 logger = logging.getLogger(__name__)
 
 # Keep write transactions moderate to reduce AuraDB timeout risk.
-IMPORT_WRITE_BATCH_SIZE = int(os.getenv('IMPORT_WRITE_BATCH_SIZE', '200'))
+IMPORT_WRITE_BATCH_SIZE = int(os.getenv('IMPORT_WRITE_BATCH_SIZE', '250'))
+IMPORT_LINK_BATCH_SIZE = int(os.getenv('IMPORT_LINK_BATCH_SIZE', str(max(100, IMPORT_WRITE_BATCH_SIZE))))
+IMPORT_COMMIT_QUERY_TIMEOUT = int(os.getenv('IMPORT_COMMIT_QUERY_TIMEOUT', os.getenv('NEO4J_IMPORT_QUERY_TIMEOUT', '120')))
 
 class FileType(Enum):
     CSV = 'csv'
@@ -1494,15 +1496,15 @@ class Neo4jImporter:
 
             try:
                 if rows and 'UNWIND $rows' in query:
-                    _BATCH = max(50, IMPORT_WRITE_BATCH_SIZE)
+                    _BATCH = max(100, IMPORT_WRITE_BATCH_SIZE)
                     for _i in range(0, len(rows), _BATCH):
                         _batch = rows[_i:_i + _BATCH]
-                        result = _query_with_timeout(query, {'rows': _batch})
+                        result = _query_with_timeout(query, {'rows': _batch}, timeout=IMPORT_COMMIT_QUERY_TIMEOUT)
                         stats['queries_executed'] += 1
                         if isinstance(result, list):
                             stats['nodes_created'] += len(result)
                 else:
-                    result = _query_with_timeout(query)
+                    result = _query_with_timeout(query, timeout=IMPORT_COMMIT_QUERY_TIMEOUT)
                     stats['queries_executed'] += 1
                     if isinstance(result, list):
                         stats['nodes_created'] += len(result)
@@ -2284,10 +2286,14 @@ class UnifiedDataImportService:
                         from core.graph import query_with_timeout as _query_with_timeout
                     except ModuleNotFoundError:
                         from ..core.graph import query_with_timeout as _query_with_timeout
-                    _BATCH = max(50, IMPORT_WRITE_BATCH_SIZE)
+                    _BATCH = max(100, IMPORT_LINK_BATCH_SIZE)
                     linked_total = 0
                     for _i in range(0, len(link_rows), _BATCH):
-                        linked_result = _query_with_timeout(link_cypher, {'rows': link_rows[_i:_i + _BATCH]}) or []
+                        linked_result = _query_with_timeout(
+                            link_cypher,
+                            {'rows': link_rows[_i:_i + _BATCH]},
+                            timeout=IMPORT_COMMIT_QUERY_TIMEOUT,
+                        ) or []
                         result['queries_executed'] += 1
                         if linked_result and isinstance(linked_result[0], dict):
                             linked_total += int(linked_result[0].get('linked') or 0)
@@ -2313,16 +2319,16 @@ class UnifiedDataImportService:
             MATCH (parent {id: row.parent_id, import_id: row.import_id})
             MERGE (child)-[:OWNED_BY]->(parent)
             """
-            _BATCH = max(50, IMPORT_WRITE_BATCH_SIZE)
+            _BATCH = max(100, IMPORT_LINK_BATCH_SIZE)
             for _i in range(0, len(owner_rows), _BATCH):
                 _batch = owner_rows[_i:_i + _BATCH]
                 try:
                     _batch_scoped = [{**rr, 'import_id': task_id} for rr in _batch]
                     try:
-                        from core.graph import graph as _g
+                        from core.graph import query_with_timeout as _query_with_timeout
                     except ModuleNotFoundError:
-                        from ..core.graph import graph as _g
-                    _g.query(owner_cypher, {'rows': _batch_scoped})
+                        from ..core.graph import query_with_timeout as _query_with_timeout
+                    _query_with_timeout(owner_cypher, {'rows': _batch_scoped}, timeout=IMPORT_COMMIT_QUERY_TIMEOUT)
                     result['relationships_created'] += len(_batch)
                 except Exception as _own_err:
                     logger.warning(f"Task {task_id}: OWNED_BY batch {_i // _BATCH}: {_own_err}")
@@ -2408,10 +2414,9 @@ class UnifiedDataImportService:
     async def commit_import(cls, task_id: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Commit import to Neo4j.
-        Fast pre-checks run synchronously; blocking Neo4j writes run in a thread
-        pool via asyncio.to_thread so the event loop is never blocked.
-        OWL generation is fired in a separate background thread so the HTTP
-        response returns as soon as Neo4j writes are complete.
+        Fast pre-checks run synchronously. The Neo4j write itself is queued in
+        the background so the HTTP response returns before gateway/proxy
+        timeouts can interrupt very large commits.
         """
         import asyncio
 
@@ -2456,27 +2461,39 @@ class UnifiedDataImportService:
         schema = config or task.get('auto_schema', {})
         task['current_stage'] = ImportStage.INGEST.value
         task['progress'] = 80
-        task['message'] = 'Validating data before Neo4j commit...'
+        task['message'] = 'Queued for Neo4j commit...'
+        task['committing'] = True
         cls._persist_task(task_id)
 
-        try:
-            result = await asyncio.to_thread(cls._commit_sync, task_id, task, schema)
-            # Fire OWL generation in background — does NOT block the HTTP response.
-            asyncio.get_event_loop().run_in_executor(
-                None, cls._generate_owl_background, task_id, task
-            )
-            return result
-        except Exception as e:
-            # Revert to PROCESSING/preview so the user can retry.
-            task.pop('file_content', None)  # release on failure too
-            task['status'] = ImportStatus.PROCESSING.value
-            task['current_stage'] = ImportStage.PREVIEW.value
-            task['progress'] = 75
-            task['message'] = f'Commit failed — retry available. Error: {str(e)[:200]}'
-            task['error'] = str(e)
-            cls._persist_task(task_id)
-            logger.error(f"Task {task_id} commit failed (reset to preview for retry): {str(e)}")
-            raise
+        async def _run_commit_background() -> None:
+            try:
+                result = await asyncio.to_thread(cls._commit_sync, task_id, task, schema)
+                # Fire OWL generation in background — does NOT block the HTTP response.
+                asyncio.get_running_loop().run_in_executor(
+                    None, cls._generate_owl_background, task_id, task
+                )
+                logger.info(f"Task {task_id}: Neo4j commit finished in background: {result}")
+            except Exception as e:
+                # Revert to PROCESSING/preview so the user can retry.
+                task.pop('file_content', None)
+                task['committing'] = False
+                task['status'] = ImportStatus.PROCESSING.value
+                task['current_stage'] = ImportStage.PREVIEW.value
+                task['progress'] = 75
+                task['message'] = f'Commit failed — retry available. Error: {str(e)[:200]}'
+                task['error'] = str(e)
+                cls._persist_task(task_id)
+                logger.error(f"Task {task_id} commit failed (reset to preview for retry): {str(e)}")
+
+        asyncio.create_task(_run_commit_background())
+        return {
+            "queued": True,
+            "task_id": task_id,
+            "status": task['status'],
+            "current_stage": task['current_stage'],
+            "progress": task['progress'],
+            "message": "Neo4j commit queued in background. Continue polling task status.",
+        }
 
     @classmethod
     def cancel_import(cls, task_id: str) -> None:

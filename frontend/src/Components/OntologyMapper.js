@@ -515,6 +515,52 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
         ))}
       </div>
 
+      {reasoning?.status === 'success' && (
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', background: C.surface, overflow: 'hidden' }}>
+          <div style={{ padding: '9px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary }}>Owlready2 Semantics</span>
+            <span style={{ fontSize: '10px', fontWeight: 700, color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
+              {reasoning.summary?.classes || 0} classes · {reasoning.summary?.subclass_edges || 0} subclass links
+            </span>
+          </div>
+          <div style={{ padding: '10px 12px', display: 'grid', gap: '10px' }}>
+            <div style={{ display: 'grid', gap: '6px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Classes</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {(reasoning.classes || []).slice(0, 10).map((cls) => (
+                  <span key={cls.iri} title={cls.iri} style={{ fontSize: '11px', color: C.textPrimary, background: C.primaryLight, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '3px 7px' }}>
+                    {cls.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gap: '6px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Object Properties</div>
+              <div style={{ display: 'grid', gap: '6px' }}>
+                {(reasoning.object_properties || []).slice(0, 6).map((prop) => (
+                  <div key={prop.iri} style={{ fontSize: '12px', color: C.textPrimary, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '6px', padding: '6px 8px' }}>
+                    <strong>{prop.label}</strong>
+                    <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
+                      Domain: {(prop.domain || []).map((d) => d.label).join(', ') || 'None'} · Range: {(prop.range || []).map((r) => r.label).join(', ') || 'None'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gap: '6px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Individuals</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {(reasoning.individuals || []).slice(0, 10).map((individual) => (
+                  <span key={individual.iri} title={individual.iri} style={{ fontSize: '11px', color: C.textPrimary, background: C.surface, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '3px 7px' }}>
+                    {individual.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', background: C.surface, overflow: 'hidden' }}>
         <div style={{ padding: '9px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
           <span style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary }}>Taxonomy Browser</span>
@@ -733,6 +779,12 @@ export default function OntologyMapper() {
     };
   };
 
+  const resolveSelectedOntologyOption = useCallback((options, selectedValue) => {
+    if (!Array.isArray(options) || options.length === 0) return null;
+    const selected = options.find((o) => o.value === selectedValue);
+    return selected || options[0] || null;
+  }, []);
+
   // Get ontology options from centralized context (shared across all components)
   const { ontologies: contextOntologies, fetchOntologies } = useOntologies();
 
@@ -750,9 +802,12 @@ export default function OntologyMapper() {
       }
 
       // Initialize defaults only once (or if current selection no longer exists)
-      const hasSelectedMapping = !!selectedMapping && options.some((o) => o.value === selectedMapping);
-      const selectedOption = hasSelectedMapping ? options.find((o) => o.value === selectedMapping) : options[0];
-      if (!hasSelectedMapping) {
+      const selectedOption = resolveSelectedOntologyOption(options, selectedMapping);
+      if (!selectedOption) {
+        return;
+      }
+
+      if (selectedOption.value !== selectedMapping) {
         setSelectedMapping(selectedOption.value);
       }
 
@@ -776,7 +831,7 @@ export default function OntologyMapper() {
       setMappingOptionsError(errorMsg);
       console.warn('Failed to process ontologies:', e);
     }
-  }, [contextOntologies, buildOntologyOptions, selectedMapping, selectedMappingType, selectedOntologyApi, sourceOntologyPrefix, targetOntologyPrefix]);
+  }, [contextOntologies, buildOntologyOptions, resolveSelectedOntologyOption, selectedMapping, selectedMappingType, selectedOntologyApi, sourceOntologyPrefix, targetOntologyPrefix]);
 
   useEffect(() => {
     if (!selectedMappingType) {
@@ -1014,11 +1069,12 @@ export default function OntologyMapper() {
       const opts = buildOntologyOptions(refreshedOntologies || []);
       setMappingOptions(opts);
       if (opts.length > 0) {
-        const stillSelected = opts.find((o) => o.value === selectedMapping);
-        const next = stillSelected || opts[0];
-        setSelectedMapping(next.value);
-        setSelectedMappingType(next.type);
-        setSelectedOntologyApi(next.prefix || next.ontologyKey || next.value || '');
+        const next = resolveSelectedOntologyOption(opts, selectedMapping);
+        if (next) {
+          setSelectedMapping(next.value);
+          setSelectedMappingType(next.type);
+          setSelectedOntologyApi(next.prefix || next.ontologyKey || next.value || '');
+        }
       }
       setMergeFromId('');
       setMergeToId('');
