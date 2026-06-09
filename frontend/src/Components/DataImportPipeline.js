@@ -85,7 +85,8 @@ export default function DataImportPipeline() {
   useEffect(() => {
     try {
       const allOntologies = contextOntologies.map(ont => ({
-        id: ont.ontology_id || ont.id,
+        id: ont.ontology_id || ont.id || ont.value || ont.prefix,
+        value: ont.value || ont.ontology_id || ont.id || ont.prefix || ont.name,
         name: ont.label || ont.ontology_name || ont.name,
         file: ont.raw?.original_filename || ont.raw?.stored_filename || ont.name,
         prefix: ont.prefix || ont.ontology_prefix || '',
@@ -104,11 +105,12 @@ export default function DataImportPipeline() {
       });
       const byId = new Map();
       Array.from(byKey.values()).forEach((o) => {
-        const key = o.id || `${o.prefix}:${o.file}`;
+        const key = o.value || o.id || `${o.prefix}:${o.file}`;
         if (!byId.has(key) || o.uploaded_at > (byId.get(key).uploaded_at || '')) {
           byId.set(key, {
             ...o,
             optionKey: `${key}:${o.prefix || 'no-prefix'}:${o.file || 'no-file'}`,
+            optionValue: key,
           });
         }
       });
@@ -163,7 +165,7 @@ export default function DataImportPipeline() {
     const optionIds = new Set(
       (isImportWorkflow(selectedWorkflow)
         ? availableMappings.map(m => m.id)
-        : availableOntologies.map(o => o.id)
+        : availableOntologies.map(o => o.optionValue || o.id || o.prefix)
       ).filter(Boolean)
     );
     if (!optionIds.has(selectedOntology)) {
@@ -1017,7 +1019,9 @@ export default function DataImportPipeline() {
             >
               <option value="">Select ontology</option>
               {availableOntologies.map(o => (
-                <option key={o.optionKey || o.id} value={o.id}>{o.name || o.id}</option>
+                <option key={o.optionKey || o.optionValue || o.id} value={o.optionValue || o.id}>
+                  {o.name || o.id || o.optionValue}
+                </option>
               ))}
             </select>
             {selectedWorkflow === 'ontology.merge' && (
@@ -1038,9 +1042,11 @@ export default function DataImportPipeline() {
                 >
                   <option value="">Select target</option>
                   {availableOntologies
-                    .filter(o => o.id !== workflowOntologyId)
+                    .filter(o => (o.optionValue || o.id || o.prefix) !== workflowOntologyId)
                     .map(o => (
-                      <option key={o.optionKey || o.id} value={o.id}>{o.name || o.id}</option>
+                      <option key={o.optionKey || o.optionValue || o.id} value={o.optionValue || o.id}>
+                        {o.name || o.id || o.optionValue}
+                      </option>
                     ))}
                 </select>
               </>

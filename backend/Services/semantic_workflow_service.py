@@ -39,8 +39,34 @@ class SemanticWorkflowService:
     def _ontology_metadata(ontology_id: str) -> Dict[str, Any]:
         result = OntologyUploadManager.get_ontology(ontology_id)
         if result.get("status") != "success":
-            raise ValueError(result.get("error") or f"Ontology not found: {ontology_id}")
+            resolved = SemanticWorkflowService._resolve_ontology_id(ontology_id)
+            if not resolved or resolved == ontology_id:
+                raise ValueError(result.get("error") or f"Ontology not found: {ontology_id}")
+            result = OntologyUploadManager.get_ontology(resolved)
+            if result.get("status") != "success":
+                raise ValueError(result.get("error") or f"Ontology not found: {ontology_id}")
         return result["metadata"]
+
+    @staticmethod
+    def _resolve_ontology_id(ontology_ref: str) -> str:
+        """Resolve a user-selected ontology reference to a stored ontology_id."""
+        ref = str(ontology_ref or "").strip()
+        if not ref:
+            return ""
+        direct = OntologyUploadManager.get_ontology(ref)
+        if direct.get("status") == "success":
+            return ref
+
+        registry = OntologyUploadManager.list_ontologies()
+        if registry.get("status") != "success":
+            return ref
+
+        for meta in registry.get("ontologies", []):
+            ontology_id = str(meta.get("ontology_id") or "").strip()
+            prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or "").strip()
+            if ref in {ontology_id, prefix}:
+                return ontology_id or ref
+        return ref
 
     @staticmethod
     def _read_ontology_file(meta: Dict[str, Any]) -> str:
@@ -88,7 +114,7 @@ class SemanticWorkflowService:
 
     @classmethod
     def validate_ontology(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        ontology_id = payload.get("ontology_id")
+        ontology_id = cls._resolve_ontology_id(payload.get("ontology_id"))
         if not ontology_id:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
@@ -126,7 +152,7 @@ class SemanticWorkflowService:
 
     @classmethod
     def generate_dictionary(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        ontology_id = payload.get("ontology_id")
+        ontology_id = cls._resolve_ontology_id(payload.get("ontology_id"))
         if not ontology_id:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
@@ -159,7 +185,7 @@ class SemanticWorkflowService:
 
     @classmethod
     def generate_taxonomy(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        ontology_id = payload.get("ontology_id")
+        ontology_id = cls._resolve_ontology_id(payload.get("ontology_id"))
         if not ontology_id:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
@@ -185,8 +211,8 @@ class SemanticWorkflowService:
 
     @classmethod
     def merge_ontologies(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        source_id = payload.get("source_ontology_id") or payload.get("from_ontology_id")
-        target_id = payload.get("target_ontology_id") or payload.get("to_ontology_id")
+        source_id = cls._resolve_ontology_id(payload.get("source_ontology_id") or payload.get("from_ontology_id"))
+        target_id = cls._resolve_ontology_id(payload.get("target_ontology_id") or payload.get("to_ontology_id"))
         if not source_id or not target_id:
             raise ValueError("source_ontology_id and target_ontology_id are required")
         source = cls._ontology_metadata(source_id)
@@ -217,7 +243,7 @@ class SemanticWorkflowService:
 
     @classmethod
     def link_instances(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        ontology_id = payload.get("ontology_id")
+        ontology_id = cls._resolve_ontology_id(payload.get("ontology_id"))
         if not ontology_id:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
@@ -246,7 +272,7 @@ class SemanticWorkflowService:
 
     @classmethod
     def chunk_graph(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        ontology_id = payload.get("ontology_id")
+        ontology_id = cls._resolve_ontology_id(payload.get("ontology_id"))
         chunk_size = int(payload.get("chunk_size") or 80)
         if not ontology_id:
             raise ValueError("ontology_id is required")
