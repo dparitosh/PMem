@@ -229,8 +229,7 @@ class Neo4jSchemaCleaner:
                 if node_deleted:
                     session.run(f"""
                     MATCH (n)
-                    CALL {{
-                        WITH n
+                    CALL (n) {{
                         DETACH DELETE n
                     }} IN TRANSACTIONS OF {batch_size} ROWS
                     """).consume()
@@ -256,8 +255,7 @@ class Neo4jSchemaCleaner:
                 if count:
                     session.run(f"""
                     MATCH (n:`{node_type}`)
-                    CALL {{
-                        WITH n
+                    CALL (n) {{
                         DETACH DELETE n
                     }} IN TRANSACTIONS OF {batch_size} ROWS
                     """).consume()
@@ -292,8 +290,7 @@ class Neo4jSchemaCleaner:
         delete_query = f"""
         MATCH (n:`{label}`)
         {property_clause}
-        CALL {{
-            WITH n
+        CALL (n) {{
             DETACH DELETE n
         }} IN TRANSACTIONS OF {batch_size} ROWS
         """
@@ -391,8 +388,7 @@ class Neo4jSchemaCleaner:
         delete_query = f"""
         MATCH (n)
         {filter_clause}
-        CALL {{
-            WITH n
+        CALL (n) {{
             DETACH DELETE n
         }} IN TRANSACTIONS OF {batch_size} ROWS
         """

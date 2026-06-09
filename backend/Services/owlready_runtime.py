@@ -139,7 +139,7 @@ def _unsupported_load_result(exc: Exception, fallback_exc: Exception | None = No
             {
                 "severity": "warning",
                 "category": "load",
-                        "message": message,
+                "message": message,
             }
         ],
         "summary": {

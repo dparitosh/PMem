@@ -199,7 +199,7 @@ const TCS_GRAPH_THEME = {
 
 const LINK_COLOR = '#6B7C93';        // TCS-inspired muted steel link
 const LINK_OPACITY = 0.72;
-const LINK_STROKE_WIDTH = 3;         // ✅ Increased from 2 for clarity
+const LINK_STROKE_WIDTH = 1.6;
 const NODE_RADIUS = 14;
 const LINK_DISTANCE = 100;
 const CHARGE_STRENGTH = -150;        // ✅ Reduced from -300 to prevent node separation
@@ -215,17 +215,17 @@ const EXPAND_SYMBOL_SIZE = 8;
 const EXPAND_CIRCLE_RADIUS = 10;
  
 // NEW CONSTANTS FOR ARROWHEADS
-const ARROW_HEAD_LENGTH = 8;
-const ARROW_HEAD_WIDTH = 4;
-const ARROW_REF_X = NODE_RADIUS + 3; // Adjust so arrow starts slightly after node boundary
+const ARROW_HEAD_LENGTH = 5;
+const ARROW_HEAD_WIDTH = 2.6;
+const ARROW_REF_X = NODE_RADIUS + 1.5;
 
 const RELATIONSHIP_THEME = {
   generic: { color: LINK_COLOR, width: LINK_STROKE_WIDTH, dasharray: null, markerId: 'arrowhead-generic' },
-  DOMAIN: { color: '#355C7D', width: 3.2, dasharray: null, markerId: 'arrowhead-domain' },
-  RANGE: { color: '#8D6E63', width: 3.2, dasharray: null, markerId: 'arrowhead-range' },
-  SUBCLASS_OF: { color: '#486581', width: 3.6, dasharray: '7 3', markerId: 'arrowhead-subclass' },
-  SUBPROPERTY_OF: { color: '#52606D', width: 3.2, dasharray: '4 3', markerId: 'arrowhead-subproperty' },
-  EQUIVALENT_CLASS: { color: '#D9A441', width: 3.4, dasharray: '3 2', markerId: 'arrowhead-equivalent' },
+  DOMAIN: { color: '#355C7D', width: 1.8, dasharray: null, markerId: 'arrowhead-domain' },
+  RANGE: { color: '#8D6E63', width: 1.8, dasharray: null, markerId: 'arrowhead-range' },
+  SUBCLASS_OF: { color: '#486581', width: 2.0, dasharray: '7 3', markerId: 'arrowhead-subclass' },
+  SUBPROPERTY_OF: { color: '#52606D', width: 1.8, dasharray: '4 3', markerId: 'arrowhead-subproperty' },
+  EQUIVALENT_CLASS: { color: '#D9A441', width: 1.9, dasharray: '3 2', markerId: 'arrowhead-equivalent' },
 };
 
 const CHAR_TIMES      = '\u00D7';     // ×   multiplication sign (close button)
@@ -416,6 +416,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const tickFrameRef = useRef(null);
   const activeTooltipNodeRef = useRef(null); // Track which node/link the tooltip is showing for
   const timeoutsRef = useRef(new Set()); // Track active timeouts for cleanup
+  const lastCenteredSearchRef = useRef('');
 
   // Helper: build close button HTML for tooltips
   const tooltipCloseBtn = `<button class="dt-tooltip-close" style="position:absolute;top:6px;right:8px;background:none;border:none;color:white;font-size:16px;cursor:pointer;line-height:1;padding:0 2px;opacity:0.85;">&times;</button>`;
@@ -2203,15 +2204,15 @@ const getPrimaryNodeLabel = useCallback((d) => {
         .attr('r', nodeSize)
         .attr('fill', d => getNodeColor((d.labels && d.labels.length > 0) ? d.labels[0] : 'Unknown'))
         .attr('stroke', '#fff')
-        .attr('stroke-width', 2)
+        .attr('stroke-width', 1)
         .style('cursor', 'pointer')
         .on('mouseover', function(event, d) {
           d3.select(this)
-            .attr('stroke-width', 3);
+            .attr('stroke-width', 1.6);
         })
         .on('mouseout', function(event, d) {
           d3.select(this)
-            .attr('stroke-width', 2);
+            .attr('stroke-width', 1.2);
         });
 
       // Add node type badges with dynamic sizing based on text length
@@ -2242,7 +2243,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           .attr('fill', d => getNodeColor((d.labels && d.labels.length > 0) ? d.labels[0] : 'Unknown'))
           .attr('fill-opacity', 0.15)
           .attr('stroke', d => getNodeColor((d.labels && d.labels.length > 0) ? d.labels[0] : 'Unknown'))
-          .attr('stroke-width', 1.5)
+          .attr('stroke-width', 1)
           .attr('class', 'tree-node-badge');
           
         // Add badge text with proper centering
@@ -2314,7 +2315,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
               return 'transparent';
             })
             .attr('stroke', '#fff')
-            .attr('stroke-width', 1.5);
+            .attr('stroke-width', 1)
           // Plus/Minus symbol
           g.append('text')
             .attr('text-anchor', 'middle')
@@ -2333,7 +2334,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
             .attr('r', 12)
             .attr('fill', 'none')
             .attr('stroke', '#6C757D')
-            .attr('stroke-width', 2)
+            .attr('stroke-width', 1.2)
             .attr('stroke-dasharray', '3,3')
             .style('opacity', d => loadingNodes.has(d.elementId) ? 1 : 0)
             .style('pointer-events', 'none');
@@ -3741,7 +3742,7 @@ const boundaryForce = (width, height) => {
       .attr('font-weight', 'bold')
       .attr('fill', TCS_GRAPH_THEME.primary)
       .attr('stroke', 'white')
-      .attr('stroke-width', '3')
+      .attr('stroke-width', '1.4')
       .attr('paint-order', 'stroke fill')
       .text(`Nodes: ${renderData.nodes.length}`);
     
@@ -3962,7 +3963,7 @@ const boundaryForce = (width, height) => {
             .attr('r', NODE_RADIUS + 6)
             .attr('fill', 'none')
             .attr('stroke', '#FFD700')
-            .attr('stroke-width', 3)
+            .attr('stroke-width', 1.4)
             .attr('stroke-dasharray', '4,3')
             .style('opacity', d => {
               const nm = (d.name || d.properties?.name || '').toLowerCase();
@@ -4070,7 +4071,7 @@ const boundaryForce = (width, height) => {
             .attr('r', NODE_RADIUS + 5)
             .attr('fill', 'none')
             .attr('stroke', '#6C757D')
-            .attr('stroke-width', 2)
+            .attr('stroke-width', 1.2)
             .attr('stroke-dasharray', '5,5')
             .style('opacity', d => loadingNodes.has(d.elementId) ? 1 : 0)
             .style('pointer-events', 'none');
@@ -4087,10 +4088,10 @@ const boundaryForce = (width, height) => {
 
             d3.select(this).select('.main-icon')
               .attr('stroke', 'black')
-              .attr('stroke-width', 2);
+              .attr('stroke-width', 1.2);
             d3.select(this).select('.fallback-circle')
               .attr('stroke', 'black')
-              .attr('stroke-width', 1.5);
+              .attr('stroke-width', 1);
             d3.select(tooltipRef.current).style('z-index', 12).style('pointer-events', 'auto');
             d3.select(tooltipRef.current).style('opacity', 0.9);
             
@@ -4392,7 +4393,7 @@ const boundaryForce = (width, height) => {
     });
 
     // Center the view on search results
-    if (searchQuery && filteredData.nodes.length > 0) {
+    if (searchQuery && filteredData.nodes.length > 0 && lastCenteredSearchRef.current !== searchQuery) {
       // Calculate the bounding box of all nodes
       const nodePositions = filteredData.nodes.map(d => ({x: d.x || 0, y: d.y || 0}));
       const minX = Math.min(...nodePositions.map(d => d.x));
@@ -4412,6 +4413,9 @@ const boundaryForce = (width, height) => {
         d3.zoom().transform,
         transform
       );
+      lastCenteredSearchRef.current = searchQuery;
+    } else if (!searchQuery && lastCenteredSearchRef.current) {
+      lastCenteredSearchRef.current = '';
     }
  
     // Performance monitoring
@@ -4469,7 +4473,7 @@ const boundaryForce = (width, height) => {
           .attr('r', 18)
           .attr('fill', 'none')
           .attr('stroke', '#FFD700')
-          .attr('stroke-width', 3)
+          .attr('stroke-width', 1.4)
           .attr('stroke-dasharray', '4,3')
           .style('pointer-events', 'none');
         // Pulse animation
@@ -4490,7 +4494,7 @@ const boundaryForce = (width, height) => {
       const isHighlighted = hasHighlights && highlightedNodeNames.has(nm);
       const rect = row.select('rect');
       if (isHighlighted) {
-        rect.attr('fill', '#FFF9C4').attr('stroke', '#FFD700').attr('stroke-width', 2);
+        rect.attr('fill', '#FFF9C4').attr('stroke', '#FFD700').attr('stroke-width', 1.25);
       }
     });
   }, [highlightedNodeNames]);

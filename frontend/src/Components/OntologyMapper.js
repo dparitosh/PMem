@@ -337,7 +337,7 @@ function VocabularyTable({ edges, filter }) {
   );
 }
 
-function TaxonomyView({ nodes, edges, filter, taxonomy }) {
+function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
   const lc = filter.toLowerCase();
   const taxonomyNodes = taxonomy?.nodes?.length ? taxonomy.nodes : nodes;
   const taxonomyEdges = taxonomy?.edges?.length ? taxonomy.edges : edges;
@@ -504,6 +504,9 @@ function TaxonomyView({ nodes, edges, filter, taxonomy }) {
           { label: 'Terms', value: visibleNodes.length },
           { label: 'Namespaces', value: prefixGroups.length },
           { label: 'Taxonomy Links', value: relationCount },
+          { label: 'OWL Classes', value: reasoning?.summary?.classes ?? taxonomy?.reasoning_summary?.classes ?? 0 },
+          { label: 'OWL Properties', value: (reasoning?.summary?.object_properties ?? taxonomy?.reasoning_summary?.object_properties ?? 0) + (reasoning?.summary?.datatype_properties ?? taxonomy?.reasoning_summary?.datatype_properties ?? 0) },
+          { label: 'Individuals', value: reasoning?.summary?.individuals ?? taxonomy?.reasoning_summary?.individuals ?? 0 },
         ].map((item) => (
           <div key={item.label} style={{ background: C.surface, padding: '10px 12px' }}>
             <div style={{ fontSize: '10px', fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>{item.label}</div>
@@ -515,12 +518,29 @@ function TaxonomyView({ nodes, edges, filter, taxonomy }) {
       <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', background: C.surface, overflow: 'hidden' }}>
         <div style={{ padding: '9px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
           <span style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary }}>Taxonomy Browser</span>
-          {taxonomy?.extraction_source && (
-            <span style={{ fontSize: '10px', fontWeight: 700, color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
-              Source: {taxonomy.extraction_source}
-            </span>
-          )}
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {taxonomy?.extraction_source && (
+              <span style={{ fontSize: '10px', fontWeight: 700, color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
+                Taxonomy: {taxonomy.extraction_source}
+              </span>
+            )}
+            {reasoning?.engine === 'owlready2' && (
+              <span style={{ fontSize: '10px', fontWeight: 700, color: C.primary, background: C.primaryLight, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
+                Owlready2 semantics
+              </span>
+            )}
+          </div>
         </div>
+        {Array.isArray(reasoning?.diagnostics) && reasoning.diagnostics.length > 0 && (
+          <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, background: C.bg, display: 'grid', gap: '6px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Reasoning diagnostics</div>
+            {reasoning.diagnostics.slice(0, 3).map((item, idx) => (
+              <div key={`${item.category || 'diag'}-${idx}`} style={{ fontSize: '12px', color: C.textPrimary, lineHeight: 1.45 }}>
+                <strong style={{ color: item.severity === 'warning' ? C.red : C.primary }}>{item.category || item.severity}</strong>: {item.message}
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{ maxHeight: '520px', overflow: 'auto', padding: '10px 12px', display: 'grid', gap: '10px' }}>
           {relationCount > 0 && visibleNodes.length > TAXONOMY_MAX_RENDERED_NODES && (
             <div style={{
@@ -621,6 +641,7 @@ export default function OntologyMapper() {
   const [mappingEdges, setMappingEdges] = useState([]);
   const [vocabEdges, setVocabEdges] = useState([]);
   const [taxonomy, setTaxonomy] = useState(null);
+  const [reasoning, setReasoning] = useState(null);
   const [sourceOntologyPrefix, setSourceOntologyPrefix] = useState('');
   const [targetOntologyPrefix, setTargetOntologyPrefix] = useState('');
   const [sourceOntologyDictionary, setSourceOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
@@ -777,13 +798,15 @@ export default function OntologyMapper() {
       try {
         // Use selectedOntologyApi (the currently selected uploaded ontology prefix).
         // The backend now supports any prefix via generic /{prefix}/data-dictionary routes.
-        const [dictRes, mapRes, taxonomyRes] = await Promise.allSettled([
+        const [dictRes, mapRes, taxonomyRes, reasoningRes] = await Promise.allSettled([
           API_METHODS.ontology.getDataDictionary(selectedOntologyApi),
           API_METHODS.ontology.getMappings(targetOntologyPrefix || selectedOntologyApi, selectedMappingType),
-          API_METHODS.ontology.getTaxonomy(selectedMapping || selectedOntologyApi),
+          API_METHODS.ontology.getTaxonomy(selectedOntologyApi),
+          API_METHODS.ontology.getReasoning(selectedOntologyApi),
         ]);
 
         const taxonomyData = taxonomyRes.status === 'fulfilled' ? taxonomyRes.value.data : null;
+        const reasoningData = reasoningRes.status === 'fulfilled' ? reasoningRes.value.data : null;
         const dictDataRaw = (dictRes.status === 'fulfilled' ? dictRes.value.data.data : null) || {};
         const dictData = Object.keys(dictDataRaw.entities || {}).length > 0
           ? dictDataRaw
@@ -838,11 +861,16 @@ export default function OntologyMapper() {
         setMappingEdges(edges);
         setVocabEdges(vocabFromDict);
         setTaxonomy(taxonomyData);
+        setReasoning(reasoningData);
         setStats({
           total_terms: taxonomyData
             ? taxonomyData?.summary?.terms ?? nodes.length
             : nodes.length,
           total_vocabulary_mappings: vocabFromDict.length,
+          owlready_classes: reasoningData?.summary?.classes ?? taxonomyData?.reasoning_summary?.classes ?? 0,
+          owlready_object_properties: reasoningData?.summary?.object_properties ?? taxonomyData?.reasoning_summary?.object_properties ?? 0,
+          owlready_datatype_properties: reasoningData?.summary?.datatype_properties ?? taxonomyData?.reasoning_summary?.datatype_properties ?? 0,
+          owlready_individuals: reasoningData?.summary?.individuals ?? taxonomyData?.reasoning_summary?.individuals ?? 0,
         });
       } catch (e) {
         if (cancelled) return;
@@ -1153,7 +1181,7 @@ export default function OntologyMapper() {
             <DataDictionaryTable nodes={data.nodes} filter={filter} prefixFilter={prefixFilter} onPrefixFilterChange={setPrefixFilter} />
           )}
           {activeView === 'taxonomy' && (
-            <TaxonomyView nodes={data.nodes} edges={vocabEdges} filter={filter} taxonomy={taxonomy} />
+          <TaxonomyView nodes={data.nodes} edges={vocabEdges} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
           )}
           {activeView === 'vocabulary' && (
             <VocabularyTable edges={vocabEdges} filter={filter} />

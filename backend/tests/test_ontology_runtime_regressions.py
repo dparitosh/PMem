@@ -174,3 +174,22 @@ def test_taxonomy_payload_includes_reasoning_summary(tmp_path: Path, monkeypatch
     assert taxonomy["extraction_source"] == "owlready2"
     assert taxonomy["reasoning_summary"]["classes"] == 2
     assert reasoning["summary"]["subclass_edges"] == 1
+
+
+def test_owlready_unsupported_payload_is_structured(tmp_path: Path):
+    if not OwlreadyOntologyRuntime.is_available():
+        import pytest
+        pytest.skip("owlready2 is not installed in this Python environment")
+
+    broken_path = tmp_path / "broken.owl"
+    broken_path.write_text("this is not rdf", encoding="utf-8")
+
+    result = OwlreadyOntologyRuntime.inspect_ontology(broken_path, "broken")
+
+    assert result["engine"] == "owlready2"
+    assert result["available"] is True
+    assert result["status"] in {"unsupported", "success"}
+    assert "diagnostics" in result
+    if result["status"] == "unsupported":
+        assert result["summary"]["classes"] == 0
+        assert result["diagnostics"][0]["category"] == "load"

@@ -143,6 +143,19 @@ input[type="text"]::placeholder {
     overflow: auto !important;
 }
 
+.link {
+    stroke-width: 1.4px;
+    stroke-linecap: round;
+}
+
+.link.highlighted {
+    stroke-width: 1.9px !important;
+}
+
+.node-group {
+    will-change: transform;
+}
+
 /* Graph Node Enhancements */
 .node-group {
     transition: all 0.3s ease;
