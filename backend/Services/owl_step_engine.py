@@ -16,19 +16,32 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 from loguru import logger
 import shutil
+from urllib.parse import quote
 
 try:
-    from rdflib import Graph, URIRef
+    from rdflib import Graph, Literal, Namespace, URIRef
+    from rdflib.namespace import DCTERMS, OWL, RDF, RDFS, SKOS, XSD
     _RDFLIB_IMPORT_ERROR = None
 except ModuleNotFoundError as exc:
     Graph = None  # type: ignore[assignment]
+    Literal = str  # type: ignore[assignment]
+    Namespace = str  # type: ignore[assignment]
     URIRef = str  # type: ignore[assignment]
+    DCTERMS = OWL = RDF = RDFS = SKOS = XSD = None  # type: ignore[assignment]
     _RDFLIB_IMPORT_ERROR = exc
 
 try:
-    from .ap242_domain_model import describe_ap242_domain_model, describe_ap242_mbd_bom
+    from .ap242_domain_model import (
+        AP242_MBD_BOM_NAMESPACE,
+        describe_ap242_domain_model,
+        describe_ap242_mbd_bom,
+    )
 except ImportError:
-    from ap242_domain_model import describe_ap242_domain_model, describe_ap242_mbd_bom  # type: ignore
+    from ap242_domain_model import (  # type: ignore
+        AP242_MBD_BOM_NAMESPACE,
+        describe_ap242_domain_model,
+        describe_ap242_mbd_bom,
+    )
 
 # Paths adjusted for backend Services layout
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -36,6 +49,34 @@ _DEFAULT_STP_OUTPUT = _BACKEND_DIR / "output" / "stp"
 _REFERENCE_ONTOLOGY_SRC = _BACKEND_DIR / "ontologies" / "generated"
 _AP242_ONTO_URI = URIRef("http://IAE-depo.com/ap242-ontology")
 _AP242_PACKAGE_MODE = os.getenv("AP242_REFERENCE_PACKAGE", "full").strip().lower()
+_STEP_NS_URI = "http://www.step-nc.org/step#"
+_AP242_NS_URI = "http://www.step-nc.org/ap242#"
+_PMI_NS_URI = "http://depo-onto.local/ontology/pmi#"
+_PROV_NS_URI = "http://www.w3.org/ns/prov#"
+_BOM_NS_URI = AP242_MBD_BOM_NAMESPACE.rstrip("/") + "#"
+_STEP = Namespace(_STEP_NS_URI)
+_AP242 = Namespace(_AP242_NS_URI)
+_PMI = Namespace(_PMI_NS_URI)
+_BOM = Namespace(_BOM_NS_URI)
+_PROV = Namespace(_PROV_NS_URI)
+
+_AP242_PART_DATA_MODEL_MAPPINGS = {
+    "PRODUCT": "Part",
+    "PRODUCT_DEFINITION_FORMATION": "PartVersion",
+    "PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE": "PartVersion",
+    "PRODUCT_DEFINITION": "PartView",
+    "PRODUCT_DEFINITION_SHAPE": "PartShapeElement",
+    "NEXT_ASSEMBLY_USAGE_OCCURRENCE": "PartViewRelationship",
+    "ASSEMBLY_COMPONENT_USAGE": "PartViewRelationship",
+    "SHAPE_REPRESENTATION": "GeometricModel",
+    "ADVANCED_BREP_SHAPE_REPRESENTATION": "GeometricModel",
+    "GEOMETRIC_REPRESENTATION_CONTEXT": "GeometricContext",
+    "DIMENSIONAL_SIZE": "GeometricDimension",
+    "DIMENSIONAL_LOCATION": "GeometricDimension",
+    "GEOMETRIC_TOLERANCE": "GeometricTolerance",
+    "DATUM_FEATURE": "DatumFeature",
+    "DATUM": "Datum",
+}
 
 
 def _read_backend_env_value(key: str) -> str:
@@ -127,9 +168,6 @@ def convert_step_to_ttl(file_path: Path, output_path: Optional[Path] = None,
         # Parse metadata using enhanced approach
         metadata = _parse_enhanced_metadata(file_path, format_detected)
         
-        # Initialize TTL content
-        ttl_content = _generate_ttl_header(base_uri, namespace_prefix, metadata)
-        
         # Statistics tracking
         stats = {
             "format": format_detected,
@@ -142,12 +180,13 @@ def convert_step_to_ttl(file_path: Path, output_path: Optional[Path] = None,
             "processing_time": 0
         }
         
+        pmi_doc = None
+        entities: List[StepP21Entity] = []
         if include_pmi:
             # Use enhanced PMI parser for comprehensive extraction
             logger.info("Extracting PMI data using enhanced parser...")
             pmi_doc = parse_step_with_pmi(file_path)
-            ttl_content += _convert_basic_entities_to_ttl(pmi_doc.entities, base_uri, namespace_prefix)
-            ttl_content += _convert_pmi_to_ttl(pmi_doc, base_uri, namespace_prefix)
+            entities = list(pmi_doc.entities)
             
             pmi_stats = get_pmi_summary(pmi_doc)
             stats.update({
@@ -164,11 +203,15 @@ def convert_step_to_ttl(file_path: Path, output_path: Optional[Path] = None,
             # Use lightweight parser for basic entity extraction
             logger.info("Extracting basic entities using lightweight parser...")
             entities = list(external_iter_entities(file_path))
-            ttl_content += _convert_basic_entities_to_ttl(entities, base_uri, namespace_prefix)
             stats["entities_processed"] = len(entities)
         
-        # Add entity mappings and relationships
-        ttl_content += _generate_step_ontology_classes(base_uri, namespace_prefix)
+        ttl_content = _generate_step_rdf_ttl(
+            entities=entities,
+            metadata=metadata,
+            base_uri=base_uri,
+            namespace_prefix=namespace_prefix,
+            pmi_doc=pmi_doc,
+        )
         
         # Domain model validation (if requested and available)
         if validate_against_domain:
@@ -233,144 +276,270 @@ def _parse_enhanced_metadata(file_path: Path, format_type: str) -> StepFileMeta:
         )
 
 
-def _generate_ttl_header(base_uri: str, prefix: str, metadata: StepFileMeta) -> str:
-    """Generate TTL file header with ontology declarations."""
-    schema_line = f'    step:fileSchema "{metadata.file_schema}" ;\n' if metadata.file_schema else ""
-    namespace_line = f'    step:schemaNamespace "{metadata.namespace}" ;\n' if metadata.namespace else ""
-    schema_location_line = f'    step:schemaLocation "{metadata.schema_location}" ;\n' if metadata.schema_location else ""
-    schema_version_line = f'    step:schemaVersion "{metadata.schema_version}" ;\n' if metadata.schema_version else ""
-    header = f"""@prefix {prefix}: <{base_uri}> .
-@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-@prefix owl: <http://www.w3.org/2002/07/owl#> .
-@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-@prefix sh: <http://www.w3.org/ns/shacl#> .
-@prefix pmi: <http://example.org/pmi#> .
-@prefix step: <http://www.step-nc.org/step#> .
-
-<{base_uri}> a owl:Ontology ;
-    rdfs:label "STEP File Ontology" ;
-    rdfs:comment "Generated from STEP file: {metadata.file_name}" ;
-    owl:imports <{_AP242_ONTO_URI}> ;
-    owl:versionInfo "1.0" ;
-{schema_line}
-{namespace_line}
-{schema_location_line}
-{schema_version_line}
-    step:sourceFormat "{metadata.format}" .
-
-"""
-    return header
+def _as_namespace_uri(base_uri: str) -> str:
+    """Return a URI namespace safe enough for generated local names."""
+    cleaned = (base_uri or "http://depo-onto.local/step#").strip()
+    if not cleaned:
+        cleaned = "http://depo-onto.local/step#"
+    if not cleaned.endswith(("#", "/")):
+        cleaned += "#"
+    return quote(cleaned, safe=":/#%?=&")
 
 
-def _convert_pmi_to_ttl(pmi_doc: StepPMIDocument, base_uri: str, prefix: str) -> str:
-    """Convert PMI document to TTL format."""
-    ttl = "\n# PMI (Product Manufacturing Information) Data\n\n"
-    
-    # Convert geometric tolerances
-    for tol in pmi_doc.geometric_tolerances:
-        tol_uri = f"{base_uri}tolerance_{tol.id}"
-        ttl += f"""<{tol_uri}> a pmi:GeometricTolerance ;
-    rdfs:label "{tol.name or f'Tolerance_{tol.id}'}" ;
-    pmi:toleranceType "{tol.tolerance_type}" ;
-    pmi:magnitude {tol.magnitude or 0.0} ;
-    pmi:unit "{tol.unit or 'mm'}" ;
-    pmi:description "{tol.description or ''}" .
-
-"""
-    
-    # Convert datums
-    for datum in pmi_doc.datums:
-        datum_uri = f"{base_uri}datum_{datum.id}"
-        ttl += f"""<{datum_uri}> a pmi:Datum ;
-    rdfs:label "{datum.name or f'Datum_{datum.id}'}" ;
-    pmi:datumLabel "{datum.label or ''}" ;
-    pmi:datumType "{datum.datum_type or 'UNKNOWN'}" .
-
-"""
-    
-    # Convert dimensions
-    for dim in pmi_doc.dimensions:
-        dim_uri = f"{base_uri}dimension_{dim.id}"
-        ttl += f"""<{dim_uri}> a pmi:Dimension ;
-    rdfs:label "{dim.name or f'Dimension_{dim.id}'}" ;
-    pmi:dimensionType "{dim.dimension_type}" ;
-    pmi:nominalValue {dim.nominal_value or 0.0} ;
-    pmi:unit "{dim.unit or 'mm'}" .
-
-"""
-    
-    # Convert annotations
-    for ann in pmi_doc.annotations:
-        ann_uri = f"{base_uri}annotation_{ann.id}"
-        ttl += f"""<{ann_uri}> a pmi:Annotation ;
-    rdfs:label "{ann.name or f'Annotation_{ann.id}'}" ;
-    pmi:annotationType "{ann.annotation_type}" ;
-    pmi:textContent "{ann.text or ''}" .
-
-"""
-    
-    return ttl
+def _entity_uri(instance_ns: Namespace, step_id: int) -> URIRef:
+    return instance_ns[f"entity_{step_id}"]
 
 
-def _convert_basic_entities_to_ttl(entities: List, base_uri: str, prefix: str) -> str:
-    """Convert basic STEP entities to TTL format."""
-    ttl = "\n# Basic STEP Entities\n\n"
-    
+def _literal_if_value(graph: Graph, subject: URIRef, predicate: URIRef, value: Any, datatype: Optional[URIRef] = None) -> None:
+    if value is None:
+        return
+    if isinstance(value, str) and value == "":
+        return
+    graph.add((subject, predicate, Literal(value, datatype=datatype)))
+
+
+def _display_label(entity_type: str) -> str:
+    return (entity_type or "").replace("_", " ").title()
+
+
+def _declare_class(graph: Graph, class_uri: URIRef, label: str, parent: Optional[URIRef] = None, comment: str = "") -> None:
+    graph.add((class_uri, RDF.type, OWL.Class))
+    graph.add((class_uri, RDFS.label, Literal(label)))
+    if parent is not None:
+        graph.add((class_uri, RDFS.subClassOf, parent))
+    if comment:
+        graph.add((class_uri, RDFS.comment, Literal(comment)))
+
+
+def _declare_object_property(graph: Graph, prop: URIRef, label: str, domain: URIRef, range_: URIRef, comment: str = "") -> None:
+    graph.add((prop, RDF.type, OWL.ObjectProperty))
+    graph.add((prop, RDFS.label, Literal(label)))
+    graph.add((prop, RDFS.domain, domain))
+    graph.add((prop, RDFS.range, range_))
+    if comment:
+        graph.add((prop, RDFS.comment, Literal(comment)))
+
+
+def _declare_datatype_property(graph: Graph, prop: URIRef, label: str, domain: URIRef, range_: URIRef, comment: str = "") -> None:
+    graph.add((prop, RDF.type, OWL.DatatypeProperty))
+    graph.add((prop, RDFS.label, Literal(label)))
+    graph.add((prop, RDFS.domain, domain))
+    graph.add((prop, RDFS.range, range_))
+    if comment:
+        graph.add((prop, RDFS.comment, Literal(comment)))
+
+
+def _add_ref_links(graph: Graph, subject: URIRef, refs: List[int], entity_map: Dict[int, StepP21Entity], instance_ns: Namespace, predicate: URIRef) -> None:
+    for ref_id in sorted(set(refs or [])):
+        target = _entity_uri(instance_ns, ref_id)
+        graph.add((subject, predicate, target))
+        if ref_id not in entity_map:
+            graph.add((target, RDF.type, OWL.NamedIndividual))
+            graph.add((target, RDF.type, _STEP.Entity))
+            graph.add((target, RDFS.label, Literal(f"Unresolved STEP reference #{ref_id}")))
+            graph.add((target, _STEP.stepId, Literal(ref_id, datatype=XSD.integer)))
+
+
+def _generate_step_rdf_ttl(
+    entities: List[StepP21Entity],
+    metadata: StepFileMeta,
+    base_uri: str,
+    namespace_prefix: str,
+    pmi_doc: Optional[StepPMIDocument] = None,
+) -> str:
+    """Generate AP242-aligned STEP instance ontology using rdflib."""
+    if Graph is None:
+        raise RuntimeError(
+            "rdflib is required for STEP/AP242 ontology generation. "
+            "Run backend\\setup.bat --backend or install backend requirements."
+        ) from _RDFLIB_IMPORT_ERROR
+
+    instance_ns = Namespace(_as_namespace_uri(base_uri))
+    prefix = (namespace_prefix or "inst").strip() or "inst"
+    if prefix in {"rdf", "rdfs", "owl", "xsd", "sh", "skos", "dcterms", "prov", "step", "ap242", "pmi", "bom"}:
+        prefix = "inst"
+
+    graph = Graph()
+    graph.bind(prefix, instance_ns)
+    graph.bind("step", _STEP)
+    graph.bind("ap242", _AP242)
+    graph.bind("pmi", _PMI)
+    graph.bind("bom", _BOM)
+    graph.bind("skos", SKOS)
+    graph.bind("dcterms", DCTERMS)
+    graph.bind("prov", _PROV)
+
+    ontology_uri = URIRef(str(instance_ns))
+    graph.add((ontology_uri, RDF.type, OWL.Ontology))
+    graph.add((ontology_uri, RDFS.label, Literal("AP242 STEP Instance Ontology")))
+    graph.add((ontology_uri, RDFS.comment, Literal(f"Generated from STEP file: {metadata.file_name}")))
+    graph.add((ontology_uri, OWL.imports, _AP242_ONTO_URI))
+    graph.add((ontology_uri, OWL.imports, URIRef(_AP242_NS_URI)))
+    graph.add((ontology_uri, OWL.versionInfo, Literal("2.0")))
+    _literal_if_value(graph, ontology_uri, _STEP.fileSchema, metadata.file_schema)
+    _literal_if_value(graph, ontology_uri, _STEP.schemaNamespace, metadata.namespace)
+    _literal_if_value(graph, ontology_uri, _STEP.schemaLocation, metadata.schema_location)
+    _literal_if_value(graph, ontology_uri, _STEP.schemaVersion, metadata.schema_version)
+    _literal_if_value(graph, ontology_uri, _STEP.sourceFormat, metadata.format)
+
+    _declare_class(
+        graph,
+        _STEP.Entity,
+        "STEP Entity",
+        OWL.Thing,
+        "A concrete entity instance parsed from an ISO 10303 Part 21 or Part 28 exchange file.",
+    )
+    _declare_class(graph, _PMI.GeometricTolerance, "Geometric Tolerance", _STEP.Entity)
+    _declare_class(graph, _PMI.Datum, "Datum", _STEP.Entity)
+    _declare_class(graph, _PMI.Dimension, "Dimension", _STEP.Entity)
+    _declare_class(graph, _PMI.Annotation, "Annotation", _STEP.Entity)
+    _declare_class(graph, _PMI.SurfaceFinish, "Surface Finish", _STEP.Entity)
+
+    _declare_object_property(
+        graph,
+        _STEP.references,
+        "references",
+        _STEP.Entity,
+        _STEP.Entity,
+        "Preserves STEP #id references as RDF object edges for traceability and graph traversal.",
+    )
+    _declare_object_property(
+        graph,
+        _STEP.mapsToAp242BusinessObjectClass,
+        "maps to AP242 business object class",
+        OWL.Class,
+        OWL.Class,
+        "Alignment from AP242 AIM/STEP entity classes to AP242 MBD business-object data model classes.",
+    )
+    _declare_object_property(graph, _STEP.representsStepEntity, "represents STEP entity", OWL.Thing, _STEP.Entity)
+    _declare_datatype_property(graph, _STEP.stepId, "STEP id", _STEP.Entity, XSD.integer)
+    _declare_datatype_property(graph, _STEP.entityType, "STEP entity type", _STEP.Entity, XSD.string)
+    _declare_datatype_property(graph, _STEP.rawArgs, "raw STEP arguments", _STEP.Entity, XSD.string)
+    _declare_datatype_property(graph, _STEP.fileSchema, "STEP file schema", OWL.Thing, XSD.string)
+    _declare_datatype_property(graph, _STEP.sourceFormat, "STEP source format", OWL.Thing, XSD.string)
+
+    for prop, label, range_class in [
+        (_PMI.tolerancedFeature, "toleranced feature", _STEP.Entity),
+        (_PMI.datumSystem, "datum system", _STEP.Entity),
+        (_PMI.datumFeature, "datum feature", _STEP.Entity),
+        (_PMI.measuredFeature, "measured feature", _STEP.Entity),
+        (_PMI.presentationReference, "presentation reference", _STEP.Entity),
+        (_PMI.leaderReference, "leader reference", _STEP.Entity),
+    ]:
+        _declare_object_property(graph, prop, label, OWL.Thing, range_class)
+
+    for prop, label, domain, range_ in [
+        (_PMI.toleranceType, "tolerance type", _PMI.GeometricTolerance, XSD.string),
+        (_PMI.magnitude, "magnitude", _PMI.GeometricTolerance, XSD.double),
+        (_PMI.unit, "unit", OWL.Thing, XSD.string),
+        (_PMI.datumLabel, "datum label", _PMI.Datum, XSD.string),
+        (_PMI.dimensionType, "dimension type", _PMI.Dimension, XSD.string),
+        (_PMI.nominalValue, "nominal value", _PMI.Dimension, XSD.double),
+        (_PMI.annotationType, "annotation type", _PMI.Annotation, XSD.string),
+        (_PMI.textContent, "text content", _PMI.Annotation, XSD.string),
+    ]:
+        _declare_datatype_property(graph, prop, label, domain, range_)
+
+    entity_map = {entity.step_id: entity for entity in entities}
+    encountered_types = sorted({entity.entity_type for entity in entities if entity.entity_type})
+    for entity_type in encountered_types:
+        ap242_class = _AP242[entity_type]
+        _declare_class(
+            graph,
+            ap242_class,
+            _display_label(entity_type),
+            _STEP.Entity,
+            f"AP242/STEP entity class generated from encountered entity type {entity_type}.",
+        )
+        graph.add((ap242_class, SKOS.notation, Literal(entity_type)))
+        mapped_bom_class = _AP242_PART_DATA_MODEL_MAPPINGS.get(entity_type)
+        if mapped_bom_class:
+            bom_class = _BOM[mapped_bom_class]
+            _declare_class(graph, bom_class, mapped_bom_class, OWL.Thing)
+            graph.add((ap242_class, _STEP.mapsToAp242BusinessObjectClass, bom_class))
+            graph.add((ap242_class, SKOS.closeMatch, bom_class))
+
     for entity in entities:
-        entity_uri = f"{base_uri}entity_{entity.step_id}"
-        ttl += f"""<{entity_uri}> a step:{entity.entity_type} ;
-    step:stepId {entity.step_id} ;
-    step:entityType "{entity.entity_type}" ;
-    step:rawArgs "{_escape_ttl_string(entity.raw_args[:200])}" .
+        subject = _entity_uri(instance_ns, entity.step_id)
+        ap242_class = _AP242[entity.entity_type]
+        graph.add((subject, RDF.type, OWL.NamedIndividual))
+        graph.add((subject, RDF.type, _STEP.Entity))
+        graph.add((subject, RDF.type, ap242_class))
+        mapped_bom_class = _AP242_PART_DATA_MODEL_MAPPINGS.get(entity.entity_type)
+        if mapped_bom_class:
+            graph.add((subject, RDF.type, _BOM[mapped_bom_class]))
+        graph.add((subject, RDFS.label, Literal(f"#{entity.step_id} {entity.entity_type}")))
+        graph.add((subject, SKOS.notation, Literal(f"#{entity.step_id}")))
+        graph.add((subject, _STEP.stepId, Literal(entity.step_id, datatype=XSD.integer)))
+        graph.add((subject, _STEP.entityType, Literal(entity.entity_type)))
+        graph.add((subject, _STEP.rawArgs, Literal((entity.raw_args or "")[:1000])))
+        _literal_if_value(graph, subject, _STEP.fileSchema, metadata.file_schema)
+        _literal_if_value(graph, subject, DCTERMS.source, metadata.file_name)
+        _add_ref_links(graph, subject, entity.ref_ids, entity_map, instance_ns, _STEP.references)
 
-"""
-    
-    return ttl
+    if pmi_doc is not None:
+        _add_pmi_instances(graph, pmi_doc, instance_ns, entity_map)
+
+    return graph.serialize(format="turtle")
 
 
-def _generate_step_ontology_classes(base_uri: str, prefix: str) -> str:
-    """Generate STEP ontology class definitions."""
-    return f"""
-# STEP Ontology Classes
-pmi:GeometricTolerance rdfs:subClassOf owl:Thing ;
-    rdfs:label "Geometric Tolerance" ;
-    rdfs:comment "GD&T geometric tolerance specification" .
+def _add_pmi_instances(graph: Graph, pmi_doc: StepPMIDocument, instance_ns: Namespace, entity_map: Dict[int, StepP21Entity]) -> None:
+    def _pmi_subject(kind: str, step_id: int) -> URIRef:
+        return instance_ns[f"{kind}_{step_id}"]
 
-pmi:Datum rdfs:subClassOf owl:Thing ;
-    rdfs:label "Datum" ;
-    rdfs:comment "Datum reference for geometric tolerances" .
+    for tol in pmi_doc.geometric_tolerances:
+        subject = _pmi_subject("tolerance", tol.id)
+        source = _entity_uri(instance_ns, tol.id)
+        graph.add((subject, RDF.type, OWL.NamedIndividual))
+        graph.add((subject, RDF.type, _PMI.GeometricTolerance))
+        graph.add((subject, RDFS.label, Literal(tol.name or f"Tolerance #{tol.id}")))
+        graph.add((subject, _STEP.representsStepEntity, source))
+        graph.add((subject, _PROV.wasDerivedFrom, source))
+        _literal_if_value(graph, subject, _PMI.toleranceType, tol.tolerance_type)
+        _literal_if_value(graph, subject, _PMI.magnitude, tol.magnitude, XSD.double)
+        _literal_if_value(graph, subject, _PMI.unit, tol.unit or "mm")
+        _literal_if_value(graph, subject, RDFS.comment, tol.description)
+        _add_ref_links(graph, subject, tol.toleranced_feature_refs, entity_map, instance_ns, _PMI.tolerancedFeature)
+        _add_ref_links(graph, subject, tol.datum_system_refs, entity_map, instance_ns, _PMI.datumSystem)
 
-pmi:Dimension rdfs:subClassOf owl:Thing ;
-    rdfs:label "Dimension" ;
-    rdfs:comment "Dimensional constraint or measurement" .
+    for datum in pmi_doc.datums:
+        subject = _pmi_subject("datum", datum.id)
+        source = _entity_uri(instance_ns, datum.id)
+        graph.add((subject, RDF.type, OWL.NamedIndividual))
+        graph.add((subject, RDF.type, _PMI.Datum))
+        graph.add((subject, RDFS.label, Literal(datum.name or datum.label or f"Datum #{datum.id}")))
+        graph.add((subject, _STEP.representsStepEntity, source))
+        graph.add((subject, _PROV.wasDerivedFrom, source))
+        _literal_if_value(graph, subject, _PMI.datumLabel, datum.label)
+        _literal_if_value(graph, subject, _STEP.entityType, datum.datum_type)
+        _add_ref_links(graph, subject, datum.feature_refs, entity_map, instance_ns, _PMI.datumFeature)
 
-pmi:Annotation rdfs:subClassOf owl:Thing ;
-    rdfs:label "Annotation" ;
-    rdfs:comment "Text annotation or note" .
+    for dim in pmi_doc.dimensions:
+        subject = _pmi_subject("dimension", dim.id)
+        source = _entity_uri(instance_ns, dim.id)
+        graph.add((subject, RDF.type, OWL.NamedIndividual))
+        graph.add((subject, RDF.type, _PMI.Dimension))
+        graph.add((subject, RDFS.label, Literal(dim.name or f"Dimension #{dim.id}")))
+        graph.add((subject, _STEP.representsStepEntity, source))
+        graph.add((subject, _PROV.wasDerivedFrom, source))
+        _literal_if_value(graph, subject, _PMI.dimensionType, dim.dimension_type)
+        _literal_if_value(graph, subject, _PMI.nominalValue, dim.nominal_value, XSD.double)
+        _literal_if_value(graph, subject, _PMI.unit, dim.unit or "mm")
+        _literal_if_value(graph, subject, RDFS.comment, dim.description)
+        _add_ref_links(graph, subject, dim.feature_refs, entity_map, instance_ns, _PMI.measuredFeature)
 
-step:Entity rdfs:subClassOf owl:Thing ;
-    rdfs:label "STEP Entity" ;
-    rdfs:comment "Generic STEP file entity" .
-
-# Properties
-pmi:toleranceType a owl:DatatypeProperty ;
-    rdfs:domain pmi:GeometricTolerance ;
-    rdfs:range xsd:string .
-
-pmi:magnitude a owl:DatatypeProperty ;
-    rdfs:domain pmi:GeometricTolerance ;
-    rdfs:range xsd:double .
-
-step:stepId a owl:DatatypeProperty ;
-    rdfs:domain step:Entity ;
-    rdfs:range xsd:integer .
-
-step:entityType a owl:DatatypeProperty ;
-    rdfs:domain step:Entity ;
-    rdfs:range xsd:string .
-
-"""
+    for ann in pmi_doc.annotations:
+        subject = _pmi_subject("annotation", ann.id)
+        source = _entity_uri(instance_ns, ann.id)
+        graph.add((subject, RDF.type, OWL.NamedIndividual))
+        graph.add((subject, RDF.type, _PMI.Annotation))
+        graph.add((subject, RDFS.label, Literal(ann.name or f"Annotation #{ann.id}")))
+        graph.add((subject, _STEP.representsStepEntity, source))
+        graph.add((subject, _PROV.wasDerivedFrom, source))
+        _literal_if_value(graph, subject, _PMI.annotationType, ann.annotation_type)
+        _literal_if_value(graph, subject, _PMI.textContent, ann.text)
+        _add_ref_links(graph, subject, ann.presentation_refs, entity_map, instance_ns, _PMI.presentationReference)
+        _add_ref_links(graph, subject, ann.leader_refs, entity_map, instance_ns, _PMI.leaderReference)
 
 
 def _integrate_domain_models(base_uri: str, prefix: str, schema: Optional[str]) -> str:
@@ -545,11 +714,6 @@ def copy_ap242_reference_ontology(output_dir: Path) -> Dict[str, Path]:
     return copied
 
 
-def _escape_ttl_string(s: str) -> str:
-    """Escape string for TTL format."""
-    return s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r')
-
-
 def _count_ttl_classes(ttl_content: str) -> int:
     """Count OWL classes in TTL content."""
     return ttl_content.count('rdfs:subClassOf')
@@ -562,4 +726,4 @@ def _count_ttl_properties(ttl_content: str) -> int:
 
 def _count_ttl_individuals(ttl_content: str) -> int:
     """Count OWL individuals in TTL content."""
-    return ttl_content.count(' a pmi:') + ttl_content.count(' a step:')
+    return ttl_content.count('owl:NamedIndividual')

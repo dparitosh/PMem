@@ -21,6 +21,16 @@ class CleanSchemaRequest(BaseModel):
     confirm: str | None = None
 
 
+class DeleteDataRequest(BaseModel):
+    label: str | None = None
+    prefix: str | None = None
+    property: str | None = None
+    value: str | int | float | bool | None = None
+    batch_size: int = 10000
+    dry_run: bool = False
+    confirm: str | None = None
+
+
 def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
@@ -581,6 +591,76 @@ async def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
     except Exception as e:
         logger.exception("Failed to clean schema")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/delete-data")
+async def delete_data_by_label(body: DeleteDataRequest):
+    """
+    Delete large Neo4j node sets in batches.
+
+    Example Cypher shape:
+    MATCH (n:LabelName)
+    WHERE n.property = $value
+    CALL {
+        WITH n
+        DETACH DELETE n
+    } IN TRANSACTIONS OF 10000 ROWS
+    """
+    if not SCHEMA_CLEANER_AVAILABLE or not Neo4jSchemaCleaner:
+        raise HTTPException(status_code=503, detail="Schema cleaner not available")
+
+    if body.confirm != "DELETE_NEO4J_DATA":
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmation token required: confirm='DELETE_NEO4J_DATA'",
+        )
+    if not body.label and not body.prefix:
+        raise HTTPException(status_code=400, detail="Provide either label or prefix.")
+    if body.label and body.prefix:
+        raise HTTPException(status_code=400, detail="Use either label or prefix, not both.")
+    if body.prefix and (body.property or body.value is not None):
+        raise HTTPException(status_code=400, detail="Property filters are only supported with label deletes.")
+    if body.property and body.value is None:
+        raise HTTPException(status_code=400, detail="Property value is required when property is provided.")
+    if not body.property and body.value is not None:
+        raise HTTPException(status_code=400, detail="Property name is required when value is provided.")
+
+    cleaner = None
+    try:
+        cleaner = Neo4jSchemaCleaner()
+        if body.dry_run and body.prefix:
+            result = cleaner.count_nodes_by_prefix(prefix=body.prefix)
+        elif body.dry_run:
+            result = cleaner.count_nodes_by_label_property(
+                label=body.label or "",
+                property_name=body.property,
+                property_value=body.value,
+            )
+        elif body.prefix:
+            result = cleaner.delete_nodes_by_prefix(
+                prefix=body.prefix,
+                batch_size=body.batch_size,
+            )
+        else:
+            result = cleaner.delete_nodes_by_label_property(
+                label=body.label or "",
+                property_name=body.property,
+                property_value=body.value,
+                batch_size=body.batch_size,
+            )
+        if result.get("status") != "SUCCESS":
+            raise HTTPException(status_code=400, detail=result.get("message", "Delete failed"))
+        return {"success": True, "dry_run": body.dry_run, **result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to delete Neo4j data")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if cleaner is not None:
+            cleaner.close()
 
 
 @router.get("/schema-stats")

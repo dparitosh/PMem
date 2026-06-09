@@ -1571,6 +1571,19 @@ async def get_uploaded_ontology_taxonomy(ontology_id: str):
         safe_error("/api/v1/ontology/{ontology_id}/taxonomy", e)
 
 
+@app.get("/api/v1/ontology/{ontology_id}/reason")
+async def get_uploaded_ontology_reasoning(ontology_id: str):
+    """Return Owlready2-backed classes, properties, individuals, and diagnostics."""
+    try:
+        from backend.Services.ontology_taxonomy_service import OntologyTaxonomyService
+
+        return OntologyTaxonomyService.get_reasoning(ontology_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        safe_error("/api/v1/ontology/{ontology_id}/reason", e)
+
+
 @app.get("/ontology/registered")
 async def list_ontologies_registered():
     """Alias for /ontologies/list — used by frontend OntologyContext"""

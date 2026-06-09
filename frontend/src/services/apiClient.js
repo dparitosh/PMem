@@ -201,6 +201,8 @@ export const ontologyAPI = {
     apiClient.get(buildUrl(replaceParams(API.ontology.dataDictionary, { ontology: ontologyId }))),
   getTaxonomy: (ontologyId) =>
     apiClient.get(buildUrl(replaceParams(API.ontology.taxonomy, { ontology: ontologyId }))),
+  getReasoning: (ontologyId) =>
+    apiClient.get(buildUrl(replaceParams(API.ontology.reason, { ontology: ontologyId }))),
   getMappings: (ontologyId, mappingType) => 
     apiClient.get(buildUrl(replaceParams(API.ontology.mappings, { 
       ontology: ontologyId, 
@@ -338,6 +340,18 @@ export const adminAPI = {
   registry: () => apiClient.get(buildUrl(API.admin.registry)),
   cleanSchema: () =>
     apiClient.post(buildUrl(API.admin.cleanSchema), { confirm: 'CLEAN_NEO4J_SCHEMA' }),
+  deleteData: ({ label, prefix, property, value, batchSize = 10000, dryRun = false }) =>
+    apiClient.post(buildUrl(API.admin.deleteData), {
+      label: label || null,
+      prefix: prefix || null,
+      property: property || null,
+      value: property ? value : null,
+      batch_size: batchSize,
+      dry_run: dryRun,
+      confirm: 'DELETE_NEO4J_DATA',
+    }, {
+      timeout: 300000,
+    }),
   schemaStats: () => apiClient.get(buildUrl(API.admin.schemaStats)),
   resetDatabase: (recreateIndexes = true) =>
     apiClient.post(buildUrl(API.admin.resetDatabase), null, { params: { recreate_indexes: recreateIndexes } }),

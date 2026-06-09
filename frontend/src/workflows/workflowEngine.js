@@ -204,6 +204,10 @@ export const mergeWorkflowRuntimeOptions = (catalog, runtimeOptions = []) => {
       ...workflow,
       status: normalizeWorkflowStatus(runtime.status || workflow.status),
       runtimeStatus: runtime.status || workflow.status,
+      label: runtime.label || runtime.title || workflow.label,
+      title: runtime.label || runtime.title || workflow.title,
+      category: runtime.category || workflow.category,
+      execution_surface: runtime.execution_surface || workflow.execution_surface,
       execution: runtime.execution || workflow.execution,
       prerequisite: runtime.prerequisite || workflow.prerequisite,
     };
@@ -211,7 +215,12 @@ export const mergeWorkflowRuntimeOptions = (catalog, runtimeOptions = []) => {
 };
 
 export const getWorkflowById = (workflowId) =>
-  workflowCatalog.find(workflow => workflow.id === workflowId) || workflowCatalog[0];
+  workflowCatalog.find(workflow => workflow.id === workflowId) || null;
+
+export const getWorkflowDisplayName = (workflowId) => {
+  const workflow = getWorkflowById(workflowId);
+  return workflow?.title || workflow?.label || String(workflowId || 'Selected workflow');
+};
 
 export const isImportWorkflow = (workflowId) =>
   workflowId === 'instance.import' || workflowId === 'ontology.create';

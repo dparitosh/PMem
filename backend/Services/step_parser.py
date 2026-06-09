@@ -409,7 +409,7 @@ def iter_part21_entities(file_path: Path) -> Iterator[StepP21Entity]:
 
 def _classify_cad_entity(entity: StepP21Entity) -> Optional[str]:
     et = entity.entity_type.upper()
-    if et.startswith("PRODUCT"):
+    if et in {"PRODUCT", "PRODUCT_RELATED_PRODUCT_CATEGORY", "PRODUCT_CATEGORY"}:
         return "product"
     if "REPRESENTATION" in et:
         return "representation"

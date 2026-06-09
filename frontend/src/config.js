@@ -90,6 +90,7 @@ const ONTOLOGY_ENDPOINTS = {
   registered: process.env.REACT_APP_API_ONTOLOGY_REGISTERED || '/api/v1/ontology/registered',
   get: process.env.REACT_APP_API_ONTOLOGY_GET || '/api/v1/ontology',
   taxonomy: process.env.REACT_APP_API_ONTOLOGY_TAXONOMY || '/api/v1/ontology/{ontology}/taxonomy',
+  reason: process.env.REACT_APP_API_ONTOLOGY_REASON || '/api/v1/ontology/{ontology}/reason',
   dataDictionary: process.env.REACT_APP_API_ONTOLOGY_DATA_DICTIONARY || '/api/v1/ontology/{ontology}/data-dictionary',
   prefixDataDictionary: process.env.REACT_APP_API_ONTOLOGY_PREFIX_DATA_DICTIONARY || '/api/v1/ontology/{prefix}/data-dictionary',
   mappings: process.env.REACT_APP_API_ONTOLOGY_MAPPINGS || '/api/v1/ontology/{ontology}/mappings/{type}',
@@ -184,6 +185,7 @@ const ADMIN_ENDPOINTS = {
   health: process.env.REACT_APP_API_ADMIN_HEALTH || '/api/v1/admin/health',
   registry: process.env.REACT_APP_API_ADMIN_REGISTRY || '/api/v1/admin/registry',
   cleanSchema: process.env.REACT_APP_API_ADMIN_CLEAN_SCHEMA || '/api/v1/admin/clean-schema',
+  deleteData: process.env.REACT_APP_API_ADMIN_DELETE_DATA || '/api/v1/admin/delete-data',
   schemaStats: process.env.REACT_APP_API_ADMIN_SCHEMA_STATS || '/api/v1/admin/schema-stats',
   resetDatabase: process.env.REACT_APP_API_ADMIN_RESET_DATABASE || '/api/v1/admin/reset-database',
 };

@@ -7,6 +7,7 @@ Cleans and manages Neo4j schema for testing and production use
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Dict, List, Any, Tuple
 from neo4j import GraphDatabase, Driver
@@ -28,6 +29,7 @@ except ImportError:
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 logger = logging.getLogger(__name__)
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 @dataclass
@@ -56,6 +58,27 @@ def _reject_placeholder_uri(uri: str) -> None:
             "NEO4J_URI still points to 'your-neo4j-instance'. "
             "Update backend/.env with the real Neo4j URI before cleaning schema."
         )
+
+
+def _safe_identifier(value: str, kind: str) -> str:
+    """Validate a Neo4j label/property/type identifier before interpolation."""
+    cleaned = (value or "").strip()
+    if not _IDENTIFIER_RE.fullmatch(cleaned):
+        raise ValueError(
+            f"Invalid Neo4j {kind}: {value!r}. Use letters, numbers, and underscores; "
+            "the first character must be a letter or underscore."
+        )
+    return cleaned
+
+
+def _safe_batch_size(value: int) -> int:
+    try:
+        batch_size = int(value)
+    except Exception as exc:
+        raise ValueError("Batch size must be an integer.") from exc
+    if batch_size < 100 or batch_size > 50000:
+        raise ValueError("Batch size must be between 100 and 50000.")
+    return batch_size
 
 
 class Neo4jSchemaCleaner:
@@ -187,7 +210,7 @@ class Neo4jSchemaCleaner:
             logger.error(f"[ERROR] Failed to get schema stats: {str(e)}")
             return SchemaStats(0, 0, [], [], [], [])
     
-    def delete_all_nodes_and_relationships(self) -> Tuple[bool, str]:
+    def delete_all_nodes_and_relationships(self, batch_size: int = 10000) -> Tuple[bool, str]:
         """
         Delete ALL nodes and relationships from database
         WARNING: This is destructive and cannot be undone!
@@ -196,13 +219,21 @@ class Neo4jSchemaCleaner:
             return False, "No database connection"
         
         try:
+            batch_size = _safe_batch_size(batch_size)
             with self.driver.session(database=self.database) as session:
                 rel_record = session.run("MATCH ()-[r]->() RETURN count(r) as count").single()
                 node_record = session.run("MATCH (n) RETURN count(n) as count").single()
                 rel_deleted = rel_record["count"] if rel_record else 0
                 node_deleted = node_record["count"] if node_record else 0
 
-                session.run("MATCH (n) DETACH DELETE n").consume()
+                if node_deleted:
+                    session.run(f"""
+                    MATCH (n)
+                    CALL {{
+                        WITH n
+                        DETACH DELETE n
+                    }} IN TRANSACTIONS OF {batch_size} ROWS
+                    """).consume()
                 
                 logger.warning(f"[WARN] Deleted {node_deleted} nodes and {rel_deleted} relationships")
                 return True, f"Deleted {node_deleted} nodes, {rel_deleted} relationships"
@@ -210,21 +241,221 @@ class Neo4jSchemaCleaner:
             logger.error(f"[ERROR] Failed to delete nodes: {str(e)}")
             return False, str(e)
     
-    def delete_nodes_by_type(self, node_type: str) -> Tuple[bool, str]:
-        """Delete all nodes of a specific type"""
+    def delete_nodes_by_type(self, node_type: str, batch_size: int = 10000) -> Tuple[bool, str]:
+        """Delete all nodes of a specific label in batches."""
         if not self.driver:
             return False, "No database connection"
         
         try:
+            node_type = _safe_identifier(node_type, "label")
+            batch_size = _safe_batch_size(batch_size)
             with self.driver.session(database=self.database) as session:
-                result = session.run(f"MATCH (n:{node_type}) DELETE n RETURN count(n) as count")
+                result = session.run(f"MATCH (n:`{node_type}`) RETURN count(n) as count")
                 record = result.single()
                 count = record["count"] if record else 0
+                if count:
+                    session.run(f"""
+                    MATCH (n:`{node_type}`)
+                    CALL {{
+                        WITH n
+                        DETACH DELETE n
+                    }} IN TRANSACTIONS OF {batch_size} ROWS
+                    """).consume()
                 logger.info(f"[OK] Deleted {count} nodes of type {node_type}")
                 return True, f"Deleted {count} {node_type} nodes"
         except Exception as e:
             logger.error(f"[ERROR] Failed to delete {node_type} nodes: {str(e)}")
             return False, str(e)
+
+    def delete_nodes_by_label_property(
+        self,
+        label: str,
+        property_name: str | None = None,
+        property_value: Any | None = None,
+        batch_size: int = 10000,
+    ) -> Dict[str, Any]:
+        """Delete nodes by label and optional property equality using batched transactions."""
+        if not self.driver:
+            return {"status": "FAIL", "message": "No database connection", "deleted_nodes": 0}
+
+        label = _safe_identifier(label, "label")
+        batch_size = _safe_batch_size(batch_size)
+        has_property_filter = bool(property_name)
+        property_clause = ""
+        params: Dict[str, Any] = {}
+        if has_property_filter:
+            property_name = _safe_identifier(property_name or "", "property")
+            property_clause = f"WHERE n.`{property_name}` = $property_value"
+            params["property_value"] = property_value
+
+        count_query = f"MATCH (n:`{label}`) {property_clause} RETURN count(n) AS count"
+        delete_query = f"""
+        MATCH (n:`{label}`)
+        {property_clause}
+        CALL {{
+            WITH n
+            DETACH DELETE n
+        }} IN TRANSACTIONS OF {batch_size} ROWS
+        """
+
+        try:
+            with self.driver.session(database=self.database) as session:
+                before_record = session.run(count_query, params).single()
+                before_count = before_record["count"] if before_record else 0
+                if before_count:
+                    session.run(delete_query, params).consume()
+                after_record = session.run(count_query, params).single()
+                after_count = after_record["count"] if after_record else 0
+                deleted = max(0, before_count - after_count)
+                return {
+                    "status": "SUCCESS",
+                    "message": f"Deleted {deleted} nodes with label {label}",
+                    "label": label,
+                    "property": property_name if has_property_filter else "",
+                    "property_value": property_value if has_property_filter else None,
+                    "batch_size": batch_size,
+                    "matched_before": before_count,
+                    "matched_after": after_count,
+                    "deleted_nodes": deleted,
+                }
+        except Exception as e:
+            logger.error(f"[ERROR] Failed batched delete for label {label}: {str(e)}")
+            return {
+                "status": "FAIL",
+                "message": str(e),
+                "label": label,
+                "property": property_name if has_property_filter else "",
+                "deleted_nodes": 0,
+            }
+
+    def count_nodes_by_label_property(
+        self,
+        label: str,
+        property_name: str | None = None,
+        property_value: Any | None = None,
+    ) -> Dict[str, Any]:
+        """Preview the number of nodes matching a label/property cleanup filter."""
+        if not self.driver:
+            return {"status": "FAIL", "message": "No database connection", "matched_nodes": 0}
+
+        label = _safe_identifier(label, "label")
+        has_property_filter = bool(property_name)
+        property_clause = ""
+        params: Dict[str, Any] = {}
+        if has_property_filter:
+            property_name = _safe_identifier(property_name or "", "property")
+            property_clause = f"WHERE n.`{property_name}` = $property_value"
+            params["property_value"] = property_value
+
+        count_query = f"MATCH (n:`{label}`) {property_clause} RETURN count(n) AS count"
+        try:
+            with self.driver.session(database=self.database) as session:
+                record = session.run(count_query, params).single()
+                matched = record["count"] if record else 0
+                return {
+                    "status": "SUCCESS",
+                    "message": f"Matched {matched} nodes with label {label}",
+                    "label": label,
+                    "property": property_name if has_property_filter else "",
+                    "property_value": property_value if has_property_filter else None,
+                    "matched_nodes": matched,
+                }
+        except Exception as e:
+            logger.error(f"[ERROR] Failed delete preview for label {label}: {str(e)}")
+            return {
+                "status": "FAIL",
+                "message": str(e),
+                "label": label,
+                "property": property_name if has_property_filter else "",
+                "matched_nodes": 0,
+            }
+
+    def delete_nodes_by_prefix(
+        self,
+        prefix: str,
+        batch_size: int = 10000,
+    ) -> Dict[str, Any]:
+        """Delete nodes whose ontology_prefix or prefix matches the supplied value."""
+        if not self.driver:
+            return {"status": "FAIL", "message": "No database connection", "deleted_nodes": 0}
+
+        prefix = str(prefix or "").strip()
+        if not prefix:
+            raise ValueError("Prefix is required.")
+        if len(prefix) > 100:
+            raise ValueError("Prefix must be 100 characters or fewer.")
+        batch_size = _safe_batch_size(batch_size)
+        params = {"prefix": prefix}
+        filter_clause = "WHERE coalesce(n.ontology_prefix, n.prefix) = $prefix"
+        count_query = f"MATCH (n) {filter_clause} RETURN count(n) AS count"
+        delete_query = f"""
+        MATCH (n)
+        {filter_clause}
+        CALL {{
+            WITH n
+            DETACH DELETE n
+        }} IN TRANSACTIONS OF {batch_size} ROWS
+        """
+
+        try:
+            with self.driver.session(database=self.database) as session:
+                before_record = session.run(count_query, params).single()
+                before_count = before_record["count"] if before_record else 0
+                if before_count:
+                    session.run(delete_query, params).consume()
+                after_record = session.run(count_query, params).single()
+                after_count = after_record["count"] if after_record else 0
+                deleted = max(0, before_count - after_count)
+                return {
+                    "status": "SUCCESS",
+                    "message": f"Deleted {deleted} nodes with prefix {prefix}",
+                    "prefix": prefix,
+                    "batch_size": batch_size,
+                    "matched_before": before_count,
+                    "matched_after": after_count,
+                    "deleted_nodes": deleted,
+                }
+        except Exception as e:
+            logger.error(f"[ERROR] Failed batched delete for prefix {prefix}: {str(e)}")
+            return {
+                "status": "FAIL",
+                "message": str(e),
+                "prefix": prefix,
+                "deleted_nodes": 0,
+            }
+
+    def count_nodes_by_prefix(self, prefix: str) -> Dict[str, Any]:
+        """Preview nodes whose ontology_prefix or prefix matches the supplied value."""
+        if not self.driver:
+            return {"status": "FAIL", "message": "No database connection", "matched_nodes": 0}
+
+        prefix = str(prefix or "").strip()
+        if not prefix:
+            raise ValueError("Prefix is required.")
+        if len(prefix) > 100:
+            raise ValueError("Prefix must be 100 characters or fewer.")
+
+        params = {"prefix": prefix}
+        filter_clause = "WHERE coalesce(n.ontology_prefix, n.prefix) = $prefix"
+        count_query = f"MATCH (n) {filter_clause} RETURN count(n) AS count"
+        try:
+            with self.driver.session(database=self.database) as session:
+                record = session.run(count_query, params).single()
+                matched = record["count"] if record else 0
+                return {
+                    "status": "SUCCESS",
+                    "message": f"Matched {matched} nodes with prefix {prefix}",
+                    "prefix": prefix,
+                    "matched_nodes": matched,
+                }
+        except Exception as e:
+            logger.error(f"[ERROR] Failed delete preview for prefix {prefix}: {str(e)}")
+            return {
+                "status": "FAIL",
+                "message": str(e),
+                "prefix": prefix,
+                "matched_nodes": 0,
+            }
     
     def delete_relationships_by_type(self, rel_type: str) -> Tuple[bool, str]:
         """Delete all relationships of a specific type"""

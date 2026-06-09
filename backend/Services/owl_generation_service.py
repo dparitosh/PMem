@@ -19,6 +19,7 @@ import logging
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,7 @@ class OWLGenerationService:
             stats = convert_step_to_ttl(
                 file_path=tmp_in,
                 output_path=tmp_out,
-                base_uri=f"http://depo-onto.local/step#{Path(filename).stem}/",
+                base_uri=f"http://depo-onto.local/step#{quote(Path(filename).stem, safe='')}/",
                 namespace_prefix="step",
                 include_pmi=True,
                 validate_against_domain=False,

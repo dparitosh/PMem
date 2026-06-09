@@ -71,6 +71,12 @@ export default function AdminPanel({ onSchemaCleaned }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [deleteLabel, setDeleteLabel] = useState('');
+  const [deletePrefix, setDeletePrefix] = useState('');
+  const [deleteProperty, setDeleteProperty] = useState('');
+  const [deleteValue, setDeleteValue] = useState('');
+  const [deleteBatchSize, setDeleteBatchSize] = useState(10000);
+  const [deletePreview, setDeletePreview] = useState(null);
 
   const loadAdminState = useCallback(async () => {
     setLoading(true);
@@ -168,6 +174,111 @@ export default function AdminPanel({ onSchemaCleaned }) {
     }
   }, [fetchOntologies, loadAdminState]);
 
+  const deleteDataByLabel = useCallback(async () => {
+    const label = deleteLabel.trim();
+    const prefix = deletePrefix.trim();
+    const property = deleteProperty.trim();
+    const value = deleteValue;
+    const batchSize = Number(deleteBatchSize) || 10000;
+    if (!label && !prefix) {
+      setError('Enter a Neo4j label or ontology prefix to delete.');
+      return;
+    }
+    if (label && prefix) {
+      setError('Use either label or prefix, not both.');
+      return;
+    }
+    if (prefix && (property || value !== '')) {
+      setError('Prefix delete does not use property filters. Clear property and value first.');
+      return;
+    }
+    if ((property && value === '') || (!property && value !== '')) {
+      setError('Enter both property and value, or leave both empty.');
+      return;
+    }
+
+    const filterText = prefix
+      ? `nodes where ontology_prefix/prefix = "${prefix}"`
+      : property ? `:${label} where ${property} = "${value}"` : `all :${label} nodes`;
+    const ok = window.confirm(
+      `Delete ${filterText} in batches of ${batchSize}? This cannot be undone.`
+    );
+    if (!ok) return;
+
+    setLoading(true);
+    setMessage('');
+    setError('');
+    try {
+      const result = await API_METHODS.admin.deleteData({
+        label,
+        prefix,
+        property,
+        value,
+        batchSize,
+      });
+      const deleted = result?.data?.deleted_nodes ?? 0;
+      const matched = result?.data?.matched_before ?? deleted;
+      const target = prefix ? `prefix ${prefix}` : label;
+      setMessage(`Deleted ${deleted} of ${matched} matched ${target} node(s) using batched transactions.`);
+      setDeletePreview(null);
+      await loadAdminState();
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.message || 'Batched delete failed.';
+      setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    } finally {
+      setLoading(false);
+    }
+  }, [deleteBatchSize, deleteLabel, deletePrefix, deleteProperty, deleteValue, loadAdminState]);
+
+  const previewDeleteData = useCallback(async () => {
+    const label = deleteLabel.trim();
+    const prefix = deletePrefix.trim();
+    const property = deleteProperty.trim();
+    const value = deleteValue;
+    const batchSize = Number(deleteBatchSize) || 10000;
+    if (!label && !prefix) {
+      setError('Enter a Neo4j label or ontology prefix to preview.');
+      return;
+    }
+    if (label && prefix) {
+      setError('Use either label or prefix, not both.');
+      return;
+    }
+    if (prefix && (property || value !== '')) {
+      setError('Prefix preview does not use property filters. Clear property and value first.');
+      return;
+    }
+    if ((property && value === '') || (!property && value !== '')) {
+      setError('Enter both property and value, or leave both empty.');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+    setError('');
+    try {
+      const result = await API_METHODS.admin.deleteData({
+        label,
+        prefix,
+        property,
+        value,
+        batchSize,
+        dryRun: true,
+      });
+      const matched = result?.data?.matched_nodes ?? 0;
+      const target = prefix
+        ? `prefix ${prefix}`
+        : property ? `label ${label} where ${property} = "${value}"` : `label ${label}`;
+      setDeletePreview({ matched, target, batchSize });
+      setMessage(`Preview matched ${matched} node(s) for ${target}. No data was deleted.`);
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.message || 'Delete preview failed.';
+      setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    } finally {
+      setLoading(false);
+    }
+  }, [deleteBatchSize, deleteLabel, deletePrefix, deleteProperty, deleteValue]);
+
   const statusText = useMemo(() => {
     if (loading) return 'Refreshing';
     if (error) return 'Needs attention';
@@ -218,7 +329,80 @@ export default function AdminPanel({ onSchemaCleaned }) {
           <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 7 }}>
             Controlled Cleanup
           </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 6, marginBottom: 8 }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, fontWeight: 800, color: colors.muted }}>
+              Label
+              <input
+                value={deleteLabel}
+                onChange={(event) => setDeleteLabel(event.target.value)}
+                placeholder="PRODUCT"
+                style={{ border: `1px solid ${colors.border}`, borderRadius: 4, padding: '5px 6px', fontSize: 12 }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, fontWeight: 800, color: colors.muted }}>
+              Prefix
+              <input
+                value={deletePrefix}
+                onChange={(event) => setDeletePrefix(event.target.value)}
+                placeholder="ap239domain"
+                style={{ border: `1px solid ${colors.border}`, borderRadius: 4, padding: '5px 6px', fontSize: 12 }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, fontWeight: 800, color: colors.muted }}>
+              Property
+              <input
+                value={deleteProperty}
+                onChange={(event) => setDeleteProperty(event.target.value)}
+                placeholder="import_id"
+                style={{ border: `1px solid ${colors.border}`, borderRadius: 4, padding: '5px 6px', fontSize: 12 }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, fontWeight: 800, color: colors.muted }}>
+              Value
+              <input
+                value={deleteValue}
+                onChange={(event) => setDeleteValue(event.target.value)}
+                placeholder="optional"
+                style={{ border: `1px solid ${colors.border}`, borderRadius: 4, padding: '5px 6px', fontSize: 12 }}
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, fontWeight: 800, color: colors.muted }}>
+              Batch size
+              <input
+                type="number"
+                min="100"
+                max="50000"
+                step="100"
+                value={deleteBatchSize}
+                onChange={(event) => setDeleteBatchSize(event.target.value)}
+                style={{ border: `1px solid ${colors.border}`, borderRadius: 4, padding: '5px 6px', fontSize: 12 }}
+              />
+            </label>
+          </div>
+          {deletePreview && (
+            <div style={{ fontSize: 11, color: colors.muted, margin: '0 0 8px 0', fontWeight: 700 }}>
+              Preview: {deletePreview.matched} node(s) match {deletePreview.target}. Batch size {deletePreview.batchSize}.
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={previewDeleteData}
+              disabled={loading || (!deleteLabel.trim() && !deletePrefix.trim())}
+              style={buttonStyle}
+            >
+              <RefreshCw size={10} />
+              Preview Count
+            </button>
+            <button
+              type="button"
+              onClick={deleteDataByLabel}
+              disabled={loading || (!deleteLabel.trim() && !deletePrefix.trim())}
+              style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}
+            >
+              <Trash2 size={10} />
+              Delete Matching Nodes
+            </button>
             <button type="button" onClick={deleteOldXsdSchemas} disabled={loading} style={buttonStyle}>
               <Trash2 size={10} />
               Delete Old XSD Schemas

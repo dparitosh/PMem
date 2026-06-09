@@ -187,6 +187,135 @@ END-ISO-10303-21;
     assert doc.geometric_tolerances[0].toleranced_feature_refs
 
 
+def test_step_parser_does_not_count_product_definition_rows_as_products(tmp_path):
+    """Product/version/view STEP rows should not all inflate the product semantic bucket."""
+    from backend.Services.step_parser import parse_step_with_pmi
+
+    step = """ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING'));
+ENDSEC;
+DATA;
+#1 = PRODUCT('P-100','Pump Housing','Demo housing',());
+#2 = PRODUCT_DEFINITION_FORMATION('A','released revision',#1);
+#3 = PRODUCT_DEFINITION('design','part view',#2,#4);
+#4 = PRODUCT_DEFINITION_CONTEXT('part definition',#5,'design');
+#5 = APPLICATION_CONTEXT('mechanical design');
+ENDSEC;
+END-ISO-10303-21;
+"""
+
+    step_path = tmp_path / "product_structure.stp"
+    step_path.write_text(step, encoding="utf-8")
+
+    doc = parse_step_with_pmi(step_path)
+
+    assert len(doc.entities) == 5
+    assert len(doc.cad_products) == 1
+    assert doc.cad_products[0].entity_type == "PRODUCT"
+
+
+def test_step_to_ttl_emits_ap242_semantic_graph(tmp_path):
+    """STEP TTL should be valid RDF with AP242 classes, references, and part-model alignment."""
+    from rdflib import Graph, Namespace
+    from rdflib.namespace import OWL, RDF, RDFS, SKOS
+    from backend.Services.owl_step_engine import convert_step_to_ttl
+
+    step = """ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF'));
+ENDSEC;
+DATA;
+#1 = PRODUCT('P-100','Pump Housing','Demo housing',());
+#2 = PRODUCT_DEFINITION_FORMATION('A','released revision',#1);
+#3 = PRODUCT_DEFINITION('design','part view',#2,#4);
+#4 = PRODUCT_DEFINITION_CONTEXT('part definition',#5,'design');
+#5 = APPLICATION_CONTEXT('mechanical design');
+#6 = GEOMETRIC_TOLERANCE('GT1','Position tolerance','controls hole',#3,#5);
+ENDSEC;
+END-ISO-10303-21;
+"""
+
+    step_path = tmp_path / "pump_housing.stp"
+    ttl_path = tmp_path / "pump_housing.ttl"
+    step_path.write_text(step, encoding="utf-8")
+
+    result = convert_step_to_ttl(
+        file_path=step_path,
+        output_path=ttl_path,
+        base_uri="http://example.org/step#",
+        include_pmi=True,
+        validate_against_domain=False,
+        copy_reference_ontology=False,
+    )
+
+    assert result["success"] is True
+    ttl = ttl_path.read_text(encoding="utf-8")
+    assert "http://example.org/pmi#" not in ttl
+
+    graph = Graph()
+    graph.parse(str(ttl_path), format="turtle")
+
+    inst = Namespace("http://example.org/step#")
+    step_ns = Namespace("http://www.step-nc.org/step#")
+    ap242 = Namespace("http://www.step-nc.org/ap242#")
+    pmi = Namespace("http://depo-onto.local/ontology/pmi#")
+    bom = Namespace("http://standards.iso.org/iso/ts/10303/-3001/-ed-2/tech/xml-schema/bo_model#")
+
+    assert (inst.entity_1, RDF.type, OWL.NamedIndividual) in graph
+    assert (inst.entity_1, RDF.type, step_ns.Entity) in graph
+    assert (inst.entity_1, RDF.type, ap242.PRODUCT) in graph
+    assert (ap242.PRODUCT, RDFS.subClassOf, step_ns.Entity) in graph
+    assert (ap242.PRODUCT, step_ns.mapsToAp242BusinessObjectClass, bom.Part) in graph
+    assert (ap242.PRODUCT, SKOS.closeMatch, bom.Part) in graph
+    assert (inst.entity_2, step_ns.references, inst.entity_1) in graph
+    assert (step_ns.references, RDF.type, OWL.ObjectProperty) in graph
+    assert (step_ns.references, RDFS.domain, step_ns.Entity) in graph
+    assert (step_ns.references, RDFS.range, step_ns.Entity) in graph
+    assert (inst.tolerance_6, RDF.type, pmi.GeometricTolerance) in graph
+    assert (inst.tolerance_6, pmi.tolerancedFeature, inst.entity_3) in graph
+
+
+def test_step_mapping_catalog_matches_parser_and_ap242_part_model():
+    """Mapping API should use parser-normalized AP242 tokens and the same part model as TTL generation."""
+    from backend.Services.ontology_mapper_service import OntologyMapperService
+
+    mappings = OntologyMapperService.get_mappings("step")
+    by_source = {mapping["source_entity"]: mapping for mapping in mappings}
+
+    assert "step:PRODUCT" in by_source
+    assert "step:PRODUCT_DEFINITION_FORMATION" in by_source
+    assert "step:PRODUCT_DEFINITION" in by_source
+    assert "step:SHAPE_REPRESENTATION" in by_source
+    assert "step:ProductDefinition" not in by_source
+    assert by_source["step:PRODUCT"]["target_entity"] == "ap242:Part"
+    assert by_source["step:PRODUCT_DEFINITION_FORMATION"]["target_entity"] == "ap242:PartVersion"
+    assert by_source["step:PRODUCT_DEFINITION"]["target_entity"] == "ap242:PartView"
+    assert by_source["step:SHAPE_REPRESENTATION"]["target_entity"] == "ap242:GeometricModel"
+
+    dictionary = OntologyMapperService.get_data_dictionary("step")
+    terms = {entry["term_id"] for entry in dictionary}
+    assert {"step:PRODUCT", "step:PRODUCT_DEFINITION_FORMATION", "step:PRODUCT_DEFINITION", "step:SHAPE_REPRESENTATION"} <= terms
+
+
+def test_step_import_schema_uses_entity_type_labels():
+    """STEP import graph schema should label nodes by AP242 entity_type, not generic DataNode."""
+    from backend.Services.unified_data_import import DataTransformer
+
+    rows = [
+        {"import_row_key": "#1", "id": "#1", "entity_type": "PRODUCT", "args": "'P-100'"},
+        {"import_row_key": "#2", "id": "#2", "entity_type": "PRODUCT_DEFINITION", "args": "#1"},
+        {"import_row_key": "#3", "id": "#3", "entity_type": "SHAPE_REPRESENTATION", "args": "#2"},
+    ]
+
+    schema = DataTransformer.auto_detect_schema(rows)
+    labels = {node["label"] for node in schema["nodes"]}
+
+    assert labels == {"PRODUCT", "PRODUCT_DEFINITION", "SHAPE_REPRESENTATION"}
+    assert "DataNode" not in labels
+    assert all(node["_filter_key"] == "entity_type" for node in schema["nodes"])
+
+
 def test_ap242_bom_exp_is_used_for_domain_integration(monkeypatch, tmp_path):
     """AP242 SMRL v12 folders use bom.exp/bom.xsd, not DomainModel.exp only."""
     from backend.Services.owl_step_engine import _integrate_domain_models

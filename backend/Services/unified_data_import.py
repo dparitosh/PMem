@@ -278,7 +278,7 @@ class FileFormatDetector:
             
             for entity_name in schema_metadata.get('entities', [])[:10]:  # Preview first 10
                 rows.append({
-                    'label': 'DataNode',
+                    'label': 'ExpressEntity',
                     'entity': entity_name,
                 })
             
@@ -1270,6 +1270,46 @@ class DataTransformer:
                 })
             return {'nodes': nodes, 'indexes': indexes}
 
+        # ── STEP/AP242 entity typing ─────────────────────────────────────────
+        # STEP imports expose parser-normalized AP242 entity_type values such as
+        # PRODUCT, PRODUCT_DEFINITION, and SHAPE_REPRESENTATION. Use those as
+        # graph labels so visualizations do not collapse instance nodes into a
+        # generic fallback label.
+        entity_type_vals = sorted({
+            str(row.get('entity_type', '')).replace(' ', '_').replace(':', '_')
+            for row in rows if row.get('entity_type')
+        })
+        if entity_type_vals:
+            nodes = []
+            indexes = []
+            for entity_type in entity_type_vals:
+                type_rows = [
+                    r for r in rows
+                    if str(r.get('entity_type', '')).replace(' ', '_').replace(':', '_') == entity_type
+                ]
+                if not type_rows:
+                    continue
+                type_cols = sorted({k for r in type_rows for k in r.keys()})
+                merge_key = next(
+                    (c for c in ('import_row_key', 'id', 'uuid', 'key') if c in type_cols),
+                    type_cols[0],
+                )
+                nodes.append({
+                    'label': entity_type,
+                    'mergeKeys': [merge_key],
+                    'properties': type_cols,
+                    '_filter_key': 'entity_type',
+                    '_filter_val': entity_type,
+                })
+                indexes.append({
+                    'type': 'range',
+                    'name': f"idx_{entity_type.lower()}_{merge_key}",
+                    'label': entity_type,
+                    'properties': [merge_key],
+                })
+            if nodes:
+                return {'nodes': nodes, 'indexes': indexes}
+
         # ── XMI-style multi-label detection (type column as discriminator) ────
         # Triggered when 'element_type' column is absent but 'type' column holds
         # heterogeneous values like 'uml:Class', 'uml:Property', 'sysml:Block', etc.
@@ -1314,7 +1354,8 @@ class DataTransformer:
         merge_key = next((c for c in ('import_row_key', 'id', 'uuid', 'key', 'name') if c in columns), columns[0])
         default_label = (
             element_types[0] if element_types
-            else str(rows[0].get('type', 'DataNode')).replace(' ', '_').replace(':', '_')
+            else str(rows[0].get('entity_type', '')).replace(' ', '_').replace(':', '_') if rows[0].get('entity_type')
+            else str(rows[0].get('type', 'ImportedRecord')).replace(' ', '_').replace(':', '_')
         )
         nodes = [{'label': default_label, 'mergeKeys': [merge_key], 'properties': columns}]
         indexes = [{
@@ -2097,7 +2138,7 @@ class UnifiedDataImportService:
 
         # ── Node queries ────────────────────────────────────────────────────
         for node_def in schema.get('nodes', []):
-            label = node_def.get('label', 'DataNode')
+            label = node_def.get('label', 'ImportedRecord')
             merge_keys = node_def.get('mergeKeys', [])
             filter_key = node_def.get('_filter_key')
             filter_val = node_def.get('_filter_val')

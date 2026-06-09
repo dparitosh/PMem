@@ -284,9 +284,28 @@ class OntologyTaxonomyService:
             "extraction_source": parsed.get("source"),
             "nodes": parsed.get("nodes", []),
             "edges": parsed.get("edges", []),
+            "reasoning_summary": cls.get_reasoning(ontology_identifier).get("summary", {}),
             "summary": {
                 "terms": len(parsed.get("nodes", [])),
                 "taxonomy_links": len(parsed.get("edges", [])),
                 "triple_count": parsed.get("triple_count", 0),
             },
         }
+
+    @classmethod
+    def get_reasoning(cls, ontology_identifier: str) -> Dict[str, Any]:
+        """Return Owlready2-backed ontology semantics for the registered ontology."""
+        meta = cls._resolve_metadata(ontology_identifier)
+        file_path = Path(meta.get("file_path", ""))
+        if not file_path.exists():
+            raise ValueError(f"Ontology file is missing: {ontology_identifier}")
+
+        prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
+        result = OwlreadyOntologyRuntime.inspect_ontology(file_path, prefix)
+        result.update({
+            "ontology_id": meta.get("ontology_id"),
+            "ontology_name": meta.get("ontology_name"),
+            "prefix": prefix,
+            "source_filename": meta.get("original_filename") or meta.get("stored_filename"),
+        })
+        return result
