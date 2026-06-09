@@ -199,7 +199,7 @@ const TCS_GRAPH_THEME = {
 
 const LINK_COLOR = '#6B7C93';        // TCS-inspired muted steel link
 const LINK_OPACITY = 0.72;
-const LINK_STROKE_WIDTH = 1.6;
+const LINK_STROKE_WIDTH = 1.35;
 const NODE_RADIUS = 14;
 const LINK_DISTANCE = 100;
 const CHARGE_STRENGTH = -150;        // ✅ Reduced from -300 to prevent node separation
@@ -215,17 +215,17 @@ const EXPAND_SYMBOL_SIZE = 8;
 const EXPAND_CIRCLE_RADIUS = 10;
  
 // NEW CONSTANTS FOR ARROWHEADS
-const ARROW_HEAD_LENGTH = 5;
-const ARROW_HEAD_WIDTH = 2.6;
+const ARROW_HEAD_LENGTH = 4.25;
+const ARROW_HEAD_WIDTH = 2.2;
 const ARROW_REF_X = NODE_RADIUS + 1.5;
 
 const RELATIONSHIP_THEME = {
   generic: { color: LINK_COLOR, width: LINK_STROKE_WIDTH, dasharray: null, markerId: 'arrowhead-generic' },
-  DOMAIN: { color: '#355C7D', width: 1.8, dasharray: null, markerId: 'arrowhead-domain' },
-  RANGE: { color: '#8D6E63', width: 1.8, dasharray: null, markerId: 'arrowhead-range' },
-  SUBCLASS_OF: { color: '#486581', width: 2.0, dasharray: '7 3', markerId: 'arrowhead-subclass' },
-  SUBPROPERTY_OF: { color: '#52606D', width: 1.8, dasharray: '4 3', markerId: 'arrowhead-subproperty' },
-  EQUIVALENT_CLASS: { color: '#D9A441', width: 1.9, dasharray: '3 2', markerId: 'arrowhead-equivalent' },
+  DOMAIN: { color: '#355C7D', width: 1.45, dasharray: null, markerId: 'arrowhead-domain' },
+  RANGE: { color: '#8D6E63', width: 1.45, dasharray: null, markerId: 'arrowhead-range' },
+  SUBCLASS_OF: { color: '#486581', width: 1.65, dasharray: '7 3', markerId: 'arrowhead-subclass' },
+  SUBPROPERTY_OF: { color: '#52606D', width: 1.45, dasharray: '4 3', markerId: 'arrowhead-subproperty' },
+  EQUIVALENT_CLASS: { color: '#D9A441', width: 1.55, dasharray: '3 2', markerId: 'arrowhead-equivalent' },
 };
 
 const CHAR_TIMES      = '\u00D7';     // ×   multiplication sign (close button)
@@ -297,8 +297,6 @@ const resolveNodeName = (node) => {
     ? node.properties
     : node || {};
   return (
-    node?.entity_type ||
-    props.entity_type ||
     node?.name ||
     props.name ||
     node?.title ||
@@ -307,6 +305,8 @@ const resolveNodeName = (node) => {
     props.code ||
     node?.label ||
     node?.labels?.[0] ||
+    node?.entity_type ||
+    props.entity_type ||
     'Unknown'
   );
 };
@@ -2701,17 +2701,20 @@ const getPrimaryNodeLabel = useCallback((d) => {
  
   // --- D3 Drag Handlers (useCallback for stability, tied to simulation) ---
   const dragstarted = useCallback((event, d) => {
+    userInteractedWithGraphRef.current = true;
     if (!event.active) simulationRef.current?.alphaTarget(ALPHA_TARGET_DRAG).restart();
     d.fx = d.x;
     d.fy = d.y;
   }, []);
  
   const dragged = useCallback((event, d) => {
+    userInteractedWithGraphRef.current = true;
     d.fx = event.x;
     d.fy = event.y;
   }, []);
  
   const dragended = useCallback((event, d) => {
+    userInteractedWithGraphRef.current = true;
     if (!event.active) simulationRef.current?.alphaTarget(ALPHA_TARGET_END);
     d.fx = null;
     d.fy = null;
@@ -3339,8 +3342,15 @@ const getPrimaryNodeLabel = useCallback((d) => {
     return hasSearchQuery && isExpanded;
   };
 
-  // Function to expand a node using graphtraverse API - ONE LEVEL ONLY expansion
-  const expandNode = async (nodeId) => {
+  const MAX_EXPAND_HOPS = 2;
+
+  const fetchNodeNeighborhood = async (nodeId) => {
+    const response = await apiClient.get(replaceParams(API.graph.graphtraverseNode, { node_id: nodeId }));
+    return response.data?.results || [];
+  };
+
+  // Function to expand a node using graphtraverse API - bounded to two hops.
+  const expandNode = async (nodeId, hopLevel = 1) => {
     if (expandedNodes.has(nodeId)) {
       return;
     }
@@ -3352,9 +3362,9 @@ const getPrimaryNodeLabel = useCallback((d) => {
     const addedLinkIds = new Set();
     
     try {
-      const response = await apiClient.get(replaceParams(API.graph.graphtraverseNode, { node_id: nodeId }));
-      
-      if (response.data && response.data.results) {
+      const directResults = await fetchNodeNeighborhood(nodeId);
+
+      if (directResults) {
         // Start with ONLY the current search results, not all filteredData
         const newNodesMap = new Map();
         const newLinksMap = new Map();
@@ -3388,49 +3398,69 @@ const getPrimaryNodeLabel = useCallback((d) => {
         }
         
         // Process the API response - ADD ALL DIRECT CONNECTIONS
-        response.data.results.forEach(record => {
-          const n = record['n'];
-          const r = record['r'];
-          const m = record['m'];
-          
-          // Process relationships where either n or m is the node we're expanding
-          if (r && ((n && n.elementId === nodeId) || (m && m.elementId === nodeId))) {
-            // Add the relationship with consistent format
-            const linkId = r.elementId;
-            if (!newLinksMap.has(linkId)) {
-              newLinksMap.set(linkId, {
-                elementId: linkId,
-                source: r.start, // Keep as raw ID for consistency
-                target: r.end,   // Keep as raw ID for consistency
-                type: r.type,
-                properties: r.properties,
-              });
-              addedLinkIds.add(linkId);
-            }
-            
-            // Add the connected node (either n or m, whichever is NOT the expanded node)
-            const connectedNode = (n && n.elementId === nodeId) ? m : n;
-            if (connectedNode) {
-              const connectedNodeId = connectedNode.elementId;
-              const newNode = {
-                ...connectedNode.properties,
-                elementId: connectedNodeId,
-                labels: connectedNode.labels || ['Node'],
-                label: connectedNode.labels[0] || 'Node',
-              };
-              if (!newNodesMap.has(connectedNodeId)) {
-                newNodesMap.set(connectedNodeId, newNode);
-                addedNodeIds.add(connectedNodeId);
-                performanceLog('Added direct connection:', connectedNodeId);
+        const processRecords = (records, currentHop, originId) => {
+          records.forEach(record => {
+            const n = record['n'];
+            const r = record['r'];
+            const m = record['m'];
+
+            // Process relationships where either n or m is the node we're expanding
+            if (r && ((n && n.elementId === originId) || (m && m.elementId === originId))) {
+              // Add the relationship with consistent format
+              const linkId = r.elementId;
+              if (!newLinksMap.has(linkId)) {
+                newLinksMap.set(linkId, {
+                  elementId: linkId,
+                  source: r.start, // Keep as raw ID for consistency
+                  target: r.end,   // Keep as raw ID for consistency
+                  type: r.type,
+                  properties: r.properties,
+                });
+                addedLinkIds.add(linkId);
+              }
+
+              // Add the connected node (either n or m, whichever is NOT the expanded node)
+              const connectedNode = (n && n.elementId === originId) ? m : n;
+              if (connectedNode) {
+                const connectedNodeId = connectedNode.elementId;
+                const newNode = {
+                  ...connectedNode.properties,
+                  elementId: connectedNodeId,
+                  labels: connectedNode.labels || ['Node'],
+                  label: connectedNode.labels[0] || 'Node',
+                };
+                if (!newNodesMap.has(connectedNodeId)) {
+                  newNodesMap.set(connectedNodeId, newNode);
+                  addedNodeIds.add(connectedNodeId);
+                  performanceLog('Added direct connection:', connectedNodeId);
+                }
               }
             }
+          });
+        };
+
+        processRecords(directResults, hopLevel, nodeId);
+
+        if (hopLevel < MAX_EXPAND_HOPS) {
+          const hopOneNodeIds = Array.from(newNodesMap.keys())
+            .filter(id => id !== nodeId && !expandedNodes.has(id));
+          const visited = new Set([nodeId]);
+          for (const nextNodeId of hopOneNodeIds.slice(0, 50)) {
+            if (visited.has(nextNodeId)) continue;
+            visited.add(nextNodeId);
+            try {
+              const secondaryResults = await fetchNodeNeighborhood(nextNodeId);
+              processRecords(secondaryResults, hopLevel + 1, nextNodeId);
+            } catch (secondaryErr) {
+              logger.warn('Secondary hop expansion skipped:', nextNodeId, secondaryErr?.message || secondaryErr);
+            }
           }
-        });
+        }
         
         const finalNodes = Array.from(newNodesMap.values());
         const finalLinks = Array.from(newLinksMap.values());
         
-        performanceLog('One-level expansion:', addedNodeIds.size, 'new nodes,', addedLinkIds.size, 'new links');
+        performanceLog(`${MAX_EXPAND_HOPS}-hop expansion:`, addedNodeIds.size, 'new nodes,', addedLinkIds.size, 'new links');
         
         // Validate links
         const existingNodeIds = new Set(finalNodes.map(node => node.elementId));
@@ -3462,7 +3492,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
           // Store which nodes and links were added by this expansion
           setNodeExpansions(prev => {
-            const newMap = new Map([...prev, [nodeId, { addedNodeIds, addedLinkIds, level: 1 }]]);
+            const newMap = new Map([...prev, [nodeId, { addedNodeIds, addedLinkIds, level: Math.min(MAX_EXPAND_HOPS, hopLevel) }]]);
             return newMap;
           });
 
@@ -3977,7 +4007,7 @@ const boundaryForce = (width, height) => {
           group.append('circle')
             .attr('class', 'node-circle')
             .attr('r', NODE_RADIUS)
-            .attr('fill', d => getNodeColor(d.label));
+            .attr('fill', d => getNodeColor(resolveNodeType(d)));
 
           // Highlight glow ring for "View in Graph" from Recommendations
           group.append('circle')
@@ -4337,7 +4367,7 @@ const boundaryForce = (width, height) => {
         update => {
           // Update circle color based on label
           update.select('.node-circle')
-            .attr('fill', d => getNodeColor(d.label));
+            .attr('fill', d => getNodeColor(resolveNodeType(d)));
           
           update.select('.node-label')
             .text(d => showNodeLabels ? getPrimaryNodeLabel(d) : '')
@@ -4552,10 +4582,15 @@ const boundaryForce = (width, height) => {
   useEffect(() => {
     const previousSearchQuery = previousSearchQueryRef.current;
     if (previousSearchQuery && !searchQuery) {
-      resetGraphSelectionState({ resetOntology: false, resetStepPart: false, resetSearch: false, resetLabels: false });
+      userInteractedWithGraphRef.current = false;
+      lastCenteredSearchRef.current = '';
+      setExpandedNodes(new Set());
+      setNodeExpansions(new Map());
+      setAvailableLabels([]);
+      setSelectedLabelFilter('ALL');
     }
     previousSearchQueryRef.current = searchQuery;
-  }, [searchQuery, resetGraphSelectionState]);
+  }, [searchQuery]);
 
   // [OK] CLEANUP: Final cleanup on component unmount
   useEffect(() => {
