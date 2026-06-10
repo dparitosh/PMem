@@ -138,7 +138,7 @@ const SectionHeader = ({ icon: Icon, label, count, color = C.primary }) => (
     marginTop: '20px', display: 'flex', alignItems: 'center', gap: '8px',
     textTransform: 'uppercase', letterSpacing: '0.05em',
   }}>
-    <Icon size={14} color={color} strokeWidth={2.5} />
+    <Icon size={13} color={color} strokeWidth={2.2} />
     <span>{label}</span>
     {count !== undefined && (
       <span style={{
@@ -544,7 +544,7 @@ const RecommendationsTab = () => {
                 whiteSpace: 'nowrap',
               }}
             >
-              <svc.Icon size={14} strokeWidth={2.5} />
+              <svc.Icon size={13} strokeWidth={2.2} />
               {svc.label}
             </button>
           );
@@ -559,7 +559,7 @@ const RecommendationsTab = () => {
           borderLeft: `4px solid ${C.amber}`,
           color: C.textPrimary,
         }}>
-          <AlertTriangle size={16} color={C.amber} strokeWidth={2.5} style={{ marginTop: 2, flexShrink: 0 }} />
+          <AlertTriangle size={14} color={C.amber} strokeWidth={2.2} style={{ marginTop: 2, flexShrink: 0 }} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary, marginBottom: 4 }}>
               Recommendation scenarios need instance data

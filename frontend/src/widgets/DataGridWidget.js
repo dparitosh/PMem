@@ -15,7 +15,11 @@ export default function DataGridWidget({
   height = 320,
   quickFilterText = '',
   emptyLabel = 'No records available',
+  pagination = null,
+  paginationPageSize = 20,
+  minGridHeight = null,
 }) {
+  const usePagination = pagination ?? rows.length > paginationPageSize;
   const defaultColDef = useMemo(() => ({
     sortable: true,
     filter: true,
@@ -36,17 +40,29 @@ export default function DataGridWidget({
           {emptyLabel}
         </div>
       ) : (
-        <div className="ag-theme-quartz" style={{ height, width: '100%' }}>
+        <div
+          className="ag-theme-quartz"
+          style={{
+            height,
+            minHeight: minGridHeight || height,
+            width: '100%',
+            paddingBottom: usePagination ? 8 : 0,
+            boxSizing: 'border-box',
+          }}
+        >
           <AgGridReact
             rowData={rows}
             columnDefs={columns}
             defaultColDef={defaultColDef}
             theme="legacy"
             quickFilterText={quickFilterText}
-            pagination={rows.length > 20}
-            paginationPageSize={20}
+            pagination={usePagination}
+            paginationPageSize={paginationPageSize}
+            paginationPageSizeSelector={[20, 50, 100]}
             suppressCellFocus
             animateRows={false}
+            rowHeight={36}
+            headerHeight={38}
           />
         </div>
       )}

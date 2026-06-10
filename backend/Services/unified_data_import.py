@@ -2090,6 +2090,35 @@ class UnifiedDataImportService:
         return re.sub(r'[^A-Z0-9]', '', str(value or '').upper())
 
     @classmethod
+    def _collect_ontology_link_candidates(cls, row: Dict[str, Any]) -> List[str]:
+        candidates: List[str] = []
+        for key in (
+            'entity_type',
+            'element_type',
+            'type',
+            'xsi:type',
+            'class',
+            'category',
+            'name',
+            'part_type',
+        ):
+            value = row.get(key)
+            if not value:
+                continue
+            normalized = cls._ontology_match_key(value)
+            if normalized:
+                candidates.append(normalized)
+
+        unique_candidates: List[str] = []
+        seen = set()
+        for candidate in candidates:
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            unique_candidates.append(candidate)
+        return unique_candidates
+
+    @classmethod
     def _load_ontology_class_lookup(cls, ontology_prefix: str) -> Dict[str, Dict[str, Any]]:
         """Return normalized AP242/selected ontology class names keyed for STEP linking."""
         prefix = str(ontology_prefix or '').lower()
@@ -2403,28 +2432,36 @@ class UnifiedDataImportService:
             except Exception as step_rel_err:
                 logger.warning(f"Task {task_id}: STEP reference edges skipped: {step_rel_err}")
 
-        # ── STEP/STPX semantic links to ontology classes ────────────────────
-        if task.get('file_type') == FileType.STEP.value:
+        # ── Semantic links to ontology classes for mapped instance imports ───
+        if task.get('file_type') in {
+            FileType.STEP.value,
+            FileType.STPX.value,
+            FileType.PLMXML.value,
+            FileType.XML.value,
+            FileType.JSON.value,
+        }:
             class_lookup = cls._load_ontology_class_lookup(_ontology_prefix)
             link_rows: List[Dict[str, Any]] = []
             seen_link_keys = set()
             for row in rows:
-                entity_type = row.get('entity_type') or row.get('type') or row.get('name')
                 row_key = row.get('import_row_key') or row.get('id')
-                match = class_lookup.get(cls._ontology_match_key(entity_type))
-                if not row_key or not match:
+                if not row_key:
                     continue
-                unique_key = (row_key, match['element_id'])
-                if unique_key in seen_link_keys:
-                    continue
-                seen_link_keys.add(unique_key)
-                link_rows.append({
-                    'import_row_key': row_key,
-                    'import_id': task_id,
-                    'class_element_id': match['element_id'],
-                    'class_name': match['class_name'],
-                    'mapping': _ontology_prefix,
-                })
+                for candidate_key in cls._collect_ontology_link_candidates(row):
+                    match = class_lookup.get(candidate_key)
+                    if not match:
+                        continue
+                    unique_key = (row_key, match['element_id'])
+                    if unique_key in seen_link_keys:
+                        continue
+                    seen_link_keys.add(unique_key)
+                    link_rows.append({
+                        'import_row_key': row_key,
+                        'import_id': task_id,
+                        'class_element_id': match['element_id'],
+                        'class_name': match['class_name'],
+                        'mapping': _ontology_prefix,
+                    })
 
             result['ontology_classes_matched'] = len({r['class_element_id'] for r in link_rows})
             _sync_metrics('ontology-linking', 96, 'Linking imported instances to ontology classes...')
@@ -2473,11 +2510,11 @@ class UnifiedDataImportService:
                     result['instance_links_created'] = linked_total
                     result['relationships_created'] += linked_total
                     logger.info(
-                        f"Task {task_id}: linked {linked_total} STEP/STPX instances "
+                        f"Task {task_id}: linked {linked_total} imported instances "
                         f"to {result['ontology_classes_matched']} ontology classes"
                     )
                 except Exception as link_err:
-                    logger.warning(f"Task {task_id}: AP242 INSTANCE_OF linking skipped: {link_err}")
+                    logger.warning(f"Task {task_id}: INSTANCE_OF ontology linking skipped: {link_err}")
 
         # ── ownerId → OWNED_BY relationship edges (XMI ownership hierarchy) ──
         owner_rows = [

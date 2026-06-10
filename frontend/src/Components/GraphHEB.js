@@ -937,8 +937,8 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     const btnStyle = 'display:inline-block;padding:4px 10px;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;margin-right:6px;color:#fff;';    return `
       <div style="padding:6px 8px 4px;margin-bottom:4px;border-bottom:1px solid #e2e6ea;display:flex;flex-wrap:wrap;gap:4px;">
         <button onclick="window.__dt_rec_action('change-impact','${escapedName}')" style="${btnStyle}background:#e74c3c;" title="Change Impact Analysis">Impact</button>
-        <button onclick="window.__dt_rec_action('similar-parts','${escapedName}')" style="${btnStyle}background:#004B87;" title="Find Similar Parts">[FIND] Similar</button>
-        <button onclick="window.__dt_rec_action('manufacturing','${escapedName}')" style="${btnStyle}background:#27ae60;" title="Manufacturing Processes">[MFG] Process</button>
+        <button onclick="window.__dt_rec_action('similar-parts','${escapedName}')" style="${btnStyle}background:#004B87;" title="Find Similar Parts">Similar</button>
+        <button onclick="window.__dt_rec_action('manufacturing','${escapedName}')" style="${btnStyle}background:#27ae60;" title="Manufacturing Processes">Process</button>
       </div>`;
   };
 
@@ -2707,17 +2707,9 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
     // Add scrolling if needed
     if (needsScrolling) {
-      // Clear any previous wheel handler in case of multiple re-renders
+      // Clear any previous tree scroll handler in case of multiple re-renders.
       svg.on('wheel.tree-scroll', null);
       const maxScroll = Math.max(0, (flatNodes.length - maxVisibleRows) * rowHeight);
-      
-      // Add scroll event listener to the entire SVG
-      svg.on('wheel', function(event) {
-        event.preventDefault();
-        const delta = event.deltaY;
-        scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset + delta));
-        renderRows(scrollOffset);
-      });
       
       // Add scroll indicator
       const scrollIndicator = g.append('g')
@@ -2774,6 +2766,10 @@ const getPrimaryNodeLabel = useCallback((d) => {
       // Update scroll on wheel events
       svg.on('wheel.tree-scroll', function(event) {
         event.preventDefault();
+        event.stopPropagation();
+        if (event.sourceEvent?.stopImmediatePropagation) {
+          event.sourceEvent.stopImmediatePropagation();
+        }
         const delta = event.deltaY;
         scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset + delta));
         renderRows(scrollOffset);
@@ -5433,7 +5429,7 @@ const boundaryForce = (width, height) => {
           }}>
             <div style={{ fontWeight: 700, fontSize: '14px' }}>
               {recPanel.service === 'change-impact' ? 'Change Impact' :
-               recPanel.service === 'similar-parts' ? '[FIND] Similar Parts' : '[MFG] Manufacturing'}
+               recPanel.service === 'similar-parts' ? 'Similar Parts' : 'Manufacturing'}
             </div>
             <button onClick={() => setRecPanel({ open: false, service: null, nodeName: '', loading: false, result: null, error: '' })}
               style={{ background: 'none', border: 'none', color: '#fff', fontSize: '18px', cursor: 'pointer', padding: '0 4px' }}>&times;</button>

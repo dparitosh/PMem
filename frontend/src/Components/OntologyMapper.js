@@ -985,15 +985,22 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
 
   const activeRows = tableMode === 'properties' ? objectPropertyRows : tableMode === 'axioms' ? edgeRows : classRows;
   const activeColumns = tableMode === 'properties' ? propertyColumns : tableMode === 'axioms' ? axiomColumns : classColumns;
+  const activeTitle = tableMode === 'properties'
+    ? `Properties (${objectPropertyRows.length})`
+    : tableMode === 'axioms'
+      ? `OWL Axioms (${edgeRows.length})`
+      : `Classes (${classRows.length})`;
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: 12, minHeight: 560, alignItems: 'start', overflow: 'hidden' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))', gap: 12, minHeight: 620, alignItems: 'start', overflow: 'hidden' }}>
       <div style={{ minWidth: 0 }}>
         <DataGridWidget
           title={`Classes (${hierarchy.rows.length})`}
           rows={hierarchy.rows}
           columns={treeColumns}
-          height={560}
+          height={608}
+          minGridHeight={608}
+          paginationPageSize={25}
           emptyLabel="No class hierarchy available"
         />
       </div>
@@ -1025,15 +1032,17 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
           ))}
         </div>
         <DataGridWidget
-          title={tableMode === 'properties' ? 'Object/Data Properties' : tableMode === 'axioms' ? 'OWL/RDF Axioms' : 'Class Table'}
+          title={activeTitle}
           rows={activeRows}
           columns={activeColumns}
-          height={506}
+          height={548}
+          minGridHeight={548}
+          paginationPageSize={25}
           emptyLabel="No ontology rows available"
         />
       </div>
 
-      <aside style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, minWidth: 0, overflow: 'hidden', maxHeight: 610 }}>
+      <aside style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, minWidth: 0, overflow: 'hidden', maxHeight: 658 }}>
         <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary }}>Inspector</div>
