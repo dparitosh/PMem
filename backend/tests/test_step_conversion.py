@@ -83,6 +83,9 @@ END-ISO-10303-21;
         else:
             print(f"   ✗ OWL output validation failed")
             pytest.fail("OWL output validation failed")
+
+        assert metadata.get("owlready2", {}).get("engine") == "owlready2"
+        assert "summary" in metadata.get("owlready2", {})
         
     except Exception as e:
         print(f"   ✗ STEP parsing failed: {e}")
@@ -108,6 +111,7 @@ END_SCHEMA;
         print(f"   ✓ EXPRESS parsing still works")
         print(f"     - Schema name: {metadata.get('schema_name')}")
         print(f"     - Entity count: {metadata['entity_count']}")
+        assert metadata.get("owlready2", {}).get("engine") == "owlready2"
         assert True
     except Exception as e:
         print(f"   ✗ EXPRESS parsing failed: {e}")
@@ -395,6 +399,32 @@ def test_xsd_to_owl_generates_rich_semantics():
     assert "rdfs:subClassOf" in ttl
     assert "owl:minCardinality" in ttl
     assert "owl:maxCardinality" in ttl
+    assert metadata.get("owlready2", {}).get("engine") == "owlready2"
+
+
+def test_xsd_target_namespace_overrides_generated_fallback():
+    """XSD targetNamespace should drive the generated ontology base URI."""
+    from backend.Services.owl_generation_service import OWLGenerationService
+
+    xsd = b"""<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://example.com/customer/schema"
+           xmlns="http://example.com/customer/schema"
+           elementFormDefault="qualified">
+  <xs:complexType name="Thing">
+    <xs:sequence>
+      <xs:element name="name" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>
+"""
+
+    ttl, metadata = OWLGenerationService.generate_owl_from_xsd(xsd, "customer_schema.xsd")
+
+    assert metadata["target_namespace"] == "http://example.com/customer/schema"
+    assert metadata["base_uri"] == "http://example.com/customer/schema#"
+    assert "http://example.com/customer/schema#" in ttl
+    assert "http://depo-onto.local/xsd#customer_schema/" not in ttl
 
 
 def test_rdf_loader_preserves_ontology_relationships():

@@ -23,16 +23,21 @@ export const OntologyProvider = ({ children }) => {
       setError(null);
       const res = await API_METHODS.ontology.listRegistered();
       const ontologyList = (res.data?.ontologies || []).map(o => ({
-        value: o.prefix || o.ontology_id || o.id || o.value || o.name,
-        label: o.ontology_name || o.name || o.label || o.ontology_id || o.id,
-        prefix: o.prefix,
-        ontology_id: o.ontology_id || o.id,
+        value: o.ontology_id || o.id || o.prefix || o.value || o.name,
+        label: o.ontology_name || o.name || o.label || o.ontology_id || o.prefix || o.id,
+        prefix: o.prefix || o.ontology_prefix || o.ontology_id || o.id,
+        ontology_prefix: o.ontology_prefix || o.prefix || o.ontology_id || o.id,
+        ontology_id: o.ontology_id || o.id || o.prefix,
         type: o.file_type || o.type,
         source: o.source,
-        status: o.availability || o.status,
-        node_count: o.node_count || o.neo4j_nodes_merged || 0,
-        relationship_count: o.relationship_count || o.neo4j_relationships_merged || 0,
-        disabled: o.disabled || ((o.node_count || o.neo4j_nodes_merged || 0) === 0),
+        namespace: o.namespace || o.source_namespace || o.target_namespace || '',
+        source_namespace: o.source_namespace || o.namespace || '',
+        target_namespace: o.target_namespace || o.namespace || '',
+        status: o.status || o.availability,
+        availability: o.availability || o.status,
+        node_count: Number(o.node_count || o.neo4j_nodes_merged || 0),
+        relationship_count: Number(o.relationship_count || o.neo4j_relationships_merged || 0),
+        disabled: o.disabled || ((Number(o.node_count || o.neo4j_nodes_merged || 0)) === 0),
         raw: o, // Keep full metadata
       }));
       setOntologies(ontologyList);
@@ -70,8 +75,8 @@ export const OntologyProvider = ({ children }) => {
     error,
     lastUpdated,
     fetchOntologies, // Allow manual refresh from components
-    getOntologyByPrefix: (prefix) => ontologies.find(o => o.prefix === prefix),
-    getOntologyById: (id) => ontologies.find(o => o.ontology_id === id),
+    getOntologyByPrefix: (prefix) => ontologies.find(o => o.prefix === prefix || o.ontology_prefix === prefix),
+    getOntologyById: (id) => ontologies.find(o => o.ontology_id === id || o.value === id),
   };
 
   return (

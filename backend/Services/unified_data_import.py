@@ -2384,9 +2384,19 @@ class UnifiedDataImportService:
                 }
                 # Run SHACL validation on the generated OWL TTL and attach report
                 try:
-                    shacl_report = OWLGenerationService.validate_with_shacl(owl_ttl)
+                    try:
+                        shacl_report = OWLGenerationService.validate_with_shacl(
+                            owl_ttl,
+                            ontology_context=owl_meta.get('owlready2'),
+                        )
+                    except TypeError:
+                        # Preserve compatibility with older test doubles / callers
+                        # that still expose the previous positional-only contract.
+                        shacl_report = OWLGenerationService.validate_with_shacl(owl_ttl)
                     task['shacl_report'] = shacl_report
                     task.setdefault('result', {})['shacl_conforms'] = shacl_report.get('conforms')
+                    if shacl_report.get('ontology_context'):
+                        task['result']['shacl_ontology_context'] = shacl_report.get('ontology_context')
                     cls._write_artifact(
                         task_id,
                         task,

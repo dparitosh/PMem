@@ -1,11 +1,78 @@
-from typing import Dict, Any
+from __future__ import annotations
+
+from typing import Dict, Any, Optional
 from loguru import logger
 import rdflib
+from rdflib import Graph
+from rdflib.namespace import RDF, SH
 try:
     from pyshacl import validate
 except ImportError:
     validate = None
     logger.warning("pyshacl library not found. SHACL validation disabled.")
+
+def _summarize_shapes_graph(shacl_graph: Optional[rdflib.Graph]) -> Dict[str, int]:
+    """Return a small structural summary of the active SHACL shapes graph."""
+    if shacl_graph is None:
+        return {
+            "node_shapes": 0,
+            "property_shapes": 0,
+            "shape_nodes": 0,
+        }
+    try:
+        node_shape_nodes = set(shacl_graph.subjects(RDF.type, SH.NodeShape))
+        property_shape_nodes = set(shacl_graph.subjects(RDF.type, SH.PropertyShape))
+        node_shapes = len(node_shape_nodes)
+        property_shapes = len(property_shape_nodes)
+        shape_nodes = len(node_shape_nodes | property_shape_nodes)
+        return {
+            "node_shapes": node_shapes,
+            "property_shapes": property_shapes,
+            "shape_nodes": shape_nodes,
+        }
+    except Exception:
+        return {
+            "node_shapes": 0,
+            "property_shapes": 0,
+            "shape_nodes": 0,
+        }
+
+
+def _summarize_report_graph(report_graph: Optional[Graph]) -> Dict[str, int]:
+    """Count pySHACL validation results by severity."""
+    if report_graph is None:
+        return {
+            "result_count": 0,
+            "violation_count": 0,
+            "warning_count": 0,
+            "info_count": 0,
+        }
+    try:
+        result_nodes = list(report_graph.subjects(RDF.type, SH.ValidationResult))
+        violation_count = 0
+        warning_count = 0
+        info_count = 0
+        for node in result_nodes:
+            severity = next(report_graph.objects(node, SH.resultSeverity), None)
+            if severity == SH.Violation:
+                violation_count += 1
+            elif severity == SH.Warning:
+                warning_count += 1
+            elif severity == SH.Info:
+                info_count += 1
+        return {
+            "result_count": len(result_nodes),
+            "violation_count": violation_count,
+            "warning_count": warning_count,
+            "info_count": info_count,
+        }
+    except Exception:
+        return {
+            "result_count": 0,
+            "violation_count": 0,
+            "warning_count": 0,
+            "info_count": 0,
+        }
 
 class ShaclValidationService:
     """
@@ -16,7 +83,14 @@ class ShaclValidationService:
         if not validate:
             logger.warning("SHACL validation service initialized without pyshacl library.")
 
-    def validate_graph(self, data_graph: rdflib.Graph, shacl_graph: rdflib.Graph = None, shacl_graph_str: str = None) -> Dict[str, Any]:
+    def validate_graph(
+        self,
+        data_graph: rdflib.Graph,
+        shacl_graph: rdflib.Graph = None,
+        shacl_graph_str: str = None,
+        *,
+        ontology_context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """
         Validate a data graph against a SHACL shapes graph.
         Returns a dictionary with validation results.
@@ -41,14 +115,19 @@ class ShaclValidationService:
                 inference='rdfs',
                 serialize_report_graph=False
             )
-            
-            # Parse report graph for structured response
-            return {
+
+            report: Dict[str, Any] = {
                 "conforms": conforms,
                 "report_text": report_text,
-                "report_graph": report_graph.serialize(format="turtle") if report_graph is not None else ""
+                "report_graph": report_graph.serialize(format="turtle") if report_graph is not None else "",
+                "validation_engine": "pyshacl",
+                "shape_summary": _summarize_shapes_graph(shacl_graph),
+                **_summarize_report_graph(report_graph),
             }
-            
+            if ontology_context:
+                report["ontology_context"] = ontology_context
+            return report
+
         except Exception as e:
             logger.error(f"SHACL Validation error: {e}")
             return {"conforms": False, "error": str(e)}

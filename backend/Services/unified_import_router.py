@@ -5,6 +5,7 @@ Provides 5 endpoints for file import with progress tracking, preview, and commit
 
 import logging
 from typing import Optional
+from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException, Form
 from pydantic import BaseModel, Field
 
@@ -17,6 +18,7 @@ from .unified_data_import import (
     FileFormatDetector,
 )
 from .ontology_upload_manager import OntologyUploadManager
+from .owl_generation_service import _extract_xsd_target_namespace, _normalize_base_uri
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +92,8 @@ class UploadResponse(BaseModel):
     ontology_id: Optional[str] = None
     ontology_name: Optional[str] = None
     prefix: Optional[str] = None
+    source_namespace: Optional[str] = None
+    base_uri: Optional[str] = None
     message: str
     supported_formats: list
     storage_path: Optional[str] = None
@@ -216,6 +220,9 @@ async def upload_ontology_file(
         resolved_generation_type = generation_type
         if file_type.value == 'ontology' and generation_type == 'shacl':
             resolved_generation_type = 'as_is'
+
+        source_namespace = ""
+        base_uri = ""
         
         # Read file content
         file_content = await file.read()
@@ -227,6 +234,10 @@ async def upload_ontology_file(
                 status_code=413,
                 detail=f"File too large. Maximum size: {MAX_FILE_SIZE_DISPLAY}"
             )
+
+        if file_type.value == 'xsd':
+            source_namespace = _extract_xsd_target_namespace(file_content)
+            base_uri = _normalize_base_uri(source_namespace, f"http://depo-onto.local/xsd#{Path(file.filename).stem}/")
         
         # Save ontology file and metadata
         save_result = OntologyUploadManager.save_ontology_file(
@@ -237,7 +248,8 @@ async def upload_ontology_file(
             file_type=file_type.value,
             generation_type=resolved_generation_type,
             description=description or "",
-            schema_type=schema_type or "schema"
+            schema_type=schema_type or "schema",
+            source_namespace=source_namespace,
         )
         
         if save_result['status'] != 'success':
@@ -274,6 +286,8 @@ async def upload_ontology_file(
             ontology_id=save_result['ontology_id'],
             ontology_name=ontology_name,
             prefix=prefix,
+            source_namespace=source_namespace or None,
+            base_uri=base_uri or None,
             message=f"Ontology '{ontology_name}' uploaded and registered{version_msg}. Task ID: {task_id}.{neo4j_info}",
             supported_formats=FileFormatDetector.get_supported_formats(),
             storage_path=save_result['storage_path']

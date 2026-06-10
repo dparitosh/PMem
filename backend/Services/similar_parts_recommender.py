@@ -12,6 +12,8 @@ import logging
 import re
 from difflib import SequenceMatcher
 
+from .recommendation_scope import cypher_scope_filter
+
 logger = logging.getLogger(__name__)
 
 # Stop-words stripped from names before keyword comparison
@@ -28,9 +30,9 @@ class SimilarPartsRecommender:
     # Public API
     # ------------------------------------------------------------------
 
-    def recommend(self, part_name: str, top_n: int = 10) -> dict:
+    def recommend(self, part_name: str, top_n: int = 10, scope: dict | None = None) -> dict:
         """Return the top-N most similar parts to *part_name*."""
-        source = self._find_source_part(part_name)
+        source = self._find_source_part(part_name, scope=scope)
         if not source:
             return {
                 "source_part": None,
@@ -82,18 +84,20 @@ class SimilarPartsRecommender:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _find_source_part(self, name: str) -> dict | None:
+    def _find_source_part(self, name: str, scope: dict | None = None) -> dict | None:
+        scope_clause, scope_params = cypher_scope_filter("p", scope)
         rows = self._graph.query(
             """
             MATCH (p:Individual)
             WHERE toLower(p.name) CONTAINS toLower($name)
+            """ + scope_clause + """
             OPTIONAL MATCH (p)-[:INSTANCE_OF]->(cls:OntologyClass)
             RETURN p.name AS name, p.sourceTag AS source_tag,
                    p.rflpLayer AS rflp_layer, elementId(p) AS eid,
                    cls.name AS class_name
             LIMIT 5
             """,
-            params={"name": name},
+            params={"name": name, **scope_params},
         )
         if not rows:
             return None

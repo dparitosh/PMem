@@ -75,6 +75,7 @@ export default function DataImportPipeline() {
   // Ontology metadata form for XSD/XMI files
   const [showMetadataForm, setShowMetadataForm] = useState(false);
   const [pendingFileForMetadata, setPendingFileForMetadata] = useState(null);
+  const [pendingMetadataFileId, setPendingMetadataFileId] = useState('');
   const [isMetadataLoading, setIsMetadataLoading] = useState(false);
   const [metadataFormPrefill, setMetadataFormPrefill] = useState(null);
 
@@ -215,8 +216,32 @@ export default function DataImportPipeline() {
     setSelectedWorkflow(recommendedWorkflow);
     
     if (['.xsd', '.xmi', '.mdxml', '.owl', '.rdf', '.ttl'].includes(ext)) {
+      const fileId = firstFile.name + '_' + Math.random().toString(36).substr(2, 9);
+      const ontologyPendingFile = {
+        fileId,
+        name: firstFile.name,
+        size: firstFile.size,
+        fileObj: firstFile,
+        workflowId: 'ontology.create',
+        createdAt: new Date().toLocaleTimeString(),
+        pendingMetadata: true,
+      };
+      setFiles(prev => [...prev, ontologyPendingFile]);
+      setStartedFiles(prev => new Set([...prev, fileId]));
+      setPipelineStatus(prev => ({
+        ...prev,
+        [fileId]: {
+          stage: 'upload',
+          backendStage: 'upload',
+          progress: 0,
+          status: 'processing',
+          message: 'Awaiting namespace and prefix capture',
+          error: false,
+        }
+      }));
       setMetadataFormPrefill(null);
       setPendingFileForMetadata(firstFile);
+      setPendingMetadataFileId(fileId);
       setShowMetadataForm(true);
       setError(null);
       return;
@@ -247,9 +272,8 @@ export default function DataImportPipeline() {
       const uploadData = await API_METHODS.ontology.upload(pendingFileForMetadata, metadata);
       const uploadDataBody = uploadData.data || uploadData;
       
-      // Create file entry with ontology metadata
-      const fileId = pendingFileForMetadata.name + '_' + Math.random().toString(36).substr(2, 9);
-      const newFile = {
+      const fileId = pendingMetadataFileId || pendingFileForMetadata.name + '_' + Math.random().toString(36).substr(2, 9);
+      const completedFile = {
         fileId,
         name: pendingFileForMetadata.name,
         size: pendingFileForMetadata.size,
@@ -260,13 +284,13 @@ export default function DataImportPipeline() {
         ontologyName: metadata.ontologyName,
         prefix: metadata.prefix,
         generationType: metadata.generationType,
-        workflowId: 'ontology.create'
+        sourceNamespace: uploadDataBody.source_namespace || uploadDataBody.target_namespace || '',
+        baseUri: uploadDataBody.base_uri || '',
+        workflowId: 'ontology.create',
+        pendingMetadata: false,
       };
 
-      setFiles(prev => [...prev, newFile]);
-      // Ontology uploads are already handled by /ontology/upload, so mark as completed
-      // and do not send them again through /import/upload.
-      setStartedFiles(prev => new Set([...prev, fileId]));
+      setFiles(prev => prev.map(f => (f.fileId === fileId ? completedFile : f)));
       setPipelineStatus(prev => ({
         ...prev,
         [fileId]: {
@@ -288,9 +312,23 @@ export default function DataImportPipeline() {
       setMetadataFormPrefill(null);
       setShowMetadataForm(false);
       setPendingFileForMetadata(null);
+      setPendingMetadataFileId('');
       setError(null);
 
     } catch (err) {
+      const fileId = pendingMetadataFileId || pendingFileForMetadata.name + '_' + Math.random().toString(36).substr(2, 9);
+      setPipelineStatus(prev => ({
+        ...prev,
+        [fileId]: {
+          ...(prev[fileId] || {}),
+          stage: 'error',
+          backendStage: 'error',
+          progress: 0,
+          status: 'failed',
+          message: err.message,
+          error: true,
+        }
+      }));
       setError(`Error uploading ontology: ${err.message}`);
     } finally {
       setIsMetadataLoading(false);
@@ -813,6 +851,15 @@ export default function DataImportPipeline() {
     () => workflowOptions.find(w => w.id === selectedWorkflow) || workflowOptions[0] || resolveWorkflow(selectedWorkflow),
     [workflowOptions, selectedWorkflow]
   );
+  const groupedWorkflows = useMemo(() => {
+    const groups = new Map();
+    workflowOptions.forEach((workflow) => {
+      const groupName = workflow.category || 'Other';
+      if (!groups.has(groupName)) groups.set(groupName, []);
+      groups.get(groupName).push(workflow);
+    });
+    return Array.from(groups.entries()).map(([category, items]) => ({ category, items }));
+  }, [workflowOptions]);
   const fallbackWorkflow = useMemo(
     () => activeWorkflow || resolveWorkflow(selectedWorkflow) || {
       id: selectedWorkflow || 'workflow',
@@ -829,10 +876,57 @@ export default function DataImportPipeline() {
     () => buildWorkflowStages(fallbackWorkflow),
     [fallbackWorkflow]
   );
-  const contextFile = files.find(f => !startedFiles.has(f.fileId)) || files[0] || pendingFileForMetadata;
+  const fileStatusIndex = useMemo(() => {
+    const index = new Map();
+    files.forEach((file) => {
+      index.set(file.fileId, pipelineStatus[file.fileId] || { stage: 'upload', progress: 0 });
+    });
+    return index;
+  }, [files, pipelineStatus]);
+  const contextFile = useMemo(
+    () => files.find(f => !startedFiles.has(f.fileId)) || files[0] || pendingFileForMetadata,
+    [files, startedFiles, pendingFileForMetadata]
+  );
   const recommendedWorkflowId = contextFile ? recommendWorkflowForFile(contextFile.name) : selectedWorkflow;
   const canRunSelectedWorkflow = fallbackWorkflow.status === 'available';
-  const pendingFileCount = files.filter(f => !startedFiles.has(f.fileId)).length;
+  const pendingFileCount = useMemo(
+    () => files.reduce((count, f) => count + (startedFiles.has(f.fileId) ? 0 : 1), 0),
+    [files, startedFiles]
+  );
+  const activeProcessingCount = useMemo(
+    () => files.reduce((count, file) => {
+      const status = fileStatusIndex.get(file.fileId) || {};
+      if (!startedFiles.has(file.fileId)) return count;
+      if (status.error || status.commitError) return count;
+      if (status.committed || status.status === 'completed' || status.progress === 100) return count;
+      return count + 1;
+    }, 0),
+    [files, startedFiles, fileStatusIndex]
+  );
+  const stageFileCounts = useMemo(() => {
+    const counts = new Map(activePipelineStages.map(stage => [stage.id, 0]));
+    files.forEach((file) => {
+      const status = fileStatusIndex.get(file.fileId) || {};
+      const currentStage = status.stage || 'upload';
+      const frontendStage = backendToFrontendStage[currentStage] || currentStage;
+      activePipelineStages.forEach((stage) => {
+        if (stage.backendIds.includes(currentStage) || stage.backendIds.includes(frontendStage)) {
+          counts.set(stage.id, (counts.get(stage.id) || 0) + 1);
+        }
+      });
+    });
+    return counts;
+  }, [activePipelineStages, fileStatusIndex, files]);
+  const selectedStageFiles = useMemo(() => {
+    const stage = activePipelineStages.find(s => s.id === selectedStage);
+    if (!stage) return [];
+    return files.filter((f) => {
+      const status = fileStatusIndex.get(f.fileId) || {};
+      const currentStage = status.stage || 'upload';
+      const frontendStage = backendToFrontendStage[currentStage] || currentStage;
+      return stage.backendIds.includes(currentStage) || stage.backendIds.includes(frontendStage);
+    });
+  }, [activePipelineStages, fileStatusIndex, files, selectedStage]);
   const activePipelineStageIds = useMemo(
     () => activePipelineStages.map(stage => stage.id).join('|'),
     [activePipelineStages]
@@ -855,6 +949,7 @@ export default function DataImportPipeline() {
             setMetadataFormPrefill(null);
             setShowMetadataForm(false);
             setPendingFileForMetadata(null);
+            setPendingMetadataFileId('');
           }}
           initialValues={metadataFormPrefill}
           isLoading={isMetadataLoading}
@@ -895,17 +990,21 @@ export default function DataImportPipeline() {
               flex: '1 1 260px',
               maxWidth: '460px',
               padding: '5px 8px',
-              fontSize: '10px',
+              fontSize: '11px',
               border: `1px solid ${C.borderDark}`,
               borderRadius: '4px',
               background: C.bg,
               color: C.textPrimary,
             }}
           >
-            {workflowOptions.map(option => (
-              <option key={option.id} value={option.id}>
-                {option.title}{option.id === recommendedWorkflowId ? ' - recommended' : ''}
-              </option>
+            {groupedWorkflows.map(group => (
+              <optgroup key={group.category} label={group.category}>
+                {group.items.map(option => (
+                  <option key={option.id} value={option.id}>
+                    {option.title}{option.id === recommendedWorkflowId ? ' - recommended' : ''}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
           {(() => {
@@ -962,6 +1061,32 @@ export default function DataImportPipeline() {
               Recommended
             </span>
           )}
+        </div>
+
+        <div style={{
+          marginTop: '6px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '6px',
+          alignItems: 'center',
+        }}>
+          <span style={{
+            fontSize: '9px',
+            fontWeight: '700',
+            color: C.textPrimary,
+            background: C.bg,
+            border: `1px solid ${C.border}`,
+            borderRadius: '999px',
+            padding: '3px 8px',
+          }}>
+            7 workflows
+          </span>
+          <span style={{
+            fontSize: '9px',
+            color: C.textSec,
+          }}>
+            {groupedWorkflows.map(group => `${group.category} ${group.items.length}`).join(' · ')}
+          </span>
         </div>
 
         <div style={{
@@ -1159,11 +1284,7 @@ export default function DataImportPipeline() {
           justifyContent: 'space-between',
         }}>
           {activePipelineStages.map((stage, idx) => {
-            const filesAtStage = files.filter(f => {
-              const status = pipelineStatus[f.fileId];
-              const currentStage = status?.stage || 'upload';
-              return stage.backendIds.includes(currentStage) || stage.backendIds.includes(backendToFrontendStage[currentStage]);
-            }).length;
+            const filesAtStage = stageFileCounts.get(stage.id) || 0;
             const isSelected = selectedStage === stage.id;
 
             // Calculate max current stage index
@@ -1316,12 +1437,6 @@ export default function DataImportPipeline() {
           }}>
             {(() => {
               const stage = activePipelineStages.find(s => s.id === selectedStage);
-              const stageFiles = files.filter(f => {
-                const status = pipelineStatus[f.fileId];
-                const currentStage = status?.stage || 'upload';
-                return stage?.backendIds.includes(currentStage) || stage?.backendIds.includes(backendToFrontendStage[currentStage]);
-              });
-              
               return (
                 <div>
                   <div style={{
@@ -1333,7 +1448,7 @@ export default function DataImportPipeline() {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                   }}>
-                    <span>{stage?.label} - Files in this stage: {stageFiles.length}</span>
+                    <span>{stage?.label} - Files in this stage: {selectedStageFiles.length}</span>
                     {isImportWorkflow(selectedWorkflow) && selectedStage === activePipelineStages[0]?.id && (
                       <button
                         onClick={() => fileInputRef.current?.click()}
@@ -1350,11 +1465,11 @@ export default function DataImportPipeline() {
                       >
                         + Add Files
                       </button>
-                    )}
+                      )}
                   </div>
-                  {stageFiles.length > 0 ? (
+                  {selectedStageFiles.length > 0 ? (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                      {stageFiles.map(f => (
+                      {selectedStageFiles.map(f => (
                         <div key={f.fileId} style={{
                           background: '#E8F1FC',
                           border: `1px solid ${C.primary}`,
@@ -1364,7 +1479,7 @@ export default function DataImportPipeline() {
                           color: C.primary,
                           fontWeight: '500',
                         }}>
-                          {f.name}
+                          {f.name}{f.pendingMetadata ? ' (pending metadata)' : ''}
                         </div>
                       ))}
                     </div>
@@ -1374,7 +1489,11 @@ export default function DataImportPipeline() {
                       color: C.textMuted,
                       fontStyle: 'italic',
                     }}>
-                      {isImportWorkflow(selectedWorkflow) ? 'No files in this stage yet' : 'This workflow runs from the selected ontology or retained artifacts.'}
+                      {selectedWorkflow === 'ontology.create'
+                        ? 'Upload an XSD, OWL, RDF, TTL, XMI, or EXPRESS file, then complete namespace and prefix capture to continue.'
+                        : isImportWorkflow(selectedWorkflow)
+                          ? 'No files in this stage yet'
+                          : 'This workflow runs from the selected ontology or retained artifacts.'}
                     </div>
                   )}
                 </div>
@@ -1642,7 +1761,7 @@ export default function DataImportPipeline() {
             {/* Table rows */}
             {files.map(file => {
               const fileId = file.fileId;
-              const status = pipelineStatus[fileId] || { stage: 'upload', progress: 0 };
+              const status = fileStatusIndex.get(fileId) || { stage: 'upload', progress: 0 };
               const isStarted = startedFiles.has(fileId);
               const statusBadge = getStatusBadge(status.stage, status.progress, status.error, status.backendStage, status.committing, status.commitError);
 
@@ -1688,6 +1807,20 @@ export default function DataImportPipeline() {
                       </span>
                     )}
                   </div>
+                  {file.sourceNamespace && (
+                    <div style={{
+                      gridColumn: '1 / -1',
+                      marginTop: '-2px',
+                      fontSize: '9px',
+                      color: C.textSec,
+                      fontFamily: 'monospace',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }} title={file.sourceNamespace}>
+                      Namespace: {file.sourceNamespace}
+                    </div>
+                  )}
 
                   {/* File size */}
                   <div style={{
@@ -1946,18 +2079,9 @@ export default function DataImportPipeline() {
                 fontSize: '10px',
               }}>
                 {(() => {
-                  const activeProcessingCount = files.filter(f => {
-                    const s = pipelineStatus[f.fileId] || {};
-                    if (!startedFiles.has(f.fileId)) return false;
-                    if (s.error || s.commitError) return false;
-                    if (s.committed || s.status === 'completed' || s.progress === 100) return false;
-                    return true;
-                  }).length;
-                  return (
                 <div style={{ color: C.textMuted }}>
                   {files.length} file{files.length !== 1 ? 's' : ''} • {activeProcessingCount} processing
                 </div>
-                  );
                 })()}
                 <button
                   onClick={startAllImports}

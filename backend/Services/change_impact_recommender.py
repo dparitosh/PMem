@@ -11,6 +11,8 @@ Given a change entity name OR a part name, traverses the Neo4j graph to find:
 import logging
 from difflib import SequenceMatcher
 
+from .recommendation_scope import cypher_scope_filter
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +26,7 @@ class ChangeImpactRecommender:
     # Public API
     # ------------------------------------------------------------------
 
-    def analyse(self, *, change_name: str = "", part_name: str = "") -> dict:
+    def analyse(self, *, change_name: str = "", part_name: str = "", scope: dict | None = None) -> dict:
         """Run full change-impact analysis.
 
         Supply *either* ``change_name`` (a ChangeRequest/ChangeNotice entity)
@@ -36,9 +38,9 @@ class ChangeImpactRecommender:
         # Step 1 — resolve the change entity
         change_entity = None
         if change_name:
-            change_entity = self._find_change_entity(change_name)
+            change_entity = self._find_change_entity(change_name, scope=scope)
         if not change_entity and part_name:
-            change_entity = self._find_part_as_change_proxy(part_name)
+            change_entity = self._find_part_as_change_proxy(part_name, scope=scope)
         if not change_entity:
             return {
                 "change_entity": None,
@@ -89,18 +91,20 @@ class ChangeImpactRecommender:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _find_change_entity(self, name: str) -> dict | None:
+    def _find_change_entity(self, name: str, scope: dict | None = None) -> dict | None:
+        scope_clause, scope_params = cypher_scope_filter("cr", scope)
         rows = self._graph.query(
             """
             MATCH (cr:Individual)
             WHERE cr.sourceTag IN ['ChangeNotice', 'ChangeNoticeRevision',
                                    'ChangeRequestRevision', 'ChangeRequest']
               AND toLower(cr.name) CONTAINS toLower($name)
+            """ + scope_clause + """
             RETURN cr.name AS name, cr.sourceTag AS source_tag,
                    cr.revision AS revision, elementId(cr) AS eid
             LIMIT 5
             """,
-            params={"name": name},
+            params={"name": name, **scope_params},
         )
         if not rows:
             return None
@@ -109,18 +113,20 @@ class ChangeImpactRecommender:
         return {"name": best["name"], "source_tag": best["source_tag"],
                 "revision": best.get("revision"), "elementId": best["eid"]}
 
-    def _find_part_as_change_proxy(self, name: str) -> dict | None:
+    def _find_part_as_change_proxy(self, name: str, scope: dict | None = None) -> dict | None:
+        scope_clause, scope_params = cypher_scope_filter("p", scope)
         rows = self._graph.query(
             """
             MATCH (p:Individual)
             WHERE toLower(p.name) CONTAINS toLower($name)
+            """ + scope_clause + """
             OPTIONAL MATCH (p)-[:INSTANCE_OF]->(cls:OntologyClass)
             RETURN p.name AS name, p.sourceTag AS source_tag,
                    p.revision AS revision, elementId(p) AS eid,
                    cls.name AS class_name
             LIMIT 5
             """,
-            params={"name": name},
+            params={"name": name, **scope_params},
         )
         if not rows:
             return None

@@ -16,6 +16,11 @@ import re
 
 logger = logging.getLogger(__name__)
 
+try:
+    from backend.Services.ontology_identity import normalize_ontology_entry, normalize_ontology_entries
+except Exception:  # pragma: no cover - script mode fallback
+    from Services.ontology_identity import normalize_ontology_entry, normalize_ontology_entries
+
 
 class OntologyUploadManager:
     """Manages ontology file uploads and metadata"""
@@ -49,7 +54,8 @@ class OntologyUploadManager:
         file_type: str,
         generation_type: str,
         description: str = "",
-        schema_type: str = "schema"
+        schema_type: str = "schema",
+        source_namespace: str = "",
     ) -> Dict[str, Any]:
         """
         Save ontology file and metadata
@@ -110,10 +116,13 @@ class OntologyUploadManager:
                 'ontology_name': ontology_name,
                 'prefix': prefix,
                 'ontology_prefix': prefix,
+                'namespace': source_namespace or '',
+                'target_namespace': source_namespace or '',
                 'file_type': file_type,
                 'generation_type': generation_type,
                 'description': description,
                 'schema_type': schema_type or 'schema',
+                'source_namespace': source_namespace or '',
                 'original_filename': filename,
                 'stored_filename': filename,
                 'file_path': str(file_path),
@@ -194,7 +203,9 @@ class OntologyUploadManager:
 
             # Only show the latest version of each ontology.
             # Entries without is_latest key are treated as latest (legacy uploads).
-            ontologies = [o for o in all_ontologies if o.get('is_latest', True)]
+            ontologies = normalize_ontology_entries(
+                o for o in all_ontologies if o.get('is_latest', True)
+            )
             # Strip heavyweight previous_versions array to keep the response small.
             for o in ontologies:
                 o.pop('previous_versions', None)
@@ -246,7 +257,7 @@ class OntologyUploadManager:
         if result.get("status") != "success":
             return result
 
-        ontologies = [dict(row) for row in result.get("ontologies", [])]
+        ontologies = normalize_ontology_entries(result.get("ontologies", []))
         by_prefix: Dict[str, Dict[str, Any]] = {}
         for row in ontologies:
             prefix = str(row.get("prefix") or row.get("ontology_prefix") or row.get("ontology_id") or "").strip()
@@ -326,6 +337,8 @@ class OntologyUploadManager:
                         "name": name,
                         "prefix": prefix,
                         "ontology_prefix": prefix,
+                        "namespace": "",
+                        "source_namespace": "",
                         "file_type": "neo4j",
                         "generation_type": "direct",
                         "schema_type": "schema",
@@ -338,7 +351,7 @@ class OntologyUploadManager:
             except Exception as exc:
                 logger.warning("Neo4j ontology prefix discovery failed: %s", exc)
 
-        rows = sorted(by_prefix.values(), key=lambda item: str(item.get("prefix") or ""))
+        rows = [normalize_ontology_entry(row) for row in sorted(by_prefix.values(), key=lambda item: str(item.get("prefix") or ""))]
         return {
             "status": "success",
             "ontologies": rows,

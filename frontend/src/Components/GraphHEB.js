@@ -44,11 +44,11 @@ const DISPLAY_MODE = 'property-only';
 // These improve readability and maintainability
 const HIGHLIGHT_AUTO_CLEAR_MS = 15000;        // 15 seconds - clear highlight after timeout
 const ENTITY_EXTRACTION_DELAY_MS = 500;       // 500ms - allow text selection to settle
-const TREE_ROW_HEIGHT_PX = 40;                // 40px - height of each tree row
-const TREE_INDENT_WIDTH_PX = 30;              // 30px - indent per tree level
-const TREE_LAYOUT_PADDING_PX = 40;            // 40px - padding from edges
-const TREE_DEFAULT_HEIGHT_PX = 600;           // 600px - default tree container height
-const TREE_MIN_CONTENT_HEIGHT_PX = 560;       // 560px - minimum height before scrolling
+const TREE_ROW_HEIGHT_PX = 40;                // Retained only while legacy tree renderer is being removed.
+const TREE_INDENT_WIDTH_PX = 30;
+const TREE_LAYOUT_PADDING_PX = 40;
+const TREE_DEFAULT_HEIGHT_PX = 600;
+const TREE_MIN_CONTENT_HEIGHT_PX = 560;
 const DEFAULT_GRAPH_OVERVIEW_LIMIT = 900;
 const DEFAULT_ONTOLOGY_VIEW_LIMIT = 200;
 const GRAPH_LABEL_RENDER_LIMIT = 140;
@@ -95,8 +95,30 @@ const resolveOntologySearchPrefix = (ontologyValue) => {
   return ontologyValue;
 };
 
+const getOntologyGraphScopeValue = (option) => {
+  if (!option) return '';
+  return option.prefix || option.ontology_prefix || option.value || option.ontology_id || option.id || '';
+};
+
+const resolveOntologyGraphScopeValue = (ontologyValue, options = []) => {
+  if (!ontologyValue || ontologyValue === 'ALL' || ontologyValue === 'step' || ontologyValue === 'mbse_instances') {
+    return ontologyValue;
+  }
+  if (ontologyValue.endsWith('_instances')) {
+    return ontologyValue;
+  }
+  const match = (options || []).find((option) => (
+    option?.value === ontologyValue ||
+    option?.ontology_id === ontologyValue ||
+    option?.id === ontologyValue ||
+    option?.prefix === ontologyValue ||
+    option?.ontology_prefix === ontologyValue
+  ));
+  return getOntologyGraphScopeValue(match) || ontologyValue;
+};
+
 const pickPreferredOntologyOption = (options) => {
-  const candidates = (options || []).filter((option) => option?.value && option.value !== 'ALL' && !option.disabled);
+  const candidates = (options || []).filter((option) => getOntologyGraphScopeValue(option) && !option.disabled);
   if (candidates.length === 0) return null;
 
   return candidates
@@ -226,6 +248,12 @@ const RELATIONSHIP_THEME = {
   SUBCLASS_OF: { color: '#486581', width: 1.65, dasharray: '7 3', markerId: 'arrowhead-subclass' },
   SUBPROPERTY_OF: { color: '#52606D', width: 1.45, dasharray: '4 3', markerId: 'arrowhead-subproperty' },
   EQUIVALENT_CLASS: { color: '#D9A441', width: 1.55, dasharray: '3 2', markerId: 'arrowhead-equivalent' },
+  DISJOINT_WITH: { color: '#C05621', width: 1.45, dasharray: '5 3', markerId: 'arrowhead-disjoint' },
+  INVERSE_OF: { color: '#6B46C1', width: 1.45, dasharray: '4 2', markerId: 'arrowhead-inverse' },
+  CLASS_RESTRICTION: { color: '#0F766E', width: 1.35, dasharray: '3 3', markerId: 'arrowhead-restriction' },
+  ON_PROPERTY: { color: '#64748B', width: 1.25, dasharray: '2 3', markerId: 'arrowhead-on-property' },
+  SOME_VALUES_FROM: { color: '#0E7490', width: 1.35, dasharray: null, markerId: 'arrowhead-some-values' },
+  ALL_VALUES_FROM: { color: '#0369A1', width: 1.35, dasharray: null, markerId: 'arrowhead-all-values' },
 };
 
 const CHAR_TIMES      = '\u00D7';     // ×   multiplication sign (close button)
@@ -259,24 +287,100 @@ const createNodeSearchFunction = () => {
     
     const lowerSearchTerm = searchTerm.toLowerCase();
     return nodes.filter(node => {
-      // Primary search fields (faster check first)
-      if (node.name?.toLowerCase().includes(lowerSearchTerm)) return true;
-      if (node.label?.toLowerCase().includes(lowerSearchTerm)) return true;
-      
-      // Label array search
-      if (node.labels?.some(label => label.toLowerCase().includes(lowerSearchTerm))) return true;
-      
-      // Properties search (more expensive, check last)
-      if (node.properties) {
-        const propValues = Object.values(node.properties);
-        return propValues.some(val => 
-          typeof val === 'string' && val.toLowerCase().includes(lowerSearchTerm)
-        );
+      const valuesToScan = [
+        node?.name,
+        node?.label,
+        node?.entity_type,
+        node?.title,
+        node?.code,
+        node?.type,
+        ...(Array.isArray(node?.labels) ? node.labels : []),
+      ];
+
+      for (const value of valuesToScan) {
+        if (typeof value === 'string' && value.toLowerCase().includes(lowerSearchTerm)) {
+          return true;
+        }
       }
-      
+
+      const stack = [node?.properties || node];
+      while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current || typeof current !== 'object') continue;
+        for (const value of Object.values(current)) {
+          if (value == null) continue;
+          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            if (String(value).toLowerCase().includes(lowerSearchTerm)) {
+              return true;
+            }
+          } else if (Array.isArray(value)) {
+            for (const item of value) {
+              if (item == null) continue;
+              if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
+                if (String(item).toLowerCase().includes(lowerSearchTerm)) {
+                  return true;
+                }
+              } else if (typeof item === 'object') {
+                stack.push(item);
+              }
+            }
+          } else if (typeof value === 'object') {
+            stack.push(value);
+          }
+        }
+      }
+
       return false;
     });
   };
+};
+
+const searchLinkMatches = (link, searchTerm) => {
+  if (!searchTerm || searchTerm.length < 2) return false;
+  const lowerSearchTerm = searchTerm.toLowerCase();
+  const valuesToScan = [
+    link?.type,
+    link?.label,
+    ...(Array.isArray(link?.labels) ? link.labels : []),
+  ];
+  for (const value of valuesToScan) {
+    if (typeof value === 'string' && value.toLowerCase().includes(lowerSearchTerm)) {
+      return true;
+    }
+  }
+  const props = link?.properties && typeof link.properties === 'object' ? link.properties : {};
+  for (const value of Object.values(props)) {
+    if (value == null) continue;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      if (String(value).toLowerCase().includes(lowerSearchTerm)) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const resolveEntityTypeLabel = (node) => {
+  const props = node?.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)
+    ? node.properties
+    : node || {};
+  const candidates = [
+    props.entity_type,
+    props.original_type,
+    props.node_type,
+    props.class_name,
+    props.concept_type,
+    node?.entity_type,
+    node?.label,
+    node?.labels?.[0],
+  ];
+  for (const candidate of candidates) {
+    const text = safeString(candidate, '').trim();
+    if (text && !['node', 'datanode'].includes(text.toLowerCase())) {
+      return text;
+    }
+  }
+  return safeString(node?.labels?.[0] || node?.label || props.entity_type || props.original_type || 'Node', 'Node');
 };
 
 const resolveNodeType = (node) => {
@@ -314,6 +418,14 @@ const resolveNodeName = (node) => {
 const getRelationshipVisual = (relationshipType) => {
   const key = String(relationshipType || '').toUpperCase();
   return RELATIONSHIP_THEME[key] || RELATIONSHIP_THEME.generic;
+};
+
+const getLinkEndpointId = (endpoint) => {
+  if (!endpoint) return null;
+  if (typeof endpoint === 'object') {
+    return endpoint.elementId || endpoint.id || endpoint.identity || endpoint._id || null;
+  }
+  return endpoint;
 };
 
 const getNodeCollisionRadius = (node, showLabels) => {
@@ -419,6 +531,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const lastCenteredSearchRef = useRef('');
   const previousSearchQueryRef = useRef('');
   const userInteractedWithGraphRef = useRef(false);
+  const suppressNodeClickRef = useRef(false);
 
   // Helper: build close button HTML for tooltips
   const tooltipCloseBtn = `<button class="dt-tooltip-close" style="position:absolute;top:6px;right:8px;background:none;border:none;color:white;font-size:16px;cursor:pointer;line-height:1;padding:0 2px;opacity:0.85;">&times;</button>`;
@@ -744,7 +857,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const [error, setError] = useState(null);
   // Performance: Add loading states for better UX
   const [searchLoading, setSearchLoading] = useState(false);
-  const [isLayoutSwitching, setIsLayoutSwitching] = useState(false);
+  const isLayoutSwitching = false;
   // New state for expand/collapse functionality
   const [expandedNodes, setExpandedNodes] = useState(new Set());
   const [loadingNodes, setLoadingNodes] = useState(new Set());
@@ -756,7 +869,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   // Track expanded nodes specifically for the indented tree layout
   const [treeExpandedNodes, setTreeExpandedNodes] = useState(new Set());
   // New state for layout selection
-  const [layoutType, setLayoutType] = useState('force-directed');
+  const layoutType = 'force-directed';
   const [prevLayoutType, setPrevLayoutType] = useState('force-directed');
   // Unified primary button color (match WhereUsedView request)
 
@@ -877,7 +990,19 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       return null;
     }
 
-    const relationshipOrder = ['SUBCLASS_OF', 'DOMAIN', 'RANGE', 'SUBPROPERTY_OF', 'EQUIVALENT_CLASS', 'DISJOINT_WITH'];
+    const relationshipOrder = [
+      'SUBCLASS_OF',
+      'DOMAIN',
+      'RANGE',
+      'SUBPROPERTY_OF',
+      'EQUIVALENT_CLASS',
+      'DISJOINT_WITH',
+      'INVERSE_OF',
+      'CLASS_RESTRICTION',
+      'ON_PROPERTY',
+      'SOME_VALUES_FROM',
+      'ALL_VALUES_FROM',
+    ];
     const relationshipCounts = links.reduce((acc, link) => {
       const type = safeString(link?.type, 'RELATED_TO');
       acc[type] = (acc[type] || 0) + 1;
@@ -886,7 +1011,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
 
     const schemaLabelCounts = nodes.reduce((acc, node) => {
       const labels = Array.isArray(node?.labels) ? node.labels : [];
-      const schemaLabel = labels.find((label) => ['OntologyClass', 'ObjectProperty', 'DatatypeProperty'].includes(label));
+      const schemaLabel = labels.find((label) => ['OntologyClass', 'ObjectProperty', 'DatatypeProperty', 'Restriction', 'Datatype'].includes(label));
       if (schemaLabel) {
         acc[schemaLabel] = (acc[schemaLabel] || 0) + 1;
       }
@@ -901,6 +1026,8 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       { label: 'Classes', key: 'OntologyClass' },
       { label: 'Object properties', key: 'ObjectProperty' },
       { label: 'Datatype properties', key: 'DatatypeProperty' },
+      { label: 'Restrictions', key: 'Restriction' },
+      { label: 'Datatypes', key: 'Datatype' },
     ].filter((entry) => schemaLabelCounts[entry.key] > 0)
       .map((entry) => ({ label: entry.label, count: schemaLabelCounts[entry.key] }));
 
@@ -994,6 +1121,9 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       'Class':             '#274C77',
       'ObjectProperty':    '#5D6D7E',
       'DatatypeProperty':  '#8D6E63',
+      'Restriction':       '#0F766E',
+      'OntologyRestriction':'#0F766E',
+      'Datatype':          '#6B7280',
       'OntologyProperty':  '#5D6D7E',
       'Property':          '#5D6D7E',
       'Relationship':      '#486581',
@@ -1671,7 +1801,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
   if (!d) return 'Unknown';
 
   const props = d.properties || d;
-  const nodeLabel = d.labels?.[0] || d.label || '';
+  const nodeLabel = resolveEntityTypeLabel(d);
 
   // Resolve property from priority list (see DISPLAY_NAME_PROPERTY at top of file)
   const propValue = resolveDisplayProp(props);
@@ -1689,6 +1819,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
 
   // Function to render indented tree layout
+  // eslint-disable-next-line no-unused-vars
   const renderIndentedTree = useCallback((data, svg, width, height) => {
     // Safety checks
     if (!data || !data.nodes || !Array.isArray(data.nodes) || data.nodes.length === 0) {
@@ -2556,37 +2687,6 @@ const getPrimaryNodeLabel = useCallback((d) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createHierarchicalData, tooltipRef, treeExpandedNodes, fullDataset, getDisplayLabel]);
 
-  // Effect to handle tree layout updates when data changes from expansions
-  useEffect(() => {
-    if (layoutType === 'indented-tree' && expandedNodes.size > 0) {
-      logger.render('[TreeLayout] Data changed with expanded nodes, updating tree state');
-      
-      // When data changes due to expansions, ensure the tree expanded state includes
-      // all nodes that should be visible based on the new hierarchy
-      const currentData = filteredData.nodes.length > 0 ? filteredData : fullDataset;
-      if (currentData && currentData.nodes && currentData.links) {
-        const newHierarchy = createHierarchicalData(currentData.nodes, currentData.links);
-        
-        // Auto-expand nodes that have children and are part of expansions
-        const newTreeExpanded = new Set(treeExpandedNodes);
-        
-        const addExpandedChildren = (node) => {
-          if (expandedNodes.has(node.elementId) && node.children && node.children.length > 0) {
-            newTreeExpanded.add(node.elementId);
-            node.children.forEach(addExpandedChildren);
-          }
-        };
-        
-        newHierarchy.forEach(addExpandedChildren);
-        
-        if (newTreeExpanded.size !== treeExpandedNodes.size) {
-          setTreeExpandedNodes(newTreeExpanded);
-        }
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expandedNodes, layoutType, treeExpandedNodes]);
-
   // Note: link_color is now handled by getLinkColor() function defined earlier
 
   // Function to process links and add offset information for bidirectional relationships
@@ -2702,6 +2802,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
   // --- D3 Drag Handlers (useCallback for stability, tied to simulation) ---
   const dragstarted = useCallback((event, d) => {
     userInteractedWithGraphRef.current = true;
+    suppressNodeClickRef.current = false;
     if (!event.active) simulationRef.current?.alphaTarget(ALPHA_TARGET_DRAG).restart();
     d.fx = d.x;
     d.fy = d.y;
@@ -2709,6 +2810,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
  
   const dragged = useCallback((event, d) => {
     userInteractedWithGraphRef.current = true;
+    suppressNodeClickRef.current = true;
     d.fx = event.x;
     d.fy = event.y;
   }, []);
@@ -2718,55 +2820,13 @@ const getPrimaryNodeLabel = useCallback((d) => {
     if (!event.active) simulationRef.current?.alphaTarget(ALPHA_TARGET_END);
     d.fx = null;
     d.fy = null;
-  }, []);
-
-  // Performance: Optimized layout change handler with monitoring
-  const handleLayoutChange = useCallback((newLayoutType) => {
-    if (newLayoutType !== layoutType) {
-      const startTime = performance.now();
-      setIsLayoutSwitching(true);
-      
-      logger.render(`[SYNC] Layout switching from ${layoutType} to ${newLayoutType}`);
-      
-      // Stop current simulation immediately for smooth transition
-      if (simulationRef.current && newLayoutType === 'indented-tree') {
-        simulationRef.current.stop();
-        simulationRef.current = null;
-      }
-      
-      setLayoutType(newLayoutType);
-      
-      // Ensure we have the full dataset available for both layouts
-      if (newLayoutType === 'force-directed') {
-        // For graph layout, use full dataset
-        logger.render(`[RENDER] Restoring full dataset for graph layout: ${graphData.nodes?.length || 0} nodes`);
-        setFilteredData({
-          nodes: [...(graphData.nodes || [])],
-          links: [...(graphData.links || [])]
-        });
-      } else if (newLayoutType === 'indented-tree') {
-        // For tree layout, use current filteredData but ensure tree expansion is initialized
-        try {
-          const currentNodes = filteredData.nodes?.length > 0 ? filteredData.nodes : graphData.nodes || [];
-          const currentLinks = filteredData.links?.length > 0 ? filteredData.links : graphData.links || [];
-          const roots = createHierarchicalData(currentNodes, currentLinks);
-          const rootIds = roots.map(r => r.elementId).filter(Boolean);
-          setTreeExpandedNodes(new Set(rootIds));
-          logger.render(`[TREE] Tree layout initialized with ${currentNodes.length} nodes, ${rootIds.length} roots`);
-        } catch (e) {
-          logger.warn('Tree expansion init failed', e);
-        }
-      }
-      
-      // Performance monitoring
-      requestAnimationFrame(() => {
-        const endTime = performance.now();
-        logger.render(`[PERF] Layout switch completed in ${(endTime - startTime).toFixed(2)}ms`);
-        setIsLayoutSwitching(false);
-      });
+    if (suppressNodeClickRef.current) {
+      const timeoutId = setTimeout(() => {
+        suppressNodeClickRef.current = false;
+      }, 250);
+      timeoutsRef.current.add(timeoutId);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layoutType, graphData, createHierarchicalData]);
+  }, []);
 
   // Throttled simulation tick to improve performance
   // eslint-disable-next-line no-unused-vars
@@ -2908,6 +2968,9 @@ const getPrimaryNodeLabel = useCallback((d) => {
           setSearchResults(currentData.nodes);
         }
       }
+      setSearchResultData({ nodes: [], links: [] });
+      setAvailableLabels([]);
+      setSelectedLabelFilter('ALL');
       setSearchLoading(false);
       return;
     }
@@ -2929,10 +2992,24 @@ const getPrimaryNodeLabel = useCallback((d) => {
           const searchData = fullDataset.nodes.length > 0 ? fullDataset : graphData;
           const nodes = nodeSearchFunction(searchData.nodes, debouncedSearchQuery);
           const nodeIds = new Set(nodes.map(node => node.elementId));
-          const links = (searchData.links || []).filter(
-            (link) => nodeIds.has(link.source?.elementId || link.source) && nodeIds.has(link.target?.elementId || link.target)
-          );
-          normalized = { nodes, links };
+          const matchedLinks = (searchData.links || []).filter((link) => {
+            const sourceId = getLinkEndpointId(link.source);
+            const targetId = getLinkEndpointId(link.target);
+            return (
+              (sourceId && targetId && nodeIds.has(sourceId) && nodeIds.has(targetId)) ||
+              searchLinkMatches(link, debouncedSearchQuery)
+            );
+          });
+          const linkNodeIds = new Set();
+          matchedLinks.forEach((link) => {
+            const sourceId = getLinkEndpointId(link.source);
+            const targetId = getLinkEndpointId(link.target);
+            if (sourceId) linkNodeIds.add(sourceId);
+            if (targetId) linkNodeIds.add(targetId);
+          });
+          const mergedNodeIds = new Set([...nodeIds, ...linkNodeIds]);
+          const mergedNodes = searchData.nodes.filter((node) => mergedNodeIds.has(node.elementId));
+          normalized = { nodes: mergedNodes, links: matchedLinks };
         } else {
           const response = isContextualQuery
             ? await apiClient.get(API.graph.contextualSubgraph, {
@@ -3020,6 +3097,9 @@ const getPrimaryNodeLabel = useCallback((d) => {
         } else {
           // Batch no results updates
           startTransition(() => {
+            setSearchResultData({ nodes: [], links: [] });
+            setAvailableLabels([]);
+            setSelectedLabelFilter('ALL');
             setFilteredData({ nodes: [], links: [] });
             // Update search results to empty array for other components
             if (setSearchResults) {
@@ -3041,13 +3121,17 @@ const getPrimaryNodeLabel = useCallback((d) => {
         const searchData = fullDataset.nodes.length > 0 ? fullDataset : graphData;
         const filteredNodes = nodeSearchFunction(searchData.nodes, debouncedSearchQuery);
         const filteredNodeIds = new Set(filteredNodes.map(n => n.elementId));
-        const filteredLinks = searchData.links.filter(
-          l => filteredNodeIds.has(l.source?.elementId || l.source) && 
-               filteredNodeIds.has(l.target?.elementId || l.target)
-        );
+        const filteredLinks = searchData.links.filter((l) => {
+          const sourceId = getLinkEndpointId(l.source);
+          const targetId = getLinkEndpointId(l.target);
+          return sourceId && targetId && filteredNodeIds.has(sourceId) && filteredNodeIds.has(targetId);
+        });
         // Batch fallback search updates
         startTransition(() => {
           setFilteredData({ nodes: filteredNodes, links: filteredLinks });
+          setSearchResultData({ nodes: filteredNodes, links: filteredLinks });
+          setAvailableLabels([]);
+          setSelectedLabelFilter('ALL');
           // Update search results for other components  
           if (setSearchResults) {
             setSearchResults(filteredNodes);
@@ -3077,8 +3161,8 @@ const getPrimaryNodeLabel = useCallback((d) => {
       );
       const filteredIds = new Set(filtered.map(n => n.elementId));
       const filteredLinks = searchResultData.links.filter(l =>
-        filteredIds.has(l.source?.elementId || l.source) &&
-        filteredIds.has(l.target?.elementId || l.target)
+        filteredIds.has(getLinkEndpointId(l.source)) &&
+        filteredIds.has(getLinkEndpointId(l.target))
       );
       setFilteredData({ nodes: filtered, links: filteredLinks });
       if (setSearchResults) setSearchResults(filtered);
@@ -3088,7 +3172,9 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
   // ── Ontology viewer: fetch ontology graph when dropdown changes ─────────
   const fetchOntologyGraph = useCallback(async (ontologyType, partName) => {
-    if (ontologyType === 'ALL') {
+    const graphScope = resolveOntologyGraphScopeValue(ontologyType, ontologyOptions);
+
+    if (graphScope === 'ALL') {
       // Reset to initial full graph
       setOntologyGraphMessage('');
       setFilteredData(initialData);
@@ -3105,27 +3191,27 @@ const getPrimaryNodeLabel = useCallback((d) => {
     setOntologyGraphMessage('');
     try {
       let response;
-      if (ontologyType === 'step' && partName && partName !== 'ALL') {
+      if (graphScope === 'step' && partName && partName !== 'ALL') {
         const endpointPath = replaceParams(API.graph.ontologyStepPart, { part: encodeURIComponent(partName) });
         response = await apiClient.get(endpointPath);
-      } else if (ontologyType.endsWith('_instances')) {
+      } else if (graphScope.endsWith('_instances')) {
         // pattern: 'ap242_instances' -> call instances endpoint for 'ap242'
-        const base = ontologyType.replace(/_instances$/, '');
+        const base = graphScope.replace(/_instances$/, '');
         response = await apiClient.get(
           buildUrl(replaceParams(API.graph.ontologyInstances, { ontology: base })),
           { params: { include_rels: true, limit: 1000 } }
         );
-      } else if (ontologyType === 'mbse_instances') {
+      } else if (graphScope === 'mbse_instances') {
         response = await apiClient.get(API.graph.ontologyMbseInstances);
       } else {
-        const endpointPath = replaceParams(API.graph.graphOntologyView, { prefix: ontologyType });
+        const endpointPath = replaceParams(API.graph.graphOntologyView, { prefix: graphScope });
         try {
           response = await apiClient.get(endpointPath, {
             params: { limit: DEFAULT_ONTOLOGY_VIEW_LIMIT },
           });
         } catch (primaryError) {
           logger.warn('[ONTOLOGY] Falling back to legacy ontology graph endpoint', primaryError);
-          const legacyEndpointPath = replaceParams(API.graph.graphvisByOntology, { prefix: ontologyType });
+          const legacyEndpointPath = replaceParams(API.graph.graphvisByOntology, { prefix: graphScope });
           response = await apiClient.get(legacyEndpointPath);
         }
       }
@@ -3158,7 +3244,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         setFullDataset(dataSet);
         setData(dataSet);
         if (setSearchResults) setSearchResults(dataSet.nodes);
-        logger.render(`[ONTOLOGY] Loaded ${ontologyType}: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
+        logger.render(`[ONTOLOGY] Loaded ${graphScope}: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
       } else {
         const empty = { nodes: [], links: [] };
         setOntologyGraphMessage(response.data?.message || response.data?.error || 'Neo4j query returned zero records.');
@@ -3175,7 +3261,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       setOntologyLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialData]);
+  }, [initialData, ontologyOptions]);
 
   // Ontology options are now loaded from centralized OntologyContext
   // This eliminates duplicate polling and API calls across components
@@ -3192,7 +3278,13 @@ const getPrimaryNodeLabel = useCallback((d) => {
     const indNodes = nodes.filter(n => {
       const labels = n.labels || [];
       // Exclude pure ontology/schema nodes
-      if (labels.includes('OntologyClass') || labels.includes('ObjectProperty') || labels.includes('DatatypeProperty')) {
+      if (
+        labels.includes('OntologyClass') ||
+        labels.includes('ObjectProperty') ||
+        labels.includes('DatatypeProperty') ||
+        labels.includes('Restriction') ||
+        labels.includes('Datatype')
+      ) {
         return false;
       }
       // Include everything else (all instance nodes, data, etc.)
@@ -3224,29 +3316,62 @@ const getPrimaryNodeLabel = useCallback((d) => {
     return { nodes: allNodes, links: indLinks };
   }, []);
 
-  // When graph view mode switches, load the appropriate dataset
-  useEffect(() => {
-    graphViewModeRef.current = graphViewMode;
-    resetGraphSelectionState({ resetOntology: false, resetStepPart: false });
-
-    if (graphViewMode === 'individual') {
-      const dataSet = buildIndividualViewDataset(initialData);
+  const loadContextualIndividualGraph = useCallback(async (queryText = '') => {
+    const ontologyPrefix = resolveOntologySearchPrefix(selectedOntologyRef.current);
+    setOntologyLoading(true);
+    setOntologyGraphMessage('');
+    try {
+      const response = await apiClient.get(API.graph.contextualSubgraph, {
+        params: {
+          search: queryText,
+          limit: 800,
+          ...(ontologyPrefix ? { ontology_prefix: ontologyPrefix } : {}),
+        },
+      });
+      const normalized = normalizeGraphDataset(response.data);
+      const dataSet = buildIndividualViewDataset(normalized);
       startTransition(() => {
         setFilteredData(dataSet);
         setGraphData(dataSet);
         setFullDataset(dataSet);
         setData(dataSet);
       });
-      // Defer parent setState — must NOT be called inside a state updater or during render
       if (setSearchResults) setTimeout(() => setSearchResults(dataSet.nodes), 0);
+      if (dataSet.nodes.length === 0) {
+        setOntologyGraphMessage('No contextual instances matched this ontology/filter. Try clearing the ontology selector or search for a known instance/property value.');
+      }
+    } catch (err) {
+      logger.error('[CONTEXTUAL] Fetch error:', err);
+      const fallbackData = buildIndividualViewDataset(initialData);
+      startTransition(() => {
+        setFilteredData(fallbackData);
+        setGraphData(fallbackData);
+        setFullDataset(fallbackData);
+        setData(fallbackData);
+      });
+      if (setSearchResults) setTimeout(() => setSearchResults(fallbackData.nodes), 0);
+      setOntologyGraphMessage(err?.response?.data?.detail || err?.message || 'Contextual graph query failed.');
+    } finally {
+      setOntologyLoading(false);
+    }
+  }, [buildIndividualViewDataset, initialData, setData, setSearchResults]);
+
+  // When graph view mode switches, load the appropriate dataset
+  useEffect(() => {
+    graphViewModeRef.current = graphViewMode;
+    resetGraphSelectionState({ resetOntology: false, resetStepPart: false });
+
+    if (graphViewMode === 'individual') {
+      loadContextualIndividualGraph('');
     } else {
       // Ontology mode — restore or refetch based on active ontology selection.
       const selected = selectedOntologyRef.current || 'ALL';
       if (selected === 'ALL') {
         const preferredOntology = pickPreferredOntologyOption(ontologyOptions);
-        if (preferredOntology?.value) {
-          setSelectedOntology(preferredOntology.value);
-          selectedOntologyRef.current = preferredOntology.value;
+        const preferredScope = getOntologyGraphScopeValue(preferredOntology);
+        if (preferredScope) {
+          setSelectedOntology(preferredScope);
+          selectedOntologyRef.current = preferredScope;
         } else {
           startTransition(() => {
             setFilteredData(initialData);
@@ -3263,21 +3388,14 @@ const getPrimaryNodeLabel = useCallback((d) => {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphViewMode, buildIndividualViewDataset, ontologyOptions, resetGraphSelectionState]);
+  }, [graphViewMode, buildIndividualViewDataset, ontologyOptions, resetGraphSelectionState, loadContextualIndividualGraph]);
 
   // Keep Individual view in sync when fresh initial graph data arrives.
   useEffect(() => {
     if (graphViewModeRef.current !== 'individual') return;
-    const dataSet = buildIndividualViewDataset(initialData);
-    startTransition(() => {
-      setFilteredData(dataSet);
-      setGraphData(dataSet);
-      setFullDataset(dataSet);
-      setData(dataSet);
-    });
-    if (setSearchResults) setTimeout(() => setSearchResults(dataSet.nodes), 0);
+    loadContextualIndividualGraph(searchQuery || '');
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialData, buildIndividualViewDataset]);
+  }, [selectedOntology]);
 
   // When ontology selection changes, fetch graph and optionally fetch STEP parts
   useEffect(() => {
@@ -3752,28 +3870,8 @@ const boundaryForce = (width, height) => {
       logger.warn(`[WARN] Large graph detected (${renderData.nodes.length} nodes). Performance may be affected.`);
     }
 
-    // Check layout type and render accordingly
-    if (layoutType === 'indented-tree') {
-      // Stop any running simulation for tree layout
-      if (simulationRef.current) {
-        simulationRef.current.stop();
-        simulationRef.current = null; // Clear the reference
-      }
-      // Clear any existing node count displays from force-directed layout
-      svg.selectAll('.node-count-display').remove();
-      // Clear only graph content, preserve defs
-      if (gRef.current) {
-        gRef.current.selectAll('*').remove();  // Only clear gRef content, not defs
-      }
-      // Render indented tree layout using the correct data
-      logger.render(`[TREE] Rendering tree with ${renderData.nodes.length} nodes`);
-      renderIndentedTree(renderData, svg, width, height);
-      logger.render('Rendered Indented Tree Layout');
-      return;
-    }
-
-    // Force-directed layout (original code)
-    // Clear tree layout content and ensure proper group structure
+    // Force-directed layout
+    // Clear graph content and ensure proper group structure
     if (gRef.current) {
       gRef.current.selectAll('*').remove();  // Only clear graph content, not defs
     } else {
@@ -4079,6 +4177,7 @@ const boundaryForce = (width, height) => {
             })
             .on('click', (event, d) => {
               event.stopPropagation();
+              if (suppressNodeClickRef.current) return;
               logger.render('=== EXPAND/COLLAPSE BUTTON CLICKED ===');
               logger.render('Node ID:', d.elementId);
               logger.render('Can expand:', hasExpandableConnections(d));
@@ -4545,16 +4644,6 @@ const boundaryForce = (width, height) => {
       }
     });
 
-    // Tree layout: highlight row backgrounds
-    svg.selectAll('.tree-row').each(function(d) {
-      const row = d3.select(this);
-      const nm = (d?.name || d?.properties?.name || '').toLowerCase();
-      const isHighlighted = hasHighlights && highlightedNodeNames.has(nm);
-      const rect = row.select('rect');
-      if (isHighlighted) {
-        rect.attr('fill', '#FFF9C4').attr('stroke', '#FFD700').attr('stroke-width', 1.25);
-      }
-    });
   }, [highlightedNodeNames]);
 
   // Keyboard shortcuts for expand/collapse
@@ -4610,6 +4699,65 @@ const boundaryForce = (width, height) => {
     };
   }, []);
 
+  const toolbarGroupStyle = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    padding: '8px 10px',
+    background: TCS_GRAPH_THEME.surface,
+    border: `1px solid ${TCS_GRAPH_THEME.border}`,
+    borderRadius: 8,
+    flex: '1 1 260px',
+    minWidth: 0,
+    width: '100%',
+    boxSizing: 'border-box',
+    overflow: 'visible',
+  };
+  const toolbarGroupTitleStyle = {
+    fontSize: 10,
+    lineHeight: 1,
+    fontWeight: 800,
+    letterSpacing: 0,
+    color: TCS_GRAPH_THEME.inkSoft,
+    textTransform: 'uppercase',
+  };
+  const toolbarRowStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'nowrap',
+    minWidth: 0,
+    width: '100%',
+    overflowX: 'visible',
+  };
+  const toolbarControlStyle = {
+    padding: '7px 10px',
+    borderRadius: 6,
+    border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`,
+    backgroundColor: TCS_GRAPH_THEME.surface,
+    color: TCS_GRAPH_THEME.ink,
+    fontSize: 13,
+    fontWeight: 600,
+    lineHeight: 1.2,
+    minHeight: 34,
+    minWidth: 0,
+    maxWidth: '100%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  };
+  const toolbarButtonStyle = {
+    padding: '5px 11px',
+    border: 'none',
+    borderRadius: 6,
+    backgroundColor: TCS_GRAPH_THEME.primary,
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+    minHeight: 30,
+    whiteSpace: 'nowrap',
+  };
+
   return (
     <div
       className="graph-heb-root"
@@ -4628,281 +4776,268 @@ const boundaryForce = (width, height) => {
         className="graph-toolbar"
         style={{
           display:'grid',
-          gridTemplateColumns:'repeat(auto-fit, minmax(210px, 1fr))',
-          gap:'10px 12px',
-          alignItems:'end',
-          padding:'10px 14px',
-          background:TCS_GRAPH_THEME.surface,
-          border:`1px solid ${TCS_GRAPH_THEME.border}`,
-          borderRadius:'8px',
-          boxShadow:'0 6px 18px rgba(15, 23, 42, 0.08)',
+          gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))',
+          alignItems:'stretch',
+          gap:'10px',
+          padding:'10px 12px',
+          background:TCS_GRAPH_THEME.surfaceMuted,
+          borderBottom:`1px solid ${TCS_GRAPH_THEME.border}`,
+          boxShadow:'0 4px 14px rgba(15, 23, 42, 0.06)',
           zIndex:1500, // raise above potential header overlay
-          position:'relative'
+          position:'relative',
+          width:'100%',
+          maxWidth:'100%',
+          boxSizing:'border-box',
+          overflowX:'hidden',
+          overflowY:'visible'
         }}
       >
-        <div className="dropdown" style={{ position:'relative' }}>
-          <button
-            className="btn btn-sm dropdown-toggle"
-            type="button"
-            title="Graph tools"
-            onClick={(e)=>{
-              const menu = e.currentTarget.nextSibling; if(menu) menu.classList.toggle('show');
-            }}
-            style={{
-              backgroundColor:TCS_GRAPH_THEME.surface,
-              color:TCS_GRAPH_THEME.primary,
-              fontWeight:700,
-              border:`1px solid ${TCS_GRAPH_THEME.borderStrong}`,
-              borderRadius:6,
-              padding:'5px 9px',
-              fontSize:12,
-              lineHeight:1.2
-            }}
-          >Tools</button>
-          <div
-            className="dropdown-menu p-1"
-            style={{
-              minWidth:150,
-              background:TCS_GRAPH_THEME.surface,
-              color:TCS_GRAPH_THEME.ink,
-              border:`1px solid ${TCS_GRAPH_THEME.border}`,
-              boxShadow:'0 12px 24px rgba(15, 23, 42, 0.12)',
-              position:'absolute',
-              top:'100%',
-              left:0,
-              marginTop:4,
-              zIndex:2000
-            }}
-          >
-            {[
-              ['Where Used', 'whereused'],
-              ['Table View', 'table'],
-              ['Reports', 'reports'],
-              ['Data Import', 'ingestion'],
-              ['Map & Align', 'ontology'],
-              ['Recommendations', 'recommendations'],
-              ['Admin', 'admin'],
-            ].map(([label, target]) => (
+        <div style={toolbarGroupStyle}>
+          <div style={toolbarGroupTitleStyle}>Navigate</div>
+          <div style={toolbarRowStyle}>
+            <div className="dropdown" style={{ position:'relative' }}>
               <button
-                key={target}
-                className="dropdown-item"
-                style={{ color:TCS_GRAPH_THEME.ink, fontSize:12, fontWeight:600, cursor:'pointer', padding:'5px 8px' }}
+                className="btn btn-sm dropdown-toggle"
+                type="button"
+                title="Graph tools"
                 onClick={(e)=>{
-                  e.currentTarget.closest('.dropdown-menu')?.classList.remove('show');
-                  if(typeof setActiveTab==='function'){ setActiveTab(target); }
+                  const menu = e.currentTarget.nextSibling; if(menu) menu.classList.toggle('show');
                 }}
-              >{label}</button>
-            ))}
+                style={{
+                  ...toolbarControlStyle,
+                  color:TCS_GRAPH_THEME.primary,
+                  cursor:'pointer',
+                  minWidth: 110,
+                }}
+              >Tools</button>
+              <div
+                className="dropdown-menu p-1"
+                style={{
+                  minWidth:170,
+                  background:TCS_GRAPH_THEME.surface,
+                  color:TCS_GRAPH_THEME.ink,
+                  border:`1px solid ${TCS_GRAPH_THEME.border}`,
+                  boxShadow:'0 12px 24px rgba(15, 23, 42, 0.12)',
+                  position:'absolute',
+                  top:'100%',
+                  left:0,
+                  marginTop:4,
+                  zIndex:2000
+                }}
+              >
+                {[
+                  ['Where Used', 'whereused'],
+                  ['Table View', 'table'],
+                  ['Reports', 'reports'],
+                  ['Data Import', 'ingestion'],
+                  ['Map & Align', 'ontology'],
+                  ['Recommendations', 'recommendations'],
+                  ['Admin', 'admin'],
+                ].map(([label, target]) => (
+                  <button
+                    key={target}
+                    className="dropdown-item"
+                    style={{ color:TCS_GRAPH_THEME.ink, fontSize:12, fontWeight:600, cursor:'pointer', padding:'7px 9px' }}
+                    onClick={(e)=>{
+                      e.currentTarget.closest('.dropdown-menu')?.classList.remove('show');
+                      if(typeof setActiveTab==='function'){ setActiveTab(target); }
+                    }}
+                  >{label}</button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
-        {/* ── Graph View Mode selector ─────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <i className="fas fa-layer-group" style={{ fontSize: '14px', color: '#004B87' }}></i>
-          <select
-            value={graphViewMode}
-            onChange={e => setGraphViewMode(e.target.value)}
-            style={{
-              padding: '6px 10px',
-              borderRadius: '6px',
-              border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`,
-              backgroundColor: TCS_GRAPH_THEME.surface,
-              color: TCS_GRAPH_THEME.ink,
-              cursor: 'pointer',
-              fontSize: '13px',
-              fontWeight: 600,
-              minWidth: '240px',
-              transition: 'all .2s ease'
-            }}
-            title="Switch between Ontology Graph and Individual Contextual Graph"
-          >
-            <option value="ontology" style={{color:'#333', fontWeight:600}}>Ontology Graph Visualization</option>
-            <option value="individual" style={{color:'#333', fontWeight:600}}>Contextual Individual Graph View</option>
-          </select>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <i className="fas fa-search" style={{ fontSize: '18px', color: '#555' }}></i>
-          <input
-            type="text"
-            placeholder={graphViewMode === 'individual' ? 'Query a contextual subgraph...' : 'Search nodes...'}
-            value={searchInput}
-            style={{
-              padding: '6px 10px',
-              borderRadius: '6px',
-              border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`,
-              minWidth: '190px',
-              fontSize: '13px',
-              fontWeight: 500,
-              lineHeight: 1.2,
-              background: TCS_GRAPH_THEME.surface,
-              color: TCS_GRAPH_THEME.ink
-            }}
-            onChange={e => setSearchInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') setSearchQuery(e.target.value); }}
-            onFocus={e => { e.target.style.borderColor = TCS_GRAPH_THEME.primary; e.target.style.boxShadow='0 0 0 2px rgba(31,61,99,0.12)'; }}
-            onBlur={e => { e.target.style.borderColor = TCS_GRAPH_THEME.borderStrong; e.target.style.boxShadow='none'; }}
-          />
-        </div>
-        {/* Label filter dropdown — only visible when search has results */}
-        {availableLabels.length > 0 && searchQuery && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <i className="fas fa-filter" style={{ fontSize: '14px', color: '#555' }}></i>
+
+        <div style={toolbarGroupStyle}>
+          <div style={toolbarGroupTitleStyle}>View</div>
+          <div style={toolbarRowStyle}>
+            <i className="fas fa-layer-group" style={{ fontSize: 14, color: TCS_GRAPH_THEME.primary }}></i>
             <select
-              value={selectedLabelFilter}
-              onChange={e => setSelectedLabelFilter(e.target.value)}
+              value={graphViewMode}
+              onChange={e => setGraphViewMode(e.target.value)}
               style={{
-                padding: '6px 10px',
-                borderRadius: '6px',
-                border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`,
-                backgroundColor: TCS_GRAPH_THEME.surface,
-                color: TCS_GRAPH_THEME.ink,
+                ...toolbarControlStyle,
                 cursor: 'pointer',
-                fontSize: '13px',
-                fontWeight: 600,
-                minWidth: '150px',
-                transition: 'all .2s ease'
+                minWidth: 180,
+                flex: '1 1 0',
               }}
-              title="Filter search results by node label"
+              title="Switch graph view"
             >
-              <option key="ALL" value="ALL">All Labels ({searchResultData.nodes.length})</option>
-              {availableLabels.map(label => {
-                const count = searchResultData.nodes.filter(n => (n.labels || []).includes(label)).length;
-                return (
-                  <option key={label} value={label}>
-                    {label} ({count})
-                  </option>
-                );
-              })}
+              <option value="ontology" style={{color:'#333', fontWeight:600}}>Ontology schema</option>
+              <option value="individual" style={{color:'#333', fontWeight:600}}>Contextual graph</option>
             </select>
           </div>
-        )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <i className="fas fa-chart-bar" style={{ fontSize: '14px', color: '#555' }}></i>
-          <select
-            value={layoutType}
-            onChange={(e) => handleLayoutChange(e.target.value)}
-            disabled={isLayoutSwitching || searchLoading}
-            style={{
-              padding: '6px 10px',
-              borderRadius: '6px',
-              border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`,
-              backgroundColor: TCS_GRAPH_THEME.surface,
-              color: TCS_GRAPH_THEME.ink,
-              cursor: isLayoutSwitching ? 'not-allowed' : 'pointer',
-              fontSize: '13px',
-              fontWeight: 600,
-              minWidth: '180px',
-              transition: 'all .2s ease',
-              opacity: isLayoutSwitching ? 0.6 : 1
-            }}
-            title={isLayoutSwitching ? 'Layout switching in progress...' : 'Select graph layout type'}
-          >
-            <option key="force-directed" value="force-directed" style={{color:'#333'}}>Force-Directed Graph</option>
-            <option key="indented-tree" value="indented-tree" style={{color:'#333'}}>Indented Tree Layout</option>
-          </select>
         </div>
-        
-        {/* Ontology selector dropdown — only in Ontology Graph mode */}
-        {graphViewMode === 'ontology' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <i className="fas fa-project-diagram" style={{ fontSize: '14px', color: '#555' }}></i>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <select
-              value={selectedOntology}
-              onChange={e => setSelectedOntology(e.target.value)}
-              disabled={ontologyLoading || !!ontologyError}
+
+        <div style={toolbarGroupStyle}>
+          <div style={toolbarGroupTitleStyle}>Search</div>
+          <div style={toolbarRowStyle}>
+            <i className="fas fa-search" style={{ fontSize: 15, color: TCS_GRAPH_THEME.inkSoft }}></i>
+            <input
+              type="text"
+              placeholder={graphViewMode === 'individual' ? 'Query contextual graph...' : 'Search nodes, links, properties...'}
+              value={searchInput}
               style={{
-                padding: '6px 10px',
-                borderRadius: '6px',
-                border: ontologyError ? '1px solid #D32F2F' : `1px solid ${TCS_GRAPH_THEME.borderStrong}`,
-                backgroundColor: TCS_GRAPH_THEME.surface,
-                color: TCS_GRAPH_THEME.ink,
-                cursor: ontologyLoading || ontologyError ? 'not-allowed' : 'pointer',
-                fontSize: '13px',
-                fontWeight: 600,
-                minWidth: '200px',
-                transition: 'all .2s ease',
-                opacity: ontologyLoading || ontologyError ? 0.6 : 1
+                ...toolbarControlStyle,
+                fontWeight: 500,
+                minWidth: 220,
+                flex: '1 1 0',
               }}
-              title={ontologyError ? ontologyError : "Select a specific ontology for schema inspection, or use the overview graph for orientation"}
-            >
-              <option value="ALL" style={{color:'#333', fontWeight:600}}>Overview Graph (all loaded data)</option>
-              {ontologyOptions.filter(o => o.value !== 'ALL' && !o.disabled).map((opt, idx) => (
-                <option key={opt.value || `ontology-opt-${idx}`} value={opt.value} style={{color:'#333'}}>
-                  {opt.prefix ? `[${opt.prefix}] ` : ''}{opt.label}{opt.type ? ` · ${opt.type}` : ''}{Number(opt.relationship_count || 0) === 0 ? ' · classes only' : ''}
-                </option>
-              ))}
-            </select>
-            {ontologyError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>Warning: {ontologyError}</span>}
-            {!ontologyError && selectedOntology === 'ALL' && (
-              <span style={{ fontSize: '11px', color: TCS_GRAPH_THEME.inkSoft, maxWidth: '280px', lineHeight: 1.35 }}>
-                Use this for orientation only. Choose a specific ontology to inspect classes, properties, domain, and range.
-              </span>
+              onChange={e => setSearchInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') setSearchQuery(e.target.value); }}
+              onFocus={e => { e.target.style.borderColor = TCS_GRAPH_THEME.primary; e.target.style.boxShadow='0 0 0 2px rgba(31,61,99,0.12)'; }}
+              onBlur={e => { e.target.style.borderColor = TCS_GRAPH_THEME.borderStrong; e.target.style.boxShadow='none'; }}
+            />
+            {availableLabels.length > 0 && searchQuery && (
+              <>
+                <i className="fas fa-filter" style={{ fontSize: 13, color: TCS_GRAPH_THEME.inkSoft }}></i>
+                <select
+                  value={selectedLabelFilter}
+                  onChange={e => setSelectedLabelFilter(e.target.value)}
+                  style={{
+                    ...toolbarControlStyle,
+                    cursor: 'pointer',
+                    minWidth: 190,
+                    flex: '1 1 0',
+                  }}
+                  title="Filter search results by node label"
+                >
+                  <option key="ALL" value="ALL">All Labels ({searchResultData.nodes.length})</option>
+                  {availableLabels.map(label => {
+                    const count = searchResultData.nodes.filter(n => (n.labels || []).includes(label)).length;
+                    return (
+                      <option key={label} value={label}>
+                        {label} ({count})
+                      </option>
+                    );
+                  })}
+                </select>
+              </>
             )}
           </div>
         </div>
-        )}
-        {/* STEP part sub-filter — only in Ontology mode and STEP selected */}
-        {graphViewMode === 'ontology' && selectedOntology === 'step' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <i className="fas fa-cogs" style={{ fontSize: '14px', color: '#555' }}></i>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <select
-                value={selectedStepPart}
-                onChange={e => setSelectedStepPart(e.target.value)}
-                disabled={stepPartsLoading || ontologyLoading || !!stepPartsError}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: '6px',
-                  border: stepPartsError ? '1px solid #D32F2F' : '1px solid #cfd6dc',
-                  backgroundColor: '#fff',
-                  color: '#333',
-                  cursor: stepPartsLoading || ontologyLoading || stepPartsError ? 'not-allowed' : 'pointer',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  minWidth: '200px',
-                  maxWidth: '320px',
-                  transition: 'all .2s ease',
-                  opacity: stepPartsLoading || ontologyLoading || stepPartsError ? 0.6 : 1
-                }}
-                title={stepPartsError ? stepPartsError : "Filter STEP data by part"}
-              >
-                <option key="ALL" value="ALL" style={{color:'#333'}}>All Parts{stepParts.length > 0 ? ` (${stepParts.length})` : ''}</option>
-                {stepParts.map(part => (
-                  <option key={part} value={part} style={{color:'#333'}}>
-                    {part.replace(/_/g, ' ')}
-                  </option>
-                ))}
-              </select>
-              {stepPartsError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>Warning: {stepPartsError}</span>}
-            </div>
+
+        <div style={toolbarGroupStyle}>
+          <div style={toolbarGroupTitleStyle}>Scope</div>
+          <div style={toolbarRowStyle}>
+            {graphViewMode === 'ontology' && (
+              <>
+                <i className="fas fa-project-diagram" style={{ fontSize: 14, color: TCS_GRAPH_THEME.inkSoft }}></i>
+                <select
+                  value={selectedOntology}
+                  onChange={e => setSelectedOntology(e.target.value)}
+                  disabled={ontologyLoading || !!ontologyError}
+                  style={{
+                    ...toolbarControlStyle,
+                    border: ontologyError ? '1px solid #D32F2F' : toolbarControlStyle.border,
+                    cursor: ontologyLoading || ontologyError ? 'not-allowed' : 'pointer',
+                    opacity: ontologyLoading || ontologyError ? 0.6 : 1,
+                    minWidth: 220,
+                    flex: '1 1 0',
+                  }}
+                  title={ontologyError ? ontologyError : "Select ontology scope"}
+                >
+              <option value="ALL" style={{color:'#333', fontWeight:600}}>All ontologies</option>
+                  {ontologyOptions.filter(o => o.value !== 'ALL' && !o.disabled).map((opt, idx) => (
+                    <option
+                      key={opt.value || opt.ontology_id || opt.prefix || `ontology-opt-${idx}`}
+                      value={getOntologyGraphScopeValue(opt)}
+                      style={{color:'#333'}}
+                    >
+                      {opt.prefix ? `[${opt.prefix}] ` : ''}{opt.label}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+            {graphViewMode === 'ontology' && selectedOntology === 'step' && (
+              <>
+                <i className="fas fa-cogs" style={{ fontSize: 14, color: TCS_GRAPH_THEME.inkSoft }}></i>
+                <select
+                  value={selectedStepPart}
+                  onChange={e => setSelectedStepPart(e.target.value)}
+                  disabled={stepPartsLoading || ontologyLoading || !!stepPartsError}
+                  style={{
+                    ...toolbarControlStyle,
+                    border: stepPartsError ? '1px solid #D32F2F' : toolbarControlStyle.border,
+                    cursor: stepPartsLoading || ontologyLoading || stepPartsError ? 'not-allowed' : 'pointer',
+                    opacity: stepPartsLoading || ontologyLoading || stepPartsError ? 0.6 : 1,
+                    minWidth: 220,
+                    flex: '1 1 0',
+                  }}
+                  title={stepPartsError ? stepPartsError : "Filter STEP data by part"}
+                >
+                  <option key="ALL" value="ALL" style={{color:'#333'}}>All Parts{stepParts.length > 0 ? ` (${stepParts.length})` : ''}</option>
+                  {stepParts.map(part => (
+                    <option key={part} value={part} style={{color:'#333'}}>
+                      {part.replace(/_/g, ' ')}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+            {graphViewMode !== 'ontology' && (
+              <span style={{ fontSize: 12, color: TCS_GRAPH_THEME.inkSoft }}>
+                Contextual graph
+              </span>
+            )}
+            {ontologyError && <span style={{ fontSize: 11, color: '#D32F2F' }}>Warning: {ontologyError}</span>}
+            {stepPartsError && <span style={{ fontSize: 11, color: '#D32F2F' }}>Warning: {stepPartsError}</span>}
           </div>
-        )}
-        {(searchLoading || isLayoutSwitching || ontologyLoading) && (
-          <div style={{display:'flex', alignItems:'center', gap:6, fontSize:13, color:'#004B87'}}>
-            <div className="spinner" style={{width:14,height:14,border:'2px solid #f3f3f3',borderTop:'2px solid #004B87',borderRadius:'50%',animation:'spin 1s linear infinite'}}></div>
-            {searchLoading ? 'Searching...' : ontologyLoading ? 'Loading ontology...' : 'Switching layout...'}
-          </div>
-        )}
-        {ontologyGraphMessage && (
-          <div style={{fontSize:12, color:'#8a5a00', background:'#fff8e1', border:'1px solid #ffe082', borderRadius:5, padding:'5px 8px'}}>
-            {ontologyGraphMessage}
-          </div>
-        )}
-        {graphData.nodes.length > GRAPH_LABEL_RENDER_LIMIT && !searchQuery && selectedOntology === 'ALL' && graphViewMode === 'ontology' && (
-          <div style={{fontSize:12, color:'#52606d', background:'#f4f7fb', border:'1px solid #d9e2ec', borderRadius:5, padding:'5px 8px'}}>
-            Labels are condensed in the full graph view. Search or pick an ontology to show node names.
-          </div>
-        )}
-        <div style={{ fontSize:12, color:TCS_GRAPH_THEME.inkSoft, background:TCS_GRAPH_THEME.surfaceAccent, border:`1px solid ${TCS_GRAPH_THEME.border}`, borderRadius:6, padding:'6px 10px' }}>
-          {graphViewMode === 'individual'
-            ? 'Contextual view runs a focused query and returns a smaller working subgraph around your search.'
-            : selectedOntology === 'ALL'
-              ? 'Overview Graph shows a mixed landscape of loaded graph data. Pick a specific ontology when you want a schema view with classes and ontology relationships.'
-              : 'Ontology view shows the selected ontology schema for structure-first exploration.'}
         </div>
+
+        <div style={toolbarGroupStyle}>
+          <div style={toolbarGroupTitleStyle}>Actions</div>
+          <div style={toolbarRowStyle}>
+            {(searchQuery || selectedOntology !== 'ALL' || graphViewMode !== 'ontology') && (
+              <button
+                onClick={() => {
+                  setGraphViewMode('ontology');
+                  graphViewModeRef.current = 'ontology';
+                  resetGraphSelectionState({ dataOverride: initialData });
+                  setGraphData(initialData);
+                  setFilteredData(initialData);
+                  setFullDataset(initialData);
+                  if (setSearchResults) setSearchResults(initialData.nodes);
+                }}
+                style={toolbarButtonStyle}
+              >Reset</button>
+            )}
+            <button
+              onClick={toggleChat}
+              style={{
+                ...toolbarButtonStyle,
+                backgroundColor: showChat ? TCS_GRAPH_THEME.inkSoft : TCS_GRAPH_THEME.primary,
+              }}
+              title={showChat ? 'Hide chat assistant' : 'Show chat assistant'}
+            >{showChat ? 'Hide Chat' : 'Show Chat'}</button>
+          </div>
+        </div>
+
+        <div style={{ gridColumn:'1 / -1', display:'flex', flexWrap:'wrap', alignItems:'center', gap:8 }}>
+          {(searchLoading || isLayoutSwitching || ontologyLoading) && (
+            <div style={{display:'flex', alignItems:'center', gap:6, fontSize:13, color:TCS_GRAPH_THEME.primary, background:TCS_GRAPH_THEME.surface, border:`1px solid ${TCS_GRAPH_THEME.border}`, borderRadius:6, padding:'5px 8px'}}>
+              <div className="spinner" style={{width:14,height:14,border:'2px solid #f3f3f3',borderTop:`2px solid ${TCS_GRAPH_THEME.primary}`,borderRadius:'50%',animation:'spin 1s linear infinite'}}></div>
+              {searchLoading ? 'Searching...' : ontologyLoading ? 'Loading ontology...' : 'Switching layout...'}
+            </div>
+          )}
+          {ontologyGraphMessage && (
+            <div style={{fontSize:12, color:'#8a5a00', background:'#fff8e1', border:'1px solid #ffe082', borderRadius:5, padding:'5px 8px'}}>
+              {ontologyGraphMessage}
+            </div>
+          )}
+          {graphData.nodes.length > GRAPH_LABEL_RENDER_LIMIT && !searchQuery && selectedOntology === 'ALL' && graphViewMode === 'ontology' && (
+            <div style={{fontSize:12, color:'#52606d', background:'#f4f7fb', border:'1px solid #d9e2ec', borderRadius:5, padding:'5px 8px'}}>
+              Labels are condensed in the full graph view. Search or pick an ontology to show node names.
+            </div>
+          )}
+        </div>
+
         {ontologySliceSummary && (
           <div
             style={{
+              gridColumn: '1 / -1',
               display: 'flex',
               flexWrap: 'wrap',
               alignItems: 'center',
@@ -4980,25 +5115,6 @@ const boundaryForce = (width, height) => {
             )}
           </div>
         )}
-        {(searchQuery || selectedOntology !== 'ALL' || graphViewMode !== 'ontology') && (
-          <button
-            onClick={() => {
-              setGraphViewMode('ontology');
-              graphViewModeRef.current = 'ontology';
-              resetGraphSelectionState({ dataOverride: initialData });
-              setGraphData(initialData);
-              setFilteredData(initialData);
-              setFullDataset(initialData);
-              if (setSearchResults) setSearchResults(initialData.nodes);
-            }}
-            style={{padding:'6px 12px', border:'none', borderRadius:'6px', backgroundColor:TCS_GRAPH_THEME.primary, color:'#fff', fontSize:'13px', fontWeight:700, cursor:'pointer', transition:'all .2s ease'}}
-          >Reset</button>
-        )}
-        <button
-          onClick={toggleChat}
-          style={{padding:'6px 12px', border:'none', borderRadius:'6px', backgroundColor:TCS_GRAPH_THEME.primary, color:'#fff', fontSize:'13px', fontWeight:700, cursor:'pointer', transition:'all .2s ease'}}
-          title={showChat ? 'Hide chat assistant' : 'Show chat assistant'}
-        >{showChat ? 'Hide Chat' : 'Show Chat'}</button>
       </div>
       {isLoading && (
         <div className="loading-state" style={{ 
@@ -5064,7 +5180,7 @@ const boundaryForce = (width, height) => {
           <div style={{ fontSize: '12px', color: '#95a5a6' }}>Try adjusting your search terms</div>
         </div>
       )}
-      {!isLoading && !error && graphData.nodes.length === 0 && !searchQuery && (
+      {!isLoading && !error && graphData.nodes.length === 0 && filteredData.nodes.length === 0 && !searchQuery && (
         <div style={{ 
           position: 'absolute', 
           top: '50%', 
@@ -5081,8 +5197,10 @@ const boundaryForce = (width, height) => {
           minWidth: '320px'
         }}>
           <div style={{ marginBottom: '16px', fontSize: '48px', color: '#6c757d' }}><i className="fas fa-chart-line"></i></div>
-          <div style={{ fontSize: '18px', fontWeight: '600', color: '#2C2C2C', marginBottom: '8px' }}>No Data Available</div>
-          <div style={{ fontSize: '14px', color: '#7f8c8d' }}>No graph data available from Neo4j database</div>
+          <div style={{ fontSize: '18px', fontWeight: '600', color: '#2C2C2C', marginBottom: '8px' }}>No Graph View Available</div>
+          <div style={{ fontSize: '14px', color: '#7f8c8d' }}>
+            {ontologyGraphMessage || 'No graph data available from Neo4j database'}
+          </div>
         </div>
       )}
  

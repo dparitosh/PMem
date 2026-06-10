@@ -1017,10 +1017,15 @@ async def get_sample_queries():
       - GeneralOperation / HeaderOperation → assembly process queries
       - MbseNode Class → SysML MBSE queries
       - UseCase → use-case queries
-    Falls back to hardcoded domain-specific defaults when the graph is empty.
+    Falls back to ontology-registry-driven templates when the graph is empty.
     """
     try:
         from chains.cypher import query_cypher
+        from Services.ontology_upload_manager import OntologyUploadManager
+        try:
+            registry = OntologyUploadManager.list_ontologies_with_neo4j_counts(graph)
+        except Exception:
+            registry = OntologyUploadManager.list_ontologies()
 
         def _fetch(cypher):
             try:
@@ -1034,8 +1039,14 @@ async def get_sample_queries():
         mbse_cls    = _fetch("MATCH (n:Class:MbseNode) WHERE n.name IS NOT NULL AND size(n.name) > 3 RETURN n.name AS name ORDER BY n.name LIMIT 3")
         use_cases   = _fetch("MATCH (n:UseCase:MbseNode) WHERE n.name IS NOT NULL AND size(n.name) > 3 RETURN n.name AS name LIMIT 2")
         packages    = _fetch("MATCH (n:Package:MbseNode) WHERE n.name IS NOT NULL AND NOT n.name STARTS WITH 'Basic' RETURN n.name AS name LIMIT 2")
+        ontology_rows = (registry.get("ontologies", []) if isinstance(registry, dict) else [])[:3]
+        ontology_names = [
+            str(row.get("ontology_name") or row.get("name") or row.get("prefix") or row.get("ontology_id") or "").strip()
+            for row in ontology_rows
+            if str(row.get("ontology_name") or row.get("name") or row.get("prefix") or row.get("ontology_id") or "").strip()
+        ]
 
-        data_available = any([parts, operations, assemblies, mbse_cls, use_cases])
+        data_available = any([parts, operations, assemblies, mbse_cls, use_cases, ontology_names])
 
         if data_available:
             part1  = parts[0]       if parts       else "ROTOR SHAFT"
@@ -1047,6 +1058,8 @@ async def get_sample_queries():
             cls2   = mbse_cls[1]    if len(mbse_cls) > 1 else "Sugar Production Plant"
             uc1    = use_cases[0]   if use_cases   else "Energy efficiency for juice purification"
             pkg1   = packages[0]    if packages    else "2 Functional Analysis"
+            onto1  = ontology_names[0] if ontology_names else "the selected ontology"
+            onto2  = ontology_names[1] if len(ontology_names) > 1 else onto1
 
             sample_queries = [
                 # Motor / XPDMXML domain
@@ -1063,19 +1076,22 @@ async def get_sample_queries():
                 f'Which SysML blocks are associated with "{cls2}"?',
                 # Cross-domain
                 f'Analyse change impact if "{part1}" is modified',
-                f'What ontology classes does "{asm1}" instantiate?',
+                f'What ontology classes does "{onto1}" expose?',
+                f'Compare the taxonomy of "{onto1}" and "{onto2}"',
             ]
         else:
-            # Hardcoded domain-specific fallbacks
+            # Registry-driven fallbacks for empty graphs
+            ontology1 = ontology_names[0] if ontology_names else "the selected ontology"
+            ontology2 = ontology_names[1] if len(ontology_names) > 1 else ontology1
             sample_queries = [
-                'What are all the parts in the 5 HP MOTOR ASSEMBLY and in what sequence are they assembled?',
-                'Show the complete assembly operation sequence for 5 HP MOTOR ASSEMBLY',
-                'Recommend manufacturing processes for ROTOR SHAFT',
-                'Find parts similar to LAMINATED ROTOR CORE that could be substituted',
-                'What SysML requirements relate to the Variable Speed Drive?',
-                'Show all use cases and actors in the Sugar Production Plant MBSE model',
-                'Analyse change impact if ROTOR SHAFT is modified',
-                'Analyse change impact if THREE PHASE WINDINGS is modified',
+                f'Show the ontology graph for "{ontology1}"',
+                f'List the classes, properties, and individuals in "{ontology1}"',
+                f'Show the taxonomy for "{ontology1}"',
+                f'Find the active ontology scopes available in this workspace',
+                f'Compare "{ontology1}" and "{ontology2}" for overlapping concepts',
+                'Recommend manufacturing processes for the selected part',
+                'Find similar parts using the currently loaded graph data',
+                'Analyse change impact for a selected entity in the active ontology scope',
             ]
 
         all_entities = parts + operations + assemblies + mbse_cls + use_cases
@@ -1084,20 +1100,21 @@ async def get_sample_queries():
             "data_available": data_available,
             "entity_count": len(all_entities),
             "sample_entities": all_entities[:8],
+            "ontology_scopes": ontology_names,
         })
 
     except Exception as e:
         logger.error(f"Sample queries error: {e}", exc_info=True)
         return JSONResponse({
             "queries": [
-                'What are all the parts in the 5 HP MOTOR ASSEMBLY and in what sequence are they assembled?',
-                'Show the complete assembly operation sequence for 5 HP MOTOR ASSEMBLY',
-                'Recommend manufacturing processes for ROTOR SHAFT',
-                'Find parts similar to LAMINATED ROTOR CORE that could be substituted',
-                'What SysML requirements relate to the Variable Speed Drive?',
-                'Show all use cases and actors in the Sugar Production Plant MBSE model',
-                'Analyse change impact if ROTOR SHAFT is modified',
-                'Analyse change impact if THREE PHASE WINDINGS is modified',
+                'Show the ontology graph for the selected ontology',
+                'List the classes, properties, and individuals in the selected ontology',
+                'Show the taxonomy for the selected ontology',
+                'Find the active ontology scopes available in this workspace',
+                'Compare two loaded ontologies for overlapping concepts',
+                'Recommend manufacturing processes for the selected part',
+                'Find similar parts using the currently loaded graph data',
+                'Analyse change impact for a selected entity in the active ontology scope',
             ],
             "data_available": False,
             "error": "Could not fetch dynamic queries from database",
@@ -1818,19 +1835,41 @@ def filter_graph_nodes(request: TextSearchRequest):
         return {"results": []}
 
     query = """
-        MATCH (n)
-        WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
-          AND (
-            toLower(coalesce(n.name, '')) CONTAINS toLower($input)
-            OR toLower(coalesce(n.label, '')) CONTAINS toLower($input)
-            OR toLower(coalesce(n.FileName, '')) CONTAINS toLower($input)
-            OR toLower(coalesce(n.id, '')) CONTAINS toLower($input)
-            OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($input))
-          )
-        WITH collect(DISTINCT n)[..100] AS matchedNodes
+        CALL {
+          MATCH (n)
+          WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
+            AND (
+              any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($input))
+              OR any(key IN keys(n) WHERE toLower(coalesce(toStringOrNull(n[key]), '')) CONTAINS toLower($input))
+            )
+          RETURN n
+          LIMIT 120
+        UNION
+          MATCH (a)-[matched_rel]-(b)
+          WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
+            AND (
+              toLower(type(matched_rel)) CONTAINS toLower($input)
+              OR any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS toLower($input))
+            )
+          RETURN a AS n
+          LIMIT 120
+        UNION
+          MATCH (a)-[matched_rel]-(b)
+          WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
+            AND (
+              toLower(type(matched_rel)) CONTAINS toLower($input)
+              OR any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS toLower($input))
+            )
+          RETURN b AS n
+          LIMIT 120
+        }
+        WITH collect(DISTINCT n)[..160] AS matchedNodes
         UNWIND matchedNodes AS n
         OPTIONAL MATCH (n)-[r]-(m)
-        WHERE m IN matchedNodes
+        WHERE r IS NULL
+           OR m IN matchedNodes
+           OR toLower(type(r)) CONTAINS toLower($input)
+           OR any(key IN keys(r) WHERE toLower(coalesce(toStringOrNull(r[key]), '')) CONTAINS toLower($input))
         RETURN
           {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
           CASE WHEN r IS NOT NULL THEN {
@@ -1933,7 +1972,13 @@ def filter_graph_nodes_multi(request: MultiNameSearchRequest):
 UNWIND $names AS searchName
 MATCH (n)
 WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
-  AND toLower(n.name) CONTAINS toLower(searchName)
+  AND (
+    toLower(coalesce(n.name, '')) CONTAINS toLower(searchName)
+    OR toLower(coalesce(n.title, '')) CONTAINS toLower(searchName)
+    OR toLower(coalesce(n.code, '')) CONTAINS toLower(searchName)
+    OR toLower(coalesce(n.label, '')) CONTAINS toLower(searchName)
+    OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower(searchName))
+  )
 WITH collect(DISTINCT n) AS matchedNodes
 UNWIND matchedNodes AS n
 OPTIONAL MATCH (n)-[r]-(m)
@@ -2689,10 +2734,11 @@ def recommend_change_impact(body: dict):
     """Analyse change impact given a change entity name or a part name."""
     change_name = body.get("change_name", "")
     part_name = body.get("part_name", "")
+    scope = body.get("scope") or {}
     if not change_name and not part_name:
         raise HTTPException(status_code=400, detail="Provide 'change_name' or 'part_name'")
     try:
-        return _change_impact.analyse(change_name=change_name, part_name=part_name)
+        return _change_impact.analyse(change_name=change_name, part_name=part_name, scope=scope)
     except Exception as e:
         safe_error("/recommendations/change-impact", e)
 
@@ -2702,10 +2748,11 @@ def recommend_similar_parts(body: dict):
     """Find similar parts given a part name."""
     part_name = body.get("part_name", "")
     top_n = body.get("top_n", 10)
+    scope = body.get("scope") or {}
     if not part_name:
         raise HTTPException(status_code=400, detail="Provide 'part_name'")
     try:
-        return _similar_parts.recommend(part_name, top_n=int(top_n))
+        return _similar_parts.recommend(part_name, top_n=int(top_n), scope=scope)
     except Exception as e:
         safe_error("/recommendations/similar-parts", e)
 
@@ -2714,10 +2761,11 @@ def recommend_similar_parts(body: dict):
 def recommend_manufacturing(body: dict):
     """Recommend manufacturing processes for a part."""
     part_name = body.get("part_name", "")
+    scope = body.get("scope") or {}
     if not part_name:
         raise HTTPException(status_code=400, detail="Provide 'part_name'")
     try:
-        return _mfg_process.recommend(part_name)
+        return _mfg_process.recommend(part_name, scope=scope)
     except Exception as e:
         safe_error("/recommendations/manufacturing", e)
 
@@ -2726,17 +2774,48 @@ def recommend_manufacturing(body: dict):
 def recommendations_health():
     """Service health check with key Neo4j counts."""
     try:
+        from Services.ontology_upload_manager import OntologyUploadManager
+        try:
+            registered = OntologyUploadManager.list_ontologies_with_neo4j_counts(graph)
+        except Exception:
+            registered = OntologyUploadManager.list_ontologies()
+
         counts = graph.query("""
             MATCH (p:Individual)-[:INSTANCE_OF]->(c:OntologyClass)
-            WHERE c.name IN ['Part', 'Requirement', 'Process', 'GeneralRelation',
-                             'ProductInstance', 'Function', 'ProcessInstance']
+            WHERE c.name IS NOT NULL
             RETURN c.name AS class_name, count(p) AS cnt
             ORDER BY cnt DESC
+            LIMIT 20
         """)
+        model_counts = graph.query("""
+            OPTIONAL MATCH (i:Individual)
+            WITH count(i) AS individual_count
+            OPTIONAL MATCH (raw)
+            WHERE NOT raw:OntologyClass
+              AND NOT raw:ObjectProperty
+              AND NOT raw:DatatypeProperty
+            RETURN individual_count,
+                   count(raw) AS raw_graph_count
+        """)
+        model_count_row = model_counts[0] if model_counts else {}
+        individual_count = int(model_count_row.get("individual_count") or 0)
+        raw_graph_count = int(model_count_row.get("raw_graph_count") or 0)
         return {
             "status": "ok",
             "services": ["change-impact", "similar-parts", "manufacturing"],
             "neo4j_counts": {r["class_name"]: r["cnt"] for r in counts},
+            "readiness": {
+                "scenario_ready": individual_count > 0,
+                "individual_count": individual_count,
+                "raw_graph_count": raw_graph_count,
+                "required_model": "Individual nodes linked to OntologyClass with business names",
+                "message": (
+                    "Recommendation scenarios are ready."
+                    if individual_count > 0
+                    else "Recommendation scenarios need normalized instance data before they can return business results."
+                ),
+            },
+            "ontology_scopes": (registered.get("ontologies", []) if isinstance(registered, dict) else []),
         }
     except Exception as e:
         return {"status": "degraded", "error": str(e)}

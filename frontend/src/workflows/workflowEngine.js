@@ -77,14 +77,14 @@ export const workflowCatalog = [
     label: 'Create ontology',
     title: 'Create ontology',
     category: 'Ontology',
-    description: 'Register schema or ontology files with namespace, prefix, and metadata capture.',
+    description: 'Profile schema or ontology files, capture namespace and prefix metadata, preview the generated ontology, then register it.',
     inputs: 'EXPRESS, OWL, RDF, TTL, XSD, XMI, MDXML',
     outputs: ['Ontology preview', 'Prefix metadata', 'Schema classes'],
     status: 'available',
     execution: 'File upload',
     prerequisite: 'Choose an ontology/schema file',
     icon: FileCode2,
-    stages: ['Upload schema', 'Detect namespace and schema', 'Generate ontology preview', 'Register or load after review'],
+    stages: ['Upload schema file', 'Capture namespace and prefix', 'Generate ontology preview', 'Review and register ontology'],
     writes_to_neo4j: false,
     retains_artifacts: true,
   },
@@ -278,7 +278,14 @@ export const buildWorkflowStages = (workflow) =>
           ['map', 'validate', 'transform', 'enrich'],
           ['ingest', 'load', 'verify'],
         ][idx] || []
-      : [],
+      : workflow.id === 'ontology.create'
+        ? [
+            ['upload'],
+            ['detect', 'parse'],
+            ['preview', 'validate'],
+            ['verify', 'load', 'completed'],
+          ][idx] || []
+        : [],
   }));
 
 export const getStageLabel = (stageId) =>

@@ -55,6 +55,61 @@ const formatNodeDisplay = (label, propValue) => {
   }
 };
 
+const WU = {
+    primary: '#004B87',
+    primarySoft: '#E8F1FC',
+    surface: '#FFFFFF',
+    bg: '#F8F9FA',
+    border: '#D9E2EC',
+    borderStrong: '#BCCCDC',
+    text: '#1A2B3C',
+    muted: '#52606D',
+    subtle: '#7B8794',
+    error: '#C0392B',
+};
+
+const panelStyle = {
+    background: WU.surface,
+    border: `1px solid ${WU.border}`,
+    borderRadius: 8,
+    boxShadow: '0 4px 14px rgba(15, 23, 42, 0.06)',
+    padding: 12,
+    boxSizing: 'border-box',
+};
+
+const fieldLabelStyle = {
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: 0,
+    color: WU.muted,
+    textTransform: 'uppercase',
+};
+
+const inputStyle = {
+    width: '100%',
+    minHeight: 36,
+    padding: '8px 11px',
+    border: `1px solid ${WU.borderStrong}`,
+    borderRadius: 6,
+    fontSize: 13,
+    color: WU.text,
+    boxSizing: 'border-box',
+    outline: 'none',
+};
+
+const buttonStyle = {
+    minHeight: 36,
+    padding: '8px 14px',
+    border: 'none',
+    borderRadius: 6,
+    background: WU.primary,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+};
+
 const WhereUsedView = ({
     data,
     setData,
@@ -95,9 +150,6 @@ const WhereUsedView = ({
         return `hsl(${hue}, 65%, 55%)`;
     };
     
-    // Unified primary button color per request
-    const primaryButtonColor = 'rgb(10, 130, 118)';
-
     // Unified search using same backend logic as GraphHEB (POST /graphfilter)
     const handleSearch = async () => {
         const term = searchTerm.trim();
@@ -806,48 +858,44 @@ const WhereUsedView = ({
     };
 
     return (
-        <div style={{ padding: '12px 20px', boxSizing: 'border-box', overflow: 'hidden', display:'flex', flexDirection:'column', flex:1, minHeight:0 }}>
-            {/* Duplicate header & back button removed; toolbar provided by parent App.js */}
-            <p style={{ marginTop:0, marginBottom: '12px' }}>Search for a node to see all parent hierarchies leading to it</p>
-
-            {/* Search Section */}
-            <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search for a node..."
-                    style={{ 
-                        padding: '8px 12px', 
-                        border: '1px solid #ddd', 
-                        borderRadius: '4px',
-                        width: '300px'
-                    }}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                />
-                <button 
-                    onClick={handleSearch}
-                    disabled={isSearching}
-                    style={{
-                        padding: '8px 16px',
-                        backgroundColor: isSearching ? 'rgba(10,130,118,0.6)' : primaryButtonColor,
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: isSearching ? 'not-allowed' : 'pointer'
-                    }}
-                >
-                    {isSearching ? 'Searching...' : 'Search'}
-                </button>
+        <div style={{ padding: '14px 18px', boxSizing: 'border-box', overflow: 'hidden', display:'flex', flexDirection:'column', flex:1, minHeight:0, background: WU.bg }}>
+            <div style={{ ...panelStyle, marginBottom: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 1fr) auto', gap: 10, alignItems: 'end' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                        <span style={fieldLabelStyle}>Node search</span>
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Enter part, class, instance, requirement, or property name"
+                            style={inputStyle}
+                            onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                        />
+                    </label>
+                    <button
+                        onClick={handleSearch}
+                        disabled={isSearching || !searchTerm.trim()}
+                        style={{
+                            ...buttonStyle,
+                            background: isSearching || !searchTerm.trim() ? WU.subtle : WU.primary,
+                            cursor: isSearching || !searchTerm.trim() ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        {isSearching ? 'Searching...' : 'Search'}
+                    </button>
+                </div>
                 {searchError && (
-                    <span style={{ color: '#a94442', fontSize: 12 }}>{searchError}</span>
+                    <div style={{ marginTop: 8, color: WU.error, fontSize: 12, fontWeight: 600 }}>{searchError}</div>
                 )}
             </div>
             {/* Search Results */}
             {hierarchySearchResults.length > 0 && (
-                <div style={{ marginBottom: '20px' }}>
-                    <h4 style={{ margin: '0 0 10px 0', fontSize: 14, color: '#2c3e50' }}>Search Results ({hierarchySearchResults.length})</h4>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', maxHeight: '200px', overflowY: 'auto', padding: '4px' }}>
+                <div style={{ ...panelStyle, marginBottom: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: WU.text }}>Matching nodes</div>
+                        <div style={{ fontSize: 12, color: WU.muted }}>{hierarchySearchResults.length} result{hierarchySearchResults.length === 1 ? '' : 's'}</div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 8, maxHeight: 190, overflowY: 'auto', padding: 2 }}>
                         {hierarchySearchResults.map((node) => {
                             const nodeLabel = node.labels?.[0] || node.label || 'Node';
                             const isSelected = selectedNode?.elementId === node.elementId;
@@ -865,34 +913,33 @@ const WhereUsedView = ({
                                         display: 'flex',
                                         alignItems: 'center',
                                         gap: '8px',
-                                        padding: '8px 12px',
-                                        backgroundColor: isSelected ? primaryButtonColor : '#fff',
-                                        color: isSelected ? 'white' : '#333',
-                                        border: isSelected ? `2px solid ${primaryButtonColor}` : '1px solid #e0e0e0',
-                                        borderRadius: '8px',
+                                        padding: '9px 10px',
+                                        backgroundColor: isSelected ? WU.primarySoft : '#fff',
+                                        color: WU.text,
+                                        border: isSelected ? `1px solid ${WU.primary}` : `1px solid ${WU.border}`,
+                                        borderRadius: 7,
                                         cursor: 'pointer',
                                         transition: 'all 0.15s ease',
-                                        boxShadow: isSelected ? '0 2px 8px rgba(10,130,118,0.3)' : '0 1px 3px rgba(0,0,0,0.08)',
-                                        minWidth: '120px',
-                                        maxWidth: '280px'
+                                        boxShadow: isSelected ? '0 3px 10px rgba(0,75,135,0.12)' : 'none',
+                                        minWidth: 0
                                     }}
                                 >
                                     <span style={{
                                         display: 'inline-block',
                                         padding: '2px 8px',
                                         borderRadius: '4px',
-                                        fontSize: '10px',
+                                        fontSize: 10,
                                         fontWeight: 600,
                                         textTransform: 'uppercase',
-                                        letterSpacing: '0.5px',
+                                        letterSpacing: 0,
                                         backgroundColor: isSelected ? 'rgba(255,255,255,0.25)' : getNodeColor(nodeLabel),
                                         color: 'white',
                                         whiteSpace: 'nowrap',
                                         flexShrink: 0
                                     }}>{nodeLabel}</span>
                                     <span style={{
-                                        fontSize: '13px',
-                                        fontWeight: 500,
+                                        fontSize: 13,
+                                        fontWeight: 700,
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis',
                                         whiteSpace: 'nowrap'
@@ -907,13 +954,18 @@ const WhereUsedView = ({
             {/* Tree Visualization */}
             {treeData && (
                 <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:16, flexWrap:'wrap', marginBottom:8 }}>
-                        <h4 style={{ margin:0 }}>Parent Hierarchy for: {getNodeDisplayName(selectedNode)}</h4>
-                        <span style={{ fontSize: 12, color: '#555' }}>Levels: {levels.length} | Ancestors: {treeData.nodes.length - 1} | Links: {treeData.links.length}</span>
-                        {isExpandingUpwards && <span style={{ color: '#0a8276', fontSize: 12 }}>Expanding...</span>}
-                        {expansionError && <span style={{ color: '#a94442', fontSize: 12 }}>Error: {expansionError}</span>}
+                    <div style={{ ...panelStyle, display:'flex', alignItems:'center', gap:12, flexWrap:'wrap', marginBottom:8, padding: '10px 12px' }}>
+                        <div style={{ minWidth: 260, flex: '1 1 320px' }}>
+                            <div style={fieldLabelStyle}>Parent hierarchy</div>
+                            <div style={{ fontSize: 14, color: WU.text, fontWeight: 800, marginTop: 4 }}>{getNodeDisplayName(selectedNode)}</div>
+                        </div>
+                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Levels {levels.length}</span>
+                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Ancestors {treeData.nodes.length - 1}</span>
+                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Links {treeData.links.length}</span>
+                        {isExpandingUpwards && <span style={{ color: WU.primary, fontSize: 12, fontWeight: 700 }}>Expanding...</span>}
+                        {expansionError && <span style={{ color: WU.error, fontSize: 12, fontWeight: 700 }}>Error: {expansionError}</span>}
                         {!autoExpanded && !isExpandingUpwards && (
-                            <button onClick={() => expandAllParents(selectedNode)} style={{ padding:'6px 12px', background: primaryButtonColor, color:'#fff', border:'none', borderRadius:4, cursor:'pointer' }}>Expand Upwards</button>
+                            <button onClick={() => expandAllParents(selectedNode)} style={buttonStyle}>Expand Upwards</button>
                         )}
                         <button onClick={() => {
                             // reset zoom to fit
@@ -921,9 +973,9 @@ const WhereUsedView = ({
                                 const svg = d3.select(svgRef.current);
                                 svg.transition().duration(400).call(zoomBehaviorRef.current.transform, d3.zoomIdentity);
                             }
-                        }} style={{ padding:'6px 12px', background: primaryButtonColor, color:'#fff', border:'none', borderRadius:4, cursor:'pointer' }}>Reset View</button>
+                        }} style={buttonStyle}>Reset View</button>
                     </div>
-                    <div style={{ position:'relative', flex:1, border:'1px solid #ddd', borderRadius:4, background:'#fafafa', overflow:'hidden' }}>
+                    <div style={{ position:'relative', flex:1, border:`1px solid ${WU.border}`, borderRadius:8, background:'#fff', overflow:'hidden' }}>
                         <svg ref={svgRef} style={{ display:'block', width:'100%', height:'100%' }}></svg>
                     </div>
                 </div>

@@ -12,6 +12,8 @@ import logging
 from collections import defaultdict
 from difflib import SequenceMatcher
 
+from .recommendation_scope import cypher_scope_filter
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,9 +27,9 @@ class ManufacturingProcessRecommender:
     # Public API
     # ------------------------------------------------------------------
 
-    def recommend(self, part_name: str) -> dict:
+    def recommend(self, part_name: str, scope: dict | None = None) -> dict:
         """Return manufacturing process recommendations for *part_name*."""
-        source = self._find_part(part_name)
+        source = self._find_part(part_name, scope=scope)
         if not source:
             return {
                 "part": None,
@@ -67,17 +69,19 @@ class ManufacturingProcessRecommender:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _find_part(self, name: str) -> dict | None:
+    def _find_part(self, name: str, scope: dict | None = None) -> dict | None:
+        scope_clause, scope_params = cypher_scope_filter("p", scope)
         rows = self._graph.query(
             """
             MATCH (p:Individual)
             WHERE toLower(p.name) CONTAINS toLower($name)
+            """ + scope_clause + """
             OPTIONAL MATCH (p)-[:INSTANCE_OF]->(cls:OntologyClass)
             RETURN p.name AS name, p.sourceTag AS source_tag,
                    elementId(p) AS eid, cls.name AS class_name
             LIMIT 5
             """,
-            params={"name": name},
+            params={"name": name, **scope_params},
         )
         if not rows:
             return None

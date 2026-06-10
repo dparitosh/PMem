@@ -1,0 +1,4142 @@
+@prefix ap242: <http://www.step-nc.org/ap242#> .
+@prefix bom: <http://standards.iso.org/iso/ts/10303/-3001/-ed-2/tech/xml-schema/bo_model#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix inst: <http://depo-onto.local/step#000699_A%3B1-SKF_6306-2Z7097_Prt3%20%282023_02_05%2008_36_29%20UTC%29/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix pmi: <http://depo-onto.local/ontology/pmi#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix step: <http://www.step-nc.org/step#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+pmi:SurfaceFinish a owl:Class ;
+    rdfs:label "Surface Finish" ;
+    rdfs:subClassOf step:Entity .
+
+pmi:annotationType a owl:DatatypeProperty ;
+    rdfs:label "annotation type" ;
+    rdfs:domain pmi:Annotation ;
+    rdfs:range xsd:string .
+
+pmi:datumFeature a owl:ObjectProperty ;
+    rdfs:label "datum feature" ;
+    rdfs:domain owl:Thing ;
+    rdfs:range step:Entity .
+
+pmi:datumLabel a owl:DatatypeProperty ;
+    rdfs:label "datum label" ;
+    rdfs:domain pmi:Datum ;
+    rdfs:range xsd:string .
+
+pmi:datumSystem a owl:ObjectProperty ;
+    rdfs:label "datum system" ;
+    rdfs:domain owl:Thing ;
+    rdfs:range step:Entity .
+
+pmi:dimensionType a owl:DatatypeProperty ;
+    rdfs:label "dimension type" ;
+    rdfs:domain pmi:Dimension ;
+    rdfs:range xsd:string .
+
+pmi:leaderReference a owl:ObjectProperty ;
+    rdfs:label "leader reference" ;
+    rdfs:domain owl:Thing ;
+    rdfs:range step:Entity .
+
+pmi:magnitude a owl:DatatypeProperty ;
+    rdfs:label "magnitude" ;
+    rdfs:domain pmi:GeometricTolerance ;
+    rdfs:range xsd:double .
+
+pmi:measuredFeature a owl:ObjectProperty ;
+    rdfs:label "measured feature" ;
+    rdfs:domain owl:Thing ;
+    rdfs:range step:Entity .
+
+pmi:nominalValue a owl:DatatypeProperty ;
+    rdfs:label "nominal value" ;
+    rdfs:domain pmi:Dimension ;
+    rdfs:range xsd:double .
+
+pmi:presentationReference a owl:ObjectProperty ;
+    rdfs:label "presentation reference" ;
+    rdfs:domain owl:Thing ;
+    rdfs:range step:Entity .
+
+pmi:textContent a owl:DatatypeProperty ;
+    rdfs:label "text content" ;
+    rdfs:domain pmi:Annotation ;
+    rdfs:range xsd:string .
+
+pmi:toleranceType a owl:DatatypeProperty ;
+    rdfs:label "tolerance type" ;
+    rdfs:domain pmi:GeometricTolerance ;
+    rdfs:range xsd:string .
+
+pmi:tolerancedFeature a owl:ObjectProperty ;
+    rdfs:label "toleranced feature" ;
+    rdfs:domain owl:Thing ;
+    rdfs:range step:Entity .
+
+pmi:unit a owl:DatatypeProperty ;
+    rdfs:label "unit" ;
+    rdfs:domain owl:Thing ;
+    rdfs:range xsd:string .
+
+inst: a owl:Ontology ;
+    rdfs:label "AP242 STEP Instance Ontology" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:sourceFormat "p21" ;
+    rdfs:comment "Generated from STEP file: tmppmkg_ug3.stp" ;
+    owl:imports <http://IAE-depo.com/ap242-ontology>,
+        ap242: ;
+    owl:versionInfo "2.0" .
+
+inst:annotation_10 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Annotation #10" ;
+    pmi:annotationType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    pmi:presentationReference inst:entity_18,
+        inst:entity_19 ;
+    step:representsStepEntity inst:entity_10 ;
+    prov:wasDerivedFrom inst:entity_10 .
+
+inst:annotation_109 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "yellow" ;
+    pmi:annotationType "DRAUGHTING_PRE_DEFINED_COLOUR" ;
+    pmi:textContent "yellow" ;
+    step:representsStepEntity inst:entity_109 ;
+    prov:wasDerivedFrom inst:entity_109 .
+
+inst:annotation_11 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Annotation #11" ;
+    pmi:annotationType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    pmi:presentationReference inst:entity_19,
+        inst:entity_20 ;
+    step:representsStepEntity inst:entity_11 ;
+    prov:wasDerivedFrom inst:entity_11 .
+
+inst:annotation_12 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Annotation #12" ;
+    pmi:annotationType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    pmi:presentationReference inst:entity_19,
+        inst:entity_21 ;
+    step:representsStepEntity inst:entity_12 ;
+    prov:wasDerivedFrom inst:entity_12 .
+
+inst:annotation_13 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Annotation #13" ;
+    pmi:annotationType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    pmi:presentationReference inst:entity_19,
+        inst:entity_22 ;
+    step:representsStepEntity inst:entity_13 ;
+    prov:wasDerivedFrom inst:entity_13 .
+
+inst:annotation_14 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Annotation #14" ;
+    pmi:annotationType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    pmi:presentationReference inst:entity_19,
+        inst:entity_23 ;
+    step:representsStepEntity inst:entity_14 ;
+    prov:wasDerivedFrom inst:entity_14 .
+
+inst:annotation_15 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Annotation #15" ;
+    pmi:annotationType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    pmi:presentationReference inst:entity_19,
+        inst:entity_24 ;
+    step:representsStepEntity inst:entity_15 ;
+    prov:wasDerivedFrom inst:entity_15 .
+
+inst:annotation_16 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Annotation #16" ;
+    pmi:annotationType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    pmi:presentationReference inst:entity_19,
+        inst:entity_25 ;
+    step:representsStepEntity inst:entity_16 ;
+    prov:wasDerivedFrom inst:entity_16 .
+
+inst:annotation_17 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Annotation #17" ;
+    pmi:annotationType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    pmi:presentationReference inst:entity_19,
+        inst:entity_26 ;
+    step:representsStepEntity inst:entity_17 ;
+    prov:wasDerivedFrom inst:entity_17 .
+
+inst:annotation_18 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Top" ;
+    pmi:annotationType "DRAUGHTING_MODEL" ;
+    pmi:presentationReference inst:entity_269,
+        inst:entity_36,
+        inst:entity_45 ;
+    pmi:textContent "Top" ;
+    step:representsStepEntity inst:entity_18 ;
+    prov:wasDerivedFrom inst:entity_18 .
+
+inst:annotation_19 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Annotation #19" ;
+    pmi:annotationType "DRAUGHTING_MODEL" ;
+    pmi:presentationReference inst:entity_269,
+        inst:entity_37 ;
+    step:representsStepEntity inst:entity_19 ;
+    prov:wasDerivedFrom inst:entity_19 .
+
+inst:annotation_20 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Front" ;
+    pmi:annotationType "DRAUGHTING_MODEL" ;
+    pmi:presentationReference inst:entity_269,
+        inst:entity_38,
+        inst:entity_46 ;
+    pmi:textContent "Front" ;
+    step:representsStepEntity inst:entity_20 ;
+    prov:wasDerivedFrom inst:entity_20 .
+
+inst:annotation_21 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Right" ;
+    pmi:annotationType "DRAUGHTING_MODEL" ;
+    pmi:presentationReference inst:entity_269,
+        inst:entity_39,
+        inst:entity_47 ;
+    pmi:textContent "Right" ;
+    step:representsStepEntity inst:entity_21 ;
+    prov:wasDerivedFrom inst:entity_21 .
+
+inst:annotation_22 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Back" ;
+    pmi:annotationType "DRAUGHTING_MODEL" ;
+    pmi:presentationReference inst:entity_269,
+        inst:entity_40,
+        inst:entity_48 ;
+    pmi:textContent "Back" ;
+    step:representsStepEntity inst:entity_22 ;
+    prov:wasDerivedFrom inst:entity_22 .
+
+inst:annotation_23 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Bottom" ;
+    pmi:annotationType "DRAUGHTING_MODEL" ;
+    pmi:presentationReference inst:entity_269,
+        inst:entity_41,
+        inst:entity_49 ;
+    pmi:textContent "Bottom" ;
+    step:representsStepEntity inst:entity_23 ;
+    prov:wasDerivedFrom inst:entity_23 .
+
+inst:annotation_24 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Left" ;
+    pmi:annotationType "DRAUGHTING_MODEL" ;
+    pmi:presentationReference inst:entity_269,
+        inst:entity_42,
+        inst:entity_50 ;
+    pmi:textContent "Left" ;
+    step:representsStepEntity inst:entity_24 ;
+    prov:wasDerivedFrom inst:entity_24 .
+
+inst:annotation_25 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Isometric" ;
+    pmi:annotationType "DRAUGHTING_MODEL" ;
+    pmi:presentationReference inst:entity_269,
+        inst:entity_43,
+        inst:entity_51 ;
+    pmi:textContent "Isometric" ;
+    step:representsStepEntity inst:entity_25 ;
+    prov:wasDerivedFrom inst:entity_25 .
+
+inst:annotation_26 a pmi:Annotation,
+        owl:NamedIndividual ;
+    rdfs:label "Trimetric" ;
+    pmi:annotationType "DRAUGHTING_MODEL" ;
+    pmi:presentationReference inst:entity_269,
+        inst:entity_44,
+        inst:entity_52 ;
+    pmi:textContent "Trimetric" ;
+    step:representsStepEntity inst:entity_26 ;
+    prov:wasDerivedFrom inst:entity_26 .
+
+inst:entity_122 a ap242:SHAPE_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#122 SHAPE_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SHAPE_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#274,#123" ;
+    step:references inst:entity_123,
+        inst:entity_274 ;
+    step:stepId 122 ;
+    skos:notation "#122" .
+
+inst:entity_192 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#192 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#242,#208" ;
+    step:references inst:entity_208,
+        inst:entity_242 ;
+    step:stepId 192 ;
+    skos:notation "#192" .
+
+inst:entity_193 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#193 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#243,#209" ;
+    step:references inst:entity_209,
+        inst:entity_243 ;
+    step:stepId 193 ;
+    skos:notation "#193" .
+
+inst:entity_194 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#194 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#244,#210" ;
+    step:references inst:entity_210,
+        inst:entity_244 ;
+    step:stepId 194 ;
+    skos:notation "#194" .
+
+inst:entity_195 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#195 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#245,#211" ;
+    step:references inst:entity_211,
+        inst:entity_245 ;
+    step:stepId 195 ;
+    skos:notation "#195" .
+
+inst:entity_196 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#196 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#246,#212" ;
+    step:references inst:entity_212,
+        inst:entity_246 ;
+    step:stepId 196 ;
+    skos:notation "#196" .
+
+inst:entity_197 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#197 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#247,#213" ;
+    step:references inst:entity_213,
+        inst:entity_247 ;
+    step:stepId 197 ;
+    skos:notation "#197" .
+
+inst:entity_198 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#198 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#248,#214" ;
+    step:references inst:entity_214,
+        inst:entity_248 ;
+    step:stepId 198 ;
+    skos:notation "#198" .
+
+inst:entity_199 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#199 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#249,#215" ;
+    step:references inst:entity_215,
+        inst:entity_249 ;
+    step:stepId 199 ;
+    skos:notation "#199" .
+
+inst:entity_200 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#200 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#250,#216" ;
+    step:references inst:entity_216,
+        inst:entity_250 ;
+    step:stepId 200 ;
+    skos:notation "#200" .
+
+inst:entity_201 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#201 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#251,#217" ;
+    step:references inst:entity_217,
+        inst:entity_251 ;
+    step:stepId 201 ;
+    skos:notation "#201" .
+
+inst:entity_202 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#202 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#252,#218" ;
+    step:references inst:entity_218,
+        inst:entity_252 ;
+    step:stepId 202 ;
+    skos:notation "#202" .
+
+inst:entity_203 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#203 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#253,#219" ;
+    step:references inst:entity_219,
+        inst:entity_253 ;
+    step:stepId 203 ;
+    skos:notation "#203" .
+
+inst:entity_204 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#204 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#254,#220" ;
+    step:references inst:entity_220,
+        inst:entity_254 ;
+    step:stepId 204 ;
+    skos:notation "#204" .
+
+inst:entity_205 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#205 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#255,#221" ;
+    step:references inst:entity_221,
+        inst:entity_255 ;
+    step:stepId 205 ;
+    skos:notation "#205" .
+
+inst:entity_206 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#206 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#256,#222" ;
+    step:references inst:entity_222,
+        inst:entity_256 ;
+    step:stepId 206 ;
+    skos:notation "#206" .
+
+inst:entity_207 a ap242:PROPERTY_DEFINITION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#207 PROPERTY_DEFINITION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#257,#223" ;
+    step:references inst:entity_223,
+        inst:entity_257 ;
+    step:stepId 207 ;
+    skos:notation "#207" .
+
+inst:entity_232 a ap242:GENERAL_PROPERTY_ASSOCIATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#232 GENERAL_PROPERTY_ASSOCIATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY_ASSOCIATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',$,#258,#242" ;
+    step:references inst:entity_242,
+        inst:entity_258 ;
+    step:stepId 232 ;
+    skos:notation "#232" .
+
+inst:entity_233 a ap242:GENERAL_PROPERTY_ASSOCIATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#233 GENERAL_PROPERTY_ASSOCIATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY_ASSOCIATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',$,#259,#243" ;
+    step:references inst:entity_243,
+        inst:entity_259 ;
+    step:stepId 233 ;
+    skos:notation "#233" .
+
+inst:entity_234 a ap242:GENERAL_PROPERTY_ASSOCIATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#234 GENERAL_PROPERTY_ASSOCIATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY_ASSOCIATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',$,#260,#244" ;
+    step:references inst:entity_244,
+        inst:entity_260 ;
+    step:stepId 234 ;
+    skos:notation "#234" .
+
+inst:entity_235 a ap242:GENERAL_PROPERTY_ASSOCIATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#235 GENERAL_PROPERTY_ASSOCIATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY_ASSOCIATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',$,#261,#245" ;
+    step:references inst:entity_245,
+        inst:entity_261 ;
+    step:stepId 235 ;
+    skos:notation "#235" .
+
+inst:entity_236 a ap242:GENERAL_PROPERTY_ASSOCIATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#236 GENERAL_PROPERTY_ASSOCIATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY_ASSOCIATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',$,#262,#246" ;
+    step:references inst:entity_246,
+        inst:entity_262 ;
+    step:stepId 236 ;
+    skos:notation "#236" .
+
+inst:entity_237 a ap242:GENERAL_PROPERTY_ASSOCIATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#237 GENERAL_PROPERTY_ASSOCIATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY_ASSOCIATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',$,#263,#247" ;
+    step:references inst:entity_247,
+        inst:entity_263 ;
+    step:stepId 237 ;
+    skos:notation "#237" .
+
+inst:entity_238 a ap242:GENERAL_PROPERTY_ASSOCIATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#238 GENERAL_PROPERTY_ASSOCIATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY_ASSOCIATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',$,#264,#248" ;
+    step:references inst:entity_248,
+        inst:entity_264 ;
+    step:stepId 238 ;
+    skos:notation "#238" .
+
+inst:entity_239 a ap242:GENERAL_PROPERTY_ASSOCIATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#239 GENERAL_PROPERTY_ASSOCIATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY_ASSOCIATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',$,#265,#249" ;
+    step:references inst:entity_249,
+        inst:entity_265 ;
+    step:stepId 239 ;
+    skos:notation "#239" .
+
+inst:entity_240 a ap242:GENERAL_PROPERTY_ASSOCIATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#240 GENERAL_PROPERTY_ASSOCIATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY_ASSOCIATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',$,#266,#250" ;
+    step:references inst:entity_250,
+        inst:entity_266 ;
+    step:stepId 240 ;
+    skos:notation "#240" .
+
+inst:entity_241 a ap242:GENERAL_PROPERTY_ASSOCIATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#241 GENERAL_PROPERTY_ASSOCIATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY_ASSOCIATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',$,#267,#251" ;
+    step:references inst:entity_251,
+        inst:entity_267 ;
+    step:stepId 241 ;
+    skos:notation "#241" .
+
+inst:entity_268 a ap242:MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#268 MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """'',(#81,#82,
+#83,#84),#269""" ;
+    step:references inst:entity_269,
+        inst:entity_81,
+        inst:entity_82,
+        inst:entity_83,
+        inst:entity_84 ;
+    step:stepId 268 ;
+    skos:notation "#268" .
+
+inst:entity_278 a ap242:PRODUCT_RELATED_PRODUCT_CATEGORY,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#278 PRODUCT_RELATED_PRODUCT_CATEGORY" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PRODUCT_RELATED_PRODUCT_CATEGORY" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',(#279)" ;
+    step:references inst:entity_279 ;
+    step:stepId 278 ;
+    skos:notation "#278" .
+
+inst:entity_280 a ap242:PRODUCT_CATEGORY,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#280 PRODUCT_CATEGORY" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PRODUCT_CATEGORY" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',''" ;
+    step:stepId 280 ;
+    skos:notation "#280" .
+
+inst:entity_282 a ap242:APPLICATION_PROTOCOL_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#282 APPLICATION_PROTOCOL_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "APPLICATION_PROTOCOL_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """'international standard',
+'ap242_managed_model_based_3d_engineering',2011,#283""" ;
+    step:references inst:entity_283 ;
+    step:stepId 282 ;
+    skos:notation "#282" .
+
+inst:entity_73 a ap242:SHAPE_REPRESENTATION_RELATIONSHIP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#73 SHAPE_REPRESENTATION_RELATIONSHIP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SHAPE_REPRESENTATION_RELATIONSHIP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',#123,#77" ;
+    step:references inst:entity_123,
+        inst:entity_77 ;
+    step:stepId 73 ;
+    skos:notation "#73" .
+
+inst:entity_74 a ap242:SHAPE_REPRESENTATION_RELATIONSHIP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#74 SHAPE_REPRESENTATION_RELATIONSHIP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SHAPE_REPRESENTATION_RELATIONSHIP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',#123,#78" ;
+    step:references inst:entity_123,
+        inst:entity_78 ;
+    step:stepId 74 ;
+    skos:notation "#74" .
+
+inst:entity_75 a ap242:SHAPE_REPRESENTATION_RELATIONSHIP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#75 SHAPE_REPRESENTATION_RELATIONSHIP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SHAPE_REPRESENTATION_RELATIONSHIP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',#123,#79" ;
+    step:references inst:entity_123,
+        inst:entity_79 ;
+    step:stepId 75 ;
+    skos:notation "#75" .
+
+inst:entity_76 a ap242:SHAPE_REPRESENTATION_RELATIONSHIP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#76 SHAPE_REPRESENTATION_RELATIONSHIP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SHAPE_REPRESENTATION_RELATIONSHIP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',#123,#80" ;
+    step:references inst:entity_123,
+        inst:entity_80 ;
+    step:stepId 76 ;
+    skos:notation "#76" .
+
+step:entityType a owl:DatatypeProperty ;
+    rdfs:label "STEP entity type" ;
+    rdfs:domain step:Entity ;
+    rdfs:range xsd:string .
+
+step:fileSchema a owl:DatatypeProperty ;
+    rdfs:label "STEP file schema" ;
+    rdfs:domain owl:Thing ;
+    rdfs:range xsd:string .
+
+step:mapsToAp242BusinessObjectClass a owl:ObjectProperty ;
+    rdfs:label "maps to AP242 business object class" ;
+    rdfs:comment "Alignment from AP242 AIM/STEP entity classes to AP242 MBD business-object data model classes." ;
+    rdfs:domain owl:Class ;
+    rdfs:range owl:Class .
+
+step:rawArgs a owl:DatatypeProperty ;
+    rdfs:label "raw STEP arguments" ;
+    rdfs:domain step:Entity ;
+    rdfs:range xsd:string .
+
+step:references a owl:ObjectProperty ;
+    rdfs:label "references" ;
+    rdfs:comment "Preserves STEP #id references as RDF object edges for traceability and graph traversal." ;
+    rdfs:domain step:Entity ;
+    rdfs:range step:Entity .
+
+step:representsStepEntity a owl:ObjectProperty ;
+    rdfs:label "represents STEP entity" ;
+    rdfs:domain owl:Thing ;
+    rdfs:range step:Entity .
+
+step:sourceFormat a owl:DatatypeProperty ;
+    rdfs:label "STEP source format" ;
+    rdfs:domain owl:Thing ;
+    rdfs:range xsd:string .
+
+step:stepId a owl:DatatypeProperty ;
+    rdfs:label "STEP id" ;
+    rdfs:domain step:Entity ;
+    rdfs:range xsd:integer .
+
+pmi:Datum a owl:Class ;
+    rdfs:label "Datum" ;
+    rdfs:subClassOf step:Entity .
+
+inst:entity_100 a ap242:SURFACE_STYLE_FILL_AREA,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#100 SURFACE_STYLE_FILL_AREA" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SURFACE_STYLE_FILL_AREA" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#104" ;
+    step:references inst:entity_104 ;
+    step:stepId 100 ;
+    skos:notation "#100" .
+
+inst:entity_101 a ap242:FILL_AREA_STYLE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#101 FILL_AREA_STYLE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "FILL_AREA_STYLE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#105)" ;
+    step:references inst:entity_105 ;
+    step:stepId 101 ;
+    skos:notation "#101" .
+
+inst:entity_102 a ap242:FILL_AREA_STYLE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#102 FILL_AREA_STYLE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "FILL_AREA_STYLE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#106)" ;
+    step:references inst:entity_106 ;
+    step:stepId 102 ;
+    skos:notation "#102" .
+
+inst:entity_103 a ap242:FILL_AREA_STYLE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#103 FILL_AREA_STYLE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "FILL_AREA_STYLE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#107)" ;
+    step:references inst:entity_107 ;
+    step:stepId 103 ;
+    skos:notation "#103" .
+
+inst:entity_104 a ap242:FILL_AREA_STYLE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#104 FILL_AREA_STYLE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "FILL_AREA_STYLE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#108)" ;
+    step:references inst:entity_108 ;
+    step:stepId 104 ;
+    skos:notation "#104" .
+
+inst:entity_105 a ap242:FILL_AREA_STYLE_COLOUR,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#105 FILL_AREA_STYLE_COLOUR" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "FILL_AREA_STYLE_COLOUR" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#109" ;
+    step:references inst:entity_109 ;
+    step:stepId 105 ;
+    skos:notation "#105" .
+
+inst:entity_106 a ap242:FILL_AREA_STYLE_COLOUR,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#106 FILL_AREA_STYLE_COLOUR" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "FILL_AREA_STYLE_COLOUR" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#109" ;
+    step:references inst:entity_109 ;
+    step:stepId 106 ;
+    skos:notation "#106" .
+
+inst:entity_107 a ap242:FILL_AREA_STYLE_COLOUR,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#107 FILL_AREA_STYLE_COLOUR" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "FILL_AREA_STYLE_COLOUR" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#109" ;
+    step:references inst:entity_109 ;
+    step:stepId 107 ;
+    skos:notation "#107" .
+
+inst:entity_108 a ap242:FILL_AREA_STYLE_COLOUR,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#108 FILL_AREA_STYLE_COLOUR" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "FILL_AREA_STYLE_COLOUR" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#109" ;
+    step:references inst:entity_109 ;
+    step:stepId 108 ;
+    skos:notation "#108" .
+
+inst:entity_114 a ap242:COORDINATES_LIST,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#114 COORDINATES_LIST" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "COORDINATES_LIST" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """'',79,((3.3485,26.,6.91932922728332E-32),(3.55810727958279,
+24.4078746440518,2.92468683150487E-16),(3.55810727958279,24.462125,-0.412072364310012),
+(3.55810727958279,24.6211789957396,-0.796062677974078),(3.55810727958279,
+24.87419736431,-1.12580263568999),(3.55810727958279,25.2039373220259,-1.37882100426044),
+(3.55810727958279,25.58792763569,-1.537875),(3.55810727958279,26.,-1.59212535594816),
+(4.17264472862002,22.92425,5.65006108871621E-16),(4.17264472862002,23.0290536397914,
+-0.796062677974077),(4.17264472862002,23.33632236431,-1.537875),(4.17264472862002,
+23.8251163177655,-2.17488368223452),(4.17264472862002,24.462125,-2.66367763568999),
+(4.17264472862002,25.2039373220259,-2.9709463602086),(4.17264472862002,
+26.,-3.07575),(5.15023263553095,21.650232635531,7.99039301989896E-16),(5.15023263553095,
+21.79844736431,-1.12580263568999),(5.15023263553095,22.2329909618173,-2.17488368223452),
+(5.15023263553095,22.92425,-3.07575),(5.15023263553095,23.8251163177655,
+-3.76700903818268),(5.150232""" ;
+    step:stepId 114 ;
+    skos:notation "#114" .
+
+inst:entity_115 a ap242:COORDINATES_LIST,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#115 COORDINATES_LIST" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "COORDINATES_LIST" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """'',79,((3.3485,26.,-3.76670739247747E-16),(3.5581072795828,
+26.,-1.59212535594815),(3.5581072795828,26.41207236431,-1.537875),(3.5581072795828,
+26.7960626779741,-1.37882100426044),(3.5581072795828,27.12580263569,-1.12580263568999),
+(3.5581072795828,27.3788210042604,-0.796062677974077),(3.5581072795828,
+27.537875,-0.412072364310013),(3.5581072795828,27.5921253559482,-3.53522845652633E-16),
+(4.17264472862002,26.,-3.07575),(4.17264472862002,26.7960626779741,-2.9709463602086),
+(4.17264472862002,27.537875,-2.66367763568999),(4.17264472862002,28.1748836822345,
+-2.17488368223452),(4.17264472862002,28.66367763569,-1.537875),(4.17264472862002,
+28.9709463602086,-0.796062677974078),(4.17264472862002,29.07575,-6.82953693598164E-16),
+(5.15023263553095,26.,-4.34976736446905),(5.15023263553095,27.12580263569,
+-4.20155263568999),(5.15023263553095,28.1748836822345,-3.76700903818268),
+(5.15023263553095,29.07575,-3.07575),(5.15023263553095,29.7670090381827,
+-2.17488368223452),(5.15023263553095,30.2015526""" ;
+    step:stepId 115 ;
+    skos:notation "#115" .
+
+inst:entity_116 a ap242:COORDINATES_LIST,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#116 COORDINATES_LIST" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "COORDINATES_LIST" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """'',79,((3.3485,26.,3.76670739247747E-16),(3.5581072795828,
+24.4078746440518,3.53522845652633E-16),(3.5581072795828,24.462125,0.412072364310013),
+(3.5581072795828,24.6211789957396,0.796062677974077),(3.5581072795828,24.87419736431,
+1.12580263568999),(3.5581072795828,25.2039373220259,1.37882100426044),(3.5581072795828,
+25.58792763569,1.537875),(3.5581072795828,26.,1.59212535594815),(4.17264472862002,
+22.92425,6.82953693598164E-16),(4.17264472862002,23.0290536397914,0.796062677974078),
+(4.17264472862002,23.33632236431,1.537875),(4.17264472862002,23.8251163177655,
+2.17488368223452),(4.17264472862002,24.462125,2.66367763568999),(4.17264472862002,
+25.2039373220259,2.9709463602086),(4.17264472862002,26.,3.07575),(5.15023263553095,
+21.650232635531,9.65842375959324E-16),(5.15023263553095,21.79844736431,
+1.12580263568999),(5.15023263553095,22.2329909618173,2.17488368223452),
+(5.15023263553095,22.92425,3.07575),(5.15023263553095,23.8251163177655,
+3.76700903818268),(5.15023263553095,24.87419736431""" ;
+    step:stepId 116 ;
+    skos:notation "#116" .
+
+inst:entity_117 a ap242:COORDINATES_LIST,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#117 COORDINATES_LIST" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "COORDINATES_LIST" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """'',79,((3.3485,26.,-2.3064430757611E-32),(3.5581072795828,
+26.,1.59212535594816),(3.5581072795828,26.41207236431,1.537875),(3.5581072795828,
+26.7960626779741,1.37882100426044),(3.5581072795828,27.12580263569,1.12580263568999),
+(3.5581072795828,27.3788210042604,0.796062677974078),(3.5581072795828,27.537875,
+0.412072364310013),(3.5581072795828,27.5921253559482,-9.74895610501625E-17),
+(4.17264472862003,26.,3.07575),(4.17264472862003,26.7960626779741,2.9709463602086),
+(4.17264472862003,27.537875,2.66367763568999),(4.17264472862003,28.1748836822345,
+2.17488368223452),(4.17264472862003,28.66367763569,1.537875),(4.17264472862003,
+28.9709463602086,0.796062677974078),(4.17264472862003,29.07575,-1.88335369623873E-16),
+(5.15023263553095,26.,4.34976736446904),(5.15023263553095,27.12580263569,
+4.20155263568998),(5.15023263553095,28.1748836822345,3.76700903818268),
+(5.15023263553095,29.07575,3.07575),(5.15023263553095,29.7670090381827,
+2.17488368223452),(5.15023263553095,30.20155263569,1.12580263568""" ;
+    step:stepId 117 ;
+    skos:notation "#117" .
+
+inst:entity_118 a ap242:TESSELLATED_SHELL,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#118 TESSELLATED_SHELL" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "TESSELLATED_SHELL" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'_SKF_6306-2Z_PART3',(#110),$" ;
+    step:references inst:entity_110 ;
+    step:stepId 118 ;
+    skos:notation "#118" .
+
+inst:entity_119 a ap242:TESSELLATED_SHELL,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#119 TESSELLATED_SHELL" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "TESSELLATED_SHELL" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'_SKF_6306-2Z_PART3',(#111),$" ;
+    step:references inst:entity_111 ;
+    step:stepId 119 ;
+    skos:notation "#119" .
+
+inst:entity_120 a ap242:TESSELLATED_SHELL,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#120 TESSELLATED_SHELL" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "TESSELLATED_SHELL" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'_SKF_6306-2Z_PART3',(#112),$" ;
+    step:references inst:entity_112 ;
+    step:stepId 120 ;
+    skos:notation "#120" .
+
+inst:entity_121 a ap242:TESSELLATED_SHELL,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#121 TESSELLATED_SHELL" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "TESSELLATED_SHELL" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'_SKF_6306-2Z_PART3',(#113),$" ;
+    step:references inst:entity_113 ;
+    step:stepId 121 ;
+    skos:notation "#121" .
+
+inst:entity_125 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#125 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#165,#143,#144" ;
+    step:references inst:entity_143,
+        inst:entity_144,
+        inst:entity_165 ;
+    step:stepId 125 ;
+    skos:notation "#125" .
+
+inst:entity_126 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#126 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#167,#143,#144" ;
+    step:references inst:entity_143,
+        inst:entity_144,
+        inst:entity_167 ;
+    step:stepId 126 ;
+    skos:notation "#126" .
+
+inst:entity_127 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#127 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#168,#145,#146" ;
+    step:references inst:entity_145,
+        inst:entity_146,
+        inst:entity_168 ;
+    step:stepId 127 ;
+    skos:notation "#127" .
+
+inst:entity_128 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#128 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#170,#145,#146" ;
+    step:references inst:entity_145,
+        inst:entity_146,
+        inst:entity_170 ;
+    step:stepId 128 ;
+    skos:notation "#128" .
+
+inst:entity_129 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#129 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#171,#147,#148" ;
+    step:references inst:entity_147,
+        inst:entity_148,
+        inst:entity_171 ;
+    step:stepId 129 ;
+    skos:notation "#129" .
+
+inst:entity_130 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#130 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#173,#147,#148" ;
+    step:references inst:entity_147,
+        inst:entity_148,
+        inst:entity_173 ;
+    step:stepId 130 ;
+    skos:notation "#130" .
+
+inst:entity_131 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#131 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#174,#149,#150" ;
+    step:references inst:entity_149,
+        inst:entity_150,
+        inst:entity_174 ;
+    step:stepId 131 ;
+    skos:notation "#131" .
+
+inst:entity_132 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#132 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#176,#149,#150" ;
+    step:references inst:entity_149,
+        inst:entity_150,
+        inst:entity_176 ;
+    step:stepId 132 ;
+    skos:notation "#132" .
+
+inst:entity_133 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#133 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#177,#151,#152" ;
+    step:references inst:entity_151,
+        inst:entity_152,
+        inst:entity_177 ;
+    step:stepId 133 ;
+    skos:notation "#133" .
+
+inst:entity_134 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#134 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#179,#151,#152" ;
+    step:references inst:entity_151,
+        inst:entity_152,
+        inst:entity_179 ;
+    step:stepId 134 ;
+    skos:notation "#134" .
+
+inst:entity_135 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#135 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#180,#153,#154" ;
+    step:references inst:entity_153,
+        inst:entity_154,
+        inst:entity_180 ;
+    step:stepId 135 ;
+    skos:notation "#135" .
+
+inst:entity_136 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#136 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#182,#153,#154" ;
+    step:references inst:entity_153,
+        inst:entity_154,
+        inst:entity_182 ;
+    step:stepId 136 ;
+    skos:notation "#136" .
+
+inst:entity_137 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#137 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#183,#155,#156" ;
+    step:references inst:entity_155,
+        inst:entity_156,
+        inst:entity_183 ;
+    step:stepId 137 ;
+    skos:notation "#137" .
+
+inst:entity_138 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#138 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#185,#155,#156" ;
+    step:references inst:entity_155,
+        inst:entity_156,
+        inst:entity_185 ;
+    step:stepId 138 ;
+    skos:notation "#138" .
+
+inst:entity_139 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#139 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#186,#157,#158" ;
+    step:references inst:entity_157,
+        inst:entity_158,
+        inst:entity_186 ;
+    step:stepId 139 ;
+    skos:notation "#139" .
+
+inst:entity_140 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#140 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#188,#157,#158" ;
+    step:references inst:entity_157,
+        inst:entity_158,
+        inst:entity_188 ;
+    step:stepId 140 ;
+    skos:notation "#140" .
+
+inst:entity_141 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#141 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,0.,1.)" ;
+    step:stepId 141 ;
+    skos:notation "#141" .
+
+inst:entity_142 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#142 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(1.,0.,0.)" ;
+    step:stepId 142 ;
+    skos:notation "#142" .
+
+inst:entity_159 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#159 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,0.,0.)" ;
+    step:stepId 159 ;
+    skos:notation "#159" .
+
+inst:entity_160 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#160 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'centre point',(0.,0.,0.)" ;
+    step:stepId 160 ;
+    skos:notation "#160" .
+
+inst:entity_161 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#161 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'centre point',(0.,0.,0.)" ;
+    step:stepId 161 ;
+    skos:notation "#161" .
+
+inst:entity_162 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#162 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'centre point',(0.,0.,0.)" ;
+    step:stepId 162 ;
+    skos:notation "#162" .
+
+inst:entity_163 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#163 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'centre point',(0.,0.,0.)" ;
+    step:stepId 163 ;
+    skos:notation "#163" .
+
+inst:entity_164 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#164 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'centre point',(0.,0.,0.)" ;
+    step:stepId 164 ;
+    skos:notation "#164" .
+
+inst:entity_165 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#165 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,0.,0.)" ;
+    step:stepId 165 ;
+    skos:notation "#165" .
+
+inst:entity_166 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#166 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,0.,0.114998954772949)" ;
+    step:stepId 166 ;
+    skos:notation "#166" .
+
+inst:entity_167 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#167 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(-0.0286724596639962,-0.0286724596639962,0.)" ;
+    step:stepId 167 ;
+    skos:notation "#167" .
+
+inst:entity_168 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#168 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,0.026,0.)" ;
+    step:stepId 168 ;
+    skos:notation "#168" .
+
+inst:entity_169 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#169 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,-1.08604943847656,0.)" ;
+    step:stepId 169 ;
+    skos:notation "#169" .
+
+inst:entity_170 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#170 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(-0.277265064991609,-0.251265064991609,0.)" ;
+    step:stepId 170 ;
+    skos:notation "#170" .
+
+inst:entity_171 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#171 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.0095,0.,0.)" ;
+    step:stepId 171 ;
+    skos:notation "#171" .
+
+inst:entity_172 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#172 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(1.12154943847656,0.,0.)" ;
+    step:stepId 172 ;
+    skos:notation "#172" .
+
+inst:entity_173 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#173 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(-0.267765064991609,-0.277265064991609,0.)" ;
+    step:stepId 173 ;
+    skos:notation "#173" .
+
+inst:entity_174 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#174 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,0.026,0.)" ;
+    step:stepId 174 ;
+    skos:notation "#174" .
+
+inst:entity_175 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#175 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,1.13804943847656,0.)" ;
+    step:stepId 175 ;
+    skos:notation "#175" .
+
+inst:entity_176 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#176 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(-0.277265064991609,-0.251265064991609,0.)" ;
+    step:stepId 176 ;
+    skos:notation "#176" .
+
+inst:entity_177 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#177 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,0.,0.)" ;
+    step:stepId 177 ;
+    skos:notation "#177" .
+
+inst:entity_178 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#178 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,0.,-0.114998954772949)" ;
+    step:stepId 178 ;
+    skos:notation "#178" .
+
+inst:entity_179 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#179 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(-0.0286724596639962,-0.0286724596639962,0.)" ;
+    step:stepId 179 ;
+    skos:notation "#179" .
+
+inst:entity_180 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#180 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.0095,0.,0.)" ;
+    step:stepId 180 ;
+    skos:notation "#180" .
+
+inst:entity_181 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#181 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(-1.10254943847656,0.,0.)" ;
+    step:stepId 181 ;
+    skos:notation "#181" .
+
+inst:entity_182 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#182 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(-0.267765064991609,-0.277265064991609,0.)" ;
+    step:stepId 182 ;
+    skos:notation "#182" .
+
+inst:entity_183 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#183 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,0.,0.)" ;
+    step:stepId 183 ;
+    skos:notation "#183" .
+
+inst:entity_184 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#184 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.629843322753906,-0.629843322753906,0.629843322753906)" ;
+    step:stepId 184 ;
+    skos:notation "#184" .
+
+inst:entity_185 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#185 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(-0.27199706283299,-0.27199706283299,0.)" ;
+    step:stepId 185 ;
+    skos:notation "#185" .
+
+inst:entity_186 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#186 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,0.,0.)" ;
+    step:stepId 186 ;
+    skos:notation "#186" .
+
+inst:entity_187 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#187 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.830263606434755,-0.67570282556274,0.433591033427811)" ;
+    step:stepId 187 ;
+    skos:notation "#187" .
+
+inst:entity_188 a ap242:CARTESIAN_POINT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#188 CARTESIAN_POINT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CARTESIAN_POINT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(-0.287961769884626,-0.287961769884626,0.)" ;
+    step:stepId 188 ;
+    skos:notation "#188" .
+
+inst:entity_189 a ap242:INTEGER_REPRESENTATION_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#189 INTEGER_REPRESENTATION_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "INTEGER_REPRESENTATION_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',0." ;
+    step:stepId 189 ;
+    skos:notation "#189" .
+
+inst:entity_190 a ap242:INTEGER_REPRESENTATION_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#190 INTEGER_REPRESENTATION_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "INTEGER_REPRESENTATION_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',1." ;
+    step:stepId 190 ;
+    skos:notation "#190" .
+
+inst:entity_191 a ap242:INTEGER_REPRESENTATION_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#191 INTEGER_REPRESENTATION_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "INTEGER_REPRESENTATION_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'number of views',8." ;
+    step:stepId 191 ;
+    skos:notation "#191" .
+
+inst:entity_208 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#208 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#224),#269" ;
+    step:references inst:entity_224,
+        inst:entity_269 ;
+    step:stepId 208 ;
+    skos:notation "#208" .
+
+inst:entity_209 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#209 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#225),#269" ;
+    step:references inst:entity_225,
+        inst:entity_269 ;
+    step:stepId 209 ;
+    skos:notation "#209" .
+
+inst:entity_210 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#210 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#226),#269" ;
+    step:references inst:entity_226,
+        inst:entity_269 ;
+    step:stepId 210 ;
+    skos:notation "#210" .
+
+inst:entity_211 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#211 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#227),#269" ;
+    step:references inst:entity_227,
+        inst:entity_269 ;
+    step:stepId 211 ;
+    skos:notation "#211" .
+
+inst:entity_212 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#212 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#228),#269" ;
+    step:references inst:entity_228,
+        inst:entity_269 ;
+    step:stepId 212 ;
+    skos:notation "#212" .
+
+inst:entity_213 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#213 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#229),#269" ;
+    step:references inst:entity_229,
+        inst:entity_269 ;
+    step:stepId 213 ;
+    skos:notation "#213" .
+
+inst:entity_214 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#214 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#230),#269" ;
+    step:references inst:entity_230,
+        inst:entity_269 ;
+    step:stepId 214 ;
+    skos:notation "#214" .
+
+inst:entity_215 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#215 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#231),#269" ;
+    step:references inst:entity_231,
+        inst:entity_269 ;
+    step:stepId 215 ;
+    skos:notation "#215" .
+
+inst:entity_216 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#216 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#189),#269" ;
+    step:references inst:entity_189,
+        inst:entity_269 ;
+    step:stepId 216 ;
+    skos:notation "#216" .
+
+inst:entity_217 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#217 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#190),#269" ;
+    step:references inst:entity_190,
+        inst:entity_269 ;
+    step:stepId 217 ;
+    skos:notation "#217" .
+
+inst:entity_218 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#218 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#160),#269" ;
+    step:references inst:entity_160,
+        inst:entity_269 ;
+    step:stepId 218 ;
+    skos:notation "#218" .
+
+inst:entity_219 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#219 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#161),#269" ;
+    step:references inst:entity_161,
+        inst:entity_269 ;
+    step:stepId 219 ;
+    skos:notation "#219" .
+
+inst:entity_220 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#220 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#162),#269" ;
+    step:references inst:entity_162,
+        inst:entity_269 ;
+    step:stepId 220 ;
+    skos:notation "#220" .
+
+inst:entity_221 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#221 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#163),#269" ;
+    step:references inst:entity_163,
+        inst:entity_269 ;
+    step:stepId 221 ;
+    skos:notation "#221" .
+
+inst:entity_222 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#222 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#164),#269" ;
+    step:references inst:entity_164,
+        inst:entity_269 ;
+    step:stepId 222 ;
+    skos:notation "#222" .
+
+inst:entity_223 a ap242:REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#223 REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#191),#269" ;
+    step:references inst:entity_191,
+        inst:entity_269 ;
+    step:stepId 223 ;
+    skos:notation "#223" .
+
+inst:entity_224 a ap242:DESCRIPTIVE_REPRESENTATION_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#224 DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','1'" ;
+    step:stepId 224 ;
+    skos:notation "#224" .
+
+inst:entity_225 a ap242:DESCRIPTIVE_REPRESENTATION_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#225 DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """'',
+'000699_A;1-SKF_6306-2Z7097_Prt3'""" ;
+    step:stepId 225 ;
+    skos:notation "#225" .
+
+inst:entity_226 a ap242:DESCRIPTIVE_REPRESENTATION_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#226 DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','000699'" ;
+    step:stepId 226 ;
+    skos:notation "#226" .
+
+inst:entity_227 a ap242:DESCRIPTIVE_REPRESENTATION_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#227 DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','A'" ;
+    step:stepId 227 ;
+    skos:notation "#227" .
+
+inst:entity_228 a ap242:DESCRIPTIVE_REPRESENTATION_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#228 DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','SKF_6306-2Z7097_Prt3'" ;
+    step:stepId 228 ;
+    skos:notation "#228" .
+
+inst:entity_229 a ap242:DESCRIPTIVE_REPRESENTATION_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#229 DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','000699'" ;
+    step:stepId 229 ;
+    skos:notation "#229" .
+
+inst:entity_230 a ap242:DESCRIPTIVE_REPRESENTATION_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#230 DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','Item'" ;
+    step:stepId 230 ;
+    skos:notation "#230" .
+
+inst:entity_231 a ap242:DESCRIPTIVE_REPRESENTATION_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#231 DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DESCRIPTIVE_REPRESENTATION_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','000699'" ;
+    step:stepId 231 ;
+    skos:notation "#231" .
+
+inst:entity_252 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#252 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'geometric validation property','',#69" ;
+    step:references inst:entity_69 ;
+    step:stepId 252 ;
+    skos:notation "#252" .
+
+inst:entity_253 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#253 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'geometric validation property','',#70" ;
+    step:references inst:entity_70 ;
+    step:stepId 253 ;
+    skos:notation "#253" .
+
+inst:entity_254 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#254 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'geometric validation property','',#71" ;
+    step:references inst:entity_71 ;
+    step:stepId 254 ;
+    skos:notation "#254" .
+
+inst:entity_255 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#255 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'geometric validation property','',#72" ;
+    step:references inst:entity_72 ;
+    step:stepId 255 ;
+    skos:notation "#255" .
+
+inst:entity_256 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#256 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'geometric validation property','',#274" ;
+    step:references inst:entity_274 ;
+    step:stepId 256 ;
+    skos:notation "#256" .
+
+inst:entity_257 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#257 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'pmi validation property','',#274" ;
+    step:references inst:entity_274 ;
+    step:stepId 257 ;
+    skos:notation "#257" .
+
+inst:entity_258 a ap242:GENERAL_PROPERTY,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#258 GENERAL_PROPERTY" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','LAYER',$" ;
+    step:stepId 258 ;
+    skos:notation "#258" .
+
+inst:entity_259 a ap242:GENERAL_PROPERTY,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#259 GENERAL_PROPERTY" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','Name',$" ;
+    step:stepId 259 ;
+    skos:notation "#259" .
+
+inst:entity_260 a ap242:GENERAL_PROPERTY,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#260 GENERAL_PROPERTY" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','DB_PART_DESC',$" ;
+    step:stepId 260 ;
+    skos:notation "#260" .
+
+inst:entity_261 a ap242:GENERAL_PROPERTY,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#261 GENERAL_PROPERTY" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','DB_PART_REV',$" ;
+    step:stepId 261 ;
+    skos:notation "#261" .
+
+inst:entity_262 a ap242:GENERAL_PROPERTY,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#262 GENERAL_PROPERTY" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','DB_PART_NAME',$" ;
+    step:stepId 262 ;
+    skos:notation "#262" .
+
+inst:entity_263 a ap242:GENERAL_PROPERTY,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#263 GENERAL_PROPERTY" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','DB_PART_NO',$" ;
+    step:stepId 263 ;
+    skos:notation "#263" .
+
+inst:entity_264 a ap242:GENERAL_PROPERTY,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#264 GENERAL_PROPERTY" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','DB_PART_TYPE',$" ;
+    step:stepId 264 ;
+    skos:notation "#264" .
+
+inst:entity_265 a ap242:GENERAL_PROPERTY,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#265 GENERAL_PROPERTY" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','DB_PART_MFKID',$" ;
+    step:stepId 265 ;
+    skos:notation "#265" .
+
+inst:entity_266 a ap242:GENERAL_PROPERTY,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#266 GENERAL_PROPERTY" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','NX_MaterialMultipleAssigned',$" ;
+    step:stepId 266 ;
+    skos:notation "#266" .
+
+inst:entity_267 a ap242:GENERAL_PROPERTY,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#267 GENERAL_PROPERTY" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GENERAL_PROPERTY" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','NX_MaterialMissingAssignments',$" ;
+    step:stepId 267 ;
+    skos:notation "#267" .
+
+inst:entity_27 a ap242:REPRESENTATION_MAP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#27 REPRESENTATION_MAP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION_MAP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#124,$" ;
+    step:references inst:entity_124 ;
+    step:stepId 27 ;
+    skos:notation "#27" .
+
+inst:entity_270 a ap242:UNCERTAINTY_MEASURE_WITH_UNIT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#270 UNCERTAINTY_MEASURE_WITH_UNIT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "UNCERTAINTY_MEASURE_WITH_UNIT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """LENGTH_MEASURE(0.005),#273,
+'DISTANCE_ACCURACY_VALUE','Maximum Tolerance applied to model'""" ;
+    step:references inst:entity_273 ;
+    step:stepId 270 ;
+    skos:notation "#270" .
+
+inst:entity_271 a ap242:NAMED_UNIT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#271 NAMED_UNIT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "NAMED_UNIT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """
+NAMED_UNIT(*)
+SI_UNIT($,.STERADIAN.)
+SOLID_ANGLE_UNIT()
+""" ;
+    step:stepId 271 ;
+    skos:notation "#271" .
+
+inst:entity_272 a ap242:NAMED_UNIT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#272 NAMED_UNIT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "NAMED_UNIT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """
+NAMED_UNIT(*)
+PLANE_ANGLE_UNIT()
+SI_UNIT($,.RADIAN.)
+""" ;
+    step:stepId 272 ;
+    skos:notation "#272" .
+
+inst:entity_276 a ap242:PRODUCT_DEFINITION_CONTEXT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#276 PRODUCT_DEFINITION_CONTEXT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PRODUCT_DEFINITION_CONTEXT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#283,'design'" ;
+    step:references inst:entity_283 ;
+    step:stepId 276 ;
+    skos:notation "#276" .
+
+inst:entity_277 a bom:PartVersion,
+        ap242:PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#277 PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """'','',#279,
+ .NOT_KNOWN.""" ;
+    step:references inst:entity_279 ;
+    step:stepId 277 ;
+    skos:notation "#277" .
+
+inst:entity_28 a ap242:REPRESENTATION_MAP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#28 REPRESENTATION_MAP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION_MAP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#124,$" ;
+    step:references inst:entity_124 ;
+    step:stepId 28 ;
+    skos:notation "#28" .
+
+inst:entity_281 a ap242:PRODUCT_CONTEXT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#281 PRODUCT_CONTEXT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PRODUCT_CONTEXT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#283,'mechanical'" ;
+    step:references inst:entity_283 ;
+    step:stepId 281 ;
+    skos:notation "#281" .
+
+inst:entity_29 a ap242:REPRESENTATION_MAP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#29 REPRESENTATION_MAP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION_MAP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#124,$" ;
+    step:references inst:entity_124 ;
+    step:stepId 29 ;
+    skos:notation "#29" .
+
+inst:entity_30 a ap242:REPRESENTATION_MAP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#30 REPRESENTATION_MAP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION_MAP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#124,$" ;
+    step:references inst:entity_124 ;
+    step:stepId 30 ;
+    skos:notation "#30" .
+
+inst:entity_31 a ap242:REPRESENTATION_MAP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#31 REPRESENTATION_MAP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION_MAP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#124,$" ;
+    step:references inst:entity_124 ;
+    step:stepId 31 ;
+    skos:notation "#31" .
+
+inst:entity_32 a ap242:REPRESENTATION_MAP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#32 REPRESENTATION_MAP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION_MAP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#124,$" ;
+    step:references inst:entity_124 ;
+    step:stepId 32 ;
+    skos:notation "#32" .
+
+inst:entity_33 a ap242:REPRESENTATION_MAP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#33 REPRESENTATION_MAP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION_MAP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#124,$" ;
+    step:references inst:entity_124 ;
+    step:stepId 33 ;
+    skos:notation "#33" .
+
+inst:entity_34 a ap242:REPRESENTATION_MAP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#34 REPRESENTATION_MAP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION_MAP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#124,$" ;
+    step:references inst:entity_124 ;
+    step:stepId 34 ;
+    skos:notation "#34" .
+
+inst:entity_35 a ap242:REPRESENTATION_MAP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#35 REPRESENTATION_MAP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "REPRESENTATION_MAP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#124,$" ;
+    step:references inst:entity_124 ;
+    step:stepId 35 ;
+    skos:notation "#35" .
+
+inst:entity_53 a ap242:VIEW_VOLUME,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#53 VIEW_VOLUME" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "VIEW_VOLUME" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs ".PARALLEL.,#166,0.,0.,.F.,0.,.F.,.F.,#61" ;
+    step:references inst:entity_166,
+        inst:entity_61 ;
+    step:stepId 53 ;
+    skos:notation "#53" .
+
+inst:entity_54 a ap242:VIEW_VOLUME,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#54 VIEW_VOLUME" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "VIEW_VOLUME" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs ".PARALLEL.,#169,0.,0.,.F.,0.,.F.,.F.,#62" ;
+    step:references inst:entity_169,
+        inst:entity_62 ;
+    step:stepId 54 ;
+    skos:notation "#54" .
+
+inst:entity_55 a ap242:VIEW_VOLUME,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#55 VIEW_VOLUME" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "VIEW_VOLUME" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs ".PARALLEL.,#172,0.,0.,.F.,0.,.F.,.F.,#63" ;
+    step:references inst:entity_172,
+        inst:entity_63 ;
+    step:stepId 55 ;
+    skos:notation "#55" .
+
+inst:entity_56 a ap242:VIEW_VOLUME,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#56 VIEW_VOLUME" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "VIEW_VOLUME" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs ".PARALLEL.,#175,0.,0.,.F.,0.,.F.,.F.,#64" ;
+    step:references inst:entity_175,
+        inst:entity_64 ;
+    step:stepId 56 ;
+    skos:notation "#56" .
+
+inst:entity_57 a ap242:VIEW_VOLUME,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#57 VIEW_VOLUME" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "VIEW_VOLUME" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs ".PARALLEL.,#178,0.,0.,.F.,0.,.F.,.F.,#65" ;
+    step:references inst:entity_178,
+        inst:entity_65 ;
+    step:stepId 57 ;
+    skos:notation "#57" .
+
+inst:entity_58 a ap242:VIEW_VOLUME,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#58 VIEW_VOLUME" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "VIEW_VOLUME" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs ".PARALLEL.,#181,0.,0.,.F.,0.,.F.,.F.,#66" ;
+    step:references inst:entity_181,
+        inst:entity_66 ;
+    step:stepId 58 ;
+    skos:notation "#58" .
+
+inst:entity_59 a ap242:VIEW_VOLUME,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#59 VIEW_VOLUME" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "VIEW_VOLUME" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs ".PARALLEL.,#184,0.,0.,.F.,0.,.F.,.F.,#67" ;
+    step:references inst:entity_184,
+        inst:entity_67 ;
+    step:stepId 59 ;
+    skos:notation "#59" .
+
+inst:entity_60 a ap242:VIEW_VOLUME,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#60 VIEW_VOLUME" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "VIEW_VOLUME" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs ".PARALLEL.,#187,0.,0.,.F.,0.,.F.,.F.,#68" ;
+    step:references inst:entity_187,
+        inst:entity_68 ;
+    step:stepId 60 ;
+    skos:notation "#60" .
+
+inst:entity_61 a ap242:PLANAR_BOX,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#61 PLANAR_BOX" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PLANAR_BOX" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',0.0573449193279923,0.0573449193279923,#126" ;
+    step:references inst:entity_126 ;
+    step:stepId 61 ;
+    skos:notation "#61" .
+
+inst:entity_62 a ap242:PLANAR_BOX,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#62 PLANAR_BOX" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PLANAR_BOX" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',0.554530129983217,0.554530129983217,#128" ;
+    step:references inst:entity_128 ;
+    step:stepId 62 ;
+    skos:notation "#62" .
+
+inst:entity_63 a ap242:PLANAR_BOX,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#63 PLANAR_BOX" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PLANAR_BOX" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',0.554530129983217,0.554530129983217,#130" ;
+    step:references inst:entity_130 ;
+    step:stepId 63 ;
+    skos:notation "#63" .
+
+inst:entity_64 a ap242:PLANAR_BOX,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#64 PLANAR_BOX" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PLANAR_BOX" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',0.554530129983217,0.554530129983217,#132" ;
+    step:references inst:entity_132 ;
+    step:stepId 64 ;
+    skos:notation "#64" .
+
+inst:entity_65 a ap242:PLANAR_BOX,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#65 PLANAR_BOX" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PLANAR_BOX" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',0.0573449193279923,0.0573449193279923,#134" ;
+    step:references inst:entity_134 ;
+    step:stepId 65 ;
+    skos:notation "#65" .
+
+inst:entity_66 a ap242:PLANAR_BOX,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#66 PLANAR_BOX" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PLANAR_BOX" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',0.554530129983217,0.554530129983217,#136" ;
+    step:references inst:entity_136 ;
+    step:stepId 66 ;
+    skos:notation "#66" .
+
+inst:entity_67 a ap242:PLANAR_BOX,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#67 PLANAR_BOX" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PLANAR_BOX" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',0.543994125665979,0.543994125665979,#138" ;
+    step:references inst:entity_138 ;
+    step:stepId 67 ;
+    skos:notation "#67" .
+
+inst:entity_68 a ap242:PLANAR_BOX,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#68 PLANAR_BOX" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PLANAR_BOX" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',0.575923539769252,0.575923539769252,#140" ;
+    step:references inst:entity_140 ;
+    step:stepId 68 ;
+    skos:notation "#68" .
+
+inst:entity_69 a ap242:SHAPE_ASPECT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#69 SHAPE_ASPECT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SHAPE_ASPECT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','Solid',#274,.F." ;
+    step:references inst:entity_274 ;
+    step:stepId 69 ;
+    skos:notation "#69" .
+
+inst:entity_70 a ap242:SHAPE_ASPECT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#70 SHAPE_ASPECT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SHAPE_ASPECT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','Solid',#274,.F." ;
+    step:references inst:entity_274 ;
+    step:stepId 70 ;
+    skos:notation "#70" .
+
+inst:entity_71 a ap242:SHAPE_ASPECT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#71 SHAPE_ASPECT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SHAPE_ASPECT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','Solid',#274,.F." ;
+    step:references inst:entity_274 ;
+    step:stepId 71 ;
+    skos:notation "#71" .
+
+inst:entity_72 a ap242:SHAPE_ASPECT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#72 SHAPE_ASPECT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SHAPE_ASPECT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','Solid',#274,.F." ;
+    step:references inst:entity_274 ;
+    step:stepId 72 ;
+    skos:notation "#72" .
+
+inst:entity_77 a ap242:TESSELLATED_SHAPE_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#77 TESSELLATED_SHAPE_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "TESSELLATED_SHAPE_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#118),#269" ;
+    step:references inst:entity_118,
+        inst:entity_269 ;
+    step:stepId 77 ;
+    skos:notation "#77" .
+
+inst:entity_78 a ap242:TESSELLATED_SHAPE_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#78 TESSELLATED_SHAPE_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "TESSELLATED_SHAPE_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#119),#269" ;
+    step:references inst:entity_119,
+        inst:entity_269 ;
+    step:stepId 78 ;
+    skos:notation "#78" .
+
+inst:entity_79 a ap242:TESSELLATED_SHAPE_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#79 TESSELLATED_SHAPE_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "TESSELLATED_SHAPE_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#120),#269" ;
+    step:references inst:entity_120,
+        inst:entity_269 ;
+    step:stepId 79 ;
+    skos:notation "#79" .
+
+inst:entity_80 a ap242:TESSELLATED_SHAPE_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#80 TESSELLATED_SHAPE_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "TESSELLATED_SHAPE_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#121),#269" ;
+    step:references inst:entity_121,
+        inst:entity_269 ;
+    step:stepId 80 ;
+    skos:notation "#80" .
+
+inst:entity_81 a ap242:STYLED_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#81 STYLED_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "STYLED_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#85),#110" ;
+    step:references inst:entity_110,
+        inst:entity_85 ;
+    step:stepId 81 ;
+    skos:notation "#81" .
+
+inst:entity_82 a ap242:STYLED_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#82 STYLED_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "STYLED_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#86),#111" ;
+    step:references inst:entity_111,
+        inst:entity_86 ;
+    step:stepId 82 ;
+    skos:notation "#82" .
+
+inst:entity_83 a ap242:STYLED_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#83 STYLED_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "STYLED_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#87),#112" ;
+    step:references inst:entity_112,
+        inst:entity_87 ;
+    step:stepId 83 ;
+    skos:notation "#83" .
+
+inst:entity_84 a ap242:STYLED_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#84 STYLED_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "STYLED_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#88),#113" ;
+    step:references inst:entity_113,
+        inst:entity_88 ;
+    step:stepId 84 ;
+    skos:notation "#84" .
+
+inst:entity_85 a ap242:PRESENTATION_STYLE_ASSIGNMENT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#85 PRESENTATION_STYLE_ASSIGNMENT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PRESENTATION_STYLE_ASSIGNMENT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "(#89)" ;
+    step:references inst:entity_89 ;
+    step:stepId 85 ;
+    skos:notation "#85" .
+
+inst:entity_86 a ap242:PRESENTATION_STYLE_ASSIGNMENT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#86 PRESENTATION_STYLE_ASSIGNMENT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PRESENTATION_STYLE_ASSIGNMENT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "(#90)" ;
+    step:references inst:entity_90 ;
+    step:stepId 86 ;
+    skos:notation "#86" .
+
+inst:entity_87 a ap242:PRESENTATION_STYLE_ASSIGNMENT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#87 PRESENTATION_STYLE_ASSIGNMENT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PRESENTATION_STYLE_ASSIGNMENT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "(#91)" ;
+    step:references inst:entity_91 ;
+    step:stepId 87 ;
+    skos:notation "#87" .
+
+inst:entity_88 a ap242:PRESENTATION_STYLE_ASSIGNMENT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#88 PRESENTATION_STYLE_ASSIGNMENT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PRESENTATION_STYLE_ASSIGNMENT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "(#92)" ;
+    step:references inst:entity_92 ;
+    step:stepId 88 ;
+    skos:notation "#88" .
+
+inst:entity_89 a ap242:SURFACE_STYLE_USAGE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#89 SURFACE_STYLE_USAGE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SURFACE_STYLE_USAGE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs ".BOTH.,#93" ;
+    step:references inst:entity_93 ;
+    step:stepId 89 ;
+    skos:notation "#89" .
+
+inst:entity_90 a ap242:SURFACE_STYLE_USAGE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#90 SURFACE_STYLE_USAGE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SURFACE_STYLE_USAGE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs ".BOTH.,#94" ;
+    step:references inst:entity_94 ;
+    step:stepId 90 ;
+    skos:notation "#90" .
+
+inst:entity_91 a ap242:SURFACE_STYLE_USAGE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#91 SURFACE_STYLE_USAGE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SURFACE_STYLE_USAGE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs ".BOTH.,#95" ;
+    step:references inst:entity_95 ;
+    step:stepId 91 ;
+    skos:notation "#91" .
+
+inst:entity_92 a ap242:SURFACE_STYLE_USAGE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#92 SURFACE_STYLE_USAGE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SURFACE_STYLE_USAGE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs ".BOTH.,#96" ;
+    step:references inst:entity_96 ;
+    step:stepId 92 ;
+    skos:notation "#92" .
+
+inst:entity_93 a ap242:SURFACE_SIDE_STYLE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#93 SURFACE_SIDE_STYLE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SURFACE_SIDE_STYLE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#97)" ;
+    step:references inst:entity_97 ;
+    step:stepId 93 ;
+    skos:notation "#93" .
+
+inst:entity_94 a ap242:SURFACE_SIDE_STYLE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#94 SURFACE_SIDE_STYLE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SURFACE_SIDE_STYLE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#98)" ;
+    step:references inst:entity_98 ;
+    step:stepId 94 ;
+    skos:notation "#94" .
+
+inst:entity_95 a ap242:SURFACE_SIDE_STYLE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#95 SURFACE_SIDE_STYLE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SURFACE_SIDE_STYLE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#99)" ;
+    step:references inst:entity_99 ;
+    step:stepId 95 ;
+    skos:notation "#95" .
+
+inst:entity_96 a ap242:SURFACE_SIDE_STYLE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#96 SURFACE_SIDE_STYLE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SURFACE_SIDE_STYLE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#100)" ;
+    step:references inst:entity_100 ;
+    step:stepId 96 ;
+    skos:notation "#96" .
+
+inst:entity_97 a ap242:SURFACE_STYLE_FILL_AREA,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#97 SURFACE_STYLE_FILL_AREA" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SURFACE_STYLE_FILL_AREA" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#101" ;
+    step:references inst:entity_101 ;
+    step:stepId 97 ;
+    skos:notation "#97" .
+
+inst:entity_98 a ap242:SURFACE_STYLE_FILL_AREA,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#98 SURFACE_STYLE_FILL_AREA" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SURFACE_STYLE_FILL_AREA" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#102" ;
+    step:references inst:entity_102 ;
+    step:stepId 98 ;
+    skos:notation "#98" .
+
+inst:entity_99 a ap242:SURFACE_STYLE_FILL_AREA,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#99 SURFACE_STYLE_FILL_AREA" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SURFACE_STYLE_FILL_AREA" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "#103" ;
+    step:references inst:entity_103 ;
+    step:stepId 99 ;
+    skos:notation "#99" .
+
+ap242:APPLICATION_CONTEXT a owl:Class ;
+    rdfs:label "Application Context" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type APPLICATION_CONTEXT." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "APPLICATION_CONTEXT" .
+
+ap242:APPLICATION_PROTOCOL_DEFINITION a owl:Class ;
+    rdfs:label "Application Protocol Definition" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type APPLICATION_PROTOCOL_DEFINITION." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "APPLICATION_PROTOCOL_DEFINITION" .
+
+ap242:DRAUGHTING_PRE_DEFINED_COLOUR a owl:Class ;
+    rdfs:label "Draughting Pre Defined Colour" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type DRAUGHTING_PRE_DEFINED_COLOUR." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "DRAUGHTING_PRE_DEFINED_COLOUR" .
+
+ap242:GEOMETRIC_REPRESENTATION_CONTEXT a owl:Class ;
+    rdfs:label "Geometric Representation Context" ;
+    step:mapsToAp242BusinessObjectClass bom:GeometricContext ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type GEOMETRIC_REPRESENTATION_CONTEXT." ;
+    rdfs:subClassOf step:Entity ;
+    skos:closeMatch bom:GeometricContext ;
+    skos:notation "GEOMETRIC_REPRESENTATION_CONTEXT" .
+
+ap242:LENGTH_UNIT a owl:Class ;
+    rdfs:label "Length Unit" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type LENGTH_UNIT." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "LENGTH_UNIT" .
+
+ap242:MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION a owl:Class ;
+    rdfs:label "Mechanical Design Geometric Presentation Representation" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION" .
+
+ap242:PRODUCT a owl:Class ;
+    rdfs:label "Product" ;
+    step:mapsToAp242BusinessObjectClass bom:Part ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type PRODUCT." ;
+    rdfs:subClassOf step:Entity ;
+    skos:closeMatch bom:Part ;
+    skos:notation "PRODUCT" .
+
+ap242:PRODUCT_CATEGORY a owl:Class ;
+    rdfs:label "Product Category" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type PRODUCT_CATEGORY." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "PRODUCT_CATEGORY" .
+
+ap242:PRODUCT_CONTEXT a owl:Class ;
+    rdfs:label "Product Context" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type PRODUCT_CONTEXT." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "PRODUCT_CONTEXT" .
+
+ap242:PRODUCT_DEFINITION a owl:Class ;
+    rdfs:label "Product Definition" ;
+    step:mapsToAp242BusinessObjectClass bom:PartView ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type PRODUCT_DEFINITION." ;
+    rdfs:subClassOf step:Entity ;
+    skos:closeMatch bom:PartView ;
+    skos:notation "PRODUCT_DEFINITION" .
+
+ap242:PRODUCT_DEFINITION_CONTEXT a owl:Class ;
+    rdfs:label "Product Definition Context" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type PRODUCT_DEFINITION_CONTEXT." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "PRODUCT_DEFINITION_CONTEXT" .
+
+ap242:PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE a owl:Class ;
+    rdfs:label "Product Definition Formation With Specified Source" ;
+    step:mapsToAp242BusinessObjectClass bom:PartVersion ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE." ;
+    rdfs:subClassOf step:Entity ;
+    skos:closeMatch bom:PartVersion ;
+    skos:notation "PRODUCT_DEFINITION_FORMATION_WITH_SPECIFIED_SOURCE" .
+
+ap242:PRODUCT_DEFINITION_SHAPE a owl:Class ;
+    rdfs:label "Product Definition Shape" ;
+    step:mapsToAp242BusinessObjectClass bom:PartShapeElement ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type PRODUCT_DEFINITION_SHAPE." ;
+    rdfs:subClassOf step:Entity ;
+    skos:closeMatch bom:PartShapeElement ;
+    skos:notation "PRODUCT_DEFINITION_SHAPE" .
+
+ap242:PRODUCT_RELATED_PRODUCT_CATEGORY a owl:Class ;
+    rdfs:label "Product Related Product Category" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type PRODUCT_RELATED_PRODUCT_CATEGORY." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "PRODUCT_RELATED_PRODUCT_CATEGORY" .
+
+ap242:SHAPE_DEFINITION_REPRESENTATION a owl:Class ;
+    rdfs:label "Shape Definition Representation" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type SHAPE_DEFINITION_REPRESENTATION." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "SHAPE_DEFINITION_REPRESENTATION" .
+
+ap242:SHAPE_REPRESENTATION a owl:Class ;
+    rdfs:label "Shape Representation" ;
+    step:mapsToAp242BusinessObjectClass bom:GeometricModel ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type SHAPE_REPRESENTATION." ;
+    rdfs:subClassOf step:Entity ;
+    skos:closeMatch bom:GeometricModel ;
+    skos:notation "SHAPE_REPRESENTATION" .
+
+ap242:UNCERTAINTY_MEASURE_WITH_UNIT a owl:Class ;
+    rdfs:label "Uncertainty Measure With Unit" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type UNCERTAINTY_MEASURE_WITH_UNIT." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "UNCERTAINTY_MEASURE_WITH_UNIT" .
+
+pmi:Dimension a owl:Class ;
+    rdfs:label "Dimension" ;
+    rdfs:subClassOf step:Entity .
+
+pmi:GeometricTolerance a owl:Class ;
+    rdfs:label "Geometric Tolerance" ;
+    rdfs:subClassOf step:Entity .
+
+inst:entity_10 a ap242:MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#10 MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',#18,#19" ;
+    step:references inst:entity_18,
+        inst:entity_19 ;
+    step:stepId 10 ;
+    skos:notation "#10" .
+
+inst:entity_11 a ap242:MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#11 MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',#20,#19" ;
+    step:references inst:entity_19,
+        inst:entity_20 ;
+    step:stepId 11 ;
+    skos:notation "#11" .
+
+inst:entity_110 a ap242:COMPLEX_TRIANGULATED_FACE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#110 COMPLEX_TRIANGULATED_FACE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "COMPLEX_TRIANGULATED_FACE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """$,#114,79,((-0.965925826289068,0.258819045102521,
+0.),(-0.965925826289068,0.25,0.0669872981077807),(-0.866025403784438,0.482962913144534,
+0.12940952255126),(-0.965925826289068,0.224143868042014,0.129409522551261),
+(-0.866025403784438,0.43301270189222,0.25),(-0.965925826289068,0.18301270189222,
+0.18301270189222),(-0.866025403784438,0.353553390593274,0.353553390593274),
+(-0.965925826289068,0.129409522551261,0.224143868042014),(-0.866025403784438,
+0.25,0.433012701892219),(-0.965925826289068,0.0669872981077809,0.25),(-0.866025403784438,
+0.129409522551261,0.482962913144534),(-0.965925826289068,0.,0.258819045102521),
+(-0.866025403784438,0.,0.5),(-0.866025403784438,0.5,0.),(-0.707106781186547,
+0.683012701892219,0.183012701892219),(-0.707106781186547,0.612372435695795,
+0.353553390593274),(-0.707106781186547,0.5,0.5),(-0.707106781186547,0.353553390593274,
+0.612372435695794),(-0.707106781186547,0.18301270189222,0.683012701892219),
+(-0.707106781186547,0.,0.707106781186548),(-0.707106781186547,0.7""" ;
+    step:references inst:entity_114 ;
+    step:stepId 110 ;
+    skos:notation "#110" .
+
+inst:entity_111 a ap242:COMPLEX_TRIANGULATED_FACE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#111 COMPLEX_TRIANGULATED_FACE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "COMPLEX_TRIANGULATED_FACE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """$,#115,79,((-0.965925826289068,0.,0.258819045102521),
+(-0.965925826289068,-0.0669872981077808,0.25),(-0.866025403784438,-0.12940952255126,
+0.482962913144535),(-0.965925826289068,-0.129409522551261,0.224143868042014),
+(-0.866025403784438,-0.25,0.43301270189222),(-0.965925826289068,-0.18301270189222,
+0.18301270189222),(-0.866025403784438,-0.353553390593274,0.353553390593274),
+(-0.965925826289068,-0.224143868042014,0.129409522551261),(-0.866025403784438,
+-0.43301270189222,0.25),(-0.965925826289068,-0.25,0.0669872981077808),(-0.866025403784438,
+-0.482962913144535,0.129409522551261),(-0.965925826289068,-0.258819045102521,
+0.),(-0.866025403784438,-0.5,0.),(-0.866025403784438,0.,0.5),(-0.707106781186547,
+-0.183012701892219,0.68301270189222),(-0.707106781186547,-0.353553390593274,
+0.612372435695795),(-0.707106781186547,-0.5,0.5),(-0.707106781186547,-0.612372435695795,
+0.353553390593274),(-0.707106781186547,-0.68301270189222,0.183012701892219),
+(-0.707106781186547,-0.707106781186548,0.),(-0.707""" ;
+    step:references inst:entity_115 ;
+    step:stepId 111 ;
+    skos:notation "#111" .
+
+inst:entity_112 a ap242:COMPLEX_TRIANGULATED_FACE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#112 COMPLEX_TRIANGULATED_FACE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "COMPLEX_TRIANGULATED_FACE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """$,#116,79,((-0.965925826289068,0.,-0.258819045102521),
+(-0.965925826289068,0.0669872981077808,-0.25),(-0.866025403784438,0.12940952255126,
+-0.482962913144535),(-0.965925826289068,0.129409522551261,-0.224143868042014),
+(-0.866025403784438,0.25,-0.43301270189222),(-0.965925826289068,0.18301270189222,
+-0.18301270189222),(-0.866025403784438,0.353553390593274,-0.353553390593274),
+(-0.965925826289068,0.224143868042014,-0.129409522551261),(-0.866025403784438,
+0.43301270189222,-0.25),(-0.965925826289068,0.25,-0.0669872981077808),(-0.866025403784438,
+0.482962913144535,-0.129409522551261),(-0.965925826289068,0.258819045102521,
+0.),(-0.866025403784438,0.5,0.),(-0.866025403784438,0.,-0.5),(-0.707106781186547,
+0.183012701892219,-0.68301270189222),(-0.707106781186547,0.353553390593274,
+-0.612372435695795),(-0.707106781186547,0.5,-0.5),(-0.707106781186547,0.612372435695795,
+-0.353553390593274),(-0.707106781186547,0.68301270189222,-0.183012701892219),
+(-0.707106781186547,0.707106781186548,0.),(-0.7071""" ;
+    step:references inst:entity_116 ;
+    step:stepId 112 ;
+    skos:notation "#112" .
+
+inst:entity_113 a ap242:COMPLEX_TRIANGULATED_FACE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#113 COMPLEX_TRIANGULATED_FACE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "COMPLEX_TRIANGULATED_FACE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """$,#117,79,((-0.965925826289068,-0.258819045102521,
+0.),(-0.965925826289068,-0.250000000000001,-0.0669872981077808),(-0.866025403784438,
+-0.482962913144535,-0.12940952255126),(-0.965925826289068,-0.224143868042014,
+-0.129409522551261),(-0.866025403784438,-0.43301270189222,-0.25),(-0.965925826289068,
+-0.18301270189222,-0.18301270189222),(-0.866025403784438,-0.353553390593274,
+-0.353553390593274),(-0.965925826289068,-0.129409522551261,-0.224143868042014),
+(-0.866025403784438,-0.25,-0.43301270189222),(-0.965925826289068,-0.0669872981077809,
+-0.250000000000001),(-0.866025403784438,-0.129409522551261,-0.482962913144535),
+(-0.965925826289068,0.,-0.258819045102521),(-0.866025403784438,0.,-0.5),
+(-0.866025403784438,-0.5,0.),(-0.707106781186547,-0.68301270189222,-0.183012701892219),
+(-0.707106781186547,-0.612372435695795,-0.353553390593274),(-0.707106781186547,
+-0.5,-0.5),(-0.707106781186547,-0.353553390593274,-0.612372435695795),(-0.707106781186547,
+-0.18301270189222,-0.68301270189222),(-0.7071""" ;
+    step:references inst:entity_117 ;
+    step:stepId 113 ;
+    skos:notation "#113" .
+
+inst:entity_12 a ap242:MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#12 MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',#21,#19" ;
+    step:references inst:entity_19,
+        inst:entity_21 ;
+    step:stepId 12 ;
+    skos:notation "#12" .
+
+inst:entity_13 a ap242:MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#13 MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',#22,#19" ;
+    step:references inst:entity_19,
+        inst:entity_22 ;
+    step:stepId 13 ;
+    skos:notation "#13" .
+
+inst:entity_14 a ap242:MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#14 MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',#23,#19" ;
+    step:references inst:entity_19,
+        inst:entity_23 ;
+    step:stepId 14 ;
+    skos:notation "#14" .
+
+inst:entity_143 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#143 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,0.,1.)" ;
+    step:stepId 143 ;
+    skos:notation "#143" .
+
+inst:entity_144 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#144 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(1.,0.,0.)" ;
+    step:stepId 144 ;
+    skos:notation "#144" .
+
+inst:entity_145 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#145 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,-1.,0.)" ;
+    step:stepId 145 ;
+    skos:notation "#145" .
+
+inst:entity_146 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#146 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(1.,0.,0.)" ;
+    step:stepId 146 ;
+    skos:notation "#146" .
+
+inst:entity_147 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#147 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(1.,0.,0.)" ;
+    step:stepId 147 ;
+    skos:notation "#147" .
+
+inst:entity_148 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#148 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,1.,0.)" ;
+    step:stepId 148 ;
+    skos:notation "#148" .
+
+inst:entity_149 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#149 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,1.,0.)" ;
+    step:stepId 149 ;
+    skos:notation "#149" .
+
+inst:entity_15 a ap242:MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#15 MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',#24,#19" ;
+    step:references inst:entity_19,
+        inst:entity_24 ;
+    step:stepId 15 ;
+    skos:notation "#15" .
+
+inst:entity_150 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#150 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(-1.,0.,0.)" ;
+    step:stepId 150 ;
+    skos:notation "#150" .
+
+inst:entity_151 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#151 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,0.,-1.)" ;
+    step:stepId 151 ;
+    skos:notation "#151" .
+
+inst:entity_152 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#152 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(1.,0.,0.)" ;
+    step:stepId 152 ;
+    skos:notation "#152" .
+
+inst:entity_153 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#153 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(-1.,0.,0.)" ;
+    step:stepId 153 ;
+    skos:notation "#153" .
+
+inst:entity_154 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#154 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.,-1.,0.)" ;
+    step:stepId 154 ;
+    skos:notation "#154" .
+
+inst:entity_155 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#155 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.577350269189626,-0.577350269189626,0.577350269189626)" ;
+    step:stepId 155 ;
+    skos:notation "#155" .
+
+inst:entity_156 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#156 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.707106765322401,0.707106797050693,3.17282912720707E-8)" ;
+    step:stepId 156 ;
+    skos:notation "#156" .
+
+inst:entity_157 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#157 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.718873086818576,-0.585048618558824,0.375419230954334)" ;
+    step:stepId 157 ;
+    skos:notation "#157" .
+
+inst:entity_158 a ap242:DIRECTION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#158 DIRECTION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DIRECTION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(0.631219072032975,0.775604591980882,-2.04699331651792E-8)" ;
+    step:stepId 158 ;
+    skos:notation "#158" .
+
+inst:entity_16 a ap242:MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#16 MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',#25,#19" ;
+    step:references inst:entity_19,
+        inst:entity_25 ;
+    step:stepId 16 ;
+    skos:notation "#16" .
+
+inst:entity_17 a ap242:MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#17 MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',#26,#19" ;
+    step:references inst:entity_19,
+        inst:entity_26 ;
+    step:stepId 17 ;
+    skos:notation "#17" .
+
+inst:entity_242 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#242 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'LAYER',$,#275" ;
+    step:references inst:entity_275 ;
+    step:stepId 242 ;
+    skos:notation "#242" .
+
+inst:entity_243 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#243 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Name',$,#275" ;
+    step:references inst:entity_275 ;
+    step:stepId 243 ;
+    skos:notation "#243" .
+
+inst:entity_244 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#244 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'DB_PART_DESC',$,#275" ;
+    step:references inst:entity_275 ;
+    step:stepId 244 ;
+    skos:notation "#244" .
+
+inst:entity_245 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#245 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'DB_PART_REV',$,#275" ;
+    step:references inst:entity_275 ;
+    step:stepId 245 ;
+    skos:notation "#245" .
+
+inst:entity_246 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#246 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'DB_PART_NAME',$,#275" ;
+    step:references inst:entity_275 ;
+    step:stepId 246 ;
+    skos:notation "#246" .
+
+inst:entity_247 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#247 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'DB_PART_NO',$,#275" ;
+    step:references inst:entity_275 ;
+    step:stepId 247 ;
+    skos:notation "#247" .
+
+inst:entity_248 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#248 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'DB_PART_TYPE',$,#275" ;
+    step:references inst:entity_275 ;
+    step:stepId 248 ;
+    skos:notation "#248" .
+
+inst:entity_249 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#249 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'DB_PART_MFKID',$,#275" ;
+    step:references inst:entity_275 ;
+    step:stepId 249 ;
+    skos:notation "#249" .
+
+inst:entity_250 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#250 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'NX_MaterialMultipleAssigned',$,#275" ;
+    step:references inst:entity_275 ;
+    step:stepId 250 ;
+    skos:notation "#250" .
+
+inst:entity_251 a ap242:PROPERTY_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#251 PROPERTY_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PROPERTY_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'NX_MaterialMissingAssignments',$,#275" ;
+    step:references inst:entity_275 ;
+    step:stepId 251 ;
+    skos:notation "#251" .
+
+inst:entity_273 a ap242:LENGTH_UNIT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#273 LENGTH_UNIT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "LENGTH_UNIT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """
+LENGTH_UNIT()
+NAMED_UNIT(*)
+SI_UNIT(.MILLI.,.METRE.)
+""" ;
+    step:stepId 273 ;
+    skos:notation "#273" .
+
+inst:entity_279 a bom:Part,
+        ap242:PRODUCT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#279 PRODUCT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PRODUCT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """'000699_A;1-SKF_6306-2Z7097_Prt3',
+'000699_A;1-SKF_6306-2Z7097_Prt3','000699_A;1-SKF_6306-2Z7097_Prt3',(#281)""" ;
+    step:references inst:entity_281 ;
+    step:stepId 279 ;
+    skos:notation "#279" .
+
+inst:entity_36 a ap242:MAPPED_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#36 MAPPED_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MAPPED_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#27,#124" ;
+    step:references inst:entity_124,
+        inst:entity_27 ;
+    step:stepId 36 ;
+    skos:notation "#36" .
+
+inst:entity_37 a ap242:MAPPED_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#37 MAPPED_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MAPPED_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#28,#124" ;
+    step:references inst:entity_124,
+        inst:entity_28 ;
+    step:stepId 37 ;
+    skos:notation "#37" .
+
+inst:entity_38 a ap242:MAPPED_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#38 MAPPED_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MAPPED_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#29,#124" ;
+    step:references inst:entity_124,
+        inst:entity_29 ;
+    step:stepId 38 ;
+    skos:notation "#38" .
+
+inst:entity_39 a ap242:MAPPED_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#39 MAPPED_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MAPPED_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#30,#124" ;
+    step:references inst:entity_124,
+        inst:entity_30 ;
+    step:stepId 39 ;
+    skos:notation "#39" .
+
+inst:entity_40 a ap242:MAPPED_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#40 MAPPED_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MAPPED_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#31,#124" ;
+    step:references inst:entity_124,
+        inst:entity_31 ;
+    step:stepId 40 ;
+    skos:notation "#40" .
+
+inst:entity_41 a ap242:MAPPED_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#41 MAPPED_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MAPPED_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#32,#124" ;
+    step:references inst:entity_124,
+        inst:entity_32 ;
+    step:stepId 41 ;
+    skos:notation "#41" .
+
+inst:entity_42 a ap242:MAPPED_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#42 MAPPED_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MAPPED_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#33,#124" ;
+    step:references inst:entity_124,
+        inst:entity_33 ;
+    step:stepId 42 ;
+    skos:notation "#42" .
+
+inst:entity_43 a ap242:MAPPED_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#43 MAPPED_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MAPPED_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#34,#124" ;
+    step:references inst:entity_124,
+        inst:entity_34 ;
+    step:stepId 43 ;
+    skos:notation "#43" .
+
+inst:entity_44 a ap242:MAPPED_ITEM,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#44 MAPPED_ITEM" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "MAPPED_ITEM" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#35,#124" ;
+    step:references inst:entity_124,
+        inst:entity_35 ;
+    step:stepId 44 ;
+    skos:notation "#44" .
+
+inst:entity_45 a ap242:CAMERA_MODEL_D3,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#45 CAMERA_MODEL_D3" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CAMERA_MODEL_D3" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Top',#125,#53" ;
+    step:references inst:entity_125,
+        inst:entity_53 ;
+    step:stepId 45 ;
+    skos:notation "#45" .
+
+inst:entity_46 a ap242:CAMERA_MODEL_D3,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#46 CAMERA_MODEL_D3" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CAMERA_MODEL_D3" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Front',#127,#54" ;
+    step:references inst:entity_127,
+        inst:entity_54 ;
+    step:stepId 46 ;
+    skos:notation "#46" .
+
+inst:entity_47 a ap242:CAMERA_MODEL_D3,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#47 CAMERA_MODEL_D3" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CAMERA_MODEL_D3" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Right',#129,#55" ;
+    step:references inst:entity_129,
+        inst:entity_55 ;
+    step:stepId 47 ;
+    skos:notation "#47" .
+
+inst:entity_48 a ap242:CAMERA_MODEL_D3,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#48 CAMERA_MODEL_D3" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CAMERA_MODEL_D3" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Back',#131,#56" ;
+    step:references inst:entity_131,
+        inst:entity_56 ;
+    step:stepId 48 ;
+    skos:notation "#48" .
+
+inst:entity_49 a ap242:CAMERA_MODEL_D3,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#49 CAMERA_MODEL_D3" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CAMERA_MODEL_D3" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Bottom',#133,#57" ;
+    step:references inst:entity_133,
+        inst:entity_57 ;
+    step:stepId 49 ;
+    skos:notation "#49" .
+
+inst:entity_50 a ap242:CAMERA_MODEL_D3,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#50 CAMERA_MODEL_D3" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CAMERA_MODEL_D3" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Left',#135,#58" ;
+    step:references inst:entity_135,
+        inst:entity_58 ;
+    step:stepId 50 ;
+    skos:notation "#50" .
+
+inst:entity_51 a ap242:CAMERA_MODEL_D3,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#51 CAMERA_MODEL_D3" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CAMERA_MODEL_D3" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Isometric',#137,#59" ;
+    step:references inst:entity_137,
+        inst:entity_59 ;
+    step:stepId 51 ;
+    skos:notation "#51" .
+
+inst:entity_52 a ap242:CAMERA_MODEL_D3,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#52 CAMERA_MODEL_D3" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "CAMERA_MODEL_D3" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Trimetric',#139,#60" ;
+    step:references inst:entity_139,
+        inst:entity_60 ;
+    step:stepId 52 ;
+    skos:notation "#52" .
+
+ap242:NAMED_UNIT a owl:Class ;
+    rdfs:label "Named Unit" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type NAMED_UNIT." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "NAMED_UNIT" .
+
+inst:entity_283 a ap242:APPLICATION_CONTEXT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#283 APPLICATION_CONTEXT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "APPLICATION_CONTEXT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'managed model based 3d engineering'" ;
+    step:stepId 283 ;
+    skos:notation "#283" .
+
+bom:GeometricContext a owl:Class ;
+    rdfs:label "GeometricContext" ;
+    rdfs:subClassOf owl:Thing .
+
+bom:GeometricModel a owl:Class ;
+    rdfs:label "GeometricModel" ;
+    rdfs:subClassOf owl:Thing .
+
+bom:Part a owl:Class ;
+    rdfs:label "Part" ;
+    rdfs:subClassOf owl:Thing .
+
+bom:PartShapeElement a owl:Class ;
+    rdfs:label "PartShapeElement" ;
+    rdfs:subClassOf owl:Thing .
+
+bom:PartVersion a owl:Class ;
+    rdfs:label "PartVersion" ;
+    rdfs:subClassOf owl:Thing .
+
+bom:PartView a owl:Class ;
+    rdfs:label "PartView" ;
+    rdfs:subClassOf owl:Thing .
+
+ap242:INTEGER_REPRESENTATION_ITEM a owl:Class ;
+    rdfs:label "Integer Representation Item" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type INTEGER_REPRESENTATION_ITEM." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "INTEGER_REPRESENTATION_ITEM" .
+
+inst:entity_18 a ap242:DRAUGHTING_MODEL,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#18 DRAUGHTING_MODEL" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DRAUGHTING_MODEL" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Top',(#45,#36),#269" ;
+    step:references inst:entity_269,
+        inst:entity_36,
+        inst:entity_45 ;
+    step:stepId 18 ;
+    skos:notation "#18" .
+
+inst:entity_20 a ap242:DRAUGHTING_MODEL,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#20 DRAUGHTING_MODEL" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DRAUGHTING_MODEL" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Front',(#46,#38),#269" ;
+    step:references inst:entity_269,
+        inst:entity_38,
+        inst:entity_46 ;
+    step:stepId 20 ;
+    skos:notation "#20" .
+
+inst:entity_21 a ap242:DRAUGHTING_MODEL,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#21 DRAUGHTING_MODEL" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DRAUGHTING_MODEL" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Right',(#47,#39),#269" ;
+    step:references inst:entity_269,
+        inst:entity_39,
+        inst:entity_47 ;
+    step:stepId 21 ;
+    skos:notation "#21" .
+
+inst:entity_22 a ap242:DRAUGHTING_MODEL,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#22 DRAUGHTING_MODEL" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DRAUGHTING_MODEL" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Back',(#48,#40),#269" ;
+    step:references inst:entity_269,
+        inst:entity_40,
+        inst:entity_48 ;
+    step:stepId 22 ;
+    skos:notation "#22" .
+
+inst:entity_23 a ap242:DRAUGHTING_MODEL,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#23 DRAUGHTING_MODEL" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DRAUGHTING_MODEL" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Bottom',(#49,#41),#269" ;
+    step:references inst:entity_269,
+        inst:entity_41,
+        inst:entity_49 ;
+    step:stepId 23 ;
+    skos:notation "#23" .
+
+inst:entity_24 a ap242:DRAUGHTING_MODEL,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#24 DRAUGHTING_MODEL" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DRAUGHTING_MODEL" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Left',(#50,#42),#269" ;
+    step:references inst:entity_269,
+        inst:entity_42,
+        inst:entity_50 ;
+    step:stepId 24 ;
+    skos:notation "#24" .
+
+inst:entity_25 a ap242:DRAUGHTING_MODEL,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#25 DRAUGHTING_MODEL" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DRAUGHTING_MODEL" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Isometric',(#51,#43),#269" ;
+    step:references inst:entity_269,
+        inst:entity_43,
+        inst:entity_51 ;
+    step:stepId 25 ;
+    skos:notation "#25" .
+
+inst:entity_26 a ap242:DRAUGHTING_MODEL,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#26 DRAUGHTING_MODEL" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DRAUGHTING_MODEL" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'Trimetric',(#52,#44),#269" ;
+    step:references inst:entity_269,
+        inst:entity_44,
+        inst:entity_52 ;
+    step:stepId 26 ;
+    skos:notation "#26" .
+
+ap242:COMPLEX_TRIANGULATED_FACE a owl:Class ;
+    rdfs:label "Complex Triangulated Face" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type COMPLEX_TRIANGULATED_FACE." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "COMPLEX_TRIANGULATED_FACE" .
+
+ap242:COORDINATES_LIST a owl:Class ;
+    rdfs:label "Coordinates List" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type COORDINATES_LIST." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "COORDINATES_LIST" .
+
+ap242:FILL_AREA_STYLE a owl:Class ;
+    rdfs:label "Fill Area Style" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type FILL_AREA_STYLE." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "FILL_AREA_STYLE" .
+
+ap242:FILL_AREA_STYLE_COLOUR a owl:Class ;
+    rdfs:label "Fill Area Style Colour" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type FILL_AREA_STYLE_COLOUR." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "FILL_AREA_STYLE_COLOUR" .
+
+ap242:PRESENTATION_STYLE_ASSIGNMENT a owl:Class ;
+    rdfs:label "Presentation Style Assignment" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type PRESENTATION_STYLE_ASSIGNMENT." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "PRESENTATION_STYLE_ASSIGNMENT" .
+
+ap242:SHAPE_ASPECT a owl:Class ;
+    rdfs:label "Shape Aspect" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type SHAPE_ASPECT." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "SHAPE_ASPECT" .
+
+ap242:SHAPE_REPRESENTATION_RELATIONSHIP a owl:Class ;
+    rdfs:label "Shape Representation Relationship" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type SHAPE_REPRESENTATION_RELATIONSHIP." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "SHAPE_REPRESENTATION_RELATIONSHIP" .
+
+ap242:STYLED_ITEM a owl:Class ;
+    rdfs:label "Styled Item" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type STYLED_ITEM." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "STYLED_ITEM" .
+
+ap242:SURFACE_SIDE_STYLE a owl:Class ;
+    rdfs:label "Surface Side Style" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type SURFACE_SIDE_STYLE." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "SURFACE_SIDE_STYLE" .
+
+ap242:SURFACE_STYLE_FILL_AREA a owl:Class ;
+    rdfs:label "Surface Style Fill Area" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type SURFACE_STYLE_FILL_AREA." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "SURFACE_STYLE_FILL_AREA" .
+
+ap242:SURFACE_STYLE_USAGE a owl:Class ;
+    rdfs:label "Surface Style Usage" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type SURFACE_STYLE_USAGE." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "SURFACE_STYLE_USAGE" .
+
+ap242:TESSELLATED_SHAPE_REPRESENTATION a owl:Class ;
+    rdfs:label "Tessellated Shape Representation" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type TESSELLATED_SHAPE_REPRESENTATION." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "TESSELLATED_SHAPE_REPRESENTATION" .
+
+ap242:TESSELLATED_SHELL a owl:Class ;
+    rdfs:label "Tessellated Shell" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type TESSELLATED_SHELL." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "TESSELLATED_SHELL" .
+
+inst:entity_123 a bom:GeometricModel,
+        ap242:SHAPE_REPRESENTATION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#123 SHAPE_REPRESENTATION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "SHAPE_REPRESENTATION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'000699_A;1-SKF_6306-2Z7097_Prt3',(#124),#269" ;
+    step:references inst:entity_124,
+        inst:entity_269 ;
+    step:stepId 123 ;
+    skos:notation "#123" .
+
+inst:entity_109 a ap242:DRAUGHTING_PRE_DEFINED_COLOUR,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#109 DRAUGHTING_PRE_DEFINED_COLOUR" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DRAUGHTING_PRE_DEFINED_COLOUR" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'yellow'" ;
+    step:stepId 109 ;
+    skos:notation "#109" .
+
+inst:entity_274 a bom:PartShapeElement,
+        ap242:PRODUCT_DEFINITION_SHAPE,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#274 PRODUCT_DEFINITION_SHAPE" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PRODUCT_DEFINITION_SHAPE" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',#275" ;
+    step:references inst:entity_275 ;
+    step:stepId 274 ;
+    skos:notation "#274" .
+
+ap242:CAMERA_MODEL_D3 a owl:Class ;
+    rdfs:label "Camera Model D3" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type CAMERA_MODEL_D3." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "CAMERA_MODEL_D3" .
+
+ap242:DESCRIPTIVE_REPRESENTATION_ITEM a owl:Class ;
+    rdfs:label "Descriptive Representation Item" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type DESCRIPTIVE_REPRESENTATION_ITEM." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "DESCRIPTIVE_REPRESENTATION_ITEM" .
+
+ap242:MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP a owl:Class ;
+    rdfs:label "Mechanical Design And Draughting Relationship" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "MECHANICAL_DESIGN_AND_DRAUGHTING_RELATIONSHIP" .
+
+ap242:PLANAR_BOX a owl:Class ;
+    rdfs:label "Planar Box" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type PLANAR_BOX." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "PLANAR_BOX" .
+
+ap242:VIEW_VOLUME a owl:Class ;
+    rdfs:label "View Volume" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type VIEW_VOLUME." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "VIEW_VOLUME" .
+
+ap242:DRAUGHTING_MODEL a owl:Class ;
+    rdfs:label "Draughting Model" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type DRAUGHTING_MODEL." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "DRAUGHTING_MODEL" .
+
+ap242:MAPPED_ITEM a owl:Class ;
+    rdfs:label "Mapped Item" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type MAPPED_ITEM." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "MAPPED_ITEM" .
+
+ap242:REPRESENTATION_MAP a owl:Class ;
+    rdfs:label "Representation Map" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type REPRESENTATION_MAP." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "REPRESENTATION_MAP" .
+
+ap242:GENERAL_PROPERTY a owl:Class ;
+    rdfs:label "General Property" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type GENERAL_PROPERTY." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "GENERAL_PROPERTY" .
+
+ap242:GENERAL_PROPERTY_ASSOCIATION a owl:Class ;
+    rdfs:label "General Property Association" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type GENERAL_PROPERTY_ASSOCIATION." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "GENERAL_PROPERTY_ASSOCIATION" .
+
+inst:entity_275 a bom:PartView,
+        ap242:PRODUCT_DEFINITION,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#275 PRODUCT_DEFINITION" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "PRODUCT_DEFINITION" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'','',#277,#276" ;
+    step:references inst:entity_276,
+        inst:entity_277 ;
+    step:stepId 275 ;
+    skos:notation "#275" .
+
+ap242:PROPERTY_DEFINITION a owl:Class ;
+    rdfs:label "Property Definition" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type PROPERTY_DEFINITION." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "PROPERTY_DEFINITION" .
+
+ap242:PROPERTY_DEFINITION_REPRESENTATION a owl:Class ;
+    rdfs:label "Property Definition Representation" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type PROPERTY_DEFINITION_REPRESENTATION." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "PROPERTY_DEFINITION_REPRESENTATION" .
+
+ap242:REPRESENTATION a owl:Class ;
+    rdfs:label "Representation" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type REPRESENTATION." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "REPRESENTATION" .
+
+ap242:AXIS2_PLACEMENT_3_D a owl:Class ;
+    rdfs:label "Axis2 Placement 3 D" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type AXIS2_PLACEMENT_3_D." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "AXIS2_PLACEMENT_3_D" .
+
+inst:entity_19 a ap242:DRAUGHTING_MODEL,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#19 DRAUGHTING_MODEL" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "DRAUGHTING_MODEL" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',(#37),#269" ;
+    step:references inst:entity_269,
+        inst:entity_37 ;
+    step:stepId 19 ;
+    skos:notation "#19" .
+
+ap242:DIRECTION a owl:Class ;
+    rdfs:label "Direction" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type DIRECTION." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "DIRECTION" .
+
+inst:entity_124 a ap242:AXIS2_PLACEMENT_3_D,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#124 AXIS2_PLACEMENT_3_D" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "AXIS2_PLACEMENT_3_D" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs "'',#159,#141,#142" ;
+    step:references inst:entity_141,
+        inst:entity_142,
+        inst:entity_159 ;
+    step:stepId 124 ;
+    skos:notation "#124" .
+
+pmi:Annotation a owl:Class ;
+    rdfs:label "Annotation" ;
+    rdfs:subClassOf step:Entity .
+
+ap242:CARTESIAN_POINT a owl:Class ;
+    rdfs:label "Cartesian Point" ;
+    rdfs:comment "AP242/STEP entity class generated from encountered entity type CARTESIAN_POINT." ;
+    rdfs:subClassOf step:Entity ;
+    skos:notation "CARTESIAN_POINT" .
+
+inst:entity_269 a bom:GeometricContext,
+        ap242:GEOMETRIC_REPRESENTATION_CONTEXT,
+        step:Entity,
+        owl:NamedIndividual ;
+    rdfs:label "#269 GEOMETRIC_REPRESENTATION_CONTEXT" ;
+    dcterms:source "tmppmkg_ug3.stp" ;
+    step:entityType "GEOMETRIC_REPRESENTATION_CONTEXT" ;
+    step:fileSchema "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }" ;
+    step:rawArgs """
+GEOMETRIC_REPRESENTATION_CONTEXT(3)
+GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#270))
+GLOBAL_UNIT_ASSIGNED_CONTEXT((#273,#272,#271))
+REPRESENTATION_CONTEXT('000699_A;1-SKF_6306-2Z7097_Prt3',
+'TOP_LEVEL_ASSEMBLY_PART')
+""" ;
+    step:references inst:entity_270,
+        inst:entity_271,
+        inst:entity_272,
+        inst:entity_273 ;
+    step:stepId 269 ;
+    skos:notation "#269" .
+
+step:Entity a owl:Class ;
+    rdfs:label "STEP Entity" ;
+    rdfs:comment "A concrete entity instance parsed from an ISO 10303 Part 21 or Part 28 exchange file." ;
+    rdfs:subClassOf owl:Thing .
+

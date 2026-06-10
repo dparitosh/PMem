@@ -359,12 +359,22 @@ export const adminAPI = {
 
 // ========== RECOMMENDATION ENDPOINTS ==========
 export const recommendationsAPI = {
-  changeImpact: (changeName) =>
-    apiClient.post(buildUrl(API.recommendations.changeImpact), { change_name: changeName }),
-  similarParts: (partName, topN = 10) =>
-    apiClient.post(buildUrl(API.recommendations.similarParts), { part_name: partName, top_n: topN }),
-  manufacturing: (partName) =>
-    apiClient.post(buildUrl(API.recommendations.manufacturing), { part_name: partName }),
+  changeImpact: (changeName, scope = {}) =>
+    apiClient.post(buildUrl(API.recommendations.changeImpact), {
+      change_name: changeName,
+      ...(scope?.ontology_id || scope?.ontology_ids || scope?.prefix || scope?.prefixes ? { scope } : {}),
+    }),
+  similarParts: (partName, topN = 10, scope = {}) =>
+    apiClient.post(buildUrl(API.recommendations.similarParts), {
+      part_name: partName,
+      top_n: topN,
+      ...(scope?.ontology_id || scope?.ontology_ids || scope?.prefix || scope?.prefixes ? { scope } : {}),
+    }),
+  manufacturing: (partName, scope = {}) =>
+    apiClient.post(buildUrl(API.recommendations.manufacturing), {
+      part_name: partName,
+      ...(scope?.ontology_id || scope?.ontology_ids || scope?.prefix || scope?.prefixes ? { scope } : {}),
+    }),
   health: () => apiClient.get(buildUrl(API.recommendations.health)),
 };
 

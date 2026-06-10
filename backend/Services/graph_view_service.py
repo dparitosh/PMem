@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -43,6 +44,22 @@ class GraphViewService:
         "SUBPROPERTY_OF",
         "EQUIVALENT_CLASS",
         "DISJOINT_WITH",
+        "INVERSE_OF",
+        "ON_PROPERTY",
+        "SOME_VALUES_FROM",
+        "ALL_VALUES_FROM",
+        "HAS_VALUE",
+        "CLASS_RESTRICTION",
+    ]
+
+    SCHEMA_NODE_LABELS = [
+        "OntologyClass",
+        "Class",
+        "ObjectProperty",
+        "DatatypeProperty",
+        "Restriction",
+        "OntologyRestriction",
+        "Datatype",
     ]
 
     @staticmethod
@@ -60,6 +77,34 @@ class GraphViewService:
         with driver.session(database=config.database) as session:
             result = session.run(cypher, params or {})
             return [dict(record) for record in result]
+
+    @classmethod
+    def _resolve_ontology_prefix(cls, value: str) -> str:
+        """Resolve registry ontology ids to graph prefixes when callers pass either form."""
+        token = str(value or "").strip()
+        if not token or token.upper() == "ALL":
+            return token
+
+        rows = cls._run(
+            """
+            MATCH (n)
+            WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
+              AND (
+                n.prefix = $token OR
+                n.ontology_prefix = $token OR
+                n.source_ontology = $token OR
+                n.ontology_id = $token OR
+                n.id = $token
+              )
+            WITH coalesce(n.prefix, n.ontology_prefix) AS prefix, count(n) AS node_count
+            WHERE prefix IS NOT NULL AND prefix <> ''
+            RETURN prefix
+            ORDER BY node_count DESC, prefix ASC
+            LIMIT 1
+            """,
+            {"token": token},
+        )
+        return (rows[0].get("prefix") if rows else None) or token
 
     @staticmethod
     def _extract_xsd_named_subclass_rows(file_path: Path, class_uri_lookup: Dict[str, str]) -> List[Dict[str, str]]:
@@ -124,12 +169,34 @@ class GraphViewService:
             if rel and rel.get("elementId"):
                 relationships[rel["elementId"]] = _relationship_payload(rel)
 
+        def sort_key(item: Dict[str, Any]) -> tuple:
+            props = item.get("properties") or {}
+            labels = item.get("labels") or []
+            return (
+                str(props.get("ontology_prefix") or props.get("prefix") or ""),
+                str(labels[0] if labels else ""),
+                str(props.get("name") or props.get("title") or props.get("code") or props.get("label") or ""),
+                str(item.get("elementId") or ""),
+            )
+
+        node_list = sorted(nodes.values(), key=sort_key)
+        rel_list = sorted(
+            relationships.values(),
+            key=lambda item: (
+                str(item.get("type") or ""),
+                str((item.get("properties") or {}).get("ontology_prefix") or (item.get("properties") or {}).get("prefix") or ""),
+                str(item.get("start") or ""),
+                str(item.get("end") or ""),
+                str(item.get("elementId") or ""),
+            ),
+        )
+
         return {
-            "nodes": list(nodes.values()),
-            "relationships": list(relationships.values()),
+            "nodes": node_list,
+            "relationships": rel_list,
             "counts": {
-                "nodes": len(nodes),
-                "relationships": len(relationships),
+                "nodes": len(node_list),
+                "relationships": len(rel_list),
             },
         }
 
@@ -144,8 +211,8 @@ class GraphViewService:
               CALL () {
                 MATCH (n)-[r]->(m)
                 WHERE type(r) = 'SUBCLASS_OF'
-                  AND any(label IN labels(n) WHERE label IN ['OntologyClass', 'Class', 'ObjectProperty', 'DatatypeProperty'])
-                  AND any(label IN labels(m) WHERE label IN ['OntologyClass', 'Class', 'ObjectProperty', 'DatatypeProperty'])
+                  AND any(label IN labels(n) WHERE label IN $schema_node_labels)
+                  AND any(label IN labels(m) WHERE label IN $schema_node_labels)
                   AND (n.prefix = $prefix OR n.ontology_prefix = $prefix)
                   AND (m.prefix = $prefix OR m.ontology_prefix = $prefix)
                 RETURN n, r, m
@@ -154,8 +221,8 @@ class GraphViewService:
               UNION
                 MATCH (n)-[r]->(m)
                 WHERE type(r) = 'DOMAIN'
-                  AND any(label IN labels(n) WHERE label IN ['OntologyClass', 'Class', 'ObjectProperty', 'DatatypeProperty'])
-                  AND any(label IN labels(m) WHERE label IN ['OntologyClass', 'Class', 'ObjectProperty', 'DatatypeProperty'])
+                  AND any(label IN labels(n) WHERE label IN $schema_node_labels)
+                  AND any(label IN labels(m) WHERE label IN $schema_node_labels)
                   AND (n.prefix = $prefix OR n.ontology_prefix = $prefix)
                   AND (m.prefix = $prefix OR m.ontology_prefix = $prefix)
                 RETURN n, r, m
@@ -164,8 +231,8 @@ class GraphViewService:
               UNION
                 MATCH (n)-[r]->(m)
                 WHERE type(r) = 'RANGE'
-                  AND any(label IN labels(n) WHERE label IN ['OntologyClass', 'Class', 'ObjectProperty', 'DatatypeProperty'])
-                  AND any(label IN labels(m) WHERE label IN ['OntologyClass', 'Class', 'ObjectProperty', 'DatatypeProperty'])
+                  AND any(label IN labels(n) WHERE label IN $schema_node_labels)
+                  AND any(label IN labels(m) WHERE label IN $schema_node_labels)
                   AND (n.prefix = $prefix OR n.ontology_prefix = $prefix)
                   AND (m.prefix = $prefix OR m.ontology_prefix = $prefix)
                 RETURN n, r, m
@@ -174,8 +241,18 @@ class GraphViewService:
               UNION
                 MATCH (n)-[r]->(m)
                 WHERE type(r) = 'SUBPROPERTY_OF'
-                  AND any(label IN labels(n) WHERE label IN ['OntologyClass', 'Class', 'ObjectProperty', 'DatatypeProperty'])
-                  AND any(label IN labels(m) WHERE label IN ['OntologyClass', 'Class', 'ObjectProperty', 'DatatypeProperty'])
+                  AND any(label IN labels(n) WHERE label IN $schema_node_labels)
+                  AND any(label IN labels(m) WHERE label IN $schema_node_labels)
+                  AND (n.prefix = $prefix OR n.ontology_prefix = $prefix)
+                  AND (m.prefix = $prefix OR m.ontology_prefix = $prefix)
+                RETURN n, r, m
+                ORDER BY coalesce(n.name, n.uri, ''), coalesce(m.name, m.uri, '')
+                LIMIT $relationship_slice_limit
+              UNION
+                MATCH (n)-[r]->(m)
+                WHERE type(r) IN ['EQUIVALENT_CLASS', 'DISJOINT_WITH', 'INVERSE_OF', 'ON_PROPERTY', 'SOME_VALUES_FROM', 'ALL_VALUES_FROM', 'HAS_VALUE', 'CLASS_RESTRICTION']
+                  AND any(label IN labels(n) WHERE label IN $schema_node_labels)
+                  AND any(label IN labels(m) WHERE label IN $schema_node_labels)
                   AND (n.prefix = $prefix OR n.ontology_prefix = $prefix)
                   AND (m.prefix = $prefix OR m.ontology_prefix = $prefix)
                 RETURN n, r, m
@@ -183,12 +260,12 @@ class GraphViewService:
                 LIMIT $relationship_slice_limit
               UNION
                 MATCH (n)
-                WHERE any(label IN labels(n) WHERE label IN ['OntologyClass', 'Class', 'ObjectProperty', 'DatatypeProperty'])
+                WHERE any(label IN labels(n) WHERE label IN $schema_node_labels)
                   AND (n.prefix = $prefix OR n.ontology_prefix = $prefix)
                   AND NOT EXISTS {
                     MATCH (n)-[r]->(m)
                     WHERE type(r) IN $schema_relationship_types
-                      AND any(label IN labels(m) WHERE label IN ['OntologyClass', 'Class', 'ObjectProperty', 'DatatypeProperty'])
+                      AND any(label IN labels(m) WHERE label IN $schema_node_labels)
                       AND (m.prefix = $prefix OR m.ontology_prefix = $prefix)
                   }
                 RETURN n, NULL AS r, NULL AS m
@@ -213,6 +290,7 @@ class GraphViewService:
                 "relationship_slice_limit": relationship_slice_limit,
                 "isolated_limit": isolated_limit,
                 "schema_relationship_types": cls.SCHEMA_RELATIONSHIP_TYPES,
+                "schema_node_labels": cls.SCHEMA_NODE_LABELS,
             },
         )
 
@@ -392,7 +470,7 @@ class GraphViewService:
             except Exception:
                 from Services.ontology_upload_manager import OntologyUploadManager
 
-            from rdflib import URIRef
+            from rdflib import BNode, URIRef
             from rdflib.namespace import RDF, RDFS, OWL
 
             prefix = meta["prefix"]
@@ -412,6 +490,14 @@ class GraphViewService:
                 s for s in rdf_graph.subjects(RDF.type, OWL.DatatypeProperty)
                 if isinstance(s, URIRef)
             }
+
+            def rdf_term_id(term: Any) -> str:
+                if isinstance(term, URIRef):
+                    return OntologyUploadManager._term_id(term)
+                if isinstance(term, BNode):
+                    digest = hashlib.sha1(str(term).encode("utf-8")).hexdigest()[:16]
+                    return f"urn:depo:{prefix}:restriction:{digest}"
+                return str(term)
 
             class_rows = [
                 {
@@ -460,6 +546,7 @@ class GraphViewService:
                 }.values())
             domain_rows = []
             range_rows = []
+            datatype_rows_by_uri: Dict[str, Dict[str, Any]] = {}
             for prop in sorted(object_props | datatype_props, key=str):
                 prop_uri = OntologyUploadManager._term_id(prop)
                 for domain in rdf_graph.objects(prop, RDFS.domain):
@@ -467,7 +554,90 @@ class GraphViewService:
                         domain_rows.append({"prop_uri": prop_uri, "class_uri": OntologyUploadManager._term_id(domain)})
                 for range_term in rdf_graph.objects(prop, RDFS.range):
                     if isinstance(range_term, URIRef):
-                        range_rows.append({"prop_uri": prop_uri, "range_uri": OntologyUploadManager._term_id(range_term)})
+                        range_uri = OntologyUploadManager._term_id(range_term)
+                        if range_term not in class_terms:
+                            datatype_rows_by_uri[range_uri] = {
+                                "uri": range_uri,
+                                "name": labels.get(range_uri) or OntologyUploadManager._local_name(range_term),
+                                "namespace": OntologyUploadManager._namespace(range_term),
+                                "comment": str(next(rdf_graph.objects(range_term, RDFS.comment), "")),
+                            }
+                        range_rows.append({"prop_uri": prop_uri, "range_uri": range_uri})
+
+            inverse_rows = [
+                {
+                    "prop_uri": OntologyUploadManager._term_id(s),
+                    "inverse_uri": OntologyUploadManager._term_id(o),
+                }
+                for s, _, o in rdf_graph.triples((None, OWL.inverseOf, None))
+                if isinstance(s, URIRef) and isinstance(o, URIRef)
+            ]
+            equivalent_rows = [
+                {
+                    "left_uri": OntologyUploadManager._term_id(s),
+                    "right_uri": OntologyUploadManager._term_id(o),
+                }
+                for s, _, o in rdf_graph.triples((None, OWL.equivalentClass, None))
+                if isinstance(s, URIRef) and isinstance(o, URIRef)
+            ]
+            disjoint_rows = [
+                {
+                    "left_uri": OntologyUploadManager._term_id(s),
+                    "right_uri": OntologyUploadManager._term_id(o),
+                }
+                for s, _, o in rdf_graph.triples((None, OWL.disjointWith, None))
+                if isinstance(s, URIRef) and isinstance(o, URIRef)
+            ]
+
+            property_characteristics = []
+            for prop in sorted(object_props | datatype_props, key=str):
+                flags = {
+                    "functional": (prop, RDF.type, OWL.FunctionalProperty) in rdf_graph,
+                    "inverse_functional": (prop, RDF.type, OWL.InverseFunctionalProperty) in rdf_graph,
+                    "transitive": (prop, RDF.type, OWL.TransitiveProperty) in rdf_graph,
+                    "symmetric": (prop, RDF.type, OWL.SymmetricProperty) in rdf_graph,
+                }
+                if any(flags.values()):
+                    property_characteristics.append({
+                        "uri": OntologyUploadManager._term_id(prop),
+                        **flags,
+                    })
+
+            restriction_rows = []
+            for cls_term, _, restriction in rdf_graph.triples((None, RDFS.subClassOf, None)):
+                if not isinstance(cls_term, URIRef) or (restriction, RDF.type, OWL.Restriction) not in rdf_graph:
+                    continue
+                restriction_uri = rdf_term_id(restriction)
+                on_property = next(rdf_graph.objects(restriction, OWL.onProperty), None)
+                row = {
+                    "class_uri": OntologyUploadManager._term_id(cls_term),
+                    "restriction_uri": restriction_uri,
+                    "name": f"{OntologyUploadManager._local_name(cls_term)} restriction",
+                    "on_property_uri": rdf_term_id(on_property) if on_property else "",
+                    "some_values_from_uri": "",
+                    "all_values_from_uri": "",
+                    "has_value_uri": "",
+                    "min_cardinality": "",
+                    "max_cardinality": "",
+                    "cardinality": "",
+                }
+                for predicate, key in (
+                    (OWL.someValuesFrom, "some_values_from_uri"),
+                    (OWL.allValuesFrom, "all_values_from_uri"),
+                    (OWL.hasValue, "has_value_uri"),
+                ):
+                    target = next(rdf_graph.objects(restriction, predicate), None)
+                    if isinstance(target, URIRef):
+                        row[key] = rdf_term_id(target)
+                for predicate, key in (
+                    (OWL.minCardinality, "min_cardinality"),
+                    (OWL.maxCardinality, "max_cardinality"),
+                    (OWL.cardinality, "cardinality"),
+                ):
+                    value = next(rdf_graph.objects(restriction, predicate), None)
+                    if value is not None:
+                        row[key] = str(value)
+                restriction_rows.append(row)
 
             def run_batch(cypher: str, rows: List[Dict[str, Any]]) -> int:
                 if not rows:
@@ -540,6 +710,22 @@ SET p.name = row.name,
     p.updated_at = datetime()
 RETURN count(p) AS count
 """
+            datatype_cypher = """
+UNWIND $rows AS row
+MERGE (d:Datatype {uri: row.uri, prefix: $prefix})
+ON CREATE SET d.created_at = datetime()
+SET d.name = row.name,
+    d.concept_type = 'rdfs:Datatype',
+    d.namespace = row.namespace,
+    d.comment = row.comment,
+    d.source_ontology = $ontology_id,
+    d.ontology_name = $ontology_name,
+    d.version = $version,
+    d.ontology_prefix = $prefix,
+    d.schema_type = 'schema',
+    d.updated_at = datetime()
+RETURN count(d) AS count
+"""
             subclass_cypher = """
 UNWIND $rows AS row
 MATCH (child:OntologyClass {uri: row.child_uri, prefix: $prefix})
@@ -563,31 +749,109 @@ RETURN count(r) AS count
 UNWIND $rows AS row
 MATCH (p {uri: row.prop_uri, prefix: $prefix})
 WHERE p:ObjectProperty OR p:DatatypeProperty
-MATCH (c:OntologyClass {uri: row.range_uri, prefix: $prefix})
+MATCH (c {uri: row.range_uri, prefix: $prefix})
+WHERE c:OntologyClass OR c:Datatype
 MERGE (p)-[r:RANGE]->(c)
 RETURN count(r) AS count
+"""
+            inverse_cypher = """
+UNWIND $rows AS row
+MATCH (p {uri: row.prop_uri, prefix: $prefix})
+MATCH (i {uri: row.inverse_uri, prefix: $prefix})
+WHERE (p:ObjectProperty OR p:DatatypeProperty) AND (i:ObjectProperty OR i:DatatypeProperty)
+MERGE (p)-[r:INVERSE_OF]->(i)
+RETURN count(r) AS count
+"""
+            class_relation_cypher = """
+UNWIND $rows AS row
+MATCH (left:OntologyClass {uri: row.left_uri, prefix: $prefix})
+MATCH (right:OntologyClass {uri: row.right_uri, prefix: $prefix})
+MERGE (left)-[r:RELATION_TYPE]->(right)
+RETURN count(r) AS count
+"""
+            equivalent_cypher = class_relation_cypher.replace("RELATION_TYPE", "EQUIVALENT_CLASS")
+            disjoint_cypher = class_relation_cypher.replace("RELATION_TYPE", "DISJOINT_WITH")
+            property_characteristics_cypher = """
+UNWIND $rows AS row
+MATCH (p {uri: row.uri, prefix: $prefix})
+WHERE p:ObjectProperty OR p:DatatypeProperty
+SET p.functional = row.functional,
+    p.inverse_functional = row.inverse_functional,
+    p.transitive = row.transitive,
+    p.symmetric = row.symmetric,
+    p.updated_at = datetime()
+RETURN count(p) AS count
+"""
+            restriction_cypher = """
+UNWIND $rows AS row
+MATCH (c:OntologyClass {uri: row.class_uri, prefix: $prefix})
+MERGE (res:Restriction {uri: row.restriction_uri, prefix: $prefix})
+ON CREATE SET res.created_at = datetime()
+SET res.name = row.name,
+    res.concept_type = 'owl:Restriction',
+    res.on_property_uri = row.on_property_uri,
+    res.some_values_from_uri = row.some_values_from_uri,
+    res.all_values_from_uri = row.all_values_from_uri,
+    res.has_value_uri = row.has_value_uri,
+    res.min_cardinality = row.min_cardinality,
+    res.max_cardinality = row.max_cardinality,
+    res.cardinality = row.cardinality,
+    res.source_ontology = $ontology_id,
+    res.ontology_name = $ontology_name,
+    res.version = $version,
+    res.ontology_prefix = $prefix,
+    res.schema_type = 'schema',
+    res.updated_at = datetime()
+MERGE (c)-[:CLASS_RESTRICTION]->(res)
+WITH row, res
+OPTIONAL MATCH (p {uri: row.on_property_uri, prefix: $prefix})
+WHERE p:ObjectProperty OR p:DatatypeProperty
+FOREACH (_ IN CASE WHEN p IS NULL THEN [] ELSE [1] END | MERGE (res)-[:ON_PROPERTY]->(p))
+WITH row, res
+OPTIONAL MATCH (some {uri: row.some_values_from_uri, prefix: $prefix})
+WHERE some:OntologyClass OR some:Datatype
+FOREACH (_ IN CASE WHEN some IS NULL THEN [] ELSE [1] END | MERGE (res)-[:SOME_VALUES_FROM]->(some))
+WITH row, res
+OPTIONAL MATCH (allv {uri: row.all_values_from_uri, prefix: $prefix})
+WHERE allv:OntologyClass OR allv:Datatype
+FOREACH (_ IN CASE WHEN allv IS NULL THEN [] ELSE [1] END | MERGE (res)-[:ALL_VALUES_FROM]->(allv))
+RETURN count(res) AS count
 """
 
             classes_created = run_batch(class_cypher, class_rows)
             object_props_created = run_batch(object_prop_cypher, object_rows)
             datatype_props_created = run_batch(datatype_prop_cypher, datatype_rows)
+            datatypes_created = run_batch(datatype_cypher, list(datatype_rows_by_uri.values()))
             subclass_created = run_batch(subclass_cypher, subclass_rows)
             domain_created = run_batch(domain_cypher, domain_rows)
             range_created = run_batch(range_cypher, range_rows)
-            relationships_created = subclass_created + domain_created + range_created
+            inverse_created = run_batch(inverse_cypher, inverse_rows)
+            equivalent_created = run_batch(equivalent_cypher, equivalent_rows)
+            disjoint_created = run_batch(disjoint_cypher, disjoint_rows)
+            run_batch(property_characteristics_cypher, property_characteristics)
+            restrictions_created = run_batch(restriction_cypher, restriction_rows)
+            relationships_created = (
+                subclass_created + domain_created + range_created + inverse_created +
+                equivalent_created + disjoint_created + restrictions_created
+            )
 
             return {
                 "status": "success",
                 "ontology_id": ontology_id,
                 "version": version,
-                "nodes_merged": classes_created + object_props_created + datatype_props_created,
+                "nodes_merged": classes_created + object_props_created + datatype_props_created + datatypes_created + restrictions_created,
                 "relationships_merged": relationships_created,
                 "parsed_class_count": len(class_rows),
                 "parsed_object_property_count": len(object_rows),
                 "parsed_datatype_property_count": len(datatype_rows),
+                "parsed_datatype_count": len(datatype_rows_by_uri),
+                "parsed_restriction_count": len(restriction_rows),
                 "parsed_subclass_relationship_count": len(subclass_rows),
                 "parsed_domain_relationship_count": len(domain_rows),
                 "parsed_range_relationship_count": len(range_rows),
+                "parsed_inverse_relationship_count": len(inverse_rows),
+                "parsed_equivalent_class_relationship_count": len(equivalent_rows),
+                "parsed_disjoint_relationship_count": len(disjoint_rows),
             }
         except Exception as exc:  # pragma: no cover - defensive runtime fallback
             logger.warning("Official-driver RDF schema push failed for ontology_id=%s: %s", ontology_id, exc)
@@ -599,6 +863,13 @@ RETURN count(r) AS count
             """
             MATCH (n)-[r]->(m)
             WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR m:DatasheetChunk OR m:GraphChunk)
+            WITH n, r, m
+            ORDER BY
+              coalesce(n.ontology_prefix, n.prefix, '') ASC,
+              coalesce(n.name, n.title, n.code, labels(n)[0], elementId(n)) ASC,
+              type(r) ASC,
+              coalesce(m.ontology_prefix, m.prefix, '') ASC,
+              coalesce(m.name, m.title, m.code, labels(m)[0], elementId(m)) ASC
             RETURN
               {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
               {elementId: elementId(r), type: type(r), properties: properties(r),
@@ -612,6 +883,7 @@ RETURN count(r) AS count
 
     @classmethod
     def get_virtual_ontology_view(cls, prefix: str, limit: int = 1000) -> Dict[str, Any]:
+        prefix = cls._resolve_ontology_prefix(prefix)
         rows = cls._ontology_view_rows(prefix, limit)
         if not rows and prefix:
             hydrated = cls._hydrate_registered_ontology_schema(prefix)
@@ -636,17 +908,77 @@ RETURN count(r) AS count
         import_id: str = "",
         limit: int = 400,
     ) -> Dict[str, Any]:
+        ontology_prefix = cls._resolve_ontology_prefix(ontology_prefix) if ontology_prefix else ""
         query = """
-        MATCH (seed)
-        WHERE NOT (seed:DatasheetChunk OR seed:GraphChunk)
-          AND (
-            $search = '' OR
-            any(label IN labels(seed) WHERE toLower(label) CONTAINS toLower($search)) OR
-            any(key IN keys(seed) WHERE toLower(coalesce(toStringOrNull(seed[key]), '')) CONTAINS toLower($search))
-          )
-          AND ($ontology_prefix = '' OR seed.ontology_prefix = $ontology_prefix OR seed.prefix = $ontology_prefix)
-          AND ($import_id = '' OR seed.import_id = $import_id)
-        WITH seed LIMIT $limit
+        CALL {
+          MATCH (seed)
+          WHERE NOT (seed:DatasheetChunk OR seed:GraphChunk)
+            AND (
+              $search = '' OR
+              any(label IN labels(seed) WHERE toLower(label) CONTAINS toLower($search)) OR
+              any(key IN keys(seed) WHERE toLower(coalesce(toStringOrNull(seed[key]), '')) CONTAINS toLower($search))
+            )
+            AND (
+              $ontology_prefix = '' OR
+              seed.ontology_prefix = $ontology_prefix OR seed.prefix = $ontology_prefix OR
+              EXISTS {
+                MATCH (seed)-[:INSTANCE_OF|TYPED_BY|CLASSIFIED_AS]->(cls)
+                WHERE cls.ontology_prefix = $ontology_prefix OR cls.prefix = $ontology_prefix
+              }
+            )
+            AND ($import_id = '' OR seed.import_id = $import_id)
+          RETURN seed
+          LIMIT $limit
+        UNION
+          MATCH (a)-[matched_rel]-(b)
+          WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
+            AND (
+              $search = '' OR
+              toLower(type(matched_rel)) CONTAINS toLower($search) OR
+              any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS toLower($search))
+            )
+            AND (
+              $ontology_prefix = '' OR
+              a.ontology_prefix = $ontology_prefix OR a.prefix = $ontology_prefix OR
+              b.ontology_prefix = $ontology_prefix OR b.prefix = $ontology_prefix OR
+              EXISTS {
+                MATCH (a)-[:INSTANCE_OF|TYPED_BY|CLASSIFIED_AS]->(a_cls)
+                WHERE a_cls.ontology_prefix = $ontology_prefix OR a_cls.prefix = $ontology_prefix
+              } OR
+              EXISTS {
+                MATCH (b)-[:INSTANCE_OF|TYPED_BY|CLASSIFIED_AS]->(b_cls)
+                WHERE b_cls.ontology_prefix = $ontology_prefix OR b_cls.prefix = $ontology_prefix
+              }
+            )
+            AND ($import_id = '' OR a.import_id = $import_id OR b.import_id = $import_id)
+          RETURN a AS seed
+          LIMIT $limit
+        UNION
+          MATCH (a)-[matched_rel]-(b)
+          WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
+            AND (
+              $search = '' OR
+              toLower(type(matched_rel)) CONTAINS toLower($search) OR
+              any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS toLower($search))
+            )
+            AND (
+              $ontology_prefix = '' OR
+              a.ontology_prefix = $ontology_prefix OR a.prefix = $ontology_prefix OR
+              b.ontology_prefix = $ontology_prefix OR b.prefix = $ontology_prefix OR
+              EXISTS {
+                MATCH (a)-[:INSTANCE_OF|TYPED_BY|CLASSIFIED_AS]->(a_cls)
+                WHERE a_cls.ontology_prefix = $ontology_prefix OR a_cls.prefix = $ontology_prefix
+              } OR
+              EXISTS {
+                MATCH (b)-[:INSTANCE_OF|TYPED_BY|CLASSIFIED_AS]->(b_cls)
+                WHERE b_cls.ontology_prefix = $ontology_prefix OR b_cls.prefix = $ontology_prefix
+              }
+            )
+            AND ($import_id = '' OR a.import_id = $import_id OR b.import_id = $import_id)
+          RETURN b AS seed
+          LIMIT $limit
+        }
+        WITH DISTINCT seed LIMIT $limit
         OPTIONAL MATCH (seed)-[r]-(adjacent)
         WHERE adjacent IS NULL OR NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
         RETURN
