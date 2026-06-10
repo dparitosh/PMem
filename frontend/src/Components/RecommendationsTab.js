@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import * as d3 from 'd3';
 import {
-  Zap, Search, Factory, Eye,
+  Zap, Search, Factory,
   BarChart2, Target,
   CheckCircle, Minus, AlertTriangle,
   Info,
@@ -155,28 +155,6 @@ const CheckCell = ({ value }) => value
   : <Minus size={13} color={C.textMuted} />;
 
 // ============================================================
-// Helper: "View in Graph" — dispatches highlight event and switches tab
-// ============================================================
-const viewInGraph = (nodeNames, setActiveTab) => {
-  const names = Array.isArray(nodeNames) ? nodeNames : [nodeNames];
-
-  // Store pending values so GraphHEB can pick them up in case it processes
-  // the events before its useEffect listeners have run
-  window.__dt_pending_highlight = names;
-  window.__dt_pending_result_nodes = names;
-
-  // GraphHEB is always mounted above the tab panels — dispatch immediately.
-  // dt-load-result-nodes fetches the exact named nodes from Neo4j and
-  // replaces the current graph content with those result nodes.
-  window.dispatchEvent(new CustomEvent('dt-load-result-nodes', { detail: { names } }));
-  // dt-highlight-nodes marks each result node with a gold ring once loaded
-  window.dispatchEvent(new CustomEvent('dt-highlight-nodes', { detail: { names } }));
-
-  if (typeof setActiveTab === 'function') setActiveTab('graph');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-};
-
-// ============================================================
 // Result sub-tab bar — reused across all three result components
 // ============================================================
 const ResultTabBar = ({ tabs, active, onChange }) => (
@@ -212,23 +190,6 @@ const ResultTabBar = ({ tabs, active, onChange }) => (
       );
     })}
   </div>
-);
-
-const ViewGraphBtn = ({ names, setActiveTab }) => (
-  <button
-    onClick={() => viewInGraph(names, setActiveTab)}
-    onMouseEnter={e => { e.currentTarget.style.background = C.primary; e.currentTarget.style.color = '#fff'; }}
-    onMouseLeave={e => { e.currentTarget.style.background = C.primaryLight; e.currentTarget.style.color = C.primary; }}
-    style={{
-      display: 'inline-flex', alignItems: 'center', gap: '6px',
-      padding: '7px 16px', border: `1px solid ${C.primary}`, borderRadius: '6px',
-      background: C.primaryLight, color: C.primary, fontSize: '13px', fontWeight: 600,
-      cursor: 'pointer', marginTop: '12px', transition: 'all .18s ease',
-    }}
-  >
-    <Eye size={14} strokeWidth={2.5} />
-    View in Graph ({names.length} nodes)
-  </button>
 );
 
 // ============================================================
@@ -366,7 +327,7 @@ const AIInsightBanner = ({ service, data }) => {
         { value: reqCount,  label: 'Requirements' },
         { value: procCount, label: 'Processes' },
       ],
-      cta: 'Use "View in Graph" to visually trace the impact path before signing off on the change.',
+      cta: 'Review each impacted area before signing off on the change.',
     };
   } else if (service === 'similar-parts' && data?.source_part) {
     const count = data.similar_parts?.length || 0;
@@ -437,7 +398,7 @@ const AIInsightBanner = ({ service, data }) => {
 // ============================================================
 // Main Component
 // ============================================================
-const RecommendationsTab = ({ setActiveTab }) => {
+const RecommendationsTab = () => {
   const { ontologies: workspaceOntologies } = useOntologies();
   const [activeService, setActiveService] = useState(null);
   const [inputValue, setInputValue] = useState('');
@@ -771,9 +732,9 @@ const RecommendationsTab = ({ setActiveTab }) => {
       {result && <AIInsightBanner service={activeService} data={result} />}
 
       {/* Results */}
-      {result && activeService === 'change-impact'  && <ChangeImpactResult  data={result} setActiveTab={setActiveTab} />}
-      {result && activeService === 'similar-parts'  && <SimilarPartsResult  data={result} setActiveTab={setActiveTab} />}
-      {result && activeService === 'manufacturing'  && <ManufacturingResult data={result} setActiveTab={setActiveTab} />}
+      {result && activeService === 'change-impact'  && <ChangeImpactResult  data={result} />}
+      {result && activeService === 'similar-parts'  && <SimilarPartsResult  data={result} />}
+      {result && activeService === 'manufacturing'  && <ManufacturingResult data={result} />}
     </div>
   );
 };
@@ -781,20 +742,13 @@ const RecommendationsTab = ({ setActiveTab }) => {
 // ============================================================
 // Change Impact Result
 // ============================================================
-const ChangeImpactResult = ({ data, setActiveTab }) => {
+const ChangeImpactResult = ({ data }) => {
   const [tab, setTab] = useState('overview');
   if (data.message && !data.change_entity) {
     return <div style={CARD}><em style={{ color: C.textSec }}>{data.message}</em></div>;
   }
 
   const ce = data.change_entity || {};
-  const allNames = [
-    ce.name,
-    ...(data.impacted_parts || []).map(p => p.name),
-    ...(data.assembly_impact || []).map(a => a.assembly_name),
-    ...(data.realization_chain || []).map(r => r.name),
-  ].filter(Boolean);
-
   const tabs = [
     { id: 'overview',      label: 'Overview',           color: C.orange  },
     { id: 'parts',         label: 'Impacted Parts',      color: C.orange,  count: data.impacted_parts?.length        || 0 },
@@ -824,7 +778,6 @@ const ChangeImpactResult = ({ data, setActiveTab }) => {
             <ScoreBar score={data.impact_score} />
           </div>
         </div>
-        {allNames.length > 0 && <ViewGraphBtn names={allNames} setActiveTab={setActiveTab} />}
       </div>
 
       {/* Result sub-tabs */}
@@ -944,15 +897,13 @@ const ChangeImpactResult = ({ data, setActiveTab }) => {
 // ============================================================
 // Similar Parts Result
 // ============================================================
-const SimilarPartsResult = ({ data, setActiveTab }) => {
+const SimilarPartsResult = ({ data }) => {
   const [tab, setTab] = useState('overview');
   if (data.message && !data.source_part) {
     return <div style={CARD}><em style={{ color: C.textSec }}>{data.message}</em></div>;
   }
 
   const sp = data.source_part || {};
-  const allNames = [sp.name, ...(data.similar_parts || []).map(p => p.name)].filter(Boolean);
-
   const tabs = [
     { id: 'overview', label: 'Overview',       color: C.primary },
     { id: 'results',  label: 'Similar Parts',   color: C.primary, count: data.similar_parts?.length || 0 },
@@ -973,7 +924,6 @@ const SimilarPartsResult = ({ data, setActiveTab }) => {
           {sp.rflp_layer && <Badge color={C.textSec}>{sp.rflp_layer}</Badge>}
           <span style={{ marginLeft: '10px', fontSize: '13px', color: C.textSec }}>{data.similar_parts?.length || 0} results</span>
         </div>
-        {allNames.length > 1 && <ViewGraphBtn names={allNames} setActiveTab={setActiveTab} />}
       </div>
 
       <ResultTabBar tabs={tabs} active={tab} onChange={setTab} />
@@ -1041,7 +991,7 @@ const SimilarPartsResult = ({ data, setActiveTab }) => {
 // ============================================================
 // Manufacturing Process Result
 // ============================================================
-const ManufacturingResult = ({ data, setActiveTab }) => {
+const ManufacturingResult = ({ data }) => {
   const [tab, setTab] = useState('overview');
   if (data.message && !data.part) {
     return <div style={CARD}><em style={{ color: C.textSec }}>{data.message}</em></div>;
@@ -1049,12 +999,6 @@ const ManufacturingResult = ({ data, setActiveTab }) => {
 
   const pt = data.part || {};
   const summary = data.process_summary || {};
-  const allNames = [
-    pt.name,
-    ...(data.direct_processes || []).map(p => p.process_name),
-    ...(data.process_instances || []).map(p => p.name),
-  ].filter(Boolean);
-
   const tabs = [
     { id: 'overview',  label: 'Overview',           color: C.green  },
     { id: 'direct',    label: 'Direct Processes',    color: C.primary, count: data.direct_processes?.length          || 0 },
@@ -1092,7 +1036,6 @@ const ManufacturingResult = ({ data, setActiveTab }) => {
             </div>
           </div>
         </div>
-        {allNames.length > 1 && <ViewGraphBtn names={allNames} setActiveTab={setActiveTab} />}
       </div>
 
       <ResultTabBar tabs={tabs} active={tab} onChange={setTab} />

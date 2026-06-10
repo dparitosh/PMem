@@ -36,7 +36,7 @@ describe('OntologyMetadataForm Component', () => {
       );
 
       expect(screen.getByText(/Domain_model.xsd/)).toBeInTheDocument();
-      expect(screen.getByText(/XSD/)).toBeInTheDocument();
+      expect(screen.getByText(/^XSD$/)).toBeInTheDocument();
     });
 
     it('should render form inputs for ontology name, prefix, and generation type', () => {
@@ -50,7 +50,7 @@ describe('OntologyMetadataForm Component', () => {
 
       expect(screen.getByLabelText(/Ontology Name/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/Namespace Prefix/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Generate As/i)).toBeInTheDocument();
+      expect(screen.getByRole('combobox')).toBeInTheDocument();
     });
 
     it('should show correct generation type options for XSD files', () => {
@@ -67,13 +67,12 @@ describe('OntologyMetadataForm Component', () => {
       // Options should be in select dropdown
       fireEvent.click(selectElement);
       // SHACL should be recommended for XSD
-      expect(screen.getByText(/SHACL.*Recommended/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/SHACL.*Recommended/i).length).toBeGreaterThan(0);
     });
   });
 
   describe('Form Validation', () => {
     it('should show error when ontology name is empty', async () => {
-      const user = userEvent.setup();
       render(
         <OntologyMetadataForm
           selectedFile={mockFile}
@@ -82,15 +81,16 @@ describe('OntologyMetadataForm Component', () => {
         />
       );
 
-      const submitButton = screen.getByRole('button', { name: /Upload & Parse/i });
-      await user.click(submitButton);
+      const submitButton = screen.getByRole('button', { name: /Upload and Parse/i });
+      await userEvent.click(submitButton);
 
-      expect(screen.getByText(/Ontology name is required/i)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText(/Ontology name is required/i)).toBeInTheDocument();
+      });
       expect(mockOnSubmit).not.toHaveBeenCalled();
     });
 
     it('should show error when prefix is empty', async () => {
-      const user = userEvent.setup();
       render(
         <OntologyMetadataForm
           selectedFile={mockFile}
@@ -100,17 +100,18 @@ describe('OntologyMetadataForm Component', () => {
       );
 
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
-      await user.type(ontologyNameInput, 'Test Ontology');
+      await userEvent.type(ontologyNameInput, 'Test Ontology');
 
-      const submitButton = screen.getByRole('button', { name: /Upload & Parse/i });
-      await user.click(submitButton);
+      const submitButton = screen.getByRole('button', { name: /Upload and Parse/i });
+      await userEvent.click(submitButton);
 
-      expect(screen.getByText(/Prefix is required/i)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText(/Prefix is required/i)).toBeInTheDocument();
+      });
       expect(mockOnSubmit).not.toHaveBeenCalled();
     });
 
     it('should show error when prefix contains invalid characters', async () => {
-      const user = userEvent.setup();
       render(
         <OntologyMetadataForm
           selectedFile={mockFile}
@@ -120,20 +121,21 @@ describe('OntologyMetadataForm Component', () => {
       );
 
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
-      await user.type(ontologyNameInput, 'Test Ontology');
+      await userEvent.type(ontologyNameInput, 'Test Ontology');
 
       const prefixInput = screen.getByPlaceholderText(/e.g., myprefix/i);
-      await user.type(prefixInput, 'Test-Prefix'); // Invalid: contains hyphen
+      await userEvent.type(prefixInput, 'Test-Prefix'); // Invalid: contains hyphen
 
-      const submitButton = screen.getByRole('button', { name: /Upload & Parse/i });
-      await user.click(submitButton);
+      const submitButton = screen.getByRole('button', { name: /Upload and Parse/i });
+      await userEvent.click(submitButton);
 
-      expect(screen.getByText(/Prefix must start with lowercase/i)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText(/Prefix must start with a lowercase/i)).toBeInTheDocument();
+      });
       expect(mockOnSubmit).not.toHaveBeenCalled();
     });
 
-    it('should show error when generation type not selected', async () => {
-      const user = userEvent.setup();
+    it('should preselect recommended generation type for XSD files', async () => {
       render(
         <OntologyMetadataForm
           selectedFile={mockFile}
@@ -142,21 +144,12 @@ describe('OntologyMetadataForm Component', () => {
         />
       );
 
-      const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
-      await user.type(ontologyNameInput, 'Test Ontology');
-
-      const prefixInput = screen.getByPlaceholderText(/e.g., myprefix/i);
-      await user.type(prefixInput, 'testprefix');
-
-      const submitButton = screen.getByRole('button', { name: /Upload & Parse/i });
-      await user.click(submitButton);
-
-      expect(screen.getByText(/Please select generation type/i)).toBeInTheDocument();
-      expect(mockOnSubmit).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('combobox')).toHaveValue('shacl');
+      });
     });
 
     it('should accept valid form data and call onSubmit', async () => {
-      const user = userEvent.setup();
       render(
         <OntologyMetadataForm
           selectedFile={mockFile}
@@ -167,16 +160,16 @@ describe('OntologyMetadataForm Component', () => {
 
       // Fill form
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
-      await user.type(ontologyNameInput, 'Domain Model');
+      await userEvent.type(ontologyNameInput, 'Domain Model');
 
       const prefixInput = screen.getByPlaceholderText(/e.g., myprefix/i);
-      await user.type(prefixInput, 'domain');
+      await userEvent.type(prefixInput, 'domain');
 
       const selectElement = screen.getByRole('combobox');
-      await user.selectOption(selectElement, 'shacl');
+      await userEvent.selectOptions(selectElement, 'shacl');
 
-      const submitButton = screen.getByRole('button', { name: /Upload & Parse/i });
-      await user.click(submitButton);
+      const submitButton = screen.getByRole('button', { name: /Upload and Parse/i });
+      await userEvent.click(submitButton);
 
       await waitFor(() => {
         expect(mockOnSubmit).toHaveBeenCalledWith(
@@ -192,7 +185,6 @@ describe('OntologyMetadataForm Component', () => {
 
   describe('User Interactions', () => {
     it('should convert prefix to lowercase automatically', async () => {
-      const user = userEvent.setup();
       render(
         <OntologyMetadataForm
           selectedFile={mockFile}
@@ -202,13 +194,12 @@ describe('OntologyMetadataForm Component', () => {
       );
 
       const prefixInput = screen.getByPlaceholderText(/e.g., myprefix/i);
-      await user.type(prefixInput, 'TestPrefix');
+      await userEvent.type(prefixInput, 'TestPrefix');
 
       expect(prefixInput.value).toBe('testprefix');
     });
 
     it('should call onCancel when cancel button is clicked', async () => {
-      const user = userEvent.setup();
       render(
         <OntologyMetadataForm
           selectedFile={mockFile}
@@ -218,7 +209,7 @@ describe('OntologyMetadataForm Component', () => {
       );
 
       const cancelButton = screen.getByRole('button', { name: /Cancel/i });
-      await user.click(cancelButton);
+      await userEvent.click(cancelButton);
 
       expect(mockOnCancel).toHaveBeenCalled();
     });
@@ -241,7 +232,6 @@ describe('OntologyMetadataForm Component', () => {
     });
 
     it('should accept optional description field', async () => {
-      const user = userEvent.setup();
       render(
         <OntologyMetadataForm
           selectedFile={mockFile}
@@ -251,19 +241,19 @@ describe('OntologyMetadataForm Component', () => {
       );
 
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
-      await user.type(ontologyNameInput, 'Domain Model');
+      await userEvent.type(ontologyNameInput, 'Domain Model');
 
       const prefixInput = screen.getByPlaceholderText(/e.g., myprefix/i);
-      await user.type(prefixInput, 'domain');
+      await userEvent.type(prefixInput, 'domain');
 
       const descriptionInput = screen.getByPlaceholderText(/Optional description/i);
-      await user.type(descriptionInput, 'Test description');
+      await userEvent.type(descriptionInput, 'Test description');
 
       const selectElement = screen.getByRole('combobox');
-      await user.selectOption(selectElement, 'shacl');
+      await userEvent.selectOptions(selectElement, 'shacl');
 
-      const submitButton = screen.getByRole('button', { name: /Upload & Parse/i });
-      await user.click(submitButton);
+      const submitButton = screen.getByRole('button', { name: /Upload and Parse/i });
+      await userEvent.click(submitButton);
 
       await waitFor(() => {
         expect(mockOnSubmit).toHaveBeenCalledWith(
@@ -291,7 +281,7 @@ describe('OntologyMetadataForm Component', () => {
       fireEvent.click(selectElement);
       
       // OWL should be recommended for XMI
-      expect(screen.getByText(/OWL.*Recommended/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/OWL.*Recommended/i).length).toBeGreaterThan(0);
     });
   });
 });

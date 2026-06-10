@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Download, Network, Search } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import { useOntologies } from '../contexts/OntologyContext';
+import DataGridWidget from '../widgets/DataGridWidget';
 
 // ── Design tokens (corporate palette) ─────────────────────────────────────────
 const C = {
@@ -659,6 +660,434 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
   );
 }
 
+function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
+  const [selectedTermId, setSelectedTermId] = useState('');
+  const [tableMode, setTableMode] = useState('classes');
+  const lc = filter.trim().toLowerCase();
+  const gridTextCell = useMemo(() => ({
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    lineHeight: '32px',
+  }), []);
+  const termIdFromRef = useCallback((ref) => {
+    const iri = String(ref?.iri || ref?.uri || ref?.term_id || ref?.id || '').trim();
+    if (!iri) return '';
+    const prefix = String(ref?.ontology_prefix || taxonomy?.ontology_prefix || '').trim();
+    const local = String(ref?.label || iri.split(/[/#]/).pop() || iri).trim();
+    return ref?.term_id || (prefix ? `${prefix}:${local}` : iri);
+  }, [taxonomy]);
+
+  const refLabel = useCallback((ref) => (
+    String(ref?.label || ref?.name || ref?.term_id || ref?.iri || ref?.uri || '').split(/[/#]/).pop()
+  ), []);
+
+  const reasoningClassNodes = useMemo(() => (reasoning?.classes || []).map((cls) => ({
+    term_id: termIdFromRef(cls),
+    uri: cls.iri || cls.uri || '',
+    label: refLabel(cls),
+    definition: cls.definition || '',
+    ontology_prefix: cls.ontology_prefix || taxonomy?.ontology_prefix || '',
+    source: 'owlready2-class',
+  })).filter((node) => node.term_id), [reasoning, refLabel, taxonomy, termIdFromRef]);
+
+  const reasoningPropertyNodes = useMemo(() => [
+    ...(reasoning?.object_properties || []).map((prop) => ({ ...prop, property_kind: 'ObjectProperty' })),
+    ...(reasoning?.datatype_properties || []).map((prop) => ({ ...prop, property_kind: 'DatatypeProperty' })),
+  ].map((prop) => ({
+    term_id: termIdFromRef(prop),
+    uri: prop.iri || prop.uri || '',
+    label: refLabel(prop),
+    definition: prop.definition || '',
+    ontology_prefix: prop.ontology_prefix || taxonomy?.ontology_prefix || '',
+    source: prop.property_kind === 'DatatypeProperty' ? 'owlready2-datatype-property' : 'owlready2-object-property',
+  })).filter((node) => node.term_id), [reasoning, refLabel, taxonomy, termIdFromRef]);
+
+  const taxonomyNodes = useMemo(() => {
+    const rawNodes = taxonomy?.nodes?.length ? taxonomy.nodes : nodes;
+    const merged = new Map();
+    [...(rawNodes || []), ...reasoningClassNodes, ...reasoningPropertyNodes].forEach((node) => {
+      if (node?.term_id && !merged.has(node.term_id)) merged.set(node.term_id, node);
+    });
+    return Array.from(merged.values());
+  }, [nodes, reasoningClassNodes, reasoningPropertyNodes, taxonomy]);
+
+  const taxonomyEdges = useMemo(() => {
+    const rawEdges = taxonomy?.edges?.length ? taxonomy.edges : edges;
+    const normalized = Array.isArray(rawEdges) ? [...rawEdges] : [];
+
+    (reasoning?.subclass_edges || []).forEach((edge) => {
+      normalized.push({
+        source_term: termIdFromRef({ iri: edge.source, label: edge.source_label, ontology_prefix: taxonomy?.ontology_prefix }),
+        source_label: edge.source_label || refLabel({ iri: edge.source }),
+        target_term: termIdFromRef({ iri: edge.target, label: edge.target_label, ontology_prefix: taxonomy?.ontology_prefix }),
+        target_label: edge.target_label || refLabel({ iri: edge.target }),
+        mapping_type: edge.type || 'subClassOf',
+      });
+    });
+
+    [...(reasoning?.object_properties || []), ...(reasoning?.datatype_properties || [])].forEach((prop) => {
+      const propTerm = termIdFromRef(prop);
+      (prop.domain || []).forEach((domain) => {
+        normalized.push({
+          source_term: propTerm,
+          source_label: refLabel(prop),
+          target_term: termIdFromRef(domain),
+          target_label: refLabel(domain),
+          mapping_type: 'DOMAIN',
+        });
+      });
+      (prop.range || []).forEach((range) => {
+        normalized.push({
+          source_term: propTerm,
+          source_label: refLabel(prop),
+          target_term: termIdFromRef(range),
+          target_label: refLabel(range),
+          mapping_type: 'RANGE',
+        });
+      });
+    });
+
+    return normalized.filter((edge, index, list) => {
+      const key = `${edge.source_term}|${edge.mapping_type}|${edge.target_term}`;
+      return edge.source_term && edge.target_term && list.findIndex((item) => `${item.source_term}|${item.mapping_type}|${item.target_term}` === key) === index;
+    });
+  }, [edges, reasoning, refLabel, taxonomy, termIdFromRef]);
+
+  const visibleNodes = useMemo(() => {
+    if (!lc) return taxonomyNodes;
+    return taxonomyNodes.filter((node) =>
+      String(node.term_id || '').toLowerCase().includes(lc) ||
+      String(node.label || '').toLowerCase().includes(lc) ||
+      String(node.ontology_prefix || '').toLowerCase().includes(lc)
+    );
+  }, [taxonomyNodes, lc]);
+
+  const nodeById = useMemo(() => new Map(taxonomyNodes.map((node) => [node.term_id, node])), [taxonomyNodes]);
+
+  const hierarchy = useMemo(() => {
+    const visibleIds = new Set(visibleNodes.map((node) => node.term_id));
+    const childrenByParent = new Map();
+    const parentByChild = new Map();
+
+    taxonomyEdges.forEach((edge) => {
+      if (!TAXONOMY_HIERARCHY_TYPES.has(edge.mapping_type)) return;
+      if (!visibleIds.has(edge.source_term) || !visibleIds.has(edge.target_term)) return;
+      if (!childrenByParent.has(edge.target_term)) childrenByParent.set(edge.target_term, []);
+      childrenByParent.get(edge.target_term).push(edge.source_term);
+      if (!parentByChild.has(edge.source_term)) parentByChild.set(edge.source_term, []);
+      parentByChild.get(edge.source_term).push(edge.target_term);
+    });
+
+    const labelOf = (termId) => nodeById.get(termId)?.label || String(termId || '').split(':').pop() || termId;
+    childrenByParent.forEach((children, parentId) => {
+      children.sort((left, right) => labelOf(left).localeCompare(labelOf(right)));
+      childrenByParent.set(parentId, children);
+    });
+
+    const roots = visibleNodes
+      .filter((node) => !parentByChild.has(node.term_id))
+      .map((node) => node.term_id)
+      .sort((left, right) => labelOf(left).localeCompare(labelOf(right)));
+
+    const rows = [];
+    const seen = new Set();
+    const pushBranch = (termId, depth = 0, path = []) => {
+      if (seen.has(termId) || rows.length >= 800) return;
+      seen.add(termId);
+      const node = nodeById.get(termId);
+      if (!node) return;
+      const children = childrenByParent.get(termId) || [];
+      rows.push({
+        id: termId,
+        termId,
+        label: node.label || String(termId).split(':').pop(),
+        prefix: node.ontology_prefix || '',
+        depth,
+        indent: `${'  '.repeat(Math.min(depth, 8))}${depth > 0 ? '|- ' : ''}`,
+        children: children.length,
+        path: [...path, node.label || termId].join(' / '),
+      });
+      children.forEach((childId) => pushBranch(childId, depth + 1, [...path, node.label || termId]));
+    };
+
+    roots.slice(0, 120).forEach((rootId) => pushBranch(rootId));
+    visibleNodes.forEach((node) => {
+      if (!seen.has(node.term_id) && rows.length < 800) pushBranch(node.term_id);
+    });
+
+    return { childrenByParent, parentByChild, roots, rows };
+  }, [taxonomyEdges, visibleNodes, nodeById]);
+
+  const selectedTerm = useMemo(() => {
+    if (selectedTermId && nodeById.has(selectedTermId)) return nodeById.get(selectedTermId);
+    return visibleNodes[0] || null;
+  }, [nodeById, selectedTermId, visibleNodes]);
+
+  const edgeRows = useMemo(() => taxonomyEdges.map((edge, index) => {
+    const source = nodeById.get(edge.source_term);
+    const target = nodeById.get(edge.target_term);
+    return {
+      id: `${edge.source_term}-${edge.mapping_type}-${edge.target_term}-${index}`,
+      sourceId: edge.source_term,
+      source: source?.label || String(edge.source_term || '').split(':').pop(),
+      axiom: edge.mapping_type || 'relatedTo',
+      targetId: edge.target_term,
+      target: target?.label || String(edge.target_term || '').split(':').pop(),
+      prefix: source?.ontology_prefix || target?.ontology_prefix || '',
+    };
+  }), [taxonomyEdges, nodeById]);
+
+  const classRows = useMemo(() => visibleNodes.filter((node) => !String(node.source || '').includes('property')).map((node) => {
+    const parents = hierarchy.parentByChild.get(node.term_id) || [];
+    const children = hierarchy.childrenByParent.get(node.term_id) || [];
+    return {
+      id: node.term_id,
+      termId: node.term_id,
+      label: node.label || String(node.term_id || '').split(':').pop(),
+      prefix: node.ontology_prefix || '',
+      parents: parents.map((id) => nodeById.get(id)?.label || id).join(', ') || 'Thing',
+      children: children.length,
+      definition: node.definition || node.comment || '',
+      type: 'Class',
+      node,
+    };
+  }), [visibleNodes, hierarchy, nodeById]);
+
+  const reasoningPropertyRows = useMemo(() => [
+    ...(reasoning?.object_properties || []).map((prop) => ({ ...prop, property_kind: 'ObjectProperty' })),
+    ...(reasoning?.datatype_properties || []).map((prop) => ({ ...prop, property_kind: 'DatatypeProperty' })),
+  ].map((prop) => ({
+    id: termIdFromRef(prop),
+    property: refLabel(prop),
+    prefix: prop.ontology_prefix || taxonomy?.ontology_prefix || '',
+    kind: prop.property_kind,
+    domain: (prop.domain || []).map(refLabel).filter(Boolean).join(', ') || 'Not declared',
+    range: (prop.range || []).map(refLabel).filter(Boolean).join(', ') || 'Not declared',
+    axiomCount: (prop.domain || []).length + (prop.range || []).length,
+  })).filter((row) => row.id), [reasoning, refLabel, taxonomy, termIdFromRef]);
+
+  const objectPropertyRows = useMemo(() => {
+    const byProperty = new Map();
+    edgeRows.forEach((edge) => {
+      if (!['DOMAIN', 'RANGE', 'domain', 'range', 'predicate', 'property_of'].includes(edge.axiom)) return;
+      if (!byProperty.has(edge.sourceId)) {
+        byProperty.set(edge.sourceId, {
+          id: edge.sourceId,
+          property: edge.source,
+          prefix: edge.prefix,
+          domain: [],
+          range: [],
+          axiomCount: 0,
+        });
+      }
+      const row = byProperty.get(edge.sourceId);
+      row.axiomCount += 1;
+      if (String(edge.axiom).toUpperCase() === 'DOMAIN') row.domain.push(edge.target);
+      if (String(edge.axiom).toUpperCase() === 'RANGE') row.range.push(edge.target);
+    });
+    const rowsFromEdges = Array.from(byProperty.values()).map((row) => ({
+      ...row,
+      domain: row.domain.join(', ') || 'Not declared',
+      range: row.range.join(', ') || 'Not declared',
+      kind: 'Property',
+    }));
+    if (reasoningPropertyRows.length) return reasoningPropertyRows;
+    if (rowsFromEdges.length) return rowsFromEdges;
+    return visibleNodes
+      .filter((node) => String(node.source || '').includes('property'))
+      .map((node) => ({
+        id: node.term_id,
+        property: node.label || String(node.term_id || '').split(':').pop(),
+        prefix: node.ontology_prefix || '',
+        kind: String(node.source || '').includes('datatype') ? 'DatatypeProperty' : 'ObjectProperty',
+        domain: 'Not declared',
+        range: 'Not declared',
+        axiomCount: 0,
+      }));
+  }, [edgeRows, reasoningPropertyRows, visibleNodes]);
+
+  const selectedAxioms = useMemo(() => {
+    if (!selectedTerm) return [];
+    return edgeRows.filter((edge) => edge.sourceId === selectedTerm.term_id || edge.targetId === selectedTerm.term_id);
+  }, [edgeRows, selectedTerm]);
+
+  const treeColumns = useMemo(() => [
+    {
+      headerName: 'Class Hierarchy',
+      field: 'label',
+      flex: 1,
+      minWidth: 260,
+      tooltipField: 'path',
+      cellStyle: { ...gridTextCell, display: 'flex', alignItems: 'center' },
+      cellRenderer: (params) => (
+        <button
+          type="button"
+          onClick={() => setSelectedTermId(params.data.termId)}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            color: selectedTerm?.term_id === params.data.termId ? C.primary : C.textPrimary,
+            fontWeight: selectedTerm?.term_id === params.data.termId ? 800 : 600,
+            cursor: 'pointer',
+            textAlign: 'left',
+            width: '100%',
+            padding: 0,
+            minWidth: 0,
+            display: 'grid',
+            gridTemplateColumns: 'auto minmax(0, 1fr)',
+            alignItems: 'center',
+            gap: 4,
+          }}
+          title={params.data.termId}
+        >
+          <span style={{ color: C.textMuted, fontFamily: 'monospace', whiteSpace: 'pre' }}>{params.data.indent}</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{params.value}</span>
+        </button>
+      ),
+    },
+    { headerName: 'Children', field: 'children', width: 105, type: 'numericColumn' },
+  ], [selectedTerm, gridTextCell]);
+
+  const classColumns = useMemo(() => [
+    {
+      headerName: 'Class',
+      field: 'label',
+      flex: 1,
+      minWidth: 210,
+      tooltipField: 'termId',
+      cellStyle: { ...gridTextCell, display: 'flex', alignItems: 'center' },
+      cellRenderer: (params) => (
+        <button type="button" onClick={() => setSelectedTermId(params.data.termId)} style={{ border: 'none', background: 'transparent', color: C.primary, fontWeight: 700, cursor: 'pointer', padding: 0, minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {params.value}
+        </button>
+      ),
+    },
+    { headerName: 'Parents', field: 'parents', flex: 1, minWidth: 190, tooltipField: 'parents', cellStyle: gridTextCell },
+    { headerName: 'Children', field: 'children', width: 110, type: 'numericColumn', cellStyle: gridTextCell },
+    { headerName: 'Prefix', field: 'prefix', width: 130, cellStyle: gridTextCell },
+  ], [gridTextCell]);
+
+  const propertyColumns = useMemo(() => [
+    { headerName: 'Property', field: 'property', flex: 1, minWidth: 220, tooltipField: 'id', cellStyle: gridTextCell },
+    { headerName: 'Kind', field: 'kind', width: 150, cellStyle: gridTextCell },
+    { headerName: 'Domain', field: 'domain', flex: 1, minWidth: 190, tooltipField: 'domain', cellStyle: gridTextCell },
+    { headerName: 'Range', field: 'range', flex: 1, minWidth: 190, tooltipField: 'range', cellStyle: gridTextCell },
+    { headerName: 'Axioms', field: 'axiomCount', width: 100, type: 'numericColumn', cellStyle: gridTextCell },
+  ], [gridTextCell]);
+
+  const axiomColumns = useMemo(() => [
+    { headerName: 'Source', field: 'source', flex: 1, minWidth: 180, tooltipField: 'sourceId', cellStyle: gridTextCell },
+    { headerName: 'Axiom', field: 'axiom', width: 150, cellStyle: gridTextCell },
+    { headerName: 'Target', field: 'target', flex: 1, minWidth: 180, tooltipField: 'targetId', cellStyle: gridTextCell },
+    { headerName: 'Prefix', field: 'prefix', width: 120, cellStyle: gridTextCell },
+  ], [gridTextCell]);
+
+  const activeRows = tableMode === 'properties' ? objectPropertyRows : tableMode === 'axioms' ? edgeRows : classRows;
+  const activeColumns = tableMode === 'properties' ? propertyColumns : tableMode === 'axioms' ? axiomColumns : classColumns;
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: 12, minHeight: 560, alignItems: 'start', overflow: 'hidden' }}>
+      <div style={{ minWidth: 0 }}>
+        <DataGridWidget
+          title={`Classes (${hierarchy.rows.length})`}
+          rows={hierarchy.rows}
+          columns={treeColumns}
+          height={560}
+          emptyLabel="No class hierarchy available"
+        />
+      </div>
+
+      <div style={{ minWidth: 0, display: 'grid', gap: 10, alignContent: 'start', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {[
+            { id: 'classes', label: 'Classes' },
+            { id: 'properties', label: 'Properties' },
+            { id: 'axioms', label: 'Axioms' },
+          ].map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              onClick={() => setTableMode(mode.id)}
+              style={{
+                border: `1px solid ${tableMode === mode.id ? C.primary : C.borderDark}`,
+                background: tableMode === mode.id ? C.primary : C.surface,
+                color: tableMode === mode.id ? '#fff' : C.textPrimary,
+                borderRadius: 6,
+                padding: '6px 12px',
+                fontSize: 12,
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+        <DataGridWidget
+          title={tableMode === 'properties' ? 'Object/Data Properties' : tableMode === 'axioms' ? 'OWL/RDF Axioms' : 'Class Table'}
+          rows={activeRows}
+          columns={activeColumns}
+          height={506}
+          emptyLabel="No ontology rows available"
+        />
+      </div>
+
+      <aside style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, minWidth: 0, overflow: 'hidden', maxHeight: 610 }}>
+        <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary }}>Inspector</div>
+            <div style={{ fontSize: 11, color: C.textSec, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{reasoning?.engine === 'owlready2' ? 'Owlready2 semantics' : 'Ontology metadata'}</div>
+          </div>
+          {selectedTerm?.ontology_prefix && (
+            <span style={{ alignSelf: 'start', background: C.primaryLight, color: C.primary, border: `1px solid ${C.border}`, borderRadius: 999, padding: '2px 8px', fontSize: 11, fontWeight: 800, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {selectedTerm.ontology_prefix}
+            </span>
+          )}
+        </div>
+        {selectedTerm ? (
+          <div style={{ padding: 12, display: 'grid', gap: 12, maxHeight: 556, overflow: 'auto' }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: C.primary, wordBreak: 'break-word' }}>{selectedTerm.label || String(selectedTerm.term_id).split(':').pop()}</div>
+              <code style={{ display: 'block', marginTop: 6, fontSize: 11, color: C.textSec, wordBreak: 'break-all' }}>{selectedTerm.term_id}</code>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Parents</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: C.textPrimary }}>{hierarchy.parentByChild.get(selectedTerm.term_id)?.length || 0}</div>
+              </div>
+              <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Children</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: C.textPrimary }}>{hierarchy.childrenByParent.get(selectedTerm.term_id)?.length || 0}</div>
+              </div>
+            </div>
+            {(selectedTerm.definition || selectedTerm.comment) && (
+              <div style={{ fontSize: 12, color: C.textPrimary, lineHeight: 1.45 }}>{selectedTerm.definition || selectedTerm.comment}</div>
+            )}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: C.textSec, textTransform: 'uppercase', marginBottom: 6 }}>Related axioms</div>
+              <div style={{ display: 'grid', gap: 6, maxHeight: 300, overflow: 'auto' }}>
+                {selectedAxioms.length === 0 ? (
+                  <div style={{ fontSize: 12, color: C.textMuted }}>No axioms found for selected term.</div>
+                ) : selectedAxioms.slice(0, 30).map((edge) => (
+                  <div key={edge.id} style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: 8, background: C.bg }}>
+                    <RelBadge type={edge.axiom} />
+                    <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 5, lineHeight: 1.35 }}>
+                      {edge.source} -> {edge.target}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding: 24, color: C.textMuted, fontSize: 12 }}>Select a class or ontology row.</div>
+        )}
+      </aside>
+    </div>
+  );
+}
+
 function buildFallbackDictionaryFromTaxonomy(taxonomyPayload, prefixHint = '') {
   const taxonomyNodes = taxonomyPayload?.nodes || [];
   const entities = Object.fromEntries(
@@ -1088,7 +1517,7 @@ export default function OntologyMapper() {
 
   const VIEWS = [
     { id: 'dictionary', label: 'Data Dictionary' },
-    { id: 'taxonomy', label: 'Taxonomy' },
+    { id: 'taxonomy', label: 'OWL Browser' },
     { id: 'vocabulary', label: 'Mapping Vocabulary' },
     { id: 'alignment', label: 'Ontology Alignment' },
   ];
@@ -1237,7 +1666,11 @@ export default function OntologyMapper() {
             <DataDictionaryTable nodes={data.nodes} filter={filter} prefixFilter={prefixFilter} onPrefixFilterChange={setPrefixFilter} />
           )}
           {activeView === 'taxonomy' && (
-          <TaxonomyView nodes={data.nodes} edges={vocabEdges} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
+            taxonomy?.view_mode === 'classic' ? (
+              <TaxonomyView nodes={data.nodes} edges={vocabEdges} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
+            ) : (
+              <ProtegeOntologyBrowser nodes={data.nodes} edges={vocabEdges} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
+            )
           )}
           {activeView === 'vocabulary' && (
             <VocabularyTable edges={vocabEdges} filter={filter} />

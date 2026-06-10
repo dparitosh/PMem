@@ -4,9 +4,38 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import DataImportPipeline from './DataImportPipeline';
 
-// Mock the config
 jest.mock('../config', () => ({
-  apiUrl: 'http://localhost:8000'
+  __esModule: true,
+  default: {
+    backendUrl: 'http://localhost:8000',
+    apiUrl: 'http://localhost:8000',
+    requestTimeout: 30000,
+    debug: false,
+  },
+  config: {
+    backendUrl: 'http://localhost:8000',
+    apiUrl: 'http://localhost:8000',
+    requestTimeout: 30000,
+    debug: false,
+  },
+  API: {
+    ontology: {},
+    graph: {},
+    import: {},
+    workflow: {},
+    recommendations: {},
+  },
+  buildUrl: (endpoint) => `http://localhost:8000${endpoint}`,
+  replaceParams: (endpoint, params = {}) => Object.keys(params).reduce((result, key) => result.replace(`{${key}}`, params[key]), endpoint),
+}));
+
+jest.mock('../contexts/OntologyContext', () => ({
+  useOntologies: () => ({
+    ontologies: [],
+    loading: false,
+    error: null,
+    refreshOntologies: jest.fn(),
+  }),
 }));
 
 describe('DataImportPipeline Component', () => {
@@ -114,7 +143,6 @@ describe('DataImportPipeline Component', () => {
           })
         });
 
-      const user = userEvent.setup();
       render(<DataImportPipeline />);
 
       const file = new File(['test content'], 'Domain_model.xsd', { type: 'application/xml' });
@@ -128,16 +156,16 @@ describe('DataImportPipeline Component', () => {
 
       // Fill form
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
-      await user.type(ontologyNameInput, 'Domain Model');
+      await userEvent.type(ontologyNameInput, 'Domain Model');
 
       const prefixInput = screen.getByPlaceholderText(/e.g., myprefix/i);
-      await user.type(prefixInput, 'domain');
+      await userEvent.type(prefixInput, 'domain');
 
       const selectElement = screen.getByRole('combobox');
-      await user.selectOption(selectElement, 'shacl');
+      await userEvent.selectOptions(selectElement, 'shacl');
 
-      const submitButton = screen.getByRole('button', { name: /Upload & Parse/i });
-      await user.click(submitButton);
+      const submitButton = screen.getByRole('button', { name: /Upload and Parse/i });
+      await userEvent.click(submitButton);
 
       await waitFor(() => {
         expect(global.fetch).toHaveBeenCalledWith(
@@ -202,7 +230,6 @@ describe('DataImportPipeline Component', () => {
           json: async () => ({ detail: 'File too large' })
         });
 
-      const user = userEvent.setup();
       render(<DataImportPipeline />);
 
       const file = new File(['test content'], 'Domain_model.xsd', { type: 'application/xml' });
@@ -215,16 +242,16 @@ describe('DataImportPipeline Component', () => {
       });
 
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
-      await user.type(ontologyNameInput, 'Test');
+      await userEvent.type(ontologyNameInput, 'Test');
 
       const prefixInput = screen.getByPlaceholderText(/e.g., myprefix/i);
-      await user.type(prefixInput, 'test');
+      await userEvent.type(prefixInput, 'test');
 
       const selectElement = screen.getByRole('combobox');
-      await user.selectOption(selectElement, 'shacl');
+      await userEvent.selectOptions(selectElement, 'shacl');
 
-      const submitButton = screen.getByRole('button', { name: /Upload & Parse/i });
-      await user.click(submitButton);
+      const submitButton = screen.getByRole('button', { name: /Upload and Parse/i });
+      await userEvent.click(submitButton);
 
       await waitFor(() => {
         expect(screen.getByText(/Error uploading ontology/i)).toBeInTheDocument();

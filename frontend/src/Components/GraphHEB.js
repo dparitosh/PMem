@@ -515,6 +515,75 @@ const normalizeGraphDataset = (payload) => {
 
   return { nodes: [], links: [] };
 };
+
+const annotateOntologyHierarchyLevels = (nodes = [], links = []) => {
+  const classIds = new Set(
+    nodes
+      .filter(node => (node.labels || []).includes('OntologyClass') || (node.labels || []).includes('Class'))
+      .map(node => node.elementId)
+  );
+  if (classIds.size === 0) return { maxLevel: 0, rootCount: 0 };
+
+  const childrenByParent = new Map();
+  const hasParent = new Set();
+
+  links.forEach((link) => {
+    if (link.type !== 'SUBCLASS_OF') return;
+    const childId = getLinkEndpointId(link.source);
+    const parentId = getLinkEndpointId(link.target);
+    if (!childId || !parentId || !classIds.has(childId) || !classIds.has(parentId)) return;
+    if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, new Set());
+    childrenByParent.get(parentId).add(childId);
+    hasParent.add(childId);
+  });
+
+  let roots = Array.from(classIds).filter(id => !hasParent.has(id));
+  if (roots.length === 0) {
+    roots = Array.from(classIds);
+  }
+
+  const levelById = new Map();
+  const queue = roots.map(id => ({ id, level: 0 }));
+  roots.forEach(id => levelById.set(id, 0));
+
+  while (queue.length) {
+    const { id, level } = queue.shift();
+    const children = childrenByParent.get(id) || [];
+    children.forEach((childId) => {
+      const nextLevel = level + 1;
+      if (!levelById.has(childId) || nextLevel < levelById.get(childId)) {
+        levelById.set(childId, nextLevel);
+        queue.push({ id: childId, level: nextLevel });
+      }
+    });
+  }
+
+  classIds.forEach(id => {
+    if (!levelById.has(id)) levelById.set(id, 0);
+  });
+
+  links.forEach((link) => {
+    if (link.type !== 'DOMAIN' && link.type !== 'RANGE') return;
+    const propertyId = getLinkEndpointId(link.source);
+    const classId = getLinkEndpointId(link.target);
+    if (!propertyId || !classId || !levelById.has(classId)) return;
+    const propertyLevel = levelById.get(classId) + 0.5;
+    const current = levelById.get(propertyId);
+    if (current == null || propertyLevel < current) levelById.set(propertyId, propertyLevel);
+  });
+
+  let maxLevel = 0;
+  nodes.forEach((node) => {
+    const level = levelById.get(node.elementId);
+    if (level != null) {
+      node.ontologyLevel = level;
+      node.ontologyLevelLabel = level === 0 ? 'Top level' : `Level ${level}`;
+      maxLevel = Math.max(maxLevel, Math.ceil(level));
+    }
+  });
+
+  return { maxLevel, rootCount: roots.length };
+};
  
 const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTab, setVisibleRelationships, chatResults }) => {
   const svgRef = useRef();
@@ -3489,17 +3558,13 @@ const getPrimaryNodeLabel = useCallback((d) => {
         
         // ONLY add nodes that are part of current search or already expanded
         if (debouncedSearchQuery) {
-          // In search mode: only keep nodes that match current search
-          // This prevents contamination from previous searches
+          // In search mode: preserve the visible result set and add dependents.
+          // This keeps search output stable while the user expands up to two hops.
           filteredData.nodes.forEach(node => {
-            // Only add if it's the node being expanded or was added by a current expansion
-            if (node.elementId === nodeId || expandedNodes.has(node.elementId)) {
-              newNodesMap.set(node.elementId, node);
-            }
+            newNodesMap.set(node.elementId, node);
           });
           
           filteredData.links.forEach(link => {
-            // Only add links that connect to nodes we're keeping
             if (newNodesMap.has(link.source) && newNodesMap.has(link.target)) {
               newLinksMap.set(link.elementId, link);
             }
@@ -3560,7 +3625,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         processRecords(directResults, hopLevel, nodeId);
 
         if (hopLevel < MAX_EXPAND_HOPS) {
-          const hopOneNodeIds = Array.from(newNodesMap.keys())
+          const hopOneNodeIds = Array.from(addedNodeIds)
             .filter(id => id !== nodeId && !expandedNodes.has(id));
           const visited = new Set([nodeId]);
           for (const nextNodeId of hopOneNodeIds.slice(0, 50)) {
@@ -3606,6 +3671,10 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
           if (setVisibleRelationships) {
             setVisibleRelationships(validatedLinks);
+          }
+
+          if (debouncedSearchQuery) {
+            setSearchResultData({ nodes: finalNodes, links: validatedLinks });
           }
 
           // Store which nodes and links were added by this expansion
@@ -3726,12 +3795,32 @@ const getPrimaryNodeLabel = useCallback((d) => {
   };
 
   // Function to initialize node positions around center
-  const initializeNodePositions = (nodes, width, height) => {
+  const initializeNodePositions = (nodes, width, height, hierarchyInfo = null) => {
     const centerX = width / 2;
     const centerY = height / 2;
+    const levelBuckets = new Map();
+
+    if (hierarchyInfo) {
+      nodes.forEach(node => {
+        if (node.ontologyLevel == null) return;
+        const level = Math.ceil(node.ontologyLevel);
+        if (!levelBuckets.has(level)) levelBuckets.set(level, []);
+        levelBuckets.get(level).push(node);
+      });
+    }
     
     nodes.forEach((node, index) => {
       if (!node.x && !node.y) {
+        if (hierarchyInfo && node.ontologyLevel != null) {
+          const level = Math.ceil(node.ontologyLevel);
+          const bucket = levelBuckets.get(level) || [node];
+          const levelIndex = bucket.findIndex(item => item.elementId === node.elementId);
+          const yBand = height * (0.14 + (0.74 * (level / Math.max(1, hierarchyInfo.maxLevel || 1))));
+          const xStep = width / (bucket.length + 1);
+          node.x = Math.max(80, Math.min(width - 80, xStep * (levelIndex + 1)));
+          node.y = Math.max(70, Math.min(height - 70, yBand));
+          return;
+        }
         // Arrange nodes in a rough circle around center
         const angle = (index / nodes.length) * 2 * Math.PI;
         const radius = Math.min(width, height) * 0.2; // 20% of viewport size
@@ -3894,6 +3983,25 @@ const boundaryForce = (width, height) => {
       .attr('stroke-width', '1.4')
       .attr('paint-order', 'stroke fill')
       .text(`Nodes: ${renderData.nodes.length}`);
+
+    const ontologyHierarchyInfo = graphViewModeRef.current === 'ontology'
+      ? annotateOntologyHierarchyLevels(renderData.nodes, renderData.links)
+      : null;
+
+    if (ontologyHierarchyInfo && ontologyHierarchyInfo.rootCount > 0) {
+      svg.append('text')
+        .attr('class', 'node-count-display')
+        .attr('x', 20)
+        .attr('y', 30)
+        .attr('text-anchor', 'start')
+        .attr('font-size', '12px')
+        .attr('font-weight', '700')
+        .attr('fill', TCS_GRAPH_THEME.inkSoft)
+        .attr('stroke', 'white')
+        .attr('stroke-width', '1.2')
+        .attr('paint-order', 'stroke fill')
+        .text(`Ontology levels: ${ontologyHierarchyInfo.maxLevel + 1} | Top nodes: ${ontologyHierarchyInfo.rootCount}`);
+    }
     
     // Re-enable zoom for force-directed layout
     svg.call(d3.zoom()
@@ -3907,7 +4015,12 @@ const boundaryForce = (width, height) => {
     logger.render(`[TARGET] Initializing graph layout with ${renderData.nodes.length} nodes, ${renderData.links.length} links`);
     
     // Initialize positions for new nodes (especially for search results)
-    initializeNodePositions(renderData.nodes, width, height);
+    initializeNodePositions(renderData.nodes, width, height, ontologyHierarchyInfo);
+
+    const ontologyBandY = (node) => {
+      if (!ontologyHierarchyInfo || node.ontologyLevel == null) return height / 2;
+      return height * (0.14 + (0.74 * (Math.ceil(node.ontologyLevel) / Math.max(1, ontologyHierarchyInfo.maxLevel || 1))));
+    };
 
     // --- Process links for bidirectional relationship separation ---
     const processedLinks = processLinksForOffset([...renderData.links]);
@@ -3926,7 +4039,9 @@ const boundaryForce = (width, height) => {
           return relationshipType === 'SUBCLASS_OF' ? 145 : (relationshipType === 'DOMAIN' || relationshipType === 'RANGE' ? 130 : LINK_DISTANCE);
         }))
         .force('charge', d3.forceManyBody().strength(CHARGE_STRENGTH))
-        .force('center', d3.forceCenter(width / 2, height / 2).strength(CENTER_FORCE_STRENGTH))
+        .force('center', d3.forceCenter(width / 2, height / 2).strength(ontologyHierarchyInfo ? 0.02 : CENTER_FORCE_STRENGTH))
+        .force('x', ontologyHierarchyInfo ? d3.forceX(width / 2).strength(0.025) : null)
+        .force('y', ontologyHierarchyInfo ? d3.forceY(ontologyBandY).strength(0.22) : null)
         .force('collide', d3.forceCollide().radius((d) => getNodeCollisionRadius(d, showNodeLabels)).iterations(renderData.nodes.length > 300 ? 1 : 2))
         .force('boundary', boundaryForce(width, height));
       
@@ -3958,7 +4073,9 @@ const boundaryForce = (width, height) => {
         // Update simulation data
         simulationRef.current.nodes(renderData.nodes);
         simulationRef.current.force('link').links(processedLinks); 
-        simulationRef.current.force('center', d3.forceCenter(width / 2, height / 2).strength(CENTER_FORCE_STRENGTH));
+        simulationRef.current.force('center', d3.forceCenter(width / 2, height / 2).strength(ontologyHierarchyInfo ? 0.02 : CENTER_FORCE_STRENGTH));
+        simulationRef.current.force('x', ontologyHierarchyInfo ? d3.forceX(width / 2).strength(0.025) : null);
+        simulationRef.current.force('y', ontologyHierarchyInfo ? d3.forceY(ontologyBandY).strength(0.22) : null);
         simulationRef.current.force('collide', d3.forceCollide().radius((d) => getNodeCollisionRadius(d, showNodeLabels)).iterations(renderData.nodes.length > 300 ? 1 : 2));
         simulationRef.current.force('boundary', boundaryForce(width, height));
         
@@ -4197,7 +4314,9 @@ const boundaryForce = (width, height) => {
               } else {
                 logger.render('No action taken - node cannot be expanded or collapsed');
               }
-            });
+            })
+            .append('title')
+            .text(d => canCollapseNode(d) ? 'Collapse expanded dependents' : `Expand dependents up to ${MAX_EXPAND_HOPS} hops`);
 
           // Plus/Minus symbol
           group.append('text')
@@ -4264,6 +4383,16 @@ const boundaryForce = (width, height) => {
               d.name || props.name || d.entity_type || props.entity_type,
               d.labels
             );
+            if (d.ontologyLevelLabel) {
+              tooltipContent += `<div style="margin:8px 8px 0;padding:7px 9px;background:#EEF4FA;border:1px solid #D9E2EC;border-radius:6px;font-size:11px;color:#355C7D;">
+                <strong>Ontology hierarchy:</strong> ${escapeHtml(d.ontologyLevelLabel)}
+              </div>`;
+            }
+            if (debouncedSearchQuery) {
+              tooltipContent += `<div style="margin:8px 8px 0;padding:7px 9px;background:#f4f7fb;border:1px solid #d9e2ec;border-radius:6px;font-size:11px;color:#52606D;">
+                Click the green <strong>+</strong> badge on this node to expand dependent nodes up to ${MAX_EXPAND_HOPS} hops. Click <strong>-</strong> to collapse that expansion.
+              </div>`;
+            }
             
             // Only exclude D3/graph-library internals — ALL real Neo4j properties will be shown
             const excludedProps = [
@@ -4725,7 +4854,7 @@ const boundaryForce = (width, height) => {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    flexWrap: 'nowrap',
+    flexWrap: 'wrap',
     minWidth: 0,
     width: '100%',
     overflowX: 'visible',
@@ -4889,6 +5018,38 @@ const boundaryForce = (width, height) => {
               onFocus={e => { e.target.style.borderColor = TCS_GRAPH_THEME.primary; e.target.style.boxShadow='0 0 0 2px rgba(31,61,99,0.12)'; }}
               onBlur={e => { e.target.style.borderColor = TCS_GRAPH_THEME.borderStrong; e.target.style.boxShadow='none'; }}
             />
+            <button
+              type="button"
+              onClick={() => setSearchQuery(searchInput.trim())}
+              disabled={searchLoading || !searchInput.trim()}
+              style={{
+                ...toolbarButtonStyle,
+                backgroundColor: searchLoading || !searchInput.trim() ? TCS_GRAPH_THEME.inkSoft : TCS_GRAPH_THEME.primary,
+                cursor: searchLoading || !searchInput.trim() ? 'not-allowed' : 'pointer',
+              }}
+              title="Search nodes, relationship types, properties, and property values"
+            >
+              Search
+            </button>
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchInput('');
+                  setSearchQuery('');
+                  setSelectedLabelFilter('ALL');
+                  setSearchResultData({ nodes: [], links: [] });
+                  setExpandedNodes(new Set());
+                  setNodeExpansions(new Map());
+                  setFilteredData(graphData);
+                  if (setSearchResults) setSearchResults(graphData.nodes);
+                }}
+                style={{ ...toolbarButtonStyle, backgroundColor: TCS_GRAPH_THEME.inkSoft }}
+                title="Clear search and return to the current graph scope"
+              >
+                Clear
+              </button>
+            )}
             {availableLabels.length > 0 && searchQuery && (
               <>
                 <i className="fas fa-filter" style={{ fontSize: 13, color: TCS_GRAPH_THEME.inkSoft }}></i>

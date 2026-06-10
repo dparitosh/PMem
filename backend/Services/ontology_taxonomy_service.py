@@ -66,14 +66,18 @@ class OntologyTaxonomyService:
     @staticmethod
     def _semantic_context(ontology_identifier: str) -> Dict[str, Any]:
         meta = OntologyTaxonomyService._resolve_metadata(ontology_identifier)
-        file_path = Path(meta.get("file_path", ""))
-        if not file_path.exists():
+        source_file_path = Path(meta.get("file_path", ""))
+        semantic_file_path = Path(meta.get("owl_file_path") or meta.get("file_path", ""))
+        if not source_file_path.exists():
             raise ValueError(f"Ontology file is missing: {ontology_identifier}")
+        if not semantic_file_path.exists():
+            semantic_file_path = source_file_path
 
         prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
         return {
             "meta": meta,
-            "file_path": file_path,
+            "file_path": semantic_file_path,
+            "source_file_path": source_file_path,
             "prefix": prefix,
         }
 
@@ -281,12 +285,13 @@ class OntologyTaxonomyService:
         context = cls._semantic_context(ontology_identifier)
         meta = context["meta"]
         file_path = context["file_path"]
+        source_file_path = context.get("source_file_path") or file_path
 
         parsed = cls._parse_rdf(meta, file_path)
         if not parsed:
-            parsed = cls._xml_terms(file_path, context["prefix"])
+            parsed = cls._xml_terms(source_file_path, context["prefix"])
         if not parsed.get("nodes"):
-            parsed = cls._text_terms(meta, file_path)
+            parsed = cls._text_terms(meta, source_file_path)
 
         return {
             "ontology_id": meta.get("ontology_id"),

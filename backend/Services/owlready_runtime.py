@@ -19,11 +19,11 @@ except Exception:  # pragma: no cover - optional dependency
     OWLREADY2_AVAILABLE = False
 
 try:
-    from rdflib import Graph
-    from rdflib.namespace import OWL
+    from rdflib import Graph, URIRef
+    from rdflib.namespace import OWL, RDF, RDFS
     RDFLIB_AVAILABLE = True
 except Exception:  # pragma: no cover - dependency guard
-    Graph = OWL = None
+    Graph = URIRef = OWL = RDF = RDFS = None
     RDFLIB_AVAILABLE = False
 
 
@@ -49,14 +49,22 @@ def _fragment(value: Any) -> str:
 
 
 def _iri(value: Any) -> str:
+    if value in {str, int, float, bool}:
+        return {
+            str: "http://www.w3.org/2001/XMLSchema#string",
+            int: "http://www.w3.org/2001/XMLSchema#integer",
+            float: "http://www.w3.org/2001/XMLSchema#decimal",
+            bool: "http://www.w3.org/2001/XMLSchema#boolean",
+        }[value]
     return str(getattr(value, "iri", value) or "")
 
 
 def _entity_ref(entity: Any) -> Dict[str, str]:
+    iri = _iri(entity)
     return {
-        "iri": _iri(entity),
-        "local_name": _fragment(entity),
-        "label": _first_text(getattr(entity, "label", [])) or _fragment(entity),
+        "iri": iri,
+        "local_name": _fragment(iri),
+        "label": _first_text(getattr(entity, "label", [])) or _fragment(iri),
     }
 
 
@@ -77,6 +85,141 @@ def _is_builtin_class(entity: Any) -> bool:
     return iri in {
         "http://www.w3.org/2002/07/owl#Thing",
         "http://www.w3.org/2002/07/owl#Nothing",
+    }
+
+
+def _rdflib_ref(value: Any, prefix: str = "") -> Dict[str, str]:
+    iri = str(value or "")
+    return {
+        "iri": iri,
+        "local_name": _fragment(iri),
+        "label": _fragment(iri),
+        "ontology_prefix": prefix,
+    }
+
+
+def _rdflib_semantic_fallback(file_path: Path, prefix: str) -> Dict[str, Any]:
+    """Extract OWL/RDFS semantics when Owlready2 loads triples but no entities.
+
+    Some generated Turtle files are valid RDF and validate as OWL vocabulary,
+    yet Owlready2 does not expose their classes/properties through
+    ontology.classes() / ontology.properties().  The UI still needs the actual
+    class/property/domain/range rows, so fall back to RDFLib for structural
+    extraction while keeping Owlready2 as the primary runtime.
+    """
+    if not RDFLIB_AVAILABLE:
+        return {}
+
+    graph = Graph()
+    try:
+        graph.parse(str(file_path))
+    except Exception:
+        return {}
+
+    def refs_for(subject: Any, predicate: Any) -> List[Dict[str, str]]:
+        subject_node = URIRef(str(subject))
+        refs: List[Dict[str, str]] = []
+        seen: set[str] = set()
+        for obj in graph.objects(subject_node, predicate):
+            iri = str(obj)
+            if iri and iri not in seen:
+                seen.add(iri)
+                refs.append(_rdflib_ref(iri, prefix))
+        return refs
+
+    class_iris = {
+        str(subject)
+        for subject in graph.subjects(RDF.type, OWL.Class)
+        if str(subject) not in {"http://www.w3.org/2002/07/owl#Thing", "http://www.w3.org/2002/07/owl#Nothing"}
+    }
+    object_property_iris = {str(subject) for subject in graph.subjects(RDF.type, OWL.ObjectProperty)}
+    datatype_property_iris = {str(subject) for subject in graph.subjects(RDF.type, OWL.DatatypeProperty)}
+
+    classes = [
+        {
+            **_rdflib_ref(iri, prefix),
+            "parents": refs_for(iri, RDFS.subClassOf),
+            "definition": _first_text(graph.objects(iri, RDFS.comment)),
+        }
+        for iri in sorted(class_iris, key=_fragment)
+    ]
+
+    subclass_edges: List[Dict[str, str]] = []
+    child_iris: set[str] = set()
+    parent_iris: set[str] = set()
+    for child in sorted(class_iris):
+        child_ref = _rdflib_ref(child, prefix)
+        for parent_ref in refs_for(child, RDFS.subClassOf):
+            if parent_ref["iri"] in class_iris:
+                child_iris.add(child)
+                parent_iris.add(parent_ref["iri"])
+            subclass_edges.append({
+                "source": child_ref["iri"],
+                "source_label": child_ref["label"],
+                "target": parent_ref["iri"],
+                "target_label": parent_ref["label"],
+                "type": "subClassOf",
+            })
+
+    def property_rows(iris: set[str]) -> List[Dict[str, Any]]:
+        return [
+            {
+                **_rdflib_ref(iri, prefix),
+                "domain": refs_for(iri, RDFS.domain),
+                "range": refs_for(iri, RDFS.range),
+                "definition": _first_text(graph.objects(iri, RDFS.comment)),
+            }
+            for iri in sorted(iris, key=_fragment)
+        ]
+
+    object_properties = property_rows(object_property_iris)
+    datatype_properties = property_rows(datatype_property_iris)
+    missing_domain_range = [
+        {"iri": row["iri"], "label": row["label"], "issue": "missing_domain_or_range"}
+        for row in [*object_properties, *datatype_properties]
+        if not row["domain"] or not row["range"]
+    ]
+    orphan_classes = [
+        cls for cls in classes
+        if cls["iri"] not in child_iris and cls["iri"] not in parent_iris
+    ]
+
+    diagnostics: List[Dict[str, Any]] = [{
+        "severity": "info",
+        "category": "runtime",
+        "message": "OWL entities were extracted with RDFLib fallback because Owlready2 exposed no class/property entities.",
+        "items": [],
+    }]
+    if missing_domain_range:
+        diagnostics.append({
+            "severity": "warning",
+            "category": "property",
+            "message": "Some properties are missing explicit domain or range.",
+            "items": missing_domain_range[:50],
+        })
+
+    return {
+        "status": "success",
+        "engine": "owlready2+rdflib",
+        "available": OWLREADY2_AVAILABLE,
+        "ontology_iri": "",
+        "classes": classes,
+        "object_properties": object_properties,
+        "datatype_properties": datatype_properties,
+        "individuals": [],
+        "subclass_edges": subclass_edges,
+        "diagnostics": diagnostics,
+        "summary": {
+            "classes": len(classes),
+            "object_properties": len(object_properties),
+            "datatype_properties": len(datatype_properties),
+            "individuals": 0,
+            "subclass_edges": len(subclass_edges),
+            "orphan_classes": len(orphan_classes),
+            "properties_missing_domain_or_range": len(missing_domain_range),
+            "duplicate_class_labels": 0,
+            "triple_count": len(graph),
+        },
     }
 
 
@@ -377,6 +520,10 @@ class OwlreadyOntologyRuntime:
             })
 
         triple_count = len(list(world.as_rdflib_graph())) if hasattr(world, "as_rdflib_graph") else 0
+        if not classes and not object_properties and not datatype_properties and triple_count:
+            fallback = _rdflib_semantic_fallback(file_path, prefix)
+            if fallback.get("summary", {}).get("classes") or fallback.get("summary", {}).get("object_properties") or fallback.get("summary", {}).get("datatype_properties"):
+                return fallback
         return {
             "status": "success",
             "engine": "owlready2",
