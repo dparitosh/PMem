@@ -295,6 +295,22 @@ def upsert_chunks(driver, rows: List[Dict]):
 
 def ensure_indexes(driver):
     with driver.session(database=NEO4J_DATABASE) as session:
+        # --- Operational ontology / import indexes ---
+        for statement, label in [
+            ("CREATE INDEX `idx_ontologyclass_prefix` IF NOT EXISTS FOR (n:OntologyClass) ON (n.prefix)", "OntologyClass.prefix"),
+            ("CREATE INDEX `idx_ontologyclass_ontology_prefix` IF NOT EXISTS FOR (n:OntologyClass) ON (n.ontology_prefix)", "OntologyClass.ontology_prefix"),
+            ("CREATE INDEX `idx_ontologyclass_ontology_id` IF NOT EXISTS FOR (n:OntologyClass) ON (n.ontology_id)", "OntologyClass.ontology_id"),
+            ("CREATE INDEX `idx_ontologyclass_prefix_name` IF NOT EXISTS FOR (n:OntologyClass) ON (n.prefix, n.name)", "OntologyClass.prefix+name"),
+            ("CREATE INDEX `idx_ontologyclass_ontology_prefix_name` IF NOT EXISTS FOR (n:OntologyClass) ON (n.ontology_prefix, n.name)", "OntologyClass.ontology_prefix+name"),
+            ("CREATE TEXT INDEX `idx_ontologyclass_name_text` IF NOT EXISTS FOR (n:OntologyClass) ON (n.name)", "OntologyClass.name text"),
+            ("CREATE INDEX `idx_ontologyproperty_prefix` IF NOT EXISTS FOR (n:OntologyProperty) ON (n.prefix)", "OntologyProperty.prefix"),
+        ]:
+            try:
+                session.run(statement)
+                logger.info("Operational index ensured for %s", label)
+            except Exception as exc:
+                logger.warning("Operational index creation note for %s: %s", label, exc)
+
         # --- GraphChunk vector index ---
         try:
             session.run(f"""

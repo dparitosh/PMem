@@ -675,6 +675,91 @@ class FileFormatDetector:
         
         return queries
 
+    @staticmethod
+    def _append_index(indexes: List[Dict[str, Any]], seen: set, idx_type: str, label: str, properties: List[str], name: str) -> None:
+        safe_properties = [str(prop) for prop in (properties or []) if prop]
+        if not label or not safe_properties:
+            return
+        signature = (idx_type, str(label), tuple(safe_properties))
+        if signature in seen:
+            return
+        seen.add(signature)
+        indexes.append({
+            'type': idx_type,
+            'name': name,
+            'label': label,
+            'properties': safe_properties,
+        })
+
+    @classmethod
+    def _recommended_indexes_for_label(cls, label: str, merge_key: str, properties: List[str]) -> List[Dict[str, Any]]:
+        indexes: List[Dict[str, Any]] = []
+        seen = set()
+        props = {str(prop) for prop in (properties or []) if prop}
+        safe_label = str(label).lower().replace(':', '_').replace(' ', '_')
+
+        if 'import_row_key' in props:
+            if 'import_id' in props:
+                cls._append_index(
+                    indexes,
+                    seen,
+                    'range',
+                    label,
+                    ['import_id', 'import_row_key'],
+                    f"idx_{safe_label}_import_id_import_row_key".replace('-', '_'),
+                )
+            cls._append_index(
+                indexes,
+                seen,
+                'range',
+                label,
+                ['import_row_key'],
+                f"idx_{safe_label}_import_row_key".replace('-', '_'),
+            )
+
+        if merge_key:
+            if 'import_id' in props and merge_key != 'import_id':
+                cls._append_index(
+                    indexes,
+                    seen,
+                    'range',
+                    label,
+                    ['import_id', merge_key],
+                    f"idx_{safe_label}_import_id_{merge_key}".replace('-', '_'),
+                )
+            cls._append_index(
+                indexes,
+                seen,
+                'range',
+                label,
+                [merge_key],
+                f"idx_{safe_label}_{merge_key}".replace('-', '_'),
+            )
+
+        for text_prop in ('name', 'part_number', 'title'):
+            if text_prop in props and text_prop != merge_key:
+                cls._append_index(
+                    indexes,
+                    seen,
+                    'text',
+                    label,
+                    [text_prop],
+                    f"idx_{safe_label}_{text_prop}_text".replace('-', '_'),
+                )
+
+        for range_prop in ('ontology_prefix', 'source_ontology', 'part_ref', 'parent_ref'):
+            if range_prop in props and range_prop != merge_key:
+                cls._append_index(
+                    indexes,
+                    seen,
+                    'range',
+                    label,
+                    [range_prop],
+                    f"idx_{safe_label}_{range_prop}".replace('-', '_'),
+                )
+
+        return indexes
+
 
 # ========== File Parser Router ==========
 
@@ -1264,12 +1349,7 @@ class DataTransformer:
                     '_filter_key': 'element_type',
                     '_filter_val': etype,
                 })
-                indexes.append({
-                    'type': 'range',
-                    'name': f"idx_{etype.lower()}_{merge_key}",
-                    'label': etype,
-                    'properties': [merge_key],
-                })
+                indexes.extend(FileFormatDetector._recommended_indexes_for_label(etype, merge_key, type_cols))
             return {'nodes': nodes, 'indexes': indexes}
 
         # ── STEP/AP242 entity typing ─────────────────────────────────────────
@@ -1303,12 +1383,7 @@ class DataTransformer:
                     '_filter_key': 'entity_type',
                     '_filter_val': entity_type,
                 })
-                indexes.append({
-                    'type': 'range',
-                    'name': f"idx_{entity_type.lower()}_{merge_key}",
-                    'label': entity_type,
-                    'properties': [merge_key],
-                })
+                indexes.extend(FileFormatDetector._recommended_indexes_for_label(entity_type, merge_key, type_cols))
             if nodes:
                 return {'nodes': nodes, 'indexes': indexes}
 
@@ -1342,12 +1417,7 @@ class DataTransformer:
                     '_filter_key': 'type',
                     '_filter_val': tval,
                 })
-                indexes.append({
-                    'type': 'range',
-                    'name': f"idx_{tval.lower()}_{merge_key}",
-                    'label': tval,
-                    'properties': [merge_key],
-                })
+                indexes.extend(FileFormatDetector._recommended_indexes_for_label(tval, merge_key, type_cols))
             return {'nodes': nodes, 'indexes': indexes}
 
         # ── Single-label schema (original logic, column union fix applied) ────
@@ -1360,12 +1430,7 @@ class DataTransformer:
             else str(rows[0].get('type', 'ImportedRecord')).replace(' ', '_').replace(':', '_')
         )
         nodes = [{'label': default_label, 'mergeKeys': [merge_key], 'properties': columns}]
-        indexes = [{
-            'type': 'range',
-            'name': f"idx_{default_label.lower()}_{merge_key}",
-            'label': default_label,
-            'properties': [merge_key],
-        }]
+        indexes = FileFormatDetector._recommended_indexes_for_label(default_label, merge_key, columns)
         return {'nodes': nodes, 'indexes': indexes}
 
     @staticmethod
@@ -2121,20 +2186,27 @@ class UnifiedDataImportService:
     @classmethod
     def _load_ontology_class_lookup(cls, ontology_prefix: str) -> Dict[str, Dict[str, Any]]:
         """Return normalized AP242/selected ontology class names keyed for STEP linking."""
-        prefix = str(ontology_prefix or '').lower()
-        preferred_prefixes = [prefix]
+        raw_prefix = str(ontology_prefix or '').strip()
+        prefix = raw_prefix.lower()
+        preferred_prefixes = [p for p in {raw_prefix, prefix} if p]
         if prefix in ('step', 'step_ap242_mbd3d', 'ap242_mbd3d') or 'ap242' in prefix:
-            preferred_prefixes.extend(['ap242', 'step_ap242_mbd3d'])
+            preferred_prefixes.extend(['ap242', 'step_ap242_mbd3d', 'AP242', 'STEP_AP242_MBD3D'])
         preferred_prefixes = sorted({p for p in preferred_prefixes if p})
+        lower_prefixes = sorted({p.lower() for p in preferred_prefixes if p})
 
         query = """
         MATCH (c:OntologyClass)
-        WHERE toLower(coalesce(c.prefix, c.ontology_prefix, c.ontology_id, '')) IN $prefixes
+        WHERE c.prefix IN $prefixes
+           OR c.ontology_prefix IN $prefixes
+           OR c.ontology_id IN $prefixes
+           OR c.prefix IN $lower_prefixes
+           OR c.ontology_prefix IN $lower_prefixes
+           OR c.ontology_id IN $lower_prefixes
            OR ($ap242 = true AND (
-                toLower(coalesce(c.prefix, '')) CONTAINS 'ap242'
-                OR toLower(coalesce(c.ontology_prefix, '')) CONTAINS 'ap242'
-                OR toLower(coalesce(c.ontology_id, '')) CONTAINS 'ap242'
-                OR toLower(coalesce(c.namespace, '')) CONTAINS '10303'
+                c.prefix IN ['ap242', 'step_ap242_mbd3d', 'AP242', 'STEP_AP242_MBD3D']
+                OR c.ontology_prefix IN ['ap242', 'step_ap242_mbd3d', 'AP242', 'STEP_AP242_MBD3D']
+                OR c.ontology_id IN ['ap242', 'step_ap242_mbd3d', 'AP242', 'STEP_AP242_MBD3D']
+                OR c.namespace CONTAINS '10303'
            ))
         RETURN elementId(c) AS element_id,
                coalesce(c.name, c.label, c.id, c.uri) AS name,
@@ -2147,7 +2219,11 @@ class UnifiedDataImportService:
                 from ..core.graph import query_with_timeout as _query_with_timeout
             records = _query_with_timeout(
                 query,
-                {'prefixes': preferred_prefixes, 'ap242': any('ap242' in p for p in preferred_prefixes)},
+                {
+                    'prefixes': preferred_prefixes,
+                    'lower_prefixes': lower_prefixes,
+                    'ap242': any('ap242' in p.lower() for p in preferred_prefixes),
+                },
             ) or []
         except Exception as exc:
             logger.warning(f"Ontology class lookup skipped for prefix '{ontology_prefix}': {exc}")
