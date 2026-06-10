@@ -86,9 +86,9 @@ if "%DO_FRONTEND%"=="1" (
     pushd "%PROJECT_ROOT%frontend"
     if exist "%PROJECT_ROOT%frontend\package-lock.json" (
         echo package-lock.json found — using `npm ci` for reproducible install
-        call npm ci
+        call npm.cmd ci
     ) else (
-        call npm install
+        call npm.cmd install
     )
     if errorlevel 1 (
         echo ERROR: npm install ^(or ci^) failed.

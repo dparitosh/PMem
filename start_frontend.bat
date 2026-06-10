@@ -59,18 +59,34 @@ if not exist "frontend\node_modules" (
     exit /b 1
 )
 
+:: Check if react-scripts is installed locally
+if not exist "frontend\node_modules\react-scripts\bin\react-scripts.js" (
+    echo [ERROR] Local react-scripts not found in frontend\node_modules
+    echo.
+    echo [INFO] Dependencies look incomplete. Repair with:
+    echo        cd frontend
+    echo        npm install
+    echo.
+    exit /b 1
+)
+
 echo [1/2] Verifying npm installation...
-for /f "tokens=*" %%i in ('npm --version') do set "NPM_VERSION=%%i"
+for /f "tokens=*" %%i in ('npm.cmd --version') do set "NPM_VERSION=%%i"
 echo        npm version: %NPM_VERSION%
 
 echo [2/2] Starting React development server...
 echo.
 echo ════════════════════════════════════════════════════════════════════════════
 
-cd frontend
-set PORT=%PORT%
-set REACT_APP_BACKEND_URL=http://localhost:8000
-call npm start
+cd /d "%~dp0frontend"
+set "PORT=%PORT%"
+set "REACT_APP_BACKEND_URL=http://localhost:8000"
+
+if exist "node_modules\.bin\react-scripts.cmd" (
+    call "node_modules\.bin\react-scripts.cmd" start
+) else (
+    call npm.cmd start
+)
 
 if errorlevel 1 (
     echo.
