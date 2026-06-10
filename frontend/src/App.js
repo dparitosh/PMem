@@ -11,7 +11,6 @@ import AppShell from './app/AppShell';
 import { normalizePage } from './app/navigation';
 
 const Chatbot = lazy(() => import('./Components/Chatbot'));
-const WorkspacePage = lazy(() => import('./pages/WorkspacePage'));
 const ImportPage = lazy(() => import('./pages/ImportPage'));
 const OntologyStudioPage = lazy(() => import('./pages/OntologyStudioPage'));
 const GraphExplorerPage = lazy(() => import('./pages/GraphExplorerPage'));
@@ -31,7 +30,7 @@ function PageFallback() {
       fontSize: 13,
       fontWeight: 600,
     }}>
-      Loading workspace...
+      Loading page...
     </div>
   );
 }
@@ -84,16 +83,6 @@ function App() {
 
   const renderPage = () => {
     switch (activePage) {
-      case 'workspace':
-        return (
-          <WorkspacePage
-            data={data}
-            searchResults={searchResults}
-            chatResults={chatResults}
-            visibleRelationships={visibleRelationships}
-            onNavigate={handleNavigate}
-          />
-        );
       case 'import':
         return <ImportPage />;
       case 'ontology':
@@ -135,7 +124,7 @@ function App() {
                   </h1>
                 </div>
                 <button
-                  onClick={() => handleNavigate('graph')}
+                  onClick={() => handleNavigate('import')}
                   style={{
                     background: 'rgba(255,255,255,0.1)',
                     color: '#fff',
@@ -150,7 +139,7 @@ function App() {
                     gap: 8,
                   }}
                 >
-                  <span>Open workspace</span>
+                  <span>Open platform</span>
                   <ArrowRight size={14} />
                 </button>
               </div>

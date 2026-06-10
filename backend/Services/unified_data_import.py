@@ -1475,7 +1475,12 @@ class Neo4jImporter:
         return len(duplicates), duplicates
 
     @staticmethod
-    def execute_cypher(queries: List[str], rows: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    def execute_cypher(
+        queries: List[str],
+        rows: Optional[List[Dict[str, Any]]] = None,
+        batch_size: Optional[int] = None,
+        batch_callback: Optional[Any] = None,
+    ) -> Dict[str, Any]:
         """Execute Cypher queries with error tracking"""
         try:
             from core.graph import graph as _graph  # lazy import — avoids boot-time connection errors  # noqa: F401
@@ -1496,13 +1501,22 @@ class Neo4jImporter:
 
             try:
                 if rows and 'UNWIND $rows' in query:
-                    _BATCH = max(100, IMPORT_WRITE_BATCH_SIZE)
+                    _BATCH = max(100, int(batch_size or IMPORT_WRITE_BATCH_SIZE))
+                    _total_batches = max(1, (len(rows) + _BATCH - 1) // _BATCH)
                     for _i in range(0, len(rows), _BATCH):
                         _batch = rows[_i:_i + _BATCH]
                         result = _query_with_timeout(query, {'rows': _batch}, timeout=IMPORT_COMMIT_QUERY_TIMEOUT)
                         stats['queries_executed'] += 1
                         if isinstance(result, list):
                             stats['nodes_created'] += len(result)
+                        if callable(batch_callback):
+                            batch_callback({
+                                'batch_index': (_i // _BATCH) + 1,
+                                'batch_size': len(_batch),
+                                'total_batches': _total_batches,
+                                'rows_processed': min(_i + len(_batch), len(rows)),
+                                'rows_total': len(rows),
+                            })
                 else:
                     result = _query_with_timeout(query, timeout=IMPORT_COMMIT_QUERY_TIMEOUT)
                     stats['queries_executed'] += 1
@@ -1536,6 +1550,30 @@ class UnifiedDataImportService:
         """Initialize upload directory"""
         cls.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         cls.TASK_STORE_DIR.mkdir(parents=True, exist_ok=True)
+
+    @classmethod
+    def _update_commit_state(
+        cls,
+        task_id: str,
+        task: Dict[str, Any],
+        *,
+        progress: Optional[int] = None,
+        message: Optional[str] = None,
+        phase: Optional[str] = None,
+        batch_progress: Optional[Dict[str, Any]] = None,
+        commit_metrics: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if progress is not None:
+            task['progress'] = max(0, min(100, int(progress)))
+        if message is not None:
+            task['message'] = message
+        if phase is not None:
+            task['commit_phase'] = phase
+        if batch_progress is not None:
+            task['batch_progress'] = batch_progress
+        if commit_metrics is not None:
+            task['commit_metrics'] = commit_metrics
+        cls._persist_task(task_id)
 
     @classmethod
     def _task_snapshot_path(cls, task_id: str) -> Path:
@@ -2022,8 +2060,12 @@ class UnifiedDataImportService:
             'progress': task['progress'],
             'message': task['message'],
             'status': task['status'],
+            'committing': task.get('committing', False),
             'error': task.get('error'),
             'stats': task.get('stats'),
+            'commit_phase': task.get('commit_phase'),
+            'batch_progress': task.get('batch_progress'),
+            'commit_metrics': task.get('commit_metrics'),
             'schema_metadata': task.get('schema_metadata'),
             'owl_ttl': task.get('owl_ttl'),  # Include OWL if available
             'workflow_id': task.get('workflow_id'),
@@ -2116,8 +2158,26 @@ class UnifiedDataImportService:
         if dup_count > 0:
             logger.warning(f"Found {dup_count} duplicate entries. These will be merged. IDs: {dup_ids[:5]}...")
 
-        task['message'] = 'Writing to Neo4j...'
-        task['progress'] = 85
+        task['commit_phase'] = 'prepare'
+        task['batch_progress'] = None
+        task['commit_metrics'] = {
+            'rows_total': len(rows),
+            'node_batch_size': IMPORT_WRITE_BATCH_SIZE,
+            'link_batch_size': IMPORT_LINK_BATCH_SIZE,
+            'nodes_written': 0,
+            'relationships_written': 0,
+            'instance_links_created': 0,
+            'ontology_classes_matched': 0,
+            'phase': 'prepare',
+        }
+        cls._update_commit_state(
+            task_id,
+            task,
+            progress=82,
+            message='Preparing Neo4j batches...',
+            phase='prepare',
+            commit_metrics=task['commit_metrics'],
+        )
 
         # Derive ontology prefix/name from parsed stats (namespace-based)
         _stats = task.get('stats', {})
@@ -2138,7 +2198,32 @@ class UnifiedDataImportService:
                   'relationships_created': 0, 'instance_links_created': 0,
                   'ontology_classes_matched': 0, 'errors': []}
 
+        def _sync_metrics(
+            phase: str,
+            progress: int,
+            message: str,
+            batch_progress: Optional[Dict[str, Any]] = None,
+        ) -> None:
+            task['commit_metrics'] = {
+                **(task.get('commit_metrics') or {}),
+                'phase': phase,
+                'nodes_written': result['nodes_created'],
+                'relationships_written': result['relationships_created'],
+                'instance_links_created': result['instance_links_created'],
+                'ontology_classes_matched': result['ontology_classes_matched'],
+            }
+            cls._update_commit_state(
+                task_id,
+                task,
+                progress=progress,
+                message=message,
+                phase=phase,
+                batch_progress=batch_progress,
+                commit_metrics=task['commit_metrics'],
+            )
+
         # ── Node queries ────────────────────────────────────────────────────
+        _sync_metrics('nodes', 84, 'Writing entity batches to Neo4j...')
         for node_def in schema.get('nodes', []):
             label = node_def.get('label', 'ImportedRecord')
             merge_keys = node_def.get('mergeKeys', [])
@@ -2155,7 +2240,25 @@ class UnifiedDataImportService:
             if not node_rows:
                 continue
             queries, _ = DataTransformer.transform_to_nodes(node_rows, label, merge_keys)
-            node_result = Neo4jImporter.execute_cypher(queries, node_rows)
+            node_batch_size = max(100, IMPORT_WRITE_BATCH_SIZE)
+            node_total_batches = max(1, (len(node_rows) + node_batch_size - 1) // node_batch_size)
+            node_result = Neo4jImporter.execute_cypher(
+                queries,
+                node_rows,
+                batch_size=node_batch_size,
+                batch_callback=lambda batch, _label=label, _total=node_total_batches, _rows_total=len(node_rows): _sync_metrics(
+                    'nodes',
+                    84 + int(8 * (batch.get('rows_processed', 0) / max(1, _rows_total))),
+                    f"Writing {(_label or 'entity')} batch {batch.get('batch_index', 1)} of {_total}...",
+                    {
+                        'scope': _label or 'entity',
+                        'batch_index': batch.get('batch_index', 1),
+                        'total_batches': _total,
+                        'rows_processed': batch.get('rows_processed', 0),
+                        'rows_total': _rows_total,
+                    },
+                ),
+            )
             result['queries_executed'] += node_result.get('queries_executed', 0)
             result['nodes_created'] += len(node_rows)
             result['errors'].extend(node_result.get('errors', []))
@@ -2180,6 +2283,7 @@ class UnifiedDataImportService:
                 safe_type = _re.sub(r'[^A-Z0-9_]', '_', raw_type.upper()).strip('_') or 'RELATED_TO'
                 if from_id and to_id:
                     rel_by_type.setdefault(safe_type, []).append({'from_id': from_id, 'to_id': to_id})
+            _sync_metrics('relationships', 92, 'Creating relationship batches...')
             for rel_type, rel_rows in rel_by_type.items():
                 rel_cypher = f"""
                 UNWIND $rows AS row
@@ -2189,7 +2293,25 @@ class UnifiedDataImportService:
                 """
                 try:
                     rel_rows_scoped = [{**rr, 'import_id': task_id} for rr in rel_rows]
-                    rel_result = Neo4jImporter.execute_cypher([rel_cypher], rel_rows_scoped)
+                    rel_batch_size = max(100, IMPORT_LINK_BATCH_SIZE)
+                    rel_total_batches = max(1, (len(rel_rows_scoped) + rel_batch_size - 1) // rel_batch_size)
+                    rel_result = Neo4jImporter.execute_cypher(
+                        [rel_cypher],
+                        rel_rows_scoped,
+                        batch_size=rel_batch_size,
+                        batch_callback=lambda batch, _type=rel_type, _total=rel_total_batches, _rows_total=len(rel_rows_scoped): _sync_metrics(
+                            'relationships',
+                            92 + int(3 * (batch.get('rows_processed', 0) / max(1, _rows_total))),
+                            f"Creating {_type} batch {batch.get('batch_index', 1)} of {_total}...",
+                            {
+                                'scope': _type,
+                                'batch_index': batch.get('batch_index', 1),
+                                'total_batches': _total,
+                                'rows_processed': batch.get('rows_processed', 0),
+                                'rows_total': _rows_total,
+                            },
+                        ),
+                    )
                     if rel_result.get('errors'):
                         logger.warning(f"Relationship write errors for type {rel_type}: {rel_result['errors']}")
                     else:
@@ -2214,7 +2336,25 @@ class UnifiedDataImportService:
             """
             try:
                 ref_rows_scoped = [{**rr, 'import_id': task_id} for rr in step_ref_rows]
-                step_rel_result = Neo4jImporter.execute_cypher([step_rel_cypher], ref_rows_scoped)
+                ref_batch_size = max(100, IMPORT_LINK_BATCH_SIZE)
+                ref_total_batches = max(1, (len(ref_rows_scoped) + ref_batch_size - 1) // ref_batch_size)
+                step_rel_result = Neo4jImporter.execute_cypher(
+                    [step_rel_cypher],
+                    ref_rows_scoped,
+                    batch_size=ref_batch_size,
+                    batch_callback=lambda batch, _total=ref_total_batches, _rows_total=len(ref_rows_scoped): _sync_metrics(
+                        'relationships',
+                        94,
+                        f"Linking STEP references batch {batch.get('batch_index', 1)} of {_total}...",
+                        {
+                            'scope': 'STEP references',
+                            'batch_index': batch.get('batch_index', 1),
+                            'total_batches': _total,
+                            'rows_processed': batch.get('rows_processed', 0),
+                            'rows_total': _rows_total,
+                        },
+                    ),
+                )
                 if not step_rel_result.get('errors'):
                     result['relationships_created'] += len(step_ref_rows)
                     logger.info(f"Task {task_id}: STEP — wrote {len(step_ref_rows)} row-key REFERENCES edges")
@@ -2236,7 +2376,25 @@ class UnifiedDataImportService:
             """
             try:
                 ref_rows_scoped = [{**rr, 'import_id': task_id} for rr in ref_rows]
-                step_rel_result = Neo4jImporter.execute_cypher([step_rel_cypher], ref_rows_scoped)
+                ref_batch_size = max(100, IMPORT_LINK_BATCH_SIZE)
+                ref_total_batches = max(1, (len(ref_rows_scoped) + ref_batch_size - 1) // ref_batch_size)
+                step_rel_result = Neo4jImporter.execute_cypher(
+                    [step_rel_cypher],
+                    ref_rows_scoped,
+                    batch_size=ref_batch_size,
+                    batch_callback=lambda batch, _total=ref_total_batches, _rows_total=len(ref_rows_scoped): _sync_metrics(
+                        'relationships',
+                        94,
+                        f"Linking STEP references batch {batch.get('batch_index', 1)} of {_total}...",
+                        {
+                            'scope': 'STEP references',
+                            'batch_index': batch.get('batch_index', 1),
+                            'total_batches': _total,
+                            'rows_processed': batch.get('rows_processed', 0),
+                            'rows_total': _rows_total,
+                        },
+                    ),
+                )
                 if not step_rel_result.get('errors'):
                     result['relationships_created'] += len(ref_rows)
                     logger.info(f"Task {task_id}: STEP — wrote {len(ref_rows)} REFERENCES edges")
@@ -2269,6 +2427,7 @@ class UnifiedDataImportService:
                 })
 
             result['ontology_classes_matched'] = len({r['class_element_id'] for r in link_rows})
+            _sync_metrics('ontology-linking', 96, 'Linking imported instances to ontology classes...')
             if link_rows:
                 link_cypher = f"""
                 UNWIND $rows AS row
@@ -2289,14 +2448,28 @@ class UnifiedDataImportService:
                     _BATCH = max(100, IMPORT_LINK_BATCH_SIZE)
                     linked_total = 0
                     for _i in range(0, len(link_rows), _BATCH):
+                        _batch = link_rows[_i:_i + _BATCH]
                         linked_result = _query_with_timeout(
                             link_cypher,
-                            {'rows': link_rows[_i:_i + _BATCH]},
+                            {'rows': _batch},
                             timeout=IMPORT_COMMIT_QUERY_TIMEOUT,
                         ) or []
                         result['queries_executed'] += 1
                         if linked_result and isinstance(linked_result[0], dict):
                             linked_total += int(linked_result[0].get('linked') or 0)
+                        result['instance_links_created'] = linked_total
+                        _sync_metrics(
+                            'ontology-linking',
+                            96 + int(2 * (min(_i + len(_batch), len(link_rows)) / max(1, len(link_rows)))),
+                            f"Linking ontology instances batch {(_i // _BATCH) + 1} of {max(1, (len(link_rows) + _BATCH - 1) // _BATCH)}...",
+                            {
+                                'scope': 'INSTANCE_OF',
+                                'batch_index': (_i // _BATCH) + 1,
+                                'total_batches': max(1, (len(link_rows) + _BATCH - 1) // _BATCH),
+                                'rows_processed': min(_i + len(_batch), len(link_rows)),
+                                'rows_total': len(link_rows),
+                            },
+                        )
                     result['instance_links_created'] = linked_total
                     result['relationships_created'] += linked_total
                     logger.info(
@@ -2320,6 +2493,7 @@ class UnifiedDataImportService:
             MERGE (child)-[:OWNED_BY]->(parent)
             """
             _BATCH = max(100, IMPORT_LINK_BATCH_SIZE)
+            _sync_metrics('verification', 98, 'Finalizing ownership and verification links...')
             for _i in range(0, len(owner_rows), _BATCH):
                 _batch = owner_rows[_i:_i + _BATCH]
                 try:
@@ -2337,11 +2511,12 @@ class UnifiedDataImportService:
         task.pop('parsed_rows', None)
 
         task['current_stage'] = ImportStage.INGEST.value
-        task['progress'] = 100
-        task['message'] = 'Import completed successfully'
         task['status'] = ImportStatus.COMPLETED.value
         task['result'] = result
         task['completed_at'] = datetime.now().isoformat()
+        task['committing'] = False
+        _sync_metrics('complete', 100, 'Import completed successfully', None)
+        task['batch_progress'] = None
         cls._persist_task(task_id)
 
         logger.info(f"Task {task_id} completed: {result}")
@@ -2490,6 +2665,8 @@ class UnifiedDataImportService:
                 task['status'] = ImportStatus.PROCESSING.value
                 task['current_stage'] = ImportStage.PREVIEW.value
                 task['progress'] = 75
+                task['commit_phase'] = 'error'
+                task['batch_progress'] = None
                 task['message'] = f'Commit failed — retry available. Error: {str(e)[:200]}'
                 task['error'] = str(e)
                 cls._persist_task(task_id)

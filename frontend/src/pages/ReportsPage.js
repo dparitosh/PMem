@@ -8,7 +8,7 @@ export default function ReportsPage({ searchResults, chatResults, graphData }) {
         <div className="depo-panel__header">
           <div>
             <div className="depo-panel__title">Outputs</div>
-            <div className="depo-panel__meta">Publish and inspect outputs generated from the current workspace context.</div>
+            <div className="depo-panel__meta">Publish and inspect outputs generated from the current platform context.</div>
           </div>
         </div>
         <div className="depo-panel__body">

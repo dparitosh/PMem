@@ -46,6 +46,19 @@ const C = {
   darkBg:       '#2C3E50',
 };
 
+const IMPORT_JOBS_STORAGE_KEY = 'depo.import.jobs.v2';
+const IMPORT_ONTOLOGIES_CACHE_KEY = 'depo.import.ontologies.v1';
+
+function serializeFileForPersistence(file) {
+  if (!file) return null;
+  const { fileObj, ...rest } = file;
+  return {
+    ...rest,
+    fileObj: null,
+    persisted: true,
+  };
+}
+
 export default function DataImportPipeline() {
   const [files, setFiles] = useState([]);
   const [pipelineStatus, setPipelineStatus] = useState({});
@@ -66,7 +79,13 @@ export default function DataImportPipeline() {
   const [workflowLoading, setWorkflowLoading] = useState(false);
 
   // Ontology mapping selection
-  const [availableOntologies, setAvailableOntologies] = useState([]);
+  const [availableOntologies, setAvailableOntologies] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem(IMPORT_ONTOLOGIES_CACHE_KEY) || '[]');
+    } catch (_err) {
+      return [];
+    }
+  });
   const [availableMappings, setAvailableMappings] = useState([]);
   const [requiredMappings, setRequiredMappings] = useState([]);
   const [mappingFileTypeContext, setMappingFileTypeContext] = useState('');
@@ -78,50 +97,121 @@ export default function DataImportPipeline() {
   const [pendingMetadataFileId, setPendingMetadataFileId] = useState('');
   const [isMetadataLoading, setIsMetadataLoading] = useState(false);
   const [metadataFormPrefill, setMetadataFormPrefill] = useState(null);
+  const didRestoreJobsRef = useRef(false);
+  const resumedPersistedJobsRef = useRef(false);
+  const activePollersRef = useRef(new Set());
+  const [ontologyCatalogState, setOntologyCatalogState] = useState({
+    loading: availableOntologies.length === 0,
+    stale: false,
+    message: '',
+  });
 
   // Get ontologies from centralized context (shared across all components)
   const { ontologies: contextOntologies } = useOntologies();
 
+  const normalizeOntologyOptions = (ontologyList = []) => {
+    const allOntologies = ontologyList.map(ont => ({
+      id: ont.ontology_id || ont.id || ont.value || ont.prefix,
+      value: ont.value || ont.ontology_id || ont.id || ont.prefix || ont.name,
+      name: ont.label || ont.ontology_name || ont.name,
+      file: ont.raw?.original_filename || ont.raw?.stored_filename || ont.name,
+      prefix: ont.prefix || ont.ontology_prefix || '',
+      uploaded_at: ont.raw?.uploaded_at || ont.raw?.uploadedAt || '',
+      source: ont.source,
+      usage_count: ont.raw?.usageCount || ont.raw?.usage_count || 0,
+      last_used: ont.raw?.lastUsed || ont.raw?.last_used || '',
+    }));
+    const byKey = new Map();
+    allOntologies.forEach(o => {
+      const key = o.prefix || o.id;
+      if (!byKey.has(key) || o.uploaded_at > (byKey.get(key).uploaded_at || '')) {
+        byKey.set(key, o);
+      }
+    });
+    const byId = new Map();
+    Array.from(byKey.values()).forEach((o) => {
+      const key = o.value || o.id || `${o.prefix}:${o.file}`;
+      if (!byId.has(key) || o.uploaded_at > (byId.get(key).uploaded_at || '')) {
+        byId.set(key, {
+          ...o,
+          optionKey: `${key}:${o.prefix || 'no-prefix'}:${o.file || 'no-file'}`,
+          optionValue: key,
+        });
+      }
+    });
+    return Array.from(byId.values());
+  };
+
   // Transform context ontologies into DataImportPipeline format
   useEffect(() => {
-    try {
-      const allOntologies = contextOntologies.map(ont => ({
-        id: ont.ontology_id || ont.id || ont.value || ont.prefix,
-        value: ont.value || ont.ontology_id || ont.id || ont.prefix || ont.name,
-        name: ont.label || ont.ontology_name || ont.name,
-        file: ont.raw?.original_filename || ont.raw?.stored_filename || ont.name,
-        prefix: ont.prefix || ont.ontology_prefix || '',
-        uploaded_at: ont.raw?.uploaded_at || ont.raw?.uploadedAt || '',
-        source: ont.source,
-        usage_count: ont.raw?.usageCount || ont.raw?.usage_count || 0,
-        last_used: ont.raw?.lastUsed || ont.raw?.last_used || '',
-      }));
-      // Deduplicate by prefix (or id when prefix empty) — keep latest uploaded_at per key
-      const byKey = new Map();
-      allOntologies.forEach(o => {
-        const key = o.prefix || o.id;
-        if (!byKey.has(key) || o.uploaded_at > (byKey.get(key).uploaded_at || '')) {
-          byKey.set(key, o);
+    const loadOntologyOptions = async () => {
+      const cachedRaw = window.localStorage.getItem(IMPORT_ONTOLOGIES_CACHE_KEY);
+      const cachedOntologies = (() => {
+        try {
+          return cachedRaw ? JSON.parse(cachedRaw) : [];
+        } catch (_err) {
+          return [];
         }
-      });
-      const byId = new Map();
-      Array.from(byKey.values()).forEach((o) => {
-        const key = o.value || o.id || `${o.prefix}:${o.file}`;
-        if (!byId.has(key) || o.uploaded_at > (byId.get(key).uploaded_at || '')) {
-          byId.set(key, {
-            ...o,
-            optionKey: `${key}:${o.prefix || 'no-prefix'}:${o.file || 'no-file'}`,
-            optionValue: key,
+      })();
+
+      try {
+        let sourceOntologies = contextOntologies;
+        if (!sourceOntologies?.length) {
+          let lastErr = null;
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+              const response = await API_METHODS.ontology.listRegistered();
+              sourceOntologies = response?.data?.ontologies || [];
+              lastErr = null;
+              break;
+            } catch (err) {
+              lastErr = err;
+              await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
+            }
+          }
+          if (lastErr) throw lastErr;
+        }
+        const normalized = normalizeOntologyOptions(sourceOntologies);
+        if (normalized.length > 0) {
+          setAvailableOntologies(normalized);
+          window.localStorage.setItem(IMPORT_ONTOLOGIES_CACHE_KEY, JSON.stringify(normalized));
+          setOntologyCatalogState({ loading: false, stale: false, message: '' });
+        } else {
+          if (cachedOntologies.length > 0) {
+            setAvailableOntologies(cachedOntologies);
+            setOntologyCatalogState({
+              loading: false,
+              stale: true,
+              message: 'Using cached ontology catalog while the latest registry data catches up.',
+            });
+          } else {
+            setOntologyCatalogState({
+              loading: true,
+              stale: false,
+              message: 'Ontology catalog is still loading.',
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to process ontologies:', err);
+        if (cachedOntologies.length > 0) {
+          setAvailableOntologies(cachedOntologies);
+          setOntologyCatalogState({
+            loading: false,
+            stale: true,
+            message: 'Using cached ontology catalog because the live registry is temporarily unavailable.',
           });
+          return;
         }
-      });
-      setAvailableOntologies(Array.from(byId.values()));
-      setError(null);
-    } catch (err) {
-      console.error('Failed to process ontologies:', err);
-      setError(`Failed to process ontologies: ${err.message}`);
-      setAvailableOntologies([]);
-    }
+        setOntologyCatalogState({
+          loading: false,
+          stale: false,
+          message: 'Ontology catalog is temporarily unavailable. Retry in a moment.',
+        });
+      }
+    };
+    setOntologyCatalogState((prev) => ({ ...prev, loading: true }));
+    loadOntologyOptions();
   }, [contextOntologies]);
 
   
@@ -139,6 +229,44 @@ export default function DataImportPipeline() {
 
     loadWorkflowOptions();
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(IMPORT_JOBS_STORAGE_KEY);
+      if (!raw) {
+        didRestoreJobsRef.current = true;
+        return;
+      }
+      const saved = JSON.parse(raw);
+      if (Array.isArray(saved.files) && saved.files.length) {
+        setFiles(saved.files);
+      }
+      if (saved.pipelineStatus && typeof saved.pipelineStatus === 'object') {
+        setPipelineStatus(saved.pipelineStatus);
+      }
+      if (Array.isArray(saved.startedFiles) && saved.startedFiles.length) {
+        setStartedFiles(new Set(saved.startedFiles));
+      }
+    } catch (restoreErr) {
+      console.warn('[import-jobs] restore failed:', restoreErr);
+    } finally {
+      didRestoreJobsRef.current = true;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!didRestoreJobsRef.current) return;
+    try {
+      const payload = {
+        files: files.map(serializeFileForPersistence).filter(Boolean),
+        pipelineStatus,
+        startedFiles: Array.from(startedFiles),
+      };
+      window.localStorage.setItem(IMPORT_JOBS_STORAGE_KEY, JSON.stringify(payload));
+    } catch (persistErr) {
+      console.warn('[import-jobs] persist failed:', persistErr);
+    }
+  }, [files, pipelineStatus, startedFiles]);
 
   useEffect(() => {
     const pending = files.find(f => !startedFiles.has(f.fileId));
@@ -458,7 +586,12 @@ export default function DataImportPipeline() {
   };
 
   const pollPipelineProgress = async (taskId, fileId) => {
-    const maxAttempts = 60;
+    const pollerKey = `${taskId}:${fileId}`;
+    if (activePollersRef.current.has(pollerKey)) {
+      return;
+    }
+    activePollersRef.current.add(pollerKey);
+    const maxAttempts = 600;
     let attempts = 0;
 
     const poll = async () => {
@@ -518,8 +651,14 @@ export default function DataImportPipeline() {
             message: data.message,
             stats: normalizedStats,
             status: data.status,
+            committing: typeof data.committing === 'boolean'
+              ? data.committing
+              : ((data.current_stage === 'ingest' || !!data.commit_phase) && data.status !== 'completed' && data.status !== 'failed'),
             error: data.error ? true : false,
             completedAt: data.status === 'completed' ? new Date().toLocaleTimeString() : null,
+            commitPhase: data.commit_phase || null,
+            batchProgress: data.batch_progress || null,
+            commitMetrics: data.commit_metrics || null,
             shaclConforms,
             shaclFile,
             artifact_manifest: data.artifact_manifest,
@@ -558,14 +697,35 @@ export default function DataImportPipeline() {
         }
 
         if (data.status === 'completed' || data.status === 'failed') {
+          activePollersRef.current.delete(pollerKey);
           return;
         }
 
         if (attempts < maxAttempts) {
           attempts++;
-          setTimeout(poll, 2000);  // Poll every 2 seconds
+          const nextDelay =
+            data.current_stage === 'ingest' || data.commit_phase
+              ? 1500
+              : 2500;
+          setTimeout(poll, nextDelay);
+        } else {
+          activePollersRef.current.delete(pollerKey);
         }
       } catch (err) {
+        if (attempts < maxAttempts) {
+          attempts++;
+          setPipelineStatus(prev => ({
+            ...prev,
+            [fileId]: {
+              ...(prev[fileId] || {}),
+              taskId,
+              message: `Waiting for service response... ${err.message}`,
+            }
+          }));
+          setTimeout(poll, 3000);
+          return;
+        }
+        activePollersRef.current.delete(pollerKey);
         setPipelineStatus(prev => ({
           ...prev,
           [fileId]: { ...prev[fileId], stage: 'error', message: err.message, error: true }
@@ -575,6 +735,24 @@ export default function DataImportPipeline() {
 
     poll();
   };
+
+  useEffect(() => {
+    if (!didRestoreJobsRef.current || resumedPersistedJobsRef.current) return;
+    const resumableJobs = files.filter((file) => {
+      const status = pipelineStatus[file.fileId];
+      return (
+        file?.taskId &&
+        startedFiles.has(file.fileId) &&
+        status &&
+        status.status !== 'completed' &&
+        status.status !== 'failed'
+      );
+    });
+    resumedPersistedJobsRef.current = true;
+    resumableJobs.forEach((file) => {
+      pollPipelineProgress(file.taskId, file.fileId);
+    });
+  }, [files, pipelineStatus, startedFiles]);
 
   const startAllImports = async () => {
     const workflow = workflowOptions.find(w => w.id === selectedWorkflow) || resolveWorkflow(selectedWorkflow);
@@ -696,7 +874,13 @@ export default function DataImportPipeline() {
       const updated = { ...prev };
       for (const [fid, status] of Object.entries(updated)) {
         if (status.taskId === taskId) {
-          updated[fid] = { ...status, committing: true, progress: 80 };
+          updated[fid] = {
+            ...status,
+            committing: true,
+            progress: 80,
+            commitPhase: 'queued',
+            message: 'Queued for Neo4j commit...',
+          };
         }
       }
       return updated;
@@ -730,6 +914,7 @@ export default function DataImportPipeline() {
                   stage: 'load',
                   backendStage: 'ingest',
                   progress: Math.max(status.progress || 80, 80),
+                  commitPhase: 'queued',
                   message: commitData.message || 'Neo4j commit queued in background...',
                 };
               }
@@ -760,6 +945,7 @@ export default function DataImportPipeline() {
                 message: 'Import completed successfully',
                 committed: true,
                 committing: false,
+                commitPhase: 'complete',
                 completedAt: new Date().toLocaleTimeString(),
                 stats: {
                   ...status.stats,
@@ -781,7 +967,12 @@ export default function DataImportPipeline() {
           const updated = { ...prev };
           for (const [fid, status] of Object.entries(updated)) {
             if (status.taskId === taskId) {
-              updated[fid] = { ...status, committing: false, commitError: err.message };
+              updated[fid] = {
+                ...status,
+                committing: false,
+                commitPhase: 'error',
+                commitError: err.message,
+              };
             }
           }
           return updated;
@@ -792,6 +983,9 @@ export default function DataImportPipeline() {
 
   const removeFile = (fileId) => {
     const fileStatus = pipelineStatus[fileId];
+    if (fileStatus?.taskId) {
+      activePollersRef.current.delete(`${fileStatus.taskId}:${fileId}`);
+    }
     
     // Cancel task if in progress
     if (fileStatus?.taskId && fileStatus?.status === 'processing') {
@@ -807,9 +1001,10 @@ export default function DataImportPipeline() {
     });
   };
 
-  const getStatusBadge = (stage, progress, error, backendStage, committing, commitError) => {
-    if (committing) {
-      return { text: 'Loading to Neo4j...', bg: '#FFF8E1', color: '#F57F17' };
+  const getStatusBadge = (stage, progress, error, backendStage, committing, commitError, commitPhase) => {
+    if (committing || (commitPhase && commitPhase !== 'complete' && commitPhase !== 'error')) {
+      const phaseLabel = getCommitPhaseLabel(commitPhase);
+      return { text: phaseLabel ? `Loading · ${phaseLabel}` : 'Loading to Neo4j...', bg: '#FFF8E1', color: '#F57F17' };
     }
     if (commitError) {
       return { text: 'Commit Failed', bg: '#FFEBEE', color: C.red };
@@ -818,7 +1013,7 @@ export default function DataImportPipeline() {
       return { text: 'Error', bg: '#FFEBEE', color: C.red };
     }
     // 'preview' backend stage = pipeline parsed OK, waiting for user to commit to Neo4j
-    if (backendStage === 'preview' || ((stage === 'verify' || stage === 'load') && progress >= 75 && progress < 100)) {
+    if (backendStage === 'preview' || (stage === 'verify' && progress >= 75 && progress < 100)) {
       return { text: 'Ready to Load', bg: '#E8F5E9', color: C.green };
     }
     if (progress === 100) {
@@ -846,6 +1041,38 @@ export default function DataImportPipeline() {
     if (size <= 400 * 1024 * 1024) return 16 * 60 * 1000;
     return 20 * 60 * 1000;
   };
+
+  const getCommitPhaseLabel = (phase) => {
+    switch (phase) {
+      case 'prepare':
+        return 'Preparing';
+      case 'nodes':
+        return 'Writing entities';
+      case 'relationships':
+        return 'Writing relationships';
+      case 'ontology-linking':
+        return 'Linking ontology';
+      case 'verification':
+        return 'Verifying';
+      case 'complete':
+        return 'Complete';
+      case 'queued':
+        return 'Queued';
+      case 'error':
+        return 'Attention needed';
+      default:
+        return '';
+    }
+  };
+
+  const formatBatchProgress = (batchProgress) => {
+    if (!batchProgress?.total_batches) return '';
+    const scope = batchProgress.scope ? `${batchProgress.scope} ` : '';
+    return `${scope}${batchProgress.batch_index || 0}/${batchProgress.total_batches}`;
+  };
+
+  const isCommitInFlight = (status = {}) =>
+    !!(status.committing || (status.commitPhase && status.commitPhase !== 'complete' && status.commitPhase !== 'error'));
 
   const activeWorkflow = useMemo(
     () => workflowOptions.find(w => w.id === selectedWorkflow) || workflowOptions[0] || resolveWorkflow(selectedWorkflow),
@@ -902,6 +1129,31 @@ export default function DataImportPipeline() {
       return count + 1;
     }, 0),
     [files, startedFiles, fileStatusIndex]
+  );
+  const jobSummary = useMemo(() => {
+    return files.reduce((summary, file) => {
+      const status = fileStatusIndex.get(file.fileId) || {};
+      if (!startedFiles.has(file.fileId)) {
+        summary.pending += 1;
+        return summary;
+      }
+      if (status.error || status.commitError || status.status === 'failed') {
+        summary.failed += 1;
+        return summary;
+      }
+      if (status.committed || status.status === 'completed' || status.progress === 100) {
+        summary.completed += 1;
+        return summary;
+      }
+      summary.active += 1;
+      return summary;
+    }, { active: 0, completed: 0, failed: 0, pending: 0 });
+  }, [files, startedFiles, fileStatusIndex]);
+  const activeJobs = useMemo(
+    () => files
+      .map((file) => ({ file, status: fileStatusIndex.get(file.fileId) || {} }))
+      .filter(({ file, status }) => startedFiles.has(file.fileId) && status.status !== 'completed' && status.status !== 'failed'),
+    [files, fileStatusIndex, startedFiles]
   );
   const stageFileCounts = useMemo(() => {
     const counts = new Map(activePipelineStages.map(stage => [stage.id, 0]));
@@ -1179,7 +1431,7 @@ export default function DataImportPipeline() {
                 borderRadius: '3px',
               }}
             >
-              <option value="">Select ontology</option>
+              <option value="">{availableOntologies.length > 0 ? 'Select ontology' : (ontologyCatalogState.loading ? 'Loading ontology catalog...' : 'Ontology catalog unavailable')}</option>
               {availableOntologies.map(o => (
                 <option key={o.optionKey || o.optionValue || o.id} value={o.optionValue || o.id}>
                   {o.name || o.id || o.optionValue}
@@ -1202,7 +1454,7 @@ export default function DataImportPipeline() {
                     borderRadius: '3px',
                   }}
                 >
-                  <option value="">Select target</option>
+                  <option value="">{availableOntologies.length > 0 ? 'Select target' : (ontologyCatalogState.loading ? 'Loading ontology catalog...' : 'Ontology catalog unavailable')}</option>
                   {availableOntologies
                     .filter(o => (o.optionValue || o.id || o.prefix) !== workflowOntologyId)
                     .map(o => (
@@ -1263,6 +1515,93 @@ export default function DataImportPipeline() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      <div style={{
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: '4px',
+        padding: '8px 10px',
+        marginBottom: '10px',
+      }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gap: '8px',
+          marginBottom: activeJobs.length > 0 ? '10px' : 0,
+        }}>
+          {[
+            { label: 'Active jobs', value: jobSummary.active, color: C.primary },
+            { label: 'Completed', value: jobSummary.completed, color: C.green },
+            { label: 'Needs attention', value: jobSummary.failed, color: C.red },
+            { label: 'Queued', value: jobSummary.pending, color: C.orange },
+          ].map((item) => (
+            <div
+              key={item.label}
+              style={{
+                minWidth: 0,
+                border: `1px solid ${C.border}`,
+                borderRadius: '4px',
+                padding: '8px',
+                background: C.bg,
+              }}
+            >
+              <div style={{ fontSize: '10px', color: C.textSec, marginBottom: '4px' }}>{item.label}</div>
+              <div style={{ fontSize: '18px', fontWeight: 700, color: item.color }}>{item.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {activeJobs.length > 0 && (
+          <div style={{
+            display: 'grid',
+            gap: '8px',
+          }}>
+            {activeJobs.slice(0, 3).map(({ file, status }) => {
+              const batchLabel = formatBatchProgress(status.batchProgress);
+              const phaseLabel = getCommitPhaseLabel(status.commitPhase) || getStageLabel(status.stage);
+              return (
+                <div
+                  key={`job-${file.fileId}`}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(220px, 1.6fr) minmax(0, 1fr) minmax(0, 1fr)',
+                    gap: '10px',
+                    alignItems: 'center',
+                    border: `1px solid ${C.border}`,
+                    borderRadius: '4px',
+                    padding: '8px 10px',
+                    background: '#FBFCFE',
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {file.name}
+                    </div>
+                    <div style={{ fontSize: '10px', color: C.textSec, marginTop: '2px' }}>
+                      {status.message || 'Monitoring background job...'}
+                    </div>
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '10px', color: C.textSec }}>Commit phase</div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary }}>
+                      {phaseLabel || getStageLabel(status.stage)}
+                      {batchLabel ? ` · ${batchLabel}` : ''}
+                    </div>
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '10px', color: C.textSec }}>Counts</div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary }}>
+                      {(status.commitMetrics?.nodes_written || status.stats?.entities_found || 0).toLocaleString()} nodes
+                      {' · '}
+                      {(status.commitMetrics?.relationships_written || status.stats?.relationships_found || 0).toLocaleString()} rels
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1589,13 +1928,25 @@ export default function DataImportPipeline() {
           }}
           title="Choose the ontology this import should link to."
         >
-          <option key="no-target" value="">Select ontology</option>
+          <option key="no-target" value="">
+            {availableOntologies.length > 0 ? 'Select ontology' : (ontologyCatalogState.loading ? 'Loading ontology catalog...' : 'Ontology catalog unavailable')}
+          </option>
           {availableOntologies.map(o => (
             <option key={o.optionKey || o.optionValue || o.id} value={o.optionValue || o.id}>
               {o.name || o.id || o.optionValue}{o.prefix ? ` [${o.prefix}]` : ''}
             </option>
           ))}
         </select>
+        {ontologyCatalogState.message && (
+          <div style={{
+            fontSize: '9px',
+            color: ontologyCatalogState.stale ? C.orange : C.textSec,
+            marginLeft: '4px',
+            whiteSpace: 'nowrap',
+          }}>
+            {ontologyCatalogState.message}
+          </div>
+        )}
         <label style={{
           fontSize: '10px',
           fontWeight: '600',
@@ -1682,10 +2033,10 @@ export default function DataImportPipeline() {
         {canRunSelectedWorkflow && selectedWorkflow === 'ontology.create' && mappingFileTypeContext !== 'express' && 'Schema and ontology files are registered through metadata capture. EXPRESS/XSD-style schemas create ontology structure; they do not create STEP instance graphs.'}
         {canRunSelectedWorkflow && mappingFileTypeContext === 'express' && 'EXPRESS files create ontology/schema structure from ISO 10303 definitions. Use STEP/STP/STPX when you need product instance data.'}
         {canRunSelectedWorkflow && mappingFileTypeContext === 'step' && 'STEP/STP/STPX files create an instance graph. AP242-MBD3D alignment is applied automatically when available.'}
-        {selectedWorkflow === 'instance.import' && 'Pick a target ontology first, then choose a mapping if the file type needs one.'}
-        {selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'csv' || mappingFileTypeContext === 'excel') && 'CSV/Excel require a mapping and a target ontology before start.'}
-        {selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'json' || mappingFileTypeContext === 'xml') && 'JSON/XML can auto-generate OWL/TTL if no mapping is selected, but the target ontology still needs to be chosen.'}
-        {selectedWorkflow === 'instance.import' && mappingFileTypeContext === 'ontology' && 'OWL/RDF/TTL are imported directly as ontology content (as-is).'}
+        {selectedWorkflow === 'instance.import' && 'Pick a target ontology first, then choose a mapping if the file type needs one. '}
+        {selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'csv' || mappingFileTypeContext === 'excel') && 'CSV/Excel require a mapping and a target ontology before start. '}
+        {selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'json' || mappingFileTypeContext === 'xml') && 'JSON/XML can auto-generate OWL/TTL if no mapping is selected, but the target ontology still needs to be chosen. '}
+        {selectedWorkflow === 'instance.import' && mappingFileTypeContext === 'ontology' && 'OWL/RDF/TTL are imported directly as ontology content (as-is). '}
         {selectedWorkflow === 'instance.import' && !mappingFileTypeContext && 'Select files to see file-type specific alignment guidance.'}
         {requiredMappings.length > 0 && (
           <span> Required mapping for current file type: {requiredMappings.join(', ')}.</span>
@@ -1763,7 +2114,7 @@ export default function DataImportPipeline() {
               const fileId = file.fileId;
               const status = fileStatusIndex.get(fileId) || { stage: 'upload', progress: 0 };
               const isStarted = startedFiles.has(fileId);
-              const statusBadge = getStatusBadge(status.stage, status.progress, status.error, status.backendStage, status.committing, status.commitError);
+              const statusBadge = getStatusBadge(status.stage, status.progress, status.error, status.backendStage, status.committing, status.commitError, status.commitPhase);
 
               return (
                 <div
@@ -1781,14 +2132,28 @@ export default function DataImportPipeline() {
                 >
                   {/* File name */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div title={file.name} style={{
-                      fontWeight: '500',
-                      color: C.textPrimary,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}>
-                      {file.name}
+                    <div style={{ minWidth: 0 }}>
+                      <div title={file.name} style={{
+                        fontWeight: '500',
+                        color: C.textPrimary,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {file.name}
+                      </div>
+                      {(status.message || file.persisted) && (
+                        <div style={{
+                          fontSize: '9px',
+                          color: C.textSec,
+                          marginTop: '2px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {file.persisted && !file.fileObj ? 'Persisted job monitor' : status.message}
+                        </div>
+                      )}
                     </div>
                     {file.ontologyName && (
                       <span style={{
@@ -1883,20 +2248,25 @@ export default function DataImportPipeline() {
                     color: C.textSec,
                     fontWeight: '500',
                     fontSize: '11px',
-                    whiteSpace: 'nowrap',
                   }}
                   title={status.stats?.ontology_mapping ? `Ontology: ${status.stats.ontology_mapping === 'auto' ? 'Auto-detected from ' + (status.stats.mapping_type || 'file format') : status.stats.ontology_mapping}` : 'No ontology selected'}>
-                      {getStageLabel(status.stage)}
-                      {status.stage === 'map' && status.stats?.ontology_mapping && (
-                        <span style={{ fontSize: '9px', color: C.orange, marginLeft: '4px' }}>
-                          ({status.stats.ontology_mapping === 'auto' ? 'Auto' : status.stats.ontology_mapping})
-                        </span>
-                      )}
-                      {/* SHACL status indicator */}
-                      {typeof status.shaclConforms !== 'undefined' && status.shaclConforms !== null && (
-                        <span style={{ fontSize: '10px', fontWeight: '700', marginLeft: '8px', color: status.shaclConforms ? C.green : C.orange }}>
-                          {status.shaclConforms ? 'SHACL OK' : 'SHACL Failed'}
-                        </span>
+                      <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {getStageLabel(status.stage)}
+                        {status.stage === 'map' && status.stats?.ontology_mapping && (
+                          <span style={{ fontSize: '9px', color: C.orange, marginLeft: '4px' }}>
+                            ({status.stats.ontology_mapping === 'auto' ? 'Auto' : status.stats.ontology_mapping})
+                          </span>
+                        )}
+                        {typeof status.shaclConforms !== 'undefined' && status.shaclConforms !== null && (
+                          <span style={{ fontSize: '10px', fontWeight: '700', marginLeft: '8px', color: status.shaclConforms ? C.green : C.orange }}>
+                            {status.shaclConforms ? 'SHACL OK' : 'SHACL Failed'}
+                          </span>
+                        )}
+                      </div>
+                      {(status.commitPhase || status.batchProgress) && (
+                        <div style={{ fontSize: '9px', color: C.textSec, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {[getCommitPhaseLabel(status.commitPhase), formatBatchProgress(status.batchProgress)].filter(Boolean).join(' · ')}
+                        </div>
                       )}
                   </div>
 
@@ -1931,22 +2301,28 @@ export default function DataImportPipeline() {
                         onClick={() => {
                           startImport(file);
                         }}
-                        disabled={!canRunSelectedWorkflow}
+                        disabled={!canRunSelectedWorkflow || (!file.fileObj && file.persisted)}
                         style={{
                           padding: '6px 10px',
-                          background: canRunSelectedWorkflow ? C.primary : C.textMuted,
+                          background: (canRunSelectedWorkflow && (file.fileObj || !file.persisted)) ? C.primary : C.textMuted,
                           color: '#fff',
                           border: 'none',
                           borderRadius: '4px',
                           fontSize: '10px',
                           fontWeight: '600',
-                          cursor: canRunSelectedWorkflow ? 'pointer' : 'not-allowed',
-                          opacity: canRunSelectedWorkflow ? 1 : 0.6,
+                          cursor: (canRunSelectedWorkflow && (file.fileObj || !file.persisted)) ? 'pointer' : 'not-allowed',
+                          opacity: (canRunSelectedWorkflow && (file.fileObj || !file.persisted)) ? 1 : 0.6,
                           display: 'flex',
                           alignItems: 'center',
                           gap: '4px',
                         }}
-                        title={canRunSelectedWorkflow ? 'Start workflow for this file' : 'Selected workflow is not connected to backend services yet'}
+                        title={
+                          !file.fileObj && file.persisted
+                            ? 'This restored entry can be monitored, but it cannot be restarted without re-attaching the source file.'
+                            : canRunSelectedWorkflow
+                              ? 'Start workflow for this file'
+                              : 'Selected workflow is not connected to backend services yet'
+                        }
                       >
                         <Play size={12} /> {status.error ? 'Retry' : 'Start'}
                       </button>
@@ -1972,7 +2348,7 @@ export default function DataImportPipeline() {
                         <RefreshCw size={12} /> Processing
                       </button>
                     )}
-                    {(isStarted || !!status.taskId) && (status.stage === 'verify' || status.stage === 'load' || status.backendStage === 'preview' || status.status === 'completed') && !status.error && !status.committed && !status.committing && (
+                    {(isStarted || !!status.taskId) && (status.stage === 'verify' || status.backendStage === 'preview') && !status.error && !status.committed && !isCommitInFlight(status) && (
                       <button
                         onClick={() => {
                           setConfirmingImport(status.taskId);
@@ -2008,7 +2384,7 @@ export default function DataImportPipeline() {
                         <Upload size={12} /> Load to Neo4j
                       </button>
                     )}
-                    {status.committing && (
+                    {isCommitInFlight(status) && (
                       <button
                         disabled
                         style={{
@@ -2026,7 +2402,7 @@ export default function DataImportPipeline() {
                           gap: '4px',
                         }}
                       >
-                        <Loader2 size={12} /> Loading to Neo4j...
+                        <Loader2 size={12} /> {getCommitPhaseLabel(status.commitPhase) ? `${getCommitPhaseLabel(status.commitPhase)}...` : 'Loading to Neo4j...'}
                       </button>
                     )}
                     {status.progress === 100 && !status.error && status.committed && (

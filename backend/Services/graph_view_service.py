@@ -34,6 +34,15 @@ def _relationship_payload(rel: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _fragment(value: Any) -> str:
+    raw = str(value or "")
+    if "#" in raw:
+        return raw.rsplit("#", 1)[-1]
+    if "/" in raw:
+        return raw.rstrip("/").rsplit("/", 1)[-1]
+    return raw
+
+
 class GraphViewService:
     """Read-only graph view generation using the official Neo4j driver."""
 
@@ -199,6 +208,155 @@ class GraphViewService:
                 "relationships": len(rel_list),
             },
         }
+
+    @classmethod
+    def _reasoning_projection_graph(cls, prefix: str) -> Dict[str, Any]:
+        try:
+            try:
+                from backend.Services.ontology_taxonomy_service import OntologyTaxonomyService
+            except Exception:
+                from Services.ontology_taxonomy_service import OntologyTaxonomyService
+
+            reasoning = OntologyTaxonomyService.get_reasoning(prefix)
+        except Exception as exc:  # pragma: no cover - defensive runtime fallback
+            logger.warning("Reasoning projection failed for prefix=%s: %s", prefix, exc)
+            return {"nodes": [], "relationships": [], "counts": {"nodes": 0, "relationships": 0}}
+
+        nodes: Dict[str, Dict[str, Any]] = {}
+        relationships: Dict[str, Dict[str, Any]] = {}
+
+        def ensure_node(
+            *,
+            iri: str,
+            label: str = "",
+            node_labels: Optional[List[str]] = None,
+            properties: Optional[Dict[str, Any]] = None,
+        ) -> None:
+            if not iri:
+                return
+            payload = {
+                "elementId": iri,
+                "labels": node_labels or ["OntologyClass"],
+                "properties": {
+                    "uri": iri,
+                    "name": label or _fragment(iri),
+                    "label": label or _fragment(iri),
+                    "prefix": prefix,
+                    "ontology_prefix": prefix,
+                    **(properties or {}),
+                },
+            }
+            existing = nodes.get(iri)
+            if not existing:
+                nodes[iri] = payload
+                return
+            merged_labels = sorted(set((existing.get("labels") or []) + (payload.get("labels") or [])))
+            existing["labels"] = merged_labels
+            existing_props = existing.get("properties") or {}
+            incoming_props = payload.get("properties") or {}
+            for key, value in incoming_props.items():
+                if value not in ("", None):
+                    existing_props[key] = value
+            existing["properties"] = existing_props
+
+        def ensure_ref_node(ref: Dict[str, Any], fallback_labels: Optional[List[str]] = None) -> str:
+            iri = str(ref.get("iri") or ref.get("uri") or "").strip()
+            if not iri:
+                return ""
+            label = str(ref.get("label") or ref.get("name") or _fragment(iri)).strip()
+            if iri.startswith("http://www.w3.org/2001/XMLSchema#"):
+                ensure_node(
+                    iri=iri,
+                    label=label,
+                    node_labels=["Datatype"],
+                    properties={"namespace": "http://www.w3.org/2001/XMLSchema#"},
+                )
+            else:
+                ensure_node(
+                    iri=iri,
+                    label=label,
+                    node_labels=fallback_labels or ["OntologyClass"],
+                )
+            return iri
+
+        def ensure_relationship(rel_type: str, start: str, end: str, properties: Optional[Dict[str, Any]] = None) -> None:
+            if not start or not end:
+                return
+            rel_id = f"{rel_type}:{start}:{end}"
+            relationships[rel_id] = {
+                "elementId": rel_id,
+                "type": rel_type,
+                "start": start,
+                "end": end,
+                "properties": {"ontology_prefix": prefix, **(properties or {})},
+            }
+
+        for cls_row in reasoning.get("classes", []):
+            iri = str(cls_row.get("iri") or cls_row.get("uri") or "").strip()
+            ensure_node(
+                iri=iri,
+                label=str(cls_row.get("label") or _fragment(iri)).strip(),
+                node_labels=["OntologyClass"],
+                properties={
+                    "comment": cls_row.get("definition") or "",
+                },
+            )
+
+        for prop_row in reasoning.get("object_properties", []):
+            iri = str(prop_row.get("iri") or prop_row.get("uri") or "").strip()
+            ensure_node(
+                iri=iri,
+                label=str(prop_row.get("label") or _fragment(iri)).strip(),
+                node_labels=["ObjectProperty"],
+                properties={"comment": prop_row.get("definition") or ""},
+            )
+            for domain_ref in prop_row.get("domain", []):
+                target = ensure_ref_node(domain_ref, ["OntologyClass"])
+                ensure_relationship("DOMAIN", iri, target)
+            for range_ref in prop_row.get("range", []):
+                target = ensure_ref_node(range_ref, ["OntologyClass"])
+                ensure_relationship("RANGE", iri, target)
+
+        for prop_row in reasoning.get("datatype_properties", []):
+            iri = str(prop_row.get("iri") or prop_row.get("uri") or "").strip()
+            ensure_node(
+                iri=iri,
+                label=str(prop_row.get("label") or _fragment(iri)).strip(),
+                node_labels=["DatatypeProperty"],
+                properties={"comment": prop_row.get("definition") or ""},
+            )
+            for domain_ref in prop_row.get("domain", []):
+                target = ensure_ref_node(domain_ref, ["OntologyClass"])
+                ensure_relationship("DOMAIN", iri, target)
+            for range_ref in prop_row.get("range", []):
+                target = ensure_ref_node(range_ref, ["Datatype"])
+                ensure_relationship("RANGE", iri, target)
+
+        for edge in reasoning.get("subclass_edges", []):
+            child = str(edge.get("source") or "").strip()
+            parent = str(edge.get("target") or "").strip()
+            ensure_ref_node({"iri": child, "label": edge.get("source_label")}, ["OntologyClass"])
+            ensure_ref_node({"iri": parent, "label": edge.get("target_label")}, ["OntologyClass"])
+            ensure_relationship("SUBCLASS_OF", child, parent)
+
+        graph = {
+            "nodes": sorted(nodes.values(), key=lambda item: (
+                str((item.get("labels") or [""])[0]),
+                str((item.get("properties") or {}).get("name") or ""),
+                str(item.get("elementId") or ""),
+            )),
+            "relationships": sorted(relationships.values(), key=lambda item: (
+                str(item.get("type") or ""),
+                str(item.get("start") or ""),
+                str(item.get("end") or ""),
+            )),
+        }
+        graph["counts"] = {
+            "nodes": len(graph["nodes"]),
+            "relationships": len(graph["relationships"]),
+        }
+        graph["view"] = {"type": "ontology-reasoning", "prefix": prefix}
+        return graph
 
     @classmethod
     def _ontology_view_rows(cls, prefix: str, limit: int) -> List[Dict[str, Any]]:
@@ -896,6 +1054,17 @@ RETURN count(res) AS count
                 if augmented:
                     rows = cls._ontology_view_rows(prefix, limit)
         graph = cls.rows_to_graph(rows)
+        if prefix:
+            graph_rel_types = {rel.get("type") for rel in graph.get("relationships", [])}
+            graph_property_nodes = sum(
+                1
+                for node in graph.get("nodes", [])
+                if "ObjectProperty" in (node.get("labels") or []) or "DatatypeProperty" in (node.get("labels") or [])
+            )
+            if graph_property_nodes == 0 or not ({"DOMAIN", "RANGE", "SUBCLASS_OF"} & graph_rel_types):
+                reasoning_graph = cls._reasoning_projection_graph(prefix)
+                if reasoning_graph.get("counts", {}).get("nodes", 0) > graph.get("counts", {}).get("nodes", 0):
+                    graph = reasoning_graph
         graph["view"] = {"type": "ontology", "prefix": prefix}
         return graph
 

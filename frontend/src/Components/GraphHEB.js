@@ -286,7 +286,9 @@ const createNodeSearchFunction = () => {
     if (!searchTerm || searchTerm.length < 2) return nodes;
     
     const lowerSearchTerm = searchTerm.toLowerCase();
-    return nodes.filter(node => {
+    const matches = [];
+    nodes.forEach((node) => {
+      let bestScore = -1;
       const valuesToScan = [
         node?.name,
         node?.label,
@@ -298,8 +300,14 @@ const createNodeSearchFunction = () => {
       ];
 
       for (const value of valuesToScan) {
-        if (typeof value === 'string' && value.toLowerCase().includes(lowerSearchTerm)) {
-          return true;
+        if (typeof value !== 'string') continue;
+        const normalized = value.toLowerCase();
+        if (normalized === lowerSearchTerm) {
+          bestScore = Math.max(bestScore, 400);
+        } else if (normalized.startsWith(lowerSearchTerm)) {
+          bestScore = Math.max(bestScore, 300);
+        } else if (normalized.includes(lowerSearchTerm)) {
+          bestScore = Math.max(bestScore, 220);
         }
       }
 
@@ -310,15 +318,25 @@ const createNodeSearchFunction = () => {
         for (const value of Object.values(current)) {
           if (value == null) continue;
           if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-            if (String(value).toLowerCase().includes(lowerSearchTerm)) {
-              return true;
+            const normalized = String(value).toLowerCase();
+            if (normalized === lowerSearchTerm) {
+              bestScore = Math.max(bestScore, 180);
+            } else if (normalized.startsWith(lowerSearchTerm)) {
+              bestScore = Math.max(bestScore, 140);
+            } else if (normalized.includes(lowerSearchTerm)) {
+              bestScore = Math.max(bestScore, 100);
             }
           } else if (Array.isArray(value)) {
             for (const item of value) {
               if (item == null) continue;
               if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
-                if (String(item).toLowerCase().includes(lowerSearchTerm)) {
-                  return true;
+                const normalized = String(item).toLowerCase();
+                if (normalized === lowerSearchTerm) {
+                  bestScore = Math.max(bestScore, 160);
+                } else if (normalized.startsWith(lowerSearchTerm)) {
+                  bestScore = Math.max(bestScore, 120);
+                } else if (normalized.includes(lowerSearchTerm)) {
+                  bestScore = Math.max(bestScore, 90);
                 }
               } else if (typeof item === 'object') {
                 stack.push(item);
@@ -329,9 +347,19 @@ const createNodeSearchFunction = () => {
           }
         }
       }
-
-      return false;
+      if (bestScore >= 0) {
+        matches.push({ node, score: bestScore });
+      }
     });
+
+    return matches
+      .sort((left, right) => {
+        if (right.score !== left.score) return right.score - left.score;
+        const leftName = String(left.node?.properties?.name || left.node?.name || left.node?.label || left.node?.elementId || '');
+        const rightName = String(right.node?.properties?.name || right.node?.name || right.node?.label || right.node?.elementId || '');
+        return leftName.localeCompare(rightName);
+      })
+      .map((entry) => entry.node);
   };
 };
 
@@ -3059,26 +3087,28 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
         if (isOntologyViewQuery) {
           const searchData = fullDataset.nodes.length > 0 ? fullDataset : graphData;
-          const nodes = nodeSearchFunction(searchData.nodes, debouncedSearchQuery);
-          const nodeIds = new Set(nodes.map(node => node.elementId));
-          const matchedLinks = (searchData.links || []).filter((link) => {
-            const sourceId = getLinkEndpointId(link.source);
-            const targetId = getLinkEndpointId(link.target);
-            return (
-              (sourceId && targetId && nodeIds.has(sourceId) && nodeIds.has(targetId)) ||
-              searchLinkMatches(link, debouncedSearchQuery)
-            );
-          });
-          const linkNodeIds = new Set();
-          matchedLinks.forEach((link) => {
-            const sourceId = getLinkEndpointId(link.source);
-            const targetId = getLinkEndpointId(link.target);
-            if (sourceId) linkNodeIds.add(sourceId);
-            if (targetId) linkNodeIds.add(targetId);
-          });
-          const mergedNodeIds = new Set([...nodeIds, ...linkNodeIds]);
-          const mergedNodes = searchData.nodes.filter((node) => mergedNodeIds.has(node.elementId));
-          normalized = { nodes: mergedNodes, links: matchedLinks };
+          const matchedNodes = nodeSearchFunction(searchData.nodes, debouncedSearchQuery);
+          const matchedNodeIds = new Set(matchedNodes.map((node) => node.elementId));
+
+          if (matchedNodes.length > 0) {
+            const connectingLinks = (searchData.links || []).filter((link) => {
+              const sourceId = getLinkEndpointId(link.source);
+              const targetId = getLinkEndpointId(link.target);
+              return sourceId && targetId && matchedNodeIds.has(sourceId) && matchedNodeIds.has(targetId);
+            });
+            normalized = { nodes: matchedNodes, links: connectingLinks };
+          } else {
+            const matchedLinks = (searchData.links || []).filter((link) => searchLinkMatches(link, debouncedSearchQuery));
+            const linkNodeIds = new Set();
+            matchedLinks.forEach((link) => {
+              const sourceId = getLinkEndpointId(link.source);
+              const targetId = getLinkEndpointId(link.target);
+              if (sourceId) linkNodeIds.add(sourceId);
+              if (targetId) linkNodeIds.add(targetId);
+            });
+            const endpointNodes = searchData.nodes.filter((node) => linkNodeIds.has(node.elementId));
+            normalized = { nodes: endpointNodes, links: matchedLinks };
+          }
         } else {
           const response = isContextualQuery
             ? await apiClient.get(API.graph.contextualSubgraph, {
