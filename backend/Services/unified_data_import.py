@@ -1031,7 +1031,7 @@ class FileParser:
         import tempfile
         from pathlib import Path as _Path
         try:
-            from .plmxml_parser import parse_plmxml_file
+            from .plmxml_parser import parse_plmxml_file, _normalize_ref
 
             with tempfile.NamedTemporaryFile(delete=False, suffix='.plmxml') as tmp:
                 tmp.write(file_content)
@@ -1043,50 +1043,224 @@ class FileParser:
 
             rows: List[Dict[str, Any]] = []
             raw_rels: List[Dict[str, Any]] = []
+            rel_seen = set()
+
+            def append_row(row: Dict[str, Any]) -> None:
+                if row.get('id') and not row.get('name'):
+                    row['name'] = row['id']
+                rows.append(row)
+
+            def append_rel(from_id: str, to_id: str, rel_type: str, **props: Any) -> None:
+                from_id = _normalize_ref(str(from_id or ''))
+                to_id = _normalize_ref(str(to_id or ''))
+                if not from_id or not to_id or from_id == to_id:
+                    return
+                safe_type = str(rel_type or 'RELATED_TO')
+                key = (from_id, to_id, safe_type)
+                if key in rel_seen:
+                    return
+                rel_seen.add(key)
+                payload = {
+                    'from_props': {'id': from_id},
+                    'to_props': {'id': to_id},
+                    'type': safe_type,
+                }
+                if props:
+                    payload['properties'] = props
+                raw_rels.append(payload)
 
             for pid, part in doc.parts.items():
-                rows.append({
+                append_row({
                     'element_type': 'Part', 'id': pid,
                     'name': part.name, 'part_number': part.part_number,
                     'revision': part.revision, 'description': part.description,
                     'part_type': part.part_type,
+                    'master_ref': part.master_ref,
                 })
+                if part.master_ref:
+                    append_rel(pid, part.master_ref, 'MASTER_REF')
 
             for rid, req in doc.requirements.items():
-                rows.append({
+                append_row({
                     'element_type': 'Requirement', 'id': rid,
                     'name': req.name, 'catalogue_id': req.catalogue_id,
                     'revision': req.revision,
                     'body_text': (req.body_text or '')[:500],
+                    'master_ref': req.master_ref,
+                    'dataset_ref': req.dataset_ref,
                 })
+                if req.master_ref:
+                    append_rel(rid, req.master_ref, 'MASTER_REF')
+                if req.dataset_ref:
+                    append_rel(rid, req.dataset_ref, 'DATASET_REF')
+                if req.revision_id and req.revision_id != rid:
+                    append_row({
+                        'element_type': 'RequirementRevision', 'id': req.revision_id,
+                        'name': req.name, 'catalogue_id': req.catalogue_id,
+                        'revision': req.revision,
+                        'body_text': (req.body_text or '')[:500],
+                        'master_ref': req.master_ref,
+                        'dataset_ref': req.dataset_ref,
+                        'requirement_ref': rid,
+                    })
+                    append_rel(req.revision_id, rid, 'REVISION_OF')
+                    if req.master_ref:
+                        append_rel(req.revision_id, req.master_ref, 'MASTERREF')
+                    if req.dataset_ref:
+                        append_rel(req.revision_id, req.dataset_ref, 'DATASET_REF')
 
             for proc_id, proc in doc.processes.items():
-                rows.append({
+                append_row({
                     'element_type': 'Process', 'id': proc_id,
                     'name': proc.name, 'process_type': proc.process_type,
                     'description': proc.description,
                 })
+                for resource_id in proc.resources:
+                    append_rel(proc_id, resource_id, 'RESOURCE_REF')
+
+            for view_id, view in doc.product_views.items():
+                append_row({
+                    'element_type': 'ProductView', 'id': view_id,
+                    'name': view.name, 'view_type': view.view_type,
+                    'structure_type': view.structure_type,
+                    'product_ref': view.product_ref,
+                })
+                if view.product_ref:
+                    append_rel(view_id, view.product_ref, 'PRODUCT_REF')
+                for root_ref in view.root_refs:
+                    append_rel(view_id, root_ref, 'HAS_ROOT')
 
             for inst in doc.product_instances:
-                rows.append({
+                append_row({
                     'element_type': 'ProductInstance', 'id': inst.id,
                     'name': inst.name, 'part_ref': inst.part_ref,
-                    'parent_ref': inst.parent_ref, 'quantity': str(inst.quantity),
+                    'parent_ref': inst.parent_ref, 'transform_ref': inst.transform_ref,
+                    'quantity': str(inst.quantity),
                 })
-                if inst.parent_ref and inst.part_ref:
-                    raw_rels.append({'from_props': {'id': inst.parent_ref},
-                                     'to_props': {'id': inst.part_ref}, 'type': 'CONTAINS'})
+                if inst.parent_ref:
+                    append_rel(inst.parent_ref, inst.id, 'HAS_CHILD_INSTANCE')
+                if inst.part_ref:
+                    append_rel(inst.id, inst.part_ref, 'PART_REF')
+                if inst.transform_ref:
+                    append_rel(inst.id, inst.transform_ref, 'TRANSFORM_REF')
+                for occurrence_ref in inst.occurrence_refs:
+                    append_rel(inst.id, occurrence_ref, 'OCCURRENCE_REF')
+                for user_data_ref in inst.user_data_refs:
+                    append_rel(inst.id, user_data_ref, 'USER_DATA_REF')
+                for app_ref in inst.application_refs:
+                    append_rel(inst.id, app_ref, 'APPLICATION_REF')
+
+            for view_id, view in doc.process_views.items():
+                append_row({
+                    'element_type': 'ProcessView', 'id': view_id,
+                    'name': view.name,
+                })
+                for root_process_ref in view.root_process_refs:
+                    append_rel(view_id, root_process_ref, 'HAS_ROOT_PROCESS')
+                for product_ref in view.product_refs:
+                    append_rel(view_id, product_ref, 'PRODUCT_REF')
+
+            for proc_inst in doc.process_instances:
+                append_row({
+                    'element_type': 'ProcessInstance', 'id': proc_inst.id,
+                    'process_ref': proc_inst.process_ref,
+                })
+                if proc_inst.process_ref:
+                    append_rel(proc_inst.id, proc_inst.process_ref, 'PROCESS_REF')
+                for predecessor_ref in proc_inst.predecessor_refs:
+                    append_rel(proc_inst.id, predecessor_ref, 'PREDECESSOR_REF')
+                for product_instance_ref in proc_inst.product_instance_refs:
+                    append_rel(proc_inst.id, product_instance_ref, 'PRODUCT_INSTANCE_REF')
+
+            for notice_id, notice in doc.change_notices.items():
+                append_row({
+                    'element_type': 'ChangeNotice', 'id': notice_id,
+                    'name': notice.name, 'change_type': notice.change_type,
+                    'status': notice.status, 'description': notice.description,
+                })
+                for affected_id in notice.affected_items:
+                    append_rel(notice_id, affected_id, 'AFFECTED_ITEM')
+
+            for revision_id, revision in doc.revisions.items():
+                append_row({
+                    'element_type': 'Revision', 'id': revision_id,
+                    'revision_id': revision.revision_id,
+                    'revision_type': revision.revision_type,
+                    'base_ref': revision.base_ref,
+                    'description': revision.description,
+                })
+                if revision.base_ref:
+                    append_rel(revision_id, revision.base_ref, 'BASE_REF')
+                for notice_ref in revision.change_notice_refs:
+                    append_rel(revision_id, notice_ref, 'CHANGE_NOTICE_REF')
+
+            for transform_id, transform in doc.transforms.items():
+                append_row({
+                    'element_type': 'Transform', 'id': transform_id,
+                    'matrix': ' '.join(str(v) for v in transform.matrix),
+                })
+
+            for userdata_id, userdata in doc.user_data.items():
+                append_row({
+                    'element_type': 'UserData', 'id': userdata_id,
+                    'name': userdata.title or userdata_id,
+                    'user_data_type': userdata.type,
+                    'value_count': str(len(userdata.values)),
+                })
+
+            for document_id, document in doc.documents.items():
+                append_row({
+                    'element_type': 'Document', 'id': document_id,
+                    'name': document.name,
+                    'document_type': document.document_type,
+                    'revision': document.revision,
+                    'description': document.description,
+                })
+                for file_ref in document.external_file_refs:
+                    append_rel(document_id, file_ref, 'EXTERNAL_FILE_REF')
+                for userdata_ref in document.user_data_refs:
+                    append_rel(document_id, userdata_ref, 'USER_DATA_REF')
+
+            for file_id, external_file in doc.external_files.items():
+                append_row({
+                    'element_type': 'ExternalFile', 'id': file_id,
+                    'name': external_file.name,
+                    'location': external_file.location,
+                    'format': external_file.format,
+                    'mime_type': external_file.mime_type,
+                })
 
             for rel in doc.general_relations:
+                append_row({
+                    'element_type': 'GeneralRelation', 'id': rel.id,
+                    'name': rel.tc_label or rel.sub_type or rel.id,
+                    'sub_type': rel.sub_type,
+                    'tc_label': rel.tc_label,
+                    'related_count': str(len(rel.related_refs)),
+                })
                 for target_id in rel.related_refs:
-                    raw_rels.append({'from_props': {'id': rel.id},
-                                     'to_props': {'id': target_id},
-                                     'type': rel.sub_type or 'RELATED_TO'})
+                    append_rel(rel.id, target_id, rel.sub_type or 'RELATED_TO', tc_label=rel.tc_label)
 
-            # Extract namespace from file content (first 512 bytes is enough)
-            import defusedxml.ElementTree as _ET2
-            _root2 = _ET2.fromstring(file_content[:8192])
-            _ns_uri = _root2.tag[1:_root2.tag.index('}')] if _root2.tag.startswith('{') else _root2.get('xmlns', '')
+            for form_id, form in doc.forms.items():
+                append_row({
+                    'element_type': 'Form', 'id': form_id,
+                    'name': form.name, 'sub_type': form.sub_type,
+                    'sub_class': form.sub_class,
+                    'description': form.description,
+                })
+
+            for generic_id, generic in doc.generic_entities.items():
+                append_row({
+                    'element_type': generic.tag, 'id': generic_id,
+                    'name': generic.name,
+                    'description': generic.description,
+                    'sub_type': generic.subtype,
+                })
+
+            for rel in doc.relationships:
+                append_rel(rel.source_id, rel.target_id, rel.relationship_type, **(rel.properties or {}))
+
+            _ns_uri = str(doc.parse_stats.get('namespace') or '')
             _ns_prefix = _derive_prefix_from_namespace(_ns_uri)
 
             columns = list(rows[0].keys()) if rows else []
@@ -1103,6 +1277,17 @@ class FileParser:
                 'requirements_count': len(doc.requirements),
                 'processes_count': len(doc.processes),
                 'bom_links': len(doc.product_instances),
+                'elements_parsed': doc.parse_stats.get('elements_parsed', 0),
+                'classes_created': doc.parse_stats.get('classes_created', 0),
+                'individuals_created': doc.parse_stats.get('individuals_created', len(rows)),
+                'relationships_created': len(raw_rels),
+                'unresolved_references': doc.parse_stats.get('unresolved_references', 0),
+                'duplicate_ids': doc.parse_stats.get('duplicate_ids', 0),
+                'skipped_elements': doc.parse_stats.get('skipped_elements', 0),
+                'malformed_elements': doc.parse_stats.get('malformed_elements', 0),
+                'parse_ingestion_time': doc.parse_stats.get('ingestion_time', 0),
+                'unresolved_reference_details': doc.unresolved_references[:200],
+                'duplicate_id_values': doc.duplicate_ids[:200],
                 '_xmi_relationships': raw_rels,  # reused by commit_import relationship writer
             }
             return rows, stats
@@ -1205,6 +1390,27 @@ class FileParser:
                         'args': args_preview,
                         'ref_ids': list(entity.ref_ids),
                     }
+                    if entity.source_identifier:
+                        row['source_identifier'] = entity.source_identifier
+                        row['source_identifier_kind'] = entity.source_identifier_kind
+                    if entity.text_value:
+                        row['text_value'] = entity.text_value
+                    if entity.parent_step_id is not None:
+                        row['parent_step_id'] = f'#{entity.parent_step_id}'
+                    if entity.unresolved_refs:
+                        row['unresolved_refs'] = list(entity.unresolved_refs)
+                    if entity.attributes:
+                        reserved_keys = {
+                            'id', 'entity_type', 'args', 'ref_ids', 'import_row_key',
+                            'source_identifier', 'source_identifier_kind',
+                            'text_value', 'parent_step_id', 'unresolved_refs',
+                        }
+                        for attr_key, attr_value in entity.attributes.items():
+                            safe_key = str(attr_key).strip()
+                            if not safe_key:
+                                continue
+                            target_key = f'xml_{safe_key}' if safe_key in reserved_keys else safe_key
+                            row[target_key] = attr_value
                     # G-B: extract name/description for AP242 semantic entity types.
                     # Canonical pattern from requirements/src/engines/ap242_bom_mapper.py.
                     if entity.entity_type in _AP242_NAMED_ENTITIES:
@@ -1218,7 +1424,9 @@ class FileParser:
                         ref_map[entity.step_id] = entity.ref_ids
 
                 id_seen: Dict[str, int] = {}
+                source_identifier_seen: Dict[str, int] = {}
                 duplicate_id_count = 0
+                unresolved_reference_total = 0
                 for row in rows:
                     source_id = str(row.get('id') or '')
                     id_seen[source_id] = id_seen.get(source_id, 0) + 1
@@ -1226,6 +1434,14 @@ class FileParser:
                     if occurrence > 1:
                         duplicate_id_count += 1
                     row['import_row_key'] = source_id if occurrence == 1 else f'{source_id}::{occurrence}'
+                    unresolved_reference_total += len(row.get('unresolved_refs') or [])
+                    source_identifier = str(row.get('source_identifier') or '')
+                    if source_identifier:
+                        source_identifier_seen[source_identifier] = source_identifier_seen.get(source_identifier, 0) + 1
+
+                duplicate_source_identifier_count = sum(
+                    1 for count in source_identifier_seen.values() if count > 1
+                )
 
                 all_columns = sorted({key for row in rows for key in row.keys()})
                 stats = {
@@ -1239,6 +1455,9 @@ class FileParser:
                     'columns': all_columns if rows else ['import_row_key', 'id', 'entity_type', 'args'],
                     'entity_types': type_counts,
                     'duplicate_source_id_count': duplicate_id_count,
+                    'duplicate_source_identifier_count': duplicate_source_identifier_count,
+                    'unresolved_reference_count': unresolved_reference_total,
+                    'elements_parsed': len(rows),
                     '_step_ref_map': ref_map,
                 }
                 return rows, stats
@@ -1557,6 +1776,7 @@ class Neo4jImporter:
             'queries_executed': 0,
             'nodes_created': 0,
             'relationships_created': 0,
+            'matched_rows': 0,
             'errors': []
         }
 
@@ -1574,6 +1794,12 @@ class Neo4jImporter:
                         stats['queries_executed'] += 1
                         if isinstance(result, list):
                             stats['nodes_created'] += len(result)
+                            for record in result:
+                                if isinstance(record, dict) and record.get('matched_rows') is not None:
+                                    try:
+                                        stats['matched_rows'] += int(record.get('matched_rows') or 0)
+                                    except (TypeError, ValueError):
+                                        pass
                         if callable(batch_callback):
                             batch_callback({
                                 'batch_index': (_i // _BATCH) + 1,
@@ -1587,11 +1813,75 @@ class Neo4jImporter:
                     stats['queries_executed'] += 1
                     if isinstance(result, list):
                         stats['nodes_created'] += len(result)
+                        for record in result:
+                            if isinstance(record, dict) and record.get('matched_rows') is not None:
+                                try:
+                                    stats['matched_rows'] += int(record.get('matched_rows') or 0)
+                                except (TypeError, ValueError):
+                                    pass
             except Exception as e:
                 logger.error(f"Query execution error: {str(e)}", exc_info=True)
                 stats['errors'].append(str(e))
 
         return stats
+
+    @staticmethod
+    def validate_indexes_and_constraints(
+        schema: Dict[str, Any],
+        extra_indexes: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        try:
+            from core.graph import query_with_timeout as _query_with_timeout
+        except ModuleNotFoundError:
+            from ..core.graph import query_with_timeout as _query_with_timeout
+
+        existing_indexes = _query_with_timeout(
+            "SHOW INDEXES YIELD name, type, entityType, labelsOrTypes, properties, state "
+            "RETURN name, type, entityType, labelsOrTypes, properties, state"
+        ) or []
+        existing_constraints = _query_with_timeout(
+            "SHOW CONSTRAINTS YIELD name, type, entityType, labelsOrTypes, properties "
+            "RETURN name, type, entityType, labelsOrTypes, properties"
+        ) or []
+
+        existing_signatures = set()
+        for record in existing_indexes:
+            if str(record.get('entityType', '')).upper() != 'NODE':
+                continue
+            labels = tuple(sorted(record.get('labelsOrTypes') or []))
+            properties = tuple(record.get('properties') or [])
+            idx_type = str(record.get('type', 'RANGE')).upper()
+            existing_signatures.add((idx_type, labels, properties))
+
+        required_indexes: List[Dict[str, Any]] = list(schema.get('indexes', []))
+        if extra_indexes:
+            required_indexes.extend(extra_indexes)
+
+        seen_required = set()
+        deduped_required: List[Dict[str, Any]] = []
+        for idx in required_indexes:
+            idx_type = str(idx.get('type', 'range')).upper()
+            label = str(idx.get('label', ''))
+            properties = tuple(str(p) for p in (idx.get('properties') or []) if p)
+            signature = (idx_type, (label,), properties)
+            if not label or not properties or signature in seen_required:
+                continue
+            seen_required.add(signature)
+            deduped_required.append(idx)
+
+        missing_indexes = [
+            idx for idx in deduped_required
+            if (str(idx.get('type', 'range')).upper(), (str(idx.get('label', '')),), tuple(str(p) for p in idx.get('properties', [])))
+            not in existing_signatures
+        ]
+
+        return {
+            'existing_index_count': len(existing_indexes),
+            'existing_constraint_count': len(existing_constraints),
+            'required_index_count': len(deduped_required),
+            'missing_index_count': len(missing_indexes),
+            'missing_indexes': missing_indexes,
+        }
 
 
 # ========== Main Service ==========
@@ -2164,15 +2454,22 @@ class UnifiedDataImportService:
             'xsi:type',
             'class',
             'category',
-            'name',
             'part_type',
         ):
             value = row.get(key)
             if not value:
                 continue
-            normalized = cls._ontology_match_key(value)
-            if normalized:
-                candidates.append(normalized)
+            for variant in (str(value), str(value).split(':')[-1], str(value).split('#')[-1]):
+                normalized = cls._ontology_match_key(variant)
+                if normalized:
+                    candidates.append(normalized)
+
+        if not candidates:
+            value = row.get('name')
+            if value:
+                normalized = cls._ontology_match_key(value)
+                if normalized:
+                    candidates.append(normalized)
 
         unique_candidates: List[str] = []
         seen = set()
@@ -2184,7 +2481,7 @@ class UnifiedDataImportService:
         return unique_candidates
 
     @classmethod
-    def _load_ontology_class_lookup(cls, ontology_prefix: str) -> Dict[str, Dict[str, Any]]:
+    def _load_ontology_class_lookup(cls, ontology_prefix: str) -> Dict[str, List[Dict[str, Any]]]:
         """Return normalized AP242/selected ontology class names keyed for STEP linking."""
         raw_prefix = str(ontology_prefix or '').strip()
         prefix = raw_prefix.lower()
@@ -2210,6 +2507,7 @@ class UnifiedDataImportService:
            ))
         RETURN elementId(c) AS element_id,
                coalesce(c.name, c.label, c.id, c.uri) AS name,
+               coalesce(c.uri, '') AS uri,
                coalesce(c.prefix, c.ontology_prefix, c.ontology_id, '') AS prefix
         """
         try:
@@ -2229,19 +2527,28 @@ class UnifiedDataImportService:
             logger.warning(f"Ontology class lookup skipped for prefix '{ontology_prefix}': {exc}")
             return {}
 
-        lookup: Dict[str, Dict[str, Any]] = {}
+        lookup: Dict[str, List[Dict[str, Any]]] = {}
         for record in records:
             name = record.get('name')
             element_id = record.get('element_id')
             if not name or not element_id:
                 continue
-            key = cls._ontology_match_key(name)
-            if key and key not in lookup:
-                lookup[key] = {
+            uri = str(record.get('uri') or '')
+            aliases = [str(name)]
+            if uri:
+                aliases.append(uri.rsplit('#', 1)[-1].rsplit('/', 1)[-1])
+            for alias in aliases:
+                key = cls._ontology_match_key(alias)
+                if not key:
+                    continue
+                lookup.setdefault(key, []).append({
                     'element_id': element_id,
                     'class_name': str(name),
                     'prefix': record.get('prefix') or ontology_prefix,
-                }
+                    'normalized': key,
+                    'tokens': [token for token in re.split(r'[^a-zA-Z0-9]+', str(name).lower()) if len(token) > 1],
+                    'is_generic': str(name).strip().lower() in {'part', 'class', 'entity', 'item', 'object', 'resource', 'thing', 'type', 'value'},
+                })
         return lookup
 
     @classmethod
@@ -2251,6 +2558,7 @@ class UnifiedDataImportService:
         blocks the FastAPI event loop.
         """
         import re as _re
+        commit_started_at = time.perf_counter()
         rows = task.get('parsed_rows', [])
 
         # 🔒 DATA LOSS PREVENTION: Validate data integrity before commit
@@ -2271,6 +2579,7 @@ class UnifiedDataImportService:
             'link_batch_size': IMPORT_LINK_BATCH_SIZE,
             'nodes_written': 0,
             'relationships_written': 0,
+            'relationships_skipped': 0,
             'instance_links_created': 0,
             'ontology_classes_matched': 0,
             'phase': 'prepare',
@@ -2302,6 +2611,11 @@ class UnifiedDataImportService:
         result = {'queries_executed': 0, 'nodes_created': 0,
                   'relationships_created': 0, 'instance_links_created': 0,
                   'ontology_classes_matched': 0, 'errors': []}
+        result['classes_created'] = len([nd for nd in schema.get('nodes', []) if nd.get('label')])
+        result['individuals_created'] = len(rows)
+        result['unresolved_references'] = int((_stats.get('unresolved_references') or 0))
+        result['duplicate_ids'] = int((_stats.get('duplicate_ids') or 0))
+        result['relationships_skipped'] = 0
 
         def _sync_metrics(
             phase: str,
@@ -2309,23 +2623,62 @@ class UnifiedDataImportService:
             message: str,
             batch_progress: Optional[Dict[str, Any]] = None,
         ) -> None:
+            current_progress = int(task.get('progress') or 0)
+            stable_progress = max(current_progress, int(progress))
             task['commit_metrics'] = {
                 **(task.get('commit_metrics') or {}),
                 'phase': phase,
                 'nodes_written': result['nodes_created'],
                 'relationships_written': result['relationships_created'],
+                'relationships_skipped': result['relationships_skipped'],
                 'instance_links_created': result['instance_links_created'],
                 'ontology_classes_matched': result['ontology_classes_matched'],
             }
             cls._update_commit_state(
                 task_id,
                 task,
-                progress=progress,
+                progress=stable_progress,
                 message=message,
                 phase=phase,
                 batch_progress=batch_progress,
                 commit_metrics=task['commit_metrics'],
             )
+
+        merge_support_indexes: List[Dict[str, Any]] = []
+        seen_merge_signatures = set()
+        for node_def in schema.get('nodes', []):
+            label = node_def.get('label')
+            merge_keys = [str(k) for k in (node_def.get('mergeKeys') or []) if k]
+            if not label or not merge_keys:
+                continue
+            signature = (str(label), tuple(merge_keys))
+            if signature in seen_merge_signatures:
+                continue
+            seen_merge_signatures.add(signature)
+            merge_support_indexes.append({
+                'type': 'range',
+                'name': f"idx_merge_{str(label).replace(':', '_')}_{'_'.join(merge_keys)}",
+                'label': label,
+                'properties': merge_keys,
+            })
+
+        _sync_metrics('prepare', 83, 'Validating Neo4j indexes and constraints...')
+        schema_validation = Neo4jImporter.validate_indexes_and_constraints(schema, merge_support_indexes)
+        result['schema_validation'] = schema_validation
+        if schema_validation.get('missing_indexes'):
+            missing_index_queries = DataTransformer.create_indexes(schema_validation['missing_indexes'])
+            if missing_index_queries:
+                logger.info(
+                    "Task %s: creating %s missing Neo4j indexes before ingest",
+                    task_id,
+                    len(schema_validation['missing_indexes']),
+                )
+                idx_result = Neo4jImporter.execute_cypher(missing_index_queries)
+                result['queries_executed'] += idx_result.get('queries_executed', 0)
+                result['errors'].extend(idx_result.get('errors', []))
+                result['schema_validation']['created_index_count'] = len(schema_validation['missing_indexes'])
+        else:
+            result['schema_validation']['created_index_count'] = 0
 
         # ── Node queries ────────────────────────────────────────────────────
         _sync_metrics('nodes', 84, 'Writing entity batches to Neo4j...')
@@ -2368,26 +2721,23 @@ class UnifiedDataImportService:
             result['nodes_created'] += len(node_rows)
             result['errors'].extend(node_result.get('errors', []))
 
-        # ── Index queries ────────────────────────────────────────────────────
-        index_queries = DataTransformer.create_indexes(schema.get('indexes', []))
-        if index_queries:
-            idx_result = Neo4jImporter.execute_cypher(index_queries)
-            result['queries_executed'] += idx_result.get('queries_executed', 0)
-            result['errors'].extend(idx_result.get('errors', []))
-
         # ── XMI relationship edges ───────────────────────────────────────────
         xmi_rels = task.get('_xmi_relationships', [])
         schema_labels = [nd.get('label', '') for nd in schema.get('nodes', []) if nd.get('label')]
         _label_hint = f":`{schema_labels[0]}`" if len(schema_labels) == 1 else ''
+        row_id_set = {str(r.get('id')) for r in rows if r.get('id') is not None}
         if xmi_rels:
             rel_by_type: Dict[str, List[Dict[str, str]]] = {}
             for rel in xmi_rels:
-                from_id = (rel.get('from_props') or {}).get('id', '')
-                to_id = (rel.get('to_props') or {}).get('id', '')
+                from_id = str((rel.get('from_props') or {}).get('id', '') or '')
+                to_id = str((rel.get('to_props') or {}).get('id', '') or '')
                 raw_type = rel.get('type') or 'RELATED_TO'
                 safe_type = _re.sub(r'[^A-Z0-9_]', '_', raw_type.upper()).strip('_') or 'RELATED_TO'
                 if from_id and to_id:
-                    rel_by_type.setdefault(safe_type, []).append({'from_id': from_id, 'to_id': to_id})
+                    if from_id in row_id_set and to_id in row_id_set:
+                        rel_by_type.setdefault(safe_type, []).append({'from_id': from_id, 'to_id': to_id})
+                    else:
+                        result['relationships_skipped'] += 1
             _sync_metrics('relationships', 92, 'Creating relationship batches...')
             for rel_type, rel_rows in rel_by_type.items():
                 rel_cypher = f"""
@@ -2395,6 +2745,7 @@ class UnifiedDataImportService:
                 MATCH (a{_label_hint} {{id: row.from_id, import_id: row.import_id}})
                 MATCH (b{_label_hint} {{id: row.to_id, import_id: row.import_id}})
                 MERGE (a)-[:`{rel_type}`]->(b)
+                RETURN count(*) AS matched_rows
                 """
                 try:
                     rel_rows_scoped = [{**rr, 'import_id': task_id} for rr in rel_rows]
@@ -2420,7 +2771,18 @@ class UnifiedDataImportService:
                     if rel_result.get('errors'):
                         logger.warning(f"Relationship write errors for type {rel_type}: {rel_result['errors']}")
                     else:
-                        result['relationships_created'] += len(rel_rows)
+                        matched_rows = int(rel_result.get('matched_rows') or 0)
+                        skipped_rows = max(0, len(rel_rows) - matched_rows)
+                        result['relationships_created'] += matched_rows
+                        result['relationships_skipped'] += skipped_rows
+                        if skipped_rows:
+                            logger.warning(
+                                "Task %s: relationship type %s resolved %s/%s rows",
+                                task_id,
+                                rel_type,
+                                matched_rows,
+                                len(rel_rows),
+                            )
                 except Exception as rel_err:
                     logger.warning(f"Relationship write skipped for type {rel_type}: {rel_err}")
 
@@ -2438,6 +2800,7 @@ class UnifiedDataImportService:
             MATCH (a{_label_hint} {{import_row_key: row.from_key, import_id: row.import_id}})
             MATCH (b{_label_hint} {{import_row_key: row.to_id, import_id: row.import_id}})
             MERGE (a)-[:REFERENCES {{target_source_id: row.to_id}}]->(b)
+            RETURN count(*) AS matched_rows
             """
             try:
                 ref_rows_scoped = [{**rr, 'import_id': task_id} for rr in step_ref_rows]
@@ -2461,8 +2824,11 @@ class UnifiedDataImportService:
                     ),
                 )
                 if not step_rel_result.get('errors'):
-                    result['relationships_created'] += len(step_ref_rows)
-                    logger.info(f"Task {task_id}: STEP — wrote {len(step_ref_rows)} row-key REFERENCES edges")
+                    matched_rows = int(step_rel_result.get('matched_rows') or 0)
+                    skipped_rows = max(0, len(step_ref_rows) - matched_rows)
+                    result['relationships_created'] += matched_rows
+                    result['relationships_skipped'] += skipped_rows
+                    logger.info(f"Task {task_id}: STEP — wrote {matched_rows} row-key REFERENCES edges")
                 else:
                     logger.warning(f"Task {task_id}: STEP ref write errors: {step_rel_result['errors'][:3]}")
             except Exception as step_rel_err:
@@ -2478,6 +2844,7 @@ class UnifiedDataImportService:
             MATCH (a{_label_hint} {{id: row.from_id, import_id: row.import_id}})
             MATCH (b{_label_hint} {{id: row.to_id, import_id: row.import_id}})
             MERGE (a)-[:REFERENCES]->(b)
+            RETURN count(*) AS matched_rows
             """
             try:
                 ref_rows_scoped = [{**rr, 'import_id': task_id} for rr in ref_rows]
@@ -2501,96 +2868,66 @@ class UnifiedDataImportService:
                     ),
                 )
                 if not step_rel_result.get('errors'):
-                    result['relationships_created'] += len(ref_rows)
-                    logger.info(f"Task {task_id}: STEP — wrote {len(ref_rows)} REFERENCES edges")
+                    matched_rows = int(step_rel_result.get('matched_rows') or 0)
+                    skipped_rows = max(0, len(ref_rows) - matched_rows)
+                    result['relationships_created'] += matched_rows
+                    result['relationships_skipped'] += skipped_rows
+                    logger.info(f"Task {task_id}: STEP — wrote {matched_rows} REFERENCES edges")
                 else:
                     logger.warning(f"Task {task_id}: STEP ref write errors: {step_rel_result['errors'][:3]}")
             except Exception as step_rel_err:
                 logger.warning(f"Task {task_id}: STEP reference edges skipped: {step_rel_err}")
 
-        # ── Semantic links to ontology classes for mapped instance imports ───
-        if task.get('file_type') in {
-            FileType.STEP.value,
-            FileType.STPX.value,
-            FileType.PLMXML.value,
-            FileType.XML.value,
-            FileType.JSON.value,
-        }:
-            class_lookup = cls._load_ontology_class_lookup(_ontology_prefix)
-            link_rows: List[Dict[str, Any]] = []
-            seen_link_keys = set()
-            for row in rows:
-                row_key = row.get('import_row_key') or row.get('id')
-                if not row_key:
-                    continue
-                for candidate_key in cls._collect_ontology_link_candidates(row):
-                    match = class_lookup.get(candidate_key)
-                    if not match:
-                        continue
-                    unique_key = (row_key, match['element_id'])
-                    if unique_key in seen_link_keys:
-                        continue
-                    seen_link_keys.add(unique_key)
-                    link_rows.append({
-                        'import_row_key': row_key,
-                        'import_id': task_id,
-                        'class_element_id': match['element_id'],
-                        'class_name': match['class_name'],
-                        'mapping': _ontology_prefix,
-                    })
+        # ── STPX parent-child hierarchy edges ──────────────────────────────
+        parent_rows = [
+            {'child_id': r.get('id'), 'parent_id': r.get('parent_step_id')}
+            for r in rows
+            if r.get('id') and r.get('parent_step_id')
+        ]
+        if parent_rows:
+            parent_cypher = f"""
+            UNWIND $rows AS row
+            MATCH (child{_label_hint} {{id: row.child_id, import_id: row.import_id}})
+            MATCH (parent{_label_hint} {{id: row.parent_id, import_id: row.import_id}})
+            MERGE (parent)-[:PARENT_OF]->(child)
+            RETURN count(*) AS matched_rows
+            """
+            try:
+                parent_rows_scoped = [{**rr, 'import_id': task_id} for rr in parent_rows]
+                parent_batch_size = max(100, IMPORT_LINK_BATCH_SIZE)
+                parent_total_batches = max(1, (len(parent_rows_scoped) + parent_batch_size - 1) // parent_batch_size)
+                parent_result = Neo4jImporter.execute_cypher(
+                    [parent_cypher],
+                    parent_rows_scoped,
+                    batch_size=parent_batch_size,
+                    batch_callback=lambda batch, _total=parent_total_batches, _rows_total=len(parent_rows_scoped): _sync_metrics(
+                        'relationships',
+                        95,
+                        f"Linking STPX parent hierarchy batch {batch.get('batch_index', 1)} of {_total}...",
+                        {
+                            'scope': 'STPX hierarchy',
+                            'batch_index': batch.get('batch_index', 1),
+                            'total_batches': _total,
+                            'rows_processed': batch.get('rows_processed', 0),
+                            'rows_total': _rows_total,
+                        },
+                    ),
+                )
+                if not parent_result.get('errors'):
+                    matched_rows = int(parent_result.get('matched_rows') or 0)
+                    skipped_rows = max(0, len(parent_rows) - matched_rows)
+                    result['relationships_created'] += matched_rows
+                    result['relationships_skipped'] += skipped_rows
+                    logger.info(f"Task {task_id}: STPX — wrote {matched_rows} PARENT_OF edges")
+                else:
+                    logger.warning(f"Task {task_id}: STPX hierarchy write errors: {parent_result['errors'][:3]}")
+            except Exception as parent_err:
+                logger.warning(f"Task {task_id}: STPX parent hierarchy edges skipped: {parent_err}")
 
-            result['ontology_classes_matched'] = len({r['class_element_id'] for r in link_rows})
-            _sync_metrics('ontology-linking', 96, 'Linking imported instances to ontology classes...')
-            if link_rows:
-                link_cypher = f"""
-                UNWIND $rows AS row
-                MATCH (n{_label_hint} {{import_row_key: row.import_row_key, import_id: row.import_id}})
-                MATCH (c:OntologyClass)
-                WHERE elementId(c) = row.class_element_id
-                MERGE (n)-[rel:INSTANCE_OF]->(c)
-                SET rel.mapping = row.mapping,
-                    rel.class_name = row.class_name,
-                    rel.import_id = row.import_id
-                RETURN count(rel) AS linked
-                """
-                try:
-                    try:
-                        from core.graph import query_with_timeout as _query_with_timeout
-                    except ModuleNotFoundError:
-                        from ..core.graph import query_with_timeout as _query_with_timeout
-                    _BATCH = max(100, IMPORT_LINK_BATCH_SIZE)
-                    linked_total = 0
-                    for _i in range(0, len(link_rows), _BATCH):
-                        _batch = link_rows[_i:_i + _BATCH]
-                        linked_result = _query_with_timeout(
-                            link_cypher,
-                            {'rows': _batch},
-                            timeout=IMPORT_COMMIT_QUERY_TIMEOUT,
-                        ) or []
-                        result['queries_executed'] += 1
-                        if linked_result and isinstance(linked_result[0], dict):
-                            linked_total += int(linked_result[0].get('linked') or 0)
-                        result['instance_links_created'] = linked_total
-                        _sync_metrics(
-                            'ontology-linking',
-                            96 + int(2 * (min(_i + len(_batch), len(link_rows)) / max(1, len(link_rows)))),
-                            f"Linking ontology instances batch {(_i // _BATCH) + 1} of {max(1, (len(link_rows) + _BATCH - 1) // _BATCH)}...",
-                            {
-                                'scope': 'INSTANCE_OF',
-                                'batch_index': (_i // _BATCH) + 1,
-                                'total_batches': max(1, (len(link_rows) + _BATCH - 1) // _BATCH),
-                                'rows_processed': min(_i + len(_batch), len(link_rows)),
-                                'rows_total': len(link_rows),
-                            },
-                        )
-                    result['instance_links_created'] = linked_total
-                    result['relationships_created'] += linked_total
-                    logger.info(
-                        f"Task {task_id}: linked {linked_total} imported instances "
-                        f"to {result['ontology_classes_matched']} ontology classes"
-                    )
-                except Exception as link_err:
-                    logger.warning(f"Task {task_id}: INSTANCE_OF ontology linking skipped: {link_err}")
+        # Semantic ontology linking is intentionally deferred to the
+        # `instance.link` semantic bridge workflow so import remains structural,
+        # faster, and easier to reason about for end users.
+        _sync_metrics('verification', 96, 'Structural import complete. Semantic linking is available in Link instances to ontology.')
 
         # ── ownerId → OWNED_BY relationship edges (XMI ownership hierarchy) ──
         owner_rows = [
@@ -2604,6 +2941,7 @@ class UnifiedDataImportService:
             MATCH (child {id: row.child_id, import_id: row.import_id})
             MATCH (parent {id: row.parent_id, import_id: row.import_id})
             MERGE (child)-[:OWNED_BY]->(parent)
+            RETURN count(*) AS matched_rows
             """
             _BATCH = max(100, IMPORT_LINK_BATCH_SIZE)
             _sync_metrics('verification', 98, 'Finalizing ownership and verification links...')
@@ -2615,8 +2953,17 @@ class UnifiedDataImportService:
                         from core.graph import query_with_timeout as _query_with_timeout
                     except ModuleNotFoundError:
                         from ..core.graph import query_with_timeout as _query_with_timeout
-                    _query_with_timeout(owner_cypher, {'rows': _batch_scoped}, timeout=IMPORT_COMMIT_QUERY_TIMEOUT)
-                    result['relationships_created'] += len(_batch)
+                    _owner_result = _query_with_timeout(owner_cypher, {'rows': _batch_scoped}, timeout=IMPORT_COMMIT_QUERY_TIMEOUT) or []
+                    matched_rows = 0
+                    if isinstance(_owner_result, list):
+                        for _record in _owner_result:
+                            if isinstance(_record, dict):
+                                try:
+                                    matched_rows += int(_record.get('matched_rows') or 0)
+                                except (TypeError, ValueError):
+                                    pass
+                    result['relationships_created'] += matched_rows
+                    result['relationships_skipped'] += max(0, len(_batch) - matched_rows)
                 except Exception as _own_err:
                     logger.warning(f"Task {task_id}: OWNED_BY batch {_i // _BATCH}: {_own_err}")
 
@@ -2625,6 +2972,7 @@ class UnifiedDataImportService:
 
         task['current_stage'] = ImportStage.INGEST.value
         task['status'] = ImportStatus.COMPLETED.value
+        result['ingestion_time'] = round(time.perf_counter() - commit_started_at, 6)
         task['result'] = result
         task['completed_at'] = datetime.now().isoformat()
         task['committing'] = False

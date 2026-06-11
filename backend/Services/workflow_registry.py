@@ -38,11 +38,11 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
         "category": "Mapping",
         "execution_surface": "artifact",
         "inputs": "Existing graph plus ontology",
-        "outputs": "Mapping candidates, confidence report, link review file",
+        "outputs": "Mapping candidates, applied ontology links, confidence report",
         "status": "artifact_report",
         "execution": "Artifact workflow",
         "prerequisite": "Run an import first, then select ontology",
-        "writes_to_neo4j": False,
+        "writes_to_neo4j": True,
         "retains_artifacts": True,
     },
     {

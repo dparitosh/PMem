@@ -92,6 +92,9 @@ def _inspect_with_owlready(ttl_str: str, stem: str) -> Dict[str, Any]:
             "engine": "owlready2",
             "status": "unavailable",
             "message": "owlready2 is not installed or not importable in this environment.",
+            "summary": {},
+            "diagnostics": [],
+            "ontology_iri": "",
         }
 
     tmp_path: Optional[Path] = None

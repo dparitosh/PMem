@@ -18,6 +18,7 @@ export default function DataGridWidget({
   pagination = null,
   paginationPageSize = 20,
   minGridHeight = null,
+  onRowClicked = null,
 }) {
   const usePagination = pagination ?? rows.length > paginationPageSize;
   const defaultColDef = useMemo(() => ({
@@ -63,6 +64,7 @@ export default function DataGridWidget({
             animateRows={false}
             rowHeight={36}
             headerHeight={38}
+            onRowClicked={onRowClicked ? (event) => onRowClicked(event.data, event) : undefined}
           />
         </div>
       )}

@@ -627,6 +627,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const timeoutsRef = useRef(new Set()); // Track active timeouts for cleanup
   const lastCenteredSearchRef = useRef('');
   const previousSearchQueryRef = useRef('');
+  const searchQueryRef = useRef('');
   const userInteractedWithGraphRef = useRef(false);
   const suppressNodeClickRef = useRef(false);
 
@@ -1066,6 +1067,37 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const [selectedStepPart, setSelectedStepPart] = useState('ALL');
   const [stepPartsLoading, setStepPartsLoading] = useState(false);
   const [stepPartsError, setStepPartsError] = useState(null);
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
+
+  const isSearchSessionActive = useCallback(() => Boolean((searchQueryRef.current || '').trim()), []);
+
+  const syncVisibleGraph = useCallback((dataSet, options = {}) => {
+    const {
+      updateInitial = false,
+      preserveSearchSession = isSearchSessionActive(),
+    } = options;
+
+    const normalized = normalizeGraphDataset(dataSet);
+
+    startTransition(() => {
+      if (updateInitial) {
+        setInitialData(normalized);
+      }
+      setGraphData(normalized);
+      setFullDataset(normalized);
+      setData(normalized);
+
+      if (!preserveSearchSession) {
+        setFilteredData(normalized);
+        if (setSearchResults) {
+          setSearchResults(normalized.nodes);
+        }
+      }
+    });
+  }, [isSearchSessionActive, setData, setSearchResults]);
+
   // Performance: Debounced search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300); // 300ms delay
   // Performance: Memoized search function
@@ -2970,13 +3002,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         if (dataSet.nodes.length > 0) {
           logger.render(`[OK] Data processed successfully: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
           if (!cancelled) {
-            startTransition(() => {
-              setData(dataSet);
-              setGraphData(dataSet);
-              setFilteredData(dataSet);
-              setFullDataset(dataSet);
-              setInitialData(dataSet);
-            });
+            syncVisibleGraph(dataSet, { updateInitial: true });
           }
         } else {
           logger.render('[WARN] Graph overview returned no nodes');
@@ -3028,12 +3054,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           });
           const dataSet = normalizeGraphDataset(graphResponse.data);
           if (dataSet.nodes.length > 0) {
-            startTransition(() => {
-              setData(dataSet);
-              setGraphData(dataSet);
-              setFilteredData(dataSet);
-              setFullDataset(dataSet);
-            });
+            syncVisibleGraph(dataSet);
           }
         }
       } catch (err) {
@@ -3044,7 +3065,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // Check health every 30 seconds
     const healthCheckInterval = setInterval(checkHealth, 30000);
     return () => clearInterval(healthCheckInterval);
-  }, [graphData.nodes.length, setData]);
+  }, [graphData.nodes.length, syncVisibleGraph]);
 
  
   // Performance: Optimized search with debouncing and caching
@@ -3272,11 +3293,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     if (graphScope === 'ALL') {
       // Reset to initial full graph
       setOntologyGraphMessage('');
-      setFilteredData(initialData);
-      setGraphData(initialData);
-      setFullDataset(initialData);
-      setData(initialData);
-      if (setSearchResults) setSearchResults(initialData.nodes);
+      syncVisibleGraph(initialData, { preserveSearchSession: false });
       setStepParts([]);
       setSelectedStepPart('ALL');
       return;
@@ -3334,20 +3351,12 @@ const getPrimaryNodeLabel = useCallback((d) => {
         } else {
           setOntologyGraphMessage('');
         }
-        setFilteredData(dataSet);
-        setGraphData(dataSet);
-        setFullDataset(dataSet);
-        setData(dataSet);
-        if (setSearchResults) setSearchResults(dataSet.nodes);
+        syncVisibleGraph(dataSet);
         logger.render(`[ONTOLOGY] Loaded ${graphScope}: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
       } else {
         const empty = { nodes: [], links: [] };
         setOntologyGraphMessage(response.data?.message || response.data?.error || 'Neo4j query returned zero records.');
-        setFilteredData(empty);
-        setGraphData(empty);
-        setFullDataset(empty);
-        setData(empty);
-        if (setSearchResults) setSearchResults([]);
+        syncVisibleGraph(empty);
       }
     } catch (err) {
       logger.error('[ONTOLOGY] Fetch error:', err);
@@ -3356,7 +3365,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       setOntologyLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialData, ontologyOptions]);
+  }, [initialData, ontologyOptions, setSearchResults, syncVisibleGraph]);
 
   // Ontology options are now loaded from centralized OntologyContext
   // This eliminates duplicate polling and API calls across components
@@ -3425,36 +3434,29 @@ const getPrimaryNodeLabel = useCallback((d) => {
       });
       const normalized = normalizeGraphDataset(response.data);
       const dataSet = buildIndividualViewDataset(normalized);
-      startTransition(() => {
-        setFilteredData(dataSet);
-        setGraphData(dataSet);
-        setFullDataset(dataSet);
-        setData(dataSet);
-      });
-      if (setSearchResults) setTimeout(() => setSearchResults(dataSet.nodes), 0);
+      syncVisibleGraph(dataSet);
       if (dataSet.nodes.length === 0) {
         setOntologyGraphMessage('No contextual instances matched this ontology/filter. Try clearing the ontology selector or search for a known instance/property value.');
       }
     } catch (err) {
       logger.error('[CONTEXTUAL] Fetch error:', err);
       const fallbackData = buildIndividualViewDataset(initialData);
-      startTransition(() => {
-        setFilteredData(fallbackData);
-        setGraphData(fallbackData);
-        setFullDataset(fallbackData);
-        setData(fallbackData);
-      });
-      if (setSearchResults) setTimeout(() => setSearchResults(fallbackData.nodes), 0);
+      syncVisibleGraph(fallbackData);
       setOntologyGraphMessage(err?.response?.data?.detail || err?.message || 'Contextual graph query failed.');
     } finally {
       setOntologyLoading(false);
     }
-  }, [buildIndividualViewDataset, initialData, setData, setSearchResults]);
+  }, [buildIndividualViewDataset, initialData, syncVisibleGraph]);
 
   // When graph view mode switches, load the appropriate dataset
   useEffect(() => {
     graphViewModeRef.current = graphViewMode;
-    resetGraphSelectionState({ resetOntology: false, resetStepPart: false });
+    resetGraphSelectionState({
+      resetOntology: false,
+      resetStepPart: false,
+      resetSearch: false,
+      resetLabels: false,
+    });
 
     if (graphViewMode === 'individual') {
       loadContextualIndividualGraph('');
@@ -3468,13 +3470,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           setSelectedOntology(preferredScope);
           selectedOntologyRef.current = preferredScope;
         } else {
-          startTransition(() => {
-            setFilteredData(initialData);
-            setGraphData(initialData);
-            setFullDataset(initialData);
-            setData(initialData);
-          });
-          if (setSearchResults) setTimeout(() => setSearchResults(initialData.nodes), 0);
+          syncVisibleGraph(initialData, { preserveSearchSession: false });
         }
       } else {
         // Force refresh since selectedOntology effect does not run on graphViewMode changes.

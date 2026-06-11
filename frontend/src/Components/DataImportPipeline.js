@@ -77,8 +77,8 @@ export default function DataImportPipeline() {
   const [workflowTargetOntologyId, setWorkflowTargetOntologyId] = useState('');
   const [workflowRun, setWorkflowRun] = useState(null);
   const [workflowLoading, setWorkflowLoading] = useState(false);
+  const [workflowApplyLinks, setWorkflowApplyLinks] = useState(false);
 
-  // Ontology mapping selection
   const [availableOntologies, setAvailableOntologies] = useState(() => {
     try {
       return JSON.parse(window.localStorage.getItem(IMPORT_ONTOLOGIES_CACHE_KEY) || '[]');
@@ -86,10 +86,7 @@ export default function DataImportPipeline() {
       return [];
     }
   });
-  const [availableMappings, setAvailableMappings] = useState([]);
-  const [requiredMappings, setRequiredMappings] = useState([]);
   const [mappingFileTypeContext, setMappingFileTypeContext] = useState('');
-  const [selectedOntology, setSelectedOntology] = useState('');
   
   // Ontology metadata form for XSD/XMI files
   const [showMetadataForm, setShowMetadataForm] = useState(false);
@@ -273,34 +270,7 @@ export default function DataImportPipeline() {
     const contextFile = pending || pendingFileForMetadata || files[0];
     const fileTypeContext = contextFile ? inferFileTypeFromExtension(contextFile.name) : '';
     setMappingFileTypeContext(fileTypeContext);
-
-    const fetchAlignmentOptions = async () => {
-      try {
-        const response = await API_METHODS.ontology.getAlignmentOptions(fileTypeContext);
-        const body = response.data || {};
-        setAvailableMappings(body.mappings || []);
-        setRequiredMappings(body.required_mappings || []);
-      } catch (_err) {
-        setAvailableMappings([]);
-        setRequiredMappings([]);
-      }
-    };
-
-    fetchAlignmentOptions();
   }, [files, startedFiles, pendingFileForMetadata]);
-
-  useEffect(() => {
-    if (!selectedOntology) return;
-    const optionIds = new Set(
-      (isImportWorkflow(selectedWorkflow)
-        ? availableMappings.map(m => m.id)
-        : availableOntologies.map(o => o.optionValue || o.id || o.prefix)
-      ).filter(Boolean)
-    );
-    if (!optionIds.has(selectedOntology)) {
-      setSelectedOntology('');
-    }
-  }, [selectedOntology, availableMappings, availableOntologies, selectedWorkflow]);
 
   useEffect(() => {
     if (selectedWorkflow !== 'ontology.merge' && workflowTargetOntologyId) {
@@ -311,6 +281,12 @@ export default function DataImportPipeline() {
       setWorkflowTargetOntologyId('');
     }
   }, [selectedWorkflow, workflowOntologyId, workflowTargetOntologyId]);
+
+  useEffect(() => {
+    if (selectedWorkflow !== 'instance.link' && workflowApplyLinks) {
+      setWorkflowApplyLinks(false);
+    }
+  }, [selectedWorkflow, workflowApplyLinks]);
 
   const handleFileInput = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -472,24 +448,17 @@ export default function DataImportPipeline() {
     if (fileType === 'ontology') return '';
     if (fileType === 'json' || fileType === 'xml') return '';
 
-    if (workflowOntologyId) return workflowOntologyId;
-    if (selectedOntology) return selectedOntology;
-
     return '';
   };
 
   const getAlignmentPolicy = (fileName) => {
     const fileType = inferFileTypeFromExtension(fileName);
-    const isRequired = fileType === 'csv' || fileType === 'excel';
     const isStep = fileType === 'step';
-    const isOptionalAuto = fileType === 'json' || fileType === 'xml';
     const isDirectOntology = fileType === 'ontology';
 
     return {
       fileType,
-      isRequired,
       isStep,
-      isOptionalAuto,
       isDirectOntology,
       forcedMapping: isStep ? 'step_ap242_mbd3d' : '',
     };
@@ -509,37 +478,17 @@ export default function DataImportPipeline() {
       formData.append('file', file.fileObj);
 
       const policy = getAlignmentPolicy(file.name);
-      let ontologyToUse = workflowOntologyId || selectedOntology || getOntologyForFile(file.name);
+      let ontologyToUse = getOntologyForFile(file.name);
 
       if (policy.isStep) {
         ontologyToUse = policy.forcedMapping;
       }
 
-      if (
-        ontologyToUse &&
-        !policy.forcedMapping &&
-        !availableMappings.some(m => m.id === ontologyToUse) &&
-        !availableOntologies.some(o => (o.optionValue || o.id || o.prefix) === ontologyToUse)
-      ) {
-        throw new Error(
-          `${file.name}: Selected ontology mapping is invalid. Please pick a mapping from the Ontology Alignment dropdown.`
-        );
-      }
-
-      if (policy.isRequired && !ontologyToUse) {
-        throw new Error(
-          `${file.name}: Ontology alignment is required for ${policy.fileType.toUpperCase()} files. ` +
-          'Please choose a mapping from the Ontology Alignment dropdown.'
-        );
-      }
-
       setStartedFiles(prev => new Set([...prev, fileId]));
       setPipelineStatus(prev => ({ ...prev, [fileId]: { stage: 'upload', progress: 0, message: 'Uploading...' } }));
 
-      // Pass both ontology_id and ontology_mapping (mapping is for backward compatibility)
       if (ontologyToUse) {
         formData.append('ontology_id', ontologyToUse);
-        formData.append('ontology_mapping', ontologyToUse);
       }
 
       const uploadData = await apiClient.post(API.import.upload, formData, {
@@ -559,7 +508,7 @@ export default function DataImportPipeline() {
           taskId,
           stage: 'convert',
           progress: 10,
-          message: ontologyToUse ? `Converting with mapping: ${ontologyToUse}` : 'Converting file...'
+          message: policy.isStep ? `Converting with AP242 context: ${ontologyToUse}` : 'Converting file...'
         }
       }));
 
@@ -773,17 +722,6 @@ export default function DataImportPipeline() {
       return;
     }
 
-    // Friendly preflight: clearly explain required alignment before starting.
-    const missingRequired = filesToImport.filter(f => {
-      const policy = getAlignmentPolicy(f.name);
-      return policy.isRequired && !selectedOntology;
-    });
-    if (missingRequired.length > 0) {
-      const names = missingRequired.map(f => f.name).join(', ');
-      setError(`Ontology alignment is required for CSV/Excel files. Please select an ontology mapping first. Affected: ${names}`);
-      return;
-    }
-
     for (const file of filesToImport) {
       startImport(file);
     }
@@ -819,6 +757,7 @@ export default function DataImportPipeline() {
       ontology_id: workflowOntologyId,
       source_ontology_id: workflowOntologyId,
       import_artifact_manifest: latestArtifactManifest,
+      apply_links: selectedWorkflow === 'instance.link' ? workflowApplyLinks : false,
     };
     if (selectedWorkflow === 'ontology.merge') {
       payload.target_ontology_id = workflowTargetOntologyId;
@@ -1465,6 +1404,23 @@ export default function DataImportPipeline() {
                 </select>
               </>
             )}
+            {selectedWorkflow === 'instance.link' && (
+              <label style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '10px',
+                color: C.textPrimary,
+                fontWeight: '600',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={workflowApplyLinks}
+                  onChange={(e) => setWorkflowApplyLinks(e.target.checked)}
+                />
+                Apply approved links to Neo4j
+              </label>
+            )}
             <button
               onClick={runSelectedWorkflow}
               disabled={workflowLoading}
@@ -1487,6 +1443,43 @@ export default function DataImportPipeline() {
                 <div>
                   Generated {workflowRun.artifact_manifest.artifacts?.length || 0} retained artifact(s) in task {workflowRun.task_id}.
                 </div>
+                {workflowRun?.result?.summary && (
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '6px',
+                    marginTop: '6px',
+                  }}>
+                    {Object.entries(workflowRun.result.summary).map(([key, value]) => (
+                      <span
+                        key={key}
+                        style={{
+                          background: C.primaryLight,
+                          color: C.primaryDark,
+                          border: `1px solid ${C.border}`,
+                          borderRadius: '999px',
+                          padding: '2px 8px',
+                          fontSize: '9px',
+                          fontWeight: '700',
+                        }}
+                      >
+                        {key.replace(/_/g, ' ')}: {String(value)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {selectedWorkflow === 'instance.link' && workflowRun?.result?.summary && (
+                  <div style={{ marginTop: '6px', color: C.textPrimary }}>
+                    {workflowApplyLinks
+                      ? 'Only high-confidence, non-ambiguous matches are written to Neo4j.'
+                      : 'Dry-run mode: review candidates first, then rerun with "Apply approved links to Neo4j" if the result looks right.'}
+                  </div>
+                )}
+                {selectedWorkflow === 'ontology.merge' && (
+                  <div style={{ marginTop: '6px', color: C.textPrimary }}>
+                    Semantic merge generates a review plan only. It does not mutate Neo4j data from this workflow surface.
+                  </div>
+                )}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '4px' }}>
                   {(workflowRun.artifact_manifest.artifacts || []).slice(0, 6).map(artifact => (
                     <a
@@ -1890,7 +1883,7 @@ export default function DataImportPipeline() {
         style={{ display: 'none' }}
       />
 
-      {/* Ontology Alignment & Start Pipeline */}
+      {/* Structural import kickoff */}
       {selectedWorkflow === 'instance.import' && (
       <div style={{
         background: C.surface,
@@ -1903,96 +1896,24 @@ export default function DataImportPipeline() {
         gap: '8px',
         flexWrap: 'wrap',
       }}>
-        <label style={{
-          fontSize: '10px',
-          fontWeight: '600',
-          color: C.textPrimary,
-          whiteSpace: 'nowrap',
-        }}>
-          Target ontology:
-        </label>
-        <select
-          value={workflowOntologyId}
-          onChange={(e) => setWorkflowOntologyId(e.target.value)}
-          disabled={!canRunSelectedWorkflow}
-          style={{
-            flex: '1 1 260px',
-            padding: '4px 8px',
-            fontSize: '10px',
-            border: `1px solid ${C.borderDark}`,
-            borderRadius: '3px',
-            background: !canRunSelectedWorkflow ? '#F1F3F5' : C.bg,
-            color: C.textPrimary,
-            cursor: !canRunSelectedWorkflow ? 'not-allowed' : 'pointer',
-            maxWidth: '420px',
-          }}
-          title="Choose the ontology this import should link to."
-        >
-          <option key="no-target" value="">
-            {availableOntologies.length > 0 ? 'Select ontology' : (ontologyCatalogState.loading ? 'Loading ontology catalog...' : 'Ontology catalog unavailable')}
-          </option>
-          {availableOntologies.map(o => (
-            <option key={o.optionKey || o.optionValue || o.id} value={o.optionValue || o.id}>
-              {o.name || o.id || o.optionValue}{o.prefix ? ` [${o.prefix}]` : ''}
-            </option>
-          ))}
-        </select>
-        {ontologyCatalogState.message && (
-          <div style={{
-            fontSize: '9px',
-            color: ontologyCatalogState.stale ? C.orange : C.textSec,
-            marginLeft: '4px',
-            whiteSpace: 'nowrap',
-          }}>
-            {ontologyCatalogState.message}
+        <div style={{ minWidth: 0, flex: '1 1 420px' }}>
+          <div style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
+            Structural import only
           </div>
-        )}
-        <label style={{
-          fontSize: '10px',
-          fontWeight: '600',
-          color: C.textPrimary,
-          whiteSpace: 'nowrap',
-          marginLeft: '8px',
-        }}>
-          Ontology mapping:
-        </label>
-        <select
-          value={selectedOntology}
-          onChange={(e) => setSelectedOntology(e.target.value)}
-          disabled={!canRunSelectedWorkflow}
-          style={{
-            flex: '1 1 260px',
-            padding: '4px 8px',
-            fontSize: '10px',
-            border: `1px solid ${C.borderDark}`,
-            borderRadius: '3px',
-            background: !canRunSelectedWorkflow ? '#F1F3F5' : C.bg,
-            color: C.textPrimary,
-            cursor: !canRunSelectedWorkflow ? 'not-allowed' : 'pointer',
-            maxWidth: '420px',
-        }}
-          title="Choose a mapping for CSV/Excel, or keep automatic rules for STEP/JSON/XML."
-        >
-          <option key="auto" value="">Automatic mapping rules</option>
-          {availableMappings.map((m, idx) => {
-            const label = m.name || m.id;
-            return (
-              <option key={m.id || `map-${idx}`} value={m.id}>
-                {label}
-              </option>
-            );
-          })}
-          {availableMappings.length === 0 && (
-            <option key="no-maps" value="" disabled>
-              No mappings available for this file type
-            </option>
+          <div style={{ fontSize: '10px', color: C.textSec, lineHeight: 1.45, marginTop: '2px' }}>
+            Files load first as source-faithful instance data. Ontology selection and semantic linking now happen in
+            <span style={{ color: C.primary, fontWeight: '700' }}> Link instances to ontology</span>.
+          </div>
+          {ontologyCatalogState.message && (
+            <div style={{
+              fontSize: '9px',
+              color: ontologyCatalogState.stale ? C.orange : C.textSec,
+              marginTop: '4px',
+            }}>
+              {ontologyCatalogState.message}
+            </div>
           )}
-        </select>
-        {selectedOntology && (
-          <span style={{ fontSize: '9px', color: C.textMuted }}>
-            {selectedOntology}
-          </span>
-        )}
+        </div>
         <button
           onClick={runSelectedWorkflow}
           disabled={pendingFileCount === 0 || !canRunSelectedWorkflow || workflowLoading}
@@ -2027,20 +1948,17 @@ export default function DataImportPipeline() {
       }}>
         <strong style={{ color: C.textPrimary }}>Workflow guidance:</strong>{' '}
         {!canRunSelectedWorkflow && `${fallbackWorkflow.title} is visible for planning, but backend service wiring is still required before execution.`}
-        {canRunSelectedWorkflow && selectedWorkflow === 'instance.link' && 'Upload one or more files first, then choose an ontology above to generate link candidates. This workflow writes review artifacts only.'}
+        {canRunSelectedWorkflow && selectedWorkflow === 'instance.link' && 'Upload one or more files first, then choose an ontology above to generate and apply semantic links from imported instances to ontology classes.'}
         {canRunSelectedWorkflow && selectedWorkflow === 'ontology.merge' && 'Choose a source ontology and a different target ontology above to generate a merge plan. This workflow writes review artifacts only.'}
         {canRunSelectedWorkflow && (selectedWorkflow === 'ontology.validate' || selectedWorkflow === 'dictionary.generate' || selectedWorkflow === 'taxonomy.generate' || selectedWorkflow === 'graph.chunk') && 'Choose an ontology above to generate the review artifact for this workflow. It does not write to Neo4j directly.'}
         {canRunSelectedWorkflow && selectedWorkflow === 'ontology.create' && mappingFileTypeContext !== 'express' && 'Schema and ontology files are registered through metadata capture. EXPRESS/XSD-style schemas create ontology structure; they do not create STEP instance graphs.'}
         {canRunSelectedWorkflow && mappingFileTypeContext === 'express' && 'EXPRESS files create ontology/schema structure from ISO 10303 definitions. Use STEP/STP/STPX when you need product instance data.'}
-        {canRunSelectedWorkflow && mappingFileTypeContext === 'step' && 'STEP/STP/STPX files create an instance graph. AP242-MBD3D alignment is applied automatically when available.'}
-        {selectedWorkflow === 'instance.import' && 'Pick a target ontology first, then choose a mapping if the file type needs one. '}
-        {selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'csv' || mappingFileTypeContext === 'excel') && 'CSV/Excel require a mapping and a target ontology before start. '}
-        {selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'json' || mappingFileTypeContext === 'xml') && 'JSON/XML can auto-generate OWL/TTL if no mapping is selected, but the target ontology still needs to be chosen. '}
-        {selectedWorkflow === 'instance.import' && mappingFileTypeContext === 'ontology' && 'OWL/RDF/TTL are imported directly as ontology content (as-is). '}
+        {canRunSelectedWorkflow && mappingFileTypeContext === 'step' && 'STEP/STP/STPX files create an instance graph with AP242 context when available. Use semantic bridge afterward to attach ontology meaning.'}
+        {selectedWorkflow === 'instance.import' && 'Import loads source structure first and keeps the workflow fast and predictable. '}
+        {selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'csv' || mappingFileTypeContext === 'excel') && 'CSV/Excel are ingested as source data first, then mapped in semantic bridge when you are ready. '}
+        {selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'json' || mappingFileTypeContext === 'xml') && 'JSON/XML are ingested as source data first; semantic linking is a separate step. '}
+        {selectedWorkflow === 'instance.import' && mappingFileTypeContext === 'ontology' && 'OWL/RDF/TTL are handled through ontology registration flows instead of raw instance import. '}
         {selectedWorkflow === 'instance.import' && !mappingFileTypeContext && 'Select files to see file-type specific alignment guidance.'}
-        {requiredMappings.length > 0 && (
-          <span> Required mapping for current file type: {requiredMappings.join(', ')}.</span>
-        )}
       </div>
 
       {/* Data table */}
@@ -2249,7 +2167,7 @@ export default function DataImportPipeline() {
                     fontWeight: '500',
                     fontSize: '11px',
                   }}
-                  title={status.stats?.ontology_mapping ? `Ontology: ${status.stats.ontology_mapping === 'auto' ? 'Auto-detected from ' + (status.stats.mapping_type || 'file format') : status.stats.ontology_mapping}` : 'No ontology selected'}>
+                  title={status.stats?.ontology_mapping ? `Import context: ${status.stats.ontology_mapping === 'auto' ? 'Auto-detected from ' + (status.stats.mapping_type || 'file format') : status.stats.ontology_mapping}` : 'Structural import'}>
                       <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {getStageLabel(status.stage)}
                         {status.stage === 'map' && status.stats?.ontology_mapping && (

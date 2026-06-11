@@ -821,8 +821,14 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
 
   const selectedTerm = useMemo(() => {
     if (selectedTermId && nodeById.has(selectedTermId)) return nodeById.get(selectedTermId);
-    return visibleNodes[0] || null;
-  }, [nodeById, selectedTermId, visibleNodes]);
+    const connectedIds = new Set();
+    taxonomyEdges.forEach((edge) => {
+      if (edge?.source_term) connectedIds.add(edge.source_term);
+      if (edge?.target_term) connectedIds.add(edge.target_term);
+    });
+    const connectedVisible = visibleNodes.find((node) => connectedIds.has(node.term_id));
+    return connectedVisible || visibleNodes[0] || null;
+  }, [nodeById, selectedTermId, taxonomyEdges, visibleNodes]);
 
   const edgeRows = useMemo(() => taxonomyEdges.map((edge, index) => {
     const source = nodeById.get(edge.source_term);
@@ -907,10 +913,21 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
       }));
   }, [edgeRows, reasoningPropertyRows, visibleNodes]);
 
+  const selectedPropertyRow = useMemo(() => {
+    if (!selectedTerm) return null;
+    return objectPropertyRows.find((row) => row.id === selectedTerm.term_id) || null;
+  }, [objectPropertyRows, selectedTerm]);
+
   const selectedAxioms = useMemo(() => {
     if (!selectedTerm) return [];
     return edgeRows.filter((edge) => edge.sourceId === selectedTerm.term_id || edge.targetId === selectedTerm.term_id);
   }, [edgeRows, selectedTerm]);
+
+  const activeEmptyLabel = tableMode === 'properties'
+    ? 'No object or datatype properties were resolved for this ontology.'
+    : tableMode === 'axioms'
+      ? 'No OWL axioms are available for this ontology slice.'
+      : 'No ontology classes are available for this ontology slice.';
 
   const treeColumns = useMemo(() => [
     {
@@ -986,13 +1003,32 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
   const activeRows = tableMode === 'properties' ? objectPropertyRows : tableMode === 'axioms' ? edgeRows : classRows;
   const activeColumns = tableMode === 'properties' ? propertyColumns : tableMode === 'axioms' ? axiomColumns : classColumns;
   const activeTitle = tableMode === 'properties'
-    ? `Properties (${objectPropertyRows.length})`
+    ? `Object/Data Properties (${objectPropertyRows.length})`
     : tableMode === 'axioms'
       ? `OWL Axioms (${edgeRows.length})`
       : `Classes (${classRows.length})`;
 
+  const handleOntologyRowSelection = useCallback((row) => {
+    if (!row) return;
+    if (tableMode === 'properties' && row.id) {
+      setSelectedTermId(row.id);
+      return;
+    }
+    if (tableMode === 'axioms') {
+      setSelectedTermId(row.sourceId || row.targetId || '');
+      return;
+    }
+    if (row.termId) {
+      setSelectedTermId(row.termId);
+      return;
+    }
+    if (row.id) {
+      setSelectedTermId(row.id);
+    }
+  }, [tableMode]);
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))', gap: 12, minHeight: 620, alignItems: 'start', overflow: 'hidden' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1.1fr) minmax(340px, 1.1fr) minmax(300px, 0.9fr)', gap: 12, minHeight: 620, alignItems: 'start', overflow: 'hidden' }}>
       <div style={{ minWidth: 0 }}>
         <DataGridWidget
           title={`Classes (${hierarchy.rows.length})`}
@@ -1009,7 +1045,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {[
             { id: 'classes', label: 'Classes' },
-            { id: 'properties', label: 'Properties' },
+            { id: 'properties', label: 'Object/Data Properties' },
             { id: 'axioms', label: 'Axioms' },
           ].map((mode) => (
             <button
@@ -1038,7 +1074,8 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
           height={548}
           minGridHeight={548}
           paginationPageSize={25}
-          emptyLabel="No ontology rows available"
+          emptyLabel={activeEmptyLabel}
+          onRowClicked={handleOntologyRowSelection}
         />
       </div>
 
@@ -1070,6 +1107,25 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
                 <div style={{ fontSize: 16, fontWeight: 800, color: C.textPrimary }}>{hierarchy.childrenByParent.get(selectedTerm.term_id)?.length || 0}</div>
               </div>
             </div>
+            {selectedPropertyRow && (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Property Semantics</div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Kind</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.textPrimary, marginTop: 4 }}>{selectedPropertyRow.kind}</div>
+                  </div>
+                  <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Domain</div>
+                    <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>{selectedPropertyRow.domain}</div>
+                  </div>
+                  <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Range</div>
+                    <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>{selectedPropertyRow.range}</div>
+                  </div>
+                </div>
+              </div>
+            )}
             {(selectedTerm.definition || selectedTerm.comment) && (
               <div style={{ fontSize: 12, color: C.textPrimary, lineHeight: 1.45 }}>{selectedTerm.definition || selectedTerm.comment}</div>
             )}
@@ -1489,11 +1545,11 @@ export default function OntologyMapper() {
 
   const handleMerge = async () => {
     if (!mergeFromId || !mergeToId) {
-      setMergeResult({ kind: 'error', text: 'Select both a source (FROM) and a destination (INTO) ontology.' });
+      setMergeResult({ kind: 'error', text: 'Select both a source ontology and a destination ontology for graph unification.' });
       return;
     }
     if (mergeFromId === mergeToId) {
-      setMergeResult({ kind: 'error', text: 'FROM and INTO ontologies must be different.' });
+      setMergeResult({ kind: 'error', text: 'Source and destination ontologies must be different.' });
       return;
     }
     setMergeBusy(true);
@@ -1501,7 +1557,7 @@ export default function OntologyMapper() {
     try {
       const res = await API_METHODS.ontology.merge(mergeFromId, mergeToId);
       const d = res.data || {};
-      setMergeResult({ kind: 'success', text: d.message || 'Merge complete.', nodes: d.nodes_updated });
+      setMergeResult({ kind: 'success', text: d.message || 'Graph unification complete.', nodes: d.nodes_updated });
       // Reload ontology options from context after merge
       const refreshedOntologies = await fetchOntologies();
       const opts = buildOntologyOptions(refreshedOntologies || []);
@@ -1739,13 +1795,13 @@ export default function OntologyMapper() {
 
               {/* ── Merge Ontologies ────────────────────────────────────────── */}
               <div style={{ marginBottom: '20px', border: `2px solid ${C.primary}`, borderRadius: '8px', padding: '16px', background: C.primaryLight }}>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>Merge Ontologies</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>Unify Ontology Graph in Neo4j</div>
                 <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '14px' }}>
-                  All nodes from the <strong>FROM</strong> ontology will be re-stamped with the prefix of the <strong>INTO</strong> ontology and unified in Neo4j.
+                  This action updates Neo4j graph records. Use it only when you want to consolidate one ontology graph into another operational namespace after review.
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto', gap: '10px', alignItems: 'end' }}>
                   <div>
-                    <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>FROM (merge source)</label>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>Source ontology</label>
                     <select
                       value={mergeFromId}
                       onChange={e => setMergeFromId(e.target.value)}
@@ -1759,7 +1815,7 @@ export default function OntologyMapper() {
                   </div>
                   <div style={{ fontSize: '20px', color: C.primary, paddingBottom: '2px', alignSelf: 'center' }}>→</div>
                   <div>
-                    <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>INTO (merge destination)</label>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>Destination ontology</label>
                     <select
                       value={mergeToId}
                       onChange={e => setMergeToId(e.target.value)}
@@ -1786,7 +1842,7 @@ export default function OntologyMapper() {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {mergeBusy ? 'Merging…' : 'Merge'}
+                    {mergeBusy ? 'Unifying…' : 'Unify graph'}
                   </button>
                 </div>
                 {mergeResult && (

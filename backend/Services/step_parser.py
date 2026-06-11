@@ -10,8 +10,11 @@ import functools
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional
+import logging
 import re
 import xml.etree.ElementTree as ET
+
+logger = logging.getLogger(__name__)
 
 try:
     from .ap242_domain_model import (
@@ -91,6 +94,12 @@ class StepP21Entity:
     entity_type: str
     raw_args: str
     ref_ids: List[int] = field(default_factory=list)
+    attributes: Dict[str, str] = field(default_factory=dict)
+    text_value: str = ""
+    source_identifier: str = ""
+    source_identifier_kind: str = ""
+    unresolved_refs: List[str] = field(default_factory=list)
+    parent_step_id: Optional[int] = None
 
 
 @dataclass
@@ -213,9 +222,14 @@ def parse_step_metadata(
         if match:
             schema = match.group(1)
         elif fmt == "stpx":
-            # ✅ SECURITY: use defusedxml for STPX schema extraction to prevent XXE
+            # ✅ SECURITY: use defusedxml iterparse for STPX schema extraction to prevent XXE
             import defusedxml.ElementTree as _DET
-            root = _DET.fromstring(text)
+            root = None
+            for _event, _elem in _DET.iterparse(str(file_path), events=("start",)):
+                root = _elem
+                break
+            if root is None:
+                raise ET.ParseError("STPX root element missing")
             namespace = _namespace_uri(root.tag)
             schema_location = (
                 root.attrib.get("{http://www.w3.org/2001/XMLSchema-instance}schemaLocation")
@@ -347,57 +361,92 @@ def _iter_part21_entities(file_path: Path, _text: Optional[str] = None) -> Itera
 
 def _iter_part28_entities(file_path: Path) -> Iterator[StepP21Entity]:
     import defusedxml.ElementTree as _DET   # ✅ SECURITY: XXE-safe replacement for stdlib ET
-    tree = _DET.parse(str(file_path))
-    root = tree.getroot()
 
-    id_to_step: Dict[str, int] = {}
+    def _tokenize_refs(value: str) -> List[str]:
+        return [token for token in re.split(r"[\s,]+", (value or "").strip()) if token]
+
+    def _is_ref_key(key: str) -> bool:
+        lower = key.lower()
+        return lower.endswith("ref") or lower.endswith("refs") or lower in {"href", "idref", "uidref", "idcontextref"}
+
+    alias_to_step: Dict[str, int] = {}
+    duplicate_aliases: Dict[str, int] = {}
+
+    # First pass: assign deterministic synthetic step ids to every element in
+    # document order and collect all local aliases so forward refs resolve.
     next_step_id = 1
+    for event, elem in _DET.iterparse(str(file_path), events=("start",)):
+        if event != "start":
+            continue
+        current_step_id = next_step_id
+        next_step_id += 1
+        for alias_key in ("id", "uid"):
+            alias_value = (elem.attrib.get(alias_key) or "").strip()
+            if not alias_value:
+                continue
+            if alias_value in alias_to_step:
+                duplicate_aliases[alias_value] = duplicate_aliases.get(alias_value, 1) + 1
+            else:
+                alias_to_step[alias_value] = current_step_id
+        elem.clear()
 
-    for elem in root.iter():
-        elem_id = elem.attrib.get("id")
-        if elem_id and elem_id not in id_to_step:
-            id_to_step[elem_id] = next_step_id
+    next_step_id = 1
+    stack: List[int] = []
+
+    for event, elem in _DET.iterparse(str(file_path), events=("start", "end")):
+        if event == "start":
+            current_step_id = next_step_id
             next_step_id += 1
-
-    for elem in root.iter():
-        entity_type = normalize_ap242_entity_type(_local_name(elem.tag))
-        if not entity_type:
+            stack.append(current_step_id)
             continue
 
-        elem_id = elem.attrib.get("id")
-        if elem_id and elem_id in id_to_step:
-            step_id = id_to_step[elem_id]
-        else:
-            step_id = next_step_id
-            next_step_id += 1
+        step_id = stack.pop() if stack else next_step_id
+        entity_type = normalize_ap242_entity_type(_local_name(elem.tag))
+        if not entity_type:
+            elem.clear()
+            continue
 
+        attrs = {_local_name(key): value for key, value in elem.attrib.items()}
         raw_parts: List[str] = []
         ref_ids: List[int] = []
-
-        for key, value in elem.attrib.items():
-            local_key = _local_name(key)
-            raw_parts.append(f"{local_key}={value}")
-
-            tokens = re.split(r"[\s,]+", value.strip())
-            for token in tokens:
-                if not token:
-                    continue
-                if token in id_to_step:
-                    ref_ids.append(id_to_step[token])
-                    continue
-                if token.startswith("#") and token[1:].isdigit():
+        unresolved_refs: List[str] = []
+        for key, value in attrs.items():
+            raw_parts.append(f"{key}={value}")
+            if not _is_ref_key(key):
+                continue
+            for token in _tokenize_refs(value):
+                if token in alias_to_step:
+                    ref_ids.append(alias_to_step[token])
+                elif token.startswith("#") and token[1:].isdigit():
                     ref_ids.append(int(token[1:]))
+                else:
+                    unresolved_refs.append(token)
 
         text_value = (elem.text or "").strip()
         if text_value and len(list(elem)) == 0:
             raw_parts.append(f"text={text_value[:200]}")
+
+        source_identifier = (attrs.get("id") or attrs.get("uid") or "").strip()
+        source_identifier_kind = "id" if attrs.get("id") else ("uid" if attrs.get("uid") else "synthetic")
+        parent_step_id = stack[-1] if stack else None
 
         yield StepP21Entity(
             step_id=step_id,
             entity_type=entity_type,
             raw_args=", ".join(raw_parts),
             ref_ids=sorted(set(ref_ids)),
+            attributes=attrs,
+            text_value=text_value[:1000],
+            source_identifier=source_identifier,
+            source_identifier_kind=source_identifier_kind,
+            unresolved_refs=sorted(set(unresolved_refs)),
+            parent_step_id=parent_step_id,
         )
+        elem.clear()
+
+    if duplicate_aliases:
+        sample = list(duplicate_aliases.items())[:10]
+        logger.warning("STPX duplicate alias identifiers detected: %s", sample)
 
 
 def iter_part21_entities(file_path: Path) -> Iterator[StepP21Entity]:

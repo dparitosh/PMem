@@ -13,7 +13,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .ontology_taxonomy_service import OntologyTaxonomyService
 from .ontology_upload_manager import OntologyUploadManager
+from .unified_data_import import UnifiedDataImportService
 from .workflow_artifact_service import WorkflowArtifactService
 
 
@@ -28,7 +30,28 @@ def _jaccard(left: List[str], right: List[str]) -> float:
     return len(lset & rset) / len(lset | rset)
 
 
+GENERIC_ONTOLOGY_TERMS = {
+    "class",
+    "entity",
+    "item",
+    "object",
+    "part",
+    "product",
+    "resource",
+    "thing",
+    "type",
+    "value",
+}
+
+
 class SemanticWorkflowService:
+    LINK_BATCH_SIZE = 500
+    AUTO_APPLY_CONFIDENCE = 0.82
+    REVIEW_CONFIDENCE = 0.55
+    AMBIGUITY_DELTA = 0.08
+    TYPE_FIELDS = ("entity_type", "element_type", "type", "xsi:type", "class", "category", "part_type")
+    FALLBACK_FIELDS = ("name",)
+
     @staticmethod
     def _new_task(workflow_id: str, source_filename: str = "") -> str:
         task_id = f"{workflow_id.replace('.', '-')}-{uuid.uuid4()}"
@@ -95,6 +118,207 @@ class SemanticWorkflowService:
                 }
         terms = sorted(seen.values(), key=lambda x: (-x["frequency"], x["normalized"]))
         return terms[:500]
+
+    @staticmethod
+    def _load_import_task(import_manifest: Dict[str, Any]) -> Dict[str, Any]:
+        import_task_id = str((import_manifest or {}).get("task_id") or "").strip()
+        if not import_task_id:
+            raise ValueError("Import artifact manifest does not include a task_id")
+
+        task = UnifiedDataImportService._restore_task(import_task_id)
+        if not task:
+            raise ValueError(f"Import task not found: {import_task_id}")
+
+        if not task.get("parsed_rows"):
+            path = UnifiedDataImportService._task_snapshot_path(import_task_id)
+            parsed_name = task.get('_parsed_rows_file') or (path.name + '.parsed_rows.json')
+            parsed_path = path.parent / parsed_name
+            if not parsed_path.exists():
+                raise ValueError(f"Parsed rows snapshot not found for import task: {import_task_id}")
+            parsed_text = parsed_path.read_text(encoding='utf-8')
+            task["parsed_rows"] = json.loads(parsed_text)
+
+        return task
+
+    @staticmethod
+    def _candidate_display_value(row: Dict[str, Any]) -> str:
+        for key in ("name", "entity_type", "element_type", "type", "part_type", "id"):
+            value = row.get(key)
+            if value:
+                return str(value)
+        return "Imported entity"
+
+    @staticmethod
+    def _normalized_key(value: Any) -> str:
+        return UnifiedDataImportService._ontology_match_key(value)
+
+    @staticmethod
+    def _is_generic_term(value: str) -> bool:
+        normalized = str(value or "").strip().lower()
+        return normalized in GENERIC_ONTOLOGY_TERMS
+
+    @classmethod
+    def _collect_row_signals(cls, row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        signals: List[Dict[str, Any]] = []
+        seen = set()
+
+        def add_signal(raw_value: Any, source_field: str, signal_type: str, weight: float) -> None:
+            value = str(raw_value or "").strip()
+            if not value:
+                return
+            variants = [value]
+            if ":" in value:
+                variants.append(value.split(":")[-1])
+            if "#" in value:
+                variants.append(value.split("#")[-1])
+
+            for variant in variants:
+                normalized = cls._normalized_key(variant)
+                if not normalized:
+                    continue
+                signature = (normalized, signal_type)
+                if signature in seen:
+                    continue
+                seen.add(signature)
+                signals.append({
+                    "raw": variant,
+                    "normalized": normalized,
+                    "tokens": _tokenize(variant),
+                    "source_field": source_field,
+                    "signal_type": signal_type,
+                    "weight": weight,
+                })
+
+        for field_name in cls.TYPE_FIELDS:
+            add_signal(row.get(field_name), field_name, "type", 1.0 if field_name != "category" else 0.9)
+
+        if not signals:
+            for field_name in cls.FALLBACK_FIELDS:
+                add_signal(row.get(field_name), field_name, "name", 0.6)
+
+        return signals
+
+    @classmethod
+    def _score_link_candidate(cls, signal: Dict[str, Any], match: Dict[str, Any], row: Dict[str, Any]) -> float:
+        score = 0.0
+        signal_weight = float(signal.get("weight") or 0.0)
+        signal_type = signal.get("signal_type")
+        signal_tokens = signal.get("tokens") or []
+        class_tokens = match.get("tokens") or []
+
+        if signal.get("normalized") == match.get("normalized"):
+            score += 0.72 * signal_weight
+
+        overlap = _jaccard(signal_tokens, class_tokens)
+        if overlap:
+            score += 0.22 * overlap * signal_weight
+
+        if signal_type == "type":
+            score += 0.12
+        else:
+            score -= 0.08
+
+        row_name = str(row.get("name") or "").strip()
+        class_name = str(match.get("class_name") or "").strip()
+        if row_name and class_name and row_name.lower() == class_name.lower():
+            score += 0.08
+
+        if match.get("is_generic"):
+            score -= 0.28
+
+        return max(0.0, min(1.0, round(score, 4)))
+
+    @classmethod
+    def _build_link_candidates(cls, rows: List[Dict[str, Any]], ontology_prefix: str, import_task_id: str) -> List[Dict[str, Any]]:
+        class_lookup = UnifiedDataImportService._load_ontology_class_lookup(ontology_prefix)
+        candidates: List[Dict[str, Any]] = []
+
+        for row in rows:
+            row_key = row.get("import_row_key") or row.get("id")
+            if not row_key:
+                continue
+
+            scored_matches: Dict[str, Dict[str, Any]] = {}
+            for signal in cls._collect_row_signals(row):
+                matches = class_lookup.get(signal["normalized"], [])
+                for match in matches:
+                    score = cls._score_link_candidate(signal, match, row)
+                    if score < cls.REVIEW_CONFIDENCE:
+                        continue
+                    existing = scored_matches.get(match["element_id"])
+                    if existing and existing["confidence"] >= score:
+                        continue
+                    scored_matches[match["element_id"]] = {
+                        "import_id": import_task_id,
+                        "import_row_key": row_key,
+                        "source_term": cls._candidate_display_value(row),
+                        "ontology_term": match["class_name"],
+                        "ontology_class_element_id": match["element_id"],
+                        "confidence": score,
+                        "mapping": ontology_prefix,
+                        "match_source": signal["source_field"],
+                        "signal_type": signal["signal_type"],
+                        "generic_match": bool(match.get("is_generic")),
+                    }
+
+            if not scored_matches:
+                continue
+
+            ranked = sorted(
+                scored_matches.values(),
+                key=lambda item: (-item["confidence"], item["generic_match"], item["ontology_term"].lower()),
+            )
+            best_confidence = ranked[0]["confidence"]
+            ambiguous_count = sum(
+                1 for item in ranked
+                if best_confidence - item["confidence"] <= cls.AMBIGUITY_DELTA
+            )
+
+            for idx, item in enumerate(ranked[:3]):
+                item["rank"] = idx + 1
+                item["ambiguous"] = ambiguous_count > 1 and item["rank"] <= ambiguous_count
+                item["selected_for_apply"] = (
+                    idx == 0
+                    and not item["ambiguous"]
+                    and not item["generic_match"]
+                    and item["confidence"] >= cls.AUTO_APPLY_CONFIDENCE
+                )
+                candidates.append(item)
+
+        return candidates
+
+    @classmethod
+    def _apply_instance_links(cls, candidates: List[Dict[str, Any]]) -> int:
+        if not candidates:
+            return 0
+        try:
+            try:
+                from core.graph import query_with_timeout as _query_with_timeout
+            except ModuleNotFoundError:
+                from ..core.graph import query_with_timeout as _query_with_timeout
+
+            link_cypher = """
+            UNWIND $rows AS row
+            MATCH (n {import_row_key: row.import_row_key, import_id: row.import_id})
+            MATCH (c:OntologyClass)
+            WHERE elementId(c) = row.ontology_class_element_id
+            MERGE (n)-[rel:INSTANCE_OF]->(c)
+            SET rel.mapping = row.mapping,
+                rel.class_name = row.ontology_term,
+                rel.import_id = row.import_id,
+                rel.linked_by = 'semantic_bridge'
+            RETURN count(rel) AS linked
+            """
+
+            linked_total = 0
+            for idx in range(0, len(candidates), cls.LINK_BATCH_SIZE):
+                batch = candidates[idx:idx + cls.LINK_BATCH_SIZE]
+                result = _query_with_timeout(link_cypher, {"rows": batch}) or []
+                if result and isinstance(result[0], dict):
+                    linked_total += int(result[0].get("linked") or 0)
+            return linked_total
+        except Exception as exc:
+            raise ValueError(f"Failed to apply semantic links: {exc}") from exc
 
     @classmethod
     def execute(cls, workflow_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -218,18 +442,94 @@ class SemanticWorkflowService:
             raise ValueError("source_ontology_id and target_ontology_id are required")
         source = cls._ontology_metadata(source_id)
         target = cls._ontology_metadata(target_id)
-        source_terms = cls._extract_terms(cls._read_ontology_file(source))
-        target_terms = cls._extract_terms(cls._read_ontology_file(target))
+        source_reasoning = OntologyTaxonomyService.get_reasoning(source_id)
+        target_reasoning = OntologyTaxonomyService.get_reasoning(target_id)
         task_id = cls._new_task("ontology.merge", f"{source_id}__{target_id}")
 
-        target_by_norm = {t["normalized"]: t for t in target_terms}
-        overlaps = []
-        additions = []
-        for term in source_terms:
-            if term["normalized"] in target_by_norm:
-                overlaps.append({"term": term["term"], "target_term": target_by_norm[term["normalized"]]["term"], "confidence": 1.0})
-            else:
-                additions.append({"term": term["term"], "action": "add_candidate"})
+        def normalized_label(value: str) -> str:
+            return str(value or "").strip().lower()
+
+        def semantic_entries(reasoning: Dict[str, Any], key: str, entry_type: str) -> List[Dict[str, Any]]:
+            rows = []
+            for row in reasoning.get(key, []) or []:
+                label = str(row.get("label") or row.get("name") or row.get("iri") or "").strip()
+                iri = str(row.get("iri") or "").strip()
+                if not label and not iri:
+                    continue
+                rows.append({
+                    "type": entry_type,
+                    "label": label or iri,
+                    "normalized": normalized_label(label or iri),
+                    "iri": iri,
+                    "domain": sorted(item.get("label") or item.get("iri") or "" for item in row.get("domain", []) or []),
+                    "range": sorted(item.get("label") or item.get("iri") or "" for item in row.get("range", []) or []),
+                })
+            return rows
+
+        source_classes = semantic_entries(source_reasoning, "classes", "class")
+        target_classes = semantic_entries(target_reasoning, "classes", "class")
+        source_properties = semantic_entries(source_reasoning, "object_properties", "object_property") + semantic_entries(source_reasoning, "datatype_properties", "datatype_property")
+        target_properties = semantic_entries(target_reasoning, "object_properties", "object_property") + semantic_entries(target_reasoning, "datatype_properties", "datatype_property")
+
+        target_classes_by_norm = {entry["normalized"]: entry for entry in target_classes if entry["normalized"]}
+        target_properties_by_norm = {entry["normalized"]: entry for entry in target_properties if entry["normalized"]}
+
+        overlaps: List[Dict[str, Any]] = []
+        additions: List[Dict[str, Any]] = []
+        conflicts: List[Dict[str, Any]] = []
+
+        for source_entry in [*source_classes, *source_properties]:
+            target_entry = (
+                target_classes_by_norm.get(source_entry["normalized"])
+                if source_entry["type"] == "class"
+                else target_properties_by_norm.get(source_entry["normalized"])
+            )
+            if not target_entry:
+                additions.append({
+                    "label": source_entry["label"],
+                    "type": source_entry["type"],
+                    "action": "add_candidate",
+                })
+                continue
+
+            overlaps.append({
+                "label": source_entry["label"],
+                "type": source_entry["type"],
+                "source_iri": source_entry["iri"],
+                "target_iri": target_entry["iri"],
+                "match_basis": "iri" if source_entry["iri"] and source_entry["iri"] == target_entry["iri"] else "label",
+                "confidence": 1.0 if source_entry["iri"] and source_entry["iri"] == target_entry["iri"] else 0.82,
+            })
+
+            if source_entry["type"] != "class":
+                if source_entry["domain"] != target_entry["domain"] or source_entry["range"] != target_entry["range"]:
+                    conflicts.append({
+                        "label": source_entry["label"],
+                        "type": source_entry["type"],
+                        "issue": "domain_range_mismatch",
+                        "source_domain": source_entry["domain"],
+                        "target_domain": target_entry["domain"],
+                        "source_range": source_entry["range"],
+                        "target_range": target_entry["range"],
+                    })
+
+        source_subclasses = {
+            (
+                normalized_label(edge.get("source_label") or edge.get("source") or ""),
+                normalized_label(edge.get("target_label") or edge.get("target") or ""),
+            )
+            for edge in source_reasoning.get("subclass_edges", []) or []
+            if edge.get("source_label") or edge.get("source")
+        }
+        target_subclasses = {
+            (
+                normalized_label(edge.get("source_label") or edge.get("source") or ""),
+                normalized_label(edge.get("target_label") or edge.get("target") or ""),
+            )
+            for edge in target_reasoning.get("subclass_edges", []) or []
+            if edge.get("source_label") or edge.get("source")
+        }
+        missing_subclasses = sorted(source_subclasses - target_subclasses)[:100]
         report = {
             "workflow_id": "ontology.merge",
             "source_ontology_id": source_id,
@@ -237,7 +537,21 @@ class SemanticWorkflowService:
             "generated_at": datetime.now().isoformat(),
             "overlaps": overlaps[:200],
             "additions": additions[:300],
-            "summary": {"overlap_count": len(overlaps), "addition_count": len(additions)},
+            "conflicts": conflicts[:200],
+            "subclass_gaps": [
+                {"child": child, "parent": parent, "issue": "missing_in_target"}
+                for child, parent in missing_subclasses
+            ],
+            "summary": {
+                "overlap_count": len(overlaps),
+                "addition_count": len(additions),
+                "conflict_count": len(conflicts),
+                "subclass_gap_count": len(source_subclasses - target_subclasses),
+                "source_classes": len(source_classes),
+                "target_classes": len(target_classes),
+                "source_properties": len(source_properties),
+                "target_properties": len(target_properties),
+            },
         }
         WorkflowArtifactService.write_json(task_id, "reports", "merge_plan.json", report, "merge_plan")
         return {"task_id": task_id, "status": "completed", "result": report, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
@@ -249,24 +563,31 @@ class SemanticWorkflowService:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
         import_manifest = payload.get("import_artifact_manifest") or {}
+        import_task = cls._load_import_task(import_manifest)
+        import_task_id = str(import_task.get("task_id") or import_manifest.get("task_id") or "")
+        apply_links = payload.get("apply_links", True)
         task_id = cls._new_task("instance.link", meta.get("original_filename", ""))
-        ontology_terms = cls._extract_terms(cls._read_ontology_file(meta))
-        source_terms = cls._extract_terms(json.dumps(import_manifest)) if import_manifest else []
-        candidates = []
-        for src in source_terms[:100]:
-            scored = [
-                {"ontology_term": onto["term"], "confidence": round(_jaccard(src["tokens"], onto["tokens"]), 3)}
-                for onto in ontology_terms[:200]
-            ]
-            best = max(scored, key=lambda x: x["confidence"], default=None)
-            if best and best["confidence"] > 0:
-                candidates.append({"source_term": src["term"], **best})
+        rows = import_task.get("parsed_rows") or []
+        ontology_scope = meta.get("prefix") or meta.get("ontology_prefix") or ontology_id
+        candidates = cls._build_link_candidates(rows, ontology_scope, import_task_id)
+        approved_candidates = [candidate for candidate in candidates if candidate.get("selected_for_apply")]
+        applied_links = cls._apply_instance_links(approved_candidates) if apply_links else 0
         report = {
             "workflow_id": "instance.link",
             "ontology_id": ontology_id,
+            "ontology_scope": ontology_scope,
+            "import_task_id": import_task_id,
             "generated_at": datetime.now().isoformat(),
             "candidates": sorted(candidates, key=lambda x: -x["confidence"])[:200],
-            "summary": {"candidate_count": len(candidates), "committed": False},
+            "summary": {
+                "candidate_count": len(candidates),
+                "selected_for_apply": len(approved_candidates),
+                "high_confidence_candidates": sum(1 for candidate in candidates if candidate["confidence"] >= cls.AUTO_APPLY_CONFIDENCE),
+                "ambiguous_candidates": sum(1 for candidate in candidates if candidate.get("ambiguous")),
+                "generic_matches_filtered": sum(1 for candidate in candidates if candidate.get("generic_match") and not candidate.get("selected_for_apply")),
+                "applied_links": applied_links,
+                "committed": bool(apply_links and applied_links >= 0),
+            },
         }
         WorkflowArtifactService.write_json(task_id, "reports", "link_candidates.json", report, "link_candidates")
         return {"task_id": task_id, "status": "completed", "result": report, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}

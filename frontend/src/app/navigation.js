@@ -9,7 +9,7 @@ import {
 
 export const navigationItems = [
   { id: 'import', label: 'Import', icon: UploadCloud },
-  { id: 'ontology', label: 'Ontology Studio', icon: Network },
+  { id: 'ontology', label: 'Ontology Junction', icon: Network },
   { id: 'graph', label: 'Graph Explorer', icon: GitFork },
   { id: 'quality', label: 'Recommendations', icon: Sparkles },
   { id: 'reports', label: 'Reports', icon: FileBarChart2 },
