@@ -256,7 +256,9 @@ from time import time as unix_time
 
 request_counts = defaultdict(list)  # Track requests per IP: {ip: [timestamp, timestamp, ...]}
 RATE_LIMIT_WINDOW = 60  # seconds
-RATE_LIMIT_MAX = 100  # max requests per window
+RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "100"))  # max requests per window
+RATE_LIMIT_SKIP_LOCAL_READS = os.getenv("RATE_LIMIT_SKIP_LOCAL_READS", "true").lower() == "true"
+RATE_LIMITED_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 class RateLimitMiddleware:
     """Simple in-memory rate limiter for single-instance deployments"""
@@ -270,7 +272,19 @@ class RateLimitMiddleware:
         
         # Get client IP
         client_ip = scope.get("client", ("unknown", 0))[0]
+        method = (scope.get("method") or "GET").upper()
+        path = scope.get("path", "")
         current_time = unix_time()
+
+        is_loopback_client = client_ip in {"127.0.0.1", "::1", "localhost"}
+        is_read_request = method not in RATE_LIMITED_METHODS
+        if RATE_LIMIT_SKIP_LOCAL_READS and is_loopback_client and is_read_request:
+            await self.app(scope, receive, send)
+            return
+
+        if is_read_request:
+            await self.app(scope, receive, send)
+            return
         
         # Clean old requests (older than window)
         request_counts[client_ip] = [
@@ -280,6 +294,7 @@ class RateLimitMiddleware:
         
         # Check rate limit
         if len(request_counts[client_ip]) >= RATE_LIMIT_MAX:
+            logger.warning("Rate limit exceeded for %s %s from %s", method, path, client_ip)
             await send({
                 "type": "http.response.start",
                 "status": 429,
@@ -1841,6 +1856,7 @@ def filter_graph_nodes(request: TextSearchRequest):
             AND (
               any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($input))
               OR any(key IN keys(n) WHERE toLower(coalesce(toStringOrNull(n[key]), '')) CONTAINS toLower($input))
+              OR toLower(coalesce(toString(properties(n)), '')) CONTAINS toLower($input)
             )
           RETURN n
           LIMIT 120
@@ -1850,6 +1866,7 @@ def filter_graph_nodes(request: TextSearchRequest):
             AND (
               toLower(type(matched_rel)) CONTAINS toLower($input)
               OR any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS toLower($input))
+              OR toLower(coalesce(toString(properties(matched_rel)), '')) CONTAINS toLower($input)
             )
           RETURN a AS n
           LIMIT 120
@@ -1859,6 +1876,7 @@ def filter_graph_nodes(request: TextSearchRequest):
             AND (
               toLower(type(matched_rel)) CONTAINS toLower($input)
               OR any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS toLower($input))
+              OR toLower(coalesce(toString(properties(matched_rel)), '')) CONTAINS toLower($input)
             )
           RETURN b AS n
           LIMIT 120

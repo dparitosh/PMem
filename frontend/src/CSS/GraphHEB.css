@@ -80,6 +80,37 @@ input[type="text"]::placeholder {
     overflow: auto !important;
 }
 
+/* Graph Explorer toolbar: compact, no horizontal overflow, no card-like controls. */
+.graph-toolbar {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        gap: 8px !important;
+        overflow: visible !important;
+}
+
+.graph-toolbar > * {
+        min-width: 0 !important;
+}
+
+.graph-toolbar select,
+.graph-toolbar input[type="text"] {
+        max-width: min(100%, 280px) !important;
+}
+
+@media (max-width: 720px) {
+        .graph-toolbar {
+                gap: 6px !important;
+                overflow-x: hidden !important;
+        }
+
+        .graph-toolbar select,
+        .graph-toolbar input[type="text"] {
+                width: 100% !important;
+                max-width: 100% !important;
+        }
+}
+
 .link {
     stroke-width: 1.4px;
     stroke-linecap: round;
@@ -670,4 +701,89 @@ body.with-fixed-header #cloud-container { padding-top: 8vh; }
 }
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.depo-data-grid {
+    --ag-font-size: 12px;
+    --ag-header-height: 38px;
+    --ag-row-height: 36px;
+    --ag-list-item-height: 32px;
+    --ag-borders: none;
+    --ag-cell-horizontal-padding: 10px;
+    --ag-grid-size: 6px;
+}
+
+.depo-data-grid .ag-root-wrapper,
+.depo-data-grid .ag-root,
+.depo-data-grid .ag-body-viewport,
+.depo-data-grid .ag-center-cols-viewport {
+    min-width: 0;
+}
+
+.depo-data-grid .ag-header-cell-text,
+.depo-data-grid .ag-cell-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.depo-data-grid .ag-paging-panel {
+    min-height: 40px;
+    padding: 6px 10px;
+    border-top: 1px solid #E9ECEF;
+    flex-wrap: wrap;
+    row-gap: 4px;
+}
+
+.depo-data-grid .ag-paging-row-summary-panel,
+.depo-data-grid .ag-paging-page-summary-panel,
+.depo-data-grid .ag-paging-description {
+    white-space: normal;
+}
+
+.owl-browser-layout {
+    width: 100%;
+}
+
+@media (max-width: 1440px) {
+    .owl-browser-layout {
+        grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.45fr) minmax(260px, 0.8fr) !important;
+    }
+}
+
+@media (max-width: 1180px) {
+    .owl-browser-layout {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* Final Graph Explorer toolbar override: compact controls, no horizontal scrolling. */
+.graph-toolbar {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        gap: 8px !important;
+        overflow: visible !important;
+}
+
+.graph-toolbar > * {
+        min-width: 0 !important;
+}
+
+.graph-toolbar select,
+.graph-toolbar input[type="text"] {
+        max-width: min(100%, 280px) !important;
+}
+
+@media (max-width: 720px) {
+        .graph-toolbar {
+                gap: 6px !important;
+                overflow-x: hidden !important;
+        }
+
+        .graph-toolbar select,
+        .graph-toolbar input[type="text"] {
+                width: 100% !important;
+                max-width: 100% !important;
+        }
 }

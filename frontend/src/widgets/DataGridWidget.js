@@ -21,33 +21,49 @@ export default function DataGridWidget({
   onRowClicked = null,
 }) {
   const usePagination = pagination ?? rows.length > paginationPageSize;
+  const gridHeight = Math.max(Number(height) || 320, usePagination ? 360 : 320);
+  const footerReserve = usePagination ? 48 : 0;
   const defaultColDef = useMemo(() => ({
     sortable: true,
     filter: true,
     resizable: true,
     floatingFilter: rows.length > 12,
-    minWidth: 120,
+    minWidth: 96,
+    wrapHeaderText: false,
+    suppressHeaderMenuButton: true,
+    tooltipValueGetter: (params) => {
+      const value = params?.value;
+      return value === null || value === undefined || value === '' ? null : String(value);
+    },
+    cellStyle: {
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+    },
   }), [rows.length]);
 
   return (
-    <section style={{ ...widgetCardStyle, overflow: 'hidden' }}>
+    <section style={{ ...widgetCardStyle, overflow: 'hidden', minWidth: 0 }}>
       {(title || subtitle) && (
         <div style={{ padding: '10px 12px', borderBottom: `1px solid ${widgetColors.border}` }}>
           {title && <div style={{ fontSize: 13, fontWeight: 800, color: widgetColors.text }}>{title}</div>}
+          {subtitle && <div style={{ marginTop: 4, fontSize: 11, color: widgetColors.muted }}>{subtitle}</div>}
         </div>
       )}
       {rows.length === 0 ? (
-        <div style={{ height, display: 'grid', placeItems: 'center', color: widgetColors.muted, fontSize: 12 }}>
+        <div style={{ height: gridHeight, display: 'grid', placeItems: 'center', color: widgetColors.muted, fontSize: 12 }}>
           {emptyLabel}
         </div>
       ) : (
         <div
-          className="ag-theme-quartz"
+          className="ag-theme-quartz depo-data-grid"
           style={{
-            height,
-            minHeight: minGridHeight || height,
+            height: gridHeight + footerReserve,
+            minHeight: (minGridHeight || gridHeight) + footerReserve,
             width: '100%',
-            paddingBottom: usePagination ? 8 : 0,
+            minWidth: 0,
+            overflow: 'hidden',
+            paddingBottom: footerReserve,
             boxSizing: 'border-box',
           }}
         >
@@ -59,11 +75,14 @@ export default function DataGridWidget({
             quickFilterText={quickFilterText}
             pagination={usePagination}
             paginationPageSize={paginationPageSize}
-            paginationPageSizeSelector={[20, 50, 100]}
+            paginationPageSizeSelector={[20, 25, 50, 100]}
             suppressCellFocus
+            suppressMovableColumns
+            suppressColumnVirtualisation={false}
             animateRows={false}
             rowHeight={36}
             headerHeight={38}
+            tooltipShowDelay={200}
             onRowClicked={onRowClicked ? (event) => onRowClicked(event.data, event) : undefined}
           />
         </div>

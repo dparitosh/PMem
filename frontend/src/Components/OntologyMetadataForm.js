@@ -185,7 +185,7 @@ export default function OntologyMetadataForm({
 
           {/* Ontology Name */}
           <div style={{ marginBottom: '20px' }}>
-            <label style={{
+            <label htmlFor="ontology-name-input" style={{
               display: 'block',
               marginBottom: '6px',
               fontWeight: 700,
@@ -195,6 +195,7 @@ export default function OntologyMetadataForm({
               Ontology Name *
             </label>
             <input
+              id="ontology-name-input"
               type="text"
               placeholder={ontologyNamePlaceholder}
               value={formData.ontologyName}
@@ -224,7 +225,7 @@ export default function OntologyMetadataForm({
 
           {/* Prefix */}
           <div style={{ marginBottom: '20px' }}>
-            <label style={{
+            <label htmlFor="ontology-prefix-input" style={{
               display: 'block',
               marginBottom: '6px',
               fontWeight: 700,
@@ -234,6 +235,7 @@ export default function OntologyMetadataForm({
               Namespace Prefix *
             </label>
             <input
+              id="ontology-prefix-input"
               type="text"
               placeholder={prefixPlaceholder}
               value={formData.prefix}
@@ -264,7 +266,7 @@ export default function OntologyMetadataForm({
 
           {/* Generation Type */}
           <div style={{ marginBottom: '20px' }}>
-            <label style={{
+            <label htmlFor="ontology-generation-select" style={{
               display: 'block',
               marginBottom: '6px',
               fontWeight: 700,
@@ -280,6 +282,7 @@ export default function OntologyMetadataForm({
               </div>
             )}
             <select
+              id="ontology-generation-select"
               value={formData.generationType}
               onChange={(e) => setFormData({ ...formData, generationType: e.target.value })}
               disabled={showFileTypeError}
@@ -377,7 +380,7 @@ export default function OntologyMetadataForm({
 
           {/* Description */}
           <div style={{ marginBottom: '20px' }}>
-            <label style={{
+            <label htmlFor="ontology-description-input" style={{
               display: 'block',
               marginBottom: '6px',
               fontWeight: 700,
@@ -387,6 +390,7 @@ export default function OntologyMetadataForm({
               Description
             </label>
             <textarea
+              id="ontology-description-input"
               placeholder="Optional description for this ontology..."
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}

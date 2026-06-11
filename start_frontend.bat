@@ -70,22 +70,20 @@ if not exist "frontend\node_modules\react-scripts\bin\react-scripts.js" (
     exit /b 1
 )
 
-echo [1/2] Verifying npm installation...
-for /f "tokens=*" %%i in ('npm.cmd --version') do set "NPM_VERSION=%%i"
-echo        npm version: %NPM_VERSION%
-
-echo [2/2] Starting React development server...
+echo [1/1] Starting React development server...
 echo.
 echo ════════════════════════════════════════════════════════════════════════════
 
 cd /d "%~dp0frontend"
 set "PORT=%PORT%"
 set "REACT_APP_BACKEND_URL=http://localhost:8000"
+set "BROWSER=none"
+set "FAST_REFRESH=true"
 
 if exist "node_modules\.bin\react-scripts.cmd" (
     call "node_modules\.bin\react-scripts.cmd" start
 ) else (
-    call npm.cmd start
+    call npm.cmd run dev
 )
 
 if errorlevel 1 (

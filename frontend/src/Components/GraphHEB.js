@@ -44,11 +44,11 @@ const DISPLAY_MODE = 'property-only';
 // These improve readability and maintainability
 const HIGHLIGHT_AUTO_CLEAR_MS = 15000;        // 15 seconds - clear highlight after timeout
 const ENTITY_EXTRACTION_DELAY_MS = 500;       // 500ms - allow text selection to settle
-const TREE_ROW_HEIGHT_PX = 40;                // Retained only while legacy tree renderer is being removed.
-const TREE_INDENT_WIDTH_PX = 30;
-const TREE_LAYOUT_PADDING_PX = 40;
-const TREE_DEFAULT_HEIGHT_PX = 600;
-const TREE_MIN_CONTENT_HEIGHT_PX = 560;
+const TREE_ROW_HEIGHT_PX = 40;                // 40px - height of each tree row
+const TREE_INDENT_WIDTH_PX = 30;              // 30px - indent per tree level
+const TREE_LAYOUT_PADDING_PX = 40;            // 40px - padding from edges
+const TREE_DEFAULT_HEIGHT_PX = 600;           // 600px - default tree container height
+const TREE_MIN_CONTENT_HEIGHT_PX = 560;       // 560px - minimum height before scrolling
 const DEFAULT_GRAPH_OVERVIEW_LIMIT = 900;
 const DEFAULT_ONTOLOGY_VIEW_LIMIT = 200;
 const GRAPH_LABEL_RENDER_LIMIT = 140;
@@ -67,7 +67,7 @@ const resolveDisplayProp = (props) => {
 const formatNodeDisplay = (label, propValue) => {
   const safeLabel = safeString(label, null);
   const safeProp = safeString(propValue, null);
-  
+
   switch (DISPLAY_MODE) {
     case 'label-only':
       return safeLabel || safeProp || 'Unknown';
@@ -93,42 +93,6 @@ const resolveOntologySearchPrefix = (ontologyValue) => {
     return ontologyValue.replace(/_instances$/, '');
   }
   return ontologyValue;
-};
-
-const getOntologyGraphScopeValue = (option) => {
-  if (!option) return '';
-  return option.prefix || option.ontology_prefix || option.value || option.ontology_id || option.id || '';
-};
-
-const resolveOntologyGraphScopeValue = (ontologyValue, options = []) => {
-  if (!ontologyValue || ontologyValue === 'ALL' || ontologyValue === 'step' || ontologyValue === 'mbse_instances') {
-    return ontologyValue;
-  }
-  if (ontologyValue.endsWith('_instances')) {
-    return ontologyValue;
-  }
-  const match = (options || []).find((option) => (
-    option?.value === ontologyValue ||
-    option?.ontology_id === ontologyValue ||
-    option?.id === ontologyValue ||
-    option?.prefix === ontologyValue ||
-    option?.ontology_prefix === ontologyValue
-  ));
-  return getOntologyGraphScopeValue(match) || ontologyValue;
-};
-
-const pickPreferredOntologyOption = (options) => {
-  const candidates = (options || []).filter((option) => getOntologyGraphScopeValue(option) && !option.disabled);
-  if (candidates.length === 0) return null;
-
-  return candidates
-    .slice()
-    .sort((left, right) => {
-      const leftScore = Number(left.relationship_count || 0);
-      const rightScore = Number(right.relationship_count || 0);
-      if (rightScore !== leftScore) return rightScore - leftScore;
-      return String(left.label || left.value).localeCompare(String(right.label || right.value));
-    })[0];
 };
 
 // Performance: Disable excessive console logging in production
@@ -235,7 +199,7 @@ const VIEWPORT_PADDING = 50;
 // NEW CONSTANTS FOR EXPAND/COLLAPSE
 const EXPAND_SYMBOL_SIZE = 8;
 const EXPAND_CIRCLE_RADIUS = 10;
- 
+
 // NEW CONSTANTS FOR ARROWHEADS
 const ARROW_HEAD_LENGTH = 4.25;
 const ARROW_HEAD_WIDTH = 2.2;
@@ -263,6 +227,57 @@ const CHAR_CHECK      = '\u2713';     // ✓   check mark
 const CHAR_CROSS      = '\u2717';     // ✗   ballot x
 // ───────────────────────────────────────────────────────────────────────────
 
+const ENTITY_COLOR_SWATCH = [
+  '#1F3D63', '#355C7D', '#486581', '#0F766E', '#8D6E63', '#C05621',
+  '#6B46C1', '#0E7490', '#A16207', '#BE185D', '#3E4C59', '#0F4C5C',
+];
+
+const hashText = (value) => {
+  const text = String(value || '');
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) - hash) + text.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+};
+
+const resolveNodeColorKey = (nodeLike) => {
+  if (typeof nodeLike === 'string') return nodeLike;
+  const props = nodeLike?.properties && typeof nodeLike.properties === 'object' && !Array.isArray(nodeLike.properties)
+    ? nodeLike.properties
+    : nodeLike || {};
+  return safeString(
+    props.sub_type ||
+    props.subtype ||
+    props.entity_subtype ||
+    props.entitySubtype ||
+    props.subclass ||
+    props.sub_class ||
+    props.subclass_of ||
+    props.subClassOf ||
+    props.parent_class ||
+    props.parentClass ||
+    props.super_class ||
+    props.superClass ||
+    props.owl_class ||
+    props.owlClass ||
+    props.rdf_type ||
+    props.rdfType ||
+    props.class_label ||
+    props.entity_type ||
+    props.original_type ||
+    props.concept_type ||
+    props.class_name ||
+    props.type ||
+    nodeLike?.entity_type ||
+    nodeLike?.label ||
+    nodeLike?.labels?.[0] ||
+    'Node',
+    'Node'
+  );
+};
+
 // Performance: Debounce hook for search optimization
 const useDebounce = (value, delay) => {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -282,133 +297,46 @@ const useDebounce = (value, delay) => {
 
 // Performance: Memoized node search function
 const createNodeSearchFunction = () => {
+  const containsSearchTerm = (value, lowerSearchTerm, depth = 0) => {
+    if (value == null || depth > 3) return false;
+
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      return String(value).toLowerCase().includes(lowerSearchTerm);
+    }
+
+    if (Array.isArray(value)) {
+      return value.some((item) => containsSearchTerm(item, lowerSearchTerm, depth + 1));
+    }
+
+    if (typeof value === 'object') {
+      return Object.values(value).some((item) => containsSearchTerm(item, lowerSearchTerm, depth + 1));
+    }
+
+    return false;
+  };
+
   return (nodes, searchTerm) => {
     if (!searchTerm || searchTerm.length < 2) return nodes;
-    
+
     const lowerSearchTerm = searchTerm.toLowerCase();
-    const matches = [];
-    nodes.forEach((node) => {
-      let bestScore = -1;
-      const valuesToScan = [
-        node?.name,
-        node?.label,
-        node?.entity_type,
-        node?.title,
-        node?.code,
-        node?.type,
-        ...(Array.isArray(node?.labels) ? node.labels : []),
-      ];
+    return nodes.filter(node => {
+      // Primary search fields (faster check first)
+      if (node.name?.toLowerCase().includes(lowerSearchTerm)) return true;
+      if (node.label?.toLowerCase().includes(lowerSearchTerm)) return true;
 
-      for (const value of valuesToScan) {
-        if (typeof value !== 'string') continue;
-        const normalized = value.toLowerCase();
-        if (normalized === lowerSearchTerm) {
-          bestScore = Math.max(bestScore, 400);
-        } else if (normalized.startsWith(lowerSearchTerm)) {
-          bestScore = Math.max(bestScore, 300);
-        } else if (normalized.includes(lowerSearchTerm)) {
-          bestScore = Math.max(bestScore, 220);
-        }
+      // Label array search
+      if (node.labels?.some(label => label.toLowerCase().includes(lowerSearchTerm))) return true;
+
+      // Properties search (more expensive, check last)
+      if (node.properties) {
+        if (containsSearchTerm(node.properties, lowerSearchTerm)) return true;
       }
 
-      const stack = [node?.properties || node];
-      while (stack.length > 0) {
-        const current = stack.pop();
-        if (!current || typeof current !== 'object') continue;
-        for (const value of Object.values(current)) {
-          if (value == null) continue;
-          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-            const normalized = String(value).toLowerCase();
-            if (normalized === lowerSearchTerm) {
-              bestScore = Math.max(bestScore, 180);
-            } else if (normalized.startsWith(lowerSearchTerm)) {
-              bestScore = Math.max(bestScore, 140);
-            } else if (normalized.includes(lowerSearchTerm)) {
-              bestScore = Math.max(bestScore, 100);
-            }
-          } else if (Array.isArray(value)) {
-            for (const item of value) {
-              if (item == null) continue;
-              if (typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean') {
-                const normalized = String(item).toLowerCase();
-                if (normalized === lowerSearchTerm) {
-                  bestScore = Math.max(bestScore, 160);
-                } else if (normalized.startsWith(lowerSearchTerm)) {
-                  bestScore = Math.max(bestScore, 120);
-                } else if (normalized.includes(lowerSearchTerm)) {
-                  bestScore = Math.max(bestScore, 90);
-                }
-              } else if (typeof item === 'object') {
-                stack.push(item);
-              }
-            }
-          } else if (typeof value === 'object') {
-            stack.push(value);
-          }
-        }
-      }
-      if (bestScore >= 0) {
-        matches.push({ node, score: bestScore });
-      }
+      if (containsSearchTerm(node, lowerSearchTerm)) return true;
+
+      return false;
     });
-
-    return matches
-      .sort((left, right) => {
-        if (right.score !== left.score) return right.score - left.score;
-        const leftName = String(left.node?.properties?.name || left.node?.name || left.node?.label || left.node?.elementId || '');
-        const rightName = String(right.node?.properties?.name || right.node?.name || right.node?.label || right.node?.elementId || '');
-        return leftName.localeCompare(rightName);
-      })
-      .map((entry) => entry.node);
   };
-};
-
-const searchLinkMatches = (link, searchTerm) => {
-  if (!searchTerm || searchTerm.length < 2) return false;
-  const lowerSearchTerm = searchTerm.toLowerCase();
-  const valuesToScan = [
-    link?.type,
-    link?.label,
-    ...(Array.isArray(link?.labels) ? link.labels : []),
-  ];
-  for (const value of valuesToScan) {
-    if (typeof value === 'string' && value.toLowerCase().includes(lowerSearchTerm)) {
-      return true;
-    }
-  }
-  const props = link?.properties && typeof link.properties === 'object' ? link.properties : {};
-  for (const value of Object.values(props)) {
-    if (value == null) continue;
-    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-      if (String(value).toLowerCase().includes(lowerSearchTerm)) {
-        return true;
-      }
-    }
-  }
-  return false;
-};
-
-const resolveEntityTypeLabel = (node) => {
-  const props = node?.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)
-    ? node.properties
-    : node || {};
-  const candidates = [
-    props.entity_type,
-    props.original_type,
-    props.node_type,
-    props.class_name,
-    props.concept_type,
-    node?.entity_type,
-    node?.label,
-    node?.labels?.[0],
-  ];
-  for (const candidate of candidates) {
-    const text = safeString(candidate, '').trim();
-    if (text && !['node', 'datanode'].includes(text.toLowerCase())) {
-      return text;
-    }
-  }
-  return safeString(node?.labels?.[0] || node?.label || props.entity_type || props.original_type || 'Node', 'Node');
 };
 
 const resolveNodeType = (node) => {
@@ -428,19 +356,42 @@ const resolveNodeName = (node) => {
   const props = node?.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)
     ? node.properties
     : node || {};
-  return (
-    node?.name ||
-    props.name ||
-    node?.title ||
-    props.title ||
-    node?.code ||
-    props.code ||
-    node?.label ||
-    node?.labels?.[0] ||
-    node?.entity_type ||
-    props.entity_type ||
-    'Unknown'
-  );
+  const genericNames = new Set(['node', 'datanode', 'entity', 'graphnode', 'unknown', 'item']);
+  const candidates = [
+    node?.name,
+    props.name,
+    node?.title,
+    props.title,
+    node?.code,
+    props.code,
+    props.key,
+    props.identifier,
+    props.abbreviation,
+    props.part_number,
+    props.product_name,
+    props.project_name,
+    props.label,
+    node?.label,
+    node?.labels?.[0],
+    props.class_label,
+    props.class_name,
+    props.concept_type,
+    props.original_type,
+    props.owl_class,
+    props.rdf_type,
+    props.entity_type,
+    node?.entity_type,
+  ];
+
+  for (const candidate of candidates) {
+    const text = safeString(candidate, '').trim();
+    if (!text) continue;
+    if (genericNames.has(text.toLowerCase())) continue;
+    return text;
+  }
+
+  const fallback = props.original_type || props.class_label || props.class_name || props.concept_type || props.entity_type || node?.entity_type;
+  return safeString(fallback, 'Unknown');
 };
 
 const getRelationshipVisual = (relationshipType) => {
@@ -468,7 +419,8 @@ const normalizeGraphDataset = (payload) => {
     return { nodes: [], links: [] };
   }
 
-  if (Array.isArray(payload.nodes) && Array.isArray(payload.relationships)) {
+  if (Array.isArray(payload.nodes) && (Array.isArray(payload.relationships) || Array.isArray(payload.links))) {
+    const rawRelationships = Array.isArray(payload.relationships) ? payload.relationships : payload.links;
     const nodes = payload.nodes
       .filter((node) => node?.elementId)
       .map((node) => ({
@@ -480,12 +432,16 @@ const normalizeGraphDataset = (payload) => {
       }));
 
     const nodeIds = new Set(nodes.map((node) => node.elementId));
-    const links = payload.relationships
-      .filter((rel) => rel?.elementId && nodeIds.has(rel.start) && nodeIds.has(rel.end))
+    const links = rawRelationships
+      .filter((rel) => {
+        const sourceId = rel?.start ?? getLinkEndpointId(rel?.source);
+        const targetId = rel?.end ?? getLinkEndpointId(rel?.target);
+        return rel?.elementId && nodeIds.has(sourceId) && nodeIds.has(targetId);
+      })
       .map((rel) => ({
         elementId: rel.elementId,
-        source: rel.start,
-        target: rel.end,
+        source: rel.start ?? getLinkEndpointId(rel.source),
+        target: rel.end ?? getLinkEndpointId(rel.target),
         type: rel.type,
         properties: rel.properties || {},
       }));
@@ -544,82 +500,13 @@ const normalizeGraphDataset = (payload) => {
   return { nodes: [], links: [] };
 };
 
-const annotateOntologyHierarchyLevels = (nodes = [], links = []) => {
-  const classIds = new Set(
-    nodes
-      .filter(node => (node.labels || []).includes('OntologyClass') || (node.labels || []).includes('Class'))
-      .map(node => node.elementId)
-  );
-  if (classIds.size === 0) return { maxLevel: 0, rootCount: 0 };
-
-  const childrenByParent = new Map();
-  const hasParent = new Set();
-
-  links.forEach((link) => {
-    if (link.type !== 'SUBCLASS_OF') return;
-    const childId = getLinkEndpointId(link.source);
-    const parentId = getLinkEndpointId(link.target);
-    if (!childId || !parentId || !classIds.has(childId) || !classIds.has(parentId)) return;
-    if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, new Set());
-    childrenByParent.get(parentId).add(childId);
-    hasParent.add(childId);
-  });
-
-  let roots = Array.from(classIds).filter(id => !hasParent.has(id));
-  if (roots.length === 0) {
-    roots = Array.from(classIds);
-  }
-
-  const levelById = new Map();
-  const queue = roots.map(id => ({ id, level: 0 }));
-  roots.forEach(id => levelById.set(id, 0));
-
-  while (queue.length) {
-    const { id, level } = queue.shift();
-    const children = childrenByParent.get(id) || [];
-    children.forEach((childId) => {
-      const nextLevel = level + 1;
-      if (!levelById.has(childId) || nextLevel < levelById.get(childId)) {
-        levelById.set(childId, nextLevel);
-        queue.push({ id: childId, level: nextLevel });
-      }
-    });
-  }
-
-  classIds.forEach(id => {
-    if (!levelById.has(id)) levelById.set(id, 0);
-  });
-
-  links.forEach((link) => {
-    if (link.type !== 'DOMAIN' && link.type !== 'RANGE') return;
-    const propertyId = getLinkEndpointId(link.source);
-    const classId = getLinkEndpointId(link.target);
-    if (!propertyId || !classId || !levelById.has(classId)) return;
-    const propertyLevel = levelById.get(classId) + 0.5;
-    const current = levelById.get(propertyId);
-    if (current == null || propertyLevel < current) levelById.set(propertyId, propertyLevel);
-  });
-
-  let maxLevel = 0;
-  nodes.forEach((node) => {
-    const level = levelById.get(node.elementId);
-    if (level != null) {
-      node.ontologyLevel = level;
-      node.ontologyLevelLabel = level === 0 ? 'Top level' : `Level ${level}`;
-      maxLevel = Math.max(maxLevel, Math.ceil(level));
-    }
-  });
-
-  return { maxLevel, rootCount: roots.length };
-};
- 
 const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTab, setVisibleRelationships, chatResults }) => {
   const svgRef = useRef();
   const tooltipRef = useRef();
   const [tooltipDocked, setTooltipDocked] = useState(true);
   const tooltipDockedRef = useRef(tooltipDocked);
   useEffect(() => { tooltipDockedRef.current = tooltipDocked; }, [tooltipDocked]);
- 
+
   const simulationRef = useRef(null);
   const gRef = useRef(null); // Ref for the main D3 group element
   const tickFrameRef = useRef(null);
@@ -627,9 +514,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const timeoutsRef = useRef(new Set()); // Track active timeouts for cleanup
   const lastCenteredSearchRef = useRef('');
   const previousSearchQueryRef = useRef('');
-  const searchQueryRef = useRef('');
   const userInteractedWithGraphRef = useRef(false);
-  const suppressNodeClickRef = useRef(false);
 
   // Helper: build close button HTML for tooltips
   const tooltipCloseBtn = `<button class="dt-tooltip-close" style="position:absolute;top:6px;right:8px;background:none;border:none;color:white;font-size:16px;cursor:pointer;line-height:1;padding:0 2px;opacity:0.85;">&times;</button>`;
@@ -645,14 +530,33 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     newBtn.addEventListener('click', (ev) => {
       ev.stopPropagation();
       tooltipEl.style.opacity = '0';
+      tooltipEl.style.display = 'none';
       tooltipEl.style.pointerEvents = 'none';
       activeTooltipNodeRef.current = null;
     });
   };
 
+  const wireTooltipRecButtons = (tooltipEl) => {
+    if (!tooltipEl) return;
+    tooltipEl.querySelectorAll('.dt-rec-btn').forEach((btn) => {
+      btn.onclick = (ev) => {
+        ev.stopPropagation();
+        const service = btn.getAttribute('data-rec-service');
+        const nodeName = btn.getAttribute('data-rec-node') || '';
+        if (typeof window.__dt_rec_action === 'function' && service) {
+          window.__dt_rec_action(service, nodeName);
+        }
+      };
+    });
+  };
+
   // Helper: hide both tooltips
   const hideAllTooltips = () => {
-    if (tooltipRef.current) { tooltipRef.current.style.opacity = '0'; tooltipRef.current.style.pointerEvents = 'none'; }
+    if (tooltipRef.current) {
+      tooltipRef.current.style.opacity = '0';
+      tooltipRef.current.style.display = 'none';
+      tooltipRef.current.style.pointerEvents = 'none';
+    }
     activeTooltipNodeRef.current = null;
   };
 
@@ -887,8 +791,8 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
 
     // Extract entity/node names from the chat response using multiple heuristics:
     // 1. Bold text (**Name**) often indicates entities
-    // 2. Backtick text (`Name`) indicates code/identifiers  
-    // 3. Quoted text ("Name") 
+    // 2. Backtick text (`Name`) indicates code/identifiers
+    // 3. Quoted text ("Name")
     // 4. Lines that look like list items with entity names
     const extracted = new Set();
 
@@ -937,9 +841,9 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     const escapedName = escapeHtml(nodeName || '');
     const btnStyle = 'display:inline-block;padding:4px 10px;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;margin-right:6px;color:#fff;';    return `
       <div style="padding:6px 8px 4px;margin-bottom:4px;border-bottom:1px solid #e2e6ea;display:flex;flex-wrap:wrap;gap:4px;">
-        <button onclick="window.__dt_rec_action('change-impact','${escapedName}')" style="${btnStyle}background:#e74c3c;" title="Change Impact Analysis">Impact</button>
-        <button onclick="window.__dt_rec_action('similar-parts','${escapedName}')" style="${btnStyle}background:#004B87;" title="Find Similar Parts">Similar</button>
-        <button onclick="window.__dt_rec_action('manufacturing','${escapedName}')" style="${btnStyle}background:#27ae60;" title="Manufacturing Processes">Process</button>
+        <button type="button" class="dt-rec-btn" data-rec-service="change-impact" data-rec-node="${escapedName}" style="${btnStyle}background:#e74c3c;" title="Change Impact Analysis">Impact</button>
+        <button type="button" class="dt-rec-btn" data-rec-service="similar-parts" data-rec-node="${escapedName}" style="${btnStyle}background:#004B87;" title="Find Similar Parts">[FIND] Similar</button>
+        <button type="button" class="dt-rec-btn" data-rec-service="manufacturing" data-rec-node="${escapedName}" style="${btnStyle}background:#27ae60;" title="Manufacturing Processes">[MFG] Process</button>
       </div>`;
   };
 
@@ -955,7 +859,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const [error, setError] = useState(null);
   // Performance: Add loading states for better UX
   const [searchLoading, setSearchLoading] = useState(false);
-  const isLayoutSwitching = false;
+  const [isLayoutSwitching, setIsLayoutSwitching] = useState(false);
   // New state for expand/collapse functionality
   const [expandedNodes, setExpandedNodes] = useState(new Set());
   const [loadingNodes, setLoadingNodes] = useState(new Set());
@@ -967,7 +871,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   // Track expanded nodes specifically for the indented tree layout
   const [treeExpandedNodes, setTreeExpandedNodes] = useState(new Set());
   // New state for layout selection
-  const layoutType = 'force-directed';
+  const [layoutType, setLayoutType] = useState('force-directed');
   const [prevLayoutType, setPrevLayoutType] = useState('force-directed');
   // Unified primary button color (match WhereUsedView request)
 
@@ -993,6 +897,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       setSearchQuery('');
       setSearchInput('');
       setSearchResultData({ nodes: [], links: [] });
+      setActiveSearchResultId(null);
     }
     if (resetLabels) {
       setAvailableLabels([]);
@@ -1047,12 +952,14 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const [searchResultData, setSearchResultData] = useState({ nodes: [], links: [] });
   const [availableLabels, setAvailableLabels] = useState([]);
   const [selectedLabelFilter, setSelectedLabelFilter] = useState('ALL');
+  const [activeSearchResultId, setActiveSearchResultId] = useState(null);
   // ── Graph View Mode: 'ontology' = Ontology Graph Visualization, 'individual' = Contextual Individual Graph View
   const [graphViewMode, setGraphViewMode] = useState('ontology');
   const graphViewModeRef = useRef('ontology');
   // Ontology viewer state
   const [selectedOntology, setSelectedOntology] = useState('ALL');
   const selectedOntologyRef = useRef('ALL');
+  const lastSpecificOntologyRef = useRef('ALL');
   const lastNeo4jConnectedRef = useRef(null);
   // Local loading state for ontology-specific operations (separate from context loading)
   const [, setOntologyLoading] = useState(false);
@@ -1067,37 +974,6 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const [selectedStepPart, setSelectedStepPart] = useState('ALL');
   const [stepPartsLoading, setStepPartsLoading] = useState(false);
   const [stepPartsError, setStepPartsError] = useState(null);
-  useEffect(() => {
-    searchQueryRef.current = searchQuery;
-  }, [searchQuery]);
-
-  const isSearchSessionActive = useCallback(() => Boolean((searchQueryRef.current || '').trim()), []);
-
-  const syncVisibleGraph = useCallback((dataSet, options = {}) => {
-    const {
-      updateInitial = false,
-      preserveSearchSession = isSearchSessionActive(),
-    } = options;
-
-    const normalized = normalizeGraphDataset(dataSet);
-
-    startTransition(() => {
-      if (updateInitial) {
-        setInitialData(normalized);
-      }
-      setGraphData(normalized);
-      setFullDataset(normalized);
-      setData(normalized);
-
-      if (!preserveSearchSession) {
-        setFilteredData(normalized);
-        if (setSearchResults) {
-          setSearchResults(normalized.nodes);
-        }
-      }
-    });
-  }, [isSearchSessionActive, setData, setSearchResults]);
-
   // Performance: Debounced search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300); // 300ms delay
   // Performance: Memoized search function
@@ -1119,19 +995,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       return null;
     }
 
-    const relationshipOrder = [
-      'SUBCLASS_OF',
-      'DOMAIN',
-      'RANGE',
-      'SUBPROPERTY_OF',
-      'EQUIVALENT_CLASS',
-      'DISJOINT_WITH',
-      'INVERSE_OF',
-      'CLASS_RESTRICTION',
-      'ON_PROPERTY',
-      'SOME_VALUES_FROM',
-      'ALL_VALUES_FROM',
-    ];
+    const relationshipOrder = ['SUBCLASS_OF', 'DOMAIN', 'RANGE', 'SUBPROPERTY_OF', 'EQUIVALENT_CLASS', 'DISJOINT_WITH'];
     const relationshipCounts = links.reduce((acc, link) => {
       const type = safeString(link?.type, 'RELATED_TO');
       acc[type] = (acc[type] || 0) + 1;
@@ -1140,7 +1004,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
 
     const schemaLabelCounts = nodes.reduce((acc, node) => {
       const labels = Array.isArray(node?.labels) ? node.labels : [];
-      const schemaLabel = labels.find((label) => ['OntologyClass', 'ObjectProperty', 'DatatypeProperty', 'Restriction', 'Datatype'].includes(label));
+      const schemaLabel = labels.find((label) => ['OntologyClass', 'ObjectProperty', 'DatatypeProperty'].includes(label));
       if (schemaLabel) {
         acc[schemaLabel] = (acc[schemaLabel] || 0) + 1;
       }
@@ -1155,8 +1019,6 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       { label: 'Classes', key: 'OntologyClass' },
       { label: 'Object properties', key: 'ObjectProperty' },
       { label: 'Datatype properties', key: 'DatatypeProperty' },
-      { label: 'Restrictions', key: 'Restriction' },
-      { label: 'Datatypes', key: 'Datatype' },
     ].filter((entry) => schemaLabelCounts[entry.key] > 0)
       .map((entry) => ({ label: entry.label, count: schemaLabelCounts[entry.key] }));
 
@@ -1168,7 +1030,91 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       hasSubclassEdges: Boolean(relationshipCounts.SUBCLASS_OF),
     };
   }, [activeGraphDataset, graphViewMode, selectedOntology]);
-  
+
+  const visibleSearchNodes = useMemo(() => {
+    if (selectedLabelFilter === 'ALL') {
+      return searchResultData.nodes || [];
+    }
+    return (searchResultData.nodes || []).filter((node) => (node.labels || []).includes(selectedLabelFilter));
+  }, [searchResultData.nodes, selectedLabelFilter]);
+
+  const preferredOntologyValue = useMemo(() => {
+    if (selectedOntology && selectedOntology !== 'ALL') return selectedOntology;
+    const candidates = (ontologyOptions || []).filter((option) => option?.value && option.value !== 'ALL' && !option.disabled);
+    const preferred = candidates.find((option) => Number(option.relationship_count || 0) > 0) || candidates[0];
+    return preferred?.value || 'ALL';
+  }, [ontologyOptions, selectedOntology]);
+
+  const focusSearchResult = useCallback((candidateNode) => {
+    if (!candidateNode?.elementId) return;
+    setActiveSearchResultId(candidateNode.elementId);
+    const candidateName = resolveNodeName(candidateNode);
+    if (candidateName && candidateName !== 'Unknown') {
+      setHighlightedNodeNames(new Set([candidateName.toLowerCase()]));
+      const timeoutId = setTimeout(() => setHighlightedNodeNames(new Set()), HIGHLIGHT_AUTO_CLEAR_MS);
+      timeoutsRef.current.add(timeoutId);
+    }
+  }, [setData]);
+
+  const expandSearchResult = useCallback(async (candidateNode) => {
+    if (!candidateNode?.elementId) return;
+    setActiveSearchResultId(candidateNode.elementId);
+    setLoadingNodes(prev => new Set([...prev, candidateNode.elementId]));
+
+    try {
+      const response = await apiClient.get(replaceParams(API.graph.graphtraverseNode, { node_id: candidateNode.elementId }));
+      const results = response.data?.results || [];
+      const nodesMap = new Map([[candidateNode.elementId, candidateNode]]);
+      const linksMap = new Map();
+
+      results.forEach((record) => {
+        const n = record.n || record['n'];
+        const r = record.r || record['r'];
+        const m = record.m || record['m'];
+
+        [n, m].forEach((rawNode) => {
+          if (!rawNode?.elementId || nodesMap.has(rawNode.elementId)) return;
+          nodesMap.set(rawNode.elementId, {
+            ...(rawNode.properties || {}),
+            elementId: rawNode.elementId,
+            labels: rawNode.labels || ['Node'],
+            label: rawNode.labels?.[0] || 'Node',
+            properties: rawNode.properties || {},
+          });
+        });
+
+        if (r?.elementId && !linksMap.has(r.elementId)) {
+          linksMap.set(r.elementId, {
+            elementId: r.elementId,
+            source: r.start ?? getLinkEndpointId(r.source),
+            target: r.end ?? getLinkEndpointId(r.target),
+            type: r.type,
+            properties: r.properties || {},
+          });
+        }
+      });
+
+      const nodes = Array.from(nodesMap.values());
+      const nodeIds = new Set(nodes.map(node => node.elementId));
+      const links = Array.from(linksMap.values()).filter(link =>
+        nodeIds.has(getLinkEndpointId(link.source)) &&
+        nodeIds.has(getLinkEndpointId(link.target))
+      );
+      const expandedData = { nodes, links };
+      setFilteredData(expandedData);
+      setData(expandedData);
+      if (setSearchResults) setSearchResults(nodes);
+    } catch (error) {
+      logger.error('Error expanding search result:', candidateNode.elementId, error);
+    } finally {
+      setLoadingNodes(prev => {
+        const next = new Set(prev);
+        next.delete(candidateNode.elementId);
+        return next;
+      });
+    }
+  }, [setData, setSearchResults]);
+
   // Comparative search API function
   // eslint-disable-next-line no-unused-vars
   const performComparativeSearch = useCallback(async (nodeType, name, version) => {
@@ -1178,17 +1124,17 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
         name: name.trim(),
         version: version.trim()
       });
-      
+
       if (response.data?.results?.length > 0) {
         // Process the results similar to regular search
         const nodesMap = new Map();
         const rawLinks = new Map();
-        
+
         response.data.results.forEach(record => {
           const n = record['n'];
           const r = record['r'];
           const m = record['m'];
-          
+
           if (n) {
             const nodeIdN = n.elementId;
             const nodeN = {
@@ -1201,7 +1147,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
               nodesMap.set(nodeIdN, nodeN);
             }
           }
-          
+
           if (r && m) {
             const nodeIdM = m.elementId;
             if (!nodesMap.has(nodeIdM)) {
@@ -1212,7 +1158,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
                 label: m.labels?.[0] || 'Node',
               });
             }
-            
+
             const linkId = r.elementId;
             if (!rawLinks.has(linkId)) {
               rawLinks.set(linkId, {
@@ -1225,23 +1171,25 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
             }
           }
         });
-        
+
         const nodes = Array.from(nodesMap.values());
         const links = Array.from(rawLinks.values());
-        
+
         return { nodes, links };
       }
-      
+
       return { nodes: [], links: [] };
     } catch (error) {
       logger.error('Comparative search error:', error);
       throw error;
     }
   }, []);
-  
+
   // Performance: Memoized color mapping - GENERIC VERSION
-  const getNodeColor = useCallback((label) => {
+  const getNodeColor = useCallback((nodeLike) => {
+    const label = resolveNodeType(nodeLike);
     if (!label) return TCS_GRAPH_THEME.inkMuted;
+    const subtypeKey = resolveNodeColorKey(nodeLike);
 
     // Explicit color map for known ontology labels - optimized for clarity
     const colorMap = {
@@ -1250,40 +1198,46 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       'Class':             '#274C77',
       'ObjectProperty':    '#5D6D7E',
       'DatatypeProperty':  '#8D6E63',
-      'Restriction':       '#0F766E',
-      'OntologyRestriction':'#0F766E',
-      'Datatype':          '#6B7280',
       'OntologyProperty':  '#5D6D7E',
       'Property':          '#5D6D7E',
       'Relationship':      '#486581',
       'Annotation':        '#7B8794',
-      
+
       // Instance Data Layer
       'Individual':        '#486581',
       'Resource':          '#61788A',
       'Datum':             '#61788A',
-      
+
       // CAD/PLM Specific
       'Part':              '#355C7D',
       'SurfaceFinish':     '#8D6E63',
       'Dimension':         '#486581',
       'GeometricTolerance':'#3E4C59',
-      
+
       // File Types
       'PLMXMLFile':        '#7B8794',
       'StepFile':          '#9AA5B1',
       'StepInstance':      '#52606D',
     };
 
+    if (colorMap[subtypeKey]) return colorMap[subtypeKey];
     if (colorMap[label]) return colorMap[label];
 
-    // Fallback: hash-based color for unknown labels
-    const hash = label.split('').reduce((a, b) => {
-      a = ((a << 5) - a) + b.charCodeAt(0);
-      return a & a;
-    }, 0);
-    const hue = Math.abs(hash) % 360;
-    return `hsl(${hue}, 22%, 45%)`;
+    const normalizedLabel = String(subtypeKey || label).toLowerCase();
+    if (normalizedLabel.includes('property')) return '#6B7280';
+    if (normalizedLabel.includes('class')) return '#1F3D63';
+    if (normalizedLabel.includes('assembly') || normalizedLabel.includes('bom')) return '#0E7490';
+    if (normalizedLabel.includes('product')) return '#274C77';
+    if (normalizedLabel.includes('part')) return '#355C7D';
+    if (normalizedLabel.includes('requirement')) return '#7C3AED';
+    if (normalizedLabel.includes('document')) return '#0F766E';
+    if (normalizedLabel.includes('process')) return '#C05621';
+    if (normalizedLabel.includes('geometry') || normalizedLabel.includes('shape') || normalizedLabel.includes('cad')) return '#8D6E63';
+    if (normalizedLabel.includes('material')) return '#A16207';
+    if (normalizedLabel.includes('organization') || normalizedLabel.includes('person')) return '#BE185D';
+    if (normalizedLabel.includes('instance')) return '#486581';
+
+    return ENTITY_COLOR_SWATCH[hashText(subtypeKey) % ENTITY_COLOR_SWATCH.length];
   }, []);
 
   // Function to create hierarchical data from graph data for tree layout
@@ -1292,7 +1246,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     if (!nodes || !Array.isArray(nodes) || nodes.length === 0) {
       return [];
     }
-    
+
     if (!links || !Array.isArray(links)) {
       links = [];
     }
@@ -1336,27 +1290,27 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     // Generic approach: don't hardcode node types
     const incomingConnections = new Map();
     const outgoingConnections = new Map();
-    
+
     // Performance: Build node index Map for O(1) lookups instead of O(n) .find() calls
     const nodeIndex = new Map(nodes.map(n => [getNodeId(n), n]));
-    
+
     // Count incoming connections for each node
     links.forEach(link => {
       const rawSource = typeof link.source === 'object' ? (link.source.elementId || link.source.id || link.source.identity) : link.source;
       const rawTarget = typeof link.target === 'object' ? (link.target.elementId || link.target.id || link.target.identity) : link.target;
       const sourceId = getNodeId({ elementId: rawSource });
       const targetId = getNodeId({ elementId: rawTarget });
-      
+
       // Find the actual nodes to check their types and relationship types
       const sourceNode = nodeIndex.get(sourceId);
       const targetNode = nodeIndex.get(targetId);
       const relationshipType = link.type || link.properties?.type;
-      
+
       // Enhanced relationship logic based on types and relationship direction
       if (sourceNode && targetNode) {
         // Generic hierarchy rules based on relationship types
         let parentId, childId;
-        
+
         // Rule 1: Check relationship type for explicit parent-child
         if (relationshipType === 'HAS_CHILD' || relationshipType === 'CONTAINS' || relationshipType === 'PARENT_OF') {
           parentId = sourceId;
@@ -1370,7 +1324,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
           parentId = sourceId;
           childId = targetId;
         }
-        
+
         if (parentId && childId) {
           incomingConnections.set(childId, (incomingConnections.get(childId) || 0) + 1);
           outgoingConnections.set(parentId, (outgoingConnections.get(parentId) || 0) + 1);
@@ -1382,81 +1336,81 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
         outgoingConnections.set(sourceId, (outgoingConnections.get(sourceId) || 0) + 1);
       }
     });
-    
+
     // Debug: Show connection counts for a few nodes
     const debugNodes = Array.from(incomingConnections.entries()).slice(0, 5);
     performanceLog('Sample incoming connections:', debugNodes);
-    
+
     // Find potential root nodes - handle expanded datasets better
     let roots;
-    
+
     if (expandedNodes.size > 0) {
       // When we have expanded nodes, first try to find the originally expanded nodes as roots
       const expandedNodeIds = Array.from(expandedNodes);
       roots = nodes.filter(node => expandedNodeIds.includes(node.elementId));
-      
+
       // If that gives us too many roots, prioritize by connection count
       if (roots.length > 3) {
         // Prefer nodes with more outgoing connections (likely parents)
-        roots.sort((a, b) => 
+        roots.sort((a, b) =>
           (outgoingConnections.get(b.elementId) || 0) - (outgoingConnections.get(a.elementId) || 0)
         );
         roots = roots.slice(0, 2); // Take top 2
       }
-      
+
       // If no expanded nodes found as roots, fall back to nodes with no incoming connections
       if (roots.length === 0) {
         roots = nodes.filter(node => !incomingConnections.has(node.elementId));
       }
-      
+
       logger.data(`Expanded dataset: Using ${roots.length} roots from ${expandedNodeIds.length} expanded nodes`);
     } else {
       // Original logic for non-expanded datasets: find nodes with no incoming connections
       roots = nodes.filter(node => !incomingConnections.has(node.elementId));
     }
-    
+
     logger.data(`Nodes with no incoming connections: ${roots.length}`);
-    
+
     // If no clear roots, pick all nodes with lowest incoming connections
     if (roots.length === 0) {
       const minConnections = Math.min(...Array.from(incomingConnections.values()));
-      roots = nodes.filter(node => 
+      roots = nodes.filter(node =>
         (incomingConnections.get(node.elementId) || 0) === minConnections
       );
       logger.render(`No clear roots found, using ${roots.length} nodes with minimum connections (${minConnections})`);
     }
-    
+
     // Still no roots? Just use all nodes as roots
     if (roots.length === 0) {
       roots = [...nodes];
       logger.data(`No roots found at all, treating all ${nodes.length} nodes as roots`);
     }
-    
+
     logger.data(`Found ${roots.length} root nodes`);
-    
+
     // Build hierarchy from roots
     const processedNodes = new Set();
     const hierarchy = [];
-    
+
     const buildNodeHierarchy = (node, level = 0, visited = new Set()) => {
       if (!node || !node.elementId) {
         logger.warn('[Hierarchy] Invalid node passed to buildNodeHierarchy:', node);
         return null;
       }
-      
+
       if (visited.has(node.elementId)) {
         logger.warn(`[Hierarchy] Circular reference detected for node ${node.elementId?.substring(0,8)} at level ${level}, breaking cycle`);
         return null;
       }
-      
+
       if (level > 10) {
         logger.warn(`[Hierarchy] Maximum depth exceeded for node ${node.elementId?.substring(0,8)}`);
         return null;
       }
-      
+
       visited.add(node.elementId);
       processedNodes.add(node.elementId);
-      
+
       // Find children of this node using explicit relationship rules
       let children = links
         .filter(link => {
@@ -1465,15 +1419,15 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
           const sourceId = getNodeId({ elementId: rawSource });
           const targetId = getNodeId({ elementId: rawTarget });
           const relationshipType = link.type || link.properties?.type;
-          
+
           const sourceNode = nodeIndex.get(sourceId);
           const targetNode = nodeIndex.get(targetId);
-          
+
           if (!sourceNode || !targetNode) return false;
-          
+
           // Apply generic relationship type based rules
           let isParentChild = false;
-          
+
           // Rule 1: Explicit parent-child relationships
           if (relationshipType === 'HAS_CHILD' || relationshipType === 'CONTAINS' || relationshipType === 'PARENT_OF') {
             isParentChild = sourceId === node.elementId;
@@ -1484,7 +1438,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
           else {
             isParentChild = sourceId === node.elementId;
           }
-          
+
           return isParentChild;
         })
         .map(link => {
@@ -1493,10 +1447,10 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
           const sourceId = getNodeId({ elementId: rawSource });
           const targetId = getNodeId({ elementId: rawTarget });
           const relationshipType = link.type || link.properties?.type;
-          
+
           // Determine which node is the child based on generic relationship rules
           let childId;
-          
+
           if (relationshipType === 'HAS_CHILD' || relationshipType === 'CONTAINS' || relationshipType === 'PARENT_OF') {
             childId = sourceId === node.elementId ? targetId : sourceId;
           } else if (relationshipType === 'HAS_PARENT' || relationshipType === 'BELONGS_TO' || relationshipType === 'CHILD_OF') {
@@ -1504,7 +1458,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
           } else {
             childId = sourceId === node.elementId ? targetId : sourceId;
           }
-          
+
           return nodeIndex.get(childId);
         })
         .filter(child => child && !visited.has(child.elementId))
@@ -1515,7 +1469,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
           return buildNodeHierarchy(child, level + 1, childVisited);
         })
         .filter(child => child !== null);
-      
+
       return {
         ...node,
         labels: node.labels || ['Unknown'],
@@ -1524,7 +1478,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
         children: children || []
       };
     };
-    
+
     // Process each root and build initial hierarchy
     roots.forEach(root => {
       const tree = buildNodeHierarchy(root);
@@ -1533,11 +1487,11 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
         logger.render(`Built hierarchy for root ${root.elementId?.substring(0,8)} with ${tree.children?.length || 0} children`);
       }
     });
-    
+
     // For expansions, reorganize hierarchy to ensure proper parent-child relationships without duplicates
     if (expandedNodes.size > 0 && hierarchy.length > 0) {
       logger.render(`[Hierarchy] Reorganizing ${hierarchy.length} trees for ${expandedNodes.size} expanded nodes`);
-      
+
       // Collect all nodes from current hierarchy to avoid duplicates
       const allNodesInHierarchy = new Map();
       const collectAllNodes = (node) => {
@@ -1547,11 +1501,11 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
         }
       };
       hierarchy.forEach(collectAllNodes);
-      
+
       // For each expanded node, ensure its complete ancestry path is visible
       const updatedRoots = [];
       const processedRootIds = new Set();
-      
+
       expandedNodes.forEach(expandedNodeId => {
         // Find which root tree contains this expanded node
         let containingRoot = null;
@@ -1568,14 +1522,14 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
             break;
           }
         }
-        
+
         if (containingRoot && !processedRootIds.has(containingRoot.elementId)) {
           updatedRoots.push(containingRoot);
           processedRootIds.add(containingRoot.elementId);
           logger.render(`[Hierarchy] Root ${containingRoot.elementId?.substring(0,8)} contains expanded node ${expandedNodeId?.substring(0,8)}`);
         }
       });
-      
+
       // Add any roots that weren't processed but should be included
       hierarchy.forEach(root => {
         if (!processedRootIds.has(root.elementId)) {
@@ -1583,13 +1537,13 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
           logger.render(`[Hierarchy] Including additional root ${root.elementId?.substring(0,8)}`);
         }
       });
-      
+
       // Replace hierarchy with reorganized roots
       hierarchy.length = 0;
       hierarchy.push(...updatedRoots);
       logger.render(`[Hierarchy] Reorganized to ${hierarchy.length} root trees`);
     }
-    
+
     // Add any orphaned nodes at the end
     const orphans = nodes.filter(node => !processedNodes.has(node.elementId));
     logger.render(`Adding ${orphans.length} orphaned nodes`);
@@ -1604,7 +1558,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
         children: []
       });
     });
-    
+
     const nodesWithoutChildrenButOutgoing = nodes.filter(n => !hierarchy.some(h => h.elementId === n.elementId) && outgoingConnections.get(n.elementId) > 0).length;
     // Debug: detect duplicate IDs in input vs hierarchy total coverage
     const inputIdCount = new Set(nodes.map(n => n.elementId)).size;
@@ -1622,32 +1576,32 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     if (!leftData?.nodes?.length || !rightData?.nodes?.length) {
       return null;
     }
-    
+
     // Create hierarchies for both sides
     const leftHierarchy = createHierarchicalData(leftData.nodes, leftData.links);
     const rightHierarchy = createHierarchicalData(rightData.nodes, rightData.links);
-    
+
     // Find root nodes (main comparison targets)
     const leftRoot = leftHierarchy[0];
     const rightRoot = rightHierarchy[0];
-    
+
     if (!leftRoot || !rightRoot) {
       return null;
     }
-    
+
     // Compare function for nodes
     const compareNodes = (leftNode, rightNode) => {
       const differences = {};
       const leftProps = leftNode.properties || leftNode;
       const rightProps = rightNode.properties || rightNode;
-      
+
       // Get all unique property keys
       const allKeys = new Set([...Object.keys(leftProps), ...Object.keys(rightProps)]);
-      
+
       allKeys.forEach(key => {
         const leftVal = leftProps[key];
         const rightVal = rightProps[key];
-        
+
         if (leftVal !== rightVal) {
           differences[key] = {
             left: leftVal || 'N/A',
@@ -1656,22 +1610,22 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
           };
         }
       });
-      
+
       return differences;
     };
-    
+
     // Compare children function
     const compareChildren = (leftChildren = [], rightChildren = []) => {
       const leftMap = new Map(leftChildren.map(child => [child.name || child.elementId, child]));
       const rightMap = new Map(rightChildren.map(child => [child.name || child.elementId, child]));
-      
+
       const childComparisons = [];
       const allChildKeys = new Set([...leftMap.keys(), ...rightMap.keys()]);
-      
+
       allChildKeys.forEach(key => {
         const leftChild = leftMap.get(key);
         const rightChild = rightMap.get(key);
-        
+
         if (leftChild && rightChild) {
           // Both have this child - compare them
           const childDiffs = compareNodes(leftChild, rightChild);
@@ -1693,10 +1647,10 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
           });
         }
       });
-      
+
       return childComparisons;
     };
-    
+
     // Main comparison result
     const comparison = {
       rootDifferences: compareNodes(leftRoot, rightRoot),
@@ -1706,7 +1660,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       leftRoot,
       rightRoot
     };
-    
+
     return comparison;
   }, [createHierarchicalData]);
 
@@ -1862,7 +1816,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
 
   // Reset property comparison when selection changes
   useEffect(()=> { setPropertyComparisonData(null); }, [selectedCompareNodeA, selectedCompareNodeB]);
-  
+
 
   // Unified display label helper (name + external/version when present)
   const getDisplayLabel = useCallback((node) => {
@@ -1879,9 +1833,9 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
 
     // Heuristic fallback when configured property list yields nothing
     if (!primaryName) {
-      primaryName = props.name || props.title || props.code || props.key || 
-                   props.number || props.abbreviation || props.id || 
-                   props.identifier || props.label || props.part_number || 
+      primaryName = props.name || props.title || props.code || props.key ||
+                   props.number || props.abbreviation || props.id ||
+                   props.identifier || props.label || props.part_number ||
                    props.product_name || props.project_name || null;
     }
 
@@ -1902,22 +1856,22 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   // Primary label logic used in BOTH force-directed graph and indented tree for perfect parity
   // const getPrimaryNodeLabel = useCallback((d) => {
   //   if (!d) return 'Unknown';
-    
+
   //   // Generic approach: try common name/title properties first
   //   const props = d.properties || d;
   //   const name = props.name || props.title || props.abbreviation || props.key || props.code || d.name || d.title;
-    
+
   //   // Try to add version if available (comma style for consistency)
   //   const version = props.external_version || props.version || d.external_version || d.version;
   //   if (name && version) return `${name}, ${version}`;
   //   if (name) return name;
-    
+
   //   // Ultimate fallback
   //   return d.label || props.label || 'Unknown';
   //   return props.name
   // }, []);
 
-  
+
 // const getPrimaryNodeLabel = useCallback((d) => {
 //   if (!d) return 'Unknown';
 //   const props = d.properties || d;
@@ -1930,7 +1884,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
   if (!d) return 'Unknown';
 
   const props = d.properties || d;
-  const nodeLabel = resolveEntityTypeLabel(d);
+  const nodeLabel = d.labels?.[0] || d.label || '';
 
   // Resolve property from priority list (see DISPLAY_NAME_PROPERTY at top of file)
   const propValue = resolveDisplayProp(props);
@@ -1948,7 +1902,6 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
 
   // Function to render indented tree layout
-  // eslint-disable-next-line no-unused-vars
   const renderIndentedTree = useCallback((data, svg, width, height) => {
     // Safety checks
     if (!data || !data.nodes || !Array.isArray(data.nodes) || data.nodes.length === 0) {
@@ -1986,7 +1939,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       });
       hierarchicalData = createHierarchicalData(data.nodes, subsetLinks);
     }
-    
+
     // After expansion, rebuild hierarchy with all available data to ensure proper levels
     if (expandedNodes.size > 0 && data.links && data.links.length > 0) {
       logger.render('[TreeLayout] Rebuilding hierarchy after expansion with relationship data');
@@ -2009,7 +1962,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         setTreeExpandedNodes(new Set(rootIds));
       }
     }
-    
+
     // Clear existing graph content, but preserve defs
     if (gRef.current) {
       gRef.current.selectAll('*').remove();
@@ -2017,28 +1970,28 @@ const getPrimaryNodeLabel = useCallback((d) => {
       // Create the main group if it doesn't exist
       gRef.current = svg.append('g');
     }
-    
+
     // Flatten hierarchy honoring expansion state and ensuring correct levels
     const flattenHierarchy = (nodes, result = [], currentLevel = 0, seenIds = new Set()) => {
       if (!Array.isArray(nodes)) {
         logger.warn('[TreeLayout] flattenHierarchy received non-array nodes:', nodes);
         return result;
       }
-      
+
       nodes.forEach(node => {
         if (!node || !node.elementId) {
           logger.warn('[TreeLayout] Skipping invalid node:', node);
           return;
         }
-        
+
         // Skip if we've already seen this node to prevent duplicates and infinite loops
         if (seenIds.has(node.elementId)) {
           logger.warn(`[TreeLayout] Skipping duplicate node: ${node.elementId?.substring(0,8)}`);
           return;
         }
-        
+
         seenIds.add(node.elementId);
-        
+
         // Force the correct level assignment regardless of what's in the node
         const nodeWithLevel = {
           ...node,
@@ -2047,11 +2000,11 @@ const getPrimaryNodeLabel = useCallback((d) => {
           children: undefined
         };
         result.push(nodeWithLevel);
-        
+
         // Root nodes (level 0) should always show their immediate children
         // Other nodes only show children if expanded
         const shouldShowChildren = currentLevel === 0 || treeExpandedNodes.has(node.elementId);
-        
+
         if (node.children && Array.isArray(node.children) && node.children.length > 0 && shouldShowChildren) {
           // Create a new seenIds set for each subtree to prevent cross-contamination
           // but maintain the parent chain to prevent circular references
@@ -2063,7 +2016,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     };
 
     let flatNodes = flattenHierarchy(hierarchicalData, [], 0, new Set());
-    
+
     // Debug: log hierarchy structure and levels
     logger.render('[TreeLayout] Hierarchy structure:');
     hierarchicalData.forEach((root, idx) => {
@@ -2078,20 +2031,20 @@ const getPrimaryNodeLabel = useCallback((d) => {
       };
       logChildren(root);
     });
-    
+
     // Debug: log flattened nodes with levels to verify they're being set correctly
     logger.render('[TreeLayout] Flattened nodes with levels:', flatNodes.slice(0, 8).map(n => ({
-      id: n.elementId?.substring(0, 8) + '...', 
-      level: n.level, 
+      id: n.elementId?.substring(0, 8) + '...',
+      level: n.level,
       label: n.labels?.[0] || 'unknown',
       expanded: treeExpandedNodes.has(n.elementId),
       isRoot: n.level === 0
     })));
-    
+
     // Ensure all root nodes are always visible
     const rootsInFlattened = flatNodes.filter(n => n.level === 0);
     logger.render(`[TreeLayout] Root nodes in flattened: ${rootsInFlattened.length} of ${hierarchicalData.length} total roots`);
-    
+
     // Parity logic: ensure every node in the filtered dataset has a visible row in the tree
     if (flatNodes.length < data.nodes.length) {
       // Build a unique set of all node ids reachable in the hierarchy (deduplicated)
@@ -2130,7 +2083,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       }
     }
     logger.render(`Flattened hierarchy has ${flatNodes.length} nodes (target ${data.nodes.length})`);
-    
+
     const rowHeight = TREE_ROW_HEIGHT_PX;
     const indentWidth = TREE_INDENT_WIDTH_PX;
     const nodeSize = 12;
@@ -2151,10 +2104,10 @@ const getPrimaryNodeLabel = useCallback((d) => {
     }
     const containerHeight = Math.min(availableHeight, totalContentHeight);
     logger.render(`[TreeLayout][Dims] width=${width} rawHeight=${height} effectiveHeight=${effectiveHeight} availableHeight=${availableHeight} containerHeight=${containerHeight} totalContentHeight=${totalContentHeight}`);
-    
+
     const g = gRef.current;
     g.attr('transform', 'translate(0, 0)'); // Reset transform for tree layout
-    
+
     // Add background
     g.append('rect')
       .attr('width', width - TREE_LAYOUT_PADDING_PX)
@@ -2162,10 +2115,10 @@ const getPrimaryNodeLabel = useCallback((d) => {
       .attr('fill', '#fafafa')
       .attr('stroke', '#ddd')
       .attr('rx', 5);
-    
+
     // Add header with corporate styling
     const headerGroup = g.append('g');
-    
+
     // Header background
     headerGroup.append('rect')
       .attr('width', width - TREE_LAYOUT_PADDING_PX)
@@ -2174,7 +2127,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       .attr('y', 0)
       .attr('fill', 'linear-gradient(135deg, #6C757D 0%, #495057 100%)')
       .attr('rx', 8);
-    
+
     // Header gradient (since SVG doesn't support CSS gradients the same way)
     const gradient = g.append('defs')
       .append('linearGradient')
@@ -2183,7 +2136,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       .attr('y1', '0%')
       .attr('x2', '100%')
       .attr('y2', '100%');
-    
+
     gradient.append('stop')
       .attr('offset', '0%')
       .attr('stop-color', '#6C757D');
@@ -2191,9 +2144,9 @@ const getPrimaryNodeLabel = useCallback((d) => {
     gradient.append('stop')
       .attr('offset', '100%')
       .attr('stop-color', '#495057');
-      
+
     headerGroup.select('rect').attr('fill', 'url(#headerGradient)');
-    
+
     // Header text
     headerGroup.append('text')
       .attr('x', 16)
@@ -2202,14 +2155,14 @@ const getPrimaryNodeLabel = useCallback((d) => {
       .attr('font-weight', 'bold')
       .attr('fill', 'white')
       .text('Hierarchical Data View');
-    
+
     // Item count badge
     headerGroup.append('circle')
       .attr('cx', width - 80)
       .attr('cy', 25)
       .attr('r', 18)
       .attr('fill', 'rgba(255,255,255,0.2)');
-    
+
     headerGroup.append('text')
       .attr('x', width - 80)
       .attr('y', 35)
@@ -2218,7 +2171,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       .attr('font-weight', 'bold')
       .attr('fill', 'white')
       .text(flatNodes.length);
-    
+
     // Layout info
     headerGroup.append('text')
       .attr('x', width - 140)
@@ -2232,7 +2185,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     let scrollOffset = 0;
     const maxVisibleRows = Math.floor(availableHeight / rowHeight);
     const needsScrolling = flatNodes.length > maxVisibleRows;
-    
+
     // Create scrollable content area
     const contentArea = g.append('g')
       .attr('transform', `translate(0, ${headerHeight})`);
@@ -2259,7 +2212,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       scrollableContent = contentArea.append('g');
       logger.warn('[TreeLayout][Debug] Clip path disabled; content may overflow.');
     }
-      
+
     // Scrollable row container
     const rowContainer = scrollableContent.append('g')
       .attr('class', 'row-container');
@@ -2267,7 +2220,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // Function to render rows
     const renderRows = (offset = 0) => {
       rowContainer.selectAll('*').remove();
-      
+
       const rows = rowContainer.selectAll('.tree-row')
         .data(flatNodes, d => d.elementId)
         .enter()
@@ -2303,22 +2256,22 @@ const getPrimaryNodeLabel = useCallback((d) => {
             hideAllTooltips();
           }
           activeTooltipNodeRef.current = nodeId;
-          
+
           d3.select(this)
             .attr('fill', '#f1f3f4')
             .attr('stroke', '#6c757d')
             .attr('stroke-width', 1);
-          
+
           // Show tooltip with all properties
-          d3.select(tooltipRef.current).style('z-index', 12).style('pointer-events', 'auto');
+          d3.select(tooltipRef.current).style('z-index', 12).style('display', 'block').style('pointer-events', 'auto');
           d3.select(tooltipRef.current).style('opacity', 0.9);
-          
+
           const nodeType = (d.labels && d.labels.length > 0) ? d.labels[0] : 'Node';
           // Handle both nested and flat structure
-          const props = d.properties && typeof d.properties === 'object' && !Array.isArray(d.properties) 
-            ? d.properties 
+          const props = d.properties && typeof d.properties === 'object' && !Array.isArray(d.properties)
+            ? d.properties
             : d;
-          
+
           // HEADER: Show the node type with a drag handle and dock/close controls
           let tooltipContent = `
             <div class="dt-tooltip-header">
@@ -2333,15 +2286,15 @@ const getPrimaryNodeLabel = useCallback((d) => {
             </div>
           `;
           // Recommendation action buttons (top, right after header)
-          tooltipContent += buildRecActionBar(d.name || props.name, d.labels);
-          
+          tooltipContent += buildRecActionBar(resolveNodeName(d), d.labels);
+
           // Only exclude D3/graph-library internals — ALL real Neo4j properties will be shown
           const excludedProps = [
             'x', 'y', 'vx', 'vy', 'fx', 'fy', 'index',              // D3 force layout
             'depth', 'parent', 'data', 'height', 'level', 'children', // D3 tree layout
             'elementId', 'elementID', 'identity', 'labels', 'properties', '__typename', // driver metadata
           ];
-          
+
           // Get all enumerable own properties
           const allProps = Object.keys(props)
             .filter(k => {
@@ -2350,14 +2303,14 @@ const getPrimaryNodeLabel = useCallback((d) => {
               return true;
             })
             .map(k => [k, props[k]]);
-          
+
           // Show ALL properties from the API
           if (allProps.length > 0) {
             tooltipContent += `<div class="dt-tooltip-content" style="margin-top:8px; font-size:12px; max-height:300px;">`;
             allProps.forEach(([k, v]) => {
               // Format property key
               const formattedKey = escapeHtml(k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()));
-              
+
               // Format value based on type
               let formattedValue = v;
               if (v === null || v === undefined) {
@@ -2369,9 +2322,9 @@ const getPrimaryNodeLabel = useCallback((d) => {
               } else {
                 formattedValue = escapeHtml(String(v));
               }
-              
+
               tooltipContent += `<div style="margin: 4px 0; padding: 4px 0; border-bottom: 1px solid #f0f0f0;">
-                <strong style="color: #2c3e50;">${formattedKey}:</strong> 
+                <strong style="color: #2c3e50;">${formattedKey}:</strong>
                 <span style="color: #34495e; margin-left: 8px;">${formattedValue}</span>
               </div>`;
             });
@@ -2379,7 +2332,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           } else {
             tooltipContent += `<div style="margin-top: 8px; padding: 12px; font-size: 12px; color: #95a5a6; font-style: italic; text-align: center;">No properties available</div>`;
           }
-          
+
           // Apply smart positioning that respects viewport boundaries
           const tooltipEl = tooltipRef.current;
           if (tooltipEl && svgRef.current) {
@@ -2448,6 +2401,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
             }
             // Attach close handler
             try { applyTooltipCloseHandler(tooltipEl); } catch (e) { /* ignore */ }
+            try { wireTooltipRecButtons(tooltipEl); } catch (e) { /* ignore */ }
           }
         });
 
@@ -2494,7 +2448,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         .attr('cx', d => 35 + d.level * indentWidth)
         .attr('cy', rowHeight / 2)
         .attr('r', nodeSize)
-        .attr('fill', d => getNodeColor((d.labels && d.labels.length > 0) ? d.labels[0] : 'Unknown'))
+        .attr('fill', d => getNodeColor(d))
         .attr('stroke', '#fff')
         .attr('stroke-width', 1)
         .style('cursor', 'pointer')
@@ -2511,20 +2465,20 @@ const getPrimaryNodeLabel = useCallback((d) => {
       rows.each(function(d) {
         const row = d3.select(this);
         const labelText = (d.labels && d.labels.length > 0) ? d.labels[0] : 'Unknown';
-        
+
         // Create temporary text element to measure width
         const tempText = row.append('text')
           .attr('font-size', '10px')
           .attr('font-weight', 'bold')
           .text(labelText)
           .style('opacity', 0);
-        
+
         const textWidth = tempText.node().getBBox().width;
         tempText.remove();
-        
+
         // Calculate badge width (minimum 60px, add padding)
         const badgeWidth = Math.max(60, textWidth + 16);
-        
+
         // Add badge rectangle with dynamic width
         row.append('rect')
           .attr('x', d => 55 + d.level * indentWidth)
@@ -2532,12 +2486,12 @@ const getPrimaryNodeLabel = useCallback((d) => {
           .attr('width', badgeWidth)
           .attr('height', 16)
           .attr('rx', 8)
-          .attr('fill', d => getNodeColor((d.labels && d.labels.length > 0) ? d.labels[0] : 'Unknown'))
+          .attr('fill', d => getNodeColor(d))
           .attr('fill-opacity', 0.15)
-          .attr('stroke', d => getNodeColor((d.labels && d.labels.length > 0) ? d.labels[0] : 'Unknown'))
+          .attr('stroke', d => getNodeColor(d))
           .attr('stroke-width', 1)
           .attr('class', 'tree-node-badge');
-          
+
         // Add badge text with proper centering
         row.append('text')
           .attr('x', d => 55 + d.level * indentWidth + badgeWidth / 2)
@@ -2545,7 +2499,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           .attr('text-anchor', 'middle')
           .attr('font-size', '10px')
           .attr('font-weight', 'bold')
-          .attr('fill', d => getNodeColor((d.labels && d.labels.length > 0) ? d.labels[0] : 'Unknown'))
+          .attr('fill', d => getNodeColor(d))
           .text(labelText);
       });
 
@@ -2562,12 +2516,12 @@ const getPrimaryNodeLabel = useCallback((d) => {
           } else if (hasExpandableConnections(d)) {
             // Expand the node and then rebuild tree hierarchy
             await expandNode(d.elementId);
-            
+
             // Force update of tree expanded nodes to include the newly expanded node
             setTreeExpandedNodes(prev => {
               const newSet = new Set(prev);
               newSet.add(d.elementId);
-              
+
               // Also expand parent path to ensure visibility
               const findParentPath = (nodeId, hierarchy, path = []) => {
                 for (const root of hierarchy) {
@@ -2576,7 +2530,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
                 }
                 return [];
               };
-              
+
               const findNodePath = (node, targetId, path) => {
                 if (node.elementId === targetId) return path;
                 if (node.children) {
@@ -2587,11 +2541,11 @@ const getPrimaryNodeLabel = useCallback((d) => {
                 }
                 return null;
               };
-              
+
               // Expand the path to this node so it's visible
               const parentPath = findParentPath(d.elementId, hierarchicalData);
               parentPath.forEach(nodeId => newSet.add(nodeId));
-              
+
               return newSet;
             });
           }
@@ -2636,7 +2590,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       rows.each(function(d) {
         const row = d3.select(this);
         const labelText = (d.labels && d.labels.length > 0) ? d.labels[0] : 'Unknown';
-        
+
         // Calculate badge width to position main label correctly
         const tempText = row.append('text')
           .attr('font-size', '10px')
@@ -2644,11 +2598,11 @@ const getPrimaryNodeLabel = useCallback((d) => {
           .style('opacity', 0);
         const badgeWidth = Math.max(60, tempText.node().getBBox().width + 16);
         tempText.remove();
-        
+
         const mainLabelX = 65 + d.level * indentWidth + badgeWidth;
         // Show actual node name and version using schema-driven display
         const primaryLabel = getDisplayLabel(d);
-        
+
         // const primaryLabel = props.Name || props.name || props.PartName || props.CADDocumentName;
         const mainText = row.append('text')
           .attr('x', mainLabelX)
@@ -2656,13 +2610,13 @@ const getPrimaryNodeLabel = useCallback((d) => {
           .attr('font-size', '14px')
           .attr('font-weight', '600')
           .attr('fill', '#2C2C2C');
-          
+
         // Simple text wrapping for very long labels
         if (primaryLabel.length > 30) {
           const words = primaryLabel.split(' ');
           let line = '';
           let lineNumber = 0;
-          
+
           words.forEach(word => {
             const testLine = line + word + ' ';
             if (testLine.length > 25 && line !== '') {
@@ -2676,7 +2630,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
               line = testLine;
             }
           });
-          
+
           // Add the last line
           if (line.trim() !== '') {
             mainText.append('tspan')
@@ -2693,7 +2647,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       rows.each(function(d, i) {
         const row = d3.select(this);
         const labelText = (d.labels && d.labels.length > 0) ? d.labels[0] : 'Unknown';
-        
+
         // Calculate badge width to position sublabel correctly
         const tempText = row.append('text')
           .attr('font-size', '10px')
@@ -2701,9 +2655,9 @@ const getPrimaryNodeLabel = useCallback((d) => {
           .style('opacity', 0);
         const badgeWidth = Math.max(60, tempText.node().getBBox().width + 16);
         tempText.remove();
-        
+
         const sublabelX = 65 + d.level * indentWidth + badgeWidth;
-        
+
         row.append('text')
           .attr('class', 'tree-subheading')
           .attr('x', sublabelX)
@@ -2739,22 +2693,30 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
     // Add scrolling if needed
     if (needsScrolling) {
-      // Clear any previous tree scroll handler in case of multiple re-renders.
+      // Clear any previous wheel handler in case of multiple re-renders
       svg.on('wheel.tree-scroll', null);
       const maxScroll = Math.max(0, (flatNodes.length - maxVisibleRows) * rowHeight);
-      
+
+      // Add scroll event listener to the entire SVG
+      svg.on('wheel', function(event) {
+        event.preventDefault();
+        const delta = event.deltaY;
+        scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset + delta));
+        renderRows(scrollOffset);
+      });
+
       // Add scroll indicator
       const scrollIndicator = g.append('g')
         .attr('class', 'scroll-indicator')
         .attr('transform', `translate(${width - 35}, ${headerHeight + 10})`); // Moved 20px left from width-15 to width-35
-        
+
       // Scroll bar background
       scrollIndicator.append('rect')
         .attr('width', 8)
         .attr('height', availableHeight - 20)
         .attr('fill', '#e0e0e0')
         .attr('rx', 4);
-        
+
       // Scroll bar thumb
       const thumbHeight = Math.max(20, (maxVisibleRows / flatNodes.length) * (availableHeight - 20));
       const scrollThumb = scrollIndicator.append('rect')
@@ -2765,7 +2727,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         .attr('rx', 4)
         .attr('y', 0)
         .style('cursor', 'pointer');
-        
+
       // Add drag behavior to scroll thumb
       const drag = d3.drag()
         .on('start', function() {
@@ -2774,7 +2736,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         .on('drag', function(event) {
           const newY = Math.max(0, Math.min(availableHeight - 20 - thumbHeight, event.y));
           d3.select(this).attr('y', newY);
-          
+
           // Calculate corresponding scroll offset
           const scrollRatio = newY / (availableHeight - 20 - thumbHeight);
           scrollOffset = scrollRatio * maxScroll;
@@ -2783,34 +2745,61 @@ const getPrimaryNodeLabel = useCallback((d) => {
         .on('end', function() {
           d3.select(this).attr('fill', '#999'); // Reset color
         });
-        
+
       scrollThumb.call(drag);
-        
+
       // Update scroll thumb position
       const updateScrollThumb = () => {
         const thumbPosition = (scrollOffset / maxScroll) * (availableHeight - 20 - thumbHeight);
         scrollIndicator.select('.scroll-thumb')
           .attr('y', thumbPosition);
       };
-      
+
       updateScrollThumb();
-      
+
       // Update scroll on wheel events
       svg.on('wheel.tree-scroll', function(event) {
         event.preventDefault();
-        event.stopPropagation();
-        if (event.sourceEvent?.stopImmediatePropagation) {
-          event.sourceEvent.stopImmediatePropagation();
-        }
         const delta = event.deltaY;
         scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset + delta));
         renderRows(scrollOffset);
         updateScrollThumb();
       });
     }
-    
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createHierarchicalData, tooltipRef, treeExpandedNodes, fullDataset, getDisplayLabel]);
+
+  // Effect to handle tree layout updates when data changes from expansions
+  useEffect(() => {
+    if (layoutType === 'indented-tree' && expandedNodes.size > 0) {
+      logger.render('[TreeLayout] Data changed with expanded nodes, updating tree state');
+
+      // When data changes due to expansions, ensure the tree expanded state includes
+      // all nodes that should be visible based on the new hierarchy
+      const currentData = filteredData.nodes.length > 0 ? filteredData : fullDataset;
+      if (currentData && currentData.nodes && currentData.links) {
+        const newHierarchy = createHierarchicalData(currentData.nodes, currentData.links);
+
+        // Auto-expand nodes that have children and are part of expansions
+        const newTreeExpanded = new Set(treeExpandedNodes);
+
+        const addExpandedChildren = (node) => {
+          if (expandedNodes.has(node.elementId) && node.children && node.children.length > 0) {
+            newTreeExpanded.add(node.elementId);
+            node.children.forEach(addExpandedChildren);
+          }
+        };
+
+        newHierarchy.forEach(addExpandedChildren);
+
+        if (newTreeExpanded.size !== treeExpandedNodes.size) {
+          setTreeExpandedNodes(newTreeExpanded);
+        }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedNodes, layoutType, treeExpandedNodes]);
 
   // Note: link_color is now handled by getLinkColor() function defined earlier
 
@@ -2819,7 +2808,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // First, filter out HAS_PARENT links when there's a corresponding HAS_CHILD link
     const filteredLinks = [];
     const hasChildPairs = new Set();
-    
+
     // First pass: identify all HAS_CHILD relationships
     links.forEach(link => {
       if (link.type === 'HAS_CHILD') {
@@ -2829,14 +2818,14 @@ const getPrimaryNodeLabel = useCallback((d) => {
         hasChildPairs.add(pairKey);
       }
     });
-    
+
     // Second pass: filter out HAS_PARENT if HAS_CHILD exists for the same node pair
     links.forEach(link => {
       if (link.type === 'HAS_PARENT') {
         const sourceId = typeof link.source === 'object' ? link.source.elementId : link.source;
         const targetId = typeof link.target === 'object' ? link.target.elementId : link.target;
         const pairKey = [sourceId, targetId].sort().join('-');
-        
+
         // Skip HAS_PARENT if HAS_CHILD exists for the same node pair
         if (hasChildPairs.has(pairKey)) {
           logger.render('Filtering out HAS_PARENT link as HAS_CHILD exists for the same node pair:', pairKey);
@@ -2845,22 +2834,22 @@ const getPrimaryNodeLabel = useCallback((d) => {
       }
       filteredLinks.push(link);
     });
-    
+
     // Group links by node pairs (regardless of direction)
     const linkPairs = new Map();
-    
+
     filteredLinks.forEach(link => {
       // Create a consistent key for node pairs (sorted to handle both directions)
       const sourceId = typeof link.source === 'object' ? link.source.elementId : link.source;
       const targetId = typeof link.target === 'object' ? link.target.elementId : link.target;
       const pairKey = [sourceId, targetId].sort().join('-');
-      
+
       if (!linkPairs.has(pairKey)) {
         linkPairs.set(pairKey, []);
       }
       linkPairs.get(pairKey).push(link);
     });
-    
+
     // Add offset information to links that have multiple relationships
     linkPairs.forEach(pairLinks => {
       if (pairLinks.length > 1) {
@@ -2875,7 +2864,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         pairLinks[0].isOffset = false;
       }
     });
-    
+
     return filteredLinks;
   };
 
@@ -2885,73 +2874,110 @@ const getPrimaryNodeLabel = useCallback((d) => {
       // Single direction link - use straight line
       return `M${sourceX},${sourceY}L${targetX},${targetY}`;
     }
-    
+
     // Calculate curve parameters for bidirectional links
     const dx = targetX - sourceX;
     const dy = targetY - sourceY;
     const length = Math.sqrt(dx * dx + dy * dy);
-    
+
     if (length === 0) return `M${sourceX},${sourceY}L${targetX},${targetY}`;
-    
+
     // Perpendicular unit vector for curve direction
     const perpX = -dy / length;
     const perpY = dx / length;
-    
+
     // Calculate curve offset - ensure opposite directions for bidirectional links
     const baseOffset = Math.max(50, length * 0.2); // Larger base offset for more visible curves
-    
+
     // Create consistent curve direction based on link direction and offset index
     // For bidirectional links, we want them to curve in opposite directions
     const sourceId = typeof link.source === 'object' ? link.source.elementId : link.source;
     const targetId = typeof link.target === 'object' ? link.target.elementId : link.target;
-    
+
     // Use source and target IDs to determine consistent curve direction
     const linkDirection = sourceId < targetId ? 1 : -1;
     const offsetDirection = link.offsetIndex % 2 === 0 ? 1 : -1;
     const curveDirection = linkDirection * offsetDirection;
-    
+
     const offsetMultiplier = Math.floor(link.offsetIndex / 2) + 1; // Increase curve for multiple pairs
     const curveOffset = baseOffset * offsetMultiplier * curveDirection;
-    
+
     // Calculate control point for quadratic curve
     const midX = (sourceX + targetX) / 2;
     const midY = (sourceY + targetY) / 2;
     const controlX = midX + perpX * curveOffset;
     const controlY = midY + perpY * curveOffset;
-    
+
     // Return quadratic curve path
     return `M${sourceX},${sourceY}Q${controlX},${controlY} ${targetX},${targetY}`;
   };
 
- 
+
   // --- D3 Drag Handlers (useCallback for stability, tied to simulation) ---
   const dragstarted = useCallback((event, d) => {
-    userInteractedWithGraphRef.current = true;
-    suppressNodeClickRef.current = false;
     if (!event.active) simulationRef.current?.alphaTarget(ALPHA_TARGET_DRAG).restart();
     d.fx = d.x;
     d.fy = d.y;
   }, []);
- 
+
   const dragged = useCallback((event, d) => {
-    userInteractedWithGraphRef.current = true;
-    suppressNodeClickRef.current = true;
     d.fx = event.x;
     d.fy = event.y;
   }, []);
- 
+
   const dragended = useCallback((event, d) => {
-    userInteractedWithGraphRef.current = true;
     if (!event.active) simulationRef.current?.alphaTarget(ALPHA_TARGET_END);
     d.fx = null;
     d.fy = null;
-    if (suppressNodeClickRef.current) {
-      const timeoutId = setTimeout(() => {
-        suppressNodeClickRef.current = false;
-      }, 250);
-      timeoutsRef.current.add(timeoutId);
-    }
   }, []);
+
+  // Performance: Optimized layout change handler with monitoring
+  const handleLayoutChange = useCallback((newLayoutType) => {
+    if (newLayoutType !== layoutType) {
+      const startTime = performance.now();
+      setIsLayoutSwitching(true);
+
+      logger.render(`[SYNC] Layout switching from ${layoutType} to ${newLayoutType}`);
+
+      // Stop current simulation immediately for smooth transition
+      if (simulationRef.current && newLayoutType === 'indented-tree') {
+        simulationRef.current.stop();
+        simulationRef.current = null;
+      }
+
+      setLayoutType(newLayoutType);
+
+      // Ensure we have the full dataset available for both layouts
+      if (newLayoutType === 'force-directed') {
+        // For graph layout, use full dataset
+        logger.render(`[RENDER] Restoring full dataset for graph layout: ${graphData.nodes?.length || 0} nodes`);
+        setFilteredData({
+          nodes: [...(graphData.nodes || [])],
+          links: [...(graphData.links || [])]
+        });
+      } else if (newLayoutType === 'indented-tree') {
+        // For tree layout, use current filteredData but ensure tree expansion is initialized
+        try {
+          const currentNodes = filteredData.nodes?.length > 0 ? filteredData.nodes : graphData.nodes || [];
+          const currentLinks = filteredData.links?.length > 0 ? filteredData.links : graphData.links || [];
+          const roots = createHierarchicalData(currentNodes, currentLinks);
+          const rootIds = roots.map(r => r.elementId).filter(Boolean);
+          setTreeExpandedNodes(new Set(rootIds));
+          logger.render(`[TREE] Tree layout initialized with ${currentNodes.length} nodes, ${rootIds.length} roots`);
+        } catch (e) {
+          logger.warn('Tree expansion init failed', e);
+        }
+      }
+
+      // Performance monitoring
+      requestAnimationFrame(() => {
+        const endTime = performance.now();
+        logger.render(`[PERF] Layout switch completed in ${(endTime - startTime).toFixed(2)}ms`);
+        setIsLayoutSwitching(false);
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutType, graphData, createHierarchicalData]);
 
   // Throttled simulation tick to improve performance
   // eslint-disable-next-line no-unused-vars
@@ -2978,7 +3004,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         setIsLoading(true);
         setError(null);
       }
-      
+
       try {
         performanceLog('[API] Loading graph overview...');
         let response;
@@ -3002,12 +3028,18 @@ const getPrimaryNodeLabel = useCallback((d) => {
         if (dataSet.nodes.length > 0) {
           logger.render(`[OK] Data processed successfully: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
           if (!cancelled) {
-            syncVisibleGraph(dataSet, { updateInitial: true });
+            startTransition(() => {
+              setData(dataSet);
+              setGraphData(dataSet);
+              setFilteredData(dataSet);
+              setFullDataset(dataSet);
+              setInitialData(dataSet);
+            });
           }
         } else {
           logger.render('[WARN] Graph overview returned no nodes');
         }
-        
+
         if (!cancelled) {
           setIsLoading(false);
         }
@@ -3026,7 +3058,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           setIsLoading(false);
         }
       }
-    
+
  };
 
   fetchData();
@@ -3046,7 +3078,15 @@ const getPrimaryNodeLabel = useCallback((d) => {
         const previousConnected = lastNeo4jConnectedRef.current;
         lastNeo4jConnectedRef.current = connected;
 
-        if (connected && previousConnected === false && graphData.nodes.length === 0) {
+        if (
+          connected &&
+          previousConnected === false &&
+          graphData.nodes.length === 0 &&
+          !searchQuery &&
+          !userInteractedWithGraphRef.current &&
+          graphViewModeRef.current === 'ontology' &&
+          selectedOntologyRef.current === 'ALL'
+        ) {
           // Connection was restored but graph is empty - trigger refresh
           logger.data('Neo4j reconnected, refreshing graph...');
           const graphResponse = await apiClient.get(API.graph.graphView, {
@@ -3054,7 +3094,12 @@ const getPrimaryNodeLabel = useCallback((d) => {
           });
           const dataSet = normalizeGraphDataset(graphResponse.data);
           if (dataSet.nodes.length > 0) {
-            syncVisibleGraph(dataSet);
+            startTransition(() => {
+              setData(dataSet);
+              setGraphData(dataSet);
+              setFilteredData(dataSet);
+              setFullDataset(dataSet);
+            });
           }
         }
       } catch (err) {
@@ -3065,9 +3110,9 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // Check health every 30 seconds
     const healthCheckInterval = setInterval(checkHealth, 30000);
     return () => clearInterval(healthCheckInterval);
-  }, [graphData.nodes.length, syncVisibleGraph]);
+  }, [graphData.nodes.length, searchQuery, setData]);
 
- 
+
   // Performance: Optimized search with debouncing and caching
   useEffect(() => {
     if (!debouncedSearchQuery) {
@@ -3082,9 +3127,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           setSearchResults(currentData.nodes);
         }
       }
-      setSearchResultData({ nodes: [], links: [] });
-      setAvailableLabels([]);
-      setSelectedLabelFilter('ALL');
+      setActiveSearchResultId(null);
       setSearchLoading(false);
       return;
     }
@@ -3095,7 +3138,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     const performSearch = async () => {
       performanceLog('[SEARCH] Starting search for:', debouncedSearchQuery);
       setSearchLoading(true);
-      
+
       try {
         const isContextualQuery = graphViewModeRef.current === 'individual';
         const isOntologyViewQuery = graphViewModeRef.current === 'ontology';
@@ -3104,28 +3147,12 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
         if (isOntologyViewQuery) {
           const searchData = fullDataset.nodes.length > 0 ? fullDataset : graphData;
-          const matchedNodes = nodeSearchFunction(searchData.nodes, debouncedSearchQuery);
-          const matchedNodeIds = new Set(matchedNodes.map((node) => node.elementId));
-
-          if (matchedNodes.length > 0) {
-            const connectingLinks = (searchData.links || []).filter((link) => {
-              const sourceId = getLinkEndpointId(link.source);
-              const targetId = getLinkEndpointId(link.target);
-              return sourceId && targetId && matchedNodeIds.has(sourceId) && matchedNodeIds.has(targetId);
-            });
-            normalized = { nodes: matchedNodes, links: connectingLinks };
-          } else {
-            const matchedLinks = (searchData.links || []).filter((link) => searchLinkMatches(link, debouncedSearchQuery));
-            const linkNodeIds = new Set();
-            matchedLinks.forEach((link) => {
-              const sourceId = getLinkEndpointId(link.source);
-              const targetId = getLinkEndpointId(link.target);
-              if (sourceId) linkNodeIds.add(sourceId);
-              if (targetId) linkNodeIds.add(targetId);
-            });
-            const endpointNodes = searchData.nodes.filter((node) => linkNodeIds.has(node.elementId));
-            normalized = { nodes: endpointNodes, links: matchedLinks };
-          }
+          const nodes = nodeSearchFunction(searchData.nodes, debouncedSearchQuery);
+          const nodeIds = new Set(nodes.map(node => node.elementId));
+          const links = (searchData.links || []).filter(
+            (link) => nodeIds.has(link.source?.elementId || link.source) && nodeIds.has(link.target?.elementId || link.target)
+          );
+          normalized = { nodes, links };
         } else {
           const response = isContextualQuery
             ? await apiClient.get(API.graph.contextualSubgraph, {
@@ -3148,25 +3175,25 @@ const getPrimaryNodeLabel = useCallback((d) => {
           normalized.nodes.length,
           isOntologyViewQuery ? 'ontology view nodes' : (isContextualQuery ? 'contextual nodes' : 'results')
         );
-        
+
         // Process search results directly without setting intermediate result state
         if (normalized.nodes.length > 0) {
           const nodes = normalized.nodes;
           const validatedLinks = normalized.links;
-          
+
           logger.render('[SEARCH] Search processed:', nodes.length, 'nodes,', validatedLinks.length, 'links');
-          
+
           // For search results, REPLACE existing data instead of merging
           // This prevents contamination from previous searches or expansions
           let finalNodes = nodes;
           let finalLinks = validatedLinks;
-          
+
           // Only preserve expansion data if the expanded nodes are part of current search results
           if (expandedNodes.size > 0) {
             logger.render('[SEARCH] Checking expanded nodes for relevance to current search');
             const searchNodeIds = new Set(nodes.map(n => n.elementId));
             const relevantExpansions = new Set();
-            
+
             // Only keep expansions where the original expanded node is in current search
             for (const expandedNodeId of expandedNodes) {
               if (searchNodeIds.has(expandedNodeId)) {
@@ -3176,7 +3203,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
                 logger.render('[SEARCH] Removing irrelevant expansion for:', expandedNodeId);
               }
             }
-            
+
             // Batch expansion tracking updates
             startTransition(() => {
               setExpandedNodes(relevantExpansions);
@@ -3189,7 +3216,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
               setNodeExpansions(updatedNodeExpansions);
             });
           }
-          
+
           // Batch search result updates for better performance
           startTransition(() => {
             // Store raw search results for label filtering
@@ -3202,9 +3229,6 @@ const getPrimaryNodeLabel = useCallback((d) => {
             const sortedLabels = Array.from(labelSet).sort();
             setAvailableLabels(sortedLabels);
             setSelectedLabelFilter('ALL');
-            // Set filteredData (unfiltered initially)
-            setFilteredData({ nodes: finalNodes, links: finalLinks });
-
             // Update search results for other components
             if (setSearchResults) {
               setSearchResults(finalNodes);
@@ -3216,14 +3240,14 @@ const getPrimaryNodeLabel = useCallback((d) => {
             setSearchResultData({ nodes: [], links: [] });
             setAvailableLabels([]);
             setSelectedLabelFilter('ALL');
-            setFilteredData({ nodes: [], links: [] });
+            setActiveSearchResultId(null);
             // Update search results to empty array for other components
             if (setSearchResults) {
               setSearchResults([]);
             }
           });
         }
-        
+
         // Batch loading state updates
         startTransition(() => {
           setSearchLoading(false);
@@ -3237,18 +3261,17 @@ const getPrimaryNodeLabel = useCallback((d) => {
         const searchData = fullDataset.nodes.length > 0 ? fullDataset : graphData;
         const filteredNodes = nodeSearchFunction(searchData.nodes, debouncedSearchQuery);
         const filteredNodeIds = new Set(filteredNodes.map(n => n.elementId));
-        const filteredLinks = searchData.links.filter((l) => {
-          const sourceId = getLinkEndpointId(l.source);
-          const targetId = getLinkEndpointId(l.target);
-          return sourceId && targetId && filteredNodeIds.has(sourceId) && filteredNodeIds.has(targetId);
-        });
+        const filteredLinks = searchData.links.filter(
+          l => filteredNodeIds.has(l.source?.elementId || l.source) &&
+               filteredNodeIds.has(l.target?.elementId || l.target)
+        );
         // Batch fallback search updates
         startTransition(() => {
-          setFilteredData({ nodes: filteredNodes, links: filteredLinks });
           setSearchResultData({ nodes: filteredNodes, links: filteredLinks });
           setAvailableLabels([]);
           setSelectedLabelFilter('ALL');
-          // Update search results for other components  
+          setActiveSearchResultId(null);
+          // Update search results for other components
           if (setSearchResults) {
             setSearchResults(filteredNodes);
           }
@@ -3267,20 +3290,12 @@ const getPrimaryNodeLabel = useCallback((d) => {
   useEffect(() => {
     if (!debouncedSearchQuery || searchResultData.nodes.length === 0) return;
     if (selectedLabelFilter === 'ALL') {
-      // Show everything from the search results
-      setFilteredData(searchResultData);
       if (setSearchResults) setSearchResults(searchResultData.nodes);
     } else {
       // Filter nodes that have the selected label
       const filtered = searchResultData.nodes.filter(n =>
         (n.labels || []).includes(selectedLabelFilter)
       );
-      const filteredIds = new Set(filtered.map(n => n.elementId));
-      const filteredLinks = searchResultData.links.filter(l =>
-        filteredIds.has(getLinkEndpointId(l.source)) &&
-        filteredIds.has(getLinkEndpointId(l.target))
-      );
-      setFilteredData({ nodes: filtered, links: filteredLinks });
       if (setSearchResults) setSearchResults(filtered);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3288,12 +3303,14 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
   // ── Ontology viewer: fetch ontology graph when dropdown changes ─────────
   const fetchOntologyGraph = useCallback(async (ontologyType, partName) => {
-    const graphScope = resolveOntologyGraphScopeValue(ontologyType, ontologyOptions);
-
-    if (graphScope === 'ALL') {
+    if (ontologyType === 'ALL') {
       // Reset to initial full graph
       setOntologyGraphMessage('');
-      syncVisibleGraph(initialData, { preserveSearchSession: false });
+      setFilteredData(initialData);
+      setGraphData(initialData);
+      setFullDataset(initialData);
+      setData(initialData);
+      if (setSearchResults) setSearchResults(initialData.nodes);
       setStepParts([]);
       setSelectedStepPart('ALL');
       return;
@@ -3303,27 +3320,27 @@ const getPrimaryNodeLabel = useCallback((d) => {
     setOntologyGraphMessage('');
     try {
       let response;
-      if (graphScope === 'step' && partName && partName !== 'ALL') {
+      if (ontologyType === 'step' && partName && partName !== 'ALL') {
         const endpointPath = replaceParams(API.graph.ontologyStepPart, { part: encodeURIComponent(partName) });
         response = await apiClient.get(endpointPath);
-      } else if (graphScope.endsWith('_instances')) {
+      } else if (ontologyType.endsWith('_instances')) {
         // pattern: 'ap242_instances' -> call instances endpoint for 'ap242'
-        const base = graphScope.replace(/_instances$/, '');
+        const base = ontologyType.replace(/_instances$/, '');
         response = await apiClient.get(
           buildUrl(replaceParams(API.graph.ontologyInstances, { ontology: base })),
           { params: { include_rels: true, limit: 1000 } }
         );
-      } else if (graphScope === 'mbse_instances') {
+      } else if (ontologyType === 'mbse_instances') {
         response = await apiClient.get(API.graph.ontologyMbseInstances);
       } else {
-        const endpointPath = replaceParams(API.graph.graphOntologyView, { prefix: graphScope });
+        const endpointPath = replaceParams(API.graph.graphOntologyView, { prefix: ontologyType });
         try {
           response = await apiClient.get(endpointPath, {
             params: { limit: DEFAULT_ONTOLOGY_VIEW_LIMIT },
           });
         } catch (primaryError) {
           logger.warn('[ONTOLOGY] Falling back to legacy ontology graph endpoint', primaryError);
-          const legacyEndpointPath = replaceParams(API.graph.graphvisByOntology, { prefix: graphScope });
+          const legacyEndpointPath = replaceParams(API.graph.graphvisByOntology, { prefix: ontologyType });
           response = await apiClient.get(legacyEndpointPath);
         }
       }
@@ -3336,7 +3353,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           nodeCount: dataSet.nodes.length,
           rawLinkCount: dataSet.links.length,
           links: sampleLinks.map(l => ({
-          source: l.source, 
+          source: l.source,
           target: l.target,
           sourceExists: existingNodeIds.has(l.source),
           targetExists: existingNodeIds.has(l.target)
@@ -3351,12 +3368,21 @@ const getPrimaryNodeLabel = useCallback((d) => {
         } else {
           setOntologyGraphMessage('');
         }
-        syncVisibleGraph(dataSet);
-        logger.render(`[ONTOLOGY] Loaded ${graphScope}: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
+        setFilteredData(dataSet);
+        setGraphData(dataSet);
+        setFullDataset(dataSet);
+        setData(dataSet);
+        if (setSearchResults) setSearchResults(dataSet.nodes);
+        logger.render(`[ONTOLOGY] Loaded ${ontologyType}: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
       } else {
         const empty = { nodes: [], links: [] };
-        setOntologyGraphMessage(response.data?.message || response.data?.error || 'Neo4j query returned zero records.');
-        syncVisibleGraph(empty);
+        const fallbackData = initialData?.nodes?.length > 0 ? initialData : empty;
+        setOntologyGraphMessage(response.data?.message || response.data?.error || 'Selected ontology scope returned no graph records.');
+        setFilteredData(fallbackData);
+        setGraphData(fallbackData);
+        setFullDataset(fallbackData);
+        setData(fallbackData);
+        if (setSearchResults) setSearchResults(fallbackData.nodes || []);
       }
     } catch (err) {
       logger.error('[ONTOLOGY] Fetch error:', err);
@@ -3365,13 +3391,18 @@ const getPrimaryNodeLabel = useCallback((d) => {
       setOntologyLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialData, ontologyOptions, setSearchResults, syncVisibleGraph]);
+  }, [initialData]);
 
   // Ontology options are now loaded from centralized OntologyContext
   // This eliminates duplicate polling and API calls across components
 
   // Keep selectedOntologyRef in sync so graphViewMode effect can read latest value without stale closure
   useEffect(() => { selectedOntologyRef.current = selectedOntology; }, [selectedOntology]);
+  useEffect(() => {
+    if (selectedOntology && selectedOntology !== 'ALL') {
+      lastSpecificOntologyRef.current = selectedOntology;
+    }
+  }, [selectedOntology]);
 
   // Build dataset for Contextual Individual Graph View from the latest graph snapshot
   const buildIndividualViewDataset = useCallback((sourceData) => {
@@ -3420,58 +3451,32 @@ const getPrimaryNodeLabel = useCallback((d) => {
     return { nodes: allNodes, links: indLinks };
   }, []);
 
-  const loadContextualIndividualGraph = useCallback(async (queryText = '') => {
-    const ontologyPrefix = resolveOntologySearchPrefix(selectedOntologyRef.current);
-    setOntologyLoading(true);
-    setOntologyGraphMessage('');
-    try {
-      const response = await apiClient.get(API.graph.contextualSubgraph, {
-        params: {
-          search: queryText,
-          limit: 800,
-          ...(ontologyPrefix ? { ontology_prefix: ontologyPrefix } : {}),
-        },
-      });
-      const normalized = normalizeGraphDataset(response.data);
-      const dataSet = buildIndividualViewDataset(normalized);
-      syncVisibleGraph(dataSet);
-      if (dataSet.nodes.length === 0) {
-        setOntologyGraphMessage('No contextual instances matched this ontology/filter. Try clearing the ontology selector or search for a known instance/property value.');
-      }
-    } catch (err) {
-      logger.error('[CONTEXTUAL] Fetch error:', err);
-      const fallbackData = buildIndividualViewDataset(initialData);
-      syncVisibleGraph(fallbackData);
-      setOntologyGraphMessage(err?.response?.data?.detail || err?.message || 'Contextual graph query failed.');
-    } finally {
-      setOntologyLoading(false);
-    }
-  }, [buildIndividualViewDataset, initialData, syncVisibleGraph]);
-
   // When graph view mode switches, load the appropriate dataset
   useEffect(() => {
     graphViewModeRef.current = graphViewMode;
-    resetGraphSelectionState({
-      resetOntology: false,
-      resetStepPart: false,
-      resetSearch: false,
-      resetLabels: false,
-    });
+    resetGraphSelectionState({ resetOntology: false, resetStepPart: false });
 
     if (graphViewMode === 'individual') {
-      loadContextualIndividualGraph('');
+      const dataSet = buildIndividualViewDataset(initialData);
+      startTransition(() => {
+        setFilteredData(dataSet);
+        setGraphData(dataSet);
+        setFullDataset(dataSet);
+        setData(dataSet);
+      });
+      // Defer parent setState — must NOT be called inside a state updater or during render
+      if (setSearchResults) setTimeout(() => setSearchResults(dataSet.nodes), 0);
     } else {
       // Ontology mode — restore or refetch based on active ontology selection.
       const selected = selectedOntologyRef.current || 'ALL';
       if (selected === 'ALL') {
-        const preferredOntology = pickPreferredOntologyOption(ontologyOptions);
-        const preferredScope = getOntologyGraphScopeValue(preferredOntology);
-        if (preferredScope) {
-          setSelectedOntology(preferredScope);
-          selectedOntologyRef.current = preferredScope;
-        } else {
-          syncVisibleGraph(initialData, { preserveSearchSession: false });
-        }
+        startTransition(() => {
+          setFilteredData(initialData);
+          setGraphData(initialData);
+          setFullDataset(initialData);
+          setData(initialData);
+        });
+        if (setSearchResults) setTimeout(() => setSearchResults(initialData.nodes), 0);
       } else {
         // Force refresh since selectedOntology effect does not run on graphViewMode changes.
         const part = selected === 'step' ? selectedStepPart : 'ALL';
@@ -3479,14 +3484,21 @@ const getPrimaryNodeLabel = useCallback((d) => {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphViewMode, buildIndividualViewDataset, ontologyOptions, resetGraphSelectionState, loadContextualIndividualGraph]);
+  }, [graphViewMode, buildIndividualViewDataset, resetGraphSelectionState]);
 
   // Keep Individual view in sync when fresh initial graph data arrives.
   useEffect(() => {
     if (graphViewModeRef.current !== 'individual') return;
-    loadContextualIndividualGraph(searchQuery || '');
+    const dataSet = buildIndividualViewDataset(initialData);
+    startTransition(() => {
+      setFilteredData(dataSet);
+      setGraphData(dataSet);
+      setFullDataset(dataSet);
+      setData(dataSet);
+    });
+    if (setSearchResults) setTimeout(() => setSearchResults(dataSet.nodes), 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedOntology]);
+  }, [initialData, buildIndividualViewDataset]);
 
   // When ontology selection changes, fetch graph and optionally fetch STEP parts
   useEffect(() => {
@@ -3536,7 +3548,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // Show expand option only in search context and the node is not already expanded
     const isNotExpanded = !expandedNodes.has(nodeData.elementId);
     const hasSearchQuery = !!debouncedSearchQuery;
-    
+
     // Only show expand buttons in search context
     return hasSearchQuery && isNotExpanded;
   };
@@ -3546,47 +3558,44 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // Show collapse option only for nodes that are currently expanded in search context
     const isExpanded = expandedNodes.has(nodeData.elementId);
     const hasSearchQuery = !!debouncedSearchQuery; // Use debouncedSearchQuery for consistency
-    
+
     // Only show collapse buttons in search context
     return hasSearchQuery && isExpanded;
   };
 
-  const MAX_EXPAND_HOPS = 2;
-
-  const fetchNodeNeighborhood = async (nodeId) => {
-    const response = await apiClient.get(replaceParams(API.graph.graphtraverseNode, { node_id: nodeId }));
-    return response.data?.results || [];
-  };
-
-  // Function to expand a node using graphtraverse API - bounded to two hops.
-  const expandNode = async (nodeId, hopLevel = 1) => {
+  // Function to expand a node using graphtraverse API - ONE LEVEL ONLY expansion
+  const expandNode = async (nodeId) => {
     if (expandedNodes.has(nodeId)) {
       return;
     }
-    
+
     setLoadingNodes(prev => new Set([...prev, nodeId]));
-    
+
     // Track nodes that will be added by this expansion
     const addedNodeIds = new Set();
     const addedLinkIds = new Set();
-    
-    try {
-      const directResults = await fetchNodeNeighborhood(nodeId);
 
-      if (directResults) {
+    try {
+      const response = await apiClient.get(replaceParams(API.graph.graphtraverseNode, { node_id: nodeId }));
+
+      if (response.data && response.data.results) {
         // Start with ONLY the current search results, not all filteredData
         const newNodesMap = new Map();
         const newLinksMap = new Map();
-        
+
         // ONLY add nodes that are part of current search or already expanded
         if (debouncedSearchQuery) {
-          // In search mode: preserve the visible result set and add dependents.
-          // This keeps search output stable while the user expands up to two hops.
+          // In search mode: only keep nodes that match current search
+          // This prevents contamination from previous searches
           filteredData.nodes.forEach(node => {
-            newNodesMap.set(node.elementId, node);
+            // Only add if it's the node being expanded or was added by a current expansion
+            if (node.elementId === nodeId || expandedNodes.has(node.elementId)) {
+              newNodesMap.set(node.elementId, node);
+            }
           });
-          
+
           filteredData.links.forEach(link => {
+            // Only add links that connect to nodes we're keeping
             if (newNodesMap.has(link.source) && newNodesMap.has(link.target)) {
               newLinksMap.set(link.elementId, link);
             }
@@ -3596,83 +3605,63 @@ const getPrimaryNodeLabel = useCallback((d) => {
           filteredData.nodes.forEach(node => {
             newNodesMap.set(node.elementId, node);
           });
-          
+
           filteredData.links.forEach(link => {
             newLinksMap.set(link.elementId, link);
           });
         }
-        
+
         // Process the API response - ADD ALL DIRECT CONNECTIONS
-        const processRecords = (records, currentHop, originId) => {
-          records.forEach(record => {
-            const n = record['n'];
-            const r = record['r'];
-            const m = record['m'];
+        response.data.results.forEach(record => {
+          const n = record['n'];
+          const r = record['r'];
+          const m = record['m'];
 
-            // Process relationships where either n or m is the node we're expanding
-            if (r && ((n && n.elementId === originId) || (m && m.elementId === originId))) {
-              // Add the relationship with consistent format
-              const linkId = r.elementId;
-              if (!newLinksMap.has(linkId)) {
-                newLinksMap.set(linkId, {
-                  elementId: linkId,
-                  source: r.start, // Keep as raw ID for consistency
-                  target: r.end,   // Keep as raw ID for consistency
-                  type: r.type,
-                  properties: r.properties,
-                });
-                addedLinkIds.add(linkId);
-              }
-
-              // Add the connected node (either n or m, whichever is NOT the expanded node)
-              const connectedNode = (n && n.elementId === originId) ? m : n;
-              if (connectedNode) {
-                const connectedNodeId = connectedNode.elementId;
-                const newNode = {
-                  ...connectedNode.properties,
-                  elementId: connectedNodeId,
-                  labels: connectedNode.labels || ['Node'],
-                  label: connectedNode.labels[0] || 'Node',
-                };
-                if (!newNodesMap.has(connectedNodeId)) {
-                  newNodesMap.set(connectedNodeId, newNode);
-                  addedNodeIds.add(connectedNodeId);
-                  performanceLog('Added direct connection:', connectedNodeId);
-                }
-              }
+          // Process relationships where either n or m is the node we're expanding
+          if (r && ((n && n.elementId === nodeId) || (m && m.elementId === nodeId))) {
+            // Add the relationship with consistent format
+            const linkId = r.elementId;
+            if (!newLinksMap.has(linkId)) {
+              newLinksMap.set(linkId, {
+                elementId: linkId,
+                source: r.start, // Keep as raw ID for consistency
+                target: r.end,   // Keep as raw ID for consistency
+                type: r.type,
+                properties: r.properties,
+              });
+              addedLinkIds.add(linkId);
             }
-          });
-        };
 
-        processRecords(directResults, hopLevel, nodeId);
-
-        if (hopLevel < MAX_EXPAND_HOPS) {
-          const hopOneNodeIds = Array.from(addedNodeIds)
-            .filter(id => id !== nodeId && !expandedNodes.has(id));
-          const visited = new Set([nodeId]);
-          for (const nextNodeId of hopOneNodeIds.slice(0, 50)) {
-            if (visited.has(nextNodeId)) continue;
-            visited.add(nextNodeId);
-            try {
-              const secondaryResults = await fetchNodeNeighborhood(nextNodeId);
-              processRecords(secondaryResults, hopLevel + 1, nextNodeId);
-            } catch (secondaryErr) {
-              logger.warn('Secondary hop expansion skipped:', nextNodeId, secondaryErr?.message || secondaryErr);
+            // Add the connected node (either n or m, whichever is NOT the expanded node)
+            const connectedNode = (n && n.elementId === nodeId) ? m : n;
+            if (connectedNode) {
+              const connectedNodeId = connectedNode.elementId;
+              const newNode = {
+                ...connectedNode.properties,
+                elementId: connectedNodeId,
+                labels: connectedNode.labels || ['Node'],
+                label: connectedNode.labels[0] || 'Node',
+              };
+              if (!newNodesMap.has(connectedNodeId)) {
+                newNodesMap.set(connectedNodeId, newNode);
+                addedNodeIds.add(connectedNodeId);
+                performanceLog('Added direct connection:', connectedNodeId);
+              }
             }
           }
-        }
-        
+        });
+
         const finalNodes = Array.from(newNodesMap.values());
         const finalLinks = Array.from(newLinksMap.values());
-        
-        performanceLog(`${MAX_EXPAND_HOPS}-hop expansion:`, addedNodeIds.size, 'new nodes,', addedLinkIds.size, 'new links');
-        
+
+        performanceLog('One-level expansion:', addedNodeIds.size, 'new nodes,', addedLinkIds.size, 'new links');
+
         // Validate links
         const existingNodeIds = new Set(finalNodes.map(node => node.elementId));
-        const validatedLinks = finalLinks.filter(link => 
+        const validatedLinks = finalLinks.filter(link =>
           existingNodeIds.has(link.source) && existingNodeIds.has(link.target)
         );
-        
+
         // Batch all state updates for better performance
         startTransition(() => {
           // Update the current filtered data (what's currently displayed)
@@ -3695,13 +3684,9 @@ const getPrimaryNodeLabel = useCallback((d) => {
             setVisibleRelationships(validatedLinks);
           }
 
-          if (debouncedSearchQuery) {
-            setSearchResultData({ nodes: finalNodes, links: validatedLinks });
-          }
-
           // Store which nodes and links were added by this expansion
           setNodeExpansions(prev => {
-            const newMap = new Map([...prev, [nodeId, { addedNodeIds, addedLinkIds, level: Math.min(MAX_EXPAND_HOPS, hopLevel) }]]);
+            const newMap = new Map([...prev, [nodeId, { addedNodeIds, addedLinkIds, level: 1 }]]);
             return newMap;
           });
 
@@ -3730,7 +3715,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     logger.render('Current nodeExpansions:', Array.from(nodeExpansions.entries()));
     logger.render('Current expandedNodes:', Array.from(expandedNodes));
     logger.render('Current filteredData nodes:', filteredData.nodes.map(n => n.elementId));
-    
+
     // Get the expansion info for this node
     const expansionInfo = nodeExpansions.get(nodeId);
     if (!expansionInfo) {
@@ -3738,16 +3723,16 @@ const getPrimaryNodeLabel = useCallback((d) => {
       logger.render('Available expansions:', Array.from(nodeExpansions.keys()));
       return;
     }
-    
+
     const { addedNodeIds, addedLinkIds } = expansionInfo;
     logger.render('Nodes to remove:', Array.from(addedNodeIds));
     logger.render('Links to remove:', Array.from(addedLinkIds));
-    
+
     // Debug: Check if the nodes to be removed are actually in the current data
     const currentNodeIds = new Set(filteredData.nodes.map(n => n.elementId));
     const nodesToRemove = Array.from(addedNodeIds).filter(id => currentNodeIds.has(id));
     logger.render('Nodes that will actually be removed (present in current data):', nodesToRemove);
-    
+
     // Remove the nodes and links that were added by this expansion
     const filteredNodes = filteredData.nodes.filter(node => {
       const shouldKeep = !addedNodeIds.has(node.elementId);
@@ -3756,7 +3741,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       }
       return shouldKeep;
     });
-    
+
     const filteredLinks = filteredData.links.filter(link => {
       const shouldKeep = !addedLinkIds.has(link.elementId);
       if (!shouldKeep) {
@@ -3764,11 +3749,11 @@ const getPrimaryNodeLabel = useCallback((d) => {
       }
       return shouldKeep;
     });
-    
+
     logger.render('Nodes before collapse:', filteredData.nodes.length, 'after:', filteredNodes.length);
     logger.render('Links before collapse:', filteredData.links.length, 'after:', filteredLinks.length);
     logger.render('Remaining node IDs:', filteredNodes.map(n => n.elementId));
-    
+
     // Validate that we're actually removing nodes
     if (filteredNodes.length === filteredData.nodes.length) {
       logger.error('ERROR: No nodes were actually removed! This indicates a problem with the collapse logic.');
@@ -3776,14 +3761,14 @@ const getPrimaryNodeLabel = useCallback((d) => {
       logger.error('addedNodeIds:', Array.from(addedNodeIds));
       logger.error('current node elementIds:', filteredData.nodes.map(n => n.elementId));
     }
-    
+
     // Update datasets
     const newData = { nodes: filteredNodes, links: filteredLinks };
     logger.render('Setting new data:', {
       nodeCount: newData.nodes.length,
       linkCount: newData.links.length
     });
-    
+
     setFilteredData(newData);
     setData(newData);
 
@@ -3797,7 +3782,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     if (setSearchResults) {
       setSearchResults(newData.nodes);
     }
-    
+
     // Remove this node from expanded set and expansion tracking
     setExpandedNodes(prev => {
       const newSet = new Set(prev);
@@ -3805,69 +3790,49 @@ const getPrimaryNodeLabel = useCallback((d) => {
       logger.render('Updated expandedNodes:', Array.from(newSet));
       return newSet;
     });
-    
+
     setNodeExpansions(prev => {
       const newMap = new Map(prev);
       newMap.delete(nodeId);
       logger.render('Updated nodeExpansions:', Array.from(newMap.entries()));
       return newMap;
     });
-    
+
     logger.render('=== COLLAPSE FUNCTION END ===');
   };
 
   // Function to initialize node positions around center
-  const initializeNodePositions = (nodes, width, height, hierarchyInfo = null) => {
+  const initializeNodePositions = (nodes, width, height) => {
     const centerX = width / 2;
     const centerY = height / 2;
-    const levelBuckets = new Map();
 
-    if (hierarchyInfo) {
-      nodes.forEach(node => {
-        if (node.ontologyLevel == null) return;
-        const level = Math.ceil(node.ontologyLevel);
-        if (!levelBuckets.has(level)) levelBuckets.set(level, []);
-        levelBuckets.get(level).push(node);
-      });
-    }
-    
     nodes.forEach((node, index) => {
       if (!node.x && !node.y) {
-        if (hierarchyInfo && node.ontologyLevel != null) {
-          const level = Math.ceil(node.ontologyLevel);
-          const bucket = levelBuckets.get(level) || [node];
-          const levelIndex = bucket.findIndex(item => item.elementId === node.elementId);
-          const yBand = height * (0.14 + (0.74 * (level / Math.max(1, hierarchyInfo.maxLevel || 1))));
-          const xStep = width / (bucket.length + 1);
-          node.x = Math.max(80, Math.min(width - 80, xStep * (levelIndex + 1)));
-          node.y = Math.max(70, Math.min(height - 70, yBand));
-          return;
-        }
-        // Arrange nodes in a rough circle around center
-        const angle = (index / nodes.length) * 2 * Math.PI;
-        const radius = Math.min(width, height) * 0.2; // 20% of viewport size
+        // Deterministic disk seed avoids the donut/ring effect caused by circular seeding.
+        const angle = index * Math.PI * (3 - Math.sqrt(5));
+        const radius = Math.sqrt((index + 1) / Math.max(1, nodes.length)) * Math.min(width, height) * 0.36;
         node.x = centerX + Math.cos(angle) * radius;
         node.y = centerY + Math.sin(angle) * radius;
       }
     });
   };
 
-  
+
 // Add boundary force to keep nodes within viewport
 const boundaryForce = (width, height) => {
   let nodes;
-  
+
   const force = (alpha) => {
     nodes.forEach(node => {
       const padding = VIEWPORT_PADDING;
       const strength = 0.1 * alpha;
-      
+
       if (node.x < padding) {
         node.vx += (padding - node.x) * strength;
       } else if (node.x > width - padding) {
         node.vx += (width - padding - node.x) * strength;
       }
-      
+
       if (node.y < padding) {
         node.vy += (padding - node.y) * strength;
       } else if (node.y > height - padding) {
@@ -3875,25 +3840,25 @@ const boundaryForce = (width, height) => {
       }
     });
   };
-  
+
   force.initialize = (_nodes) => { nodes = _nodes; };
   return force;
 };
 
 
- 
+
   // --- 3. D3 Initialization and Update (runs when filteredData/activeNode/handlers change) ---
   useEffect(() => {
     const startTime = performance.now();
     logger.render(`[RENDER] Starting render with ${filteredData.nodes?.length || 0} nodes, ${filteredData.links?.length || 0} links`);
-    
+
     // Performance optimization: detect layout changes
     const layoutChanged = layoutType !== prevLayoutType;
     if (layoutChanged) {
       logger.render(`[SYNC] Layout changed from ${prevLayoutType} to ${layoutType}`);
       setPrevLayoutType(layoutType);
     }
-    
+
     const svg = d3.select(svgRef.current);
     const width = svgRef.current.clientWidth || 800;
     const height = svgRef.current.clientHeight || 600;
@@ -3908,10 +3873,10 @@ const boundaryForce = (width, height) => {
 
     if (!gRef.current) {
       svg.selectAll('*').remove(); // Clear existing content on first render
-      
+
       // Define Arrowhead Marker in SVG defs BEFORE creating main group
       const defs = svg.append("defs"); // Append defs directly to SVG
-      
+
       Object.entries(RELATIONSHIP_THEME).forEach(([key, theme]) => {
         defs.append("marker")
           .attr("id", theme.markerId)
@@ -3925,9 +3890,9 @@ const boundaryForce = (width, height) => {
             .attr("d", `M0,-${ARROW_HEAD_WIDTH / 2}L${ARROW_HEAD_LENGTH},0L0,${ARROW_HEAD_WIDTH / 2}`)
             .attr("fill", theme.color);
       });
-      
+
       logger.render('D3 Arrowhead Marker defined in defs');
-      
+
       gRef.current = svg.append('g'); // Main group for graph elements
       // Initialize zoom behavior on the parent SVG
       svg.call(d3.zoom()
@@ -3943,14 +3908,14 @@ const boundaryForce = (width, height) => {
 
     // Check if we have data to render - use full dataset if filteredData is empty and we have graphData
     const hasData = filteredData.nodes.length > 0 || (graphData.nodes && graphData.nodes.length > 0);
-    const renderData = filteredData.nodes.length > 0 ? filteredData : 
-                      (graphData.nodes && graphData.nodes.length > 0) ? graphData : 
+    const renderData = filteredData.nodes.length > 0 ? filteredData :
+                      (graphData.nodes && graphData.nodes.length > 0) ? graphData :
                       { nodes: [], links: [] };
     const showNodeLabels = (
-      renderData.nodes.length <= GRAPH_LABEL_RENDER_LIMIT ||
+      graphViewMode !== 'individual' ||
       Boolean(searchQuery) ||
       selectedOntology !== 'ALL' ||
-      graphViewMode === 'individual'
+      renderData.nodes.length <= GRAPH_LABEL_RENDER_LIMIT
     );
 
     if (!hasData) {
@@ -3965,7 +3930,7 @@ const boundaryForce = (width, height) => {
     }
 
     logger.render(`[DATA] Rendering with ${renderData.nodes.length} nodes, ${renderData.links.length} links`);
-    
+
     if (renderData.links && renderData.links.length > 0) {
       const sample = renderData.links.slice(0, 2);
       logger.render('[RENDER] Sample links with source/target:', sample.map(l => ({
@@ -3975,23 +3940,43 @@ const boundaryForce = (width, height) => {
         type: l.type
       })));
     }
-    
+
     // Performance warning for large graphs
     if (renderData.nodes.length > 500) {
       logger.warn(`[WARN] Large graph detected (${renderData.nodes.length} nodes). Performance may be affected.`);
     }
 
-    // Force-directed layout
-    // Clear graph content and ensure proper group structure
+    // Check layout type and render accordingly
+    if (layoutType === 'indented-tree') {
+      // Stop any running simulation for tree layout
+      if (simulationRef.current) {
+        simulationRef.current.stop();
+        simulationRef.current = null; // Clear the reference
+      }
+      // Clear any existing node count displays from force-directed layout
+      svg.selectAll('.node-count-display').remove();
+      // Clear only graph content, preserve defs
+      if (gRef.current) {
+        gRef.current.selectAll('*').remove();  // Only clear gRef content, not defs
+      }
+      // Render indented tree layout using the correct data
+      logger.render(`[TREE] Rendering tree with ${renderData.nodes.length} nodes`);
+      renderIndentedTree(renderData, svg, width, height);
+      logger.render('Rendered Indented Tree Layout');
+      return;
+    }
+
+    // Force-directed layout (original code)
+    // Clear tree layout content and ensure proper group structure
     if (gRef.current) {
       gRef.current.selectAll('*').remove();  // Only clear graph content, not defs
     } else {
       gRef.current = svg.append('g');
     }
-    
+
     // Clear any existing node count displays to prevent overlapping
     svg.selectAll('.node-count-display').remove();
-    
+
     // Add simple node count display for force-directed graph
     svg.append('text')
       .attr('class', 'node-count-display')
@@ -4006,25 +3991,6 @@ const boundaryForce = (width, height) => {
       .attr('paint-order', 'stroke fill')
       .text(`Nodes: ${renderData.nodes.length}`);
 
-    const ontologyHierarchyInfo = graphViewModeRef.current === 'ontology'
-      ? annotateOntologyHierarchyLevels(renderData.nodes, renderData.links)
-      : null;
-
-    if (ontologyHierarchyInfo && ontologyHierarchyInfo.rootCount > 0) {
-      svg.append('text')
-        .attr('class', 'node-count-display')
-        .attr('x', 20)
-        .attr('y', 30)
-        .attr('text-anchor', 'start')
-        .attr('font-size', '12px')
-        .attr('font-weight', '700')
-        .attr('fill', TCS_GRAPH_THEME.inkSoft)
-        .attr('stroke', 'white')
-        .attr('stroke-width', '1.2')
-        .attr('paint-order', 'stroke fill')
-        .text(`Ontology levels: ${ontologyHierarchyInfo.maxLevel + 1} | Top nodes: ${ontologyHierarchyInfo.rootCount}`);
-    }
-    
     // Re-enable zoom for force-directed layout
     svg.call(d3.zoom()
       .scaleExtent([0.1, 5])
@@ -4033,20 +3999,15 @@ const boundaryForce = (width, height) => {
         gRef.current.attr('transform', transform);
       })
     );
-    
-    logger.render(`[TARGET] Initializing graph layout with ${renderData.nodes.length} nodes, ${renderData.links.length} links`);
-    
-    // Initialize positions for new nodes (especially for search results)
-    initializeNodePositions(renderData.nodes, width, height, ontologyHierarchyInfo);
 
-    const ontologyBandY = (node) => {
-      if (!ontologyHierarchyInfo || node.ontologyLevel == null) return height / 2;
-      return height * (0.14 + (0.74 * (Math.ceil(node.ontologyLevel) / Math.max(1, ontologyHierarchyInfo.maxLevel || 1))));
-    };
+    logger.render(`[TARGET] Initializing graph layout with ${renderData.nodes.length} nodes, ${renderData.links.length} links`);
+
+    // Initialize positions for new nodes (especially for search results)
+    initializeNodePositions(renderData.nodes, width, height);
 
     // --- Process links for bidirectional relationship separation ---
     const processedLinks = processLinksForOffset([...renderData.links]);
-    
+
     logger.render('[LINK PROCESSING]', {
       inputLinks: renderData.links.length,
       processedLinks: processedLinks.length,
@@ -4061,12 +4022,10 @@ const boundaryForce = (width, height) => {
           return relationshipType === 'SUBCLASS_OF' ? 145 : (relationshipType === 'DOMAIN' || relationshipType === 'RANGE' ? 130 : LINK_DISTANCE);
         }))
         .force('charge', d3.forceManyBody().strength(CHARGE_STRENGTH))
-        .force('center', d3.forceCenter(width / 2, height / 2).strength(ontologyHierarchyInfo ? 0.02 : CENTER_FORCE_STRENGTH))
-        .force('x', ontologyHierarchyInfo ? d3.forceX(width / 2).strength(0.025) : null)
-        .force('y', ontologyHierarchyInfo ? d3.forceY(ontologyBandY).strength(0.22) : null)
+        .force('center', d3.forceCenter(width / 2, height / 2).strength(CENTER_FORCE_STRENGTH))
         .force('collide', d3.forceCollide().radius((d) => getNodeCollisionRadius(d, showNodeLabels)).iterations(renderData.nodes.length > 300 ? 1 : 2))
         .force('boundary', boundaryForce(width, height));
-      
+
       // Performance optimization: reduce iterations for large graphs
       const nodeCount = renderData.nodes.length;
       if (nodeCount > 100) {
@@ -4082,7 +4041,7 @@ const boundaryForce = (width, height) => {
           .velocityDecay(0.7)
           .alpha(0.3); // Start with lower alpha
       }
-      
+
       logger.render('D3 Simulation initialized with', nodeCount, 'nodes');
     } else {
       // Performance optimization: only update if data actually changed
@@ -4090,17 +4049,15 @@ const boundaryForce = (width, height) => {
       const currentNodeIds = currentNodes.map(n => n.elementId).sort().join(',');
       const newNodeIds = renderData.nodes.map(n => n.elementId).sort().join(',');
       const nodesChanged = currentNodeIds !== newNodeIds;
-      
+
       if (nodesChanged || layoutChanged) {
         // Update simulation data
         simulationRef.current.nodes(renderData.nodes);
-        simulationRef.current.force('link').links(processedLinks); 
-        simulationRef.current.force('center', d3.forceCenter(width / 2, height / 2).strength(ontologyHierarchyInfo ? 0.02 : CENTER_FORCE_STRENGTH));
-        simulationRef.current.force('x', ontologyHierarchyInfo ? d3.forceX(width / 2).strength(0.025) : null);
-        simulationRef.current.force('y', ontologyHierarchyInfo ? d3.forceY(ontologyBandY).strength(0.22) : null);
+        simulationRef.current.force('link').links(processedLinks);
+        simulationRef.current.force('center', d3.forceCenter(width / 2, height / 2).strength(CENTER_FORCE_STRENGTH));
         simulationRef.current.force('collide', d3.forceCollide().radius((d) => getNodeCollisionRadius(d, showNodeLabels)).iterations(renderData.nodes.length > 300 ? 1 : 2));
         simulationRef.current.force('boundary', boundaryForce(width, height));
-        
+
         // Use lower alpha for smoother transitions, higher for layout changes
         const alpha = layoutChanged ? 0.5 : 0.3;
         simulationRef.current.alpha(alpha).restart();
@@ -4109,7 +4066,7 @@ const boundaryForce = (width, height) => {
         logger.render('Skipping simulation update - no data changes detected');
       }
     }
- 
+
     // --- D3 Data Binding and Drawing ---
     // Links (paths for curved bidirectional links, lines for single links)
     const link = gRef.current.selectAll('.link')
@@ -4136,17 +4093,18 @@ const boundaryForce = (width, height) => {
               // Use the single right-docked tooltip for relationships as well
               if (tooltipRef.current) {
                 tooltipRef.current.style.zIndex = 12;
+                tooltipRef.current.style.display = 'block';
                 tooltipRef.current.style.pointerEvents = 'auto';
                 tooltipRef.current.style.opacity = 0.9;
               }
               // Get relationship type from your query
               const relationshipType = d.type || 'Relationship';
-              
+
               // Get properties - handle both nested and flat structure
-              const props = d.properties && typeof d.properties === 'object' && !Array.isArray(d.properties) 
-                ? d.properties 
+              const props = d.properties && typeof d.properties === 'object' && !Array.isArray(d.properties)
+                ? d.properties
                 : d;
-              
+
               // HEADER: Show the relationship type with close button
               let tooltipContent = `
                 <div style="position:relative; background: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%); color: white; padding: 8px 12px; margin: -8px -8px 8px -8px; font-weight: bold; border-radius: 4px 4px 0 0;">
@@ -4157,7 +4115,7 @@ const boundaryForce = (width, height) => {
                   ${tooltipCloseBtn}
                 </div>
               `;
-              
+
               // Add relationship direction info
               const srcNode = typeof d.source === 'object' ? d.source : (filteredData.nodes || []).find(n => n.elementId === d.source);
               const tgtNode = typeof d.target === 'object' ? d.target : (filteredData.nodes || []).find(n => n.elementId === d.target);
@@ -4165,24 +4123,24 @@ const boundaryForce = (width, height) => {
               const srcType = resolveNodeType(srcNode);
               const tgtLabel = resolveNodeName(tgtNode);
               const tgtType = resolveNodeType(tgtNode);
-              
+
               tooltipContent += `<div style="margin: 8px; padding: 10px 12px; background: #f8f9fa; border-radius: 6px; font-size: 11px; color: #495057; border: 1px solid #e9eef5;">
                 <div style="margin-bottom: 6px;"><strong style="color: #355C7D;">From:</strong> [${escapeHtml(srcType)}] ${escapeHtml(srcLabel)}</div>
                 <div><strong style="color: #486581;">To:</strong> [${escapeHtml(tgtType)}] ${escapeHtml(tgtLabel)}</div>
               </div>`;
-              
+
               // Show all enumerable own properties (exclude only functions)
               const allProps = Object.keys(props)
                 .filter(k => typeof props[k] !== 'function')
                 .map(k => [k, props[k]]);
-              
+
               // Show ALL relationship properties from your query
               if (allProps.length > 0) {
                 tooltipContent += `<div style="margin-top: 8px; padding: 8px; font-size: 12px; max-height: 250px; overflow-y: auto;">`;
                 allProps.forEach(([k, v]) => {
                   // Format property key
                   const formattedKey = escapeHtml(k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()));
-                  
+
                   // Format value
                   let formattedValue = v;
                   if (v === null || v === undefined) {
@@ -4194,22 +4152,23 @@ const boundaryForce = (width, height) => {
                   } else {
                     formattedValue = escapeHtml(String(v));
                   }
-                  
+
                   tooltipContent += `<div style="margin: 4px 0; padding: 3px 0; border-bottom: 1px solid #f0f0f0;"><strong style="color: #2c3e50;">${formattedKey}:</strong> <span style="color: #34495e; margin-left: 8px;">${formattedValue}</span></div>`;
                 });
                 tooltipContent += `</div>`;
               } else {
                 tooltipContent += `<div style="margin-top: 8px; padding: 12px; font-size: 12px; color: #95a5a6; font-style: italic; text-align: center;">No properties available</div>`;
               }
-              
+
               // Dock tooltip on the right side of the canvas
               if (tooltipRef.current) {
-                repositionTooltip();
+              repositionTooltip();
                   tooltipRef.current.innerHTML = tooltipContent;
                   try { applyTooltipCloseHandler(tooltipRef.current); } catch (e) { /* ignore */ }
+                  try { wireTooltipRecButtons(tooltipRef.current); } catch (e) { /* ignore */ }
               }
             })
-          
+
 
           return group;
         },
@@ -4226,7 +4185,7 @@ const boundaryForce = (width, height) => {
     //   .attr('text-anchor', 'middle')
     //   .attr('fill', '#666')
     //   .style('pointer-events', 'none');
- 
+
     // Nodes (groups containing icon and text) -- ONLY CHANGE: Using icons instead of circles
     const node = gRef.current.selectAll('.node-group')
       .data(renderData.nodes, d => d.elementId)
@@ -4244,7 +4203,7 @@ const boundaryForce = (width, height) => {
           group.append('circle')
             .attr('class', 'node-circle')
             .attr('r', NODE_RADIUS)
-            .attr('fill', d => getNodeColor(resolveNodeType(d)));
+            .attr('fill', d => getNodeColor(d));
 
           // Highlight glow ring for "View in Graph" from Recommendations
           group.append('circle')
@@ -4316,7 +4275,6 @@ const boundaryForce = (width, height) => {
             })
             .on('click', (event, d) => {
               event.stopPropagation();
-              if (suppressNodeClickRef.current) return;
               logger.render('=== EXPAND/COLLAPSE BUTTON CLICKED ===');
               logger.render('Node ID:', d.elementId);
               logger.render('Can expand:', hasExpandableConnections(d));
@@ -4325,7 +4283,7 @@ const boundaryForce = (width, height) => {
               logger.render('Loading nodes:', Array.from(loadingNodes));
               logger.render('Current expandedNodes state:', Array.from(expandedNodes));
               logger.render('Current nodeExpansions state:', Array.from(nodeExpansions.keys()));
-              
+
               // Direct check and call to avoid any dependency issues
               if (expandedNodes.has(d.elementId)) {
                 logger.render('Node is expanded - calling collapseNode directly...');
@@ -4336,9 +4294,7 @@ const boundaryForce = (width, height) => {
               } else {
                 logger.render('No action taken - node cannot be expanded or collapsed');
               }
-            })
-            .append('title')
-            .text(d => canCollapseNode(d) ? 'Collapse expanded dependents' : `Expand dependents up to ${MAX_EXPAND_HOPS} hops`);
+            });
 
           // Plus/Minus symbol
           group.append('text')
@@ -4384,12 +4340,12 @@ const boundaryForce = (width, height) => {
             d3.select(this).select('.fallback-circle')
               .attr('stroke', 'black')
               .attr('stroke-width', 1);
-            d3.select(tooltipRef.current).style('z-index', 12).style('pointer-events', 'auto');
+            d3.select(tooltipRef.current).style('z-index', 12).style('display', 'block').style('pointer-events', 'auto');
             d3.select(tooltipRef.current).style('opacity', 0.9);
-            
+
             // Get properties - handle both nested and flat structure
-            const props = d.properties && typeof d.properties === 'object' && !Array.isArray(d.properties) 
-              ? d.properties 
+            const props = d.properties && typeof d.properties === 'object' && !Array.isArray(d.properties)
+              ? d.properties
               : d;
 
             // Get node type from labels (first label) - for HEADER
@@ -4397,32 +4353,19 @@ const boundaryForce = (width, height) => {
               d.entity_type ||
               props.entity_type ||
               ((d.labels && d.labels.length > 0) ? d.labels[0] : 'Node');
-            
+
             // HEADER: Show the node label/type with close button
             let tooltipContent = buildTooltipHeader(nodeType, tooltipCloseBtn);
             // Recommendation action buttons (top, right after header)
-            tooltipContent += buildRecActionBar(
-              d.name || props.name || d.entity_type || props.entity_type,
-              d.labels
-            );
-            if (d.ontologyLevelLabel) {
-              tooltipContent += `<div style="margin:8px 8px 0;padding:7px 9px;background:#EEF4FA;border:1px solid #D9E2EC;border-radius:6px;font-size:11px;color:#355C7D;">
-                <strong>Ontology hierarchy:</strong> ${escapeHtml(d.ontologyLevelLabel)}
-              </div>`;
-            }
-            if (debouncedSearchQuery) {
-              tooltipContent += `<div style="margin:8px 8px 0;padding:7px 9px;background:#f4f7fb;border:1px solid #d9e2ec;border-radius:6px;font-size:11px;color:#52606D;">
-                Click the green <strong>+</strong> badge on this node to expand dependent nodes up to ${MAX_EXPAND_HOPS} hops. Click <strong>-</strong> to collapse that expansion.
-              </div>`;
-            }
-            
+            tooltipContent += buildRecActionBar(resolveNodeName(d), d.labels);
+
             // Only exclude D3/graph-library internals — ALL real Neo4j properties will be shown
             const excludedProps = [
               'x', 'y', 'vx', 'vy', 'fx', 'fy', 'index',              // D3 force layout
               'depth', 'parent', 'data', 'height', 'level', 'children', // D3 tree layout
               'elementId', 'elementID', 'identity', 'labels', 'properties', '__typename', // driver metadata
             ];
-            
+
             // Get all enumerable own properties (not inherited methods)
             const allProps = Object.keys(props)
               .filter(k => {
@@ -4431,7 +4374,7 @@ const boundaryForce = (width, height) => {
                 return true;
               })
               .map(k => [k, props[k]]);
-            
+
             // Show ALL properties from your query
             if (allProps.length > 0) {
               tooltipContent += `<div style="margin-top: 8px; padding: 8px; font-size: 12px; max-height: 200px; overflow-y: auto;">`;
@@ -4453,40 +4396,40 @@ const boundaryForce = (width, height) => {
             } else {
               tooltipContent += `<div style="margin-top: 8px; padding: 12px; font-size: 12px; color: #95a5a6; font-style: italic; text-align: center;">No properties available</div>`;
             }
-            
+
             // Get all connected links for use in multiple sections below
-            const connectedLinks = (filteredData.links || []).filter(link => 
+            const connectedLinks = (filteredData.links || []).filter(link =>
               link.source === d.elementId || link.target === d.elementId
             );
-            
+
             // SECTION: Ontology Metadata (for OntologyClass nodes)
             if (nodeType === 'OntologyClass') {
               tooltipContent += `<div style="margin-top: 12px; padding-top: 12px; border-top: 2px solid #e0e0e0;">
                 <div style="font-weight: bold; color: #0066B3; margin-bottom: 8px; font-size: 12px;">
                   <i class="fas fa-cube" style="margin-right: 4px;"></i>Ontology Metadata
                 </div>`;
-              
+
               // Show concept type
               if (props.concept_type) {
                 tooltipContent += `<div style="margin: 4px 0; font-size: 11px; color: #555;">
                   <strong>Type:</strong> <span style="color: #e74c3c;">${escapeHtml(props.concept_type)}</span>
                 </div>`;
               }
-              
+
               // Show namespace
               if (props.namespace) {
                 tooltipContent += `<div style="margin: 4px 0; font-size: 11px; color: #555; word-break: break-word;">
                   <strong>Namespace:</strong> <code style="background: #f5f5f5; padding: 2px 4px; border-radius: 2px; font-size: 10px;">${escapeHtml(props.namespace)}</code>
                 </div>`;
               }
-              
+
               // Show ontology ID and prefix
               if (props.ontology_id || props.prefix) {
                 tooltipContent += `<div style="margin: 4px 0; font-size: 11px; color: #555;">
                   <strong>Ontology:</strong> <span style="color: #28A745;">[${escapeHtml(props.prefix || 'unknown')}]</span>
                 </div>`;
               }
-              
+
               tooltipContent += `</div>`;
             }
 
@@ -4522,42 +4465,42 @@ const boundaryForce = (width, height) => {
               tooltipContent += renderSemanticList('Range Targets', rangeLinks, 'outgoing');
               tooltipContent += `</div>`;
             }
-            
+
             // SECTION: Data Properties (OntologyProperty nodes with PROPERTY_OF relationship)
-            const dataProperties = connectedLinks.filter(link => 
+            const dataProperties = connectedLinks.filter(link =>
               (link.type === 'PROPERTY_OF' && link.source === d.elementId) ||
               (link.type === 'PROPERTY_OF' && link.target === d.elementId)
             );
-            
+
             if (dataProperties.length > 0) {
               tooltipContent += `<div style="margin-top: 12px; padding-top: 12px; border-top: 2px solid #e0e0e0;">
                 <div style="font-weight: bold; color: #28A745; margin-bottom: 8px; font-size: 12px;">
                   <i class="fas fa-list" style="margin-right: 4px;"></i>Data Properties (${dataProperties.length})
                 </div>`;
-              
+
               dataProperties.forEach(link => {
                 const isPropOwner = link.source === d.elementId;
                 const propNodeId = isPropOwner ? link.target : link.source;
                 const propNode = (filteredData.nodes || []).find(n => n.elementId === propNodeId);
                 const propName = propNode?.name || 'Unknown';
-                
+
                 tooltipContent += `<div style="margin: 4px 0; padding: 4px; background: #f0f8f0; border-left: 3px solid #28A745; font-size: 11px;">
                   <strong style="color: #28A745;">⚙</strong> ${escapeHtml(propName)}
                 </div>`;
               });
-              
+
               tooltipContent += `</div>`;
             }
-            
+
             // SECTION: Other Relationships (non-PROPERTY_OF)
             const otherRelationships = connectedLinks.filter(link => link.type !== 'PROPERTY_OF');
-            
+
             if (otherRelationships.length > 0) {
               tooltipContent += `<div style="margin-top: 12px; padding-top: 12px; border-top: 2px solid #e0e0e0;">
                 <div style="font-weight: bold; color: #0066B3; margin-bottom: 8px; font-size: 12px;">
                   <i class="fas fa-link" style="margin-right: 4px;"></i>Relationships (${otherRelationships.length})
                 </div>`;
-              
+
               otherRelationships.forEach(link => {
                 const isOutgoing = link.source === d.elementId;
                 const otherNodeId = isOutgoing ? link.target : link.source;
@@ -4581,7 +4524,7 @@ const boundaryForce = (width, height) => {
                   'Node';
                 const relationshipType = escapeHtml(link.type || 'UNKNOWN');
                 const arrow = isOutgoing ? '→' : '←';
-                
+
                 tooltipContent += `<div style="margin: 6px 0; padding: 6px; background: #f5f5f5; border-radius: 3px; font-size: 11px;">
                   <div style="color: #555; margin-bottom: 2px;">
                     <strong style="color: #28A745;">${arrow}</strong>
@@ -4592,15 +4535,16 @@ const boundaryForce = (width, height) => {
                   </div>
                 </div>`;
               });
-              
+
               tooltipContent += `</div>`;
             }
-            
+
             // Dock tooltip on the right side of the canvas
             if (tooltipRef.current) {
               repositionTooltip();
               tooltipRef.current.innerHTML = tooltipContent;
               try { applyTooltipCloseHandler(tooltipRef.current); } catch (e) { /* ignore */ }
+              try { wireTooltipRecButtons(tooltipRef.current); } catch (e) { /* ignore */ }
             }
           })
           .on('mouseout', function () {
@@ -4617,8 +4561,8 @@ const boundaryForce = (width, height) => {
         update => {
           // Update circle color based on label
           update.select('.node-circle')
-            .attr('fill', d => getNodeColor(resolveNodeType(d)));
-          
+            .attr('fill', d => getNodeColor(d));
+
           update.select('.node-label')
             .text(d => showNodeLabels ? getPrimaryNodeLabel(d) : '')
             .attr('font-weight', 'bold')
@@ -4676,7 +4620,7 @@ const boundaryForce = (width, height) => {
     //  .attr('text-anchor', 'middle')
     //  .attr('pointer-events', 'none')
     //  .attr('fill', '#333');
- 
+
     simulationRef.current.on('tick', () => {
       if (tickFrameRef.current) return;
       tickFrameRef.current = requestAnimationFrame(() => {
@@ -4707,15 +4651,15 @@ const boundaryForce = (width, height) => {
       const maxX = Math.max(...nodePositions.map(d => d.x));
       const minY = Math.min(...nodePositions.map(d => d.y));
       const maxY = Math.max(...nodePositions.map(d => d.y));
-      
+
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
-      
+
       // Apply transform to center the search results
       const transform = d3.zoomIdentity
         .translate(width / 2 - centerX, height / 2 - centerY)
         .scale(1);
-      
+
       svg.call(
         d3.zoom().transform,
         transform
@@ -4725,12 +4669,12 @@ const boundaryForce = (width, height) => {
       lastCenteredSearchRef.current = '';
       userInteractedWithGraphRef.current = false;
     }
- 
+
     // Performance monitoring
     const endTime = performance.now();
     const renderTime = endTime - startTime;
     performanceLog(`[PERF] Render completed in ${renderTime.toFixed(2)}ms`);
-    
+
     // Performance warnings
     if (renderTime > 1000) {
       performanceWarn(`[WARN] Slow render detected: ${renderTime.toFixed(2)}ms with ${filteredData.nodes?.length || 0} nodes`);
@@ -4754,7 +4698,7 @@ const boundaryForce = (width, height) => {
         gRef.current.selectAll('*').on('.drag', null);
       }
     };
- 
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredData, layoutType, treeExpandedNodes]);
 
@@ -4795,6 +4739,16 @@ const boundaryForce = (width, height) => {
       }
     });
 
+    // Tree layout: highlight row backgrounds
+    svg.selectAll('.tree-row').each(function(d) {
+      const row = d3.select(this);
+      const nm = (d?.name || d?.properties?.name || '').toLowerCase();
+      const isHighlighted = hasHighlights && highlightedNodeNames.has(nm);
+      const rect = row.select('rect');
+      if (isHighlighted) {
+        rect.attr('fill', '#FFF9C4').attr('stroke', '#FFD700').attr('stroke-width', 1.25);
+      }
+    });
   }, [highlightedNodeNames]);
 
   // Keyboard shortcuts for expand/collapse
@@ -4822,15 +4776,10 @@ const boundaryForce = (width, height) => {
   useEffect(() => {
     const previousSearchQuery = previousSearchQueryRef.current;
     if (previousSearchQuery && !searchQuery) {
-      userInteractedWithGraphRef.current = false;
-      lastCenteredSearchRef.current = '';
-      setExpandedNodes(new Set());
-      setNodeExpansions(new Map());
-      setAvailableLabels([]);
-      setSelectedLabelFilter('ALL');
+      resetGraphSelectionState({ resetOntology: false, resetStepPart: false, resetSearch: false, resetLabels: false });
     }
     previousSearchQueryRef.current = searchQuery;
-  }, [searchQuery]);
+  }, [searchQuery, resetGraphSelectionState]);
 
   // [OK] CLEANUP: Final cleanup on component unmount
   useEffect(() => {
@@ -4850,65 +4799,6 @@ const boundaryForce = (width, height) => {
     };
   }, []);
 
-  const toolbarGroupStyle = {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-    padding: '8px 10px',
-    background: TCS_GRAPH_THEME.surface,
-    border: `1px solid ${TCS_GRAPH_THEME.border}`,
-    borderRadius: 8,
-    flex: '1 1 260px',
-    minWidth: 0,
-    width: '100%',
-    boxSizing: 'border-box',
-    overflow: 'visible',
-  };
-  const toolbarGroupTitleStyle = {
-    fontSize: 10,
-    lineHeight: 1,
-    fontWeight: 800,
-    letterSpacing: 0,
-    color: TCS_GRAPH_THEME.inkSoft,
-    textTransform: 'uppercase',
-  };
-  const toolbarRowStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-    minWidth: 0,
-    width: '100%',
-    overflowX: 'visible',
-  };
-  const toolbarControlStyle = {
-    padding: '7px 10px',
-    borderRadius: 6,
-    border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`,
-    backgroundColor: TCS_GRAPH_THEME.surface,
-    color: TCS_GRAPH_THEME.ink,
-    fontSize: 13,
-    fontWeight: 600,
-    lineHeight: 1.2,
-    minHeight: 34,
-    minWidth: 0,
-    maxWidth: '100%',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-  };
-  const toolbarButtonStyle = {
-    padding: '5px 11px',
-    border: 'none',
-    borderRadius: 6,
-    backgroundColor: TCS_GRAPH_THEME.primary,
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: 'pointer',
-    minHeight: 30,
-    whiteSpace: 'nowrap',
-  };
-
   return (
     <div
       className="graph-heb-root"
@@ -4926,301 +4816,297 @@ const boundaryForce = (width, height) => {
       <div
         className="graph-toolbar"
         style={{
-          display:'grid',
-          gridTemplateColumns:'repeat(auto-fit, minmax(260px, 1fr))',
-          alignItems:'stretch',
-          gap:'10px',
-          padding:'10px 12px',
-          background:TCS_GRAPH_THEME.surfaceMuted,
-          borderBottom:`1px solid ${TCS_GRAPH_THEME.border}`,
-          boxShadow:'0 4px 14px rgba(15, 23, 42, 0.06)',
+          display:'flex',
+          flexWrap:'wrap',
+          gap:'8px',
+          alignItems:'center',
+          padding:'8px 12px',
+          background:TCS_GRAPH_THEME.surface,
+          border:`1px solid ${TCS_GRAPH_THEME.border}`,
+          borderRadius:'8px',
+          boxShadow:'0 6px 18px rgba(15, 23, 42, 0.08)',
           zIndex:1500, // raise above potential header overlay
-          position:'relative',
-          width:'100%',
-          maxWidth:'100%',
-          boxSizing:'border-box',
-          overflowX:'hidden',
-          overflowY:'visible'
+          position:'relative'
         }}
-      >
-        <div style={toolbarGroupStyle}>
-          <div style={toolbarGroupTitleStyle}>Navigate</div>
-          <div style={toolbarRowStyle}>
-            <div className="dropdown" style={{ position:'relative' }}>
+        >
+        <div className="dropdown" style={{ position:'relative' }}>
+          <button
+            className="btn btn-sm dropdown-toggle"
+            type="button"
+            title="Graph tools"
+            onClick={(e)=>{
+              const menu = e.currentTarget.nextSibling; if(menu) menu.classList.toggle('show');
+            }}
+            style={{
+              backgroundColor:TCS_GRAPH_THEME.surface,
+              color:TCS_GRAPH_THEME.primary,
+              fontWeight:700,
+              border:`1px solid ${TCS_GRAPH_THEME.borderStrong}`,
+              borderRadius:6,
+              padding:'5px 9px',
+              fontSize:12,
+              lineHeight:1.2
+            }}
+          >Tools</button>
+          <div
+            className="dropdown-menu p-1"
+            style={{
+              minWidth:150,
+              background:TCS_GRAPH_THEME.surface,
+              color:TCS_GRAPH_THEME.ink,
+              border:`1px solid ${TCS_GRAPH_THEME.border}`,
+              boxShadow:'0 12px 24px rgba(15, 23, 42, 0.12)',
+              position:'absolute',
+              top:'100%',
+              left:0,
+              marginTop:4,
+              zIndex:2000
+            }}
+          >
+            {[
+              ['Where Used', 'whereused'],
+              ['Table View', 'table'],
+              ['Reports', 'reports'],
+              ['Data Import', 'ingestion'],
+              ['Map & Align', 'ontology'],
+              ['Recommendations', 'recommendations'],
+              ['Admin', 'admin'],
+            ].map(([label, target]) => (
               <button
-                className="btn btn-sm dropdown-toggle"
-                type="button"
-                title="Graph tools"
+                key={target}
+                className="dropdown-item"
+                style={{ color:TCS_GRAPH_THEME.ink, fontSize:12, fontWeight:600, cursor:'pointer', padding:'5px 8px' }}
                 onClick={(e)=>{
-                  const menu = e.currentTarget.nextSibling; if(menu) menu.classList.toggle('show');
+                  e.currentTarget.closest('.dropdown-menu')?.classList.remove('show');
+                  if(typeof setActiveTab==='function'){ setActiveTab(target); }
                 }}
-                style={{
-                  ...toolbarControlStyle,
-                  color:TCS_GRAPH_THEME.primary,
-                  cursor:'pointer',
-                  minWidth: 110,
-                }}
-              >Tools</button>
-              <div
-                className="dropdown-menu p-1"
-                style={{
-                  minWidth:170,
-                  background:TCS_GRAPH_THEME.surface,
-                  color:TCS_GRAPH_THEME.ink,
-                  border:`1px solid ${TCS_GRAPH_THEME.border}`,
-                  boxShadow:'0 12px 24px rgba(15, 23, 42, 0.12)',
-                  position:'absolute',
-                  top:'100%',
-                  left:0,
-                  marginTop:4,
-                  zIndex:2000
-                }}
-              >
-                {[
-                  ['Where Used', 'whereused'],
-                  ['Table View', 'table'],
-                  ['Reports', 'reports'],
-                  ['Data Import', 'ingestion'],
-                  ['Map & Align', 'ontology'],
-                  ['Recommendations', 'recommendations'],
-                  ['Admin', 'admin'],
-                ].map(([label, target]) => (
-                  <button
-                    key={target}
-                    className="dropdown-item"
-                    style={{ color:TCS_GRAPH_THEME.ink, fontSize:12, fontWeight:600, cursor:'pointer', padding:'7px 9px' }}
-                    onClick={(e)=>{
-                      e.currentTarget.closest('.dropdown-menu')?.classList.remove('show');
-                      if(typeof setActiveTab==='function'){ setActiveTab(target); }
-                    }}
-                  >{label}</button>
-                ))}
-              </div>
-            </div>
+              >{label}</button>
+            ))}
           </div>
         </div>
-
-        <div style={toolbarGroupStyle}>
-          <div style={toolbarGroupTitleStyle}>View</div>
-          <div style={toolbarRowStyle}>
-            <i className="fas fa-layer-group" style={{ fontSize: 14, color: TCS_GRAPH_THEME.primary }}></i>
-            <select
-              value={graphViewMode}
-              onChange={e => setGraphViewMode(e.target.value)}
-              style={{
-                ...toolbarControlStyle,
-                cursor: 'pointer',
-                minWidth: 180,
-                flex: '1 1 0',
-              }}
-              title="Switch graph view"
-            >
-              <option value="ontology" style={{color:'#333', fontWeight:600}}>Ontology schema</option>
-              <option value="individual" style={{color:'#333', fontWeight:600}}>Contextual graph</option>
-            </select>
-          </div>
-        </div>
-
-        <div style={toolbarGroupStyle}>
-          <div style={toolbarGroupTitleStyle}>Search</div>
-          <div style={toolbarRowStyle}>
-            <i className="fas fa-search" style={{ fontSize: 15, color: TCS_GRAPH_THEME.inkSoft }}></i>
-            <input
-              type="text"
-              placeholder={graphViewMode === 'individual' ? 'Query contextual graph...' : 'Search nodes, links, properties...'}
-              value={searchInput}
-              style={{
-                ...toolbarControlStyle,
-                fontWeight: 500,
-                minWidth: 220,
-                flex: '1 1 0',
-              }}
-              onChange={e => setSearchInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') setSearchQuery(e.target.value); }}
-              onFocus={e => { e.target.style.borderColor = TCS_GRAPH_THEME.primary; e.target.style.boxShadow='0 0 0 2px rgba(31,61,99,0.12)'; }}
-              onBlur={e => { e.target.style.borderColor = TCS_GRAPH_THEME.borderStrong; e.target.style.boxShadow='none'; }}
-            />
+        {/* ── Graph view scope ─────────────────────────────────────────── */}
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3, border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`, borderRadius: 6, padding: 2, background: TCS_GRAPH_THEME.surfaceMuted, maxWidth: '100%' }}>
+          {[
+            { id: 'full', label: 'Full Graph', icon: 'fa-globe', active: graphViewMode === 'ontology' && selectedOntology === 'ALL' },
+            { id: 'ontology', label: 'Ontology Schema', icon: 'fa-sitemap', active: graphViewMode === 'ontology' && selectedOntology !== 'ALL' },
+            { id: 'individual', label: 'Contextual Instances', icon: 'fa-project-diagram', active: graphViewMode === 'individual' },
+          ].map((mode) => (
             <button
+              key={mode.id}
               type="button"
-              onClick={() => setSearchQuery(searchInput.trim())}
-              disabled={searchLoading || !searchInput.trim()}
-              style={{
-                ...toolbarButtonStyle,
-                backgroundColor: searchLoading || !searchInput.trim() ? TCS_GRAPH_THEME.inkSoft : TCS_GRAPH_THEME.primary,
-                cursor: searchLoading || !searchInput.trim() ? 'not-allowed' : 'pointer',
-              }}
-              title="Search nodes, relationship types, properties, and property values"
-            >
-              Search
-            </button>
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchInput('');
-                  setSearchQuery('');
-                  setSelectedLabelFilter('ALL');
-                  setSearchResultData({ nodes: [], links: [] });
-                  setExpandedNodes(new Set());
-                  setNodeExpansions(new Map());
-                  setFilteredData(graphData);
-                  if (setSearchResults) setSearchResults(graphData.nodes);
-                }}
-                style={{ ...toolbarButtonStyle, backgroundColor: TCS_GRAPH_THEME.inkSoft }}
-                title="Clear search and return to the current graph scope"
-              >
-                Clear
-              </button>
-            )}
-            {availableLabels.length > 0 && searchQuery && (
-              <>
-                <i className="fas fa-filter" style={{ fontSize: 13, color: TCS_GRAPH_THEME.inkSoft }}></i>
-                <select
-                  value={selectedLabelFilter}
-                  onChange={e => setSelectedLabelFilter(e.target.value)}
-                  style={{
-                    ...toolbarControlStyle,
-                    cursor: 'pointer',
-                    minWidth: 190,
-                    flex: '1 1 0',
-                  }}
-                  title="Filter search results by node label"
-                >
-                  <option key="ALL" value="ALL">All Labels ({searchResultData.nodes.length})</option>
-                  {availableLabels.map(label => {
-                    const count = searchResultData.nodes.filter(n => (n.labels || []).includes(label)).length;
-                    return (
-                      <option key={label} value={label}>
-                        {label} ({count})
-                      </option>
-                    );
-                  })}
-                </select>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div style={toolbarGroupStyle}>
-          <div style={toolbarGroupTitleStyle}>Scope</div>
-          <div style={toolbarRowStyle}>
-            {graphViewMode === 'ontology' && (
-              <>
-                <i className="fas fa-project-diagram" style={{ fontSize: 14, color: TCS_GRAPH_THEME.inkSoft }}></i>
-                <select
-                  value={selectedOntology}
-                  onChange={e => setSelectedOntology(e.target.value)}
-                  disabled={ontologyLoading || !!ontologyError}
-                  style={{
-                    ...toolbarControlStyle,
-                    border: ontologyError ? '1px solid #D32F2F' : toolbarControlStyle.border,
-                    cursor: ontologyLoading || ontologyError ? 'not-allowed' : 'pointer',
-                    opacity: ontologyLoading || ontologyError ? 0.6 : 1,
-                    minWidth: 220,
-                    flex: '1 1 0',
-                  }}
-                  title={ontologyError ? ontologyError : "Select ontology scope"}
-                >
-              <option value="ALL" style={{color:'#333', fontWeight:600}}>All ontologies</option>
-                  {ontologyOptions.filter(o => o.value !== 'ALL' && !o.disabled).map((opt, idx) => (
-                    <option
-                      key={opt.value || opt.ontology_id || opt.prefix || `ontology-opt-${idx}`}
-                      value={getOntologyGraphScopeValue(opt)}
-                      style={{color:'#333'}}
-                    >
-                      {opt.prefix ? `[${opt.prefix}] ` : ''}{opt.label}
-                    </option>
-                  ))}
-                </select>
-              </>
-            )}
-            {graphViewMode === 'ontology' && selectedOntology === 'step' && (
-              <>
-                <i className="fas fa-cogs" style={{ fontSize: 14, color: TCS_GRAPH_THEME.inkSoft }}></i>
-                <select
-                  value={selectedStepPart}
-                  onChange={e => setSelectedStepPart(e.target.value)}
-                  disabled={stepPartsLoading || ontologyLoading || !!stepPartsError}
-                  style={{
-                    ...toolbarControlStyle,
-                    border: stepPartsError ? '1px solid #D32F2F' : toolbarControlStyle.border,
-                    cursor: stepPartsLoading || ontologyLoading || stepPartsError ? 'not-allowed' : 'pointer',
-                    opacity: stepPartsLoading || ontologyLoading || stepPartsError ? 0.6 : 1,
-                    minWidth: 220,
-                    flex: '1 1 0',
-                  }}
-                  title={stepPartsError ? stepPartsError : "Filter STEP data by part"}
-                >
-                  <option key="ALL" value="ALL" style={{color:'#333'}}>All Parts{stepParts.length > 0 ? ` (${stepParts.length})` : ''}</option>
-                  {stepParts.map(part => (
-                    <option key={part} value={part} style={{color:'#333'}}>
-                      {part.replace(/_/g, ' ')}
-                    </option>
-                  ))}
-                </select>
-              </>
-            )}
-            {graphViewMode !== 'ontology' && (
-              <span style={{ fontSize: 12, color: TCS_GRAPH_THEME.inkSoft }}>
-                Contextual graph
-              </span>
-            )}
-            {ontologyError && <span style={{ fontSize: 11, color: '#D32F2F' }}>Warning: {ontologyError}</span>}
-            {stepPartsError && <span style={{ fontSize: 11, color: '#D32F2F' }}>Warning: {stepPartsError}</span>}
-          </div>
-        </div>
-
-        <div style={toolbarGroupStyle}>
-          <div style={toolbarGroupTitleStyle}>Actions</div>
-          <div style={toolbarRowStyle}>
-            {(searchQuery || selectedOntology !== 'ALL' || graphViewMode !== 'ontology') && (
-              <button
-                onClick={() => {
+              title={mode.label}
+              aria-label={mode.label}
+              onClick={() => {
+                if (mode.id === 'full') {
+                  if (selectedOntology && selectedOntology !== 'ALL') {
+                    lastSpecificOntologyRef.current = selectedOntology;
+                  }
                   setGraphViewMode('ontology');
                   graphViewModeRef.current = 'ontology';
-                  resetGraphSelectionState({ dataOverride: initialData });
+                  setSelectedOntology('ALL');
+                  selectedOntologyRef.current = 'ALL';
+                  resetGraphSelectionState({ resetOntology: false, resetStepPart: true, dataOverride: initialData });
                   setGraphData(initialData);
                   setFilteredData(initialData);
                   setFullDataset(initialData);
+                  setData(initialData);
                   if (setSearchResults) setSearchResults(initialData.nodes);
-                }}
-                style={toolbarButtonStyle}
-              >Reset</button>
-            )}
-            <button
-              onClick={toggleChat}
-              style={{
-                ...toolbarButtonStyle,
-                backgroundColor: showChat ? TCS_GRAPH_THEME.inkSoft : TCS_GRAPH_THEME.primary,
+                  return;
+                }
+                if (mode.id === 'individual') {
+                  setGraphViewMode('individual');
+                  graphViewModeRef.current = 'individual';
+                  return;
+                }
+
+                const nextOntology = lastSpecificOntologyRef.current !== 'ALL'
+                  ? lastSpecificOntologyRef.current
+                  : preferredOntologyValue;
+                setGraphViewMode('ontology');
+                graphViewModeRef.current = 'ontology';
+                if (nextOntology !== 'ALL') {
+                  setSelectedOntology(nextOntology);
+                  selectedOntologyRef.current = nextOntology;
+                }
               }}
-              title={showChat ? 'Hide chat assistant' : 'Show chat assistant'}
-            >{showChat ? 'Hide Chat' : 'Show Chat'}</button>
+              style={{
+                minWidth: 32,
+                height: 30,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 5,
+                border: 'none',
+                borderRadius: 5,
+                background: mode.active ? TCS_GRAPH_THEME.primary : 'transparent',
+                color: mode.active ? '#fff' : TCS_GRAPH_THEME.inkSoft,
+                cursor: 'pointer',
+                padding: '0 8px',
+                fontSize: 11,
+                fontWeight: 800,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <i className={`fas ${mode.icon}`} style={{ fontSize: 12 }}></i>
+              <span>{mode.label}</span>
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <i className="fas fa-search" style={{ fontSize: '18px', color: '#555' }}></i>
+          <input
+            type="text"
+            placeholder={graphViewMode === 'individual' ? 'Query a contextual subgraph...' : 'Search nodes...'}
+            value={searchInput}
+            style={{
+              padding: '6px 10px',
+              borderRadius: '6px',
+              border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`,
+              minWidth: '190px',
+              fontSize: '13px',
+              fontWeight: 500,
+              lineHeight: 1.2,
+              background: TCS_GRAPH_THEME.surface,
+              color: TCS_GRAPH_THEME.ink
+            }}
+            onChange={e => setSearchInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                setSearchQuery(e.target.value.trim().toLowerCase());
+              }
+            }}
+            onFocus={e => { e.target.style.borderColor = TCS_GRAPH_THEME.primary; e.target.style.boxShadow='0 0 0 2px rgba(31,61,99,0.12)'; }}
+            onBlur={e => { e.target.style.borderColor = TCS_GRAPH_THEME.borderStrong; e.target.style.boxShadow='none'; }}
+          />
+        </div>
+        {/* Label filter dropdown — only visible when search has results */}
+        {availableLabels.length > 0 && searchQuery && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <i className="fas fa-filter" style={{ fontSize: '14px', color: '#555' }}></i>
+            <select
+              value={selectedLabelFilter}
+              onChange={e => setSelectedLabelFilter(e.target.value)}
+              style={{
+                padding: '6px 10px',
+                borderRadius: '6px',
+                border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`,
+                backgroundColor: TCS_GRAPH_THEME.surface,
+                color: TCS_GRAPH_THEME.ink,
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 600,
+                minWidth: '150px',
+                transition: 'all .2s ease'
+              }}
+              title="Filter search results by node label"
+            >
+              <option key="ALL" value="ALL">All Labels ({searchResultData.nodes.length})</option>
+              {availableLabels.map(label => {
+                const count = searchResultData.nodes.filter(n => (n.labels || []).includes(label)).length;
+                return (
+                  <option key={label} value={label}>
+                    {label} ({count})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        )}
+        {/* Ontology selector dropdown — only in Ontology Graph mode */}
+        {graphViewMode === 'ontology' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <i className="fas fa-project-diagram" style={{ fontSize: '14px', color: '#555' }}></i>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <select
+              value={selectedOntology}
+              onChange={e => setSelectedOntology(e.target.value)}
+              disabled={ontologyLoading || !!ontologyError}
+              style={{
+                padding: '6px 10px',
+                borderRadius: '6px',
+                border: ontologyError ? '1px solid #D32F2F' : `1px solid ${TCS_GRAPH_THEME.borderStrong}`,
+                backgroundColor: TCS_GRAPH_THEME.surface,
+                color: TCS_GRAPH_THEME.ink,
+                cursor: ontologyLoading || ontologyError ? 'not-allowed' : 'pointer',
+                fontSize: '13px',
+                fontWeight: 600,
+                minWidth: '200px',
+                transition: 'all .2s ease',
+                opacity: ontologyLoading || ontologyError ? 0.6 : 1
+              }}
+              title={ontologyError ? ontologyError : "Select a specific ontology for schema inspection, or use the overview graph for orientation"}
+            >
+              <option value="ALL" style={{color:'#333', fontWeight:600}}>Overview Graph (all loaded data)</option>
+              {ontologyOptions.filter(o => o.value !== 'ALL' && !o.disabled).map((opt, idx) => (
+                <option key={opt.value || `ontology-opt-${idx}`} value={opt.value} style={{color:'#333'}}>
+                  {opt.prefix ? `[${opt.prefix}] ` : ''}{opt.label}{opt.type ? ` · ${opt.type}` : ''}{Number(opt.relationship_count || 0) === 0 ? ' · classes only' : ''}
+                </option>
+              ))}
+            </select>
+            {ontologyError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>Warning: {ontologyError}</span>}
+            {!ontologyError && selectedOntology === 'ALL' && (
+              <span style={{ fontSize: '11px', color: TCS_GRAPH_THEME.inkSoft, maxWidth: '280px', lineHeight: 1.35 }}>
+                Use this for orientation only. Choose a specific ontology to inspect classes, properties, domain, and range.
+              </span>
+            )}
           </div>
         </div>
-
-        <div style={{ gridColumn:'1 / -1', display:'flex', flexWrap:'wrap', alignItems:'center', gap:8 }}>
-          {(searchLoading || isLayoutSwitching || ontologyLoading) && (
-            <div style={{display:'flex', alignItems:'center', gap:6, fontSize:13, color:TCS_GRAPH_THEME.primary, background:TCS_GRAPH_THEME.surface, border:`1px solid ${TCS_GRAPH_THEME.border}`, borderRadius:6, padding:'5px 8px'}}>
-              <div className="spinner" style={{width:14,height:14,border:'2px solid #f3f3f3',borderTop:`2px solid ${TCS_GRAPH_THEME.primary}`,borderRadius:'50%',animation:'spin 1s linear infinite'}}></div>
-              {searchLoading ? 'Searching...' : ontologyLoading ? 'Loading ontology...' : 'Switching layout...'}
+        )}
+        {/* STEP part sub-filter — only in Ontology mode and STEP selected */}
+        {graphViewMode === 'ontology' && selectedOntology === 'step' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <i className="fas fa-cogs" style={{ fontSize: '14px', color: '#555' }}></i>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <select
+                value={selectedStepPart}
+                onChange={e => setSelectedStepPart(e.target.value)}
+                disabled={stepPartsLoading || ontologyLoading || !!stepPartsError}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  border: stepPartsError ? '1px solid #D32F2F' : '1px solid #cfd6dc',
+                  backgroundColor: '#fff',
+                  color: '#333',
+                  cursor: stepPartsLoading || ontologyLoading || stepPartsError ? 'not-allowed' : 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  minWidth: '200px',
+                  maxWidth: '320px',
+                  transition: 'all .2s ease',
+                  opacity: stepPartsLoading || ontologyLoading || stepPartsError ? 0.6 : 1
+                }}
+                title={stepPartsError ? stepPartsError : "Filter STEP data by part"}
+              >
+                <option key="ALL" value="ALL" style={{color:'#333'}}>All Parts{stepParts.length > 0 ? ` (${stepParts.length})` : ''}</option>
+                {stepParts.map(part => (
+                  <option key={part} value={part} style={{color:'#333'}}>
+                    {part.replace(/_/g, ' ')}
+                  </option>
+                ))}
+              </select>
+              {stepPartsError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>Warning: {stepPartsError}</span>}
             </div>
-          )}
-          {ontologyGraphMessage && (
-            <div style={{fontSize:12, color:'#8a5a00', background:'#fff8e1', border:'1px solid #ffe082', borderRadius:5, padding:'5px 8px'}}>
-              {ontologyGraphMessage}
-            </div>
-          )}
-          {graphData.nodes.length > GRAPH_LABEL_RENDER_LIMIT && !searchQuery && selectedOntology === 'ALL' && graphViewMode === 'ontology' && (
-            <div style={{fontSize:12, color:'#52606d', background:'#f4f7fb', border:'1px solid #d9e2ec', borderRadius:5, padding:'5px 8px'}}>
-              Labels are condensed in the full graph view. Search or pick an ontology to show node names.
-            </div>
-          )}
-        </div>
-
+          </div>
+        )}
+        {(searchLoading || isLayoutSwitching || ontologyLoading) && (
+          <div style={{display:'flex', alignItems:'center', gap:6, fontSize:13, color:'#004B87'}}>
+            <div className="spinner" style={{width:14,height:14,border:'2px solid #f3f3f3',borderTop:'2px solid #004B87',borderRadius:'50%',animation:'spin 1s linear infinite'}}></div>
+            {searchLoading ? 'Searching...' : ontologyLoading ? 'Loading ontology...' : 'Switching layout...'}
+          </div>
+        )}
+        {ontologyGraphMessage && (
+          <div style={{fontSize:12, color:'#8a5a00', background:'#fff8e1', border:'1px solid #ffe082', borderRadius:5, padding:'5px 8px'}}>
+            {ontologyGraphMessage}
+          </div>
+        )}
+        {graphData.nodes.length > GRAPH_LABEL_RENDER_LIMIT && !searchQuery && selectedOntology === 'ALL' && graphViewMode === 'ontology' && (
+          <div style={{fontSize:12, color:'#52606d', background:'#f4f7fb', border:'1px solid #d9e2ec', borderRadius:5, padding:'5px 8px'}}>
+            Labels are condensed in the full graph view. Search or pick an ontology to show node names.
+          </div>
+        )}
         {ontologySliceSummary && (
           <div
             style={{
-              gridColumn: '1 / -1',
               display: 'flex',
               flexWrap: 'wrap',
               alignItems: 'center',
@@ -5291,25 +5177,39 @@ const boundaryForce = (width, height) => {
                 );
               })()
             ))}
-            {!ontologySliceSummary.hasSubclassEdges && (
-              <span style={{ fontSize: 11, color: '#8a5a00' }}>
-                No subclass edges are present in this loaded ontology graph slice yet.
-              </span>
-            )}
           </div>
         )}
+        {(searchQuery || selectedOntology !== 'ALL' || graphViewMode !== 'ontology') && (
+          <button
+            onClick={() => {
+              setGraphViewMode('ontology');
+              graphViewModeRef.current = 'ontology';
+              resetGraphSelectionState({ dataOverride: initialData });
+              setGraphData(initialData);
+              setFilteredData(initialData);
+              setFullDataset(initialData);
+              if (setSearchResults) setSearchResults(initialData.nodes);
+            }}
+            style={{padding:'6px 12px', border:'none', borderRadius:'6px', backgroundColor:TCS_GRAPH_THEME.primary, color:'#fff', fontSize:'13px', fontWeight:700, cursor:'pointer', transition:'all .2s ease'}}
+          >Reset</button>
+        )}
+        <button
+          onClick={toggleChat}
+          style={{padding:'6px 12px', border:'none', borderRadius:'6px', backgroundColor:TCS_GRAPH_THEME.primary, color:'#fff', fontSize:'13px', fontWeight:700, cursor:'pointer', transition:'all .2s ease'}}
+          title={showChat ? 'Hide chat assistant' : 'Show chat assistant'}
+        >{showChat ? 'Hide Chat' : 'Show Chat'}</button>
       </div>
       {isLoading && (
-        <div className="loading-state" style={{ 
-          position: 'absolute', 
-          top: '50%', 
-          left: '50%', 
-          transform: 'translate(-50%, -50%)', 
-          zIndex: 11, 
-          background: 'rgba(255,255,255,0.98)', 
-          padding: '32px 40px', 
-          borderRadius: '16px', 
-          textAlign: 'center', 
+        <div className="loading-state" style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 11,
+          background: 'rgba(255,255,255,0.98)',
+          padding: '32px 40px',
+          borderRadius: '16px',
+          textAlign: 'center',
           boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(0,0,0,0.1)',
@@ -5321,16 +5221,16 @@ const boundaryForce = (width, height) => {
         </div>
       )}
       {error && (
-        <div className="error-state" style={{ 
-          position: 'absolute', 
-          top: '50%', 
-          left: '50%', 
-          transform: 'translate(-50%, -50%)', 
-          zIndex: 11, 
-          background: 'rgba(255,255,255,0.98)', 
-          padding: '32px 40px', 
-          borderRadius: '16px', 
-          textAlign: 'center', 
+        <div className="error-state" style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 11,
+          background: 'rgba(255,255,255,0.98)',
+          padding: '32px 40px',
+          borderRadius: '16px',
+          textAlign: 'center',
           boxShadow: '0 12px 40px rgba(231, 76, 60, 0.15)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(231, 76, 60, 0.2)',
@@ -5341,17 +5241,97 @@ const boundaryForce = (width, height) => {
           <div style={{ fontSize: '14px', color: '#7f8c8d' }}>{error}</div>
         </div>
       )}
-      {!isLoading && !error && filteredData.nodes.length === 0 && debouncedSearchQuery && (
-        <div style={{ 
-          position: 'absolute', 
-          top: '50%', 
-          left: '50%', 
-          transform: 'translate(-50%, -50%)', 
-          zIndex: 11, 
-          background: 'rgba(255,255,255,0.98)', 
-          padding: '32px 40px', 
-          borderRadius: '16px', 
-          textAlign: 'center', 
+      {!isLoading && !error && visibleSearchNodes.length > 0 && debouncedSearchQuery && (
+        <div style={{
+          position: 'absolute',
+          top: 76,
+          right: 14,
+          zIndex: 11,
+          width: 'min(340px, calc(100% - 28px))',
+          maxHeight: '54%',
+          overflowY: 'auto',
+          background: 'rgba(255,255,255,0.98)',
+          border: `1px solid ${TCS_GRAPH_THEME.border}`,
+          borderRadius: 8,
+          boxShadow: '0 18px 40px rgba(15, 23, 42, 0.12)',
+        }}>
+          <div style={{
+            position: 'sticky',
+            top: 0,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '9px 11px',
+            background: TCS_GRAPH_THEME.surface,
+            borderBottom: `1px solid ${TCS_GRAPH_THEME.border}`,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: TCS_GRAPH_THEME.ink }}>Search Results</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: TCS_GRAPH_THEME.primary }}>{visibleSearchNodes.length}</div>
+          </div>
+          <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {visibleSearchNodes.slice(0, 40).map((node) => {
+              const nodeColor = getNodeColor(node);
+              const nodeLabel = getPrimaryNodeLabel(node);
+              const nodeType = resolveNodeColorKey(node);
+              return (
+                <div
+                  key={node.elementId}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr auto',
+                    gap: 8,
+                    padding: '8px 10px',
+                    border: `1px solid ${activeSearchResultId === node.elementId ? nodeColor : TCS_GRAPH_THEME.border}`,
+                    borderRadius: 7,
+                    background: activeSearchResultId === node.elementId ? TCS_GRAPH_THEME.primarySoft : TCS_GRAPH_THEME.surface,
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 999, background: nodeColor, flex: '0 0 auto' }} />
+                      <span style={{ fontSize: 12, fontWeight: 700, color: TCS_GRAPH_THEME.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {nodeLabel}
+                      </span>
+                    </div>
+                    <div style={{ marginTop: 4, paddingLeft: 18, fontSize: 11, color: TCS_GRAPH_THEME.inkSoft, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {nodeType}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => focusSearchResult(node)}
+                      title="Show this node only"
+                      style={{ minHeight: 24, padding: '2px 7px', border: 'none', borderRadius: 5, background: TCS_GRAPH_THEME.primary, color: '#fff', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Show
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => expandSearchResult(node)}
+                      title="Expand connected nodes"
+                      style={{ minHeight: 24, padding: '2px 7px', border: 'none', borderRadius: 5, background: TCS_GRAPH_THEME.inkSoft, color: '#fff', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Expand
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {!isLoading && !error && visibleSearchNodes.length === 0 && debouncedSearchQuery && !searchLoading && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 11,
+          background: 'rgba(255,255,255,0.98)',
+          padding: '32px 40px',
+          borderRadius: '16px',
+          textAlign: 'center',
           boxShadow: '0 12px 40px rgba(0,0,0,0.1)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(0,0,0,0.1)',
@@ -5363,40 +5343,38 @@ const boundaryForce = (width, height) => {
           <div style={{ fontSize: '12px', color: '#95a5a6' }}>Try adjusting your search terms</div>
         </div>
       )}
-      {!isLoading && !error && graphData.nodes.length === 0 && filteredData.nodes.length === 0 && !searchQuery && (
-        <div style={{ 
-          position: 'absolute', 
-          top: '50%', 
-          left: '50%', 
-          transform: 'translate(-50%, -50%)', 
-          zIndex: 11, 
-          background: 'rgba(255,255,255,0.98)', 
-          padding: '32px 40px', 
-          borderRadius: '16px', 
-          textAlign: 'center', 
+      {!isLoading && !error && graphData.nodes.length === 0 && !searchQuery && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 11,
+          background: 'rgba(255,255,255,0.98)',
+          padding: '32px 40px',
+          borderRadius: '16px',
+          textAlign: 'center',
           boxShadow: '0 12px 40px rgba(0,0,0,0.1)',
           backdropFilter: 'blur(20px)',
           border: '1px solid rgba(0,0,0,0.1)',
           minWidth: '320px'
         }}>
           <div style={{ marginBottom: '16px', fontSize: '48px', color: '#6c757d' }}><i className="fas fa-chart-line"></i></div>
-          <div style={{ fontSize: '18px', fontWeight: '600', color: '#2C2C2C', marginBottom: '8px' }}>No Graph View Available</div>
-          <div style={{ fontSize: '14px', color: '#7f8c8d' }}>
-            {ontologyGraphMessage || 'No graph data available from Neo4j database'}
-          </div>
+          <div style={{ fontSize: '18px', fontWeight: '600', color: '#2C2C2C', marginBottom: '8px' }}>No Data Available</div>
+          <div style={{ fontSize: '14px', color: '#7f8c8d' }}>No graph data available from Neo4j database</div>
         </div>
       )}
- 
+
   <svg ref={svgRef} style={{ width: '100%', height: '100%', flexGrow: 1, margin: 0, padding: 0 }}></svg>
- 
+
       <div ref={tooltipRef} className="tooltip" style={{
-        position: 'absolute', 
-        opacity: 1,
+        position: 'absolute',
+        opacity: 0,
         background: TCS_GRAPH_THEME.surface,
         color: TCS_GRAPH_THEME.ink,
         padding: '10px 12px',
         borderRadius: '10px',
-        pointerEvents: 'auto', 
+        pointerEvents: 'none',
         maxWidth: '360px',
         minWidth: '320px',
         maxHeight: '80vh',
@@ -5406,7 +5384,7 @@ const boundaryForce = (width, height) => {
         border: `1px solid ${TCS_GRAPH_THEME.border}`,
         boxShadow: '0 18px 40px rgba(15, 23, 42, 0.18)',
         zIndex: 12,
-        display: 'block'
+        display: 'none'
       }} />
 
       {/* Recommendation Slide-in Panel */}
@@ -5425,7 +5403,7 @@ const boundaryForce = (width, height) => {
           }}>
             <div style={{ fontWeight: 700, fontSize: '14px' }}>
               {recPanel.service === 'change-impact' ? 'Change Impact' :
-               recPanel.service === 'similar-parts' ? 'Similar Parts' : 'Manufacturing'}
+               recPanel.service === 'similar-parts' ? '[FIND] Similar Parts' : '[MFG] Manufacturing'}
             </div>
             <button onClick={() => setRecPanel({ open: false, service: null, nodeName: '', loading: false, result: null, error: '' })}
               style={{ background: 'none', border: 'none', color: '#fff', fontSize: '18px', cursor: 'pointer', padding: '0 4px' }}>&times;</button>
@@ -5446,7 +5424,7 @@ const boundaryForce = (width, height) => {
           </div>
         </div>
       )}
-      
+
       {/* Comparative Search Modal - Disabled */}
       {false && (
         <div style={{
@@ -5495,7 +5473,7 @@ const boundaryForce = (width, height) => {
                 {CHAR_TIMES}
               </button>
             </div>
-            
+
             {/* Keyword Search & Selection for Comparison */}
             <div style={{ padding: '20px', borderBottom: '1px solid #e0e0e0', backgroundColor: '#f8f9fa' }}>
               <div style={{ display: 'flex', gap: '24px' }}>

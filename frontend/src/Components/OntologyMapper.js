@@ -934,7 +934,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
       headerName: 'Class Hierarchy',
       field: 'label',
       flex: 1,
-      minWidth: 260,
+      minWidth: 220,
       tooltipField: 'path',
       cellStyle: { ...gridTextCell, display: 'flex', alignItems: 'center' },
       cellRenderer: (params) => (
@@ -951,19 +951,35 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
             width: '100%',
             padding: 0,
             minWidth: 0,
-            display: 'grid',
-            gridTemplateColumns: 'auto minmax(0, 1fr)',
+            display: 'flex',
             alignItems: 'center',
-            gap: 4,
+            gap: 8,
+            paddingLeft: `${Math.min(params.data.depth || 0, 8) * 16}px`,
           }}
           title={params.data.termId}
         >
-          <span style={{ color: C.textMuted, fontFamily: 'monospace', whiteSpace: 'pre' }}>{params.data.indent}</span>
+          <span
+            style={{
+              width: 16,
+              minWidth: 16,
+              height: 16,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 999,
+              background: (params.data.depth || 0) > 0 ? C.primaryLight : C.bg,
+              color: (params.data.depth || 0) > 0 ? C.primary : C.textMuted,
+              fontSize: 10,
+              fontWeight: 800,
+            }}
+          >
+            {(params.data.depth || 0) > 0 ? '|' : 'R'}
+          </span>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{params.value}</span>
         </button>
       ),
     },
-    { headerName: 'Children', field: 'children', width: 105, type: 'numericColumn' },
+    { headerName: 'Children', field: 'children', width: 92, type: 'numericColumn' },
   ], [selectedTerm, gridTextCell]);
 
   const classColumns = useMemo(() => [
@@ -971,7 +987,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
       headerName: 'Class',
       field: 'label',
       flex: 1,
-      minWidth: 210,
+      minWidth: 180,
       tooltipField: 'termId',
       cellStyle: { ...gridTextCell, display: 'flex', alignItems: 'center' },
       cellRenderer: (params) => (
@@ -980,24 +996,24 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
         </button>
       ),
     },
-    { headerName: 'Parents', field: 'parents', flex: 1, minWidth: 190, tooltipField: 'parents', cellStyle: gridTextCell },
-    { headerName: 'Children', field: 'children', width: 110, type: 'numericColumn', cellStyle: gridTextCell },
-    { headerName: 'Prefix', field: 'prefix', width: 130, cellStyle: gridTextCell },
+    { headerName: 'Parents', field: 'parents', flex: 1, minWidth: 148, tooltipField: 'parents', cellStyle: gridTextCell },
+    { headerName: 'Children', field: 'children', width: 92, type: 'numericColumn', cellStyle: gridTextCell },
+    { headerName: 'Prefix', field: 'prefix', width: 102, cellStyle: gridTextCell },
   ], [gridTextCell]);
 
   const propertyColumns = useMemo(() => [
-    { headerName: 'Property', field: 'property', flex: 1, minWidth: 220, tooltipField: 'id', cellStyle: gridTextCell },
-    { headerName: 'Kind', field: 'kind', width: 150, cellStyle: gridTextCell },
-    { headerName: 'Domain', field: 'domain', flex: 1, minWidth: 190, tooltipField: 'domain', cellStyle: gridTextCell },
-    { headerName: 'Range', field: 'range', flex: 1, minWidth: 190, tooltipField: 'range', cellStyle: gridTextCell },
-    { headerName: 'Axioms', field: 'axiomCount', width: 100, type: 'numericColumn', cellStyle: gridTextCell },
+    { headerName: 'Property', field: 'property', flex: 1.15, minWidth: 176, tooltipField: 'id', cellStyle: gridTextCell },
+    { headerName: 'Kind', field: 'kind', width: 124, cellStyle: gridTextCell },
+    { headerName: 'Domain', field: 'domain', flex: 1, minWidth: 148, tooltipField: 'domain', cellStyle: gridTextCell },
+    { headerName: 'Range', field: 'range', flex: 1, minWidth: 148, tooltipField: 'range', cellStyle: gridTextCell },
+    { headerName: 'Axioms', field: 'axiomCount', width: 88, type: 'numericColumn', cellStyle: gridTextCell },
   ], [gridTextCell]);
 
   const axiomColumns = useMemo(() => [
-    { headerName: 'Source', field: 'source', flex: 1, minWidth: 180, tooltipField: 'sourceId', cellStyle: gridTextCell },
-    { headerName: 'Axiom', field: 'axiom', width: 150, cellStyle: gridTextCell },
-    { headerName: 'Target', field: 'target', flex: 1, minWidth: 180, tooltipField: 'targetId', cellStyle: gridTextCell },
-    { headerName: 'Prefix', field: 'prefix', width: 120, cellStyle: gridTextCell },
+    { headerName: 'Source', field: 'source', flex: 1, minWidth: 152, tooltipField: 'sourceId', cellStyle: gridTextCell },
+    { headerName: 'Axiom', field: 'axiom', width: 124, cellStyle: gridTextCell },
+    { headerName: 'Target', field: 'target', flex: 1, minWidth: 152, tooltipField: 'targetId', cellStyle: gridTextCell },
+    { headerName: 'Prefix', field: 'prefix', width: 96, cellStyle: gridTextCell },
   ], [gridTextCell]);
 
   const activeRows = tableMode === 'properties' ? objectPropertyRows : tableMode === 'axioms' ? edgeRows : classRows;
@@ -1007,6 +1023,13 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
     : tableMode === 'axioms'
       ? `OWL Axioms (${edgeRows.length})`
       : `Classes (${classRows.length})`;
+
+  const browserStats = [
+    { label: 'Classes', value: hierarchy.rows.length },
+    { label: 'Properties', value: objectPropertyRows.length },
+    { label: 'Axioms', value: edgeRows.length },
+    { label: 'Terms', value: visibleNodes.length },
+  ];
 
   const handleOntologyRowSelection = useCallback((row) => {
     if (!row) return;
@@ -1028,127 +1051,178 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
   }, [tableMode]);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1.1fr) minmax(340px, 1.1fr) minmax(300px, 0.9fr)', gap: 12, minHeight: 620, alignItems: 'start', overflow: 'hidden' }}>
-      <div style={{ minWidth: 0 }}>
-        <DataGridWidget
-          title={`Classes (${hierarchy.rows.length})`}
-          rows={hierarchy.rows}
-          columns={treeColumns}
-          height={608}
-          minGridHeight={608}
-          paginationPageSize={25}
-          emptyLabel="No class hierarchy available"
-        />
-      </div>
-
-      <div style={{ minWidth: 0, display: 'grid', gap: 10, alignContent: 'start', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          {[
-            { id: 'classes', label: 'Classes' },
-            { id: 'properties', label: 'Object/Data Properties' },
-            { id: 'axioms', label: 'Axioms' },
-          ].map((mode) => (
-            <button
-              key={mode.id}
-              type="button"
-              onClick={() => setTableMode(mode.id)}
-              style={{
-                border: `1px solid ${tableMode === mode.id ? C.primary : C.borderDark}`,
-                background: tableMode === mode.id ? C.primary : C.surface,
-                color: tableMode === mode.id ? '#fff' : C.textPrimary,
-                borderRadius: 6,
-                padding: '6px 12px',
-                fontSize: 12,
-                fontWeight: 800,
-                cursor: 'pointer',
-              }}
-            >
-              {mode.label}
-            </button>
-          ))}
-        </div>
-        <DataGridWidget
-          title={activeTitle}
-          rows={activeRows}
-          columns={activeColumns}
-          height={548}
-          minGridHeight={548}
-          paginationPageSize={25}
-          emptyLabel={activeEmptyLabel}
-          onRowClicked={handleOntologyRowSelection}
-        />
-      </div>
-
-      <aside style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, minWidth: 0, overflow: 'hidden', maxHeight: 658 }}>
-        <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary }}>Inspector</div>
-            <div style={{ fontSize: 11, color: C.textSec, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{reasoning?.engine === 'owlready2' ? 'Owlready2 semantics' : 'Ontology metadata'}</div>
+    <div style={{ display: 'grid', gap: 12, minHeight: 680 }}>
+      <section style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, padding: '12px 14px', display: 'grid', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: C.textPrimary }}>OWL Browser</div>
           </div>
-          {selectedTerm?.ontology_prefix && (
-            <span style={{ alignSelf: 'start', background: C.primaryLight, color: C.primary, border: `1px solid ${C.border}`, borderRadius: 999, padding: '2px 8px', fontSize: 11, fontWeight: 800, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {selectedTerm.ontology_prefix}
-            </span>
-          )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(88px, 1fr))', gap: 8, minWidth: 'min(100%, 420px)' }}>
+            {browserStats.map((stat) => (
+              <div key={stat.label} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 10px' }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>{stat.label}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: C.primary, marginTop: 2 }}>{stat.value}</div>
+              </div>
+            ))}
+          </div>
         </div>
-        {selectedTerm ? (
-          <div style={{ padding: 12, display: 'grid', gap: 12, maxHeight: 556, overflow: 'auto' }}>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: C.primary, wordBreak: 'break-word' }}>{selectedTerm.label || String(selectedTerm.term_id).split(':').pop()}</div>
-              <code style={{ display: 'block', marginTop: 6, fontSize: 11, color: C.textSec, wordBreak: 'break-all' }}>{selectedTerm.term_id}</code>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
-                <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Parents</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: C.textPrimary }}>{hierarchy.parentByChild.get(selectedTerm.term_id)?.length || 0}</div>
+      </section>
+
+      <div className="owl-browser-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 0.8fr) minmax(0, 1.7fr) minmax(280px, 0.9fr)', gap: 12, minHeight: 620, alignItems: 'start' }}>
+        <section style={{ minWidth: 0, border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary }}>Hierarchy</div>
+          </div>
+          <div style={{ padding: 10 }}>
+            <DataGridWidget
+              title={`Class Hierarchy (${hierarchy.rows.length})`}
+              subtitle="Browse ontology depth and select a focal term."
+              rows={hierarchy.rows}
+              columns={treeColumns}
+              height={566}
+              minGridHeight={566}
+              paginationPageSize={20}
+              emptyLabel="No class hierarchy available"
+            />
+          </div>
+        </section>
+
+        <section style={{ minWidth: 0, border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'hidden', display: 'grid', gridTemplateRows: 'auto 1fr' }}>
+          <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, display: 'grid', gap: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'start', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary }}>Semantic Tables</div>
               </div>
-              <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
-                <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Children</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: C.textPrimary }}>{hierarchy.childrenByParent.get(selectedTerm.term_id)?.length || 0}</div>
-              </div>
-            </div>
-            {selectedPropertyRow && (
-              <div style={{ display: 'grid', gap: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Property Semantics</div>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Kind</div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: C.textPrimary, marginTop: 4 }}>{selectedPropertyRow.kind}</div>
-                  </div>
-                  <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Domain</div>
-                    <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>{selectedPropertyRow.domain}</div>
-                  </div>
-                  <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Range</div>
-                    <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>{selectedPropertyRow.range}</div>
-                  </div>
-                </div>
-              </div>
-            )}
-            {(selectedTerm.definition || selectedTerm.comment) && (
-              <div style={{ fontSize: 12, color: C.textPrimary, lineHeight: 1.45 }}>{selectedTerm.definition || selectedTerm.comment}</div>
-            )}
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 800, color: C.textSec, textTransform: 'uppercase', marginBottom: 6 }}>Related axioms</div>
-              <div style={{ display: 'grid', gap: 6, maxHeight: 300, overflow: 'auto' }}>
-                {selectedAxioms.length === 0 ? (
-                  <div style={{ fontSize: 12, color: C.textMuted }}>No axioms found for selected term.</div>
-                ) : selectedAxioms.slice(0, 30).map((edge) => (
-                  <div key={edge.id} style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: 8, background: C.bg }}>
-                    <RelBadge type={edge.axiom} />
-                    <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 5, lineHeight: 1.35 }}>
-                      {edge.source} -> {edge.target}
-                    </div>
-                  </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                {[
+                  { id: 'classes', label: 'Classes' },
+                  { id: 'properties', label: 'Properties' },
+                  { id: 'axioms', label: 'Axioms' },
+                ].map((mode) => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => setTableMode(mode.id)}
+                    style={{
+                      border: `1px solid ${tableMode === mode.id ? C.primary : C.borderDark}`,
+                      background: tableMode === mode.id ? C.primary : C.surface,
+                      color: tableMode === mode.id ? '#fff' : C.textPrimary,
+                      borderRadius: 6,
+                      padding: '6px 12px',
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {mode.label}
+                  </button>
                 ))}
               </div>
             </div>
           </div>
-        ) : (
-          <div style={{ padding: 24, color: C.textMuted, fontSize: 12 }}>Select a class or ontology row.</div>
-        )}
-      </aside>
+          <div style={{ padding: 10, minWidth: 0 }}>
+            <DataGridWidget
+              title={activeTitle}
+              subtitle={tableMode === 'properties' ? 'Domain, range, and property semantics' : tableMode === 'axioms' ? 'Resolved relationships and OWL expressions' : 'Classes with parent and child coverage'}
+              rows={activeRows}
+              columns={activeColumns}
+              height={566}
+              minGridHeight={566}
+              paginationPageSize={20}
+              emptyLabel={activeEmptyLabel}
+              onRowClicked={handleOntologyRowSelection}
+            />
+          </div>
+        </section>
+
+        <aside style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, minWidth: 0, overflow: 'hidden', maxHeight: 696, display: 'grid', gridTemplateRows: 'auto 1fr' }}>
+          <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary }}>Inspector</div>
+              <div style={{ fontSize: 11, color: C.textSec, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {reasoning?.engine === 'owlready2' ? 'Owlready2 semantics' : 'Ontology metadata'}
+              </div>
+            </div>
+            {selectedTerm?.ontology_prefix && (
+              <span style={{ alignSelf: 'start', background: C.primaryLight, color: C.primary, border: `1px solid ${C.border}`, borderRadius: 999, padding: '2px 8px', fontSize: 11, fontWeight: 800, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {selectedTerm.ontology_prefix}
+              </span>
+            )}
+          </div>
+          {selectedTerm ? (
+            <div style={{ padding: 12, display: 'grid', gap: 12, overflow: 'auto' }}>
+              <section style={{ display: 'grid', gap: 6 }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: C.primary, wordBreak: 'break-word' }}>
+                  {selectedTerm.label || String(selectedTerm.term_id).split(':').pop()}
+                </div>
+                <code style={{ display: 'block', fontSize: 11, color: C.textSec, wordBreak: 'break-all' }}>{selectedTerm.term_id}</code>
+              </section>
+
+              <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Parents</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: C.textPrimary }}>{hierarchy.parentByChild.get(selectedTerm.term_id)?.length || 0}</div>
+                </div>
+                <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Children</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: C.textPrimary }}>{hierarchy.childrenByParent.get(selectedTerm.term_id)?.length || 0}</div>
+                </div>
+              </section>
+
+              {(selectedTerm.definition || selectedTerm.comment) && (
+                <section style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Description</div>
+                  <div style={{ fontSize: 12, color: C.textPrimary, lineHeight: 1.5, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 10 }}>
+                    {selectedTerm.definition || selectedTerm.comment}
+                  </div>
+                </section>
+              )}
+
+              {selectedPropertyRow && (
+                <section style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Property Semantics</div>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Kind</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.textPrimary, marginTop: 4 }}>{selectedPropertyRow.kind}</div>
+                    </div>
+                    <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Domain</div>
+                      <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>{selectedPropertyRow.domain}</div>
+                    </div>
+                    <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Range</div>
+                      <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>{selectedPropertyRow.range}</div>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              <section style={{ display: 'grid', gap: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Related Axioms</div>
+                <div style={{ display: 'grid', gap: 6, maxHeight: 280, overflow: 'auto' }}>
+                  {selectedAxioms.length === 0 ? (
+                    <div style={{ fontSize: 12, color: C.textMuted, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 10 }}>
+                      No axioms found for selected term.
+                    </div>
+                  ) : selectedAxioms.slice(0, 30).map((edge) => (
+                    <div key={edge.id} style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: 8, background: C.bg }}>
+                      <RelBadge type={edge.axiom} />
+                      <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 5, lineHeight: 1.4, wordBreak: 'break-word' }}>
+                        {edge.source} -> {edge.target}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+          ) : (
+            <div style={{ padding: 24, color: C.textMuted, fontSize: 12 }}>
+              Select a class, property, or axiom row to inspect details.
+            </div>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }
