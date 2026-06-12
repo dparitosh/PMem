@@ -3,6 +3,7 @@ import { Download, Network, Search } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import { useOntologies } from '../contexts/OntologyContext';
 import DataGridWidget from '../widgets/DataGridWidget';
+import ErrorBoundary from './ErrorBoundary';
 
 // ── Design tokens (corporate palette) ─────────────────────────────────────────
 const C = {
@@ -1249,6 +1250,105 @@ function buildFallbackDictionaryFromTaxonomy(taxonomyPayload, prefixHint = '') {
   };
 }
 
+const BRIDGE_SOURCE_KINDS = ['Entity', 'Attribute', 'Relationship', 'Metadata'];
+const BRIDGE_TARGET_KINDS = ['Class', 'ObjectProperty', 'DatatypeProperty', 'AnnotationProperty'];
+
+function normalizeBridgeLabel(value) {
+  return String(value || '').trim();
+}
+
+function uniqueBridgeValues(values = []) {
+  const seen = new Set();
+  const result = [];
+  values.forEach((value) => {
+    const text = normalizeBridgeLabel(value);
+    if (!text) return;
+    const key = text.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(text);
+  });
+  return result;
+}
+
+function inferBridgeSourceKind(row = {}) {
+  const keys = Object.keys(row || {}).map((key) => String(key).toLowerCase());
+  const valueSet = new Set(
+    ['entity_type', 'element_type', 'type', 'xsi:type', 'class', 'category', 'part_type', 'name']
+      .map((key) => normalizeBridgeLabel(row[key]).toLowerCase())
+      .filter(Boolean),
+  );
+  const relationshipMarkers = ['ref', 'refs', 'href', 'idref', 'instance', 'related', 'source', 'target', 'parent', 'child'];
+  const metadataMarkers = ['filename', 'workflow_id', 'namespace', 'ontology_prefix', 'ontology_name', 'source_ontology', 'manifest', 'provenance'];
+  const attributeMarkers = ['value', 'text', 'description', 'comment', 'label', 'datatype', 'attribute'];
+
+  if (keys.some((key) => relationshipMarkers.some((marker) => key.includes(marker)))) return 'Relationship';
+  if (keys.some((key) => metadataMarkers.some((marker) => key.includes(marker)))) return 'Metadata';
+  if (keys.some((key) => attributeMarkers.some((marker) => key.includes(marker)))) return 'Attribute';
+  if (valueSet.has('relationship') || valueSet.has('edge') || valueSet.has('link')) return 'Relationship';
+  if (valueSet.has('attribute') || valueSet.has('datatype') || valueSet.has('property')) return 'Attribute';
+  return 'Entity';
+}
+
+function collectBridgeSourceOptions(preview = {}, kind = 'Entity') {
+  const rows = Array.isArray(preview.sample_rows) ? preview.sample_rows : [];
+  const columns = Array.isArray(preview.columns) ? preview.columns : [];
+  const values = [];
+  const push = (value) => {
+    const text = normalizeBridgeLabel(value);
+    if (text) values.push(text);
+  };
+
+  rows.forEach((row) => {
+    if (!row || typeof row !== 'object') return;
+    const inferredKind = inferBridgeSourceKind(row);
+    if (kind !== inferredKind && !(kind === 'Entity' && inferredKind === 'Metadata')) {
+      return;
+    }
+    if (kind === 'Entity') {
+      ['entity_type', 'element_type', 'type', 'xsi:type', 'class', 'category', 'part_type', 'name', 'title', 'part_number', 'id', 'uid', 'instance_id']
+        .forEach((key) => push(row[key]));
+    } else if (kind === 'Attribute') {
+      ['name', 'label', 'value', 'text', 'description', 'comment', 'datatype', 'attribute_type']
+        .forEach((key) => push(row[key]));
+    } else if (kind === 'Relationship') {
+      ['relationship_type', 'type', 'ref_type', 'source', 'target', 'idref', 'href', 'instanceRef', 'relatedRef']
+        .forEach((key) => push(row[key]));
+    } else if (kind === 'Metadata') {
+      ['filename', 'workflow_id', 'namespace', 'ontology_prefix', 'ontology_name', 'source_ontology', 'source_format']
+        .forEach((key) => push(row[key]));
+    }
+  });
+
+  if (!values.length && columns.length) {
+    const filters = {
+      Entity: ['id', 'uid', 'name', 'type', 'class', 'entity'],
+      Attribute: ['value', 'text', 'description', 'label', 'datatype', 'attribute'],
+      Relationship: ['ref', 'href', 'link', 'relation', 'source', 'target'],
+      Metadata: ['filename', 'workflow', 'namespace', 'ontology', 'source'],
+    }[kind] || [];
+    columns.forEach((column) => {
+      const lower = String(column || '').toLowerCase();
+      if (!filters.length || filters.some((token) => lower.includes(token))) {
+        push(column);
+      }
+    });
+  }
+
+  return uniqueBridgeValues(values).slice(0, 80);
+}
+
+function collectBridgeTargetOptions(reasoning = {}, kind = 'Class') {
+  const byKind = {
+    Class: reasoning?.classes || [],
+    ObjectProperty: reasoning?.object_properties || [],
+    DatatypeProperty: reasoning?.datatype_properties || [],
+    AnnotationProperty: reasoning?.annotation_properties || [],
+  };
+  const rows = byKind[kind] || [];
+  return uniqueBridgeValues(rows.map((row) => row?.label || row?.name || row?.term_id || row?.iri || row?.uri)).slice(0, 120);
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function OntologyMapper() {
   const [data, setData] = useState({ nodes: [], edges: [] });
@@ -1256,9 +1356,6 @@ export default function OntologyMapper() {
   const [vocabEdges, setVocabEdges] = useState([]);
   const [taxonomy, setTaxonomy] = useState(null);
   const [reasoning, setReasoning] = useState(null);
-  const [sourceOntologyPrefix, setSourceOntologyPrefix] = useState('');
-  const [targetOntologyPrefix, setTargetOntologyPrefix] = useState('');
-  const [sourceOntologyDictionary, setSourceOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
   const [targetOntologyDictionary, setTargetOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1272,24 +1369,91 @@ export default function OntologyMapper() {
   const [mappingOptions, setMappingOptions] = useState([]);
   const [mappingOptionsError, setMappingOptionsError] = useState(null);
   const [, setOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
-  const [sourceEntityType, setSourceEntityType] = useState('');
-  const [targetEntityType, setTargetEntityType] = useState('');
   const [mapBusy, setMapBusy] = useState(false);
   const [mapMessage, setMapMessage] = useState(null);
-  const [mergeFromId, setMergeFromId] = useState('');
-  const [mergeToId, setMergeToId] = useState('');
-  const [mergeBusy, setMergeBusy] = useState(false);
-  const [mergeResult, setMergeResult] = useState(null);
+  const [importTasks, setImportTasks] = useState([]);
+  const [selectedImportTaskId, setSelectedImportTaskId] = useState('');
+  const [importTasksLoading, setImportTasksLoading] = useState(false);
+  const [importTasksError, setImportTasksError] = useState(null);
+  const [selectedImportTaskDetails, setSelectedImportTaskDetails] = useState(null);
+  const [selectedImportTaskPreview, setSelectedImportTaskPreview] = useState(null);
+  const [unifyBusy, setUnifyBusy] = useState(false);
+  const [unifyResult, setUnifyResult] = useState(null);
+  const [bridgeCandidates, setBridgeCandidates] = useState([]);
+  const [selectedMappingEdgeIndex, setSelectedMappingEdgeIndex] = useState(-1);
+  const [bridgeSourceKind, setBridgeSourceKind] = useState('Entity');
+  const [bridgeSourceTerm, setBridgeSourceTerm] = useState('');
+  const [bridgeTargetKind, setBridgeTargetKind] = useState('Class');
+  const [bridgeTargetTerm, setBridgeTargetTerm] = useState('');
+  const [bridgeComment, setBridgeComment] = useState('');
+  const [bridgeApproved, setBridgeApproved] = useState(false);
+  const selectedImportTask = useMemo(
+    () => importTasks.find((task) => task.task_id === selectedImportTaskId) || null,
+    [importTasks, selectedImportTaskId],
+  );
+  const selectedImportTaskInfo = selectedImportTaskDetails || selectedImportTask;
+  const selectedOntologyOption = useMemo(
+    () => mappingOptions.find((option) => (option.prefix || option.value) === selectedOntologyApi) || null,
+    [mappingOptions, selectedOntologyApi],
+  );
+  const selectedImportManifest = selectedImportTask?.artifact_manifest || selectedImportTask?.artifactManifest || null;
+  const selectedBridgeSummary = unifyResult?.summary || null;
+  const visibleMappingEdges = useMemo(() => {
+    const baseEdges = (mappingEdges || []).filter(edge => String(edge.mapping_type || '').toLowerCase() !== 'property_of');
+    if (baseEdges.length > 0) return baseEdges;
+    return (bridgeCandidates || [])
+      .filter((candidate) => candidate && (candidate.selected_for_apply || candidate.confidence >= 0.55))
+      .map((candidate) => ({
+        source_instance_id: selectedImportTaskId || candidate.source_instance_id || 'instance',
+        source_instance_label: selectedImportTask?.filename || candidate.source_instance_label || 'Imported instance',
+        source_term: candidate.import_row_key || candidate.source_term || candidate.source_label || selectedImportTaskId || 'instance',
+        source_label: candidate.source_label || candidate.import_row_key || candidate.source_term || selectedImportTask?.filename || 'Imported entity',
+        source_type: candidate.source_type || 'Entity',
+        target_term: candidate.ontology_class_element_id || candidate.ontology_term || selectedOntologyApi || 'ontology',
+        target_label: candidate.ontology_term || selectedOntologyOption?.label || candidate.ontology_class_element_id || 'Ontology class',
+        target_ontology_type: candidate.target_ontology_type || 'Class',
+        mapping_type: candidate.selected_for_apply ? 'autoMap' : 'autoMapPreview',
+        confidence: candidate.confidence,
+        evidence: candidate.evidence || [],
+        signal_type: candidate.signal_type || 'metadata',
+        ambiguous: candidate.ambiguous,
+        selected_for_apply: candidate.selected_for_apply,
+      }));
+  }, [bridgeCandidates, mappingEdges, selectedOntologyApi, selectedImportTaskId, selectedImportTask, selectedOntologyOption]);
+  const selectedMappingEdge = useMemo(() => {
+    if (selectedMappingEdgeIndex < 0) return null;
+    return visibleMappingEdges[selectedMappingEdgeIndex] || null;
+  }, [visibleMappingEdges, selectedMappingEdgeIndex]);
 
-  const sourceEntityOptions = useMemo(() => {
-    const entities = (sourceOntologyDictionary && sourceOntologyDictionary.entities) || {};
-    return Object.keys(entities).sort();
-  }, [sourceOntologyDictionary]);
+  const sourceOptionsByKind = useMemo(() => {
+    const preview = selectedImportTaskPreview || selectedImportTaskInfo?.preview_data || selectedImportTaskInfo?.previewData || {};
+    return {
+      Entity: collectBridgeSourceOptions(preview, 'Entity'),
+      Attribute: collectBridgeSourceOptions(preview, 'Attribute'),
+      Relationship: collectBridgeSourceOptions(preview, 'Relationship'),
+      Metadata: collectBridgeSourceOptions(preview, 'Metadata'),
+    };
+  }, [selectedImportTaskPreview, selectedImportTaskInfo]);
 
+  const targetOptionsByKind = useMemo(() => ({
+    Class: collectBridgeTargetOptions(reasoning, 'Class'),
+    ObjectProperty: collectBridgeTargetOptions(reasoning, 'ObjectProperty'),
+    DatatypeProperty: collectBridgeTargetOptions(reasoning, 'DatatypeProperty'),
+    AnnotationProperty: collectBridgeTargetOptions(reasoning, 'AnnotationProperty'),
+  }), [reasoning]);
+
+  const sourceEntityOptions = useMemo(() => sourceOptionsByKind[bridgeSourceKind] || [], [sourceOptionsByKind, bridgeSourceKind]);
   const targetEntityOptions = useMemo(() => {
-    const entities = (targetOntologyDictionary && targetOntologyDictionary.entities) || {};
-    return Object.keys(entities).sort();
-  }, [targetOntologyDictionary]);
+    const fromReasoning = targetOptionsByKind[bridgeTargetKind] || [];
+    if (fromReasoning.length > 0) return fromReasoning;
+    const fallbackDictionary = {
+      Class: Object.keys(targetOntologyDictionary.entities || {}).sort(),
+      ObjectProperty: Object.keys(targetOntologyDictionary.relationships || {}).sort(),
+      DatatypeProperty: Object.keys(targetOntologyDictionary.properties || {}).sort(),
+      AnnotationProperty: [],
+    };
+    return fallbackDictionary[bridgeTargetKind] || [];
+  }, [targetOptionsByKind, bridgeTargetKind, targetOntologyDictionary]);
 
   const normalizeSourceFormat = (rawType, ontologyId) => {
     const valid = new Set(['plmxml', 'step', 'xmi', 'xml']);
@@ -1354,7 +1518,7 @@ export default function OntologyMapper() {
   }, []);
 
   // Get ontology options from centralized context (shared across all components)
-  const { ontologies: contextOntologies, fetchOntologies } = useOntologies();
+  const { ontologies: contextOntologies } = useOntologies();
 
   useEffect(() => {
     // Load available mapping options from centralized context
@@ -1387,25 +1551,85 @@ export default function OntologyMapper() {
         setSelectedMappingType(selectedOption.type);
       }
 
-      // Alignment prefixes should be user-controlled; only set if empty
-      if (!sourceOntologyPrefix) {
-        setSourceOntologyPrefix(selectedOption.prefix || '');
-      }
-      if (!targetOntologyPrefix) {
-        setTargetOntologyPrefix('');
-      }
     } catch (e) {
       const errorMsg = e.message || 'Failed to process ontologies';
       setMappingOptionsError(errorMsg);
       console.warn('Failed to process ontologies:', e);
     }
-  }, [contextOntologies, buildOntologyOptions, resolveSelectedOntologyOption, selectedMapping, selectedMappingType, selectedOntologyApi, sourceOntologyPrefix, targetOntologyPrefix]);
+  }, [contextOntologies, buildOntologyOptions, resolveSelectedOntologyOption, selectedMapping, selectedMappingType, selectedOntologyApi]);
 
   useEffect(() => {
     if (!selectedMappingType) {
       setSelectedMappingType(SOURCE_FORMATS[0].id);
     }
   }, [selectedMappingType]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadImportTasks = async () => {
+      setImportTasksLoading(true);
+      setImportTasksError(null);
+      try {
+        const res = await API_METHODS.import.getTasks();
+        const tasks = (res.data && res.data.tasks) || [];
+        if (cancelled) return;
+        setImportTasks(tasks);
+        if (!selectedImportTaskId && tasks.length > 0) {
+          setSelectedImportTaskId(tasks[0].task_id || '');
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setImportTasksError(e?.response?.data?.detail || e.message || 'Failed to load instance tasks.');
+        }
+      } finally {
+        if (!cancelled) {
+          setImportTasksLoading(false);
+        }
+      }
+    };
+    loadImportTasks();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedImportTaskId]);
+
+  useEffect(() => {
+    if (!selectedImportTaskId) return;
+    const task = importTasks.find((item) => item.task_id === selectedImportTaskId);
+    const normalized = normalizeSourceFormat(task?.file_type || task?.source_format || '', task?.task_id || selectedImportTaskId);
+    if (normalized && normalized !== selectedMappingType) {
+      setSelectedMappingType(normalized);
+    }
+  }, [selectedImportTaskId, importTasks, selectedMappingType]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadSelectedImportDetails = async () => {
+      if (!selectedImportTaskId) {
+        setSelectedImportTaskDetails(null);
+        setSelectedImportTaskPreview(null);
+        return;
+      }
+      try {
+        const [statusRes, previewRes] = await Promise.allSettled([
+          API_METHODS.import.getStatus(selectedImportTaskId),
+          API_METHODS.import.getPreview(selectedImportTaskId),
+        ]);
+        if (cancelled) return;
+        setSelectedImportTaskDetails(statusRes.status === 'fulfilled' ? (statusRes.value?.data || null) : null);
+        setSelectedImportTaskPreview(previewRes.status === 'fulfilled' ? (previewRes.value?.data || null) : null);
+      } catch (_err) {
+        if (!cancelled) {
+          setSelectedImportTaskDetails(null);
+          setSelectedImportTaskPreview(null);
+        }
+      }
+    };
+    loadSelectedImportDetails();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedImportTaskId]);
 
   useEffect(() => {
     if (!selectedOntologyApi || !selectedMappingType) {
@@ -1423,7 +1647,7 @@ export default function OntologyMapper() {
         // The backend now supports any prefix via generic /{prefix}/data-dictionary routes.
         const [dictRes, mapRes, taxonomyRes, reasoningRes] = await Promise.allSettled([
           API_METHODS.ontology.getDataDictionary(selectedOntologyApi),
-          API_METHODS.ontology.getMappings(targetOntologyPrefix || selectedOntologyApi, selectedMappingType),
+          API_METHODS.ontology.getMappings(selectedOntologyApi, selectedMappingType),
           API_METHODS.ontology.getTaxonomy(selectedOntologyApi),
           API_METHODS.ontology.getReasoning(selectedOntologyApi),
         ]);
@@ -1451,7 +1675,7 @@ export default function OntologyMapper() {
           ? mappingEdges.map((edge) => ({
               source_term: edge.source_term || `${selectedMappingType}:${edge.source_label || ''}`,
               source_label: edge.source_label || edge.source_term || '',
-              target_term: edge.target_term || `${targetOntologyPrefix || selectedOntologyApi}:${edge.target_label || ''}`,
+              target_term: edge.target_term || `${selectedOntologyApi}:${edge.target_label || ''}`,
               target_label: edge.target_label || edge.target_term || '',
               mapping_type: edge.mapping_type || 'mapsTo',
             }))
@@ -1461,7 +1685,7 @@ export default function OntologyMapper() {
               return {
                 source_term: `${selectedMappingType}:${parsed.source}`,
                 source_label: parsed.source,
-                target_term: `${targetOntologyPrefix || selectedOntologyApi}:${resolvedTarget}`,
+                target_term: `${selectedOntologyApi}:${resolvedTarget}`,
                 target_label: resolvedTarget,
                 mapping_type: parsed.mappingType,
               };
@@ -1510,148 +1734,319 @@ export default function OntologyMapper() {
     return () => {
       cancelled = true;
     };
-  }, [selectedMapping, selectedMappingType, selectedOntologyApi, targetOntologyPrefix]);
+  }, [selectedMapping, selectedMappingType, selectedOntologyApi]);
 
   useEffect(() => {
     let cancelled = false;
-    const loadSide = async (prefix, setter) => {
-      if (!prefix) {
-        if (!cancelled) {
-          setter({ entities: {}, relationships: {}, properties: {} });
-        }
+    const loadSingleDictionary = async () => {
+      if (!selectedOntologyApi) {
+        setTargetOntologyDictionary({ entities: {}, relationships: {}, properties: {} });
         return;
       }
       try {
-        const res = await API_METHODS.ontology.getDataDictionary(prefix);
+        const res = await API_METHODS.ontology.getDataDictionary(selectedOntologyApi);
         const dictData = res?.data?.data || {};
         if (Object.keys(dictData.entities || {}).length > 0) {
           if (!cancelled) {
-            setter(dictData);
+            setTargetOntologyDictionary(dictData);
           }
           return;
         }
         throw new Error('Empty data dictionary');
       } catch {
-        const option = mappingOptions.find((item) => item.prefix === prefix);
-        if (option?.value) {
-          try {
-            const taxonomyRes = await API_METHODS.ontology.getTaxonomy(option.value);
-            if (!cancelled) {
-              setter(buildFallbackDictionaryFromTaxonomy(taxonomyRes?.data, prefix));
-            }
-            return;
-          } catch {
-            // Continue to empty fallback below.
+        try {
+          const taxonomyRes = await API_METHODS.ontology.getTaxonomy(selectedOntologyApi);
+          if (!cancelled) {
+            const dict = buildFallbackDictionaryFromTaxonomy(taxonomyRes?.data, selectedOntologyApi);
+            setTargetOntologyDictionary(dict);
           }
-        }
-        if (!cancelled) {
-          setter({ entities: {}, relationships: {}, properties: {}, _error: true });
+          return;
+        } catch {
+          if (!cancelled) {
+            const emptyDict = { entities: {}, relationships: {}, properties: {}, _error: true };
+            setTargetOntologyDictionary(emptyDict);
+          }
         }
       }
     };
 
-    loadSide(sourceOntologyPrefix, setSourceOntologyDictionary);
-    loadSide(targetOntologyPrefix, setTargetOntologyDictionary);
+    loadSingleDictionary();
     return () => {
       cancelled = true;
     };
-  }, [sourceOntologyPrefix, targetOntologyPrefix, mappingOptions]);
+  }, [selectedOntologyApi]);
 
   useEffect(() => {
-    const sources = sourceEntityOptions;
-    const targets = targetEntityOptions;
-
-    if (sources.length > 0 && (!sourceEntityType || !sources.includes(sourceEntityType))) {
-      setSourceEntityType(sources[0]);
+    if (sourceEntityOptions.length > 0 && (!bridgeSourceTerm || !sourceEntityOptions.includes(bridgeSourceTerm))) {
+      setBridgeSourceTerm(sourceEntityOptions[0]);
     }
-    if (targets.length > 0 && (!targetEntityType || !targets.includes(targetEntityType))) {
-      setTargetEntityType(targets[0]);
+    if (targetEntityOptions.length > 0 && (!bridgeTargetTerm || !targetEntityOptions.includes(bridgeTargetTerm))) {
+      setBridgeTargetTerm(targetEntityOptions[0]);
     }
-  }, [sourceEntityOptions, targetEntityOptions, sourceEntityType, targetEntityType]);
+  }, [sourceEntityOptions, targetEntityOptions, bridgeSourceTerm, bridgeTargetTerm]);
 
-  useEffect(() => {
-    if (sourceOntologyPrefix && targetOntologyPrefix && sourceOntologyPrefix === targetOntologyPrefix) {
-      setTargetOntologyPrefix('');
-    }
-  }, [sourceOntologyPrefix, targetOntologyPrefix]);
-
-  const handleMapEntity = async () => {
-    if (!sourceEntityType || !targetEntityType) {
-      setMapMessage({ kind: 'error', text: 'Select both source and target entities before mapping.' });
+  const handlePreviewMappings = async () => {
+    if (!selectedImportTaskId) {
+      setMapMessage({ kind: 'error', text: 'Select an imported instance before previewing mappings.' });
       return;
     }
 
     setMapBusy(true);
     setMapMessage(null);
     try {
-      // Step 5: perform alignment mapping via /api/v1/ontology/{prefix}/map-entity
-      const json = await API_METHODS.ontology.mapEntity(targetOntologyPrefix || selectedOntologyApi, {
-        entity: {
-          id: `ui-map-${Date.now()}`,
-          name: sourceEntityType,
-          type: sourceEntityType,
-          properties: {
-            selected_target: targetEntityType,
-            mapped_from_ui: true,
-            source_ontology: sourceOntologyPrefix,
-            target_ontology: targetOntologyPrefix,
-          },
-        },
-        source_format: selectedMappingType,
+      const taskRes = await API_METHODS.import.getStatus(selectedImportTaskId);
+      const taskData = taskRes.data || {};
+      const manifest = taskData.artifact_manifest || taskData.artifactManifest || null;
+      if (!manifest) {
+        throw new Error('Selected instance does not have retained artifacts yet. Import the file first.');
+      }
+
+      const previewRes = await API_METHODS.workflow.execute('instance.link', {
+        ontology_id: selectedOntologyApi,
+        import_artifact_manifest: manifest,
+        apply_links: false,
       });
-
-      const mapRes = json.data || {};
-      const mappedType = mapRes?.mapped_entity?.type || '(unknown)';
-      const match = mappedType === targetEntityType;
-
+      const previewData = previewRes.data || {};
+      const previewCandidates = Array.isArray(previewData?.result?.candidates) ? previewData.result.candidates : [];
+      setBridgeCandidates(previewCandidates);
+      setUnifyResult(null);
+      const summary = previewData?.result?.summary || {};
       setMapMessage({
-        kind: match ? 'success' : 'warn',
-        text: match
-          ? `Mapped successfully: ${sourceEntityType} -> ${mappedType}`
-          : `Mapped by API to ${mappedType} (selected target was ${targetEntityType})`,
+        kind: 'success',
+        text: `Preview ready: ${summary.candidate_count ?? previewCandidates.length} candidates, ${summary.high_confidence_candidates ?? 0} high-confidence.`,
       });
     } catch (e) {
-      setMapMessage({ kind: 'error', text: e.response?.data?.detail || e.message || 'Failed to map entity.' });
+      setMapMessage({ kind: 'error', text: e.response?.data?.detail || e.message || 'Preview failed.' });
     } finally {
       setMapBusy(false);
     }
   };
 
-  const handleMerge = async () => {
-    if (!mergeFromId || !mergeToId) {
-      setMergeResult({ kind: 'error', text: 'Select both a source ontology and a destination ontology for graph unification.' });
+  const handleUnifyInstanceWithOntology = async () => {
+    if (!selectedImportTaskId) {
+      setUnifyResult({ kind: 'error', text: 'Select an imported instance to unify.' });
       return;
     }
-    if (mergeFromId === mergeToId) {
-      setMergeResult({ kind: 'error', text: 'Source and destination ontologies must be different.' });
+    if (!selectedOntologyApi) {
+      setUnifyResult({ kind: 'error', text: 'Select an ontology to unify with the instance.' });
       return;
     }
-    setMergeBusy(true);
-    setMergeResult(null);
+
+    setUnifyBusy(true);
+    setUnifyResult(null);
     try {
-      const res = await API_METHODS.ontology.merge(mergeFromId, mergeToId);
-      const d = res.data || {};
-      setMergeResult({ kind: 'success', text: d.message || 'Graph unification complete.', nodes: d.nodes_updated });
-      // Reload ontology options from context after merge
-      const refreshedOntologies = await fetchOntologies();
-      const opts = buildOntologyOptions(refreshedOntologies || []);
-      setMappingOptions(opts);
-      if (opts.length > 0) {
-        const next = resolveSelectedOntologyOption(opts, selectedMapping);
-        if (next) {
-          setSelectedMapping(next.value);
-          setSelectedMappingType(next.type);
-          setSelectedOntologyApi(next.prefix || next.ontologyKey || next.value || '');
-        }
+      const taskRes = await API_METHODS.import.getStatus(selectedImportTaskId);
+      const taskData = taskRes.data || {};
+      const manifest = taskData.artifact_manifest || taskData.artifactManifest || null;
+      if (!manifest) {
+        throw new Error('Selected instance does not have retained artifacts yet. Import the file first.');
       }
-      setMergeFromId('');
-      setMergeToId('');
+
+      const res = await API_METHODS.workflow.execute('instance.link', {
+        ontology_id: selectedOntologyApi,
+        import_artifact_manifest: manifest,
+        apply_links: true,
+      });
+      const d = res.data || {};
+      const candidates = Array.isArray(d.result?.candidates) ? d.result.candidates : [];
+      const approvedCandidates = candidates.filter((candidate) => candidate?.selected_for_apply);
+      const approvedRows = approvedCandidates.map((candidate) => ({
+        source_instance_id: selectedImportTaskId || candidate.source_instance_id || 'instance',
+        source_instance_label: taskData?.filename || candidate.source_instance_label || 'Imported instance',
+        source_term: candidate.import_row_key || candidate.source_term || candidate.source_label || selectedImportTaskId || 'instance',
+        source_label: candidate.source_label || candidate.import_row_key || candidate.source_term || taskData?.filename || 'Imported entity',
+        source_type: candidate.source_type || 'Entity',
+        target_term: candidate.ontology_class_element_id || candidate.ontology_term || selectedOntologyApi,
+        target_label: candidate.ontology_term || selectedOntologyOption?.label || candidate.ontology_class_element_id || selectedOntologyApi,
+        target_ontology_type: candidate.target_ontology_type || 'Class',
+        mapping_type: 'autoMap',
+        confidence: candidate.confidence,
+        evidence: candidate.evidence || [],
+        signal_type: candidate.signal_type || 'metadata',
+      }));
+
+      setBridgeCandidates(candidates);
+      if (approvedRows.length > 0) {
+        setMappingEdges((prev) => {
+          const next = Array.isArray(prev) ? [...prev] : [];
+          approvedRows.forEach((row) => {
+            const exists = next.some((edge) =>
+              edge?.source_term === row.source_term &&
+              String(edge?.mapping_type || '').toLowerCase() === String(row.mapping_type || '').toLowerCase() &&
+              edge?.target_term === row.target_term
+            );
+            if (!exists) next.push(row);
+          });
+          return next;
+        });
+      }
+      setUnifyResult({
+        kind: 'success',
+        text: d.result?.summary ? 'Instance unified with ontology.' : d.message || 'Instance unified with ontology.',
+        nodes: d.result?.summary?.applied_links,
+        summary: d.result?.summary || null,
+        candidates,
+        manifest: manifest,
+      });
     } catch (e) {
-      const detail = e.response?.data?.detail || e.message || 'Merge failed.';
-      setMergeResult({ kind: 'error', text: detail });
+      const detail = e?.response?.data?.detail || e?.message || 'Unify failed.';
+      setBridgeCandidates([]);
+      setUnifyResult({ kind: 'error', text: detail });
     } finally {
-      setMergeBusy(false);
+      setUnifyBusy(false);
     }
+  };
+
+  const handleAddBridgeCandidate = (candidate) => {
+    if (!candidate) return;
+    const newRow = {
+      source_instance_id: selectedImportTaskId || candidate.source_instance_id || 'instance',
+      source_instance_label: selectedImportTask?.filename || candidate.source_instance_label || 'Imported instance',
+      source_term: candidate.import_row_key || candidate.source_term || candidate.source_label || selectedImportTaskId || 'instance',
+      source_label: candidate.source_label || candidate.import_row_key || candidate.source_term || selectedImportTask?.filename || 'Imported entity',
+      source_type: candidate.source_type || inferBridgeSourceKind({ name: candidate.source_label || candidate.source_term || '' }),
+      target_term: candidate.ontology_class_element_id || candidate.ontology_term || selectedOntologyApi,
+      target_label: candidate.ontology_term || selectedOntologyOption?.label || candidate.ontology_class_element_id || selectedOntologyApi,
+      target_ontology_type: candidate.target_ontology_type || 'Class',
+      mapping_type: candidate.selected_for_apply ? 'autoMap' : 'autoMapPreview',
+      confidence: candidate.confidence,
+      evidence: candidate.evidence || [],
+      signal_type: candidate.signal_type || 'metadata',
+      ambiguous: candidate.ambiguous,
+      selected_for_apply: true,
+      validation_status: candidate.selected_for_apply ? 'approved' : 'suggested',
+      approvedByUser: !!candidate.selected_for_apply,
+      userComment: candidate.user_comment || '',
+    };
+    setMappingEdges((prev) => {
+      const next = Array.isArray(prev) ? [...prev] : [];
+      const exists = next.some((edge) =>
+        edge?.source_term === newRow.source_term &&
+        String(edge?.mapping_type || '').toLowerCase() === String(newRow.mapping_type || '').toLowerCase() &&
+        edge?.target_term === newRow.target_term
+      );
+      if (!exists) next.push(newRow);
+      return next;
+    });
+    setData((prev) => {
+      const prevEdges = Array.isArray(prev?.edges) ? prev.edges : [];
+      const exists = prevEdges.some((edge) =>
+        edge?.source_term === newRow.source_term &&
+        String(edge?.mapping_type || '').toLowerCase() === String(newRow.mapping_type || '').toLowerCase() &&
+        edge?.target_term === newRow.target_term
+      );
+      return {
+        ...(prev || { nodes: [] }),
+        edges: exists ? prevEdges : [...prevEdges, newRow],
+      };
+    });
+    setSelectedMappingEdgeIndex(visibleMappingEdges.findIndex((edge) => edge?.source_term === newRow.source_term && edge?.target_term === newRow.target_term));
+    setMapMessage({ kind: 'success', text: 'Auto-map candidate added to the mapping table.' });
+  };
+
+  const handleAddBridgeMapping = () => {
+    if (!selectedImportTaskId) {
+      setMapMessage({ kind: 'error', text: 'Select an imported instance before adding a bridge.' });
+      return;
+    }
+    if (!bridgeSourceTerm || !bridgeTargetTerm) {
+      setMapMessage({ kind: 'error', text: 'Select both a source term and a target term before saving a bridge.' });
+      return;
+    }
+
+    const newRow = {
+      source_instance_id: selectedImportTaskId,
+      source_instance_label: selectedImportTask?.filename || 'Imported instance',
+      source_term: bridgeSourceTerm,
+      source_label: bridgeSourceTerm,
+      source_type: bridgeSourceKind,
+      target_term: bridgeTargetTerm,
+      target_label: bridgeTargetTerm,
+      target_ontology_type: bridgeTargetKind,
+      mapping_type: `${bridgeSourceKind.toLowerCase()}-${bridgeTargetKind.toLowerCase()}`,
+      confidence: bridgeApproved ? 1 : 0.75,
+      evidence: ['user-selected bridge'],
+      signal_type: bridgeSourceKind.toLowerCase(),
+      ambiguous: !bridgeApproved,
+      selected_for_apply: bridgeApproved,
+      validation_status: bridgeApproved ? 'approved' : 'needs_review',
+      approvedByUser: bridgeApproved,
+      userComment: bridgeComment,
+    };
+
+    setMappingEdges((prev) => {
+      const next = Array.isArray(prev) ? [...prev] : [];
+      const exists = next.some((edge) =>
+        edge?.source_term === newRow.source_term &&
+        String(edge?.mapping_type || '').toLowerCase() === String(newRow.mapping_type || '').toLowerCase() &&
+        edge?.target_term === newRow.target_term
+      );
+      if (!exists) next.push(newRow);
+      return next;
+    });
+    setData((prev) => {
+      const prevEdges = Array.isArray(prev?.edges) ? prev.edges : [];
+      const exists = prevEdges.some((edge) =>
+        edge?.source_term === newRow.source_term &&
+        String(edge?.mapping_type || '').toLowerCase() === String(newRow.mapping_type || '').toLowerCase() &&
+        edge?.target_term === newRow.target_term
+      );
+      return {
+        ...(prev || { nodes: [] }),
+        edges: exists ? prevEdges : [...prevEdges, newRow],
+      };
+    });
+    setSelectedMappingEdgeIndex(visibleMappingEdges.findIndex((edge) => edge?.source_term === newRow.source_term && edge?.target_term === newRow.target_term));
+    setMapMessage({ kind: 'success', text: 'Bridge mapping added to the mapping table.' });
+  };
+
+  const handleEditMappingEdge = (edge) => {
+    if (!edge) return;
+    const sourceLabel = edge.source_label || edge.source_term || '';
+    const targetLabel = edge.target_label || edge.target_term || '';
+    const sourceKind = edge.source_type || 'Entity';
+    const targetKind = edge.target_ontology_type || 'Class';
+    if (BRIDGE_SOURCE_KINDS.includes(sourceKind)) {
+      setBridgeSourceKind(sourceKind);
+    }
+    if (BRIDGE_TARGET_KINDS.includes(targetKind)) {
+      setBridgeTargetKind(targetKind);
+    }
+    if (sourceLabel) {
+      setBridgeSourceTerm(sourceLabel);
+    }
+    if (targetLabel) {
+      setBridgeTargetTerm(targetLabel);
+    }
+    setSelectedMappingEdgeIndex(Math.max(0, visibleMappingEdges.findIndex((item) => item?.source_term === edge.source_term && item?.target_term === edge.target_term)));
+    setBridgeApproved(Boolean(edge.approvedByUser || edge.selected_for_apply));
+    setBridgeComment(edge.userComment || '');
+    setMapMessage({
+      kind: 'warn',
+      text: 'Selected mapping for edit. Adjust the bridge fields above, then save it again.',
+    });
+  };
+
+  const handleRemoveMappingEdge = (edge) => {
+    if (!edge) return;
+    setMappingEdges((prev) => (Array.isArray(prev) ? prev.filter((item) => !(
+      item?.source_term === edge.source_term &&
+      String(item?.mapping_type || '').toLowerCase() === String(edge.mapping_type || '').toLowerCase() &&
+      item?.target_term === edge.target_term
+    )) : []));
+    setData((prev) => {
+      const prevEdges = Array.isArray(prev?.edges) ? prev.edges : [];
+      return {
+        ...(prev || { nodes: [] }),
+        edges: prevEdges.filter((item) => !(
+          item?.source_term === edge.source_term &&
+          String(item?.mapping_type || '').toLowerCase() === String(edge.mapping_type || '').toLowerCase() &&
+          item?.target_term === edge.target_term
+        )),
+      };
+    });
+    setSelectedMappingEdgeIndex(-1);
+    setMapMessage({ kind: 'success', text: 'Mapping removed from the table.' });
   };
 
   const VIEWS = [
@@ -1705,9 +2100,6 @@ export default function OntologyMapper() {
                   const selectedOption = mappingOptions.find(opt => opt.value === selected);
                   if (selectedOption) {
                     setSelectedOntologyApi(selectedOption.prefix || selectedOption.ontologyKey || selectedOption.value || '');
-
-                    setSourceOntologyPrefix(selectedOption.prefix || '');
-                    setTargetOntologyPrefix('');
                   }
                   setFilter('');
                 }}
@@ -1815,173 +2207,353 @@ export default function OntologyMapper() {
             <VocabularyTable edges={vocabEdges} filter={filter} />
           )}
           {activeView === 'alignment' && (
+            <ErrorBoundary>
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '16px', minHeight: '400px' }}>
 
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '14px', alignItems: 'end' }}>
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: 700, color: C.textSec, display: 'block', marginBottom: '4px' }}>Source Ontology</label>
-                  <select
-                    value={sourceOntologyPrefix}
-                    onChange={(e) => setSourceOntologyPrefix(e.target.value)}
-                    style={{ padding: '7px 10px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface, minWidth: '240px' }}
-                  >
-                    <option value="">— Select source —</option>
-                    {mappingOptions.filter(o => o.prefix).map(o => (
-                      <option key={`src-${o.value}`} value={o.prefix}>{o.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: 700, color: C.textSec, display: 'block', marginBottom: '4px' }}>Target Ontology</label>
-                  <select
-                    value={targetOntologyPrefix}
-                    onChange={(e) => setTargetOntologyPrefix(e.target.value)}
-                    style={{ padding: '7px 10px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface, minWidth: '240px' }}
-                  >
-                    <option value="">— Select target —</option>
-                    {mappingOptions.filter(o => o.prefix && o.prefix !== sourceOntologyPrefix).map(o => (
-                      <option key={`tgt-${o.value}`} value={o.prefix}>{o.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: 700, color: C.textSec, display: 'block', marginBottom: '4px' }}>Source System</label>
-                  <select
-                    value={selectedMappingType}
-                    onChange={e => setSelectedMappingType(e.target.value)}
-                    style={{ padding: '7px 10px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface, minWidth: '160px' }}
-                    title="Drives /mappings/{source_format}"
-                  >
-                    {SOURCE_FORMATS.map((opt) => (
-                      <option key={opt.id} value={opt.id}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {(sourceOntologyPrefix && sourceOntologyDictionary?._error) || (targetOntologyPrefix && targetOntologyDictionary?._error) ? (
-                <div style={{ marginBottom: '14px', padding: '10px 12px', borderRadius: '6px', border: `1px solid ${C.red}`, background: '#FFE5E5', color: C.red, fontSize: '12px', fontWeight: 600 }}>
-                  Failed to load one or more data dictionaries for the selected source/target ontologies.
-                </div>
-              ) : null}
-
-              {/* ── Merge Ontologies ────────────────────────────────────────── */}
+              {/* ── Unify Instance with Ontology ─────────────────────────── */}
               <div style={{ marginBottom: '20px', border: `2px solid ${C.primary}`, borderRadius: '8px', padding: '16px', background: C.primaryLight }}>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>Unify Ontology Graph in Neo4j</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>Unify instance with ontology</div>
                 <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '14px' }}>
-                  This action updates Neo4j graph records. Use it only when you want to consolidate one ontology graph into another operational namespace after review.
+                  Pick one imported instance and one ontology. Each instance is aligned independently; if you load a second instance, map it in a separate pass against the same ontology anchor to compare the results cleanly.
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto', gap: '10px', alignItems: 'end' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  flexWrap: 'wrap',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  border: `1px solid ${C.border}`,
+                  background: C.surface,
+                  marginBottom: '12px',
+                }}>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Auto-map</span>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: C.primaryDark, background: C.primaryLight, border: `1px solid ${C.border}`, padding: '2px 8px', borderRadius: 999 }}>
+                      {bridgeCandidates.length} candidates
+                    </span>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, background: C.bg, border: `1px solid ${C.border}`, padding: '2px 8px', borderRadius: 999 }}>
+                      {visibleMappingEdges.length} mappings
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={handlePreviewMappings}
+                      disabled={mapBusy}
+                      style={{
+                        padding: '7px 12px',
+                        border: 'none',
+                        borderRadius: '6px',
+                        background: mapBusy ? C.textMuted : C.primary,
+                        color: '#fff',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: mapBusy ? 'not-allowed' : 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {mapBusy ? 'Working…' : 'Preview mappings'}
+                    </button>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
                   <div>
-                    <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>Source ontology</label>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>Instance</label>
                     <select
-                      value={mergeFromId}
-                      onChange={e => setMergeFromId(e.target.value)}
+                      value={selectedImportTaskId}
+                      onChange={e => setSelectedImportTaskId(e.target.value)}
                       style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }}
                     >
-                      <option value="">— Select source ontology —</option>
-                      {mappingOptions.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
+                      <option value="">{importTasksLoading ? 'Loading instances...' : 'Select imported instance'}</option>
+                      {importTasks.map((task) => (
+                        <option key={task.task_id} value={task.task_id}>
+                          {task.filename || task.task_id} {task.status ? `[${task.status}]` : ''}
+                        </option>
                       ))}
                     </select>
                   </div>
-                  <div style={{ fontSize: '20px', color: C.primary, paddingBottom: '2px', alignSelf: 'center' }}>→</div>
                   <div>
-                    <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>Destination ontology</label>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>Ontology</label>
                     <select
-                      value={mergeToId}
-                      onChange={e => setMergeToId(e.target.value)}
+                      value={selectedOntologyApi}
+                      onChange={e => setSelectedOntologyApi(e.target.value)}
                       style={{ width: '100%', padding: '8px 10px', fontSize: '13px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }}
                     >
-                      <option value="">— Select destination ontology —</option>
-                      {mappingOptions.filter(o => o.value !== mergeFromId).map(o => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
+                      <option value="">— Select ontology —</option>
+                      {mappingOptions.map(o => (
+                        <option key={o.value} value={o.prefix || o.value}>{o.label}</option>
                       ))}
                     </select>
                   </div>
                   <button
-                    onClick={handleMerge}
-                    disabled={mergeBusy || !mergeFromId || !mergeToId}
+                    onClick={handleUnifyInstanceWithOntology}
+                    disabled={unifyBusy || !selectedImportTaskId || !selectedOntologyApi}
                     style={{
                       padding: '8px 18px',
                       border: 'none',
                       borderRadius: '6px',
-                      background: mergeBusy || !mergeFromId || !mergeToId ? C.textMuted : C.primaryDark,
+                      background: unifyBusy || !selectedImportTaskId || !selectedOntologyApi ? C.textMuted : C.primaryDark,
                       color: '#fff',
                       fontSize: '13px',
                       fontWeight: 700,
-                      cursor: mergeBusy || !mergeFromId || !mergeToId ? 'not-allowed' : 'pointer',
+                      cursor: unifyBusy || !selectedImportTaskId || !selectedOntologyApi ? 'not-allowed' : 'pointer',
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {mergeBusy ? 'Unifying…' : 'Unify graph'}
+                    {unifyBusy ? 'Unifying…' : 'Unify'}
                   </button>
                 </div>
-                {mergeResult && (
+                <div style={{
+                  marginTop: '12px',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: `1px solid ${C.border}`,
+                  background: C.surface,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: '10px 16px',
+                }}>
+                  <div>
+                    <div style={{ fontSize: '10px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Instance metadata</div>
+                    <div style={{ fontSize: '12px', color: C.textPrimary, fontWeight: 700, marginTop: '3px' }}>
+                      {selectedImportTaskInfo?.filename || 'No instance selected'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
+                      Task {selectedImportTaskInfo?.task_id || 'n/a'} · {selectedImportTaskInfo?.file_type || 'unknown'} · {selectedImportTaskInfo?.status || 'unknown'}{selectedImportTaskInfo?.current_stage ? ` · ${selectedImportTaskInfo.current_stage}` : ''}
+                    </div>
+                    <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
+                      Manifest {selectedImportManifest ? 'available' : 'missing'} · source format {selectedMappingType || 'unknown'}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '10px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Ontology metadata</div>
+                    <div style={{ fontSize: '12px', color: C.textPrimary, fontWeight: 700, marginTop: '3px' }}>
+                      {selectedOntologyOption?.label || 'No ontology selected'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
+                      Prefix {selectedOntologyOption?.prefix || selectedOntologyApi || 'n/a'} · id {selectedOntologyOption?.value || 'n/a'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
+                      {selectedOntologyOption?.usageCount ? `Used ${selectedOntologyOption.usageCount} times in this workspace.` : 'Ontology selected for semantic alignment.'}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ marginTop: '8px', fontSize: '11px', color: C.textSec }}>
+                  {selectedImportTaskId ? `Auto-detected source format: ${selectedMappingType || 'unknown'}.` : 'Select an imported instance to continue.'}
+                </div>
+                {(importTasksError || unifyResult) && (
                   <div style={{
                     marginTop: '12px',
                     padding: '10px 14px',
                     borderRadius: '6px',
                     fontSize: '12px',
                     fontWeight: 600,
-                    background: mergeResult.kind === 'error' ? '#FFEBEE' : '#E8F5E9',
-                    color: mergeResult.kind === 'error' ? '#B42318' : '#067647',
-                    border: `1px solid ${mergeResult.kind === 'error' ? '#FFCDD2' : '#C8E6C9'}`,
+                    background: (unifyResult && unifyResult.kind === 'error') || importTasksError ? '#FFEBEE' : '#E8F5E9',
+                    color: (unifyResult && unifyResult.kind === 'error') || importTasksError ? '#B42318' : '#067647',
+                    border: `1px solid ${(unifyResult && unifyResult.kind === 'error') || importTasksError ? '#FFCDD2' : '#C8E6C9'}`,
                   }}>
-                    {mergeResult.text}
-                    {mergeResult.nodes !== undefined && ` (${mergeResult.nodes} nodes updated)`}
+                    {importTasksError || unifyResult?.text}
+                    {unifyResult?.nodes !== undefined && ` (${unifyResult.nodes} links applied)`}
+                    {selectedBridgeSummary && (
+                      <div style={{ marginTop: '8px', fontWeight: 500, fontSize: '11px', lineHeight: 1.5 }}>
+                        {[
+                          selectedBridgeSummary.high_confidence_candidates !== undefined ? `High confidence: ${selectedBridgeSummary.high_confidence_candidates}` : null,
+                          selectedBridgeSummary.ambiguous_candidates !== undefined ? `Ambiguous: ${selectedBridgeSummary.ambiguous_candidates}` : null,
+                          selectedBridgeSummary.generic_matches_filtered !== undefined ? `Filtered: ${selectedBridgeSummary.generic_matches_filtered}` : null,
+                          selectedBridgeSummary.metadata_signals_used !== undefined ? `Metadata signals: ${selectedBridgeSummary.metadata_signals_used}` : null,
+                          selectedBridgeSummary.applied_links !== undefined ? `Applied links: ${selectedBridgeSummary.applied_links}` : null,
+                        ].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {bridgeCandidates.length > 0 && (
+                  <div style={{ marginTop: '12px', border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'auto', maxHeight: '220px', background: C.surface }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: C.bg }}>
+                          <th style={TH({ minWidth: '200px' })}>Source Signal</th>
+                          <th style={TH({ minWidth: '200px' })}>Ontology Concept</th>
+                          <th style={TH({ width: '90px', textAlign: 'center' })}>Confidence</th>
+                          <th style={TH({ minWidth: '160px' })}>Evidence</th>
+                          <th style={TH({ width: '120px', textAlign: 'center' })}>Status</th>
+                          <th style={TH({ width: '140px', textAlign: 'center' })}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bridgeCandidates.map((candidate, index) => (
+                          <tr key={`${candidate.import_row_key || candidate.source_term || index}-${index}`} style={{ background: index % 2 === 0 ? C.surface : C.bg }}>
+                            <td style={TD()}>
+                              <div style={{ fontWeight: 600, fontSize: '12px' }}>{candidate.source_term || candidate.import_row_key || 'Imported entity'}</div>
+                              <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace' }}>{candidate.source_type || candidate.match_source || candidate.signal_type || 'metadata'}</div>
+                            </td>
+                            <td style={TD()}>
+                              <div style={{ fontWeight: 600, fontSize: '12px' }}>{candidate.ontology_term || 'Ontology concept'}</div>
+                              <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace' }}>{candidate.target_ontology_type || 'Class'}</div>
+                              <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace' }}>{candidate.ontology_class_element_id || 'n/a'}</div>
+                            </td>
+                            <td style={TD({ textAlign: 'center' })}>
+                              {(Number(candidate.confidence || 0) * 100).toFixed(0)}%
+                            </td>
+                            <td style={TD()}>
+                              <div style={{ fontSize: '10px', color: C.textSec, lineHeight: 1.4 }}>
+                                {(candidate.evidence || []).length > 0 ? (candidate.evidence || []).join(', ') : 'row metadata'}
+                              </div>
+                            </td>
+                            <td style={TD({ textAlign: 'center' })}>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '2px 8px',
+                                borderRadius: '10px',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                background: candidate.selected_for_apply ? '#E8F5E9' : candidate.ambiguous ? '#FFF8E1' : '#EEF2FF',
+                                color: candidate.selected_for_apply ? '#067647' : candidate.ambiguous ? '#9A6700' : '#3730A3',
+                                border: `1px solid ${candidate.selected_for_apply ? '#C8E6C9' : candidate.ambiguous ? '#FFE08A' : '#C7D2FE'}`,
+                              }}>
+                                {candidate.selected_for_apply ? 'Auto-applied' : candidate.ambiguous ? 'Review' : 'Suggested'}
+                              </span>
+                            </td>
+                            <td style={TD({ textAlign: 'center' })}>
+                              <div style={{ display: 'inline-flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddBridgeCandidate(candidate)}
+                                  style={{
+                                    padding: '4px 8px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${C.primary}`,
+                                    background: C.primaryLight,
+                                    color: C.primaryDark,
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Add
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditMappingEdge({
+                                    source_term: candidate.import_row_key || candidate.source_term || '',
+                                    source_label: candidate.source_label || candidate.source_term || '',
+                                    source_type: candidate.source_type || 'Entity',
+                                    target_term: candidate.ontology_class_element_id || candidate.ontology_term || '',
+                                    target_label: candidate.ontology_term || candidate.ontology_class_element_id || '',
+                                    target_ontology_type: candidate.target_ontology_type || 'Class',
+                                    mapping_type: candidate.selected_for_apply ? 'autoMap' : 'autoMapPreview',
+                                    approvedByUser: candidate.selected_for_apply,
+                                    userComment: candidate.user_comment || '',
+                                  })}
+                                  style={{
+                                    padding: '4px 8px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${C.borderDark}`,
+                                    background: C.surface,
+                                    color: C.textPrimary,
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
 
               {/* ── Entity Mapper ───────────────────────────────────────────── */}
-              <div style={{ fontSize: '13px', fontWeight: 600, color: C.textPrimary, marginBottom: '10px' }}>Map Individual Entity</div>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: C.textPrimary, marginBottom: '10px' }}>Semantic Bridge</div>
               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px', marginBottom: '16px', background: C.bg }}>
+                <div style={{ fontSize: '11px', color: C.textSec, marginBottom: '10px' }}>
+                  Active source instance: {selectedImportTaskInfo?.filename || 'None'} · additional instances can be bridged in separate runs to the same ontology.
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
                   <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source Entity</label>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source type</label>
                     <select
-                      value={sourceEntityType}
-                      onChange={(e) => setSourceEntityType(e.target.value)}
+                      value={bridgeSourceKind}
+                      onChange={(e) => setBridgeSourceKind(e.target.value)}
+                      style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface, marginBottom: '8px' }}
+                    >
+                      {BRIDGE_SOURCE_KINDS.map((kind) => (
+                        <option key={kind} value={kind}>{kind}</option>
+                      ))}
+                    </select>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source term</label>
+                    <select
+                      value={bridgeSourceTerm}
+                      onChange={(e) => setBridgeSourceTerm(e.target.value)}
                       style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }}
                     >
-                      <option key="select-src" value="">Select source entity</option>
+                      <option key="select-src" value="">Select source term</option>
                       {sourceEntityOptions.map((src) => (
                         <option key={src} value={src}>{src}</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Target Entity</label>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Target type</label>
                     <select
-                      value={targetEntityType}
-                      onChange={(e) => setTargetEntityType(e.target.value)}
+                      value={bridgeTargetKind}
+                      onChange={(e) => setBridgeTargetKind(e.target.value)}
+                      style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface, marginBottom: '8px' }}
+                    >
+                      {BRIDGE_TARGET_KINDS.map((kind) => (
+                        <option key={kind} value={kind}>
+                          {kind === 'Class' ? 'Ontology class' : kind.replace('Property', ' property')}
+                        </option>
+                      ))}
+                    </select>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Target term</label>
+                    <select
+                      value={bridgeTargetTerm}
+                      onChange={(e) => setBridgeTargetTerm(e.target.value)}
                       style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }}
                     >
-                      <option key="select-target" value="">Select target entity</option>
+                      <option key="select-target" value="">Select target term</option>
                       {targetEntityOptions.map((target) => (
                         <option key={target} value={target}>{target}</option>
                       ))}
                     </select>
                   </div>
-                  <button
-                    onClick={handleMapEntity}
-                    disabled={mapBusy}
-                    style={{
-                      padding: '8px 14px',
-                      border: 'none',
-                      borderRadius: '6px',
-                      background: mapBusy ? C.textMuted : C.primary,
-                      color: '#fff',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      cursor: mapBusy ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {mapBusy ? 'Mapping...' : 'Map Entity'}
-                  </button>
+                  <div style={{ display: 'grid', gap: '8px', minWidth: 180 }}>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block' }}>User note</label>
+                    <input
+                      value={bridgeComment}
+                      onChange={(e) => setBridgeComment(e.target.value)}
+                      placeholder="Optional note"
+                      style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }}
+                    />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: C.textSec }}>
+                      <input type="checkbox" checked={bridgeApproved} onChange={(e) => setBridgeApproved(e.target.checked)} />
+                      Approved
+                    </label>
+                    <button
+                      onClick={handleAddBridgeMapping}
+                      disabled={mapBusy}
+                      style={{
+                        padding: '8px 14px',
+                        border: 'none',
+                        borderRadius: '6px',
+                        background: mapBusy ? C.textMuted : C.primary,
+                        color: '#fff',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: mapBusy ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      Save bridge
+                    </button>
+                  </div>
                 </div>
                 {mapMessage && (
                   <div style={{
@@ -1996,21 +2568,42 @@ export default function OntologyMapper() {
 
               {/* ── Mapping Table ───────────────────────────────────────────── */}
               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'auto', maxHeight: '500px' }}>
+                {selectedMappingEdge && (
+                  <div style={{ padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: C.primaryLight, fontSize: '11px', color: C.primaryDark }}>
+                    Selected mapping: {selectedMappingEdge.source_label || selectedMappingEdge.source_term || 'source'} → {selectedMappingEdge.target_label || selectedMappingEdge.target_term || 'target'}
+                  </div>
+                )}
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: C.primary }}>
-                      <th style={TH({ minWidth: '200px' })}>Source Class</th>
+                      <th style={TH({ minWidth: '220px' })}>Source Term</th>
                       <th style={TH({ minWidth: '150px' })}>Mapping Type</th>
-                      <th style={TH({ minWidth: '200px' })}>Target Class</th>
+                      <th style={TH({ minWidth: '220px' })}>Target Term</th>
+                      <th style={TH({ width: '170px', textAlign: 'center' })}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(mappingEdges || []).filter(edge => String(edge.mapping_type || '').toLowerCase() !== 'property_of').length > 0 ? (
-                      (mappingEdges || []).filter(edge => String(edge.mapping_type || '').toLowerCase() !== 'property_of').map((edge, i) => (
-                        <tr key={`${edge.source_term}-${edge.mapping_type}-${edge.target_term}`} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
+                    {visibleMappingEdges.length > 0 ? (
+                      visibleMappingEdges.map((edge, i) => (
+                        <tr
+                          key={`${edge.source_term}-${edge.mapping_type}-${edge.target_term}`}
+                          onClick={() => setSelectedMappingEdgeIndex(i)}
+                          style={{
+                            background: selectedMappingEdgeIndex === i ? C.primaryLight : (i % 2 === 0 ? C.surface : C.bg),
+                            cursor: 'pointer',
+                          }}
+                        >
                           <td style={TD()}>
-                            <div style={{ fontWeight: 600, fontSize: '12px' }}>{edge.source_label || edge.source_term.split(':').pop()}</div>
-                            <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace' }}>{edge.source_term}</div>
+                            <div style={{ fontWeight: 600, fontSize: '12px' }}>{edge.source_label || edge.source_term || edge.source_instance_label || 'Imported entity'}</div>
+                            <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
+                              {edge.source_instance_label || 'Imported instance'}{edge.source_instance_id ? ` · ${edge.source_instance_id}` : ''}
+                            </div>
+                            <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
+                              term: {edge.source_term || 'n/a'}
+                            </div>
+                            <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
+                              type: {edge.source_type || 'Entity'}
+                            </div>
                           </td>
                           <td style={TD()}>
                             <span style={{
@@ -2022,18 +2615,70 @@ export default function OntologyMapper() {
                             }}>{edge.mapping_type}</span>
                           </td>
                           <td style={TD()}>
-                            <div style={{ fontWeight: 600, fontSize: '12px' }}>{edge.target_label || edge.target_term.split(':').pop()}</div>
-                            <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace' }}>{edge.target_term}</div>
+                            <div style={{ fontWeight: 600, fontSize: '12px' }}>{edge.target_label || edge.target_term || 'Ontology class'}</div>
+                            <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
+                              {edge.target_term || 'n/a'}
+                            </div>
+                            <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
+                              type: {edge.target_ontology_type || 'Class'}
+                            </div>
+                          </td>
+                          <td style={TD({ textAlign: 'center' })}>
+                            <div style={{ display: 'inline-flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleEditMappingEdge(edge);
+                                }}
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  border: `1px solid ${C.borderDark}`,
+                                  background: C.surface,
+                                  color: C.textPrimary,
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleRemoveMappingEdge(edge);
+                                }}
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  border: `1px solid ${C.red}`,
+                                  background: '#FFF5F5',
+                                  color: C.red,
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
                     ) : (
-                      <tr><td colSpan={3} style={{ ...TD(), textAlign: 'center', color: C.textMuted, padding: '24px' }}>No entity-to-entity mappings available for this ontology.</td></tr>
+                      <tr>
+                        <td colSpan={4} style={{ ...TD(), textAlign: 'center', color: C.textMuted, padding: '24px' }}>
+                          No mappings discovered yet. Pick an imported instance and ontology, then preview suggestions or save a bridge mapping.
+                        </td>
+                      </tr>
                     )}
                   </tbody>
                 </table>
               </div>
             </div>
+            </ErrorBoundary>
           )}
         </>
       )}

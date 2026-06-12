@@ -460,7 +460,6 @@ async def get_generic_mappings(
                    coalesce(
                      a.source_format,
                      a.file_type,
-                     a.source_file_type,
                      a.source_format_detected,
                      ''
                    )

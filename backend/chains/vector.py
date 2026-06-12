@@ -152,6 +152,48 @@ def _require_datasheet_chain():
         )
 
 
+def _match_docs_by_labels(docs: List[Document], labels: Optional[List[str]]) -> List[Document]:
+    wanted = {str(label).strip().lower() for label in (labels or []) if str(label).strip()}
+    if not wanted or not docs:
+        return docs
+
+    node_ids = [
+        str(doc.metadata.get("node_id")).strip()
+        for doc in docs
+        if getattr(doc, "metadata", None) and doc.metadata.get("node_id") not in (None, "")
+    ]
+    if not node_ids:
+        return docs
+
+    try:
+        rows = graph.query(
+            """
+            UNWIND $node_ids AS node_id
+            MATCH (n)
+            WHERE toString(n.node_id) = node_id
+            RETURN toString(n.node_id) AS node_id, labels(n) AS labels
+            """,
+            params={"node_ids": node_ids},
+        )
+    except Exception as exc:
+        logger.warning("Label lookup for GraphRAG docs failed: %s", exc)
+        return docs
+
+    labels_by_node_id = {
+        str(row.get("node_id")): {str(label).lower() for label in (row.get("labels") or [])}
+        for row in rows
+    }
+
+    filtered = []
+    for doc in docs:
+        node_id = str(doc.metadata.get("node_id")).strip() if getattr(doc, "metadata", None) else ""
+        if not node_id:
+            continue
+        if labels_by_node_id.get(node_id, set()) & wanted:
+            filtered.append(doc)
+    return filtered
+
+
 
 def deep_vector_search(input: str):
     _require_general_chain()
@@ -212,7 +254,16 @@ def get_data_info(query: str, labels: Optional[List[str]] = None, k: int = 5) ->
         Dict containing the response with source documents
     """
     _require_datasheet_chain()
-    result = data_retrieval_chain.invoke({"input": query})
+    safe_k = max(1, min(int(k or 5), 25))
+    retriever = datasheet_vector.as_retriever(search_kwargs={"k": safe_k}) if datasheet_vector else None
+    if retriever is None:
+        result = data_retrieval_chain.invoke({"input": query})
+    else:
+        docs = retriever.invoke(query)
+        if labels:
+            docs = _match_docs_by_labels(docs, labels)
+        answer = data_qa_chain.invoke({"input": query, "context": docs})
+        result = {"answer": answer, "context": docs}
     return result
 
 
@@ -230,5 +281,14 @@ def get_node_info(query: str, labels: Optional[List[str]] = None, k: int = 5) ->
         Dict containing the response with source documents
     """
     _require_general_chain()
-    result = general_retrieval_chain.invoke({"input": query})
+    safe_k = max(1, min(int(k or 5), 25))
+    retriever = general_vector.as_retriever(search_kwargs={"k": safe_k}) if general_vector else None
+    if retriever is None:
+        result = general_retrieval_chain.invoke({"input": query})
+    else:
+        docs = retriever.invoke(query)
+        if labels:
+            docs = _match_docs_by_labels(docs, labels)
+        answer = general_qa_chain.invoke({"input": query, "context": docs})
+        result = {"answer": answer, "context": docs}
     return result

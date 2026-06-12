@@ -777,6 +777,38 @@ export default function DataImportPipeline() {
     }
   };
 
+  const runNeo4jOntologyMerge = async () => {
+    if (!workflowOntologyId) {
+      setError('Select a source ontology before merging.');
+      return;
+    }
+    if (!workflowTargetOntologyId) {
+      setError('Select a target ontology before merging.');
+      return;
+    }
+    if (workflowTargetOntologyId === workflowOntologyId) {
+      setError('Choose two different ontologies for merge.');
+      return;
+    }
+
+    setWorkflowLoading(true);
+    setWorkflowRun(null);
+    setError(null);
+    try {
+      const response = await API_METHODS.ontology.merge(workflowOntologyId, workflowTargetOntologyId, { dry_run: false });
+      setWorkflowRun({
+        workflow_id: 'ontology.merge.commit',
+        status: 'completed',
+        result: response.data || response,
+      });
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.response?.data?.error || err.message;
+      setError(String(detail));
+    } finally {
+      setWorkflowLoading(false);
+    }
+  };
+
   const commitImport = async (taskId) => {
     // ── Pre-commit check ────────────────────────────────────────────────────
     // Show a quick checking state in the modal before closing it
@@ -1421,23 +1453,42 @@ export default function DataImportPipeline() {
                 Apply approved links to Neo4j
               </label>
             )}
-            <button
-              onClick={runSelectedWorkflow}
-              disabled={workflowLoading}
-              style={{
-                marginLeft: 'auto',
-                padding: '5px 10px',
-                background: workflowLoading ? C.textMuted : C.primary,
-                color: '#fff',
-                border: 'none',
-                borderRadius: '3px',
-                fontSize: '10px',
-                fontWeight: '700',
-                cursor: workflowLoading ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {workflowLoading ? 'Running...' : 'Run workflow'}
-            </button>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              <button
+                onClick={runSelectedWorkflow}
+                disabled={workflowLoading}
+                style={{
+                  padding: '5px 10px',
+                  background: workflowLoading ? C.textMuted : C.primary,
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '3px',
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  cursor: workflowLoading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {workflowLoading ? 'Running...' : (selectedWorkflow === 'ontology.merge' ? 'Generate merge plan' : 'Run workflow')}
+              </button>
+              {selectedWorkflow === 'ontology.merge' && (
+                <button
+                  onClick={runNeo4jOntologyMerge}
+                  disabled={workflowLoading}
+                  style={{
+                    padding: '5px 10px',
+                    background: workflowLoading ? C.textMuted : C.accent,
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '3px',
+                    fontSize: '10px',
+                    fontWeight: '700',
+                    cursor: workflowLoading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {workflowLoading ? 'Running...' : 'Merge into Neo4j'}
+                </button>
+              )}
+            </div>
             {workflowRun?.artifact_manifest && (
               <div style={{ flexBasis: '100%', fontSize: '10px', color: C.textSec, lineHeight: 1.45 }}>
                 <div>
@@ -1476,8 +1527,9 @@ export default function DataImportPipeline() {
                   </div>
                 )}
                 {selectedWorkflow === 'ontology.merge' && (
-                  <div style={{ marginTop: '6px', color: C.textPrimary }}>
-                    Semantic merge generates a review plan only. It does not mutate Neo4j data from this workflow surface.
+                  <div style={{ marginTop: '6px', color: C.textPrimary, lineHeight: 1.45 }}>
+                    Use <strong>Generate merge plan</strong> to review ontology gaps, overlaps, and conflicts first.
+                    Use <strong>Merge into Neo4j</strong> when you want to commit the ontology prefix alignment in the graph.
                   </div>
                 )}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '4px' }}>
@@ -1506,6 +1558,22 @@ export default function DataImportPipeline() {
                     </a>
                   ))}
                 </div>
+              </div>
+            )}
+            {selectedWorkflow === 'ontology.merge' && workflowRun?.result && !workflowRun?.artifact_manifest && (
+              <div style={{ flexBasis: '100%', fontSize: '10px', color: C.textSec, lineHeight: 1.45 }}>
+                <div style={{ color: C.textPrimary }}>
+                  {workflowRun.result.message || 'Ontology merge completed.'}
+                </div>
+                <div style={{ marginTop: '4px' }}>
+                  Candidate nodes: {workflowRun.result.candidate_nodes ?? 0} | Updated nodes: {workflowRun.result.nodes_updated ?? 0}
+                </div>
+                {workflowRun.result.index_audit && (
+                  <div style={{ marginTop: '4px' }}>
+                    Index preflight: {workflowRun.result.index_audit.ensured ? 'ensured' : 'skipped'}
+                    {workflowRun.result.index_audit.warning ? ` (${workflowRun.result.index_audit.warning})` : ''}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1948,8 +2016,8 @@ export default function DataImportPipeline() {
       }}>
         <strong style={{ color: C.textPrimary }}>Workflow guidance:</strong>{' '}
         {!canRunSelectedWorkflow && `${fallbackWorkflow.title} is visible for planning, but backend service wiring is still required before execution.`}
-        {canRunSelectedWorkflow && selectedWorkflow === 'instance.link' && 'Upload one or more files first, then choose an ontology above to generate and apply semantic links from imported instances to ontology classes.'}
-        {canRunSelectedWorkflow && selectedWorkflow === 'ontology.merge' && 'Choose a source ontology and a different target ontology above to generate a merge plan. This workflow writes review artifacts only.'}
+        {canRunSelectedWorkflow && selectedWorkflow === 'instance.link' && 'Upload one or more files first, then choose an ontology above. Each imported instance is aligned independently through Semantic Bridge; use the same ontology anchor if you want to compare multiple instances against the same semantic frame.'}
+        {canRunSelectedWorkflow && selectedWorkflow === 'ontology.merge' && 'Choose a source ontology and a different target ontology above to generate a merge plan, or use the direct merge action to commit the alignment into Neo4j.'}
         {canRunSelectedWorkflow && (selectedWorkflow === 'ontology.validate' || selectedWorkflow === 'dictionary.generate' || selectedWorkflow === 'taxonomy.generate' || selectedWorkflow === 'graph.chunk') && 'Choose an ontology above to generate the review artifact for this workflow. It does not write to Neo4j directly.'}
         {canRunSelectedWorkflow && selectedWorkflow === 'ontology.create' && mappingFileTypeContext !== 'express' && 'Schema and ontology files are registered through metadata capture. EXPRESS/XSD-style schemas create ontology structure; they do not create STEP instance graphs.'}
         {canRunSelectedWorkflow && mappingFileTypeContext === 'express' && 'EXPRESS files create ontology/schema structure from ISO 10303 definitions. Use STEP/STP/STPX when you need product instance data.'}

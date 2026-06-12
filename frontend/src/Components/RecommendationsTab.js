@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import {
   Zap, Search, Factory,
@@ -7,7 +7,6 @@ import {
   Info,
 } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
-import { useOntologies } from '../contexts/OntologyContext';
 
 // ============================================================
 // Corporate Design Tokens — TCS Blue / Infineon Brand System
@@ -88,13 +87,17 @@ const FIELD_CONTROL = {
   width: '100%',
 };
 
-const STATUS_PANEL = {
-  ...CARD,
-  padding: '12px 16px',
+const COMPACT_ALERT = {
+  background: C.surface,
+  border: `1px solid ${C.borderDark}`,
+  borderLeft: `3px solid ${C.amber}`,
+  borderRadius: 6,
+  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+  padding: '8px 10px',
+  marginBottom: '10px',
   display: 'flex',
   alignItems: 'flex-start',
-  gap: 10,
-  borderRadius: 8,
+  gap: 8,
 };
 
 // ————— Shared UI components ———————————————————————————
@@ -138,7 +141,7 @@ const SectionHeader = ({ icon: Icon, label, count, color = C.primary }) => (
     marginTop: '20px', display: 'flex', alignItems: 'center', gap: '8px',
     textTransform: 'uppercase', letterSpacing: '0.05em',
   }}>
-    <Icon size={13} color={color} strokeWidth={2.2} />
+    <Icon size={11} color={color} strokeWidth={2.2} />
     <span>{label}</span>
     {count !== undefined && (
       <span style={{
@@ -399,7 +402,6 @@ const AIInsightBanner = ({ service, data }) => {
 // Main Component
 // ============================================================
 const RecommendationsTab = () => {
-  const { ontologies: workspaceOntologies } = useOntologies();
   const [activeService, setActiveService] = useState(null);
   const [inputValue, setInputValue] = useState('');
   const [topN, setTopN] = useState(10);
@@ -408,30 +410,6 @@ const RecommendationsTab = () => {
   const [healthLoading, setHealthLoading] = useState(true);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-  const [ontologyScope, setOntologyScope] = useState([]);
-
-  const scopeOptions = useMemo(() => {
-    const seen = new Set();
-    return workspaceOntologies.reduce((acc, ont) => {
-      const ontologyId = ont.ontology_id || ont.id || ont.value || ont.prefix || ont.ontology_prefix;
-      if (!ontologyId || seen.has(String(ontologyId))) return acc;
-      seen.add(String(ontologyId));
-      const label = ont.label || ont.name || ont.raw?.ontology_name || ont.prefix || ontologyId;
-      const prefix = ont.prefix || ont.ontology_prefix || ont.raw?.ontology_prefix || '';
-      const namespace = ont.namespace || ont.source_namespace || ont.raw?.source_namespace || '';
-      const display = prefix ? `[${prefix}] ${label}` : label;
-      acc.push({
-        value: String(ontologyId),
-        label: namespace ? `${display} · ${namespace}` : display,
-      });
-      return acc;
-    }, []);
-  }, [workspaceOntologies]);
-
-  const scopeSelection = useMemo(() => {
-    if (!ontologyScope.length) return 'ALL';
-    return ontologyScope;
-  }, [ontologyScope]);
 
   const recommendationReady = health?.readiness?.scenario_ready !== false;
   const readinessMessage = health?.readiness?.message || (
@@ -486,14 +464,13 @@ const RecommendationsTab = () => {
     if (!inputValue.trim() || !activeService) return;
     setLoading(true); setError(''); setResult(null);
     try {
-      const scope = ontologyScope.length ? { ontology_ids: ontologyScope } : {};
       let resp;
       if (activeService === 'change-impact') {
-        resp = await API_METHODS.recommendations.changeImpact(inputValue.trim(), scope);
+        resp = await API_METHODS.recommendations.changeImpact(inputValue.trim(), {});
       } else if (activeService === 'similar-parts') {
-        resp = await API_METHODS.recommendations.similarParts(inputValue.trim(), topN, scope);
+        resp = await API_METHODS.recommendations.similarParts(inputValue.trim(), topN, {});
       } else if (activeService === 'manufacturing') {
-        resp = await API_METHODS.recommendations.manufacturing(inputValue.trim(), scope);
+        resp = await API_METHODS.recommendations.manufacturing(inputValue.trim(), {});
       }
       setResult(resp.data);
     } catch (err) {
@@ -501,7 +478,7 @@ const RecommendationsTab = () => {
     } finally {
       setLoading(false);
     }
-  }, [activeService, inputValue, topN, ontologyScope]);
+  }, [activeService, inputValue, topN]);
 
   const handleKeyDown = (e) => { if (e.key === 'Enter') handleAnalyse(); };
 
@@ -553,18 +530,16 @@ const RecommendationsTab = () => {
 
       {!recommendationReady && (
         <div style={{
-          ...STATUS_PANEL,
+          ...COMPACT_ALERT,
           background: C.amberLight,
-          border: `1px solid ${C.amber}40`,
-          borderLeft: `4px solid ${C.amber}`,
           color: C.textPrimary,
         }}>
-          <AlertTriangle size={14} color={C.amber} strokeWidth={2.2} style={{ marginTop: 2, flexShrink: 0 }} />
+          <AlertTriangle size={10} color={C.amber} strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary, marginBottom: 4 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: C.textPrimary, marginBottom: 2 }}>
               Recommendation scenarios need instance data
             </div>
-            <div style={{ fontSize: 12, lineHeight: 1.55, color: C.textSec }}>
+            <div style={{ fontSize: 11, lineHeight: 1.35, color: C.textSec }}>
               {readinessMessage}
               {health?.readiness && (
                 <span>
@@ -604,21 +579,6 @@ const RecommendationsTab = () => {
                 onFocus={e => { e.target.style.borderColor = C.primary; e.target.style.boxShadow = `0 0 0 3px ${C.primaryLight}`; }}
                 onBlur={e => { e.target.style.borderColor = C.borderDark; e.target.style.boxShadow = 'none'; }}
               />
-            </label>
-
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-              <span style={FIELD_LABEL}>Ontology scope</span>
-              <select
-                value={ontologyScope[0] || 'ALL'}
-                onChange={(e) => setOntologyScope(e.target.value === 'ALL' ? [] : [e.target.value])}
-                style={FIELD_CONTROL}
-                title="Limit recommendations to one registered ontology, or use all workspace ontologies"
-              >
-                <option value="ALL">All workspace ontologies</option>
-                {scopeOptions.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
             </label>
 
             {activeService === 'similar-parts' && (
@@ -661,68 +621,14 @@ const RecommendationsTab = () => {
             </button>
           </div>
 
-          {scopeOptions.length > 0 && (
-            <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-              <span style={{ fontSize: 12, color: C.textSec, fontWeight: 700 }}>Available scopes</span>
-              <button
-                type="button"
-                onClick={() => setOntologyScope([])}
-                style={{
-                  padding: '5px 9px',
-                  borderRadius: '999px',
-                  border: `1px solid ${ontologyScope.length === 0 ? C.primary : C.borderDark}`,
-                  background: ontologyScope.length === 0 ? C.primaryLight : '#fff',
-                  color: ontologyScope.length === 0 ? C.primary : C.textPrimary,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                All
-              </button>
-              {scopeOptions.map(opt => {
-                const selected = ontologyScope.includes(opt.value);
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setOntologyScope(prev => selected ? prev.filter(v => v !== opt.value) : [...prev, opt.value])}
-                    style={{
-                      padding: '5px 9px',
-                      borderRadius: '999px',
-                      border: `1px solid ${selected ? C.primary : C.borderDark}`,
-                      background: selected ? C.primaryLight : '#fff',
-                      color: selected ? C.primary : C.textPrimary,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      maxWidth: 260,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                    title={opt.label}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {scopeSelection !== 'ALL' && (
-            <div style={{ marginTop: 8, fontSize: 11, color: C.textSec }}>
-              Selected: {Array.isArray(scopeSelection) ? scopeSelection.length : 0} ontology scope{Array.isArray(scopeSelection) && scopeSelection.length === 1 ? '' : 's'}
-            </div>
-          )}
         </div>
       )}
 
       {/* Error */}
       {error && (
-        <div style={{ ...CARD, background: C.redLight, border: `1px solid ${C.red}30`, borderLeft: `4px solid ${C.red}`, color: C.red }}>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <AlertTriangle size={15} strokeWidth={2.5} />
+        <div style={{ ...COMPACT_ALERT, background: C.redLight, borderLeftColor: C.red, color: C.red }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <AlertTriangle size={10} strokeWidth={2.5} />
             <strong>Error:</strong> {error}
           </div>
         </div>

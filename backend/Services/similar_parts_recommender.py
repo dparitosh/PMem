@@ -30,9 +30,11 @@ class SimilarPartsRecommender:
     # Public API
     # ------------------------------------------------------------------
 
-    def recommend(self, part_name: str, top_n: int = 10, scope: dict | None = None) -> dict:
+    def recommend(self, part_name: str, top_n: int = 10, scope: dict | None = None, node_id: str | None = None) -> dict:
         """Return the top-N most similar parts to *part_name*."""
-        source = self._find_source_part(part_name, scope=scope)
+        source = self._find_source_part_by_id(str(node_id), scope=scope) if node_id else None
+        if not source:
+            source = self._find_source_part(part_name, scope=scope)
         if not source:
             return {
                 "source_part": None,
@@ -83,6 +85,34 @@ class SimilarPartsRecommender:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _find_source_part_by_id(self, node_id: str, scope: dict | None = None) -> dict | None:
+        if not node_id:
+            return None
+        scope_clause, scope_params = cypher_scope_filter("p", scope)
+        rows = self._graph.query(
+            """
+            MATCH (p:Individual)
+            WHERE elementId(p) = $node_id
+            """ + scope_clause + """
+            OPTIONAL MATCH (p)-[:INSTANCE_OF]->(cls:OntologyClass)
+            RETURN p.name AS name, p.sourceTag AS source_tag,
+                   p.rflpLayer AS rflp_layer, elementId(p) AS eid,
+                   cls.name AS class_name
+            LIMIT 1
+            """,
+            params={"node_id": node_id, **scope_params},
+        )
+        if not rows:
+            return None
+        row = rows[0]
+        return {
+            "name": row.get("name"),
+            "source_tag": row.get("source_tag"),
+            "rflp_layer": row.get("rflp_layer"),
+            "eid": row.get("eid"),
+            "class_name": row.get("class_name"),
+        }
 
     def _find_source_part(self, name: str, scope: dict | None = None) -> dict | None:
         scope_clause, scope_params = cypher_scope_filter("p", scope)

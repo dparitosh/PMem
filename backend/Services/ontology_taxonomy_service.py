@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from xml.etree import ElementTree as ET
@@ -63,6 +64,20 @@ def _definition(graph: Graph, uri: URIRef) -> str:
 
 
 class OntologyTaxonomyService:
+    @staticmethod
+    def _cache_key_for_path(file_path: Path) -> Tuple[str, float, int]:
+        path = file_path.resolve()
+        try:
+            stat = path.stat()
+            return (str(path), float(stat.st_mtime), int(stat.st_size))
+        except Exception:
+            return (str(path), 0.0, 0)
+
+    @staticmethod
+    @lru_cache(maxsize=32)
+    def _cached_reasoning(file_path_str: str, mtime: float, size: int, prefix: str) -> Dict[str, Any]:
+        return OwlreadyOntologyRuntime.inspect_ontology(Path(file_path_str), prefix)
+
     @staticmethod
     def _semantic_context(ontology_identifier: str) -> Dict[str, Any]:
         meta = OntologyTaxonomyService._resolve_metadata(ontology_identifier)
@@ -314,7 +329,8 @@ class OntologyTaxonomyService:
         """Return Owlready2-backed ontology semantics for the registered ontology."""
         context = cls._semantic_context(ontology_identifier)
         meta = context["meta"]
-        result = OwlreadyOntologyRuntime.inspect_ontology(context["file_path"], context["prefix"])
+        cache_key = cls._cache_key_for_path(context["file_path"])
+        result = dict(cls._cached_reasoning(cache_key[0], cache_key[1], cache_key[2], context["prefix"]))
         result.update({
             "ontology_id": meta.get("ontology_id"),
             "ontology_name": meta.get("ontology_name"),

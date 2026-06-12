@@ -37,10 +37,16 @@ class ChangeImpactRecommender:
 
         # Step 1 — resolve the change entity
         change_entity = None
-        if change_name:
+        node_id = (scope or {}).get("node_id") or (scope or {}).get("element_id") or ""
+        if node_id:
+            change_entity = self._find_change_entity_by_id(str(node_id), scope=scope)
+        if not change_entity and change_name:
             change_entity = self._find_change_entity(change_name, scope=scope)
         if not change_entity and part_name:
-            change_entity = self._find_part_as_change_proxy(part_name, scope=scope)
+            if node_id:
+                change_entity = self._find_part_by_id(str(node_id), scope=scope)
+            if not change_entity:
+                change_entity = self._find_part_as_change_proxy(part_name, scope=scope)
         if not change_entity:
             return {
                 "change_entity": None,
@@ -90,6 +96,50 @@ class ChangeImpactRecommender:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _find_change_entity_by_id(self, node_id: str, scope: dict | None = None) -> dict | None:
+        if not node_id:
+            return None
+        scope_clause, scope_params = cypher_scope_filter("cr", scope)
+        rows = self._graph.query(
+            """
+            MATCH (cr:Individual)
+            WHERE elementId(cr) = $node_id
+              AND cr.sourceTag IN ['ChangeNotice', 'ChangeNoticeRevision',
+                                   'ChangeRequestRevision', 'ChangeRequest']
+            """ + scope_clause + """
+            RETURN cr.name AS name, cr.sourceTag AS source_tag,
+                   cr.revision AS revision, elementId(cr) AS eid
+            LIMIT 1
+            """,
+            params={"node_id": node_id, **scope_params},
+        )
+        if not rows:
+            return None
+        row = rows[0]
+        return {"name": row["name"], "source_tag": row["source_tag"], "revision": row.get("revision"), "elementId": row["eid"]}
+
+    def _find_part_by_id(self, node_id: str, scope: dict | None = None) -> dict | None:
+        if not node_id:
+            return None
+        scope_clause, scope_params = cypher_scope_filter("p", scope)
+        rows = self._graph.query(
+            """
+            MATCH (p:Individual)
+            WHERE elementId(p) = $node_id
+            """ + scope_clause + """
+            OPTIONAL MATCH (p)-[:INSTANCE_OF]->(cls:OntologyClass)
+            RETURN p.name AS name, p.sourceTag AS source_tag,
+                   p.revision AS revision, elementId(p) AS eid,
+                   cls.name AS class_name
+            LIMIT 1
+            """,
+            params={"node_id": node_id, **scope_params},
+        )
+        if not rows:
+            return None
+        row = rows[0]
+        return {"name": row["name"], "source_tag": row["source_tag"], "revision": row.get("revision"), "elementId": row["eid"], "class_name": row.get("class_name")}
 
     def _find_change_entity(self, name: str, scope: dict | None = None) -> dict | None:
         scope_clause, scope_params = cypher_scope_filter("cr", scope)

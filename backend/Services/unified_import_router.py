@@ -384,6 +384,20 @@ async def merge_ontologies(body: dict):
     to_prefix = all_onts[to_id].get("prefix", to_id)
     to_name = all_onts[to_id].get("ontology_name", to_id)
 
+    # Make sure ontology/search indexes exist before any merge mutation runs.
+    index_audit = {"ensured": False, "warning": None}
+    try:
+        try:
+            from Services.graph_embeddings import ensure_indexes_standalone as _ensure_indexes
+        except ModuleNotFoundError:
+            from ..Services.graph_embeddings import ensure_indexes_standalone as _ensure_indexes
+        if _ensure_indexes is not None:
+            _ensure_indexes()
+            index_audit["ensured"] = True
+    except Exception as idx_err:
+        logger.warning("Ontology merge index preflight skipped: %s", idx_err)
+        index_audit["warning"] = f"{type(idx_err).__name__}: {idx_err}"
+
     # Neo4j: count candidates before mutation (used for dry-run and post-merge checks)
     try:
         try:
@@ -407,6 +421,7 @@ async def merge_ontologies(body: dict):
                 "candidate_nodes": candidate_nodes,
                 "from_ontology_id": from_id,
                 "to_ontology_id": to_id,
+                "index_audit": index_audit,
             }
 
         # Update ontology_prefix property
@@ -454,6 +469,7 @@ async def merge_ontologies(body: dict):
         "candidate_nodes": candidate_nodes,
         "from_ontology_id": from_id,
         "to_ontology_id": to_id,
+        "index_audit": index_audit,
     }
 
     if consistency_warning:

@@ -412,7 +412,7 @@ class SecurityHeadersMiddleware:
                 # Add security headers
                 security_headers = [
                     # Content Security Policy - prevent XSS
-                    (b"content-security-policy", b"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:"),
+                    (b"content-security-policy", b"default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; connect-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com;"),
                     # Prevent clickjacking
                     (b"x-frame-options", b"SAMEORIGIN"),
                     # Prevent MIME sniffing
@@ -1855,39 +1855,37 @@ def filter_graph_nodes(request: TextSearchRequest):
           WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
             AND (
               any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($input))
-              OR any(key IN keys(n) WHERE toLower(coalesce(toStringOrNull(n[key]), '')) CONTAINS toLower($input))
+              OR toLower(coalesce(n.name, n.title, n.code, n.label, '')) CONTAINS toLower($input)
               OR toLower(coalesce(toString(properties(n)), '')) CONTAINS toLower($input)
             )
           RETURN n
-          LIMIT 120
+          LIMIT 60
         UNION
           MATCH (a)-[matched_rel]-(b)
           WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
             AND (
               toLower(type(matched_rel)) CONTAINS toLower($input)
-              OR any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS toLower($input))
               OR toLower(coalesce(toString(properties(matched_rel)), '')) CONTAINS toLower($input)
             )
           RETURN a AS n
-          LIMIT 120
+          LIMIT 60
         UNION
           MATCH (a)-[matched_rel]-(b)
           WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
             AND (
               toLower(type(matched_rel)) CONTAINS toLower($input)
-              OR any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS toLower($input))
               OR toLower(coalesce(toString(properties(matched_rel)), '')) CONTAINS toLower($input)
             )
           RETURN b AS n
-          LIMIT 120
+          LIMIT 60
         }
-        WITH collect(DISTINCT n)[..160] AS matchedNodes
+        WITH collect(DISTINCT n)[..90] AS matchedNodes
         UNWIND matchedNodes AS n
         OPTIONAL MATCH (n)-[r]-(m)
         WHERE r IS NULL
            OR m IN matchedNodes
            OR toLower(type(r)) CONTAINS toLower($input)
-           OR any(key IN keys(r) WHERE toLower(coalesce(toStringOrNull(r[key]), '')) CONTAINS toLower($input))
+           OR toLower(coalesce(toString(properties(r)), '')) CONTAINS toLower($input)
         RETURN
           {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
           CASE WHEN r IS NOT NULL THEN {
@@ -1981,8 +1979,8 @@ class MultiNameSearchRequest(BaseModel):
 def filter_graph_nodes_multi(request: MultiNameSearchRequest):
     """Fetch a set of named nodes and any relationships between them.
     Used by the 'View in Graph' feature to load recommendation result nodes."""
-    # Cap at 100 names to avoid overloading Neo4j
-    names = [n.strip() for n in request.names if n and n.strip()][:100]
+    # Cap at 50 names to avoid overloading Neo4j
+    names = [n.strip() for n in request.names if n and n.strip()][:50]
     if not names:
         return {"results": []}
 
@@ -2026,21 +2024,15 @@ def traverse_node(node_id: str = Path(..., description="Neo4j internal node ID")
 WHERE elementId(n) = $node_id
 
 OPTIONAL MATCH (n)-[r1]-(m1)
-WITH n, collect(DISTINCT {r: r1, m: m1})[..50] AS level1
+WITH n, collect(DISTINCT {r: r1, m: m1})[..40] AS level1
 
 UNWIND level1 AS l1
 WITH n, level1, l1.m AS l1_node
 OPTIONAL MATCH (l1_node)-[r2]-(m2)
 WHERE elementId(m2) <> elementId(n)
-WITH n, level1, collect(DISTINCT {r: r2, m: m2})[..30] AS level2
+WITH n, level1, collect(DISTINCT {r: r2, m: m2})[..24] AS level2
 
-UNWIND level2 AS l2
-WITH n, level1, level2, l2.m AS l2_node
-OPTIONAL MATCH (l2_node)-[r3]-(m3)
-WHERE elementId(m3) <> elementId(n)
-WITH n, level1, level2, collect(DISTINCT {r: r3, m: m3})[..20] AS level3
-
-WITH n, level1 + level2 + level3 AS all_rels
+WITH n, level1 + level2 AS all_rels
 UNWIND all_rels AS rel_data
 WITH n, rel_data.r AS r, rel_data.m AS m
 WHERE r IS NOT NULL AND m IS NOT NULL
@@ -2219,7 +2211,7 @@ def ap242_search(request: TextSearchRequest):
     WHERE val IS NOT NULL AND toLower(toString(val)) CONTAINS keyword
 
     WITH DISTINCT n
-    LIMIT 100
+          LIMIT 50
 
     // Get 1-hop neighbourhood
     OPTIONAL MATCH (n)-[r]-(m)
@@ -2753,6 +2745,9 @@ def recommend_change_impact(body: dict):
     change_name = body.get("change_name", "")
     part_name = body.get("part_name", "")
     scope = body.get("scope") or {}
+    node_id = body.get("node_id") or body.get("element_id") or scope.get("node_id") or scope.get("element_id") or ""
+    if node_id and isinstance(scope, dict):
+        scope = {**scope, "node_id": node_id}
     if not change_name and not part_name:
         raise HTTPException(status_code=400, detail="Provide 'change_name' or 'part_name'")
     try:
@@ -2767,10 +2762,13 @@ def recommend_similar_parts(body: dict):
     part_name = body.get("part_name", "")
     top_n = body.get("top_n", 10)
     scope = body.get("scope") or {}
+    node_id = body.get("node_id") or body.get("element_id") or scope.get("node_id") or scope.get("element_id") or ""
+    if node_id and isinstance(scope, dict):
+        scope = {**scope, "node_id": node_id}
     if not part_name:
         raise HTTPException(status_code=400, detail="Provide 'part_name'")
     try:
-        return _similar_parts.recommend(part_name, top_n=int(top_n), scope=scope)
+        return _similar_parts.recommend(part_name, top_n=int(top_n), scope=scope, node_id=node_id)
     except Exception as e:
         safe_error("/recommendations/similar-parts", e)
 
@@ -2780,10 +2778,13 @@ def recommend_manufacturing(body: dict):
     """Recommend manufacturing processes for a part."""
     part_name = body.get("part_name", "")
     scope = body.get("scope") or {}
+    node_id = body.get("node_id") or body.get("element_id") or scope.get("node_id") or scope.get("element_id") or ""
+    if node_id and isinstance(scope, dict):
+        scope = {**scope, "node_id": node_id}
     if not part_name:
         raise HTTPException(status_code=400, detail="Provide 'part_name'")
     try:
-        return _mfg_process.recommend(part_name, scope=scope)
+        return _mfg_process.recommend(part_name, scope=scope, node_id=node_id)
     except Exception as e:
         safe_error("/recommendations/manufacturing", e)
 

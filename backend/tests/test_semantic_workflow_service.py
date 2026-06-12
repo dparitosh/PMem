@@ -130,6 +130,101 @@ def test_build_link_candidates_filters_generic_name_only_matches(monkeypatch):
     assert candidates == []
 
 
+def test_build_link_candidates_uses_instance_metadata_signals(monkeypatch):
+    rows = [{"import_row_key": "row-meta-only"}]
+
+    def fake_lookup(_prefix):
+        return {
+            "INDUCTIONMOTOR": [
+                {
+                    "element_id": "class-99",
+                    "class_name": "InductionMotor",
+                    "prefix": "plmxml",
+                    "normalized": "INDUCTIONMOTOR",
+                    "tokens": ["induction", "motor"],
+                    "is_generic": False,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        "backend.Services.semantic_workflow_service.UnifiedDataImportService._load_ontology_class_lookup",
+        fake_lookup,
+    )
+
+    import_task = {
+        "task_id": "import-meta-1",
+        "filename": "InductionMotor.xml",
+        "file_type": "xml",
+        "workflow_id": "instance.import",
+        "stats": {
+            "ontology_name": "Induction Motor",
+            "ontology_prefix": "motor",
+            "namespace": "http://example.com/motor#",
+        },
+    }
+
+    candidates = SemanticWorkflowService._build_link_candidates(rows, "motor", "import-meta-1", import_task=import_task)
+
+    assert len(candidates) == 1
+    assert candidates[0]["ontology_term"] == "InductionMotor"
+    assert candidates[0]["match_source"].startswith("manifest.")
+    assert any(str(source).startswith("manifest.") for source in candidates[0].get("evidence", []))
+
+
+def test_build_link_candidates_classifies_relationship_rows_to_object_properties(monkeypatch):
+    rows = [
+        {
+            "import_row_key": "rel-1",
+            "name": "bearing",
+            "href": "#Part",
+        }
+    ]
+
+    def fake_lookup(_prefix):
+        return {
+            "BEARING": [
+                {
+                    "element_id": "class-9",
+                    "class_name": "bearing",
+                    "prefix": "plmxml",
+                    "normalized": "BEARING",
+                    "tokens": ["bearing"],
+                    "is_generic": False,
+                    "target_ontology_type": "Class",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        "backend.Services.semantic_workflow_service.UnifiedDataImportService._load_ontology_class_lookup",
+        fake_lookup,
+    )
+    monkeypatch.setattr(
+        "backend.Services.semantic_workflow_service.OntologyTaxonomyService.get_reasoning",
+        lambda ontology_id: {
+            "classes": [],
+            "object_properties": [
+                {
+                    "label": "bearing",
+                    "iri": "urn:target:bearing",
+                    "domain": [{"label": "Part"}],
+                    "range": [{"label": "Part"}],
+                }
+            ],
+            "datatype_properties": [],
+            "annotation_properties": [],
+            "subclass_edges": [],
+        },
+    )
+
+    candidates = SemanticWorkflowService._build_link_candidates(rows, "plmxml", "import-rel-1")
+
+    assert len(candidates) == 1
+    assert candidates[0]["source_type"] == "Relationship"
+    assert candidates[0]["target_ontology_type"] == "ObjectProperty"
+
+
 def test_merge_ontologies_uses_semantic_structure_instead_of_raw_tokens(monkeypatch):
     monkeypatch.setattr(
         "backend.Services.semantic_workflow_service.SemanticWorkflowService._resolve_ontology_id",

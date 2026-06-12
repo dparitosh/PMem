@@ -7,6 +7,7 @@ operation is introduced.
 """
 
 import json
+import logging
 import re
 import uuid
 from datetime import datetime
@@ -18,9 +19,12 @@ from .ontology_upload_manager import OntologyUploadManager
 from .unified_data_import import UnifiedDataImportService
 from .workflow_artifact_service import WorkflowArtifactService
 
+logger = logging.getLogger(__name__)
+
 
 def _tokenize(value: str) -> List[str]:
-    return [t for t in re.split(r"[^a-zA-Z0-9]+", value.lower()) if len(t) > 1]
+    normalized = re.sub(r"([a-z])([A-Z])", r"\1 \2", str(value or ""))
+    return [t for t in re.split(r"[^a-zA-Z0-9]+", normalized.lower()) if len(t) > 1]
 
 
 def _jaccard(left: List[str], right: List[str]) -> float:
@@ -51,6 +55,16 @@ class SemanticWorkflowService:
     AMBIGUITY_DELTA = 0.08
     TYPE_FIELDS = ("entity_type", "element_type", "type", "xsi:type", "class", "category", "part_type")
     FALLBACK_FIELDS = ("name",)
+    METADATA_FIELDS = (
+        ("manifest.filename", "filename", 0.55),
+        ("manifest.file_type", "file_type", 0.45),
+        ("manifest.workflow_id", "workflow_id", 0.3),
+        ("manifest.ontology_mapping", "stats.ontology_mapping", 0.4),
+        ("manifest.ontology_prefix", "stats.ontology_prefix", 0.5),
+        ("manifest.ontology_name", "stats.ontology_name", 0.45),
+        ("manifest.namespace", "stats.namespace", 0.42),
+        ("manifest.source_ontology", "stats.source_ontology", 0.35),
+    )
 
     @staticmethod
     def _new_task(workflow_id: str, source_filename: str = "") -> str:
@@ -148,6 +162,106 @@ class SemanticWorkflowService:
                 return str(value)
         return "Imported entity"
 
+    @classmethod
+    def _classify_source_row(cls, row: Dict[str, Any]) -> str:
+        """Infer a bridge source kind from the imported row shape."""
+        keys = {str(key).lower() for key in (row or {}).keys()}
+        values = [
+            str(row.get(key) or "").strip().lower()
+            for key in ("entity_type", "element_type", "type", "xsi:type", "class", "category", "part_type", "name")
+            if row.get(key)
+        ]
+        relationship_markers = (
+            "ref",
+            "refs",
+            "href",
+            "idref",
+            "instance",
+            "related",
+            "source",
+            "target",
+            "parent",
+            "child",
+        )
+        metadata_markers = (
+            "filename",
+            "workflow_id",
+            "namespace",
+            "ontology_prefix",
+            "ontology_name",
+            "source_ontology",
+            "manifest",
+            "provenance",
+        )
+        attribute_markers = (
+            "value",
+            "text",
+            "description",
+            "comment",
+            "label",
+            "datatype",
+        )
+
+        if any(any(marker in key for marker in relationship_markers) for key in keys):
+            return "Relationship"
+        if any(any(marker in key for marker in metadata_markers) for key in keys):
+            return "Metadata"
+        if any(any(marker in key for marker in attribute_markers) for key in keys):
+            return "Attribute"
+        if any(value in {"relationship", "relations", "edge", "link"} for value in values):
+            return "Relationship"
+        if any(value in {"attribute", "datatype", "property", "value"} for value in values):
+            return "Attribute"
+        return "Entity"
+
+    @classmethod
+    def _load_ontology_term_lookup(cls, ontology_prefix: str) -> Dict[str, List[Dict[str, Any]]]:
+        """Load ontology classes and properties into a bridge lookup table."""
+        ontology_identifier = cls._resolve_ontology_id(ontology_prefix) or ontology_prefix
+        try:
+            reasoning = OntologyTaxonomyService.get_reasoning(ontology_identifier)
+        except Exception as exc:
+            logger.info(f"Ontology term lookup fallback for '{ontology_prefix}': {exc}")
+            reasoning = {}
+
+        lookup: Dict[str, List[Dict[str, Any]]] = {}
+
+        def add_rows(items: List[Dict[str, Any]], target_type: str) -> None:
+            for item in items or []:
+                label = str(item.get("label") or item.get("name") or item.get("term_id") or item.get("iri") or item.get("uri") or "").strip()
+                normalized = cls._normalized_key(label)
+                if not normalized:
+                    continue
+                entry = {
+                    "element_id": item.get("iri") or item.get("uri") or item.get("term_id") or label,
+                    "class_name": label,
+                    "term_name": label,
+                    "prefix": item.get("ontology_prefix") or reasoning.get("prefix") or ontology_prefix,
+                    "normalized": normalized,
+                    "tokens": _tokenize(label),
+                    "is_generic": cls._is_generic_term(label),
+                    "target_ontology_type": target_type,
+                    "domain": item.get("domain") or [],
+                    "range": item.get("range") or [],
+                }
+                lookup.setdefault(normalized, []).append(entry)
+
+        add_rows(reasoning.get("classes") or [], "Class")
+        add_rows(reasoning.get("object_properties") or [], "ObjectProperty")
+        add_rows(reasoning.get("datatype_properties") or [], "DatatypeProperty")
+        add_rows(reasoning.get("annotation_properties") or [], "AnnotationProperty")
+
+        return lookup
+
+    @staticmethod
+    def _read_nested_value(payload: Dict[str, Any], dotted_key: str) -> Any:
+        current: Any = payload
+        for part in dotted_key.split("."):
+            if not isinstance(current, dict):
+                return None
+            current = current.get(part)
+        return current
+
     @staticmethod
     def _normalized_key(value: Any) -> str:
         return UnifiedDataImportService._ontology_match_key(value)
@@ -199,12 +313,66 @@ class SemanticWorkflowService:
         return signals
 
     @classmethod
-    def _score_link_candidate(cls, signal: Dict[str, Any], match: Dict[str, Any], row: Dict[str, Any]) -> float:
+    def _collect_manifest_signals(cls, import_task: Dict[str, Any]) -> List[Dict[str, Any]]:
+        signals: List[Dict[str, Any]] = []
+        seen = set()
+
+        def add_signal(raw_value: Any, source_field: str, signal_type: str, weight: float) -> None:
+            value = str(raw_value or "").strip()
+            if not value:
+                return
+            variants = [value]
+            if ":" in value:
+                variants.append(value.split(":")[-1])
+            if "#" in value:
+                variants.append(value.split("#")[-1])
+            if "/" in value or "\\" in value:
+                stem = Path(value).stem
+                if stem:
+                    variants.append(stem)
+
+            for variant in variants:
+                normalized = cls._normalized_key(variant)
+                if not normalized:
+                    continue
+                signature = (normalized, source_field)
+                if signature in seen:
+                    continue
+                seen.add(signature)
+                signals.append({
+                    "raw": variant,
+                    "normalized": normalized,
+                    "tokens": _tokenize(variant),
+                    "source_field": source_field,
+                    "signal_type": signal_type,
+                    "weight": weight,
+                })
+
+        for source_field, dotted_key, weight in cls.METADATA_FIELDS:
+            add_signal(cls._read_nested_value(import_task, dotted_key), source_field, "metadata", weight)
+
+        source_filename = (import_task.get("filename") or import_task.get("source_filename") or "").strip()
+        if source_filename:
+            add_signal(Path(source_filename).stem, "manifest.filename_stem", "metadata", 0.6)
+
+        preview = import_task.get("preview_data") or {}
+        sample_rows = preview.get("sample_rows") or []
+        if sample_rows:
+            first_row = sample_rows[0] if isinstance(sample_rows[0], dict) else {}
+            for key in cls.TYPE_FIELDS + cls.FALLBACK_FIELDS:
+                add_signal(first_row.get(key), f"preview.{key}", "preview", 0.5)
+
+        return signals
+
+    @classmethod
+    def _score_link_candidate(cls, signal: Dict[str, Any], match: Dict[str, Any], row: Dict[str, Any], source_type: str) -> float:
         score = 0.0
         signal_weight = float(signal.get("weight") or 0.0)
         signal_type = signal.get("signal_type")
         signal_tokens = signal.get("tokens") or []
         class_tokens = match.get("tokens") or []
+        target_type = str(match.get("target_ontology_type") or "Class").strip()
+        source_type = str(source_type or "Entity").strip()
 
         if signal.get("normalized") == match.get("normalized"):
             score += 0.72 * signal_weight
@@ -215,11 +383,24 @@ class SemanticWorkflowService:
 
         if signal_type == "type":
             score += 0.12
+        elif signal_type == "metadata":
+            score += 0.18
         else:
             score -= 0.08
 
+        if source_type == "Attribute" and target_type in {"DatatypeProperty", "DataProperty"}:
+            score += 0.2
+        elif source_type == "Relationship" and target_type == "ObjectProperty":
+            score += 0.2
+        elif source_type == "Entity" and target_type == "Class":
+            score += 0.16
+        elif source_type == "Metadata" and target_type in {"AnnotationProperty", "Class"}:
+            score += 0.1
+        else:
+            score -= 0.05
+
         row_name = str(row.get("name") or "").strip()
-        class_name = str(match.get("class_name") or "").strip()
+        class_name = str(match.get("class_name") or match.get("term_name") or "").strip()
         if row_name and class_name and row_name.lower() == class_name.lower():
             score += 0.08
 
@@ -229,20 +410,31 @@ class SemanticWorkflowService:
         return max(0.0, min(1.0, round(score, 4)))
 
     @classmethod
-    def _build_link_candidates(cls, rows: List[Dict[str, Any]], ontology_prefix: str, import_task_id: str) -> List[Dict[str, Any]]:
+    def _build_link_candidates(
+        cls,
+        rows: List[Dict[str, Any]],
+        ontology_prefix: str,
+        import_task_id: str,
+        import_task: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
         class_lookup = UnifiedDataImportService._load_ontology_class_lookup(ontology_prefix)
+        term_lookup = cls._load_ontology_term_lookup(ontology_prefix)
+        for key, values in class_lookup.items():
+            term_lookup.setdefault(key, values)
         candidates: List[Dict[str, Any]] = []
+        metadata_signals = cls._collect_manifest_signals(import_task or {})
 
         for row in rows:
             row_key = row.get("import_row_key") or row.get("id")
             if not row_key:
                 continue
 
+            source_type = cls._classify_source_row(row)
             scored_matches: Dict[str, Dict[str, Any]] = {}
-            for signal in cls._collect_row_signals(row):
-                matches = class_lookup.get(signal["normalized"], [])
+            for signal in [*cls._collect_row_signals(row), *metadata_signals]:
+                matches = term_lookup.get(signal["normalized"], [])
                 for match in matches:
-                    score = cls._score_link_candidate(signal, match, row)
+                    score = cls._score_link_candidate(signal, match, row, source_type)
                     if score < cls.REVIEW_CONFIDENCE:
                         continue
                     existing = scored_matches.get(match["element_id"])
@@ -252,13 +444,19 @@ class SemanticWorkflowService:
                         "import_id": import_task_id,
                         "import_row_key": row_key,
                         "source_term": cls._candidate_display_value(row),
+                        "source_type": source_type,
                         "ontology_term": match["class_name"],
                         "ontology_class_element_id": match["element_id"],
+                        "target_ontology_type": match.get("target_ontology_type") or "Class",
                         "confidence": score,
                         "mapping": ontology_prefix,
                         "match_source": signal["source_field"],
                         "signal_type": signal["signal_type"],
                         "generic_match": bool(match.get("is_generic")),
+                        "evidence": sorted({
+                            *(existing.get("evidence", []) if existing else []),
+                            signal["source_field"],
+                        }),
                     }
 
             if not scored_matches:
@@ -569,7 +767,7 @@ class SemanticWorkflowService:
         task_id = cls._new_task("instance.link", meta.get("original_filename", ""))
         rows = import_task.get("parsed_rows") or []
         ontology_scope = meta.get("prefix") or meta.get("ontology_prefix") or ontology_id
-        candidates = cls._build_link_candidates(rows, ontology_scope, import_task_id)
+        candidates = cls._build_link_candidates(rows, ontology_scope, import_task_id, import_task=import_task)
         approved_candidates = [candidate for candidate in candidates if candidate.get("selected_for_apply")]
         applied_links = cls._apply_instance_links(approved_candidates) if apply_links else 0
         report = {
@@ -585,6 +783,15 @@ class SemanticWorkflowService:
                 "high_confidence_candidates": sum(1 for candidate in candidates if candidate["confidence"] >= cls.AUTO_APPLY_CONFIDENCE),
                 "ambiguous_candidates": sum(1 for candidate in candidates if candidate.get("ambiguous")),
                 "generic_matches_filtered": sum(1 for candidate in candidates if candidate.get("generic_match") and not candidate.get("selected_for_apply")),
+                "metadata_signals_used": sum(1 for candidate in candidates for source in candidate.get("evidence", []) if str(source).startswith("manifest.") or str(source).startswith("preview.")),
+                "source_kinds": {
+                    kind: sum(1 for candidate in candidates if candidate.get("source_type") == kind)
+                    for kind in ("Entity", "Attribute", "Relationship", "Metadata")
+                },
+                "target_kinds": {
+                    kind: sum(1 for candidate in candidates if candidate.get("target_ontology_type") == kind)
+                    for kind in ("Class", "ObjectProperty", "DatatypeProperty", "AnnotationProperty")
+                },
                 "applied_links": applied_links,
                 "committed": bool(apply_links and applied_links >= 0),
             },

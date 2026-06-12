@@ -13,6 +13,7 @@ from agent.memory import get_memory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
+from langchain_core.documents import Document
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
@@ -61,6 +62,63 @@ def _normalize_retrieval_response(result, title: str) -> str:
 
     return "\n".join(lines)
 
+
+def _graph_payload_to_context_docs(payload: dict, *, title: str, query: str) -> dict:
+    """Convert a graph payload into a retrieval-style response."""
+    nodes = payload.get("nodes") or []
+    relationships = payload.get("relationships") or []
+    counts = payload.get("counts") or {}
+
+    def _node_name(node: dict) -> str:
+        props = node.get("properties") or {}
+        labels = node.get("labels") or []
+        return (
+            props.get("name")
+            or props.get("label")
+            or props.get("title")
+            or props.get("code")
+            or (labels[0] if labels else "")
+            or node.get("elementId")
+            or "node"
+        )
+
+    node_lines = []
+    for node in nodes[:20]:
+        props = node.get("properties") or {}
+        labels = ",".join(node.get("labels") or [])
+        details = []
+        for key in ("uri", "name", "label", "title", "code", "value", "ontology_prefix", "prefix", "source_ontology"):
+            value = props.get(key)
+            if value not in (None, ""):
+                details.append(f"{key}={value}")
+        node_lines.append(f"{_node_name(node)} [{labels}] | {'; '.join(details[:6])}")
+
+    rel_lines = []
+    for rel in relationships[:30]:
+        rel_type = rel.get("type") or "REL"
+        rel_props = rel.get("properties") or {}
+        rel_lines.append(f"{rel.get('start')} -[:{rel_type} {rel_props}]-> {rel.get('end')}")
+
+    context_text = "\n".join(
+        [
+            title,
+            "",
+            "Nodes:",
+            *node_lines,
+            "",
+            "Relationships:",
+            *rel_lines,
+        ]
+    ).strip()
+    answer = (
+        f"Schema-aware graph context for '{query}'. "
+        f"Nodes: {counts.get('nodes', len(nodes))}, relationships: {counts.get('relationships', len(relationships))}."
+    )
+    return {
+        "answer": answer,
+        "context": [Document(page_content=context_text, metadata={"source": "graph_view_service", "query": query})],
+    }
+
 # Define the graph state
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
@@ -105,7 +163,22 @@ def vector_search(query: str) -> str:
 
 @tool
 def graph_context_search(query: str) -> str:
-    """Use Neo4j GraphRAG context to answer graph-first questions about connected entities, traceability, and engineering context."""
+    """Use schema-aware Neo4j graph context to answer connected-entity and ontology questions."""
+    try:
+        try:
+            from backend.Services.graph_view_service import GraphViewService
+        except Exception:
+            from Services.graph_view_service import GraphViewService
+
+        payload = GraphViewService.get_contextual_subgraph(search=query, limit=180)
+        if payload and (payload.get("nodes") or payload.get("relationships")):
+            return _normalize_retrieval_response(
+                _graph_payload_to_context_docs(payload, title="Graph Context Insights", query=query),
+                "Graph Context Insights",
+            )
+    except Exception as exc:
+        logger.warning("Schema-aware graph context lookup failed, falling back to vector search: %s", exc)
+
     return _normalize_retrieval_response(deep_vector_search(query), "Graph Context Insights")
 
 

@@ -254,6 +254,8 @@ export const importAPI = {
     apiClient.get(buildUrl(replaceParams(API.import.status, { task_id: taskId }))),
   getPreview: (taskId) => 
     apiClient.get(buildUrl(replaceParams(API.import.preview, { task_id: taskId }))),
+  getTasks: () =>
+    apiClient.get(buildUrl(API.import.tasks)),
   commit: (taskId, options = {}) => 
     apiClient.post(buildUrl(replaceParams(API.import.commit, { task_id: taskId })), options, {
       timeout: 300000, // 5 minutes — Neo4j batch commit to AuraDB can take 2-3 min

@@ -543,8 +543,11 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
         ev.stopPropagation();
         const service = btn.getAttribute('data-rec-service');
         const nodeName = btn.getAttribute('data-rec-node') || '';
+        const nodeId = btn.getAttribute('data-rec-node-id') || '';
+        const ontologyPrefix = btn.getAttribute('data-rec-prefix') || '';
+        const ontologyId = btn.getAttribute('data-rec-ontology-id') || '';
         if (typeof window.__dt_rec_action === 'function' && service) {
-          window.__dt_rec_action(service, nodeName);
+          window.__dt_rec_action(service, nodeName, { nodeId, ontologyPrefix, ontologyId });
         }
       };
     });
@@ -657,7 +660,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
 
   // Bridge: recommendation tooltip actions → slide-in panel
   React.useEffect(() => {
-    window.__dt_rec_action = (service, nodeName) => {
+    window.__dt_rec_action = (service, nodeName, context = {}) => {
       // Open the slide-in recommendation panel in graph view
       setRecPanel({ open: true, service, nodeName, loading: true, result: null, error: '' });
       hideAllTooltips();
@@ -667,11 +670,16 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
         : service === 'similar-parts'
         ? '/recommendations/similar-parts'
         : '/recommendations/manufacturing';
+      const scope = {
+        ...(context.ontologyPrefix ? { prefix: context.ontologyPrefix } : {}),
+        ...(context.ontologyId ? { ontology_id: context.ontologyId } : {}),
+        ...(context.nodeId ? { node_id: context.nodeId } : {}),
+      };
       const body = service === 'change-impact'
-        ? { change_name: nodeName }
+        ? { change_name: nodeName, node_id: context.nodeId, scope }
         : service === 'similar-parts'
-        ? { part_name: nodeName, top_n: 10 }
-        : { part_name: nodeName };
+        ? { part_name: nodeName, top_n: 10, node_id: context.nodeId, scope }
+        : { part_name: nodeName, node_id: context.nodeId, scope };
       apiClient.post(buildUrl(endpoint), body)
         .then(resp => setRecPanel(prev => ({ ...prev, loading: false, result: resp.data })))
         .catch(err => setRecPanel(prev => ({ ...prev, loading: false, error: err.response?.data?.detail || err.message || 'Request failed' })));
@@ -837,18 +845,23 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   }, [chatResults]);
 
   // Helper: build recommendation action bar HTML for node tooltips
-  const buildRecActionBar = (nodeName, nodeLabels) => {
+  const buildRecActionBar = (node) => {
+    const nodeName = resolveNodeName(node);
     const escapedName = escapeHtml(nodeName || '');
+    const nodeId = escapeHtml(node?.elementId || node?.id || '');
+    const props = node?.properties && typeof node.properties === 'object' ? node.properties : {};
+    const ontologyPrefix = escapeHtml(props.prefix || props.ontology_prefix || '');
+    const ontologyId = escapeHtml(props.ontology_id || props.source_ontology || '');
     const btnStyle = 'display:inline-block;padding:4px 10px;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;margin-right:6px;color:#fff;';    return `
       <div style="padding:6px 8px 4px;margin-bottom:4px;border-bottom:1px solid #e2e6ea;display:flex;flex-wrap:wrap;gap:4px;">
-        <button type="button" class="dt-rec-btn" data-rec-service="change-impact" data-rec-node="${escapedName}" style="${btnStyle}background:#e74c3c;" title="Change Impact Analysis">Impact</button>
-        <button type="button" class="dt-rec-btn" data-rec-service="similar-parts" data-rec-node="${escapedName}" style="${btnStyle}background:#004B87;" title="Find Similar Parts">[FIND] Similar</button>
-        <button type="button" class="dt-rec-btn" data-rec-service="manufacturing" data-rec-node="${escapedName}" style="${btnStyle}background:#27ae60;" title="Manufacturing Processes">[MFG] Process</button>
+        <button type="button" class="dt-rec-btn" data-rec-service="change-impact" data-rec-node="${escapedName}" data-rec-node-id="${nodeId}" data-rec-prefix="${ontologyPrefix}" data-rec-ontology-id="${ontologyId}" style="${btnStyle}background:#e74c3c;" title="Change Impact Analysis">Impact</button>
+        <button type="button" class="dt-rec-btn" data-rec-service="similar-parts" data-rec-node="${escapedName}" data-rec-node-id="${nodeId}" data-rec-prefix="${ontologyPrefix}" data-rec-ontology-id="${ontologyId}" style="${btnStyle}background:#004B87;" title="Find Similar Parts">[FIND] Similar</button>
+        <button type="button" class="dt-rec-btn" data-rec-service="manufacturing" data-rec-node="${escapedName}" data-rec-node-id="${nodeId}" data-rec-prefix="${ontologyPrefix}" data-rec-ontology-id="${ontologyId}" style="${btnStyle}background:#27ae60;" title="Manufacturing Processes">[MFG] Process</button>
       </div>`;
   };
 
   // Schema-driven display
-  const { getDisplayName: schemaDisplayName, getDisplayLabel: schemaDisplayLabel } = useSchema() || {};
+  const { getDisplayLabel: schemaDisplayLabel } = useSchema() || {};
 
   // Performance: Optimize state management
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
@@ -859,7 +872,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const [error, setError] = useState(null);
   // Performance: Add loading states for better UX
   const [searchLoading, setSearchLoading] = useState(false);
-  const [isLayoutSwitching, setIsLayoutSwitching] = useState(false);
+  const [isLayoutSwitching] = useState(false);
   // New state for expand/collapse functionality
   const [expandedNodes, setExpandedNodes] = useState(new Set());
   const [loadingNodes, setLoadingNodes] = useState(new Set());
@@ -871,7 +884,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   // Track expanded nodes specifically for the indented tree layout
   const [treeExpandedNodes, setTreeExpandedNodes] = useState(new Set());
   // New state for layout selection
-  const [layoutType, setLayoutType] = useState('force-directed');
+  const [layoutType] = useState('force-directed');
   const [prevLayoutType, setPrevLayoutType] = useState('force-directed');
   // Unified primary button color (match WhereUsedView request)
 
@@ -953,6 +966,8 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const [availableLabels, setAvailableLabels] = useState([]);
   const [selectedLabelFilter, setSelectedLabelFilter] = useState('ALL');
   const [activeSearchResultId, setActiveSearchResultId] = useState(null);
+  const activeSearchResultIdRef = useRef(null);
+  const searchModeRef = useRef(false);
   // ── Graph View Mode: 'ontology' = Ontology Graph Visualization, 'individual' = Contextual Individual Graph View
   const [graphViewMode, setGraphViewMode] = useState('ontology');
   const graphViewModeRef = useRef('ontology');
@@ -1045,6 +1060,10 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     return preferred?.value || 'ALL';
   }, [ontologyOptions, selectedOntology]);
 
+  useEffect(() => {
+    activeSearchResultIdRef.current = activeSearchResultId;
+  }, [activeSearchResultId]);
+
   const focusSearchResult = useCallback((candidateNode) => {
     if (!candidateNode?.elementId) return;
     setActiveSearchResultId(candidateNode.elementId);
@@ -1054,7 +1073,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       const timeoutId = setTimeout(() => setHighlightedNodeNames(new Set()), HIGHLIGHT_AUTO_CLEAR_MS);
       timeoutsRef.current.add(timeoutId);
     }
-  }, [setData]);
+  }, []);
 
   const expandSearchResult = useCallback(async (candidateNode) => {
     if (!candidateNode?.elementId) return;
@@ -1881,24 +1900,28 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
 
 
 const getPrimaryNodeLabel = useCallback((d) => {
-  if (!d) return 'Unknown';
+  if (!d) return '';
 
   const props = d.properties || d;
-  const nodeLabel = d.labels?.[0] || d.label || '';
 
-  // Resolve property from priority list (see DISPLAY_NAME_PROPERTY at top of file)
-  const propValue = resolveDisplayProp(props);
+  // Prefer true data-bearing fields; do not surface driver metadata or Neo4j labels.
+  const displayValue =
+    resolveDisplayProp(props) ??
+    props.name ??
+    props.title ??
+    props.PartName ??
+    props.CADDocumentName ??
+    props.ObjectType ??
+    props.code ??
+    props.number ??
+    props.id ??
+    props.identifier ??
+    props.uuid ??
+    null;
 
-  // Schema-driven fallback
-  if (!propValue && schemaDisplayName) return schemaDisplayName(d);
-
-  // Heuristic fallback when configured property list yields nothing
-  const displayValue = propValue ??
-    (props.name ?? props.Name ?? props.PartName ?? props.CADDocumentName ?? props.ObjectType ??
-     props.id ?? props.identifier ?? props.uuid ?? null);
-
-  return formatNodeDisplay(nodeLabel, displayValue != null ? String(displayValue) : null);
-}, [schemaDisplayName]);
+  if (displayValue == null || String(displayValue).trim() === '') return '';
+  return String(displayValue);
+}, []);
 
 
   // Function to render indented tree layout
@@ -2286,7 +2309,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
             </div>
           `;
           // Recommendation action buttons (top, right after header)
-          tooltipContent += buildRecActionBar(resolveNodeName(d), d.labels);
+          tooltipContent += buildRecActionBar(d);
 
           // Only exclude D3/graph-library internals — ALL real Neo4j properties will be shown
           const excludedProps = [
@@ -2931,54 +2954,6 @@ const getPrimaryNodeLabel = useCallback((d) => {
     d.fy = null;
   }, []);
 
-  // Performance: Optimized layout change handler with monitoring
-  const handleLayoutChange = useCallback((newLayoutType) => {
-    if (newLayoutType !== layoutType) {
-      const startTime = performance.now();
-      setIsLayoutSwitching(true);
-
-      logger.render(`[SYNC] Layout switching from ${layoutType} to ${newLayoutType}`);
-
-      // Stop current simulation immediately for smooth transition
-      if (simulationRef.current && newLayoutType === 'indented-tree') {
-        simulationRef.current.stop();
-        simulationRef.current = null;
-      }
-
-      setLayoutType(newLayoutType);
-
-      // Ensure we have the full dataset available for both layouts
-      if (newLayoutType === 'force-directed') {
-        // For graph layout, use full dataset
-        logger.render(`[RENDER] Restoring full dataset for graph layout: ${graphData.nodes?.length || 0} nodes`);
-        setFilteredData({
-          nodes: [...(graphData.nodes || [])],
-          links: [...(graphData.links || [])]
-        });
-      } else if (newLayoutType === 'indented-tree') {
-        // For tree layout, use current filteredData but ensure tree expansion is initialized
-        try {
-          const currentNodes = filteredData.nodes?.length > 0 ? filteredData.nodes : graphData.nodes || [];
-          const currentLinks = filteredData.links?.length > 0 ? filteredData.links : graphData.links || [];
-          const roots = createHierarchicalData(currentNodes, currentLinks);
-          const rootIds = roots.map(r => r.elementId).filter(Boolean);
-          setTreeExpandedNodes(new Set(rootIds));
-          logger.render(`[TREE] Tree layout initialized with ${currentNodes.length} nodes, ${rootIds.length} roots`);
-        } catch (e) {
-          logger.warn('Tree expansion init failed', e);
-        }
-      }
-
-      // Performance monitoring
-      requestAnimationFrame(() => {
-        const endTime = performance.now();
-        logger.render(`[PERF] Layout switch completed in ${(endTime - startTime).toFixed(2)}ms`);
-        setIsLayoutSwitching(false);
-      });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layoutType, graphData, createHierarchicalData]);
-
   // Throttled simulation tick to improve performance
   // eslint-disable-next-line no-unused-vars
   const throttledTick = useCallback(() => {
@@ -3116,6 +3091,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
   // Performance: Optimized search with debouncing and caching
   useEffect(() => {
     if (!debouncedSearchQuery) {
+      searchModeRef.current = false;
       // Only reset if no nodes are currently expanded
       if (expandedNodes.size === 0) {
         // Reset to current data when search is cleared
@@ -3124,7 +3100,9 @@ const getPrimaryNodeLabel = useCallback((d) => {
         setFilteredData(currentData);
         // Reset search results for other components
         if (setSearchResults) {
-          setSearchResults(currentData.nodes);
+          if (setSearchResults && !searchModeRef.current) {
+            setSearchResults(currentData.nodes);
+          }
         }
       }
       setActiveSearchResultId(null);
@@ -3137,6 +3115,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
     const performSearch = async () => {
       performanceLog('[SEARCH] Starting search for:', debouncedSearchQuery);
+      searchModeRef.current = true;
       setSearchLoading(true);
 
       try {
@@ -3229,6 +3208,12 @@ const getPrimaryNodeLabel = useCallback((d) => {
             const sortedLabels = Array.from(labelSet).sort();
             setAvailableLabels(sortedLabels);
             setSelectedLabelFilter('ALL');
+            const currentActiveId = activeSearchResultIdRef.current;
+            const nextActiveId = finalNodes.some((node) => node.elementId === currentActiveId)
+              ? currentActiveId
+              : (finalNodes[0]?.elementId || null);
+            setActiveSearchResultId(nextActiveId);
+            activeSearchResultIdRef.current = nextActiveId;
             // Update search results for other components
             if (setSearchResults) {
               setSearchResults(finalNodes);
@@ -3241,6 +3226,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
             setAvailableLabels([]);
             setSelectedLabelFilter('ALL');
             setActiveSearchResultId(null);
+            activeSearchResultIdRef.current = null;
             // Update search results to empty array for other components
             if (setSearchResults) {
               setSearchResults([]);
@@ -3270,10 +3256,17 @@ const getPrimaryNodeLabel = useCallback((d) => {
           setSearchResultData({ nodes: filteredNodes, links: filteredLinks });
           setAvailableLabels([]);
           setSelectedLabelFilter('ALL');
-          setActiveSearchResultId(null);
+          const currentActiveId = activeSearchResultIdRef.current;
+          const nextActiveId = filteredNodes.some((node) => node.elementId === currentActiveId)
+            ? currentActiveId
+            : (filteredNodes[0]?.elementId || null);
+          setActiveSearchResultId(nextActiveId);
+          activeSearchResultIdRef.current = nextActiveId;
           // Update search results for other components
           if (setSearchResults) {
-            setSearchResults(filteredNodes);
+            if (setSearchResults && !searchModeRef.current) {
+              setSearchResults(filteredNodes);
+            }
           }
           setSearchLoading(false);
         });
@@ -3310,7 +3303,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       setGraphData(initialData);
       setFullDataset(initialData);
       setData(initialData);
-      if (setSearchResults) setSearchResults(initialData.nodes);
+      if (setSearchResults && !searchModeRef.current) setSearchResults(initialData.nodes);
       setStepParts([]);
       setSelectedStepPart('ALL');
       return;
@@ -3372,7 +3365,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         setGraphData(dataSet);
         setFullDataset(dataSet);
         setData(dataSet);
-        if (setSearchResults) setSearchResults(dataSet.nodes);
+        if (setSearchResults && !searchModeRef.current) setSearchResults(dataSet.nodes);
         logger.render(`[ONTOLOGY] Loaded ${ontologyType}: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
       } else {
         const empty = { nodes: [], links: [] };
@@ -3382,7 +3375,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         setGraphData(fallbackData);
         setFullDataset(fallbackData);
         setData(fallbackData);
-        if (setSearchResults) setSearchResults(fallbackData.nodes || []);
+        if (setSearchResults && !searchModeRef.current) setSearchResults(fallbackData.nodes || []);
       }
     } catch (err) {
       logger.error('[ONTOLOGY] Fetch error:', err);
@@ -3465,7 +3458,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         setData(dataSet);
       });
       // Defer parent setState — must NOT be called inside a state updater or during render
-      if (setSearchResults) setTimeout(() => setSearchResults(dataSet.nodes), 0);
+      if (setSearchResults && !searchModeRef.current) setTimeout(() => setSearchResults(dataSet.nodes), 0);
     } else {
       // Ontology mode — restore or refetch based on active ontology selection.
       const selected = selectedOntologyRef.current || 'ALL';
@@ -3476,7 +3469,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           setFullDataset(initialData);
           setData(initialData);
         });
-        if (setSearchResults) setTimeout(() => setSearchResults(initialData.nodes), 0);
+        if (setSearchResults && !searchModeRef.current) setTimeout(() => setSearchResults(initialData.nodes), 0);
       } else {
         // Force refresh since selectedOntology effect does not run on graphViewMode changes.
         const part = selected === 'step' ? selectedStepPart : 'ALL';
@@ -3496,7 +3489,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       setFullDataset(dataSet);
       setData(dataSet);
     });
-    if (setSearchResults) setTimeout(() => setSearchResults(dataSet.nodes), 0);
+    if (setSearchResults && !searchModeRef.current) setTimeout(() => setSearchResults(dataSet.nodes), 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData, buildIndividualViewDataset]);
 
@@ -4357,7 +4350,7 @@ const boundaryForce = (width, height) => {
             // HEADER: Show the node label/type with close button
             let tooltipContent = buildTooltipHeader(nodeType, tooltipCloseBtn);
             // Recommendation action buttons (top, right after header)
-            tooltipContent += buildRecActionBar(resolveNodeName(d), d.labels);
+            tooltipContent += buildRecActionBar(d);
 
             // Only exclude D3/graph-library internals — ALL real Neo4j properties will be shown
             const excludedProps = [
@@ -4761,7 +4754,9 @@ const boundaryForce = (width, height) => {
         setFullDataset(graphData);
         setData(graphData);
         if (setSearchResults) {
-          setSearchResults(graphData.nodes);
+          if (setSearchResults && !searchModeRef.current) {
+            setSearchResults(graphData.nodes);
+          }
         }
       }
     };
@@ -4818,9 +4813,9 @@ const boundaryForce = (width, height) => {
         style={{
           display:'flex',
           flexWrap:'wrap',
-          gap:'8px',
+          gap:'6px',
           alignItems:'center',
-          padding:'8px 12px',
+          padding:'6px 10px',
           background:TCS_GRAPH_THEME.surface,
           border:`1px solid ${TCS_GRAPH_THEME.border}`,
           borderRadius:'8px',
@@ -4910,7 +4905,7 @@ const boundaryForce = (width, height) => {
                   setFilteredData(initialData);
                   setFullDataset(initialData);
                   setData(initialData);
-                  if (setSearchResults) setSearchResults(initialData.nodes);
+                  if (setSearchResults && !searchModeRef.current) setSearchResults(initialData.nodes);
                   return;
                 }
                 if (mode.id === 'individual') {
@@ -4993,9 +4988,9 @@ const boundaryForce = (width, height) => {
                 backgroundColor: TCS_GRAPH_THEME.surface,
                 color: TCS_GRAPH_THEME.ink,
                 cursor: 'pointer',
-                fontSize: '13px',
+                fontSize: '12px',
                 fontWeight: 600,
-                minWidth: '150px',
+                minWidth: '130px',
                 transition: 'all .2s ease'
               }}
               title="Filter search results by node label"
@@ -5046,7 +5041,7 @@ const boundaryForce = (width, height) => {
             {ontologyError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>Warning: {ontologyError}</span>}
             {!ontologyError && selectedOntology === 'ALL' && (
               <span style={{ fontSize: '11px', color: TCS_GRAPH_THEME.inkSoft, maxWidth: '280px', lineHeight: 1.35 }}>
-                Use this for orientation only. Choose a specific ontology to inspect classes, properties, domain, and range.
+                Choose an ontology to inspect classes, properties, domain, and range.
               </span>
             )}
           </div>
@@ -5188,14 +5183,14 @@ const boundaryForce = (width, height) => {
               setGraphData(initialData);
               setFilteredData(initialData);
               setFullDataset(initialData);
-              if (setSearchResults) setSearchResults(initialData.nodes);
+              if (setSearchResults && !searchModeRef.current) setSearchResults(initialData.nodes);
             }}
-            style={{padding:'6px 12px', border:'none', borderRadius:'6px', backgroundColor:TCS_GRAPH_THEME.primary, color:'#fff', fontSize:'13px', fontWeight:700, cursor:'pointer', transition:'all .2s ease'}}
+            style={{padding:'5px 10px', border:'none', borderRadius:'6px', backgroundColor:TCS_GRAPH_THEME.primary, color:'#fff', fontSize:'12px', fontWeight:700, cursor:'pointer', transition:'all .2s ease'}}
           >Reset</button>
         )}
         <button
           onClick={toggleChat}
-          style={{padding:'6px 12px', border:'none', borderRadius:'6px', backgroundColor:TCS_GRAPH_THEME.primary, color:'#fff', fontSize:'13px', fontWeight:700, cursor:'pointer', transition:'all .2s ease'}}
+          style={{padding:'5px 10px', border:'none', borderRadius:'6px', backgroundColor:TCS_GRAPH_THEME.primary, color:'#fff', fontSize:'12px', fontWeight:700, cursor:'pointer', transition:'all .2s ease'}}
           title={showChat ? 'Hide chat assistant' : 'Show chat assistant'}
         >{showChat ? 'Hide Chat' : 'Show Chat'}</button>
       </div>
