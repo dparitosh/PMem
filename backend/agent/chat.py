@@ -164,6 +164,14 @@ def vector_search(query: str) -> str:
 @tool
 def graph_context_search(query: str) -> str:
     """Use schema-aware Neo4j graph context to answer connected-entity and ontology questions."""
+    graph_query_terms = {
+        "ontology", "class", "property", "datatype", "object property", "annotation",
+        "domain", "range", "subclass", "instance", "individual", "relationship",
+        "neo4j", "graph", "xsd", "owl", "rdf", "shacl", "plmxml", "step", "xmi",
+        "import", "mapping", "alignment", "bridge"
+    }
+    q_lower = (query or "").strip().lower()
+    graph_like_query = any(term in q_lower for term in graph_query_terms)
     try:
         try:
             from backend.Services.graph_view_service import GraphViewService
@@ -176,9 +184,13 @@ def graph_context_search(query: str) -> str:
                 _graph_payload_to_context_docs(payload, title="Graph Context Insights", query=query),
                 "Graph Context Insights",
             )
+        if graph_like_query:
+            return "No matching graph context was found for this ontology or graph query."
     except Exception as exc:
         logger.warning("Schema-aware graph context lookup failed, falling back to vector search: %s", exc)
 
+    if graph_like_query:
+        return "No matching graph context was found for this ontology or graph query."
     return _normalize_retrieval_response(deep_vector_search(query), "Graph Context Insights")
 
 

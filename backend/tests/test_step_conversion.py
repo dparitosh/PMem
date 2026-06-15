@@ -423,6 +423,7 @@ def test_xsd_target_namespace_overrides_generated_fallback():
 
     assert metadata["target_namespace"] == "http://example.com/customer/schema"
     assert metadata["base_uri"] == "http://example.com/customer/schema#"
+    assert metadata["ontology_prefix"] == "schema"
     assert "http://example.com/customer/schema#" in ttl
     assert "http://depo-onto.local/xsd#customer_schema/" not in ttl
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo, startTransition } from 'react';
 import * as d3 from 'd3';
+import { Globe, Workflow, Network } from 'lucide-react';
 import '../CSS/GraphHEB.css';
 import { useSchema } from '../SchemaContext';
 import { useOntologies } from '../contexts/OntologyContext';
@@ -297,6 +298,16 @@ const useDebounce = (value, delay) => {
 
 // Performance: Memoized node search function
 const createNodeSearchFunction = () => {
+  const scoreFieldMatch = (value, lowerSearchTerm) => {
+    if (value == null) return 0;
+    const text = String(value).trim().toLowerCase();
+    if (!text) return 0;
+    if (text === lowerSearchTerm) return 1000;
+    if (text.startsWith(lowerSearchTerm)) return 800;
+    if (text.includes(lowerSearchTerm)) return 500;
+    return 0;
+  };
+
   const containsSearchTerm = (value, lowerSearchTerm, depth = 0) => {
     if (value == null || depth > 3) return false;
 
@@ -319,23 +330,63 @@ const createNodeSearchFunction = () => {
     if (!searchTerm || searchTerm.length < 2) return nodes;
 
     const lowerSearchTerm = searchTerm.toLowerCase();
-    return nodes.filter(node => {
-      // Primary search fields (faster check first)
-      if (node.name?.toLowerCase().includes(lowerSearchTerm)) return true;
-      if (node.label?.toLowerCase().includes(lowerSearchTerm)) return true;
+    return nodes
+      .map((node) => {
+        let score = 0;
 
-      // Label array search
-      if (node.labels?.some(label => label.toLowerCase().includes(lowerSearchTerm))) return true;
+        const props = node?.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)
+          ? node.properties
+          : node || {};
 
-      // Properties search (more expensive, check last)
-      if (node.properties) {
-        if (containsSearchTerm(node.properties, lowerSearchTerm)) return true;
-      }
+        const exactFields = [
+          node?.elementId,
+          node?.id,
+          node?.name,
+          node?.title,
+          node?.code,
+          props.id,
+          props.uid,
+          props.name,
+          props.title,
+          props.code,
+          props.key,
+          props.identifier,
+          props.uuid,
+          props.part_number,
+          props.product_name,
+          props.project_name,
+          props.instance_id,
+          props.instanceId,
+          props.external_id,
+          props.idref,
+          props.href,
+        ];
 
-      if (containsSearchTerm(node, lowerSearchTerm)) return true;
+        exactFields.forEach((field) => {
+          score = Math.max(score, scoreFieldMatch(field, lowerSearchTerm));
+        });
 
-      return false;
-    });
+        const labels = Array.isArray(node?.labels) ? node.labels : [];
+        labels.forEach((label) => {
+          score = Math.max(score, scoreFieldMatch(label, lowerSearchTerm));
+        });
+
+        if (node?.properties) {
+          const propText = JSON.stringify(node.properties).toLowerCase();
+          if (propText.includes(lowerSearchTerm)) {
+            score = Math.max(score, 200);
+          }
+        }
+
+        if (containsSearchTerm(node, lowerSearchTerm)) {
+          score = Math.max(score, 100);
+        }
+
+        return { node, score };
+      })
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(({ node }) => node);
   };
 };
 
@@ -365,11 +416,17 @@ const resolveNodeName = (node) => {
     node?.code,
     props.code,
     props.key,
+    props.uid,
     props.identifier,
+    props.instance_id,
+    props.instanceId,
     props.abbreviation,
     props.part_number,
     props.product_name,
     props.project_name,
+    props.external_id,
+    props.idref,
+    props.href,
     props.label,
     node?.label,
     node?.labels?.[0],
@@ -762,10 +819,8 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
 
         startTransition(() => {
           setSearchResultData({ nodes, links });
-          setAvailableLabels(Array.from(labelSet).sort());
-          setSelectedLabelFilter('ALL');
-          setFilteredData({ nodes, links });
-          if (setSearchResults) setSearchResults(nodes);
+              setFilteredData({ nodes, links });
+          syncSharedSearchResults(nodes);
         });
       } catch (err) {
         logger.error('[dt-load-result-nodes] Error:', err.message);
@@ -872,6 +927,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const [error, setError] = useState(null);
   // Performance: Add loading states for better UX
   const [searchLoading, setSearchLoading] = useState(false);
+  const [searchResultMode, setSearchResultMode] = useState('best');
   const [isLayoutSwitching] = useState(false);
   // New state for expand/collapse functionality
   const [expandedNodes, setExpandedNodes] = useState(new Set());
@@ -901,7 +957,6 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       resetStepPart = true,
       resetSearch = true,
       resetExpansion = true,
-      resetLabels = true,
       resetInteraction = true,
       dataOverride = null,
     } = options;
@@ -912,14 +967,14 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       setSearchResultData({ nodes: [], links: [] });
       setActiveSearchResultId(null);
     }
-    if (resetLabels) {
-      setAvailableLabels([]);
-      setSelectedLabelFilter('ALL');
-    }
     if (resetExpansion) {
-      setExpandedNodes(new Set());
-      setNodeExpansions(new Map());
+      const clearedExpanded = new Set();
+      const clearedExpansions = new Map();
+      setExpandedNodes(clearedExpanded);
+      setNodeExpansions(clearedExpansions);
       setTreeExpandedNodes(new Set());
+      expandedNodesRef.current = clearedExpanded;
+      nodeExpansionsRef.current = clearedExpansions;
     }
     if (resetOntology) {
       setSelectedOntology('ALL');
@@ -961,13 +1016,13 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const [selectedCompareNodeB, setSelectedCompareNodeB] = useState(null);
   const [isCompareSearching, setIsCompareSearching] = useState({ A: false, B: false });
   const [propertyComparisonData, setPropertyComparisonData] = useState(null); // full property union diff
-  // Label filter state: stores raw search results + available labels + user selection
+  // Search result state: stores raw search results and active selection
   const [searchResultData, setSearchResultData] = useState({ nodes: [], links: [] });
-  const [availableLabels, setAvailableLabels] = useState([]);
-  const [selectedLabelFilter, setSelectedLabelFilter] = useState('ALL');
   const [activeSearchResultId, setActiveSearchResultId] = useState(null);
   const activeSearchResultIdRef = useRef(null);
   const searchModeRef = useRef(false);
+  const expandedNodesRef = useRef(new Set());
+  const nodeExpansionsRef = useRef(new Map());
   // ── Graph View Mode: 'ontology' = Ontology Graph Visualization, 'individual' = Contextual Individual Graph View
   const [graphViewMode, setGraphViewMode] = useState('ontology');
   const graphViewModeRef = useRef('ontology');
@@ -993,12 +1048,19 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const debouncedSearchQuery = useDebounce(searchQuery, 300); // 300ms delay
   // Performance: Memoized search function
   const nodeSearchFunction = useMemo(() => createNodeSearchFunction(), []);
+  const graphSearchActive = useMemo(
+    () => Boolean(searchQuery || searchLoading || debouncedSearchQuery),
+    [searchQuery, searchLoading, debouncedSearchQuery]
+  );
   const activeGraphDataset = useMemo(() => {
     if (filteredData?.nodes?.length > 0) {
       return filteredData;
     }
+    if (graphSearchActive) {
+      return { nodes: [], links: [] };
+    }
     return graphData;
-  }, [filteredData, graphData]);
+  }, [filteredData, graphData, graphSearchActive]);
   const ontologySliceSummary = useMemo(() => {
     if (graphViewMode !== 'ontology' || selectedOntology === 'ALL') {
       return null;
@@ -1047,11 +1109,50 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   }, [activeGraphDataset, graphViewMode, selectedOntology]);
 
   const visibleSearchNodes = useMemo(() => {
-    if (selectedLabelFilter === 'ALL') {
-      return searchResultData.nodes || [];
+    return searchResultData.nodes || [];
+  }, [searchResultData.nodes]);
+
+  const findBestSearchMatchId = useCallback((nodes, query) => {
+    const term = (query || '').trim().toLowerCase();
+    if (!term || !Array.isArray(nodes) || nodes.length === 0) return null;
+
+    const pickField = (node, fields) => {
+      for (const field of fields) {
+        const value = node?.properties?.[field] ?? node?.[field];
+        const text = String(value ?? '').trim().toLowerCase();
+        if (!text) continue;
+        if (text === term) return 1000;
+        if (text.startsWith(term)) return 800;
+        if (text.includes(term)) return 500;
+      }
+      return 0;
+    };
+
+    const candidates = nodes.map((node) => ({
+      id: node.elementId,
+      score: Math.max(
+        pickField(node, ['id', 'uid', 'instance_id', 'identifier']),
+        pickField(node, ['name', 'title', 'label', 'display_name', 'displayName', 'code']),
+        pickField(node, ['source_filename', 'filename', 'file_name', 'file']),
+        pickField(node, ['external_id', 'externalId', 'href', 'idref'])
+      ),
+    })).filter((entry) => entry.score > 0);
+
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates[0]?.id || nodes[0]?.elementId || null;
+  }, []);
+
+  const syncSharedSearchResults = useCallback((nodes, { clear = false, force = false } = {}) => {
+    if (!setSearchResults) return;
+    if (graphViewModeRef.current === 'individual') {
+      if (clear) setSearchResults([]);
+      return;
     }
-    return (searchResultData.nodes || []).filter((node) => (node.labels || []).includes(selectedLabelFilter));
-  }, [searchResultData.nodes, selectedLabelFilter]);
+    if (!clear && graphSearchActive && !force) {
+      return;
+    }
+    setSearchResults(nodes);
+  }, [setSearchResults, graphSearchActive]);
 
   const preferredOntologyValue = useMemo(() => {
     if (selectedOntology && selectedOntology !== 'ALL') return selectedOntology;
@@ -1063,76 +1164,12 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   useEffect(() => {
     activeSearchResultIdRef.current = activeSearchResultId;
   }, [activeSearchResultId]);
-
-  const focusSearchResult = useCallback((candidateNode) => {
-    if (!candidateNode?.elementId) return;
-    setActiveSearchResultId(candidateNode.elementId);
-    const candidateName = resolveNodeName(candidateNode);
-    if (candidateName && candidateName !== 'Unknown') {
-      setHighlightedNodeNames(new Set([candidateName.toLowerCase()]));
-      const timeoutId = setTimeout(() => setHighlightedNodeNames(new Set()), HIGHLIGHT_AUTO_CLEAR_MS);
-      timeoutsRef.current.add(timeoutId);
-    }
-  }, []);
-
-  const expandSearchResult = useCallback(async (candidateNode) => {
-    if (!candidateNode?.elementId) return;
-    setActiveSearchResultId(candidateNode.elementId);
-    setLoadingNodes(prev => new Set([...prev, candidateNode.elementId]));
-
-    try {
-      const response = await apiClient.get(replaceParams(API.graph.graphtraverseNode, { node_id: candidateNode.elementId }));
-      const results = response.data?.results || [];
-      const nodesMap = new Map([[candidateNode.elementId, candidateNode]]);
-      const linksMap = new Map();
-
-      results.forEach((record) => {
-        const n = record.n || record['n'];
-        const r = record.r || record['r'];
-        const m = record.m || record['m'];
-
-        [n, m].forEach((rawNode) => {
-          if (!rawNode?.elementId || nodesMap.has(rawNode.elementId)) return;
-          nodesMap.set(rawNode.elementId, {
-            ...(rawNode.properties || {}),
-            elementId: rawNode.elementId,
-            labels: rawNode.labels || ['Node'],
-            label: rawNode.labels?.[0] || 'Node',
-            properties: rawNode.properties || {},
-          });
-        });
-
-        if (r?.elementId && !linksMap.has(r.elementId)) {
-          linksMap.set(r.elementId, {
-            elementId: r.elementId,
-            source: r.start ?? getLinkEndpointId(r.source),
-            target: r.end ?? getLinkEndpointId(r.target),
-            type: r.type,
-            properties: r.properties || {},
-          });
-        }
-      });
-
-      const nodes = Array.from(nodesMap.values());
-      const nodeIds = new Set(nodes.map(node => node.elementId));
-      const links = Array.from(linksMap.values()).filter(link =>
-        nodeIds.has(getLinkEndpointId(link.source)) &&
-        nodeIds.has(getLinkEndpointId(link.target))
-      );
-      const expandedData = { nodes, links };
-      setFilteredData(expandedData);
-      setData(expandedData);
-      if (setSearchResults) setSearchResults(nodes);
-    } catch (error) {
-      logger.error('Error expanding search result:', candidateNode.elementId, error);
-    } finally {
-      setLoadingNodes(prev => {
-        const next = new Set(prev);
-        next.delete(candidateNode.elementId);
-        return next;
-      });
-    }
-  }, [setData, setSearchResults]);
+  useEffect(() => {
+    expandedNodesRef.current = expandedNodes;
+  }, [expandedNodes]);
+  useEffect(() => {
+    nodeExpansionsRef.current = nodeExpansions;
+  }, [nodeExpansions]);
 
   // Comparative search API function
   // eslint-disable-next-line no-unused-vars
@@ -1915,7 +1952,13 @@ const getPrimaryNodeLabel = useCallback((d) => {
     props.code ??
     props.number ??
     props.id ??
+    props.uid ??
     props.identifier ??
+    props.instance_id ??
+    props.instanceId ??
+    props.external_id ??
+    props.idref ??
+    props.href ??
     props.uuid ??
     null;
 
@@ -3099,11 +3142,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         const currentData = filteredData.nodes.length > graphData.nodes.length ? filteredData : graphData;
         setFilteredData(currentData);
         // Reset search results for other components
-        if (setSearchResults) {
-          if (setSearchResults && !searchModeRef.current) {
-            setSearchResults(currentData.nodes);
-          }
-        }
+          if (!searchModeRef.current) syncSharedSearchResults(currentData.nodes);
       }
       setActiveSearchResultId(null);
       setSearchLoading(false);
@@ -3117,43 +3156,64 @@ const getPrimaryNodeLabel = useCallback((d) => {
       performanceLog('[SEARCH] Starting search for:', debouncedSearchQuery);
       searchModeRef.current = true;
       setSearchLoading(true);
+      // Each search should start from a clean expansion slate so stale expand/collapse
+      // state from a previous query cannot leak into the new result slice.
+      resetGraphSelectionState({
+        resetOntology: false,
+        resetStepPart: false,
+        resetSearch: false,
+        resetExpansion: true,
+        resetInteraction: false,
+      });
+      setLoadingNodes(new Set());
+      syncSharedSearchResults([], { clear: true });
+      startTransition(() => {
+        setFilteredData({ nodes: [], links: [] });
+        setSearchResultData({ nodes: [], links: [] });
+        setActiveSearchResultId(null);
+      });
 
       try {
         const isContextualQuery = graphViewModeRef.current === 'individual';
         const isOntologyViewQuery = graphViewModeRef.current === 'ontology';
         const ontologyPrefix = resolveOntologySearchPrefix(selectedOntologyRef.current);
-        let normalized;
+        const response = await apiClient.get(API.graph.contextualSubgraph, {
+          params: {
+            search: debouncedSearchQuery.toLowerCase(),
+            limit: isOntologyViewQuery ? 180 : 280,
+            ...(ontologyPrefix ? { ontology_prefix: ontologyPrefix } : {}),
+            search_mode: searchResultMode,
+            expand_neighbors: searchResultMode === 'broader',
+          },
+          signal: abortController.signal,
+        });
 
-        if (isOntologyViewQuery) {
-          const searchData = fullDataset.nodes.length > 0 ? fullDataset : graphData;
-          const nodes = nodeSearchFunction(searchData.nodes, debouncedSearchQuery);
-          const nodeIds = new Set(nodes.map(node => node.elementId));
-          const links = (searchData.links || []).filter(
-            (link) => nodeIds.has(link.source?.elementId || link.source) && nodeIds.has(link.target?.elementId || link.target)
-          );
-          normalized = { nodes, links };
-        } else {
-          const response = isContextualQuery
-            ? await apiClient.get(API.graph.contextualSubgraph, {
-                params: {
-                  search: debouncedSearchQuery.toLowerCase(),
-                  limit: 280,
-                  ...(ontologyPrefix ? { ontology_prefix: ontologyPrefix } : {}),
-                },
-                signal: abortController.signal,
-              })
-            : await apiClient.post(API.graph.graphfilter, {
-                search: debouncedSearchQuery.toLowerCase()
-              }, { signal: abortController.signal });
-
-          normalized = normalizeGraphDataset(response.data);
-        }
+        const normalized = normalizeGraphDataset(response.data);
 
         performanceLog(
           '[SEARCH] Search API response:',
           normalized.nodes.length,
-          isOntologyViewQuery ? 'ontology view nodes' : (isContextualQuery ? 'contextual nodes' : 'results')
+          isOntologyViewQuery ? 'ontology view nodes' : (isContextualQuery ? 'contextual nodes' : 'focused nodes')
         );
+
+        const searchAnchorId = findBestSearchMatchId(normalized.nodes, debouncedSearchQuery);
+        const searchAnchorNode = searchAnchorId
+          ? normalized.nodes.find((node) => node.elementId === searchAnchorId)
+          : (normalized.nodes[0] || null);
+
+        if (searchAnchorNode && searchResultMode !== 'broader') {
+          const anchorOnly = { nodes: [searchAnchorNode], links: [] };
+          startTransition(() => {
+            setFilteredData(anchorOnly);
+            setData(anchorOnly);
+            setSearchResultData(anchorOnly);
+            setActiveSearchResultId(searchAnchorNode.elementId);
+            activeSearchResultIdRef.current = searchAnchorNode.elementId;
+            syncSharedSearchResults([searchAnchorNode], { force: true });
+          });
+          setSearchLoading(false);
+          return;
+        }
 
         // Process search results directly without setting intermediate result state
         if (normalized.nodes.length > 0) {
@@ -3197,40 +3257,31 @@ const getPrimaryNodeLabel = useCallback((d) => {
           }
 
           // Batch search result updates for better performance
-          startTransition(() => {
-            // Store raw search results for label filtering
-            setSearchResultData({ nodes: finalNodes, links: finalLinks });
-            // Extract unique labels from search results
-            const labelSet = new Set();
-            finalNodes.forEach(n => {
-              (n.labels || []).forEach(l => labelSet.add(l));
-            });
-            const sortedLabels = Array.from(labelSet).sort();
-            setAvailableLabels(sortedLabels);
-            setSelectedLabelFilter('ALL');
-            const currentActiveId = activeSearchResultIdRef.current;
-            const nextActiveId = finalNodes.some((node) => node.elementId === currentActiveId)
-              ? currentActiveId
-              : (finalNodes[0]?.elementId || null);
+        startTransition(() => {
+          setFilteredData({ nodes: finalNodes, links: finalLinks });
+          setData({ nodes: finalNodes, links: finalLinks });
+          // Store raw search results for label filtering
+          setSearchResultData({ nodes: finalNodes, links: finalLinks });
+          const currentActiveId = activeSearchResultIdRef.current;
+          const bestMatchId = findBestSearchMatchId(finalNodes, debouncedSearchQuery);
+          const nextActiveId = finalNodes.some((node) => node.elementId === currentActiveId)
+            ? currentActiveId
+            : bestMatchId;
             setActiveSearchResultId(nextActiveId);
             activeSearchResultIdRef.current = nextActiveId;
             // Update search results for other components
-            if (setSearchResults) {
-              setSearchResults(finalNodes);
-            }
+            syncSharedSearchResults(finalNodes);
           });
         } else {
-          // Batch no results updates
-          startTransition(() => {
-            setSearchResultData({ nodes: [], links: [] });
-            setAvailableLabels([]);
-            setSelectedLabelFilter('ALL');
-            setActiveSearchResultId(null);
-            activeSearchResultIdRef.current = null;
+        // Batch no results updates
+        startTransition(() => {
+          setFilteredData({ nodes: [], links: [] });
+          setData({ nodes: [], links: [] });
+          setSearchResultData({ nodes: [], links: [] });
+          setActiveSearchResultId(null);
+          activeSearchResultIdRef.current = null;
             // Update search results to empty array for other components
-            if (setSearchResults) {
-              setSearchResults([]);
-            }
+            syncSharedSearchResults([], { clear: true });
           });
         }
 
@@ -3253,21 +3304,18 @@ const getPrimaryNodeLabel = useCallback((d) => {
         );
         // Batch fallback search updates
         startTransition(() => {
+          setFilteredData({ nodes: filteredNodes, links: filteredLinks });
+          setData({ nodes: filteredNodes, links: filteredLinks });
           setSearchResultData({ nodes: filteredNodes, links: filteredLinks });
-          setAvailableLabels([]);
-          setSelectedLabelFilter('ALL');
           const currentActiveId = activeSearchResultIdRef.current;
+          const bestMatchId = findBestSearchMatchId(filteredNodes, debouncedSearchQuery);
           const nextActiveId = filteredNodes.some((node) => node.elementId === currentActiveId)
             ? currentActiveId
-            : (filteredNodes[0]?.elementId || null);
+            : bestMatchId;
           setActiveSearchResultId(nextActiveId);
           activeSearchResultIdRef.current = nextActiveId;
           // Update search results for other components
-          if (setSearchResults) {
-            if (setSearchResults && !searchModeRef.current) {
-              setSearchResults(filteredNodes);
-            }
-          }
+          if (!searchModeRef.current) syncSharedSearchResults(filteredNodes);
           setSearchLoading(false);
         });
       }
@@ -3277,22 +3325,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // Cleanup: abort in-flight request when query changes or component unmounts
     return () => abortController.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearchQuery, fullDataset, graphData, graphViewMode, nodeSearchFunction, selectedOntology]);
-
-  // Label filter effect: when user picks a label from dropdown, filter the search results
-  useEffect(() => {
-    if (!debouncedSearchQuery || searchResultData.nodes.length === 0) return;
-    if (selectedLabelFilter === 'ALL') {
-      if (setSearchResults) setSearchResults(searchResultData.nodes);
-    } else {
-      // Filter nodes that have the selected label
-      const filtered = searchResultData.nodes.filter(n =>
-        (n.labels || []).includes(selectedLabelFilter)
-      );
-      if (setSearchResults) setSearchResults(filtered);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLabelFilter, searchResultData]);
+  }, [debouncedSearchQuery, fullDataset, graphData, graphViewMode, nodeSearchFunction, selectedOntology, searchResultMode]);
 
   // ── Ontology viewer: fetch ontology graph when dropdown changes ─────────
   const fetchOntologyGraph = useCallback(async (ontologyType, partName) => {
@@ -3303,7 +3336,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       setGraphData(initialData);
       setFullDataset(initialData);
       setData(initialData);
-      if (setSearchResults && !searchModeRef.current) setSearchResults(initialData.nodes);
+      if (!searchModeRef.current) syncSharedSearchResults(initialData.nodes);
       setStepParts([]);
       setSelectedStepPart('ALL');
       return;
@@ -3365,7 +3398,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         setGraphData(dataSet);
         setFullDataset(dataSet);
         setData(dataSet);
-        if (setSearchResults && !searchModeRef.current) setSearchResults(dataSet.nodes);
+        if (!searchModeRef.current) syncSharedSearchResults(dataSet.nodes);
         logger.render(`[ONTOLOGY] Loaded ${ontologyType}: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
       } else {
         const empty = { nodes: [], links: [] };
@@ -3375,7 +3408,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         setGraphData(fallbackData);
         setFullDataset(fallbackData);
         setData(fallbackData);
-        if (setSearchResults && !searchModeRef.current) setSearchResults(fallbackData.nodes || []);
+        if (!searchModeRef.current) syncSharedSearchResults(fallbackData.nodes || []);
       }
     } catch (err) {
       logger.error('[ONTOLOGY] Fetch error:', err);
@@ -3448,6 +3481,9 @@ const getPrimaryNodeLabel = useCallback((d) => {
   useEffect(() => {
     graphViewModeRef.current = graphViewMode;
     resetGraphSelectionState({ resetOntology: false, resetStepPart: false });
+    if (graphSearchActive) {
+      syncSharedSearchResults([], { clear: true });
+    }
 
     if (graphViewMode === 'individual') {
       const dataSet = buildIndividualViewDataset(initialData);
@@ -3458,7 +3494,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         setData(dataSet);
       });
       // Defer parent setState — must NOT be called inside a state updater or during render
-      if (setSearchResults && !searchModeRef.current) setTimeout(() => setSearchResults(dataSet.nodes), 0);
+      if (!searchModeRef.current) setTimeout(() => syncSharedSearchResults(dataSet.nodes), 0);
     } else {
       // Ontology mode — restore or refetch based on active ontology selection.
       const selected = selectedOntologyRef.current || 'ALL';
@@ -3469,7 +3505,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           setFullDataset(initialData);
           setData(initialData);
         });
-        if (setSearchResults && !searchModeRef.current) setTimeout(() => setSearchResults(initialData.nodes), 0);
+        if (!searchModeRef.current) setTimeout(() => syncSharedSearchResults(initialData.nodes), 0);
       } else {
         // Force refresh since selectedOntology effect does not run on graphViewMode changes.
         const part = selected === 'step' ? selectedStepPart : 'ALL';
@@ -3477,7 +3513,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphViewMode, buildIndividualViewDataset, resetGraphSelectionState]);
+  }, [graphViewMode, buildIndividualViewDataset, resetGraphSelectionState, graphSearchActive, syncSharedSearchResults]);
 
   // Keep Individual view in sync when fresh initial graph data arrives.
   useEffect(() => {
@@ -3489,7 +3525,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       setFullDataset(dataSet);
       setData(dataSet);
     });
-    if (setSearchResults && !searchModeRef.current) setTimeout(() => setSearchResults(dataSet.nodes), 0);
+    if (!searchModeRef.current) setTimeout(() => syncSharedSearchResults(dataSet.nodes), 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData, buildIndividualViewDataset]);
 
@@ -3538,18 +3574,26 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
   // Function to determine if a node has expandable connections
   const hasExpandableConnections = (nodeData) => {
-    // Show expand option only in search context and the node is not already expanded
-    const isNotExpanded = !expandedNodes.has(nodeData.elementId);
+    // Show expand option only in search context, for traversal-supported nodes,
+    // and only when that node is not already expanded.
+    const isNotExpanded = !expandedNodesRef.current.has(nodeData.elementId);
     const hasSearchQuery = !!debouncedSearchQuery;
+    const nodeType = resolveNodeType(nodeData).toLowerCase();
+    const labels = Array.isArray(nodeData?.labels) ? nodeData.labels.map(label => String(label || '').toLowerCase()) : [];
+    const isTraversalSupported =
+      nodeType === 'part' ||
+      labels.includes('part') ||
+      String(nodeData?.properties?.element_type || '').toLowerCase() === 'part' ||
+      String(nodeData?.properties?.part_type || '').trim().length > 0;
 
-    // Only show expand buttons in search context
-    return hasSearchQuery && isNotExpanded;
+    // Only show expand buttons in search context for nodes the backend can actually traverse.
+    return hasSearchQuery && isNotExpanded && isTraversalSupported;
   };
 
   // Function to determine if a node can be collapsed
   const canCollapseNode = (nodeData) => {
     // Show collapse option only for nodes that are currently expanded in search context
-    const isExpanded = expandedNodes.has(nodeData.elementId);
+    const isExpanded = expandedNodesRef.current.has(nodeData.elementId);
     const hasSearchQuery = !!debouncedSearchQuery; // Use debouncedSearchQuery for consistency
 
     // Only show collapse buttons in search context
@@ -3558,7 +3602,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
   // Function to expand a node using graphtraverse API - ONE LEVEL ONLY expansion
   const expandNode = async (nodeId) => {
-    if (expandedNodes.has(nodeId)) {
+    if (expandedNodesRef.current.has(nodeId)) {
       return;
     }
 
@@ -3578,13 +3622,10 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
         // ONLY add nodes that are part of current search or already expanded
         if (debouncedSearchQuery) {
-          // In search mode: only keep nodes that match current search
-          // This prevents contamination from previous searches
+          // In search mode: keep the full currently visible slice so sibling search
+          // hits remain available for subsequent expansion clicks.
           filteredData.nodes.forEach(node => {
-            // Only add if it's the node being expanded or was added by a current expansion
-            if (node.elementId === nodeId || expandedNodes.has(node.elementId)) {
-              newNodesMap.set(node.elementId, node);
-            }
+            newNodesMap.set(node.elementId, node);
           });
 
           filteredData.links.forEach(link => {
@@ -3669,9 +3710,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           }
 
           // Update search results if search is active
-          if (setSearchResults && debouncedSearchQuery) {
-            setSearchResults(finalNodes);
-          }
+          if (debouncedSearchQuery) syncSharedSearchResults(finalNodes);
 
           if (setVisibleRelationships) {
             setVisibleRelationships(validatedLinks);
@@ -3680,11 +3719,13 @@ const getPrimaryNodeLabel = useCallback((d) => {
           // Store which nodes and links were added by this expansion
           setNodeExpansions(prev => {
             const newMap = new Map([...prev, [nodeId, { addedNodeIds, addedLinkIds, level: 1 }]]);
+            nodeExpansionsRef.current = newMap;
             return newMap;
           });
 
           setExpandedNodes(prev => {
             const newSet = new Set([...prev, nodeId]);
+            expandedNodesRef.current = newSet;
             return newSet;
           });
 
@@ -3705,12 +3746,12 @@ const getPrimaryNodeLabel = useCallback((d) => {
   const collapseNode = (nodeId) => {
     logger.render('=== COLLAPSE FUNCTION START ===');
     logger.render('Collapsing node:', nodeId);
-    logger.render('Current nodeExpansions:', Array.from(nodeExpansions.entries()));
-    logger.render('Current expandedNodes:', Array.from(expandedNodes));
+    logger.render('Current nodeExpansions:', Array.from(nodeExpansionsRef.current.entries()));
+    logger.render('Current expandedNodes:', Array.from(expandedNodesRef.current));
     logger.render('Current filteredData nodes:', filteredData.nodes.map(n => n.elementId));
 
     // Get the expansion info for this node
-    const expansionInfo = nodeExpansions.get(nodeId);
+    const expansionInfo = nodeExpansionsRef.current.get(nodeId);
     if (!expansionInfo) {
       logger.render('ERROR: No expansion info found for node:', nodeId);
       logger.render('Available expansions:', Array.from(nodeExpansions.keys()));
@@ -3772,14 +3813,13 @@ const getPrimaryNodeLabel = useCallback((d) => {
       setGraphData(newData);
     }
 
-    if (setSearchResults) {
-      setSearchResults(newData.nodes);
-    }
+    syncSharedSearchResults(newData.nodes);
 
     // Remove this node from expanded set and expansion tracking
     setExpandedNodes(prev => {
       const newSet = new Set(prev);
       newSet.delete(nodeId);
+      expandedNodesRef.current = newSet;
       logger.render('Updated expandedNodes:', Array.from(newSet));
       return newSet;
     });
@@ -3787,6 +3827,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     setNodeExpansions(prev => {
       const newMap = new Map(prev);
       newMap.delete(nodeId);
+      nodeExpansionsRef.current = newMap;
       logger.render('Updated nodeExpansions:', Array.from(newMap.entries()));
       return newMap;
     });
@@ -3899,14 +3940,19 @@ const boundaryForce = (width, height) => {
       logger.render('D3 SVG initialized with marker in persistent defs.');
     }
 
-    // Check if we have data to render - use full dataset if filteredData is empty and we have graphData
-    const hasData = filteredData.nodes.length > 0 || (graphData.nodes && graphData.nodes.length > 0);
-    const renderData = filteredData.nodes.length > 0 ? filteredData :
-                      (graphData.nodes && graphData.nodes.length > 0) ? graphData :
-                      { nodes: [], links: [] };
+    // During search, never fall back to the full graph canvas.
+    // That fallback makes the UI flash or stay on the full graph while a focused search result is loading.
+    const hasData = graphSearchActive
+      ? filteredData.nodes.length > 0
+      : (filteredData.nodes.length > 0 || (graphData.nodes && graphData.nodes.length > 0));
+    const renderData = graphSearchActive
+      ? (filteredData.nodes.length > 0 ? filteredData : { nodes: [], links: [] })
+      : (filteredData.nodes.length > 0 ? filteredData :
+          (graphData.nodes && graphData.nodes.length > 0) ? graphData :
+          { nodes: [], links: [] });
     const showNodeLabels = (
       graphViewMode !== 'individual' ||
-      Boolean(searchQuery) ||
+      graphSearchActive ||
       selectedOntology !== 'ALL' ||
       renderData.nodes.length <= GRAPH_LABEL_RENDER_LIMIT
     );
@@ -3999,10 +4045,17 @@ const boundaryForce = (width, height) => {
     initializeNodePositions(renderData.nodes, width, height);
 
     // --- Process links for bidirectional relationship separation ---
-    const processedLinks = processLinksForOffset([...renderData.links]);
+    const renderNodeIds = new Set((renderData.nodes || []).map(node => node.elementId));
+    const safeRenderLinks = (renderData.links || []).filter((link) => {
+      const sourceId = getLinkEndpointId(link.source);
+      const targetId = getLinkEndpointId(link.target);
+      return renderNodeIds.has(sourceId) && renderNodeIds.has(targetId);
+    });
+    const processedLinks = processLinksForOffset([...safeRenderLinks]);
 
     logger.render('[LINK PROCESSING]', {
       inputLinks: renderData.links.length,
+      safeLinks: safeRenderLinks.length,
       processedLinks: processedLinks.length,
       sample: processedLinks.slice(0, 2).map(l => ({ source: l.source, target: l.target, type: l.type }))
     });
@@ -4198,6 +4251,17 @@ const boundaryForce = (width, height) => {
             .attr('r', NODE_RADIUS)
             .attr('fill', d => getNodeColor(d));
 
+          // Active search node halo so the main context is obvious in the graph
+          group.append('circle')
+            .attr('class', 'search-active-ring')
+            .attr('r', NODE_RADIUS + 8)
+            .attr('fill', 'none')
+            .attr('stroke', TCS_GRAPH_THEME.primary)
+            .attr('stroke-width', 2.2)
+            .attr('stroke-dasharray', '5,4')
+            .style('pointer-events', 'none')
+            .style('opacity', d => d.elementId === activeSearchResultId ? 1 : 0);
+
           // Highlight glow ring for "View in Graph" from Recommendations
           group.append('circle')
             .attr('class', 'rec-highlight-ring')
@@ -4272,16 +4336,16 @@ const boundaryForce = (width, height) => {
               logger.render('Node ID:', d.elementId);
               logger.render('Can expand:', hasExpandableConnections(d));
               logger.render('Can collapse:', canCollapseNode(d));
-              logger.render('Is expanded:', expandedNodes.has(d.elementId));
+              logger.render('Is expanded:', expandedNodesRef.current.has(d.elementId));
               logger.render('Loading nodes:', Array.from(loadingNodes));
-              logger.render('Current expandedNodes state:', Array.from(expandedNodes));
-              logger.render('Current nodeExpansions state:', Array.from(nodeExpansions.keys()));
+              logger.render('Current expandedNodes state:', Array.from(expandedNodesRef.current));
+              logger.render('Current nodeExpansions state:', Array.from(nodeExpansionsRef.current.keys()));
 
               // Direct check and call to avoid any dependency issues
-              if (expandedNodes.has(d.elementId)) {
+              if (expandedNodesRef.current.has(d.elementId)) {
                 logger.render('Node is expanded - calling collapseNode directly...');
                 collapseNode(d.elementId);
-              } else if (!expandedNodes.has(d.elementId) && hasExpandableConnections(d)) {
+              } else if (!expandedNodesRef.current.has(d.elementId) && hasExpandableConnections(d)) {
                 logger.render('Node can be expanded - calling expandNode directly...');
                 expandNode(d.elementId);
               } else {
@@ -4556,6 +4620,16 @@ const boundaryForce = (width, height) => {
           update.select('.node-circle')
             .attr('fill', d => getNodeColor(d));
 
+          update.select('.search-active-ring')
+            .style('opacity', d => d.elementId === activeSearchResultId ? 1 : 0)
+            .attr('stroke', d => d.elementId === activeSearchResultId ? TCS_GRAPH_THEME.primary : 'none');
+
+          update.each(function(d) {
+            if (d.elementId === activeSearchResultId) {
+              d3.select(this).raise();
+            }
+          });
+
           update.select('.node-label')
             .text(d => showNodeLabels ? getPrimaryNodeLabel(d) : '')
             .attr('font-weight', 'bold')
@@ -4631,32 +4705,31 @@ const boundaryForce = (width, height) => {
       });
     });
 
-    // Center the view on search results
-    if (
-      searchQuery &&
-      filteredData.nodes.length > 0 &&
-      lastCenteredSearchRef.current !== searchQuery &&
-      !userInteractedWithGraphRef.current
-    ) {
-      // Calculate the bounding box of all nodes
-      const nodePositions = filteredData.nodes.map(d => ({x: d.x || 0, y: d.y || 0}));
-      const minX = Math.min(...nodePositions.map(d => d.x));
-      const maxX = Math.max(...nodePositions.map(d => d.x));
-      const minY = Math.min(...nodePositions.map(d => d.y));
-      const maxY = Math.max(...nodePositions.map(d => d.y));
+    // Center the view on search results, prioritizing the active exact match
+    if (searchQuery && filteredData.nodes.length > 0 && lastCenteredSearchRef.current !== searchQuery) {
+      const focusNode = filteredData.nodes.find((d) => d.elementId === activeSearchResultId) || filteredData.nodes[0];
+      const hasFocusCoords = Number.isFinite(focusNode?.x) && Number.isFinite(focusNode?.y);
 
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
+      let centerX = width / 2;
+      let centerY = height / 2;
+      if (hasFocusCoords) {
+        centerX = focusNode.x;
+        centerY = focusNode.y;
+      } else {
+        const nodePositions = filteredData.nodes.map(d => ({ x: d.x || 0, y: d.y || 0 }));
+        const minX = Math.min(...nodePositions.map(d => d.x));
+        const maxX = Math.max(...nodePositions.map(d => d.x));
+        const minY = Math.min(...nodePositions.map(d => d.y));
+        const maxY = Math.max(...nodePositions.map(d => d.y));
+        centerX = (minX + maxX) / 2;
+        centerY = (minY + maxY) / 2;
+      }
 
-      // Apply transform to center the search results
       const transform = d3.zoomIdentity
         .translate(width / 2 - centerX, height / 2 - centerY)
         .scale(1);
 
-      svg.call(
-        d3.zoom().transform,
-        transform
-      );
+      svg.call(d3.zoom().transform, transform);
       lastCenteredSearchRef.current = searchQuery;
     } else if (!searchQuery && lastCenteredSearchRef.current) {
       lastCenteredSearchRef.current = '';
@@ -4749,15 +4822,11 @@ const boundaryForce = (width, height) => {
     const handleKeyPress = (event) => {
       if (event.key === 'Escape') {
         // Collapse all nodes and reset to original search results
-        resetGraphSelectionState({ resetOntology: false, resetStepPart: false, resetSearch: false, resetLabels: false });
+        resetGraphSelectionState({ resetOntology: false, resetStepPart: false, resetSearch: false });
         setFilteredData(graphData);
         setFullDataset(graphData);
         setData(graphData);
-        if (setSearchResults) {
-          if (setSearchResults && !searchModeRef.current) {
-            setSearchResults(graphData.nodes);
-          }
-        }
+        if (!searchModeRef.current) syncSharedSearchResults(graphData.nodes);
       }
     };
 
@@ -4771,7 +4840,7 @@ const boundaryForce = (width, height) => {
   useEffect(() => {
     const previousSearchQuery = previousSearchQueryRef.current;
     if (previousSearchQuery && !searchQuery) {
-      resetGraphSelectionState({ resetOntology: false, resetStepPart: false, resetSearch: false, resetLabels: false });
+      resetGraphSelectionState({ resetOntology: false, resetStepPart: false, resetSearch: false });
     }
     previousSearchQueryRef.current = searchQuery;
   }, [searchQuery, resetGraphSelectionState]);
@@ -4880,11 +4949,11 @@ const boundaryForce = (width, height) => {
           </div>
         </div>
         {/* ── Graph view scope ─────────────────────────────────────────── */}
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3, border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`, borderRadius: 6, padding: 2, background: TCS_GRAPH_THEME.surfaceMuted, maxWidth: '100%' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`, borderRadius: 6, padding: 2, background: TCS_GRAPH_THEME.surfaceMuted, maxWidth: '100%', flexWrap: 'wrap' }}>
           {[
-            { id: 'full', label: 'Full Graph', icon: 'fa-globe', active: graphViewMode === 'ontology' && selectedOntology === 'ALL' },
-            { id: 'ontology', label: 'Ontology Schema', icon: 'fa-sitemap', active: graphViewMode === 'ontology' && selectedOntology !== 'ALL' },
-            { id: 'individual', label: 'Contextual Instances', icon: 'fa-project-diagram', active: graphViewMode === 'individual' },
+            { id: 'full', label: 'Full Graph', Icon: Globe, active: graphViewMode === 'ontology' && selectedOntology === 'ALL' },
+            { id: 'ontology', label: 'Ontology Schema', Icon: Workflow, active: graphViewMode === 'ontology' && selectedOntology !== 'ALL' },
+            { id: 'individual', label: 'Contextual Instances', Icon: Network, active: graphViewMode === 'individual' },
           ].map((mode) => (
             <button
               key={mode.id}
@@ -4905,7 +4974,7 @@ const boundaryForce = (width, height) => {
                   setFilteredData(initialData);
                   setFullDataset(initialData);
                   setData(initialData);
-                  if (setSearchResults && !searchModeRef.current) setSearchResults(initialData.nodes);
+                  if (!searchModeRef.current) syncSharedSearchResults(initialData.nodes);
                   return;
                 }
                 if (mode.id === 'individual') {
@@ -4925,25 +4994,29 @@ const boundaryForce = (width, height) => {
                 }
               }}
               style={{
-                minWidth: 32,
-                height: 30,
+                width: 38,
+                height: 34,
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 5,
                 border: 'none',
-                borderRadius: 5,
+                borderRadius: 6,
                 background: mode.active ? TCS_GRAPH_THEME.primary : 'transparent',
                 color: mode.active ? '#fff' : TCS_GRAPH_THEME.inkSoft,
                 cursor: 'pointer',
-                padding: '0 8px',
-                fontSize: 11,
+                padding: 0,
                 fontWeight: 800,
-                whiteSpace: 'nowrap',
+                lineHeight: 0,
+                overflow: 'hidden',
               }}
             >
-              <i className={`fas ${mode.icon}`} style={{ fontSize: 12 }}></i>
-              <span>{mode.label}</span>
+              <mode.Icon
+                size={16}
+                strokeWidth={2.8}
+                color={mode.active ? '#fff' : TCS_GRAPH_THEME.inkSoft}
+                className="graph-toolbar-icon"
+                style={{ display: 'block', flex: '0 0 auto' }}
+              />
             </button>
           ))}
         </div>
@@ -4964,7 +5037,11 @@ const boundaryForce = (width, height) => {
               background: TCS_GRAPH_THEME.surface,
               color: TCS_GRAPH_THEME.ink
             }}
-            onChange={e => setSearchInput(e.target.value)}
+            onChange={e => {
+              const nextValue = e.target.value;
+              setSearchInput(nextValue);
+              setSearchQuery(nextValue.trim().toLowerCase());
+            }}
             onKeyDown={e => {
               if (e.key === 'Enter') {
                 setSearchQuery(e.target.value.trim().toLowerCase());
@@ -4973,40 +5050,38 @@ const boundaryForce = (width, height) => {
             onFocus={e => { e.target.style.borderColor = TCS_GRAPH_THEME.primary; e.target.style.boxShadow='0 0 0 2px rgba(31,61,99,0.12)'; }}
             onBlur={e => { e.target.style.borderColor = TCS_GRAPH_THEME.borderStrong; e.target.style.boxShadow='none'; }}
           />
-        </div>
-        {/* Label filter dropdown — only visible when search has results */}
-        {availableLabels.length > 0 && searchQuery && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <i className="fas fa-filter" style={{ fontSize: '14px', color: '#555' }}></i>
-            <select
-              value={selectedLabelFilter}
-              onChange={e => setSelectedLabelFilter(e.target.value)}
-              style={{
-                padding: '6px 10px',
-                borderRadius: '6px',
-                border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`,
-                backgroundColor: TCS_GRAPH_THEME.surface,
-                color: TCS_GRAPH_THEME.ink,
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: 600,
-                minWidth: '130px',
-                transition: 'all .2s ease'
-              }}
-              title="Filter search results by node label"
-            >
-              <option key="ALL" value="ALL">All Labels ({searchResultData.nodes.length})</option>
-              {availableLabels.map(label => {
-                const count = searchResultData.nodes.filter(n => (n.labels || []).includes(label)).length;
-                return (
-                  <option key={label} value={label}>
-                    {label} ({count})
-                  </option>
-                );
-              })}
-            </select>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`, borderRadius: 6, padding: 2, background: TCS_GRAPH_THEME.surfaceMuted }}>
+            {[
+              { id: 'best', label: 'Best', title: 'Best match only' },
+              { id: 'broader', label: 'Many', title: 'Return multiple matching nodes' },
+            ].map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                title={mode.title}
+                aria-label={mode.title}
+                onClick={() => setSearchResultMode(mode.id)}
+                style={{
+                  width: 42,
+                  height: 28,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: 'none',
+                  borderRadius: 4,
+                  background: searchResultMode === mode.id ? TCS_GRAPH_THEME.primary : 'transparent',
+                  color: searchResultMode === mode.id ? '#fff' : TCS_GRAPH_THEME.inkSoft,
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: 11,
+                  fontWeight: 800,
+                }}
+              >
+                {mode.label}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
         {/* Ontology selector dropdown — only in Ontology Graph mode */}
         {graphViewMode === 'ontology' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -5029,7 +5104,7 @@ const boundaryForce = (width, height) => {
                 transition: 'all .2s ease',
                 opacity: ontologyLoading || ontologyError ? 0.6 : 1
               }}
-              title={ontologyError ? ontologyError : "Select a specific ontology for schema inspection, or use the overview graph for orientation"}
+              title={ontologyError ? ontologyError : 'Select an ontology'}
             >
               <option value="ALL" style={{color:'#333', fontWeight:600}}>Overview Graph (all loaded data)</option>
               {ontologyOptions.filter(o => o.value !== 'ALL' && !o.disabled).map((opt, idx) => (
@@ -5039,11 +5114,6 @@ const boundaryForce = (width, height) => {
               ))}
             </select>
             {ontologyError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>Warning: {ontologyError}</span>}
-            {!ontologyError && selectedOntology === 'ALL' && (
-              <span style={{ fontSize: '11px', color: TCS_GRAPH_THEME.inkSoft, maxWidth: '280px', lineHeight: 1.35 }}>
-                Choose an ontology to inspect classes, properties, domain, and range.
-              </span>
-            )}
           </div>
         </div>
         )}
@@ -5092,11 +5162,6 @@ const boundaryForce = (width, height) => {
         {ontologyGraphMessage && (
           <div style={{fontSize:12, color:'#8a5a00', background:'#fff8e1', border:'1px solid #ffe082', borderRadius:5, padding:'5px 8px'}}>
             {ontologyGraphMessage}
-          </div>
-        )}
-        {graphData.nodes.length > GRAPH_LABEL_RENDER_LIMIT && !searchQuery && selectedOntology === 'ALL' && graphViewMode === 'ontology' && (
-          <div style={{fontSize:12, color:'#52606d', background:'#f4f7fb', border:'1px solid #d9e2ec', borderRadius:5, padding:'5px 8px'}}>
-            Labels are condensed in the full graph view. Search or pick an ontology to show node names.
           </div>
         )}
         {ontologySliceSummary && (
@@ -5174,7 +5239,7 @@ const boundaryForce = (width, height) => {
             ))}
           </div>
         )}
-        {(searchQuery || selectedOntology !== 'ALL' || graphViewMode !== 'ontology') && (
+        {(graphSearchActive || selectedOntology !== 'ALL' || graphViewMode !== 'ontology') && (
           <button
             onClick={() => {
               setGraphViewMode('ontology');
@@ -5183,7 +5248,7 @@ const boundaryForce = (width, height) => {
               setGraphData(initialData);
               setFilteredData(initialData);
               setFullDataset(initialData);
-              if (setSearchResults && !searchModeRef.current) setSearchResults(initialData.nodes);
+              if (!searchModeRef.current) syncSharedSearchResults(initialData.nodes);
             }}
             style={{padding:'5px 10px', border:'none', borderRadius:'6px', backgroundColor:TCS_GRAPH_THEME.primary, color:'#fff', fontSize:'12px', fontWeight:700, cursor:'pointer', transition:'all .2s ease'}}
           >Reset</button>
@@ -5234,86 +5299,6 @@ const boundaryForce = (width, height) => {
           <div style={{ marginBottom: '16px', fontSize: '48px', color: '#28A745' }}><i className="fas fa-exclamation-triangle"></i></div>
           <div style={{ fontSize: '18px', fontWeight: '600', color: '#28A745', marginBottom: '8px' }}>Connection Error</div>
           <div style={{ fontSize: '14px', color: '#7f8c8d' }}>{error}</div>
-        </div>
-      )}
-      {!isLoading && !error && visibleSearchNodes.length > 0 && debouncedSearchQuery && (
-        <div style={{
-          position: 'absolute',
-          top: 76,
-          right: 14,
-          zIndex: 11,
-          width: 'min(340px, calc(100% - 28px))',
-          maxHeight: '54%',
-          overflowY: 'auto',
-          background: 'rgba(255,255,255,0.98)',
-          border: `1px solid ${TCS_GRAPH_THEME.border}`,
-          borderRadius: 8,
-          boxShadow: '0 18px 40px rgba(15, 23, 42, 0.12)',
-        }}>
-          <div style={{
-            position: 'sticky',
-            top: 0,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '9px 11px',
-            background: TCS_GRAPH_THEME.surface,
-            borderBottom: `1px solid ${TCS_GRAPH_THEME.border}`,
-          }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: TCS_GRAPH_THEME.ink }}>Search Results</div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: TCS_GRAPH_THEME.primary }}>{visibleSearchNodes.length}</div>
-          </div>
-          <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {visibleSearchNodes.slice(0, 40).map((node) => {
-              const nodeColor = getNodeColor(node);
-              const nodeLabel = getPrimaryNodeLabel(node);
-              const nodeType = resolveNodeColorKey(node);
-              return (
-                <div
-                  key={node.elementId}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr auto',
-                    gap: 8,
-                    padding: '8px 10px',
-                    border: `1px solid ${activeSearchResultId === node.elementId ? nodeColor : TCS_GRAPH_THEME.border}`,
-                    borderRadius: 7,
-                    background: activeSearchResultId === node.elementId ? TCS_GRAPH_THEME.primarySoft : TCS_GRAPH_THEME.surface,
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                      <span style={{ width: 10, height: 10, borderRadius: 999, background: nodeColor, flex: '0 0 auto' }} />
-                      <span style={{ fontSize: 12, fontWeight: 700, color: TCS_GRAPH_THEME.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {nodeLabel}
-                      </span>
-                    </div>
-                    <div style={{ marginTop: 4, paddingLeft: 18, fontSize: 11, color: TCS_GRAPH_THEME.inkSoft, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {nodeType}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                    <button
-                      type="button"
-                      onClick={() => focusSearchResult(node)}
-                      title="Show this node only"
-                      style={{ minHeight: 24, padding: '2px 7px', border: 'none', borderRadius: 5, background: TCS_GRAPH_THEME.primary, color: '#fff', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      Show
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => expandSearchResult(node)}
-                      title="Expand connected nodes"
-                      style={{ minHeight: 24, padding: '2px 7px', border: 'none', borderRadius: 5, background: TCS_GRAPH_THEME.inkSoft, color: '#fff', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      Expand
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         </div>
       )}
       {!isLoading && !error && visibleSearchNodes.length === 0 && debouncedSearchQuery && !searchLoading && (

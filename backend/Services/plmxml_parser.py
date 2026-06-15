@@ -236,6 +236,8 @@ class PlmxmlForm:
     description: str = ""
     attributes: Dict[str, str] = field(default_factory=dict)
     properties: Dict[str, str] = field(default_factory=dict)
+    semantic_role: str = "metadata"
+    is_structural: bool = True
 
 
 @dataclass
@@ -255,6 +257,8 @@ class PlmxmlGenericEntity:
     description: str = ""
     subtype: str = ""
     properties: Dict[str, str] = field(default_factory=dict)
+    semantic_role: str = "entity"
+    is_structural: bool = False
 
 
 @dataclass
@@ -349,6 +353,55 @@ def _reference_values(attrs: Dict[str, str]) -> List[Tuple[str, str]]:
             for ref in _parse_refs(str(raw_value)):
                 refs.append((normalized_key, ref))
     return refs
+
+
+_PLMXML_METADATA_KEYS = {
+    "id",
+    "uid",
+    "name",
+    "label",
+    "description",
+    "subtype",
+    "subclass",
+    "type",
+    "value",
+    "text",
+    "title",
+    "namespace",
+    "ontology_prefix",
+    "source_ontology",
+    "import_id",
+}
+
+
+_PLMXML_STRUCTURAL_TAGS = {
+    "AccessIntent",
+    "AssociatedAttachment",
+    "ApplicationRef",
+    "Description",
+    "PlainText",
+    "Form",
+    "UserValue",
+}
+
+
+def _plmxml_has_meaningful_payload(tag: str, attrs: Dict[str, str], text: str = "") -> bool:
+    meaningful = 0
+    for key, value in attrs.items():
+        if not value:
+            continue
+        key_norm = _local_name(key).lower()
+        if key_norm in _PLMXML_METADATA_KEYS:
+            continue
+        if key_norm.endswith("ref") or key_norm.endswith("refs"):
+            continue
+        meaningful += 1
+    if meaningful:
+        return True
+    text = (text or "").strip()
+    if text and tag not in _PLMXML_STRUCTURAL_TAGS:
+        return True
+    return False
 
 
 def _parse_quantity(attrs: Dict[str, str]) -> int:
@@ -684,8 +737,11 @@ def parse_plmxml_file(file_path: Path) -> PlmxmlDocument:
                 description=description,
                 attributes=form_attrs,
                 properties=attrs,
+                semantic_role="metadata",
+                is_structural=True,
             )
         else:
+            is_structural = (tag in _PLMXML_STRUCTURAL_TAGS) or not _plmxml_has_meaningful_payload(tag, attrs)
             doc.generic_entities[elem_id] = PlmxmlGenericEntity(
                 id=elem_id,
                 tag=tag,
@@ -693,6 +749,8 @@ def parse_plmxml_file(file_path: Path) -> PlmxmlDocument:
                 description=attrs.get("description", ""),
                 subtype=attrs.get("subType", attrs.get("type", "")),
                 properties=attrs,
+                semantic_role="structural" if is_structural else "entity",
+                is_structural=is_structural,
             )
         _clear_element(elem, using_lxml)
 
@@ -751,6 +809,9 @@ def parse_plmxml_file(file_path: Path) -> PlmxmlDocument:
         + len(doc.forms)
         + len(doc.generic_entities)
     )
+    structural_entities = sum(1 for form in doc.forms.values() if getattr(form, "is_structural", False)) + sum(
+        1 for entity in doc.generic_entities.values() if getattr(entity, "is_structural", False)
+    )
     doc.unresolved_references = unresolved_references
     doc.duplicate_ids = duplicate_ids
     doc.parse_stats = {
@@ -779,6 +840,7 @@ def parse_plmxml_file(file_path: Path) -> PlmxmlDocument:
         "duplicate_ids": len(duplicate_ids),
         "skipped_elements": skipped_elements,
         "malformed_elements": malformed_elements,
+        "structural_entities": structural_entities,
         "ingestion_time": round(parse_seconds, 6),
     }
 

@@ -8,7 +8,7 @@ const configuredBackendUrl = process.env.REACT_APP_BACKEND_URL;
 
 // Base configuration
 const baseConfig = {
-  backendUrl: configuredBackendUrl || 'http://localhost:8000',
+  backendUrl: configuredBackendUrl || 'http://127.0.0.1:8000',
   apiVersion: process.env.REACT_APP_API_VERSION || 'v1',
   environment: process.env.REACT_APP_ENV || 'development',
   debug: process.env.REACT_APP_DEBUG === 'true',

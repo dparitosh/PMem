@@ -41,26 +41,9 @@ const TableView = (props) => {
             };
         }
         
-        // If there are search results, show their relationships
-        if (searchResults && searchResults.length > 0) {
-            const searchNodeIds = new Set(searchResults.map(node => node.elementId));
-            
-            // Find all relationships that involve any search result node
-            // Use normalized IDs to handle D3-mutated link objects
-            const searchRelationships = data?.links?.filter(link => 
-                searchNodeIds.has(getLinkSourceId(link)) || searchNodeIds.has(getLinkTargetId(link))
-            ) || [];
-            
-            // Always show relationships if they exist for search results
-            if (searchRelationships.length > 0) {
-                return {
-                    showNodesOnly: false,
-                    visibleNodes: searchResults,
-                    visibleRelationships: searchRelationships
-                };
-            }
-            
-            // No relationships found, show just the nodes
+        // Only switch to a nodes-only view when the current dataset is effectively a search slice.
+        // Keep relationship rows visible for regular graph contexts.
+        if (searchResults && searchResults.length > 0 && (!data?.links || data.links.length === 0)) {
             return {
                 showNodesOnly: true,
                 visibleNodes: searchResults,

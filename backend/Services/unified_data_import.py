@@ -68,6 +68,54 @@ def _derive_prefix_from_namespace(namespace: str) -> str:
         pass
     return 'unknown'
 
+
+_PLMXML_METADATA_KEYS = {
+    'id',
+    'uid',
+    'name',
+    'label',
+    'description',
+    'sub_type',
+    'sub_class',
+    'type',
+    'value',
+    'text',
+    'title',
+    'namespace',
+    'ontology_prefix',
+    'source_ontology',
+    'import_id',
+}
+
+
+_PLMXML_STRUCTURAL_TAGS = {
+    'AccessIntent',
+    'AssociatedAttachment',
+    'ApplicationRef',
+    'Description',
+    'PlainText',
+    'Form',
+    'UserValue',
+}
+
+
+def _plmxml_row_has_payload(row: Dict[str, Any], tag: str = '') -> bool:
+    meaningful = 0
+    for key, value in row.items():
+        if key in {'element_type', 'id', 'name', 'label', 'description', 'sub_type', 'sub_class', 'ontology_prefix', 'source_ontology', 'semantic_role'}:
+            continue
+        if value in (None, '', [], {}):
+            continue
+        key_norm = str(key).strip().lower()
+        if key_norm in _PLMXML_METADATA_KEYS:
+            continue
+        if key_norm.endswith('ref') or key_norm.endswith('refs'):
+            continue
+        meaningful += 1
+    if meaningful:
+        return True
+    return bool(tag and tag not in _PLMXML_STRUCTURAL_TAGS and any(str(v).strip() for v in row.values()))
+
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -1044,6 +1092,7 @@ class FileParser:
             rows: List[Dict[str, Any]] = []
             raw_rels: List[Dict[str, Any]] = []
             rel_seen = set()
+            metadata_only_skipped = 0
 
             def append_row(row: Dict[str, Any]) -> None:
                 if row.get('id') and not row.get('name'):
@@ -1242,20 +1291,30 @@ class FileParser:
                     append_rel(rel.id, target_id, rel.sub_type or 'RELATED_TO', tc_label=rel.tc_label)
 
             for form_id, form in doc.forms.items():
-                append_row({
+                form_row = {
                     'element_type': 'Form', 'id': form_id,
                     'name': form.name, 'sub_type': form.sub_type,
                     'sub_class': form.sub_class,
                     'description': form.description,
-                })
+                    'semantic_role': getattr(form, 'semantic_role', 'metadata'),
+                }
+                if _plmxml_row_has_payload(form_row, 'Form'):
+                    append_row(form_row)
+                else:
+                    metadata_only_skipped += 1
 
             for generic_id, generic in doc.generic_entities.items():
-                append_row({
+                generic_row = {
                     'element_type': generic.tag, 'id': generic_id,
                     'name': generic.name,
                     'description': generic.description,
                     'sub_type': generic.subtype,
-                })
+                    'semantic_role': getattr(generic, 'semantic_role', 'entity'),
+                }
+                if getattr(generic, 'is_structural', False) or not _plmxml_row_has_payload(generic_row, generic.tag):
+                    metadata_only_skipped += 1
+                    continue
+                append_row(generic_row)
 
             for rel in doc.relationships:
                 append_rel(rel.source_id, rel.target_id, rel.relationship_type, **(rel.properties or {}))
@@ -1288,6 +1347,7 @@ class FileParser:
                 'parse_ingestion_time': doc.parse_stats.get('ingestion_time', 0),
                 'unresolved_reference_details': doc.unresolved_references[:200],
                 'duplicate_id_values': doc.duplicate_ids[:200],
+                'metadata_only_entities_skipped': metadata_only_skipped,
                 '_xmi_relationships': raw_rels,  # reused by commit_import relationship writer
             }
             return rows, stats
@@ -2248,6 +2308,11 @@ class UnifiedDataImportService:
             cls._persist_task(task_id)
 
             rows, stats = FileParser.parse(file_content, file_type)
+            source_filename = task_info.get('filename', '') or ''
+            if source_filename:
+                for row in rows:
+                    if isinstance(row, dict):
+                        row.setdefault('source_filename', source_filename)
 
             # Extract relationship objects before merging stats (not JSON-serializable in bulk)
             xmi_rels = stats.pop('_xmi_relationships', [])
@@ -2607,6 +2672,7 @@ class UnifiedDataImportService:
             _row.setdefault('import_id', task_id)
             _row.setdefault('ontology_prefix', _ontology_prefix)
             _row.setdefault('source_ontology', _namespace_uri or _ontology_name)
+            _row.setdefault('source_filename', task.get('filename') or '')
 
         result = {'queries_executed': 0, 'nodes_created': 0,
                   'relationships_created': 0, 'instance_links_created': 0,

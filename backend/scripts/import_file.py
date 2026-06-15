@@ -55,13 +55,21 @@ def ensure_ok(response: requests.Response) -> dict[str, Any]:
 
 
 def clean_schema(session: requests.Session, base_url: str, timeout: int) -> None:
-    response = session.post(
-        f"{base_url}/admin/clean-schema",
-        json={"confirm": CLEAN_SCHEMA_CONFIRM_TOKEN},
-        timeout=timeout,
-    )
-    payload = ensure_ok(response)
-    print_json({"phase": "clean-schema", "result": payload})
+    last_error: Exception | None = None
+    for path in ("/api/v1/admin/clean-schema", "/admin/clean-schema"):
+        try:
+            response = session.post(
+                f"{base_url}{path}",
+                json={"confirm": CLEAN_SCHEMA_CONFIRM_TOKEN},
+                timeout=timeout,
+            )
+            payload = ensure_ok(response)
+            print_json({"phase": "clean-schema", "endpoint": path, "result": payload})
+            return
+        except Exception as exc:
+            last_error = exc
+    if last_error:
+        raise last_error
 
 
 def upload_file(session: requests.Session, base_url: str, file_path: Path, timeout: int) -> str:
@@ -131,10 +139,7 @@ def commit_import(session: requests.Session, base_url: str, task_id: str, timeou
 
 
 def verify_import(task_id: str) -> dict[str, Any]:
-    try:
-        from backend.core.graph import query_with_timeout
-    except ModuleNotFoundError:
-        from core.graph import query_with_timeout  # type: ignore
+    from backend.core.graph import query_with_timeout
 
     node_rows = query_with_timeout(
         "MATCH (n {import_id: $task_id}) RETURN count(n) AS c",

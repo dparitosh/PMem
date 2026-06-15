@@ -178,6 +178,7 @@ from contextlib import asynccontextmanager
 
 class TextSearchRequest(BaseModel):
     search: str
+    ontology_prefix: str = ""
 
 
 class WorkflowExecuteRequest(BaseModel):
@@ -1272,7 +1273,14 @@ async def get_virtual_ontology_view(prefix: str, limit: int = 1000):
 
 
 @app.get("/api/v1/graph/contextual-subgraph")
-async def get_contextual_subgraph(search: str = "", ontology_prefix: str = "", import_id: str = "", limit: int = 400):
+async def get_contextual_subgraph(
+    search: str = "",
+    ontology_prefix: str = "",
+    import_id: str = "",
+    limit: int = 400,
+    search_mode: str = "best",
+    expand_neighbors: bool = False,
+):
     """Return a contextual subgraph for GraphRAG-style inspection."""
     try:
         from backend.Services.graph_view_service import GraphViewService
@@ -1284,6 +1292,8 @@ async def get_contextual_subgraph(search: str = "", ontology_prefix: str = "", i
         ontology_prefix=ontology_prefix,
         import_id=import_id,
         limit=limit,
+        expand_neighbors=expand_neighbors,
+        search_mode=search_mode,
     )
 
 
@@ -1846,6 +1856,7 @@ async def get_instance_graph():
 def filter_graph_nodes(request: TextSearchRequest):
     """Search graph nodes by text and return local relationships in graphvis shape."""
     input_val = (request.search or "").strip()
+    ontology_prefix = (request.ontology_prefix or "").strip()
     if not input_val:
         return {"results": []}
 
@@ -1858,6 +1869,16 @@ def filter_graph_nodes(request: TextSearchRequest):
               OR toLower(coalesce(n.name, n.title, n.code, n.label, '')) CONTAINS toLower($input)
               OR toLower(coalesce(toString(properties(n)), '')) CONTAINS toLower($input)
             )
+            AND (
+              $ontology_prefix = ''
+              OR n.prefix = $ontology_prefix
+              OR n.ontology_prefix = $ontology_prefix
+              OR EXISTS {
+                MATCH (n)-[typed_rel]->(cls)
+                WHERE type(typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (cls.prefix = $ontology_prefix OR cls.ontology_prefix = $ontology_prefix)
+              }
+            )
           RETURN n
           LIMIT 60
         UNION
@@ -1867,6 +1888,23 @@ def filter_graph_nodes(request: TextSearchRequest):
               toLower(type(matched_rel)) CONTAINS toLower($input)
               OR toLower(coalesce(toString(properties(matched_rel)), '')) CONTAINS toLower($input)
             )
+            AND (
+              $ontology_prefix = ''
+              OR a.prefix = $ontology_prefix
+              OR a.ontology_prefix = $ontology_prefix
+              OR b.prefix = $ontology_prefix
+              OR b.ontology_prefix = $ontology_prefix
+              OR EXISTS {
+                MATCH (a)-[a_typed_rel]->(a_cls)
+                WHERE type(a_typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (a_cls.prefix = $ontology_prefix OR a_cls.ontology_prefix = $ontology_prefix)
+              }
+              OR EXISTS {
+                MATCH (b)-[b_typed_rel]->(b_cls)
+                WHERE type(b_typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (b_cls.prefix = $ontology_prefix OR b_cls.ontology_prefix = $ontology_prefix)
+              }
+            )
           RETURN a AS n
           LIMIT 60
         UNION
@@ -1875,6 +1913,23 @@ def filter_graph_nodes(request: TextSearchRequest):
             AND (
               toLower(type(matched_rel)) CONTAINS toLower($input)
               OR toLower(coalesce(toString(properties(matched_rel)), '')) CONTAINS toLower($input)
+            )
+            AND (
+              $ontology_prefix = ''
+              OR a.prefix = $ontology_prefix
+              OR a.ontology_prefix = $ontology_prefix
+              OR b.prefix = $ontology_prefix
+              OR b.ontology_prefix = $ontology_prefix
+              OR EXISTS {
+                MATCH (a)-[a_typed_rel]->(a_cls)
+                WHERE type(a_typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (a_cls.prefix = $ontology_prefix OR a_cls.ontology_prefix = $ontology_prefix)
+              }
+              OR EXISTS {
+                MATCH (b)-[b_typed_rel]->(b_cls)
+                WHERE type(b_typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (b_cls.prefix = $ontology_prefix OR b_cls.ontology_prefix = $ontology_prefix)
+              }
             )
           RETURN b AS n
           LIMIT 60
@@ -1900,7 +1955,7 @@ def filter_graph_nodes(request: TextSearchRequest):
           } ELSE null END AS m
     """
     try:
-        results = graph.query(query, params={"input": input_val})
+        results = graph.query(query, params={"input": input_val, "ontology_prefix": ontology_prefix})
         return {"results": results}
     except Exception as e:
         safe_error("/graphfilter", e)
@@ -2022,14 +2077,18 @@ def traverse_node(node_id: str = Path(..., description="Neo4j internal node ID")
         query = """ 
             MATCH (n)
 WHERE elementId(n) = $node_id
+  AND any(label IN labels(n) WHERE toLower(label) = 'part')
 
 OPTIONAL MATCH (n)-[r1]-(m1)
+WHERE m1 IS NULL OR any(label IN labels(m1) WHERE toLower(label) = 'part')
 WITH n, collect(DISTINCT {r: r1, m: m1})[..40] AS level1
 
 UNWIND level1 AS l1
 WITH n, level1, l1.m AS l1_node
 OPTIONAL MATCH (l1_node)-[r2]-(m2)
-WHERE elementId(m2) <> elementId(n)
+WHERE m2 IS NULL
+   OR elementId(m2) <> elementId(n)
+   AND any(label IN labels(m2) WHERE toLower(label) = 'part')
 WITH n, level1, collect(DISTINCT {r: r2, m: m2})[..24] AS level2
 
 WITH n, level1 + level2 AS all_rels
@@ -2062,7 +2121,32 @@ LIMIT 500
             """
 
         results = graph.query(query, params={"node_id": node_id})
-        return {"results": results}
+
+        def _is_part_node(payload):
+            labels = [str(label or "").lower() for label in (payload or {}).get("labels", [])]
+            props = (payload or {}).get("properties") or {}
+            name = str(
+                props.get("name")
+                or props.get("title")
+                or props.get("label")
+                or props.get("code")
+                or props.get("id")
+                or props.get("uid")
+                or ""
+            ).strip().lower()
+            return any(label == "part" for label in labels) and not name.startswith("id")
+
+        filtered_results = []
+        for row in results or []:
+            n = row.get("n")
+            m = row.get("m")
+            if not _is_part_node(n):
+                continue
+            if m is not None and not _is_part_node(m):
+                continue
+            filtered_results.append(row)
+
+        return {"results": filtered_results}
     except Exception as e:
         safe_error("/graphtraverse", e)
 

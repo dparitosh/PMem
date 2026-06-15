@@ -270,7 +270,7 @@ input[type="text"]::placeholder {
 
 /* SVG styling */
 
-svg {
+.graph-heb-root > svg {
 
     border: none;
 
@@ -288,6 +288,15 @@ svg {
 
     height: 100%;
 
+}
+
+.graph-toolbar-icon {
+    width: 14px;
+    height: 14px;
+    min-width: 14px;
+    min-height: 14px;
+    display: block;
+    flex: 0 0 auto;
 }
 
 

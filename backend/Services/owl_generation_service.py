@@ -84,6 +84,23 @@ def _normalize_base_uri(namespace: str, fallback: str) -> str:
     return fallback
 
 
+def _derive_prefix_from_namespace(namespace: str, fallback: str = "xsd") -> str:
+    """Derive a stable ontology prefix from a namespace URI.
+
+    Prefer a namespace-local token over the filename stem so XSD-generated
+    ontology metadata stays aligned with the XSD header and downstream import
+    stages can stamp the correct ontology_prefix.
+    """
+    text = (namespace or "").strip()
+    if not text:
+        return fallback
+    cleaned = text.rstrip("#/").rsplit("/", 1)[-1].rsplit("#", 1)[-1]
+    cleaned = "".join(ch if ch.isalnum() else "_" for ch in cleaned).strip("_").lower()
+    if cleaned:
+        return cleaned[:32]
+    return fallback
+
+
 def _inspect_with_owlready(ttl_str: str, stem: str) -> Dict[str, Any]:
     """Run Owlready2 reasoning on generated TTL and return a compact summary."""
     if OwlreadyOntologyRuntime is None or not getattr(OwlreadyOntologyRuntime, "is_available", lambda: False)():
@@ -238,13 +255,14 @@ class OWLGenerationService:
             from .owl_xsd_engine import convert_xsd_to_owl, minimal_config
             stem = Path(filename).stem
             target_namespace = _extract_xsd_target_namespace(file_content)
+            ontology_prefix = _derive_prefix_from_namespace(target_namespace, fallback=(stem[:16] or "xsd"))
             base_uri = _normalize_base_uri(
                 target_namespace,
                 fallback=f"http://depo-onto.local/xsd#{stem}/",
             )
             cfg = minimal_config(
                 base_uri=base_uri,
-                prefix=(stem[:16] or "xsd"),
+                prefix=ontology_prefix,
                 title=f"{stem} Ontology",
                 schema_dir=str(tmp_dir),
                 output_ttl=str(tmp_out),
@@ -254,6 +272,9 @@ class OWLGenerationService:
             metadata = {
                 "format": "XSD",
                 "schema_name": stem,
+                "ontology_name": stem,
+                "ontology_prefix": ontology_prefix,
+                "prefix": ontology_prefix,
                 "target_namespace": target_namespace,
                 "base_uri": base_uri,
                 "ttl_lines": ttl_str.count("\n"),

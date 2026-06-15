@@ -43,6 +43,15 @@ def _fragment(value: Any) -> str:
     return raw
 
 
+def _first_text_value(properties: Dict[str, Any], keys: Iterable[str]) -> str:
+    for key in keys:
+        value = properties.get(key)
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
 class GraphViewService:
     """Read-only graph view generation using the official Neo4j driver."""
 
@@ -206,6 +215,82 @@ class GraphViewService:
             "counts": {
                 "nodes": len(node_list),
                 "relationships": len(rel_list),
+            },
+        }
+
+    @staticmethod
+    def _is_metadata_like_node(node: Dict[str, Any]) -> bool:
+        props = node.get("properties") or {}
+        name = _first_text_value(
+            props,
+            (
+                "name",
+                "title",
+                "label",
+                "code",
+                "display_name",
+                "displayName",
+                "id",
+                "uid",
+            ),
+        ).lower()
+        if not name.startswith("id"):
+            return False
+
+        labels = [str(label or "").lower() for label in (node.get("labels") or [])]
+        return not any("part" in label for label in labels)
+
+    @staticmethod
+    def _is_part_node(node: Dict[str, Any]) -> bool:
+        labels = [str(label or "").lower() for label in (node.get("labels") or [])]
+        return any("part" in label for label in labels)
+
+    @classmethod
+    def _filter_graph_nodes(
+        cls,
+        graph: Dict[str, Any],
+        *,
+        prefer_part_nodes: bool = False,
+    ) -> Dict[str, Any]:
+        nodes = [node for node in (graph.get("nodes") or []) if node.get("elementId")]
+        relationships = [rel for rel in (graph.get("relationships") or []) if rel.get("elementId")]
+
+        filtered_nodes = [node for node in nodes if not cls._is_metadata_like_node(node)]
+        if prefer_part_nodes:
+            part_nodes = [node for node in filtered_nodes if cls._is_part_node(node)]
+            if part_nodes:
+                filtered_nodes = part_nodes
+
+        keep_ids = {node["elementId"] for node in filtered_nodes}
+        filtered_relationships = [
+            rel
+            for rel in relationships
+            if rel.get("start") in keep_ids and rel.get("end") in keep_ids
+        ]
+
+        return {
+            "nodes": sorted(
+                filtered_nodes,
+                key=lambda item: (
+                    str((item.get("properties") or {}).get("ontology_prefix") or (item.get("properties") or {}).get("prefix") or ""),
+                    str((item.get("labels") or [""])[0] if item.get("labels") else ""),
+                    str((item.get("properties") or {}).get("name") or (item.get("properties") or {}).get("title") or (item.get("properties") or {}).get("label") or ""),
+                    str(item.get("elementId") or ""),
+                ),
+            ),
+            "relationships": sorted(
+                filtered_relationships,
+                key=lambda item: (
+                    str(item.get("type") or ""),
+                    str((item.get("properties") or {}).get("ontology_prefix") or (item.get("properties") or {}).get("prefix") or ""),
+                    str(item.get("start") or ""),
+                    str(item.get("end") or ""),
+                    str(item.get("elementId") or ""),
+                ),
+            ),
+            "counts": {
+                "nodes": len(filtered_nodes),
+                "relationships": len(filtered_relationships),
             },
         }
 
@@ -1037,7 +1122,7 @@ RETURN count(res) AS count
             """,
             {"limit": max(1, min(int(limit), 5000))},
         )
-        return cls.rows_to_graph(rows)
+        return cls._filter_graph_nodes(cls.rows_to_graph(rows))
 
     @classmethod
     def get_virtual_ontology_view(cls, prefix: str, limit: int = 1000) -> Dict[str, Any]:
@@ -1076,80 +1161,325 @@ RETURN count(res) AS count
         ontology_prefix: str = "",
         import_id: str = "",
         limit: int = 400,
+        expand_neighbors: bool = False,
+        search_mode: str = "best",
     ) -> Dict[str, Any]:
         ontology_prefix = cls._resolve_ontology_prefix(ontology_prefix) if ontology_prefix else ""
+        search_mode = str(search_mode or "best").strip().lower()
+        is_broader_search = search_mode == "broader"
+
+        part_query = """
+        CALL () {
+          WITH toLower(trim($search)) AS search_term, $ontology_prefix AS ontology_prefix, $import_id AS import_id
+          MATCH (seed)
+          WHERE NOT (seed:DatasheetChunk OR seed:GraphChunk)
+            AND any(label IN labels(seed) WHERE toLower(label) CONTAINS 'part')
+            AND (
+              search_term = '' OR
+              any(key IN keys(seed) WHERE toLower(coalesce(toStringOrNull(seed[key]), '')) CONTAINS search_term)
+            )
+            AND (
+              ontology_prefix = '' OR
+              seed.ontology_prefix = $ontology_prefix OR seed.prefix = $ontology_prefix
+            )
+            AND (import_id = '' OR seed.import_id = import_id)
+          WITH seed, search_term,
+            CASE
+              WHEN search_term = '' THEN 0
+              WHEN toLower(coalesce(toStringOrNull(seed.id), '')) = search_term THEN 1000
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['uid']), '')) = search_term THEN 990
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['instance_id']), '')) = search_term THEN 980
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['identifier']), '')) = search_term THEN 970
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['name']), '')) = search_term THEN 960
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['title']), '')) = search_term THEN 950
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['code']), '')) = search_term THEN 940
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['label']), '')) = search_term THEN 930
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['display_name']), '')) = search_term THEN 920
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['displayName']), '')) = search_term THEN 920
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['external_id']), '')) = search_term THEN 910
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['externalId']), '')) = search_term THEN 910
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['source_filename']), '')) = search_term THEN 905
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['idref']), '')) = search_term THEN 900
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['href']), '')) = search_term THEN 900
+              WHEN any(value IN [
+                properties(seed)['id'],
+                properties(seed)['uid'],
+                properties(seed)['instance_id'],
+                properties(seed)['identifier'],
+                properties(seed)['name'],
+                properties(seed)['title'],
+                properties(seed)['code'],
+                properties(seed)['label'],
+                properties(seed)['display_name'],
+                properties(seed)['displayName'],
+                properties(seed)['external_id'],
+                properties(seed)['externalId'],
+                properties(seed)['source_filename'],
+                properties(seed)['idref'],
+                properties(seed)['href']
+              ] WHERE toLower(coalesce(toStringOrNull(value), '')) STARTS WITH search_term) THEN 800
+              WHEN any(value IN [
+                properties(seed)['id'],
+                properties(seed)['uid'],
+                properties(seed)['instance_id'],
+                properties(seed)['identifier'],
+                properties(seed)['name'],
+                properties(seed)['title'],
+                properties(seed)['code'],
+                properties(seed)['label'],
+                properties(seed)['display_name'],
+                properties(seed)['displayName'],
+                properties(seed)['external_id'],
+                properties(seed)['externalId'],
+                properties(seed)['source_filename'],
+                properties(seed)['idref'],
+                properties(seed)['href']
+              ] WHERE toLower(coalesce(toStringOrNull(value), '')) CONTAINS search_term) THEN 500
+              WHEN any(label IN labels(seed) WHERE toLower(label) CONTAINS search_term) THEN 300
+              WHEN any(key IN keys(seed) WHERE toLower(coalesce(toStringOrNull(seed[key]), '')) CONTAINS search_term) THEN 100
+              ELSE 0
+            END AS score
+          WHERE search_term = '' OR score > 0
+          RETURN seed, score
+          ORDER BY score DESC, toLower(coalesce(
+            properties(seed)['name'],
+            properties(seed)['title'],
+            properties(seed)['label'],
+            properties(seed)['code'],
+            properties(seed)['id'],
+            properties(seed)['uid'],
+            ''
+          )) ASC, elementId(seed) ASC
+          LIMIT CASE WHEN trim($search) = '' OR $search_mode = 'broader' THEN toInteger($limit) ELSE 1 END
+        }
+        RETURN
+          {elementId: elementId(seed), labels: labels(seed), properties: properties(seed)} AS n,
+          NULL AS r,
+          NULL AS m
+        """
+        part_rows = cls._run(
+            part_query,
+            {
+                "search": search or "",
+                "ontology_prefix": ontology_prefix or "",
+                "import_id": import_id or "",
+                "limit": max(1, min(int(limit), 2000)),
+                "search_mode": search_mode,
+            },
+        )
+        if part_rows and not is_broader_search:
+            graph = cls._filter_graph_nodes(cls.rows_to_graph(part_rows), prefer_part_nodes=True)
+            graph["view"] = {
+                "type": "contextual-subgraph",
+                "search": search or "",
+                "ontology_prefix": ontology_prefix or "",
+                "import_id": import_id or "",
+            }
+            return graph
+
         query = """
-        CALL {
+        CALL () {
+          WITH toLower(trim($search)) AS search_term, $ontology_prefix AS ontology_prefix, $import_id AS import_id
           MATCH (seed)
           WHERE NOT (seed:DatasheetChunk OR seed:GraphChunk)
             AND (
-              $search = '' OR
-              any(label IN labels(seed) WHERE toLower(label) CONTAINS toLower($search)) OR
-              any(key IN keys(seed) WHERE toLower(coalesce(toStringOrNull(seed[key]), '')) CONTAINS toLower($search))
+              search_term = '' OR
+              any(label IN labels(seed) WHERE toLower(label) CONTAINS search_term) OR
+              any(key IN keys(seed) WHERE toLower(coalesce(toStringOrNull(seed[key]), '')) CONTAINS search_term)
             )
             AND (
-              $ontology_prefix = '' OR
+              ontology_prefix = '' OR
               seed.ontology_prefix = $ontology_prefix OR seed.prefix = $ontology_prefix OR
               EXISTS {
-                MATCH (seed)-[:INSTANCE_OF|TYPED_BY|CLASSIFIED_AS]->(cls)
-                WHERE cls.ontology_prefix = $ontology_prefix OR cls.prefix = $ontology_prefix
+                MATCH (seed)-[typed_rel]->(cls)
+                WHERE type(typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (cls.ontology_prefix = ontology_prefix OR cls.prefix = ontology_prefix)
               }
             )
-            AND ($import_id = '' OR seed.import_id = $import_id)
-          RETURN seed
-          LIMIT $limit
+            AND (import_id = '' OR seed.import_id = import_id)
+          WITH seed, search_term,
+            CASE
+              WHEN search_term = '' THEN 0
+              WHEN toLower(coalesce(toStringOrNull(seed.id), '')) = search_term THEN 1000
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['uid']), '')) = search_term THEN 990
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['instance_id']), '')) = search_term THEN 980
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['identifier']), '')) = search_term THEN 970
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['name']), '')) = search_term THEN 960
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['title']), '')) = search_term THEN 950
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['code']), '')) = search_term THEN 940
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['label']), '')) = search_term THEN 930
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['display_name']), '')) = search_term THEN 920
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['displayName']), '')) = search_term THEN 920
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['external_id']), '')) = search_term THEN 910
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['externalId']), '')) = search_term THEN 910
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['source_filename']), '')) = search_term THEN 905
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['idref']), '')) = search_term THEN 900
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['href']), '')) = search_term THEN 900
+              WHEN any(value IN [
+                properties(seed)['id'],
+                properties(seed)['uid'],
+                properties(seed)['instance_id'],
+                properties(seed)['identifier'],
+                properties(seed)['name'],
+                properties(seed)['title'],
+                properties(seed)['code'],
+                properties(seed)['label'],
+                properties(seed)['display_name'],
+                properties(seed)['displayName'],
+                properties(seed)['external_id'],
+                properties(seed)['externalId'],
+                properties(seed)['source_filename'],
+                properties(seed)['idref'],
+                properties(seed)['href']
+              ] WHERE toLower(coalesce(toStringOrNull(value), '')) STARTS WITH search_term) THEN 800
+              WHEN any(value IN [
+                properties(seed)['id'],
+                properties(seed)['uid'],
+                properties(seed)['instance_id'],
+                properties(seed)['identifier'],
+                properties(seed)['name'],
+                properties(seed)['title'],
+                properties(seed)['code'],
+                properties(seed)['label'],
+                properties(seed)['display_name'],
+                properties(seed)['displayName'],
+                properties(seed)['external_id'],
+                properties(seed)['externalId'],
+                properties(seed)['source_filename'],
+                properties(seed)['idref'],
+                properties(seed)['href']
+              ] WHERE toLower(coalesce(toStringOrNull(value), '')) CONTAINS search_term) THEN 500
+              WHEN any(label IN labels(seed) WHERE toLower(label) CONTAINS search_term) THEN 300
+              WHEN any(key IN keys(seed) WHERE toLower(coalesce(toStringOrNull(seed[key]), '')) CONTAINS search_term) THEN 100
+              ELSE 0
+            END AS score
+          WHERE search_term = '' OR score > 0
+          RETURN seed, score
+          ORDER BY score DESC, toLower(coalesce(
+            properties(seed)['name'],
+            properties(seed)['title'],
+            properties(seed)['label'],
+            properties(seed)['code'],
+            properties(seed)['id'],
+            properties(seed)['uid'],
+            ''
+          )) ASC, elementId(seed) ASC
+          LIMIT CASE WHEN trim($search) = '' OR $search_mode = 'broader' THEN toInteger($limit) ELSE 1 END
         UNION
+          WITH toLower(trim($search)) AS search_term, $ontology_prefix AS ontology_prefix, $import_id AS import_id
           MATCH (a)-[matched_rel]-(b)
           WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
             AND (
-              $search = '' OR
-              toLower(type(matched_rel)) CONTAINS toLower($search) OR
-              any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS toLower($search))
+              search_term = '' OR
+              toLower(type(matched_rel)) CONTAINS search_term OR
+              any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS search_term)
             )
             AND (
-              $ontology_prefix = '' OR
-              a.ontology_prefix = $ontology_prefix OR a.prefix = $ontology_prefix OR
-              b.ontology_prefix = $ontology_prefix OR b.prefix = $ontology_prefix OR
+              ontology_prefix = '' OR
+              a.ontology_prefix = ontology_prefix OR a.prefix = ontology_prefix OR
+              b.ontology_prefix = ontology_prefix OR b.prefix = ontology_prefix OR
               EXISTS {
-                MATCH (a)-[:INSTANCE_OF|TYPED_BY|CLASSIFIED_AS]->(a_cls)
-                WHERE a_cls.ontology_prefix = $ontology_prefix OR a_cls.prefix = $ontology_prefix
+                MATCH (a)-[a_typed_rel]->(a_cls)
+                WHERE type(a_typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (a_cls.ontology_prefix = ontology_prefix OR a_cls.prefix = ontology_prefix)
               } OR
               EXISTS {
-                MATCH (b)-[:INSTANCE_OF|TYPED_BY|CLASSIFIED_AS]->(b_cls)
-                WHERE b_cls.ontology_prefix = $ontology_prefix OR b_cls.prefix = $ontology_prefix
+                MATCH (b)-[b_typed_rel]->(b_cls)
+                WHERE type(b_typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (b_cls.ontology_prefix = ontology_prefix OR b_cls.prefix = ontology_prefix)
               }
             )
-            AND ($import_id = '' OR a.import_id = $import_id OR b.import_id = $import_id)
-          RETURN a AS seed
-          LIMIT $limit
+            AND (import_id = '' OR a.import_id = import_id OR b.import_id = import_id)
+          WITH a AS seed, search_term,
+            CASE
+              WHEN search_term = '' THEN 0
+              WHEN toLower(type(matched_rel)) = search_term THEN 850
+              WHEN toLower(type(matched_rel)) STARTS WITH search_term THEN 650
+              WHEN toLower(type(matched_rel)) CONTAINS search_term THEN 450
+              WHEN any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) = search_term) THEN 700
+              WHEN any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) STARTS WITH search_term) THEN 500
+              WHEN any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS search_term) THEN 250
+              ELSE 0
+            END AS score
+          WHERE search_term = '' OR score > 0
+          RETURN seed, score
+          ORDER BY score DESC, toLower(coalesce(
+            properties(seed)['name'],
+            properties(seed)['title'],
+            properties(seed)['label'],
+            properties(seed)['code'],
+            properties(seed)['id'],
+            properties(seed)['uid'],
+            ''
+          )) ASC, elementId(seed) ASC
+          LIMIT CASE WHEN trim($search) = '' OR $search_mode = 'broader' THEN toInteger($limit) ELSE 1 END
         UNION
+          WITH toLower(trim($search)) AS search_term, $ontology_prefix AS ontology_prefix, $import_id AS import_id
           MATCH (a)-[matched_rel]-(b)
           WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
             AND (
-              $search = '' OR
-              toLower(type(matched_rel)) CONTAINS toLower($search) OR
-              any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS toLower($search))
+              search_term = '' OR
+              toLower(type(matched_rel)) CONTAINS search_term OR
+              any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS search_term)
             )
             AND (
-              $ontology_prefix = '' OR
-              a.ontology_prefix = $ontology_prefix OR a.prefix = $ontology_prefix OR
-              b.ontology_prefix = $ontology_prefix OR b.prefix = $ontology_prefix OR
+              ontology_prefix = '' OR
+              a.ontology_prefix = ontology_prefix OR a.prefix = ontology_prefix OR
+              b.ontology_prefix = ontology_prefix OR b.prefix = ontology_prefix OR
               EXISTS {
-                MATCH (a)-[:INSTANCE_OF|TYPED_BY|CLASSIFIED_AS]->(a_cls)
-                WHERE a_cls.ontology_prefix = $ontology_prefix OR a_cls.prefix = $ontology_prefix
+                MATCH (a)-[a_typed_rel]->(a_cls)
+                WHERE type(a_typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (a_cls.ontology_prefix = ontology_prefix OR a_cls.prefix = ontology_prefix)
               } OR
               EXISTS {
-                MATCH (b)-[:INSTANCE_OF|TYPED_BY|CLASSIFIED_AS]->(b_cls)
-                WHERE b_cls.ontology_prefix = $ontology_prefix OR b_cls.prefix = $ontology_prefix
+                MATCH (b)-[b_typed_rel]->(b_cls)
+                WHERE type(b_typed_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (b_cls.ontology_prefix = ontology_prefix OR b_cls.prefix = ontology_prefix)
               }
             )
-            AND ($import_id = '' OR a.import_id = $import_id OR b.import_id = $import_id)
-          RETURN b AS seed
-          LIMIT $limit
+            AND (import_id = '' OR a.import_id = import_id OR b.import_id = import_id)
+          WITH b AS seed, search_term,
+            CASE
+              WHEN search_term = '' THEN 0
+              WHEN toLower(type(matched_rel)) = search_term THEN 850
+              WHEN toLower(type(matched_rel)) STARTS WITH search_term THEN 650
+              WHEN toLower(type(matched_rel)) CONTAINS search_term THEN 450
+              WHEN any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) = search_term) THEN 700
+              WHEN any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) STARTS WITH search_term) THEN 500
+              WHEN any(key IN keys(matched_rel) WHERE toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS search_term) THEN 250
+              ELSE 0
+            END AS score
+          WHERE search_term = '' OR score > 0
+          RETURN seed, score
+          ORDER BY score DESC, toLower(coalesce(
+            properties(seed)['name'],
+            properties(seed)['title'],
+            properties(seed)['label'],
+            properties(seed)['code'],
+            properties(seed)['id'],
+            properties(seed)['uid'],
+            ''
+          )) ASC, elementId(seed) ASC
+          LIMIT CASE WHEN trim($search) = '' OR $search_mode = 'broader' THEN toInteger($limit) ELSE 1 END
         }
-        WITH DISTINCT seed LIMIT $limit
+        WITH seed, max(score) AS score
+        ORDER BY score DESC, toLower(coalesce(
+          properties(seed)['name'],
+          properties(seed)['title'],
+          properties(seed)['label'],
+          properties(seed)['code'],
+          properties(seed)['id'],
+          properties(seed)['uid'],
+          ''
+        )) ASC, elementId(seed) ASC
+          LIMIT CASE WHEN trim($search) = '' OR $search_mode = 'broader' THEN toInteger($limit) ELSE 1 END
+        """
+        if expand_neighbors:
+            query += """
         OPTIONAL MATCH (seed)-[r]-(adjacent)
         WHERE adjacent IS NULL OR NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
+        WITH seed, r, adjacent
+        LIMIT CASE WHEN trim($search) = '' THEN toInteger($limit) ELSE 80 END
         RETURN
           {elementId: elementId(seed), labels: labels(seed), properties: properties(seed)} AS n,
           CASE WHEN r IS NOT NULL THEN {
@@ -1160,6 +1490,13 @@ RETURN count(res) AS count
             elementId: elementId(adjacent), labels: labels(adjacent), properties: properties(adjacent)
           } ELSE NULL END AS m
         """
+        else:
+            query += """
+        RETURN
+          {elementId: elementId(seed), labels: labels(seed), properties: properties(seed)} AS n,
+          NULL AS r,
+          NULL AS m
+        """
         rows = cls._run(
             query,
             {
@@ -1167,9 +1504,11 @@ RETURN count(res) AS count
                 "ontology_prefix": ontology_prefix or "",
                 "import_id": import_id or "",
                 "limit": max(1, min(int(limit), 2000)),
+                "expand_neighbors": bool(expand_neighbors),
+                "search_mode": search_mode,
             },
         )
-        graph = cls.rows_to_graph(rows)
+        graph = cls._filter_graph_nodes(cls.rows_to_graph(rows), prefer_part_nodes=True)
         graph["view"] = {
             "type": "contextual-subgraph",
             "search": search or "",

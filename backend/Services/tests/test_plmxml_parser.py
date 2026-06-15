@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from backend.Services.unified_data_import import FileParser
 from backend.Services.plmxml_parser import parse_plmxml_file
 
 
@@ -25,3 +26,23 @@ def test_plmxml_parser_collects_stats_duplicates_and_unresolved_refs(tmp_path: P
     assert any(item["target_id"] == "MissingParent" for item in doc.unresolved_references)
     assert any(item["target_id"] == "MissingRoot" for item in doc.unresolved_references)
     assert any(rel.source_id == "Inst1" and rel.target_id == "PartA" for rel in doc.relationships)
+
+
+def test_plmxml_import_skips_structural_metadata_nodes():
+    plmxml = """<?xml version="1.0" encoding="UTF-8"?>
+<PLMXML xmlns="http://www.plmxml.org/Schemas/PLMXMLSchema" schemaVersion="7" author="test">
+  <Product id="PartA" name="Assembly A" />
+  <ProductInstance id="Inst1" name="Inst A" partRef="PartA" />
+  <Form id="id12" name="id12" subType="AccessIntent" subClass="AccessIntent" />
+  <AccessIntent id="id12" name="id12" label="AccessIntent" />
+</PLMXML>
+"""
+
+    rows, stats = FileParser._parse_plmxml(plmxml.encode("utf-8"))
+
+    element_types = {row.get("element_type") for row in rows}
+    assert "Part" in element_types
+    assert "ProductInstance" in element_types
+    assert "Form" not in element_types
+    assert "AccessIntent" not in element_types
+    assert stats["metadata_only_entities_skipped"] >= 2
