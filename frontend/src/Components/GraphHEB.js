@@ -27,8 +27,6 @@ const escapeHtml = (str) => {
 //   The first property found on a node is used as the display name.
 //   Set to [] (empty array) to rely solely on the Neo4j label.
 const DISPLAY_NAME_PROPERTY = ['entity_type', 'name', 'title', 'code', 'key', 'abbreviation'];
-// const DISPLAY_NAME_PROPERTY = ['title', 'name'];
-// const DISPLAY_NAME_PROPERTY = [];                // ← Neo4j label only
 //
 // DISPLAY_MODE  — controls what is shown in the node label.
 //   'both-label-first'  → "Label - PropertyValue"   (default)
@@ -36,9 +34,6 @@ const DISPLAY_NAME_PROPERTY = ['entity_type', 'name', 'title', 'code', 'key', 'a
 //   'label-only'        → "Label"
 //   'property-only'     → "PropertyValue"
 const DISPLAY_MODE = 'property-only';
-// const DISPLAY_MODE = 'both-prop-first';
-// const DISPLAY_MODE = 'label-only';
-// const DISPLAY_MODE = 'property-only';
 // ───────────────────────────────────────────────────────────────────────────
 
 // Define constants for graph tuning values.
@@ -221,7 +216,6 @@ const RELATIONSHIP_THEME = {
   ALL_VALUES_FROM: { color: '#0369A1', width: 1.35, dasharray: null, markerId: 'arrowhead-all-values' },
 };
 
-const CHAR_TIMES      = '\u00D7';     // ×   multiplication sign (close button)
 const CHAR_MINUS      = '\u2212';     // −   minus sign
 const CHAR_BULLET     = '\u2022';     // •   bullet
 const CHAR_CHECK      = '\u2713';     // ✓   check mark
@@ -320,7 +314,10 @@ const createNodeSearchFunction = () => {
     }
 
     if (typeof value === 'object') {
-      return Object.values(value).some((item) => containsSearchTerm(item, lowerSearchTerm, depth + 1));
+      return Object.entries(value).some(([key, item]) =>
+        String(key || '').toLowerCase().includes(lowerSearchTerm)
+        || containsSearchTerm(item, lowerSearchTerm, depth + 1)
+      );
     }
 
     return false;
@@ -369,6 +366,11 @@ const createNodeSearchFunction = () => {
         const labels = Array.isArray(node?.labels) ? node.labels : [];
         labels.forEach((label) => {
           score = Math.max(score, scoreFieldMatch(label, lowerSearchTerm));
+        });
+
+        const propertyKeys = Object.keys(props);
+        propertyKeys.forEach((key) => {
+          score = Math.max(score, scoreFieldMatch(key, lowerSearchTerm));
         });
 
         if (node?.properties) {
@@ -451,6 +453,61 @@ const resolveNodeName = (node) => {
   return safeString(fallback, 'Unknown');
 };
 
+const getNodeSemanticHints = (node) => {
+  const props = node?.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)
+    ? node.properties
+    : node || {};
+  const labels = Array.isArray(node?.labels) ? node.labels.map(label => String(label || '').toLowerCase()) : [];
+  const tokens = [
+    node?.entity_type,
+    props.entity_type,
+    node?.label,
+    labels[0],
+    props.type,
+    props.node_type,
+    props.element_type,
+    props.part_type,
+    props.change_type,
+    props.original_type,
+  ]
+    .filter(Boolean)
+    .map(value => String(value).toLowerCase());
+
+  const combined = `${labels.join(' ')} ${tokens.join(' ')}`.trim();
+  return {
+    isPartLike:
+      combined.includes('part') ||
+      combined.includes('product') ||
+      combined.includes('assembly') ||
+      combined.includes('component'),
+    isChangeLike:
+      combined.includes('change') ||
+      combined.includes('ecn') ||
+      combined.includes('eco') ||
+      combined.includes('ecr') ||
+      combined.includes('notice') ||
+      combined.includes('request'),
+  };
+};
+
+const isSchemaTerminalNode = (node) => {
+  const labels = Array.isArray(node?.labels) ? node.labels.map((label) => String(label || '')) : [];
+  return labels.some((label) => (
+    label === 'OntologyClass' ||
+    label === 'Class' ||
+    label === 'ObjectProperty' ||
+    label === 'DatatypeProperty' ||
+    label === 'Restriction' ||
+    label === 'OntologyRestriction' ||
+    label === 'Datatype'
+  ));
+};
+
+const isIndividualTraversalNode = (node) => {
+  const labels = Array.isArray(node?.labels) ? node.labels.map((label) => String(label || '').toLowerCase()) : [];
+  return labels.includes('individual');
+};
+
 const getRelationshipVisual = (relationshipType) => {
   const key = String(relationshipType || '').toUpperCase();
   return RELATIONSHIP_THEME[key] || RELATIONSHIP_THEME.generic;
@@ -471,7 +528,7 @@ const getNodeCollisionRadius = (node, showLabels) => {
   return base + Math.max(10, Math.round(displayLength * 2.1));
 };
 
-const normalizeGraphDataset = (payload) => {
+export const normalizeGraphDataset = (payload) => {
   if (!payload) {
     return { nodes: [], links: [] };
   }
@@ -486,6 +543,7 @@ const normalizeGraphDataset = (payload) => {
         labels: node.labels || ['Node'],
         label: node.labels?.[0] || 'Node',
         properties: node.properties || {},
+        can_traverse: node.can_traverse,
       }));
 
     const nodeIds = new Set(nodes.map((node) => node.elementId));
@@ -522,6 +580,7 @@ const normalizeGraphDataset = (payload) => {
           labels: n.labels || ['Node'],
           label: n.labels?.[0] || 'Node',
           properties: n.properties || {},
+          can_traverse: n.can_traverse,
         });
       }
 
@@ -532,6 +591,7 @@ const normalizeGraphDataset = (payload) => {
           labels: m.labels || ['Node'],
           label: m.labels?.[0] || 'Node',
           properties: m.properties || {},
+          can_traverse: m.can_traverse,
         });
       }
 
@@ -593,32 +653,33 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     });
   };
 
-  const wireTooltipRecButtons = (tooltipEl) => {
+  const wireTooltipRecButtons = (tooltipEl, onAction) => {
     if (!tooltipEl) return;
     tooltipEl.querySelectorAll('.dt-rec-btn').forEach((btn) => {
       btn.onclick = (ev) => {
+        ev.preventDefault();
         ev.stopPropagation();
         const service = btn.getAttribute('data-rec-service');
         const nodeName = btn.getAttribute('data-rec-node') || '';
         const nodeId = btn.getAttribute('data-rec-node-id') || '';
         const ontologyPrefix = btn.getAttribute('data-rec-prefix') || '';
         const ontologyId = btn.getAttribute('data-rec-ontology-id') || '';
-        if (typeof window.__dt_rec_action === 'function' && service) {
-          window.__dt_rec_action(service, nodeName, { nodeId, ontologyPrefix, ontologyId });
+        if (typeof onAction === 'function' && service) {
+          onAction(service, nodeName, { nodeId, ontologyPrefix, ontologyId });
         }
       };
     });
   };
 
   // Helper: hide both tooltips
-  const hideAllTooltips = () => {
+  const hideAllTooltips = useCallback(() => {
     if (tooltipRef.current) {
       tooltipRef.current.style.opacity = '0';
       tooltipRef.current.style.display = 'none';
       tooltipRef.current.style.pointerEvents = 'none';
     }
     activeTooltipNodeRef.current = null;
-  };
+  }, []);
 
   // Reposition tooltip on resize/scroll to keep it anchored to SVG canvas
   const repositionTooltip = useCallback(() => {
@@ -715,34 +776,49 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     handleEl.addEventListener('pointerdown', onPointerDown);
   }, []);
 
-  // Bridge: recommendation tooltip actions → slide-in panel
-  React.useEffect(() => {
-    window.__dt_rec_action = (service, nodeName, context = {}) => {
-      // Open the slide-in recommendation panel in graph view
-      setRecPanel({ open: true, service, nodeName, loading: true, result: null, error: '' });
+  const openTooltipRecommendation = useCallback((service, nodeName, context = {}) => {
+    const normalizedName = String(nodeName || '').trim();
+    if (!service) return;
+    if (!normalizedName) {
+      setRecPanel({
+        open: true,
+        service,
+        nodeName: 'Unavailable',
+        loading: false,
+        result: null,
+        error: 'This tooltip item does not expose a usable node name for recommendation analysis.',
+      });
       hideAllTooltips();
-      // Fire the API call
-      const endpoint = service === 'change-impact'
-        ? '/recommendations/change-impact'
-        : service === 'similar-parts'
-        ? '/recommendations/similar-parts'
-        : '/recommendations/manufacturing';
-      const scope = {
-        ...(context.ontologyPrefix ? { prefix: context.ontologyPrefix } : {}),
-        ...(context.ontologyId ? { ontology_id: context.ontologyId } : {}),
-        ...(context.nodeId ? { node_id: context.nodeId } : {}),
-      };
-      const body = service === 'change-impact'
-        ? { change_name: nodeName, node_id: context.nodeId, scope }
-        : service === 'similar-parts'
-        ? { part_name: nodeName, top_n: 10, node_id: context.nodeId, scope }
-        : { part_name: nodeName, node_id: context.nodeId, scope };
-      apiClient.post(buildUrl(endpoint), body)
-        .then(resp => setRecPanel(prev => ({ ...prev, loading: false, result: resp.data })))
-        .catch(err => setRecPanel(prev => ({ ...prev, loading: false, error: err.response?.data?.detail || err.message || 'Request failed' })));
+      return;
+    }
+
+    setRecPanel({ open: true, service, nodeName: normalizedName, loading: true, result: null, error: '' });
+    hideAllTooltips();
+
+    const endpoint = service === 'change-impact'
+      ? '/recommendations/change-impact'
+      : service === 'similar-parts'
+      ? '/recommendations/similar-parts'
+      : '/recommendations/manufacturing';
+    const scope = {
+      ...(context.ontologyPrefix ? { prefix: context.ontologyPrefix } : {}),
+      ...(context.ontologyId ? { ontology_id: context.ontologyId } : {}),
+      ...(context.nodeId ? { node_id: context.nodeId } : {}),
     };
-    return () => { delete window.__dt_rec_action; };
-  }, []);
+    const body = service === 'change-impact'
+      ? { change_name: normalizedName, node_id: context.nodeId, scope }
+      : service === 'similar-parts'
+      ? { part_name: normalizedName, top_n: 10, node_id: context.nodeId, scope }
+      : { part_name: normalizedName, node_id: context.nodeId, scope };
+
+    apiClient.post(buildUrl(endpoint), body)
+      .then(resp => setRecPanel(prev => ({ ...prev, loading: false, result: resp.data })))
+      .catch(err => setRecPanel(prev => ({
+        ...prev,
+        loading: false,
+        error: err.response?.data?.detail || err.message || 'Request failed',
+      })));
+  }, [hideAllTooltips]);
 
   // Listen for "View in Graph" highlight requests from RecommendationsTab
   React.useEffect(() => {
@@ -902,16 +978,29 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   // Helper: build recommendation action bar HTML for node tooltips
   const buildRecActionBar = (node) => {
     const nodeName = resolveNodeName(node);
+    if (!nodeName || nodeName === 'Unknown') return '';
+    const { isPartLike, isChangeLike } = getNodeSemanticHints(node);
     const escapedName = escapeHtml(nodeName || '');
     const nodeId = escapeHtml(node?.elementId || node?.id || '');
     const props = node?.properties && typeof node.properties === 'object' ? node.properties : {};
     const ontologyPrefix = escapeHtml(props.prefix || props.ontology_prefix || '');
     const ontologyId = escapeHtml(props.ontology_id || props.source_ontology || '');
-    const btnStyle = 'display:inline-block;padding:4px 10px;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;margin-right:6px;color:#fff;';    return `
-      <div style="padding:6px 8px 4px;margin-bottom:4px;border-bottom:1px solid #e2e6ea;display:flex;flex-wrap:wrap;gap:4px;">
-        <button type="button" class="dt-rec-btn" data-rec-service="change-impact" data-rec-node="${escapedName}" data-rec-node-id="${nodeId}" data-rec-prefix="${ontologyPrefix}" data-rec-ontology-id="${ontologyId}" style="${btnStyle}background:#e74c3c;" title="Change Impact Analysis">Impact</button>
-        <button type="button" class="dt-rec-btn" data-rec-service="similar-parts" data-rec-node="${escapedName}" data-rec-node-id="${nodeId}" data-rec-prefix="${ontologyPrefix}" data-rec-ontology-id="${ontologyId}" style="${btnStyle}background:#004B87;" title="Find Similar Parts">[FIND] Similar</button>
-        <button type="button" class="dt-rec-btn" data-rec-service="manufacturing" data-rec-node="${escapedName}" data-rec-node-id="${nodeId}" data-rec-prefix="${ontologyPrefix}" data-rec-ontology-id="${ontologyId}" style="${btnStyle}background:#27ae60;" title="Manufacturing Processes">[MFG] Process</button>
+    const btnStyle = 'display:inline-block;padding:4px 10px;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;color:#fff;';
+    const buttons = [];
+
+    if (isPartLike || isChangeLike) {
+      buttons.push(`<button type="button" class="dt-rec-btn" data-rec-service="change-impact" data-rec-node="${escapedName}" data-rec-node-id="${nodeId}" data-rec-prefix="${ontologyPrefix}" data-rec-ontology-id="${ontologyId}" style="${btnStyle}background:#C05621;" title="Assess downstream change impact">Impact</button>`);
+    }
+    if (isPartLike) {
+      buttons.push(`<button type="button" class="dt-rec-btn" data-rec-service="similar-parts" data-rec-node="${escapedName}" data-rec-node-id="${nodeId}" data-rec-prefix="${ontologyPrefix}" data-rec-ontology-id="${ontologyId}" style="${btnStyle}background:#1F3D63;" title="Find comparable parts">Similar Parts</button>`);
+      buttons.push(`<button type="button" class="dt-rec-btn" data-rec-service="manufacturing" data-rec-node="${escapedName}" data-rec-node-id="${nodeId}" data-rec-prefix="${ontologyPrefix}" data-rec-ontology-id="${ontologyId}" style="${btnStyle}background:#486581;" title="Review manufacturing processes">Manufacturing</button>`);
+    }
+
+    if (buttons.length === 0) return '';
+
+    return `
+      <div style="padding:6px 8px 4px;margin-bottom:4px;border-bottom:1px solid #e2e6ea;display:flex;flex-wrap:wrap;gap:6px;">
+        ${buttons.join('')}
       </div>`;
   };
 
@@ -949,8 +1038,6 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
 
   // ── Recommendation: slide-in panel state ──
   const [recPanel, setRecPanel] = useState({ open: false, service: null, nodeName: '', loading: false, result: null, error: '' });
-  const primaryButtonColor = TCS_GRAPH_THEME.primary;
-
   const resetGraphSelectionState = useCallback((options = {}) => {
     const {
       resetOntology = true,
@@ -1007,15 +1094,6 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     window.addEventListener('dt-schema-cleaned', handleSchemaCleaned);
     return () => window.removeEventListener('dt-schema-cleaned', handleSchemaCleaned);
   }, [resetGraphSelectionState, setData]);
-  // New keyword-based dual-node comparison (graphfilter) states
-  const [compareTermA, setCompareTermA] = useState('');
-  const [compareTermB, setCompareTermB] = useState('');
-  const [compareResultsA, setCompareResultsA] = useState([]); // results from /graphfilter for Node A
-  const [compareResultsB, setCompareResultsB] = useState([]); // results from /graphfilter for Node B
-  const [selectedCompareNodeA, setSelectedCompareNodeA] = useState(null);
-  const [selectedCompareNodeB, setSelectedCompareNodeB] = useState(null);
-  const [isCompareSearching, setIsCompareSearching] = useState({ A: false, B: false });
-  const [propertyComparisonData, setPropertyComparisonData] = useState(null); // full property union diff
   // Search result state: stores raw search results and active selection
   const [searchResultData, setSearchResultData] = useState({ nodes: [], links: [] });
   const [activeSearchResultId, setActiveSearchResultId] = useState(null);
@@ -1131,6 +1209,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     const candidates = nodes.map((node) => ({
       id: node.elementId,
       score: Math.max(
+        pickField(node, ['elementId']),
         pickField(node, ['id', 'uid', 'instance_id', 'identifier']),
         pickField(node, ['name', 'title', 'label', 'display_name', 'displayName', 'code']),
         pickField(node, ['source_filename', 'filename', 'file_name', 'file']),
@@ -1170,76 +1249,6 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   useEffect(() => {
     nodeExpansionsRef.current = nodeExpansions;
   }, [nodeExpansions]);
-
-  // Comparative search API function
-  // eslint-disable-next-line no-unused-vars
-  const performComparativeSearch = useCallback(async (nodeType, name, version) => {
-    try {
-      const response = await apiClient.post(API.graph.comparativeSearch, {
-        nodeType: nodeType.trim(),
-        name: name.trim(),
-        version: version.trim()
-      });
-
-      if (response.data?.results?.length > 0) {
-        // Process the results similar to regular search
-        const nodesMap = new Map();
-        const rawLinks = new Map();
-
-        response.data.results.forEach(record => {
-          const n = record['n'];
-          const r = record['r'];
-          const m = record['m'];
-
-          if (n) {
-            const nodeIdN = n.elementId;
-            const nodeN = {
-              ...n.properties,
-              elementId: nodeIdN,
-              labels: n.labels || ['Node'],
-              label: n.labels?.[0] || 'Node',
-            };
-            if (!nodesMap.has(nodeIdN)) {
-              nodesMap.set(nodeIdN, nodeN);
-            }
-          }
-
-          if (r && m) {
-            const nodeIdM = m.elementId;
-            if (!nodesMap.has(nodeIdM)) {
-              nodesMap.set(nodeIdM, {
-                ...m.properties,
-                elementId: nodeIdM,
-                labels: m.labels || ['Node'],
-                label: m.labels?.[0] || 'Node',
-              });
-            }
-
-            const linkId = r.elementId;
-            if (!rawLinks.has(linkId)) {
-              rawLinks.set(linkId, {
-                elementId: linkId,
-                source: r.start,
-                target: r.end,
-                type: r.type,
-                properties: r.properties,
-              });
-            }
-          }
-        });
-
-        const nodes = Array.from(nodesMap.values());
-        const links = Array.from(rawLinks.values());
-
-        return { nodes, links };
-      }
-
-      return { nodes: [], links: [] };
-    } catch (error) {
-      logger.error('Comparative search error:', error);
-      throw error;
-    }
-  }, []);
 
   // Performance: Memoized color mapping - GENERIC VERSION
   const getNodeColor = useCallback((nodeLike) => {
@@ -1625,254 +1634,6 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     return hierarchy;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);  // Remove dependencies that cause infinite loops
-
-  // Function to compare two node hierarchies and find differences
-  // eslint-disable-next-line no-unused-vars
-  const compareNodeHierarchies = useCallback((leftData, rightData) => {
-    if (!leftData?.nodes?.length || !rightData?.nodes?.length) {
-      return null;
-    }
-
-    // Create hierarchies for both sides
-    const leftHierarchy = createHierarchicalData(leftData.nodes, leftData.links);
-    const rightHierarchy = createHierarchicalData(rightData.nodes, rightData.links);
-
-    // Find root nodes (main comparison targets)
-    const leftRoot = leftHierarchy[0];
-    const rightRoot = rightHierarchy[0];
-
-    if (!leftRoot || !rightRoot) {
-      return null;
-    }
-
-    // Compare function for nodes
-    const compareNodes = (leftNode, rightNode) => {
-      const differences = {};
-      const leftProps = leftNode.properties || leftNode;
-      const rightProps = rightNode.properties || rightNode;
-
-      // Get all unique property keys
-      const allKeys = new Set([...Object.keys(leftProps), ...Object.keys(rightProps)]);
-
-      allKeys.forEach(key => {
-        const leftVal = leftProps[key];
-        const rightVal = rightProps[key];
-
-        if (leftVal !== rightVal) {
-          differences[key] = {
-            left: leftVal || 'N/A',
-            right: rightVal || 'N/A',
-            status: leftVal && rightVal ? 'different' : (leftVal ? 'left_only' : 'right_only')
-          };
-        }
-      });
-
-      return differences;
-    };
-
-    // Compare children function
-    const compareChildren = (leftChildren = [], rightChildren = []) => {
-      const leftMap = new Map(leftChildren.map(child => [child.name || child.elementId, child]));
-      const rightMap = new Map(rightChildren.map(child => [child.name || child.elementId, child]));
-
-      const childComparisons = [];
-      const allChildKeys = new Set([...leftMap.keys(), ...rightMap.keys()]);
-
-      allChildKeys.forEach(key => {
-        const leftChild = leftMap.get(key);
-        const rightChild = rightMap.get(key);
-
-        if (leftChild && rightChild) {
-          // Both have this child - compare them
-          const childDiffs = compareNodes(leftChild, rightChild);
-          if (Object.keys(childDiffs).length > 0) {
-            childComparisons.push({
-              name: key,
-              status: 'different',
-              differences: childDiffs,
-              leftChild,
-              rightChild
-            });
-          }
-        } else {
-          // Only one side has this child
-          childComparisons.push({
-            name: key,
-            status: leftChild ? 'left_only' : 'right_only',
-            child: leftChild || rightChild
-          });
-        }
-      });
-
-      return childComparisons;
-    };
-
-    // Main comparison result
-    const comparison = {
-      rootDifferences: compareNodes(leftRoot, rightRoot),
-      childrenComparison: compareChildren(leftRoot.children, rightRoot.children),
-      leftHierarchy,
-      rightHierarchy,
-      leftRoot,
-      rightRoot
-    };
-
-    return comparison;
-  }, [createHierarchicalData]);
-
-  // --- New: keyword search for comparison nodes using /graphfilter ---
-  const performKeywordCompareSearch = useCallback(async (side, term) => {
-    const trimmed = term.trim();
-    if (!trimmed) return;
-    setIsCompareSearching(prev => ({ ...prev, [side]: true }));
-    try {
-      const response = await apiClient.post(API.graph.graphfilter, { search: trimmed.toLowerCase() });
-      const records = response.data?.results || [];
-      const nodesMap = new Map();
-      records.forEach(record => {
-        const n = record['n'];
-        const r = record['r'];
-        const m = record['m'];
-        if (n) {
-          const nodeIdN = n.elementId;
-          if (!nodesMap.has(nodeIdN)) {
-            nodesMap.set(nodeIdN, {
-              ...n.properties,
-              elementId: nodeIdN,
-              labels: n.labels || ['Node'],
-              label: n.labels?.[0] || 'Node'
-            });
-          }
-        }
-        if (r && m) {
-          const nodeIdM = m.elementId;
-            if (!nodesMap.has(nodeIdM)) {
-              nodesMap.set(nodeIdM, {
-                ...m.properties,
-                elementId: nodeIdM,
-                labels: m.labels || ['Node'],
-                label: m.labels?.[0] || 'Node'
-              });
-            }
-        }
-      });
-      const list = Array.from(nodesMap.values());
-      if (side === 'A') setCompareResultsA(list);
-      else setCompareResultsB(list);
-    } catch (e) {
-      logger.error('Keyword comparison search failed', e);
-      if (side === 'A') setCompareResultsA([]); else setCompareResultsB([]);
-    } finally {
-      setIsCompareSearching(prev => ({ ...prev, [side]: false }));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const getNodeShortLabel = (n) => {
-    if (!n) return 'Unknown';
-    const firstLabel = n.labels?.[0] || n.label || 'Node';
-    // Generic: try common name properties, fall back to label
-    const name =
-      n.entity_type ||
-      n.properties?.entity_type ||
-      n.name ||
-      n.properties?.name ||
-      n.title ||
-      n.properties?.title ||
-      firstLabel;
-    return name;
-  };
-
-  // Render property comparison HTML for popup
-  const renderPropertyComparisonHTML = (data) => {
-    if (!data) return '<div>No comparison data.</div>';
-    const { nodeA, nodeB, rows } = data;
-    const esc = (v) => {
-      if (v == null) return '';
-      if (typeof v === 'object') return JSON.stringify(v);
-      return String(v);
-    };
-    const rowHtml = rows.map(r => {
-      const bgA = r.status === 'left_only' ? '#fff3cd' : r.status === 'different' ? '#f8f9fa' : '#ffffff';
-      const bgB = r.status === 'right_only' ? '#ffe5d0' : r.status === 'different' ? '#f8f9fa' : '#ffffff';
-      return `<tr>
-        <td style='font-weight:${r.status!=='same'?'600':'400'};background:#f1f3f5;border-right:1px solid #eee;'>${r.property}</td>
-        <td style='background:${bgA};font-family:monospace;'>${esc(r.left)}</td>
-        <td style='background:${bgB};font-family:monospace;'>${esc(r.right)}</td>
-        <td style='text-transform:capitalize;color:${r.status==='different'?'#d9534f':r.status==='same'?'#198754':'#343a40'};'>${r.status.replace('_',' ')}</td>
-      </tr>`;
-    }).join('');
-    return `
-      <html><head><title>Node Property Comparison</title>
-      <style>
-        body { font-family: Arial, sans-serif; background: #f8f9fa; margin: 0; padding: 24px; }
-        h2 { color: #2C2C2C; }
-        table { border-collapse: collapse; width: 100%; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-        th, td { padding: 8px 10px; border-bottom: 1px solid #eee; }
-        th { background: #e9ecef; font-weight: bold; }
-        tr:last-child td { border-bottom: none; }
-        .export-btn { margin: 18px 0 0 0; padding: 8px 16px; background: #198754; color: #fff; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; }
-      </style>
-      </head><body>
-      <h2>Node Property Comparison</h2>
-      <div style='margin-bottom:12px;'><b>Node A:</b> ${getNodeShortLabel(nodeA)}<br/><b>Node B:</b> ${getNodeShortLabel(nodeB)}</div>
-      <table><thead><tr><th>Property</th><th>Node A</th><th>Node B</th><th>Status</th></tr></thead><tbody>
-      ${rowHtml}
-      </tbody></table>
-      <button class='export-btn' onclick='window.exportCSV()'>Export CSV</button>
-      <script>
-        window.exportCSV = function() {
-          const lines = [];
-          lines.push(["Property","Node A","Node B","Status"].join(","));
-          ${JSON.stringify(rows)}.forEach(r => {
-            const esc = v => v==null?'':typeof v==="object"?JSON.stringify(v):String(v).replace(/"/g,'""');
-            lines.push([r.property, esc(r.left), esc(r.right), r.status].join(","));
-          });
-          const blob = new Blob([lines.join("\n")], { type: 'text/csv;charset=utf-8;' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'node_comparison.csv';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        };
-      </script>
-      </body></html>
-    `;
-  };
-
-  // Open popup and render property comparison
-  const openComparisonPopup = useCallback(() => {
-    if (!selectedCompareNodeA || !selectedCompareNodeB) return;
-    const leftProps = { ...(selectedCompareNodeA.properties || {}), ...selectedCompareNodeA };
-    const rightProps = { ...(selectedCompareNodeB.properties || {}), ...selectedCompareNodeB };
-    delete leftProps.children; delete rightProps.children;
-    const allKeys = new Set([...Object.keys(leftProps), ...Object.keys(rightProps)]);
-    const rows = [];
-    allKeys.forEach(k => {
-      const l = leftProps[k];
-      const r = rightProps[k];
-      const same = l === r;
-      rows.push({ property: k, left: l === undefined ? '' : l, right: r === undefined ? '' : r, status: l === undefined ? 'right_only' : r === undefined ? 'left_only' : (same ? 'same' : 'different') });
-    });
-    rows.sort((a,b)=> a.property.localeCompare(b.property));
-    const data = { nodeA: selectedCompareNodeA, nodeB: selectedCompareNodeB, rows };
-    const html = renderPropertyComparisonHTML(data);
-    const popup = window.open('', '_blank', 'width=1100,height=800,scrollbars=yes,resizable=yes');
-    if (popup) {
-      popup.document.write(html);
-      popup.document.close();
-    } else {
-      alert('Popup blocked! Please allow popups for this site.');
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCompareNodeA, selectedCompareNodeB]);
-
-  // Reset property comparison when selection changes
-  useEffect(()=> { setPropertyComparisonData(null); }, [selectedCompareNodeA, selectedCompareNodeB]);
-
 
   // Unified display label helper (name + external/version when present)
   const getDisplayLabel = useCallback((node) => {
@@ -2467,7 +2228,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
             }
             // Attach close handler
             try { applyTooltipCloseHandler(tooltipEl); } catch (e) { /* ignore */ }
-            try { wireTooltipRecButtons(tooltipEl); } catch (e) { /* ignore */ }
+            try { wireTooltipRecButtons(tooltipEl, openTooltipRecommendation); } catch (e) { /* ignore */ }
           }
         });
 
@@ -2997,20 +2758,6 @@ const getPrimaryNodeLabel = useCallback((d) => {
     d.fy = null;
   }, []);
 
-  // Throttled simulation tick to improve performance
-  // eslint-disable-next-line no-unused-vars
-  const throttledTick = useCallback(() => {
-    let lastTickTime = 0;
-    return function() {
-      const now = Date.now();
-      if (now - lastTickTime > 16) { // ~60fps limit
-        lastTickTime = now;
-        return true;
-      }
-      return false;
-    };
-  }, []);
-
   // Performance: Optimized data fetching with caching and error handling
   useEffect(() => {
     let cancelled = false;
@@ -3177,18 +2924,31 @@ const getPrimaryNodeLabel = useCallback((d) => {
         const isContextualQuery = graphViewModeRef.current === 'individual';
         const isOntologyViewQuery = graphViewModeRef.current === 'ontology';
         const ontologyPrefix = resolveOntologySearchPrefix(selectedOntologyRef.current);
-        const response = await apiClient.get(API.graph.contextualSubgraph, {
-          params: {
-            search: debouncedSearchQuery.toLowerCase(),
-            limit: isOntologyViewQuery ? 180 : 280,
-            ...(ontologyPrefix ? { ontology_prefix: ontologyPrefix } : {}),
-            search_mode: searchResultMode,
-            expand_neighbors: searchResultMode === 'broader',
-          },
-          signal: abortController.signal,
-        });
+        let normalized;
 
-        const normalized = normalizeGraphDataset(response.data);
+        if (isOntologyViewQuery) {
+          const searchData = fullDataset.nodes.length > 0 ? fullDataset : graphData;
+          const matchedNodes = nodeSearchFunction(searchData.nodes, debouncedSearchQuery);
+          const selectedNodes = searchResultMode === 'best' ? matchedNodes.slice(0, 1) : matchedNodes;
+          const selectedNodeIds = new Set(selectedNodes.map((node) => node.elementId));
+          const selectedLinks = searchData.links.filter(
+            (link) => selectedNodeIds.has(link.source?.elementId || link.source)
+              && selectedNodeIds.has(link.target?.elementId || link.target)
+          );
+          normalized = { nodes: selectedNodes, links: selectedLinks };
+        } else {
+          const response = await apiClient.get(API.graph.contextualSubgraph, {
+            params: {
+              search: debouncedSearchQuery.toLowerCase(),
+              limit: 280,
+              ...(ontologyPrefix ? { ontology_prefix: ontologyPrefix } : {}),
+              search_mode: searchResultMode,
+              expand_neighbors: false,
+            },
+            signal: abortController.signal,
+          });
+          normalized = normalizeGraphDataset(response.data);
+        }
 
         performanceLog(
           '[SEARCH] Search API response:',
@@ -3200,24 +2960,13 @@ const getPrimaryNodeLabel = useCallback((d) => {
         const searchAnchorNode = searchAnchorId
           ? normalized.nodes.find((node) => node.elementId === searchAnchorId)
           : (normalized.nodes[0] || null);
-
-        if (searchAnchorNode && searchResultMode !== 'broader') {
-          const anchorOnly = { nodes: [searchAnchorNode], links: [] };
-          startTransition(() => {
-            setFilteredData(anchorOnly);
-            setData(anchorOnly);
-            setSearchResultData(anchorOnly);
-            setActiveSearchResultId(searchAnchorNode.elementId);
-            activeSearchResultIdRef.current = searchAnchorNode.elementId;
-            syncSharedSearchResults([searchAnchorNode], { force: true });
-          });
-          setSearchLoading(false);
-          return;
-        }
+        const orderedNodes = searchAnchorNode
+          ? [searchAnchorNode, ...normalized.nodes.filter((node) => node.elementId !== searchAnchorNode.elementId)]
+          : normalized.nodes;
 
         // Process search results directly without setting intermediate result state
         if (normalized.nodes.length > 0) {
-          const nodes = normalized.nodes;
+          const nodes = orderedNodes;
           const validatedLinks = normalized.links;
 
           logger.render('[SEARCH] Search processed:', nodes.length, 'nodes,', validatedLinks.length, 'links');
@@ -3258,10 +3007,11 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
           // Batch search result updates for better performance
         startTransition(() => {
-          setFilteredData({ nodes: finalNodes, links: finalLinks });
-          setData({ nodes: finalNodes, links: finalLinks });
+          const searchGraph = { nodes: finalNodes, links: finalLinks };
+          setFilteredData(searchGraph);
+          setData(searchGraph);
           // Store raw search results for label filtering
-          setSearchResultData({ nodes: finalNodes, links: finalLinks });
+          setSearchResultData(searchGraph);
           const currentActiveId = activeSearchResultIdRef.current;
           const bestMatchId = findBestSearchMatchId(finalNodes, debouncedSearchQuery);
           const nextActiveId = finalNodes.some((node) => node.elementId === currentActiveId)
@@ -3270,7 +3020,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
             setActiveSearchResultId(nextActiveId);
             activeSearchResultIdRef.current = nextActiveId;
             // Update search results for other components
-            syncSharedSearchResults(finalNodes);
+            syncSharedSearchResults(finalNodes, { force: true });
           });
         } else {
         // Batch no results updates
@@ -3315,7 +3065,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           setActiveSearchResultId(nextActiveId);
           activeSearchResultIdRef.current = nextActiveId;
           // Update search results for other components
-          if (!searchModeRef.current) syncSharedSearchResults(filteredNodes);
+          syncSharedSearchResults(filteredNodes, { force: true });
           setSearchLoading(false);
         });
       }
@@ -3574,33 +3324,41 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
   // Function to determine if a node has expandable connections
   const hasExpandableConnections = (nodeData) => {
-    // Show expand option only in search context, for traversal-supported nodes,
-    // and only when that node is not already expanded.
+    // Allow expansion in contextual-instance mode even without an active search.
     const isNotExpanded = !expandedNodesRef.current.has(nodeData.elementId);
     const hasSearchQuery = !!debouncedSearchQuery;
-    const nodeType = resolveNodeType(nodeData).toLowerCase();
-    const labels = Array.isArray(nodeData?.labels) ? nodeData.labels.map(label => String(label || '').toLowerCase()) : [];
-    const isTraversalSupported =
-      nodeType === 'part' ||
-      labels.includes('part') ||
-      String(nodeData?.properties?.element_type || '').toLowerCase() === 'part' ||
-      String(nodeData?.properties?.part_type || '').trim().length > 0;
+    const isContextualMode = graphViewModeRef.current === 'individual';
+    const backendTraversalHint = nodeData?.can_traverse ?? nodeData?.properties?.can_traverse;
+    const nodeId = nodeData?.elementId;
+    const candidateLinkSets = [
+      Array.isArray(fullDataset?.links) ? fullDataset.links : [],
+      Array.isArray(graphData?.links) ? graphData.links : [],
+      Array.isArray(filteredData?.links) ? filteredData.links : [],
+    ];
+    const visibleLinks = candidateLinkSets.find((links) => links.length > 0) || [];
+    const hasVisibleConnections = visibleLinks.some((link) => {
+      const sourceId = getLinkEndpointId(link?.source);
+      const targetId = getLinkEndpointId(link?.target);
+      return sourceId === nodeId || targetId === nodeId;
+    });
+    const isTraversalSupported = typeof backendTraversalHint === 'boolean'
+      ? backendTraversalHint
+      : (!isSchemaTerminalNode(nodeData) && (isIndividualTraversalNode(nodeData) || hasVisibleConnections || isContextualMode));
 
-    // Only show expand buttons in search context for nodes the backend can actually traverse.
-    return hasSearchQuery && isNotExpanded && isTraversalSupported;
+    return (hasSearchQuery || isContextualMode) && isNotExpanded && isTraversalSupported;
   };
 
   // Function to determine if a node can be collapsed
   const canCollapseNode = (nodeData) => {
-    // Show collapse option only for nodes that are currently expanded in search context
+    // Allow collapse in contextual-instance mode and search mode.
     const isExpanded = expandedNodesRef.current.has(nodeData.elementId);
     const hasSearchQuery = !!debouncedSearchQuery; // Use debouncedSearchQuery for consistency
+    const isContextualMode = graphViewModeRef.current === 'individual';
 
-    // Only show collapse buttons in search context
-    return hasSearchQuery && isExpanded;
+    return (hasSearchQuery || isContextualMode) && isExpanded;
   };
 
-  // Function to expand a node using graphtraverse API - ONE LEVEL ONLY expansion
+  // Function to expand a node using graphtraverse API - 1-2 hop expansion
   const expandNode = async (nodeId) => {
     if (expandedNodesRef.current.has(nodeId)) {
       return;
@@ -3613,9 +3371,12 @@ const getPrimaryNodeLabel = useCallback((d) => {
     const addedLinkIds = new Set();
 
     try {
-      const response = await apiClient.get(replaceParams(API.graph.graphtraverseNode, { node_id: nodeId }));
+      const response = await apiClient.get(replaceParams(API.graph.graphtraverseNode, { node_id: nodeId }), {
+        params: { depth: 2 },
+      });
+      const traversalData = normalizeGraphDataset(response.data);
 
-      if (response.data && response.data.results) {
+      if (traversalData.nodes.length > 0) {
         // Start with ONLY the current search results, not all filteredData
         const newNodesMap = new Map();
         const newLinksMap = new Map();
@@ -3645,50 +3406,25 @@ const getPrimaryNodeLabel = useCallback((d) => {
           });
         }
 
-        // Process the API response - ADD ALL DIRECT CONNECTIONS
-        response.data.results.forEach(record => {
-          const n = record['n'];
-          const r = record['r'];
-          const m = record['m'];
+        // Add the full 1-2 hop traversal slice returned by the backend.
+        traversalData.nodes.forEach((node) => {
+          if (!newNodesMap.has(node.elementId)) {
+            newNodesMap.set(node.elementId, node);
+            addedNodeIds.add(node.elementId);
+          }
+        });
 
-          // Process relationships where either n or m is the node we're expanding
-          if (r && ((n && n.elementId === nodeId) || (m && m.elementId === nodeId))) {
-            // Add the relationship with consistent format
-            const linkId = r.elementId;
-            if (!newLinksMap.has(linkId)) {
-              newLinksMap.set(linkId, {
-                elementId: linkId,
-                source: r.start, // Keep as raw ID for consistency
-                target: r.end,   // Keep as raw ID for consistency
-                type: r.type,
-                properties: r.properties,
-              });
-              addedLinkIds.add(linkId);
-            }
-
-            // Add the connected node (either n or m, whichever is NOT the expanded node)
-            const connectedNode = (n && n.elementId === nodeId) ? m : n;
-            if (connectedNode) {
-              const connectedNodeId = connectedNode.elementId;
-              const newNode = {
-                ...connectedNode.properties,
-                elementId: connectedNodeId,
-                labels: connectedNode.labels || ['Node'],
-                label: connectedNode.labels[0] || 'Node',
-              };
-              if (!newNodesMap.has(connectedNodeId)) {
-                newNodesMap.set(connectedNodeId, newNode);
-                addedNodeIds.add(connectedNodeId);
-                performanceLog('Added direct connection:', connectedNodeId);
-              }
-            }
+        traversalData.links.forEach((link) => {
+          if (!newLinksMap.has(link.elementId)) {
+            newLinksMap.set(link.elementId, link);
+            addedLinkIds.add(link.elementId);
           }
         });
 
         const finalNodes = Array.from(newNodesMap.values());
         const finalLinks = Array.from(newLinksMap.values());
 
-        performanceLog('One-level expansion:', addedNodeIds.size, 'new nodes,', addedLinkIds.size, 'new links');
+        performanceLog('Two-hop expansion:', addedNodeIds.size, 'new nodes,', addedLinkIds.size, 'new links');
 
         // Validate links
         const existingNodeIds = new Set(finalNodes.map(node => node.elementId));
@@ -3758,26 +3494,47 @@ const getPrimaryNodeLabel = useCallback((d) => {
       return;
     }
 
-    const { addedNodeIds, addedLinkIds } = expansionInfo;
-    logger.render('Nodes to remove:', Array.from(addedNodeIds));
-    logger.render('Links to remove:', Array.from(addedLinkIds));
+    const expansionEntries = Array.from(nodeExpansionsRef.current.entries());
+    const descendantExpansionIds = new Set([nodeId]);
+    const nodesToRemove = new Set(expansionInfo.addedNodeIds);
+    const linksToRemove = new Set(expansionInfo.addedLinkIds);
+
+    let foundDescendant = true;
+    while (foundDescendant) {
+      foundDescendant = false;
+      for (const [expandedId, info] of expansionEntries) {
+        if (descendantExpansionIds.has(expandedId)) continue;
+        if (!nodesToRemove.has(expandedId)) continue;
+        descendantExpansionIds.add(expandedId);
+        info.addedNodeIds.forEach((addedId) => nodesToRemove.add(addedId));
+        info.addedLinkIds.forEach((addedId) => linksToRemove.add(addedId));
+        foundDescendant = true;
+      }
+    }
+
+    logger.render('Nodes to remove:', Array.from(nodesToRemove));
+    logger.render('Links to remove:', Array.from(linksToRemove));
+    logger.render('Expanded branches to remove:', Array.from(descendantExpansionIds));
 
     // Debug: Check if the nodes to be removed are actually in the current data
     const currentNodeIds = new Set(filteredData.nodes.map(n => n.elementId));
-    const nodesToRemove = Array.from(addedNodeIds).filter(id => currentNodeIds.has(id));
-    logger.render('Nodes that will actually be removed (present in current data):', nodesToRemove);
+    const presentNodeIdsToRemove = Array.from(nodesToRemove).filter(id => currentNodeIds.has(id));
+    logger.render('Nodes that will actually be removed (present in current data):', presentNodeIdsToRemove);
 
     // Remove the nodes and links that were added by this expansion
     const filteredNodes = filteredData.nodes.filter(node => {
-      const shouldKeep = !addedNodeIds.has(node.elementId);
+      const shouldKeep = !nodesToRemove.has(node.elementId);
       if (!shouldKeep) {
         logger.render('Removing node:', node.elementId, node.name || node.label);
       }
       return shouldKeep;
     });
 
+    const remainingNodeIds = new Set(filteredNodes.map(n => n.elementId));
     const filteredLinks = filteredData.links.filter(link => {
-      const shouldKeep = !addedLinkIds.has(link.elementId);
+      const shouldKeep = !linksToRemove.has(link.elementId)
+        && remainingNodeIds.has(link.source)
+        && remainingNodeIds.has(link.target);
       if (!shouldKeep) {
         logger.render('Removing link:', link.elementId, link.type);
       }
@@ -3792,7 +3549,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     if (filteredNodes.length === filteredData.nodes.length) {
       logger.error('ERROR: No nodes were actually removed! This indicates a problem with the collapse logic.');
       logger.error('Check if addedNodeIds match the actual node elementIds');
-      logger.error('addedNodeIds:', Array.from(addedNodeIds));
+      logger.error('addedNodeIds:', Array.from(nodesToRemove));
       logger.error('current node elementIds:', filteredData.nodes.map(n => n.elementId));
     }
 
@@ -3818,7 +3575,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // Remove this node from expanded set and expansion tracking
     setExpandedNodes(prev => {
       const newSet = new Set(prev);
-      newSet.delete(nodeId);
+      descendantExpansionIds.forEach((expandedId) => newSet.delete(expandedId));
       expandedNodesRef.current = newSet;
       logger.render('Updated expandedNodes:', Array.from(newSet));
       return newSet;
@@ -3826,7 +3583,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
     setNodeExpansions(prev => {
       const newMap = new Map(prev);
-      newMap.delete(nodeId);
+      descendantExpansionIds.forEach((expandedId) => newMap.delete(expandedId));
       nodeExpansionsRef.current = newMap;
       logger.render('Updated nodeExpansions:', Array.from(newMap.entries()));
       return newMap;
@@ -4211,7 +3968,7 @@ const boundaryForce = (width, height) => {
               repositionTooltip();
                   tooltipRef.current.innerHTML = tooltipContent;
                   try { applyTooltipCloseHandler(tooltipRef.current); } catch (e) { /* ignore */ }
-                  try { wireTooltipRecButtons(tooltipRef.current); } catch (e) { /* ignore */ }
+                  try { wireTooltipRecButtons(tooltipRef.current, openTooltipRecommendation); } catch (e) { /* ignore */ }
               }
             })
 
@@ -4601,7 +4358,7 @@ const boundaryForce = (width, height) => {
               repositionTooltip();
               tooltipRef.current.innerHTML = tooltipContent;
               try { applyTooltipCloseHandler(tooltipRef.current); } catch (e) { /* ignore */ }
-              try { wireTooltipRecButtons(tooltipRef.current); } catch (e) { /* ignore */ }
+              try { wireTooltipRecButtons(tooltipRef.current, openTooltipRecommendation); } catch (e) { /* ignore */ }
             }
           })
           .on('mouseout', function () {
@@ -5405,190 +5162,6 @@ const boundaryForce = (width, height) => {
         </div>
       )}
 
-      {/* Comparative Search Modal - Disabled */}
-      {false && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          zIndex: 9999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            width: '90vw',
-            height: '85vh',
-            maxWidth: '1400px',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
-          }}>
-            {/* Header */}
-            <div style={{
-              padding: '16px 24px',
-              borderBottom: '1px solid #e0e0e0',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              backgroundColor: '#333333'
-            }}>
-              <h2 style={{ margin: 0, color: '#ffffff', fontSize: '20px' }}>Comparative Node Analysis</h2>
-              <button
-                onClick={() => { /* Modal closed */ }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  color: '#ffffff'
-                }}
-              >
-                {CHAR_TIMES}
-              </button>
-            </div>
-
-            {/* Keyword Search & Selection for Comparison */}
-            <div style={{ padding: '20px', borderBottom: '1px solid #e0e0e0', backgroundColor: '#f8f9fa' }}>
-              <div style={{ display: 'flex', gap: '24px' }}>
-                {/* Node A Column */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <h3 style={{ margin: 0, color: '#0066B3', fontSize: 16 }}>Node A</h3>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input
-                      type="text"
-                      value={compareTermA}
-                      placeholder="Search keyword (name, version...)"
-                      onChange={e => setCompareTermA(e.target.value)}
-                      onKeyDown={e => e.key==='Enter' && performKeywordCompareSearch('A', compareTermA)}
-                      style={{ flex:1, padding:'8px 12px', border:'1px solid #dde2e6', borderRadius:4, fontSize:14 }}
-                    />
-                    <button
-                      onClick={()=>performKeywordCompareSearch('A', compareTermA)}
-                      disabled={isCompareSearching.A || !compareTermA.trim()}
-                      style={{ padding:'8px 14px', background: isCompareSearching.A? 'rgba(10,130,118,0.6)': primaryButtonColor, color:'#fff', border:'none', borderRadius:4, cursor: isCompareSearching.A? 'not-allowed':'pointer', transition:'background-color 0.15s' }}
-                    >{isCompareSearching.A ? 'Searching...' : 'Search'}</button>
-                  </div>
-                  {selectedCompareNodeA && (
-                    <div style={{ fontSize:12, background:'#e9f2fb', padding:'6px 8px', borderRadius:4, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                      <span><strong>Selected:</strong> {getNodeShortLabel(selectedCompareNodeA)}</span>
-                      <button onClick={()=> setSelectedCompareNodeA(null)} style={{ background:'none', border:'none', color:'#0066B3', cursor:'pointer', fontSize:12 }}>{CHAR_TIMES}</button>
-                    </div>
-                  )}
-                  {compareResultsA.length > 0 && (
-                    <div style={{ display:'flex', flexWrap:'wrap', gap:8, maxHeight:140, overflowY:'auto', background:'#fff', border:'1px solid #ddd', padding:8, borderRadius:4 }}>
-                      {compareResultsA.map(n => (
-                        <button key={n.elementId}
-                          onClick={()=> setSelectedCompareNodeA(n)}
-                          style={{
-                            padding:'6px 10px',
-                            background: selectedCompareNodeA?.elementId === n.elementId ? '#0066B3':'#f1f3f5',
-                            color: selectedCompareNodeA?.elementId === n.elementId ? '#fff':'#333',
-                            border:'1px solid #ccc',
-                            borderRadius:4,
-                            cursor:'pointer',
-                            fontSize:12
-                          }}
-                        >{getNodeShortLabel(n)}</button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {/* Node B Column */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <h3 style={{ margin: 0, color: '#FF6600', fontSize: 16 }}>Node B</h3>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input
-                      type="text"
-                      value={compareTermB}
-                      placeholder="Search keyword (name, version...)"
-                      onChange={e => setCompareTermB(e.target.value)}
-                      onKeyDown={e => e.key==='Enter' && performKeywordCompareSearch('B', compareTermB)}
-                      style={{ flex:1, padding:'8px 12px', border:'1px solid #dde2e6', borderRadius:4, fontSize:14 }}
-                    />
-                    <button
-                      onClick={()=>performKeywordCompareSearch('B', compareTermB)}
-                      disabled={isCompareSearching.B || !compareTermB.trim()}
-                      style={{ padding:'8px 14px', background: isCompareSearching.B? 'rgba(10,130,118,0.6)': primaryButtonColor, color:'#fff', border:'none', borderRadius:4, cursor: isCompareSearching.B? 'not-allowed':'pointer', transition:'background-color 0.15s' }}
-                    >{isCompareSearching.B ? 'Searching...' : 'Search'}</button>
-                  </div>
-                  {selectedCompareNodeB && (
-                    <div style={{ fontSize:12, background:'#fff2e6', padding:'6px 8px', borderRadius:4, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                      <span><strong>Selected:</strong> {getNodeShortLabel(selectedCompareNodeB)}</span>
-                      <button onClick={()=> setSelectedCompareNodeB(null)} style={{ background:'none', border:'none', color:'#FF6600', cursor:'pointer', fontSize:12 }}>{CHAR_TIMES}</button>
-                    </div>
-                  )}
-                  {compareResultsB.length > 0 && (
-                    <div style={{ display:'flex', flexWrap:'wrap', gap:8, maxHeight:140, overflowY:'auto', background:'#fff', border:'1px solid #ddd', padding:8, borderRadius:4 }}>
-                      {compareResultsB.map(n => (
-                        <button key={n.elementId}
-                          onClick={()=> setSelectedCompareNodeB(n)}
-                          style={{
-                            padding:'6px 10px',
-                            background: selectedCompareNodeB?.elementId === n.elementId ? '#FF6600':'#f1f3f5',
-                            color: selectedCompareNodeB?.elementId === n.elementId ? '#fff':'#333',
-                            border:'1px solid #ccc',
-                            borderRadius:4,
-                            cursor:'pointer',
-                            fontSize:12
-                          }}
-                        >{getNodeShortLabel(n)}</button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div style={{ display:'flex', gap:12, marginTop:16, alignItems:'center', flexWrap:'wrap' }}>
-                <button
-                  onClick={openComparisonPopup}
-                  disabled={!selectedCompareNodeA || !selectedCompareNodeB || selectedCompareNodeA.elementId === selectedCompareNodeB.elementId}
-                  style={{ padding:'10px 18px', background: (!selectedCompareNodeA || !selectedCompareNodeB || selectedCompareNodeA.elementId === selectedCompareNodeB.elementId)? '#adb5bd':'#343a40', color:'#fff', border:'none', borderRadius:4, cursor:(!selectedCompareNodeA || !selectedCompareNodeB || selectedCompareNodeA.elementId === selectedCompareNodeB.elementId)? 'not-allowed':'pointer' }}
-                >Show Comparison (Popup)</button>
-                {(selectedCompareNodeA || selectedCompareNodeB) && (
-                  <button onClick={()=>{ setSelectedCompareNodeA(null); setSelectedCompareNodeB(null); setCompareResultsA([]); setCompareResultsB([]); setCompareTermA(''); setCompareTermB(''); setPropertyComparisonData(null); }} style={{ padding:'8px 14px', background:'#6c757d', color:'#fff', border:'none', borderRadius:4, cursor:'pointer', marginLeft:8 }}>Reset</button>
-                )}
-              </div>
-            </div>
-
-            {/* Property Comparison Results */}
-            <div style={{ flex:1, overflow:'auto', padding:20 }}>
-              {propertyComparisonData ? (
-                <div>
-                  <h3 style={{ margin:'0 0 12px 0', color:'#2C2C2C' }}>Property Comparison (All Properties)</h3>
-                  <div style={{ display:'grid', gridTemplateColumns:'220px 1fr 1fr 110px', fontSize:12, border:'1px solid #dee2e6', borderRadius:4 }}>
-                    <div style={{ fontWeight:'bold', padding:'8px', background:'#f1f3f5', borderBottom:'1px solid #dee2e6', borderRight:'1px solid #dee2e6' }}>Property</div>
-                    <div style={{ fontWeight:'bold', padding:'8px', background:'#e9ecef', borderBottom:'1px solid #dee2e6', borderRight:'1px solid #dee2e6' }}>Node A</div>
-                    <div style={{ fontWeight:'bold', padding:'8px', background:'#e9ecef', borderBottom:'1px solid #dee2e6', borderRight:'1px solid #dee2e6' }}>Node B</div>
-                    <div style={{ fontWeight:'bold', padding:'8px', background:'#f1f3f5', borderBottom:'1px solid #dee2e6' }}>Status</div>
-                    {propertyComparisonData.rows.map(r => {
-                      const bgA = r.status === 'left_only' ? '#fff3cd' : r.status === 'different' ? '#f8f9fa' : '#ffffff';
-                      const bgB = r.status === 'right_only' ? '#ffe5d0' : r.status === 'different' ? '#f8f9fa' : '#ffffff';
-                      return (
-                        <React.Fragment key={r.property}>
-                          <div style={{ padding:'6px 8px', borderBottom:'1px solid #f1f3f5', borderRight:'1px solid #f1f3f5', fontWeight: r.status !== 'same' ? '600':'400' }}>{r.property}</div>
-                          <div style={{ padding:'6px 8px', borderBottom:'1px solid #f1f3f5', borderRight:'1px solid #f1f3f5', background:bgA, fontFamily:'monospace', whiteSpace:'pre-wrap' }}>{typeof r.left === 'object' ? JSON.stringify(r.left) : String(r.left)}</div>
-                          <div style={{ padding:'6px 8px', borderBottom:'1px solid #f1f3f5', borderRight:'1px solid #f1f3f5', background:bgB, fontFamily:'monospace', whiteSpace:'pre-wrap' }}>{typeof r.right === 'object' ? JSON.stringify(r.right) : String(r.right)}</div>
-                          <div style={{ padding:'6px 8px', borderBottom:'1px solid #f1f3f5', textTransform:'capitalize', color: r.status==='different' ? '#d9534f' : r.status==='same' ? '#198754' : '#343a40' }}>{r.status.replace('_',' ')}</div>
-                        </React.Fragment>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#2C2C2C', fontSize:16 }}>
-                  {(!selectedCompareNodeA || !selectedCompareNodeB) ? 'Select two nodes to compare their properties.' : 'Click "Show Comparison" to generate property differences.'}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

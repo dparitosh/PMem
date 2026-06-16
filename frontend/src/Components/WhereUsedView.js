@@ -12,8 +12,6 @@ import logger from '../utils/logger';
 //   The first property found on a node is used as the display name.
 //   Set to [] (empty array) to rely solely on the Neo4j label.
 const DISPLAY_NAME_PROPERTY = ['name', 'title', 'code', 'key', 'abbreviation', 'id'];
-// const DISPLAY_NAME_PROPERTY = ['title', 'name'];
-// const DISPLAY_NAME_PROPERTY = [];                // ← Neo4j label only
 //
 // DISPLAY_MODE  — controls what is shown in the node label.
 //   'both-label-first'  → "Label - PropertyValue"   (default)
@@ -21,9 +19,6 @@ const DISPLAY_NAME_PROPERTY = ['name', 'title', 'code', 'key', 'abbreviation', '
 //   'label-only'        → "Label"
 //   'property-only'     → "PropertyValue"
 const DISPLAY_MODE = 'both-label-first';
-// const DISPLAY_MODE = 'both-prop-first';
-// const DISPLAY_MODE = 'label-only';
-// const DISPLAY_MODE = 'property-only';
 // ───────────────────────────────────────────────────────────────────────────
 
 // Helper: resolve the first matching property from DISPLAY_NAME_PROPERTY list
@@ -125,7 +120,6 @@ const WhereUsedView = ({
     const [levels, setLevels] = useState([]); // Array of arrays: ancestors by distance
     // Schema-driven display
     const { getDisplayName: schemaDisplayName } = useSchema() || {};
-    // Removed viewMode toggle; always show hierarchy view per latest requirements
     
     // Unified search using same backend logic as GraphHEB (POST /graphfilter)
     const handleSearch = async () => {
@@ -491,13 +485,6 @@ const WhereUsedView = ({
                     </div>
                 </div>
             )}
-
-            {/* {selectedNode && !treeData?.parents?.length && (
-                // <div style={{ marginTop: '20px', padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
-                //     <p>No parent nodes found for <strong>{getNodeDisplayName(selectedNode)}</strong></p>
-                //     <p>This appears to be a root level node.</p>
-                // </div>
-            )} */}
         </div>
     );
 };

@@ -205,22 +205,22 @@ const ScenarioPanel = ({ onSelect }) => {
       Icon: Zap,
       color: C.orange,
       lightColor: C.orangeLight,
-      title: 'Change Impact Analysis',
-      tagline: 'Understand downstream consequences before approving a change.',
+      title: 'Change Impact',
+      tagline: 'Trace affected parts, assemblies, requirements, and processes.',
       scenario: `A design engineer raised a change request to modify the bearing-shaft fit tolerance on the Induction Motor Assembly. Before the Change Control Board approves it, they need to know: which parts, assemblies, requirements, and production processes will be affected downstream?`,
       tryWith: 'Change the fit between bearing and shaft',
-      tryLabel: 'Try this example',
+      tryLabel: 'Use sample',
     },
     {
       id: 'similar-parts',
       Icon: Search,
       color: C.primary,
       lightColor: C.primaryLight,
-      title: 'Similar Parts Discovery',
-      tagline: 'Identify reusable parts to reduce procurement cost and design duplication.',
+      title: 'Similar Parts',
+      tagline: 'Find reuse candidates with structural and semantic similarity.',
       scenario: `A procurement lead is evaluating whether to source a new Rotor Shaft variant or reuse an existing part from another product line. The AI surfaces structurally and semantically similar parts by comparing assembly co-occurrence, type, RFLP layer, and traceability links — you review and decide.`,
       tryWith: 'Rotor Shaft Machined',
-      tryLabel: 'Try this example',
+      tryLabel: 'Use sample',
     },
     {
       id: 'manufacturing',
@@ -228,10 +228,10 @@ const ScenarioPanel = ({ onSelect }) => {
       color: C.green,
       lightColor: C.greenLight,
       title: 'Manufacturing Process',
-      tagline: 'Discover which processes apply to a part across the full production chain.',
+      tagline: 'List direct, related, and instance-level manufacturing steps.',
       scenario: `A process planner needs to document all manufacturing steps for the Motor Cover before submitting the production order. Instead of manually cross-referencing PLM files, the AI traverses direct process links, process instance chains, and related assembly processes to deliver a complete process picture for human review.`,
       tryWith: 'Motor Cover Machined',
-      tryLabel: 'Try this example',
+      tryLabel: 'Use sample',
     },
   ];
 
@@ -242,10 +242,10 @@ const ScenarioPanel = ({ onSelect }) => {
         borderRadius: '10px', padding: '22px 28px', marginBottom: '20px', color: '#fff',
       }}>
         <div style={{ fontSize: '18px', fontWeight: 700, marginBottom: '6px', letterSpacing: '-0.01em' }}>
-          AI Recommendation Engine
+          Recommendations
         </div>
         <div style={{ fontSize: '13px', opacity: 0.85, maxWidth: '600px', lineHeight: 1.65 }}>
-          Select an analysis mode below. The AI traverses the knowledge graph on your behalf — you review the findings and decide the next action. Each service is designed to keep <strong>you</strong> in control of the decision.
+          Select a service and run it against the current graph context.
         </div>
       </div>
 
@@ -274,14 +274,25 @@ const ScenarioPanel = ({ onSelect }) => {
                 <span style={{ fontSize: '14px', fontWeight: 700, color: C.textPrimary }}>{s.title}</span>
                 <span style={{ fontSize: '12px', color: s.color, fontWeight: 600 }}>{s.tagline}</span>
               </div>
-              <div style={{
-                fontSize: '13px', color: C.textSec, lineHeight: 1.65, fontStyle: 'italic',
-                background: C.bg, borderRadius: '6px', padding: '10px 14px', marginBottom: '10px',
-                borderLeft: `3px solid ${s.color}30`,
-              }}>
-                {s.scenario}
-              </div>
-
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelect(s.id, s.tryWith);
+                }}
+                style={{
+                  padding: '6px 10px',
+                  background: s.lightColor,
+                  color: s.color,
+                  border: `1px solid ${s.color}30`,
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                {s.tryLabel}
+              </button>
             </div>
           </div>
         ))}
@@ -319,9 +330,9 @@ const AIInsightBanner = ({ service, data }) => {
     const color = sev === 'high' ? C.red : sev === 'medium' ? C.amber : C.green;
     const bg    = sev === 'high' ? C.redLight : sev === 'medium' ? C.amberLight : C.greenLight;
     const Icon  = sev === 'high' ? AlertTriangle : Info;
-    const headline = sev === 'high' ? 'High-severity change — review carefully before approval'
-      : sev === 'medium' ? 'Moderate impact — targeted review recommended'
-      : 'Low impact — standard review applies';
+    const headline = sev === 'high' ? 'High impact'
+      : sev === 'medium' ? 'Moderate impact'
+      : 'Low impact';
     insight = {
       color, bg, Icon, headline,
       chips: [
@@ -330,7 +341,7 @@ const AIInsightBanner = ({ service, data }) => {
         { value: reqCount,  label: 'Requirements' },
         { value: procCount, label: 'Processes' },
       ],
-      cta: 'Review each impacted area before signing off on the change.',
+      cta: 'Check impacted areas before approval.',
     };
   } else if (service === 'similar-parts' && data?.source_part) {
     const count = data.similar_parts?.length || 0;
@@ -338,7 +349,7 @@ const AIInsightBanner = ({ service, data }) => {
       color: C.primary, bg: C.primaryLight, Icon: Info,
       headline: `${count} candidate part${count !== 1 ? 's' : ''} identified for reuse consideration`,
       chips: [{ value: count, label: 'Candidates' }],
-      cta: 'Scoring weighs assembly co-occurrence (30%), traceability links (20%), type match (20%), RFLP layer (15%), and name similarity (15%). Validate before substituting.',
+      cta: 'Score combines structure, type, layer, and traceability.',
     };
   } else if (service === 'manufacturing' && data?.part) {
     const direct = data.process_summary?.total_direct    || 0;
@@ -352,7 +363,7 @@ const AIInsightBanner = ({ service, data }) => {
         { value: inst,   label: 'Instances' },
         { value: rel,    label: 'Related' },
       ],
-      cta: 'Validate the sequence against the manufacturing plan before use in production planning.',
+      cta: 'Confirm the sequence against the manufacturing plan.',
     };
   }
 
@@ -886,7 +897,7 @@ const SimilarPartsResult = ({ data }) => {
         ) : (
           <div style={{ ...CARD, textAlign: 'center', padding: '36px' }}>
             <Info size={28} color={C.textMuted} style={{ display: 'block', margin: '0 auto 10px' }} />
-            <div style={{ color: C.textSec }}>No similar parts found.</div>
+            <div style={{ color: C.textSec }}>No matches found.</div>
           </div>
         )
       )}
@@ -966,7 +977,7 @@ const ManufacturingResult = ({ data }) => {
               </tbody>
             </table>
           </div>
-        ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>No direct processes found.</div>
+        ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>No direct processes.</div>
       )}
 
       {tab === 'instances' && (
@@ -987,7 +998,7 @@ const ManufacturingResult = ({ data }) => {
               </tbody>
             </table>
           </div>
-        ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>No process instances found.</div>
+        ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>No process instances.</div>
       )}
 
       {tab === 'related' && (
@@ -1008,7 +1019,7 @@ const ManufacturingResult = ({ data }) => {
               </tbody>
             </table>
           </div>
-        ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>No related processes found.</div>
+        ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>No related processes.</div>
       )}
 
       {tab === 'summary' && (
@@ -1027,7 +1038,7 @@ const ManufacturingResult = ({ data }) => {
               ))}
             </div>
           </div>
-        ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>No process type summary available.</div>
+        ) : <div style={{ ...CARD, color: C.textSec, textAlign: 'center', padding: '30px' }}>No type summary.</div>
       )}
     </div>
   );

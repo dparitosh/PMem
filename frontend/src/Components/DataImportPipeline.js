@@ -48,6 +48,7 @@ const C = {
 
 const IMPORT_JOBS_STORAGE_KEY = 'depo.import.jobs.v2';
 const IMPORT_ONTOLOGIES_CACHE_KEY = 'depo.import.ontologies.v1';
+const PRIMARY_WORKFLOW_IDS = new Set(['instance.import', 'ontology.create', 'instance.link']);
 
 function serializeFileForPersistence(file) {
   if (!file) return null;
@@ -59,6 +60,53 @@ function serializeFileForPersistence(file) {
   };
 }
 
+function getWorkflowNote({
+  canRunSelectedWorkflow,
+  fallbackWorkflow,
+  mappingFileTypeContext,
+  selectedWorkflow,
+}) {
+  if (!canRunSelectedWorkflow) {
+    return `${fallbackWorkflow.title} is not connected yet.`;
+  }
+  if (selectedWorkflow === 'instance.link') {
+    return 'Upload files and select an ontology.';
+  }
+  if (selectedWorkflow === 'ontology.merge') {
+    return 'Select source and target ontologies.';
+  }
+  if (
+    selectedWorkflow === 'ontology.validate'
+    || selectedWorkflow === 'dictionary.generate'
+    || selectedWorkflow === 'taxonomy.generate'
+    || selectedWorkflow === 'graph.chunk'
+  ) {
+    return 'Select an ontology to generate the artifact.';
+  }
+  if (selectedWorkflow === 'ontology.create' && mappingFileTypeContext !== 'express') {
+    return 'Register ontology metadata before upload.';
+  }
+  if (mappingFileTypeContext === 'express') {
+    return 'EXPRESS creates ontology structure.';
+  }
+  if (mappingFileTypeContext === 'step') {
+    return 'STEP imports instance data with AP242 context.';
+  }
+  if (selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'csv' || mappingFileTypeContext === 'excel')) {
+    return 'CSV and Excel import as source data first.';
+  }
+  if (selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'json' || mappingFileTypeContext === 'xml')) {
+    return 'JSON and XML import as source data first.';
+  }
+  if (selectedWorkflow === 'instance.import' && mappingFileTypeContext === 'ontology') {
+    return 'Use ontology registration for OWL, RDF, or TTL.';
+  }
+  if (selectedWorkflow === 'instance.import' && !mappingFileTypeContext) {
+    return 'Select files to continue.';
+  }
+  return 'Ready.';
+}
+
 export default function DataImportPipeline() {
   const [files, setFiles] = useState([]);
   const [pipelineStatus, setPipelineStatus] = useState({});
@@ -66,12 +114,11 @@ export default function DataImportPipeline() {
   const [startedFiles, setStartedFiles] = useState(new Set());
   const [selectedStage, setSelectedStage] = useState('upload');
   const [previewData, setPreviewData] = useState(null);
-  // eslint-disable-next-line no-unused-vars
-  const [previewTaskId, setPreviewTaskId] = useState(null);
   const [confirmingImport, setConfirmingImport] = useState(null);
   const [preCheck, setPreCheck] = useState(null); // { loading, ready, checks, reason }
   const fileInputRef = useRef(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState('instance.import');
+  const [showAdvancedWorkflows, setShowAdvancedWorkflows] = useState(false);
   const [workflowOptions, setWorkflowOptions] = useState(workflowCatalog);
   const [workflowOntologyId, setWorkflowOntologyId] = useState('');
   const [workflowTargetOntologyId, setWorkflowTargetOntologyId] = useState('');
@@ -79,34 +126,7 @@ export default function DataImportPipeline() {
   const [workflowLoading, setWorkflowLoading] = useState(false);
   const [workflowApplyLinks, setWorkflowApplyLinks] = useState(false);
 
-  const [availableOntologies, setAvailableOntologies] = useState(() => {
-    try {
-      return JSON.parse(window.localStorage.getItem(IMPORT_ONTOLOGIES_CACHE_KEY) || '[]');
-    } catch (_err) {
-      return [];
-    }
-  });
-  const [mappingFileTypeContext, setMappingFileTypeContext] = useState('');
-  
-  // Ontology metadata form for XSD/XMI files
-  const [showMetadataForm, setShowMetadataForm] = useState(false);
-  const [pendingFileForMetadata, setPendingFileForMetadata] = useState(null);
-  const [pendingMetadataFileId, setPendingMetadataFileId] = useState('');
-  const [isMetadataLoading, setIsMetadataLoading] = useState(false);
-  const [metadataFormPrefill, setMetadataFormPrefill] = useState(null);
-  const didRestoreJobsRef = useRef(false);
-  const resumedPersistedJobsRef = useRef(false);
-  const activePollersRef = useRef(new Set());
-  const [ontologyCatalogState, setOntologyCatalogState] = useState({
-    loading: availableOntologies.length === 0,
-    stale: false,
-    message: '',
-  });
-
-  // Get ontologies from centralized context (shared across all components)
-  const { ontologies: contextOntologies } = useOntologies();
-
-  const normalizeOntologyOptions = (ontologyList = []) => {
+  function normalizeOntologyOptions(ontologyList = []) {
     const allOntologies = ontologyList.map(ont => ({
       id: ont.ontology_id || ont.id || ont.value || ont.prefix,
       value: ont.value || ont.ontology_id || ont.id || ont.prefix || ont.name,
@@ -137,7 +157,35 @@ export default function DataImportPipeline() {
       }
     });
     return Array.from(byId.values());
-  };
+  }
+
+  const [availableOntologies, setAvailableOntologies] = useState(() => {
+    try {
+      const cached = JSON.parse(window.localStorage.getItem(IMPORT_ONTOLOGIES_CACHE_KEY) || '[]');
+      return normalizeOntologyOptions(cached);
+    } catch (_err) {
+      return [];
+    }
+  });
+  const [mappingFileTypeContext, setMappingFileTypeContext] = useState('');
+  
+  // Ontology metadata form for XSD/XMI files
+  const [showMetadataForm, setShowMetadataForm] = useState(false);
+  const [pendingFileForMetadata, setPendingFileForMetadata] = useState(null);
+  const [pendingMetadataFileId, setPendingMetadataFileId] = useState('');
+  const [isMetadataLoading, setIsMetadataLoading] = useState(false);
+  const [metadataFormPrefill, setMetadataFormPrefill] = useState(null);
+  const didRestoreJobsRef = useRef(false);
+  const resumedPersistedJobsRef = useRef(false);
+  const activePollersRef = useRef(new Set());
+  const [ontologyCatalogState, setOntologyCatalogState] = useState({
+    loading: availableOntologies.length === 0,
+    stale: false,
+    message: '',
+  });
+
+  // Get ontologies from centralized context (shared across all components)
+  const { ontologies: contextOntologies } = useOntologies();
 
   // Transform context ontologies into DataImportPipeline format
   useEffect(() => {
@@ -145,7 +193,7 @@ export default function DataImportPipeline() {
       const cachedRaw = window.localStorage.getItem(IMPORT_ONTOLOGIES_CACHE_KEY);
       const cachedOntologies = (() => {
         try {
-          return cachedRaw ? JSON.parse(cachedRaw) : [];
+          return normalizeOntologyOptions(cachedRaw ? JSON.parse(cachedRaw) : []);
         } catch (_err) {
           return [];
         }
@@ -625,7 +673,6 @@ export default function DataImportPipeline() {
             auto_schema: data.auto_schema || {},
           };
           setPreviewData(statusPreview);
-          setPreviewTaskId(taskId);
           // Fetch actual preview rows from the preview endpoint
           try {
             const previewUrl = buildUrl(replaceParams(API.import.preview, { task_id: taskId }));
@@ -745,18 +792,18 @@ export default function DataImportPipeline() {
       return;
     }
 
-    const latestArtifactManifest = Object.values(pipelineStatus)
-      .map(s => s?.artifact_manifest)
-      .filter(Boolean)
-      .slice(-1)[0];
-    if (selectedWorkflow === 'instance.link' && !latestArtifactManifest) {
+    const selectedImportManifest = contextFile?.artifact_manifest
+      || contextFile?.artifactManifest
+      || contextFile?.manifest
+      || null;
+    if (selectedWorkflow === 'instance.link' && !selectedImportManifest) {
       setError('Import an instance file first so the link workflow has retained source artifacts to analyze.');
       return;
     }
     const payload = {
       ontology_id: workflowOntologyId,
       source_ontology_id: workflowOntologyId,
-      import_artifact_manifest: latestArtifactManifest,
+      import_artifact_manifest: selectedImportManifest,
       apply_links: selectedWorkflow === 'instance.link' ? workflowApplyLinks : false,
     };
     if (selectedWorkflow === 'ontology.merge') {
@@ -1058,6 +1105,14 @@ export default function DataImportPipeline() {
     });
     return Array.from(groups.entries()).map(([category, items]) => ({ category, items }));
   }, [workflowOptions]);
+  const primaryWorkflows = useMemo(
+    () => workflowOptions.filter((workflow) => PRIMARY_WORKFLOW_IDS.has(workflow.id)),
+    [workflowOptions]
+  );
+  const advancedWorkflows = useMemo(
+    () => workflowOptions.filter((workflow) => !PRIMARY_WORKFLOW_IDS.has(workflow.id)),
+    [workflowOptions]
+  );
   const fallbackWorkflow = useMemo(
     () => activeWorkflow || resolveWorkflow(selectedWorkflow) || {
       id: selectedWorkflow || 'workflow',
@@ -1161,6 +1216,12 @@ export default function DataImportPipeline() {
     }
   }, [activePipelineStageIds, activePipelineStages, selectedStage]);
 
+  useEffect(() => {
+    if (!PRIMARY_WORKFLOW_IDS.has(selectedWorkflow)) {
+      setShowAdvancedWorkflows(true);
+    }
+  }, [selectedWorkflow]);
+
   return (
     <div style={{ background: C.bg, minHeight: '100%', padding: '10px', boxSizing: 'border-box' }}>
       {/* Ontology Metadata Form Modal */}
@@ -1190,6 +1251,94 @@ export default function DataImportPipeline() {
         padding: '8px 10px',
         marginBottom: '8px',
       }}>
+        <div style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary, marginBottom: '8px' }}>
+          Primary workflows
+        </div>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: '8px',
+          marginBottom: '10px',
+        }}>
+          {primaryWorkflows.map((workflow) => {
+            const Icon = workflow.icon;
+            const isActive = workflow.id === selectedWorkflow;
+            const isRecommended = workflow.id === recommendedWorkflowId;
+            return (
+              <button
+                key={workflow.id}
+                type="button"
+                onClick={() => setSelectedWorkflow(workflow.id)}
+                style={{
+                  textAlign: 'left',
+                  border: `1px solid ${isActive ? C.primary : C.border}`,
+                  background: isActive ? '#F7FBFF' : C.surface,
+                  borderRadius: '6px',
+                  padding: '9px 10px',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <div style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '6px',
+                    background: C.primaryLight,
+                    color: C.primary,
+                    display: 'grid',
+                    placeItems: 'center',
+                    flex: '0 0 auto',
+                  }}>
+                    <Icon size={13} strokeWidth={2.4} />
+                  </div>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: C.textPrimary }}>
+                    {workflow.title}
+                  </div>
+                </div>
+                <div style={{ fontSize: '10px', color: C.textSec, lineHeight: 1.35 }}>
+                  {workflow.description}
+                </div>
+                {isRecommended && (
+                  <div style={{ marginTop: '8px' }}>
+                    <span style={{
+                      fontSize: '9px',
+                      fontWeight: '700',
+                      color: C.primary,
+                      background: '#FFFFFF',
+                      border: `1px solid ${C.primaryLight}`,
+                      borderRadius: '999px',
+                      padding: '2px 7px',
+                    }}>
+                      Recommended
+                    </span>
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {advancedWorkflows.length > 0 && (
+          <div style={{ marginBottom: showAdvancedWorkflows ? '8px' : '0' }}>
+            <button
+              type="button"
+              onClick={() => setShowAdvancedWorkflows((open) => !open)}
+              style={{
+                background: 'transparent',
+                border: `1px solid ${C.border}`,
+                borderRadius: '999px',
+                padding: '4px 10px',
+                fontSize: '10px',
+                fontWeight: '700',
+                color: C.textPrimary,
+                cursor: 'pointer',
+              }}
+            >
+              {showAdvancedWorkflows ? 'Hide advanced workflows' : `Show advanced workflows (${advancedWorkflows.length})`}
+            </button>
+          </div>
+        )}
+        {showAdvancedWorkflows && (
+          <>
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -1202,7 +1351,7 @@ export default function DataImportPipeline() {
             color: C.textPrimary,
             whiteSpace: 'nowrap',
           }}>
-            Workflow
+            Advanced workflow
           </label>
           <select
             id="import-workflow-select"
@@ -1311,6 +1460,8 @@ export default function DataImportPipeline() {
             {groupedWorkflows.map(group => `${group.category} ${group.items.length}`).join(' · ')}
           </span>
         </div>
+          </>
+        )}
 
         <div style={{
           marginTop: '6px',
@@ -1325,7 +1476,7 @@ export default function DataImportPipeline() {
             background: C.bg,
           }}>
             <div style={{ fontSize: '9px', fontWeight: '700', color: C.textPrimary, marginBottom: '5px' }}>
-              Execution plan · {fallbackWorkflow.inputs}
+              Stages
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
               {fallbackWorkflow.stages.map((stage, idx) => (
@@ -1389,7 +1540,7 @@ export default function DataImportPipeline() {
             flexWrap: 'wrap',
           }}>
             <label style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
-              {selectedWorkflow === 'ontology.merge' ? 'Source ontology:' : 'Ontology:'}
+              {selectedWorkflow === 'ontology.merge' ? 'Source ontology:' : 'Ontology anchor:'}
             </label>
             <select
               value={workflowOntologyId}
@@ -1642,7 +1793,7 @@ export default function DataImportPipeline() {
                       {file.name}
                     </div>
                     <div style={{ fontSize: '10px', color: C.textSec, marginTop: '2px' }}>
-                      {status.message || 'Monitoring background job...'}
+                      {status.message || 'Running...'}
                     </div>
                   </div>
                   <div style={{ minWidth: 0 }}>
@@ -1676,7 +1827,7 @@ export default function DataImportPipeline() {
         marginBottom: '10px',
       }}>
         <p style={{ fontSize: '10px', fontWeight: '600', color: C.textPrimary, margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          Pipeline Workflow
+          Stages
         </p>
         <div style={{
           display: 'flex',
@@ -2014,19 +2165,13 @@ export default function DataImportPipeline() {
         color: C.textSec,
         lineHeight: 1.45,
       }}>
-        <strong style={{ color: C.textPrimary }}>Workflow guidance:</strong>{' '}
-        {!canRunSelectedWorkflow && `${fallbackWorkflow.title} is visible for planning, but backend service wiring is still required before execution.`}
-        {canRunSelectedWorkflow && selectedWorkflow === 'instance.link' && 'Upload one or more files first, then choose an ontology above. Each imported instance is aligned independently through Semantic Bridge; use the same ontology anchor if you want to compare multiple instances against the same semantic frame.'}
-        {canRunSelectedWorkflow && selectedWorkflow === 'ontology.merge' && 'Choose a source ontology and a different target ontology above to generate a merge plan, or use the direct merge action to commit the alignment into Neo4j.'}
-        {canRunSelectedWorkflow && (selectedWorkflow === 'ontology.validate' || selectedWorkflow === 'dictionary.generate' || selectedWorkflow === 'taxonomy.generate' || selectedWorkflow === 'graph.chunk') && 'Choose an ontology above to generate the review artifact for this workflow. It does not write to Neo4j directly.'}
-        {canRunSelectedWorkflow && selectedWorkflow === 'ontology.create' && mappingFileTypeContext !== 'express' && 'Schema and ontology files are registered through metadata capture. EXPRESS/XSD-style schemas create ontology structure; they do not create STEP instance graphs.'}
-        {canRunSelectedWorkflow && mappingFileTypeContext === 'express' && 'EXPRESS files create ontology/schema structure from ISO 10303 definitions. Use STEP/STP/STPX when you need product instance data.'}
-        {canRunSelectedWorkflow && mappingFileTypeContext === 'step' && 'STEP/STP/STPX files create an instance graph with AP242 context when available. Use semantic bridge afterward to attach ontology meaning.'}
-        {selectedWorkflow === 'instance.import' && 'Import loads source structure first and keeps the workflow fast and predictable. '}
-        {selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'csv' || mappingFileTypeContext === 'excel') && 'CSV/Excel are ingested as source data first, then mapped in semantic bridge when you are ready. '}
-        {selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'json' || mappingFileTypeContext === 'xml') && 'JSON/XML are ingested as source data first; semantic linking is a separate step. '}
-        {selectedWorkflow === 'instance.import' && mappingFileTypeContext === 'ontology' && 'OWL/RDF/TTL are handled through ontology registration flows instead of raw instance import. '}
-        {selectedWorkflow === 'instance.import' && !mappingFileTypeContext && 'Select files to see file-type specific alignment guidance.'}
+        <strong style={{ color: C.textPrimary }}>Note:</strong>{' '}
+        {getWorkflowNote({
+          canRunSelectedWorkflow,
+          fallbackWorkflow,
+          mappingFileTypeContext,
+          selectedWorkflow,
+        })}
       </div>
 
       {/* Data table */}
@@ -2338,7 +2483,6 @@ export default function DataImportPipeline() {
                       <button
                         onClick={() => {
                           setConfirmingImport(status.taskId);
-                          setPreviewTaskId(status.taskId);
                           // Run pre-commit check immediately when modal opens
                           setPreCheck({ loading: true });
                           apiClient.get(buildUrl(replaceParams(API.import.preCommit, { task_id: status.taskId })), { timeout: 15000 })
@@ -2365,7 +2509,7 @@ export default function DataImportPipeline() {
                           alignItems: 'center',
                           gap: '4px',
                         }}
-                        title="Parsed successfully — click to load into Neo4j"
+                        title="Load to Neo4j"
                       >
                         <Upload size={12} /> Load to Neo4j
                       </button>
@@ -2459,7 +2603,7 @@ export default function DataImportPipeline() {
                     cursor: (pendingFileCount === 0 || !canRunSelectedWorkflow) ? 'not-allowed' : 'pointer',
                     opacity: (pendingFileCount === 0 || !canRunSelectedWorkflow) ? 0.5 : 1,
                   }}>
-                  Start all
+                  Run all
                 </button>
               </div>
             )}
@@ -2492,7 +2636,7 @@ export default function DataImportPipeline() {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: C.textPrimary }}>
-                Review Import Preview
+                Preview
               </h3>
               <button
                 onClick={() => setConfirmingImport(null)}
@@ -2631,7 +2775,7 @@ export default function DataImportPipeline() {
               {preCheck?.loading && (
                 <div style={{ color: C.textSec, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ display: 'inline-block', width: 12, height: 12, border: `2px solid ${C.border}`, borderTop: `2px solid ${C.primary}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                  Checking Neo4j connectivity and task state...
+                  Checking status...
                   <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
                 </div>
               )}
@@ -2657,7 +2801,7 @@ export default function DataImportPipeline() {
                 </div>
               )}
               {!preCheck && (
-                <span style={{ color: C.textMuted }}>Pre-commit checks will run when you click Load to Neo4j.</span>
+                <span style={{ color: C.textMuted }}>Checks run before load.</span>
               )}
             </div>
 

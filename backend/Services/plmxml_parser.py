@@ -7,6 +7,7 @@ the constructs that occur in local schemas and sample payloads.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -385,6 +386,26 @@ _PLMXML_STRUCTURAL_TAGS = {
 }
 
 
+_DEFAULT_METADATA_EXCLUSION_TAGS = frozenset({
+    *(_PLMXML_STRUCTURAL_TAGS),
+    "UserData",
+})
+
+
+def _resolve_metadata_exclusion_tags(metadata_exclusion_tags: List[str] | None = None) -> set[str]:
+    configured = set(_DEFAULT_METADATA_EXCLUSION_TAGS)
+    raw_env = os.getenv("PLMXML_METADATA_EXCLUSION_TAGS", "")
+    if raw_env.strip():
+        configured.update(tag.strip() for tag in raw_env.split(",") if tag.strip())
+    if metadata_exclusion_tags:
+        configured.update(str(tag).strip() for tag in metadata_exclusion_tags if str(tag).strip())
+    return configured
+
+
+def _is_metadata_only_tag(tag: str, metadata_exclusion_tags: set[str]) -> bool:
+    return tag in metadata_exclusion_tags
+
+
 def _plmxml_has_meaningful_payload(tag: str, attrs: Dict[str, str], text: str = "") -> bool:
     meaningful = 0
     for key, value in attrs.items():
@@ -422,10 +443,11 @@ def _parse_time_required(attrs: Dict[str, str]) -> float | None:
         return None
 
 
-def parse_plmxml_file(file_path: Path) -> PlmxmlDocument:
+def parse_plmxml_file(file_path: Path, metadata_exclusion_tags: List[str] | None = None) -> PlmxmlDocument:
     start_time = time.perf_counter()
     context, using_lxml = _iterparse(file_path)
     doc = PlmxmlDocument(file_path=file_path)
+    resolved_metadata_exclusion_tags = _resolve_metadata_exclusion_tags(metadata_exclusion_tags)
     anon_counts: Dict[str, int] = {}
     duplicate_ids: List[str] = []
     known_ids: Dict[str, str] = {}
@@ -472,9 +494,10 @@ def parse_plmxml_file(file_path: Path) -> PlmxmlDocument:
                 attrs["id"] = elem_id
             else:
                 skipped_elements += 1
-                if tag not in {"Description", "PlainText", "ApplicationRef", "UserValue"}:
+                if tag not in {"Description", "PlainText", "ApplicationRef", "UserValue", "UserData"}:
                     logger.debug("PLMXML skipped element without identifier: tag=%s file=%s", tag, file_path.name)
-                _clear_element(elem, using_lxml)
+                if tag not in {"Description", "PlainText", "ApplicationRef", "UserValue", "UserData"}:
+                    _clear_element(elem, using_lxml)
                 continue
 
         if elem_id in known_ids:
@@ -738,10 +761,13 @@ def parse_plmxml_file(file_path: Path) -> PlmxmlDocument:
                 attributes=form_attrs,
                 properties=attrs,
                 semantic_role="metadata",
-                is_structural=True,
+                is_structural=_is_metadata_only_tag(tag, resolved_metadata_exclusion_tags),
             )
         else:
-            is_structural = (tag in _PLMXML_STRUCTURAL_TAGS) or not _plmxml_has_meaningful_payload(tag, attrs)
+            is_structural = (
+                _is_metadata_only_tag(tag, resolved_metadata_exclusion_tags)
+                or not _plmxml_has_meaningful_payload(tag, attrs)
+            )
             doc.generic_entities[elem_id] = PlmxmlGenericEntity(
                 id=elem_id,
                 tag=tag,
@@ -841,6 +867,7 @@ def parse_plmxml_file(file_path: Path) -> PlmxmlDocument:
         "skipped_elements": skipped_elements,
         "malformed_elements": malformed_elements,
         "structural_entities": structural_entities,
+        "metadata_exclusion_tags": sorted(resolved_metadata_exclusion_tags),
         "ingestion_time": round(parse_seconds, 6),
     }
 

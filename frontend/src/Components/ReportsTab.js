@@ -38,6 +38,21 @@ const PRIORITY_COLUMNS = [
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const RELATIONSHIP_PAGE_SIZE = 25;
+const DEFAULT_VISIBLE_COLUMNS = [
+  'entity_type',
+  'name',
+  'title',
+  'type',
+  'id',
+  'part_name',
+  'source_tag',
+  'ref_type',
+];
+const REPORT_PRESETS = {
+  overview: ['entity_type', 'name', 'title', 'type', 'id', 'source_tag'],
+  governance: ['entity_type', 'name', 'type', 'source_tag', 'ref_type', 'id'],
+  lineage: ['name', 'id', 'import_id', 'source_tag', 'ref_type', 'title'],
+};
 
 const stripUnwanted = (rows) =>
   rows.map((row) => {
@@ -50,6 +65,32 @@ const formatCellValue = (value) => {
   if (value == null) return '';
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
+};
+
+const formatHeaderLabel = (header) => {
+  const labels = {
+    entity_type: 'Entity',
+    source_tag: 'Source',
+    ref_type: 'Reference Type',
+    partnumber: 'Part Number',
+    relationship_type: 'Relationship Type',
+  };
+  return labels[header] || header.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const buildPresetVisibility = (headers, presetId) => {
+  const preferred = REPORT_PRESETS[presetId] || DEFAULT_VISIBLE_COLUMNS;
+  const preferredSet = new Set(preferred);
+  const visible = {};
+  headers.forEach((header) => {
+    visible[header] = preferredSet.has(header);
+  });
+  if (!Object.values(visible).some(Boolean)) {
+    headers.slice(0, 6).forEach((header) => {
+      visible[header] = true;
+    });
+  }
+  return visible;
 };
 
 const escapeCsv = (value) => JSON.stringify(value == null ? '' : String(value));
@@ -206,6 +247,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [visibleColumns, setVisibleColumns] = useState({});
   const [showColumnSelector, setShowColumnSelector] = useState(false);
+  const [reportPreset, setReportPreset] = useState('overview');
   const [relTypeFilter, setRelTypeFilter] = useState('');
   const [relSearchTerm, setRelSearchTerm] = useState('');
   const [relPage, setRelPage] = useState(1);
@@ -318,13 +360,25 @@ const ReportsTab = ({ searchResults, graphData }) => {
           next[header] = previous[header];
           return;
         }
-        next[header] = !NOISY_COLUMNS.has(header);
+        next[header] = DEFAULT_VISIBLE_COLUMNS.includes(header);
       });
       return next;
     });
   }, [nodeRows]);
 
   const clearFilters = () => setFilters({});
+
+  const applyReportPreset = (presetId) => {
+    setReportPreset(presetId);
+    setFilters({});
+    setShowColumnSelector(false);
+    if (presetId === 'traceability') {
+      setActiveReport('relationships');
+      return;
+    }
+    setActiveReport('search');
+    setVisibleColumns(buildPresetVisibility(getHeaders(processedResults), presetId));
+  };
 
   const handleFilterChange = (header, value) => {
     setFilters((previous) => {
@@ -366,7 +420,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
   const nodeSummaryLabel =
     activeReport === 'search'
       ? `${filteredNodeRows.length} rows`
-      : `${filteredNodeRows.length} ${activeReport} row${filteredNodeRows.length === 1 ? '' : 's'}`;
+      : `${filteredNodeRows.length} items`;
 
   const nodeStart = filteredNodeRows.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
   const nodeEnd = Math.min(currentPage * itemsPerPage, filteredNodeRows.length);
@@ -401,7 +455,6 @@ const ReportsTab = ({ searchResults, graphData }) => {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               <button
                 className="btn btn-sm"
-                onClick={() => setActiveReport('search')}
                 style={{
                   color: activeReport === 'search' ? '#fff' : '#004B87',
                   background: activeReport === 'search' ? '#004B87' : '#eef4fb',
@@ -411,12 +464,15 @@ const ReportsTab = ({ searchResults, graphData }) => {
                   borderRadius: 999,
                   padding: '6px 12px',
                 }}
+                onClick={() => {
+                  setReportPreset('custom');
+                  setActiveReport('search');
+                }}
               >
-                All Results
+                Nodes
               </button>
               <button
                 className="btn btn-sm"
-                onClick={() => setActiveReport('relationships')}
                 style={{
                   color: activeReport === 'relationships' ? '#fff' : '#0a8276',
                   background: activeReport === 'relationships' ? '#0a8276' : '#e8f4f3',
@@ -426,8 +482,12 @@ const ReportsTab = ({ searchResults, graphData }) => {
                   borderRadius: 999,
                   padding: '6px 12px',
                 }}
+                onClick={() => {
+                  setReportPreset('traceability');
+                  setActiveReport('relationships');
+                }}
               >
-                Relationships
+                Links
                 {relationshipRows.length > 0 && (
                   <span
                     style={{
@@ -446,7 +506,10 @@ const ReportsTab = ({ searchResults, graphData }) => {
                 <button
                   key={type}
                   className="btn btn-sm"
-                  onClick={() => setActiveReport(type)}
+                  onClick={() => {
+                    setReportPreset('custom');
+                    setActiveReport(type);
+                  }}
                   style={{
                     color: activeReport === type ? '#fff' : '#33506b',
                     background: activeReport === type ? '#33506b' : '#f3f6f9',
@@ -464,6 +527,31 @@ const ReportsTab = ({ searchResults, graphData }) => {
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                {[
+                  { id: 'overview', label: 'Overview' },
+                  { id: 'governance', label: 'Governance' },
+                  { id: 'lineage', label: 'Lineage' },
+                  { id: 'traceability', label: 'Traceability' },
+                ].map((preset) => (
+                  <button
+                    key={preset.id}
+                    className="btn btn-sm"
+                    onClick={() => applyReportPreset(preset.id)}
+                    style={{
+                      color: reportPreset === preset.id ? '#fff' : '#52606d',
+                      background: reportPreset === preset.id ? '#33506b' : '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      fontWeight: 700,
+                      fontSize: 12,
+                      borderRadius: 999,
+                      padding: '5px 10px',
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
               {activeReport !== 'relationships' && filteredNodeRows.length > 0 && (
                 <button
                   className="btn btn-sm"
@@ -713,13 +801,8 @@ const ReportsTab = ({ searchResults, graphData }) => {
                         boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
                       }}
                     >
-                      Columns ({visibleHeaders.length}/{nodeHeaders.length})
+                      View Columns ({visibleHeaders.length}/{nodeHeaders.length})
                     </button>
-                    {filterableHeaders.length > 0 && (
-                      <span style={{ fontSize: 12, color: '#52606d' }}>
-                        Filters are limited to stable, low-cardinality fields.
-                      </span>
-                    )}
                   </div>
 
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -785,7 +868,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
                             checked={visibleColumns[header] !== false}
                             onChange={() => toggleColumn(header)}
                           />
-                          <span>{header.replace(/_/g, ' ').toUpperCase()}</span>
+                          <span>{formatHeaderLabel(header)}</span>
                         </label>
                       ))}
                     </div>
@@ -812,7 +895,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
                           value={filters[header] || ''}
                           onChange={(event) => handleFilterChange(header, event.target.value)}
                         >
-                          <option value="">All {header.replace(/_/g, ' ')}</option>
+                          <option value="">All {formatHeaderLabel(header)}</option>
                           {getDistinctValues(nodeRows, header).map((value) => (
                             <option key={value} value={value}>
                               {value.length > 42 ? `${value.slice(0, 42)}...` : value}
@@ -860,7 +943,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
                               }}
                             >
                               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                                <span>{header.replace(/_/g, ' ').toUpperCase()}</span>
+                                <span>{formatHeaderLabel(header)}</span>
                                 {activeReport === 'search' && (
                                   <span style={{ fontSize: 12, opacity: 0.7 }}>
                                     {sortColumn === header ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}

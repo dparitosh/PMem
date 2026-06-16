@@ -238,19 +238,6 @@ app = FastAPI(
     },
 )
 
-# ✅ SECURE: Load allowed origins from environment with fallback
-allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
-allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
-
-# Add CORS middleware with secure configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,  # Restricted to specific origins from .env
-    allow_credentials=True,
-    allow_methods=["GET", "POST"],  # Only allow safe HTTP methods
-    allow_headers=["Content-Type", "Authorization", "Cache-Control"],  # Cache-Control needed for no-cache requests
-)
-
 # 🔒 SECURITY: Rate limiting to prevent brute force attacks
 from collections import defaultdict
 from time import time as unix_time
@@ -708,6 +695,19 @@ class TimeoutMiddleware:
                 logger.error(f"Error sending timeout response: {e}")
 
 app.add_middleware(TimeoutMiddleware)
+
+# ✅ SECURE: Load allowed origins from environment with fallback
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
+
+# Add CORS middleware last so it wraps error responses too.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 🔒 SECURITY: Neo4j query timeout configuration
 NEO4J_QUERY_TIMEOUT = int(os.getenv("NEO4J_QUERY_TIMEOUT", "30"))  # 30 seconds default
@@ -1865,9 +1865,10 @@ def filter_graph_nodes(request: TextSearchRequest):
           MATCH (n)
           WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
             AND (
-              any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($input))
+              toLower(elementId(n)) CONTAINS toLower($input)
+              OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($input))
+              OR any(key IN keys(n) WHERE toLower(key) CONTAINS toLower($input))
               OR toLower(coalesce(n.name, n.title, n.code, n.label, '')) CONTAINS toLower($input)
-              OR toLower(coalesce(toString(properties(n)), '')) CONTAINS toLower($input)
             )
             AND (
               $ontology_prefix = ''
@@ -1886,7 +1887,7 @@ def filter_graph_nodes(request: TextSearchRequest):
           WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
             AND (
               toLower(type(matched_rel)) CONTAINS toLower($input)
-              OR toLower(coalesce(toString(properties(matched_rel)), '')) CONTAINS toLower($input)
+              OR any(key IN keys(matched_rel) WHERE toLower(key) CONTAINS toLower($input))
             )
             AND (
               $ontology_prefix = ''
@@ -1912,7 +1913,7 @@ def filter_graph_nodes(request: TextSearchRequest):
           WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
             AND (
               toLower(type(matched_rel)) CONTAINS toLower($input)
-              OR toLower(coalesce(toString(properties(matched_rel)), '')) CONTAINS toLower($input)
+              OR any(key IN keys(matched_rel) WHERE toLower(key) CONTAINS toLower($input))
             )
             AND (
               $ontology_prefix = ''
@@ -1940,7 +1941,6 @@ def filter_graph_nodes(request: TextSearchRequest):
         WHERE r IS NULL
            OR m IN matchedNodes
            OR toLower(type(r)) CONTAINS toLower($input)
-           OR toLower(coalesce(toString(properties(r)), '')) CONTAINS toLower($input)
         RETURN
           {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
           CASE WHEN r IS NOT NULL THEN {
@@ -1965,18 +1965,144 @@ class ComparativeSearchRequest(BaseModel):
     nodeType: str = ""
     name: str = ""
     version: str = ""
+    limit: int = 12
 
 
-@app.post("/comparative-search")
-def comparative_search(request: ComparativeSearchRequest):
-    """Search a node by type/name/version for the graph comparison UI."""
-    node_type = (request.nodeType or "").strip()
-    name = (request.name or "").strip()
-    version = (request.version or "").strip()
+def _comparative_query_text(node_type: str, name: str, version: str) -> str:
+    parts = []
+    if name:
+        parts.append(name)
+    if version:
+        parts.append(f"revision {version}")
+    if node_type:
+        parts.append(f"type {node_type}")
+    return " | ".join(parts).strip()
 
-    if not name and not node_type and not version:
-        return {"results": []}
 
+def _text_match_strength(value, term: str) -> float:
+    if not term:
+        return 0.0
+    text = str(value or "").strip().lower()
+    wanted = term.strip().lower()
+    if not text or not wanted:
+        return 0.0
+    if text == wanted:
+        return 1.0
+    if text.startswith(wanted):
+        return 0.75
+    if wanted in text:
+        return 0.45
+    return 0.0
+
+
+def _comparative_rank_boost(node: dict, node_type: str, name: str, version: str) -> float:
+    props = node.get("properties") or {}
+    labels = [str(label or "").lower() for label in (node.get("labels") or [])]
+    boost = 0.0
+
+    if name:
+        boost += max(
+            _text_match_strength(props.get("name"), name),
+            _text_match_strength(props.get("title"), name),
+            _text_match_strength(props.get("label"), name),
+            _text_match_strength(props.get("code"), name),
+            _text_match_strength(props.get("id"), name),
+        ) * 0.35
+
+    if node_type:
+        label_score = max((_text_match_strength(label, node_type) for label in labels), default=0.0)
+        boost += max(
+            label_score,
+            _text_match_strength(props.get("type"), node_type),
+            _text_match_strength(props.get("node_type"), node_type),
+            _text_match_strength(props.get("entity_type"), node_type),
+        ) * 0.2
+
+    if version:
+        boost += max(
+            _text_match_strength(props.get("version"), version),
+            _text_match_strength(props.get("Version"), version),
+            _text_match_strength(props.get("revision"), version),
+            _text_match_strength(props.get("external_version"), version),
+        ) * 0.15
+
+    return boost
+
+
+def _comparative_similarity_results(node_type: str, name: str, version: str, limit: int):
+    query_text = _comparative_query_text(node_type, name, version)
+    if not query_text:
+        return []
+
+    try:
+        try:
+            from .core.llm import embeddings, EMBEDDER_AVAILABLE
+        except Exception:
+            from core.llm import embeddings, EMBEDDER_AVAILABLE
+
+        if not EMBEDDER_AVAILABLE:
+            return []
+
+        vector_index_name = os.getenv("NEO4J_GRAPH_VECTOR_INDEX", "graph_embedding")
+        candidate_limit = max(min(limit * 4, 60), limit)
+        query_embedding = embeddings.embed_query(query_text)
+
+        rows = graph.query(
+            """
+            CALL db.index.vector.queryNodes($index_name, $candidate_limit, $embedding)
+            YIELD node, score
+            MATCH (node)-[:EMBEDDED_FROM]->(src)
+            WHERE NOT (src:DatasheetChunk OR src:GraphChunk)
+            WITH src, max(score) AS similarity_score
+            RETURN
+              elementId(src) AS elementId,
+              labels(src) AS labels,
+              properties(src) AS properties,
+              similarity_score
+            LIMIT $candidate_limit
+            """,
+            params={
+                "index_name": vector_index_name,
+                "candidate_limit": candidate_limit,
+                "embedding": query_embedding,
+            },
+        ) or []
+    except Exception as exc:
+        logger.info("Comparative similarity search unavailable, falling back to keyword search: %s", exc)
+        return []
+
+    ranked = []
+    for row in rows:
+        properties = dict(row.get("properties") or {})
+        raw_similarity = float(row.get("similarity_score") or 0.0)
+        node = {
+            "elementId": row.get("elementId"),
+            "labels": row.get("labels") or [],
+            "properties": {
+                **properties,
+                "similarity_score": round(raw_similarity * 100, 1),
+            },
+        }
+        rank_score = raw_similarity + _comparative_rank_boost(node, node_type, name, version)
+        ranked.append((rank_score, node))
+
+    ranked.sort(key=lambda item: item[0], reverse=True)
+
+    deduped = []
+    seen = set()
+    for _score, node in ranked:
+        node_id = node.get("elementId")
+        if not node_id or node_id in seen:
+            continue
+        seen.add(node_id)
+        deduped.append({"n": node, "r": None, "m": None})
+        if len(deduped) >= limit:
+            break
+
+    return deduped
+
+
+def _comparative_keyword_results(node_type: str, name: str, version: str, limit: int):
     query = """
         MATCH (n)
         WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
@@ -1984,6 +2110,7 @@ def comparative_search(request: ComparativeSearchRequest):
             $name = ''
             OR toLower(coalesce(n.name, '')) CONTAINS toLower($name)
             OR toLower(coalesce(n.label, '')) CONTAINS toLower($name)
+            OR toLower(coalesce(n.title, '')) CONTAINS toLower($name)
             OR toLower(coalesce(n.FileName, '')) CONTAINS toLower($name)
             OR toLower(coalesce(n.id, '')) CONTAINS toLower($name)
           )
@@ -1992,35 +2119,42 @@ def comparative_search(request: ComparativeSearchRequest):
             OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($node_type))
             OR toLower(coalesce(n.type, '')) CONTAINS toLower($node_type)
             OR toLower(coalesce(n.node_type, '')) CONTAINS toLower($node_type)
+            OR toLower(coalesce(n.entity_type, '')) CONTAINS toLower($node_type)
           )
           AND (
             $version = ''
             OR toLower(coalesce(n.version, '')) CONTAINS toLower($version)
             OR toLower(coalesce(n.Version, '')) CONTAINS toLower($version)
             OR toLower(coalesce(n.revision, '')) CONTAINS toLower($version)
+            OR toLower(coalesce(n.external_version, '')) CONTAINS toLower($version)
           )
-        WITH collect(DISTINCT n)[..100] AS matchedNodes
-        UNWIND matchedNodes AS n
-        OPTIONAL MATCH (n)-[r]-(m)
-        WHERE m IN matchedNodes
         RETURN
           {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
-          CASE WHEN r IS NOT NULL THEN {
-            elementId: elementId(r),
-            type: type(r),
-            properties: properties(r),
-            start: elementId(startNode(r)),
-            end: elementId(endNode(r))
-          } ELSE null END AS r,
-          CASE WHEN m IS NOT NULL THEN {
-            elementId: elementId(m), labels: labels(m), properties: properties(m)
-          } ELSE null END AS m
+          null AS r,
+          null AS m
+        LIMIT $limit
     """
+    return graph.query(
+        query,
+        params={"node_type": node_type, "name": name, "version": version, "limit": limit},
+    )
+
+
+@app.post("/comparative-search")
+def comparative_search(request: ComparativeSearchRequest):
+    """Search nodes for comparison using semantic similarity with keyword fallback."""
+    node_type = (request.nodeType or "").strip()
+    name = (request.name or "").strip()
+    version = (request.version or "").strip()
+    limit = max(1, min(int(request.limit or 12), 25))
+
+    if not name and not node_type and not version:
+        return {"results": []}
+
     try:
-        results = graph.query(
-            query,
-            params={"node_type": node_type, "name": name, "version": version},
-        )
+        results = _comparative_similarity_results(node_type, name, version, limit)
+        if not results:
+            results = _comparative_keyword_results(node_type, name, version, limit)
         return {"results": results}
     except Exception as e:
         safe_error("/comparative-search", e)
@@ -2044,10 +2178,13 @@ UNWIND $names AS searchName
 MATCH (n)
 WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
   AND (
+    toLower(elementId(n)) CONTAINS toLower(searchName)
+    OR
     toLower(coalesce(n.name, '')) CONTAINS toLower(searchName)
     OR toLower(coalesce(n.title, '')) CONTAINS toLower(searchName)
     OR toLower(coalesce(n.code, '')) CONTAINS toLower(searchName)
     OR toLower(coalesce(n.label, '')) CONTAINS toLower(searchName)
+    OR any(key IN keys(n) WHERE toLower(key) CONTAINS toLower(searchName))
     OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower(searchName))
   )
 WITH collect(DISTINCT n) AS matchedNodes
@@ -2072,81 +2209,17 @@ RETURN
 
 
 @app.get("/graphtraverse/{node_id}")
-def traverse_node(node_id: str = Path(..., description="Neo4j internal node ID")):
+def traverse_node(
+    node_id: str = Path(..., description="Neo4j internal node ID"),
+    depth: int = 1,
+):
     try:
-        query = """ 
-            MATCH (n)
-WHERE elementId(n) = $node_id
-  AND any(label IN labels(n) WHERE toLower(label) = 'part')
+        try:
+            from backend.Services.graph_view_service import GraphViewService
+        except Exception:
+            from Services.graph_view_service import GraphViewService
 
-OPTIONAL MATCH (n)-[r1]-(m1)
-WHERE m1 IS NULL OR any(label IN labels(m1) WHERE toLower(label) = 'part')
-WITH n, collect(DISTINCT {r: r1, m: m1})[..40] AS level1
-
-UNWIND level1 AS l1
-WITH n, level1, l1.m AS l1_node
-OPTIONAL MATCH (l1_node)-[r2]-(m2)
-WHERE m2 IS NULL
-   OR elementId(m2) <> elementId(n)
-   AND any(label IN labels(m2) WHERE toLower(label) = 'part')
-WITH n, level1, collect(DISTINCT {r: r2, m: m2})[..24] AS level2
-
-WITH n, level1 + level2 AS all_rels
-UNWIND all_rels AS rel_data
-WITH n, rel_data.r AS r, rel_data.m AS m
-WHERE r IS NOT NULL AND m IS NOT NULL
-
-RETURN 
-{
-  elementId: elementId(n),
-  labels: labels(n),
-  properties: properties(n)
-} AS n,
-
-{
-  elementId: elementId(r),
-  type: type(r),
-  properties: properties(r),
-  start: elementId(startNode(r)),
-  end: elementId(endNode(r))
-} AS r,
-
-{
-  elementId: elementId(m),
-  labels: labels(m),
-  properties: properties(m)
-} AS m
-
-LIMIT 500
-            """
-
-        results = graph.query(query, params={"node_id": node_id})
-
-        def _is_part_node(payload):
-            labels = [str(label or "").lower() for label in (payload or {}).get("labels", [])]
-            props = (payload or {}).get("properties") or {}
-            name = str(
-                props.get("name")
-                or props.get("title")
-                or props.get("label")
-                or props.get("code")
-                or props.get("id")
-                or props.get("uid")
-                or ""
-            ).strip().lower()
-            return any(label == "part" for label in labels) and not name.startswith("id")
-
-        filtered_results = []
-        for row in results or []:
-            n = row.get("n")
-            m = row.get("m")
-            if not _is_part_node(n):
-                continue
-            if m is not None and not _is_part_node(m):
-                continue
-            filtered_results.append(row)
-
-        return {"results": filtered_results}
+        return GraphViewService.get_traversal_slice(node_id=node_id, limit=120, depth=depth)
     except Exception as e:
         safe_error("/graphtraverse", e)
 
@@ -3270,13 +3343,19 @@ async def get_ontology_mappings(file_type: str = ""):
 @app.post("/api/v1/import/upload")
 @app.post("/api/import/upload")
 @app.post("/data-import/upload")
-async def upload_file(file: UploadFile = File(...), ontology_id: str = Form(""), ontology_mapping: str = Form("")):
+async def upload_file(
+    file: UploadFile = File(...),
+    ontology_id: str = Form(""),
+    ontology_mapping: str = Form(""),
+    metadata_exclusion_tags: str = Form(""),
+):
     """Upload a file to the import pipeline with selected ontology.
     
     Parameters:
     - file: Data file (CSV, XLS, JSON, etc.)
     - ontology_id: ID of registered ontology (optional, overrides ontology_mapping)
     - ontology_mapping: Legacy ontology name/prefix (used if ontology_id not provided)
+    - metadata_exclusion_tags: Optional comma-separated PLMXML tags to suppress as metadata-only nodes
     
     Returns IMMEDIATELY with task_id (within 5 seconds) and processes file in background.
     Use /data-import/status/{task_id} to check processing progress.
@@ -3295,6 +3374,11 @@ async def upload_file(file: UploadFile = File(...), ontology_id: str = Form(""),
 
         # Resolve ontology prefix from ontology_id (if provided)
         resolved_ontology_mapping = ontology_mapping
+        parse_options = {}
+        if metadata_exclusion_tags.strip():
+            parse_options["metadata_exclusion_tags"] = [
+                tag.strip() for tag in metadata_exclusion_tags.split(",") if tag.strip()
+            ]
         if ontology_id:
             try:
                 OntologyUploadManager.initialize()
@@ -3305,7 +3389,12 @@ async def upload_file(file: UploadFile = File(...), ontology_id: str = Form(""),
                 logger.warning(f"Could not resolve ontology_id '{ontology_id}': {e}. Using ontology_mapping instead.")
         
         # Start import via unified service (schedules parsing in background and persists snapshot)
-        task_id = await UnifiedDataImportService.start_import(content, filename, resolved_ontology_mapping)
+        task_id = await UnifiedDataImportService.start_import(
+            content,
+            filename,
+            resolved_ontology_mapping,
+            parse_options=parse_options,
+        )
 
         return {
             "task_id": task_id,
@@ -3313,6 +3402,7 @@ async def upload_file(file: UploadFile = File(...), ontology_id: str = Form(""),
             "file_type": FileFormatDetector.detect(filename).value,
             "ontology_id": ontology_id,
             "ontology_mapping": resolved_ontology_mapping,
+            "metadata_exclusion_tags": parse_options.get("metadata_exclusion_tags", []),
             "message": f"File '{filename}' uploaded. Processing started in background. Check status with task_id: {task_id}",
         }
     except HTTPException:

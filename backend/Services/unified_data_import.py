@@ -815,7 +815,11 @@ class FileParser:
     """Dispatcher for routing files to appropriate parser based on type"""
     
     @staticmethod
-    def parse(file_content: bytes, file_type: FileType) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def parse(
+        file_content: bytes,
+        file_type: FileType,
+        parse_options: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Parse file content based on file type
         
@@ -826,6 +830,7 @@ class FileParser:
         Returns:
             Tuple of (rows: List[Dict], stats: Dict)
         """
+        parse_options = parse_options or {}
         try:
             if file_type == FileType.CSV:
                 return FileParser._parse_csv(file_content)
@@ -838,7 +843,10 @@ class FileParser:
             elif file_type == FileType.EXPRESS:
                 return FileFormatDetector.parse_express(file_content)
             elif file_type == FileType.PLMXML:
-                return FileParser._parse_plmxml(file_content)
+                return FileParser._parse_plmxml(
+                    file_content,
+                    metadata_exclusion_tags=parse_options.get('metadata_exclusion_tags'),
+                )
             elif file_type == FileType.STEP:
                 return FileParser._parse_step(file_content)
             elif file_type == FileType.XML:
@@ -851,7 +859,10 @@ class FileParser:
                     or b'plmxml.org' in _head
                 )
                 if _is_plmxml:
-                    return FileParser._parse_plmxml(file_content)
+                    return FileParser._parse_plmxml(
+                        file_content,
+                        metadata_exclusion_tags=parse_options.get('metadata_exclusion_tags'),
+                    )
                 return FileParser._parse_xml(file_content)
             elif file_type == FileType.JSON:
                 return FileParser._parse_json(file_content)
@@ -1069,7 +1080,10 @@ class FileParser:
             return [], {'error': str(e)}
 
     @staticmethod
-    def _parse_plmxml(file_content: bytes) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    def _parse_plmxml(
+        file_content: bytes,
+        metadata_exclusion_tags: Optional[List[str]] = None,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Parse PLMXML file using the dedicated plmxml_parser module.
 
         Extracts semantic PLM objects: parts, BOMs, processes, requirements,
@@ -1085,19 +1099,29 @@ class FileParser:
                 tmp.write(file_content)
                 tmp_path = _Path(tmp.name)
             try:
-                doc = parse_plmxml_file(tmp_path)
+                doc = parse_plmxml_file(tmp_path, metadata_exclusion_tags=metadata_exclusion_tags)
             finally:
                 tmp_path.unlink(missing_ok=True)
 
             rows: List[Dict[str, Any]] = []
+            rows_by_id: Dict[str, Dict[str, Any]] = {}
             raw_rels: List[Dict[str, Any]] = []
             rel_seen = set()
+            row_key_counts: Dict[str, int] = {}
             metadata_only_skipped = 0
+            metadata_properties_attached = 0
 
             def append_row(row: Dict[str, Any]) -> None:
                 if row.get('id') and not row.get('name'):
                     row['name'] = row['id']
+                source_id = str(row.get('id') or '').strip()
+                if source_id:
+                    occurrence = row_key_counts.get(source_id, 0) + 1
+                    row_key_counts[source_id] = occurrence
+                    row.setdefault('import_row_key', source_id if occurrence == 1 else f'{source_id}::{occurrence}')
                 rows.append(row)
+                if row.get('id'):
+                    rows_by_id[str(row['id'])] = row
 
             def append_rel(from_id: str, to_id: str, rel_type: str, **props: Any) -> None:
                 from_id = _normalize_ref(str(from_id or ''))
@@ -1118,15 +1142,90 @@ class FileParser:
                     payload['properties'] = props
                 raw_rels.append(payload)
 
+            def _safe_metadata_key(prefix: str, key: str) -> str:
+                slug = re.sub(r'[^0-9a-zA-Z]+', '_', str(key or '').strip()).strip('_').lower()
+                if not slug:
+                    slug = 'value'
+                return f'{prefix}_{slug}'
+
+            def _merge_metadata_properties(target_row: Dict[str, Any], metadata_props: Dict[str, Any]) -> bool:
+                changed = False
+                for key, value in metadata_props.items():
+                    if value in (None, '', [], {}):
+                        continue
+                    if key not in target_row:
+                        target_row[key] = value
+                        changed = True
+                return changed
+
+            def _metadata_properties_for_id(metadata_id: str) -> Dict[str, Any]:
+                metadata_id = _normalize_ref(str(metadata_id or ''))
+                if not metadata_id:
+                    return {}
+                user_data = doc.user_data.get(metadata_id)
+                if user_data:
+                    props: Dict[str, Any] = {
+                        'metadata_user_data_id': user_data.id,
+                    }
+                    if user_data.type:
+                        props['metadata_user_data_type'] = user_data.type
+                    if user_data.title:
+                        props['metadata_user_data_title'] = user_data.title
+                    for title, value in (user_data.values or {}).items():
+                        if value not in (None, ''):
+                            props[_safe_metadata_key('user_data', title)] = value
+                    return props
+
+                form = doc.forms.get(metadata_id)
+                if form and getattr(form, 'is_structural', False):
+                    props = {
+                        'metadata_form_id': form.id,
+                    }
+                    if form.sub_type:
+                        props['metadata_form_sub_type'] = form.sub_type
+                    if form.sub_class:
+                        props['metadata_form_sub_class'] = form.sub_class
+                    if form.description:
+                        props['metadata_form_description'] = form.description
+                    for title, value in (form.attributes or {}).items():
+                        if value not in (None, ''):
+                            props[_safe_metadata_key('form', title)] = value
+                    return props
+
+                generic = doc.generic_entities.get(metadata_id)
+                if generic and getattr(generic, 'is_structural', False):
+                    props = {
+                        'metadata_tag': generic.tag,
+                    }
+                    if generic.subtype:
+                        props['metadata_sub_type'] = generic.subtype
+                    if generic.description:
+                        props['metadata_description'] = generic.description
+                    return props
+                return {}
+
+            def _consume_metadata_reference(target_row: Dict[str, Any], metadata_id: str) -> bool:
+                nonlocal metadata_properties_attached
+                metadata_props = _metadata_properties_for_id(metadata_id)
+                if not metadata_props:
+                    return False
+                if _merge_metadata_properties(target_row, metadata_props):
+                    metadata_properties_attached += 1
+                return True
+
             for pid, part in doc.parts.items():
-                append_row({
+                part_row = {
                     'element_type': 'Part', 'id': pid,
                     'name': part.name, 'part_number': part.part_number,
                     'revision': part.revision, 'description': part.description,
                     'part_type': part.part_type,
                     'master_ref': part.master_ref,
-                })
-                if part.master_ref:
+                }
+                append_row(part_row)
+                for user_data_ref in part.user_data_refs:
+                    if not _consume_metadata_reference(part_row, user_data_ref):
+                        append_rel(pid, user_data_ref, 'USER_DATA_REF')
+                if part.master_ref and not _consume_metadata_reference(part_row, part.master_ref):
                     append_rel(pid, part.master_ref, 'MASTER_REF')
 
             for rid, req in doc.requirements.items():
@@ -1154,7 +1253,7 @@ class FileParser:
                     })
                     append_rel(req.revision_id, rid, 'REVISION_OF')
                     if req.master_ref:
-                        append_rel(req.revision_id, req.master_ref, 'MASTERREF')
+                        append_rel(req.revision_id, req.master_ref, 'MASTER_REF')
                     if req.dataset_ref:
                         append_rel(req.revision_id, req.dataset_ref, 'DATASET_REF')
 
@@ -1180,12 +1279,13 @@ class FileParser:
                     append_rel(view_id, root_ref, 'HAS_ROOT')
 
             for inst in doc.product_instances:
-                append_row({
+                inst_row = {
                     'element_type': 'ProductInstance', 'id': inst.id,
                     'name': inst.name, 'part_ref': inst.part_ref,
                     'parent_ref': inst.parent_ref, 'transform_ref': inst.transform_ref,
                     'quantity': str(inst.quantity),
-                })
+                }
+                append_row(inst_row)
                 if inst.parent_ref:
                     append_rel(inst.parent_ref, inst.id, 'HAS_CHILD_INSTANCE')
                 if inst.part_ref:
@@ -1195,9 +1295,11 @@ class FileParser:
                 for occurrence_ref in inst.occurrence_refs:
                     append_rel(inst.id, occurrence_ref, 'OCCURRENCE_REF')
                 for user_data_ref in inst.user_data_refs:
-                    append_rel(inst.id, user_data_ref, 'USER_DATA_REF')
+                    if not _consume_metadata_reference(inst_row, user_data_ref):
+                        append_rel(inst.id, user_data_ref, 'USER_DATA_REF')
                 for app_ref in inst.application_refs:
-                    append_rel(inst.id, app_ref, 'APPLICATION_REF')
+                    if not _consume_metadata_reference(inst_row, app_ref):
+                        append_rel(inst.id, app_ref, 'APPLICATION_REF')
 
             for view_id, view in doc.process_views.items():
                 append_row({
@@ -1250,25 +1352,22 @@ class FileParser:
                 })
 
             for userdata_id, userdata in doc.user_data.items():
-                append_row({
-                    'element_type': 'UserData', 'id': userdata_id,
-                    'name': userdata.title or userdata_id,
-                    'user_data_type': userdata.type,
-                    'value_count': str(len(userdata.values)),
-                })
+                metadata_only_skipped += 1
 
             for document_id, document in doc.documents.items():
-                append_row({
+                document_row = {
                     'element_type': 'Document', 'id': document_id,
                     'name': document.name,
                     'document_type': document.document_type,
                     'revision': document.revision,
                     'description': document.description,
-                })
+                }
+                append_row(document_row)
                 for file_ref in document.external_file_refs:
                     append_rel(document_id, file_ref, 'EXTERNAL_FILE_REF')
                 for userdata_ref in document.user_data_refs:
-                    append_rel(document_id, userdata_ref, 'USER_DATA_REF')
+                    if not _consume_metadata_reference(document_row, userdata_ref):
+                        append_rel(document_id, userdata_ref, 'USER_DATA_REF')
 
             for file_id, external_file in doc.external_files.items():
                 append_row({
@@ -1291,17 +1390,7 @@ class FileParser:
                     append_rel(rel.id, target_id, rel.sub_type or 'RELATED_TO', tc_label=rel.tc_label)
 
             for form_id, form in doc.forms.items():
-                form_row = {
-                    'element_type': 'Form', 'id': form_id,
-                    'name': form.name, 'sub_type': form.sub_type,
-                    'sub_class': form.sub_class,
-                    'description': form.description,
-                    'semantic_role': getattr(form, 'semantic_role', 'metadata'),
-                }
-                if _plmxml_row_has_payload(form_row, 'Form'):
-                    append_row(form_row)
-                else:
-                    metadata_only_skipped += 1
+                metadata_only_skipped += 1
 
             for generic_id, generic in doc.generic_entities.items():
                 generic_row = {
@@ -1317,6 +1406,18 @@ class FileParser:
                 append_row(generic_row)
 
             for rel in doc.relationships:
+                source_row = rows_by_id.get(_normalize_ref(rel.source_id))
+                target_row = rows_by_id.get(_normalize_ref(rel.target_id))
+                source_is_metadata = bool(_metadata_properties_for_id(rel.source_id))
+                target_is_metadata = bool(_metadata_properties_for_id(rel.target_id))
+
+                if source_row and target_is_metadata and _consume_metadata_reference(source_row, rel.target_id):
+                    continue
+                if target_row and source_is_metadata and _consume_metadata_reference(target_row, rel.source_id):
+                    continue
+                if source_is_metadata or target_is_metadata:
+                    metadata_only_skipped += 1
+                    continue
                 append_rel(rel.source_id, rel.target_id, rel.relationship_type, **(rel.properties or {}))
 
             _ns_uri = str(doc.parse_stats.get('namespace') or '')
@@ -1338,7 +1439,7 @@ class FileParser:
                 'bom_links': len(doc.product_instances),
                 'elements_parsed': doc.parse_stats.get('elements_parsed', 0),
                 'classes_created': doc.parse_stats.get('classes_created', 0),
-                'individuals_created': doc.parse_stats.get('individuals_created', len(rows)),
+                'individuals_created': len(rows),
                 'relationships_created': len(raw_rels),
                 'unresolved_references': doc.parse_stats.get('unresolved_references', 0),
                 'duplicate_ids': doc.parse_stats.get('duplicate_ids', 0),
@@ -1348,6 +1449,8 @@ class FileParser:
                 'unresolved_reference_details': doc.unresolved_references[:200],
                 'duplicate_id_values': doc.duplicate_ids[:200],
                 'metadata_only_entities_skipped': metadata_only_skipped,
+                'metadata_properties_attached': metadata_properties_attached,
+                'metadata_exclusion_tags': doc.parse_stats.get('metadata_exclusion_tags', []),
                 '_xmi_relationships': raw_rels,  # reused by commit_import relationship writer
             }
             return rows, stats
@@ -1618,7 +1721,7 @@ class DataTransformer:
                     continue
                 type_cols = sorted({k for r in type_rows for k in r.keys()})
                 merge_key = next(
-                    (c for c in ('id', 'uuid', 'key', 'name') if c in type_cols),
+                    (c for c in ('import_row_key', 'id', 'uuid', 'key', 'name') if c in type_cols),
                     next((c for c in type_cols if c not in _SKIP_MERGE), type_cols[0]),
                 )
                 nodes.append({
@@ -1764,6 +1867,7 @@ class Neo4jImporter:
                 check_rows = rows
 
             missing_key_count = 0
+            missing_key_examples = []
             for row_idx, row in enumerate(check_rows):
                 if not row:
                     return False, f"Row {row_idx} is empty"
@@ -1771,12 +1875,19 @@ class Neo4jImporter:
                 for key in merge_keys:
                     if key not in row or row[key] is None:
                         missing_key_count += 1
+                        if len(missing_key_examples) < 5:
+                            missing_key_examples.append(str(row.get('id') or row.get('name') or f'row-{row_idx}'))
             # Fail only if ALL rows are missing the merge key (schema mismatch),
             # not just some — partial rows are filtered out at write time.
             if missing_key_count == len(check_rows) and check_rows:
                 return False, (
                     f"All {len(check_rows)} rows missing merge key '{merge_keys[0]}'. "
                     "Schema may be incorrect."
+                )
+            if missing_key_count > 0:
+                return False, (
+                    f"{missing_key_count} rows are missing merge key '{merge_keys[0]}'. "
+                    f"Examples: {', '.join(missing_key_examples)}"
                 )
         
         return True, ""
@@ -2208,11 +2319,19 @@ class UnifiedDataImportService:
             import_tasks.pop(tid, None)
 
     @classmethod
-    async def start_import(cls, file_content: bytes, filename: str, ontology_mapping: str = '') -> str:
+    async def start_import(
+        cls,
+        file_content: bytes,
+        filename: str,
+        ontology_mapping: str = '',
+        parse_options: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """
         Start an import task
         Returns task_id
         """
+        parse_options = parse_options or {}
+
         # Validate file type
         file_type = FileFormatDetector.detect(filename)
         if not file_type:
@@ -2233,6 +2352,8 @@ class UnifiedDataImportService:
         mapping_value = (ontology_mapping or '').strip()
         normalized_mapping = mapping_value if mapping_value else 'auto'
         seeded_stats = {'ontology_mapping': normalized_mapping}
+        if parse_options.get('metadata_exclusion_tags'):
+            seeded_stats['metadata_exclusion_tags'] = list(parse_options['metadata_exclusion_tags'])
         # If a concrete mapping was provided (not 'auto'), expose it as
         # ontology_prefix and ontology_name so later commit logic can pick it up.
         if normalized_mapping != 'auto':
@@ -2255,6 +2376,7 @@ class UnifiedDataImportService:
             'result': None,
             'workflow_id': 'ontology.create' if file_type in {FileType.EXPRESS, FileType.XSD, FileType.ONTOLOGY} else 'instance.import',
             'artifact_manifest': None,
+            'parse_options': parse_options,
             # Keep raw bytes only where downstream OWL generation may need them.
             'file_content': file_content if keep_file_content else None,
         }
@@ -2273,7 +2395,11 @@ class UnifiedDataImportService:
             filename,
             file_content,
             "source_file",
-            {"file_type": file_type.value, "ontology_mapping": normalized_mapping},
+            {
+                "file_type": file_type.value,
+                "ontology_mapping": normalized_mapping,
+                "parse_options": parse_options,
+            },
         )
         # Register task immediately so the frontend can start polling
         import_tasks[task_id] = task_info
@@ -2307,7 +2433,7 @@ class UnifiedDataImportService:
             task_info['message'] = f'Parsing {file_type.value.upper()} file...'
             cls._persist_task(task_id)
 
-            rows, stats = FileParser.parse(file_content, file_type)
+            rows, stats = FileParser.parse(file_content, file_type, task_info.get('parse_options'))
             source_filename = task_info.get('filename', '') or ''
             if source_filename:
                 for row in rows:
@@ -2677,11 +2803,19 @@ class UnifiedDataImportService:
         result = {'queries_executed': 0, 'nodes_created': 0,
                   'relationships_created': 0, 'instance_links_created': 0,
                   'ontology_classes_matched': 0, 'errors': []}
+        result['warnings'] = []
         result['classes_created'] = len([nd for nd in schema.get('nodes', []) if nd.get('label')])
         result['individuals_created'] = len(rows)
         result['unresolved_references'] = int((_stats.get('unresolved_references') or 0))
         result['duplicate_ids'] = int((_stats.get('duplicate_ids') or 0))
         result['relationships_skipped'] = 0
+        result['skipped_node_rows'] = 0
+
+        if task.get('file_type') == 'plmxml' and result['duplicate_ids'] > 0:
+            raise ValueError(
+                "PLMXML import contains duplicate source identifiers. "
+                "Commit is blocked to prevent ambiguous node merges and relationship resolution."
+            )
 
         def _sync_metrics(
             phase: str,
@@ -2758,9 +2892,19 @@ class UnifiedDataImportService:
                              if str(r.get(filter_key, '')).replace(' ', '_').replace(':', '_') == filter_val]
             else:
                 node_rows = rows
+            original_node_row_count = len(node_rows)
             # Skip rows missing any required merge key (avoids Cypher MERGE on null)
             if merge_keys:
                 node_rows = [r for r in node_rows if all(r.get(k) is not None for k in merge_keys)]
+            skipped_for_label = original_node_row_count - len(node_rows)
+            if skipped_for_label > 0:
+                result['skipped_node_rows'] += skipped_for_label
+                warning = (
+                    f"Skipped {skipped_for_label} '{label}' rows because required merge keys "
+                    f"{merge_keys} were missing."
+                )
+                result['warnings'].append(warning)
+                logger.warning("Task %s: %s", task_id, warning)
             if not node_rows:
                 continue
             queries, _ = DataTransformer.transform_to_nodes(node_rows, label, merge_keys)
@@ -2793,7 +2937,7 @@ class UnifiedDataImportService:
         _label_hint = f":`{schema_labels[0]}`" if len(schema_labels) == 1 else ''
         row_id_set = {str(r.get('id')) for r in rows if r.get('id') is not None}
         if xmi_rels:
-            rel_by_type: Dict[str, List[Dict[str, str]]] = {}
+            rel_by_type: Dict[str, List[Dict[str, Any]]] = {}
             for rel in xmi_rels:
                 from_id = str((rel.get('from_props') or {}).get('id', '') or '')
                 to_id = str((rel.get('to_props') or {}).get('id', '') or '')
@@ -2801,7 +2945,11 @@ class UnifiedDataImportService:
                 safe_type = _re.sub(r'[^A-Z0-9_]', '_', raw_type.upper()).strip('_') or 'RELATED_TO'
                 if from_id and to_id:
                     if from_id in row_id_set and to_id in row_id_set:
-                        rel_by_type.setdefault(safe_type, []).append({'from_id': from_id, 'to_id': to_id})
+                        rel_by_type.setdefault(safe_type, []).append({
+                            'from_id': from_id,
+                            'to_id': to_id,
+                            'properties': rel.get('properties') or {},
+                        })
                     else:
                         result['relationships_skipped'] += 1
             _sync_metrics('relationships', 92, 'Creating relationship batches...')
@@ -2810,7 +2958,8 @@ class UnifiedDataImportService:
                 UNWIND $rows AS row
                 MATCH (a{_label_hint} {{id: row.from_id, import_id: row.import_id}})
                 MATCH (b{_label_hint} {{id: row.to_id, import_id: row.import_id}})
-                MERGE (a)-[:`{rel_type}`]->(b)
+                MERGE (a)-[rel:`{rel_type}`]->(b)
+                SET rel += coalesce(row.properties, {{}})
                 RETURN count(*) AS matched_rows
                 """
                 try:

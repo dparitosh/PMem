@@ -270,3 +270,33 @@ What needs attention:
 4. Split Import workflows into primary versus advanced actions.
 5. Rework Workspace table default view toward business-readable traceability summaries.
 
+## Status Update
+
+Update date: `2026-06-15`
+
+Completed on branch:
+
+- Removed shared `PageHeader` usage from operational screens.
+- Reduced duplicate page naming between shell headers and first content panels.
+- Shortened landing hero to one title and one sentence.
+- Reduced duplicate landing metrics to a smaller default set.
+- Removed most narrative subtitle rows from page and panel headers.
+- Renamed `Quality` navigation and screen framing to `Recommendations`.
+- Simplified chat branding from `[AI] Knowledge Assistant` to `Assistant`.
+- Reduced copy density in `RecommendationsTab` entry screens and `DataImportPipeline` workflow framing.
+- Reduced `Reports` default density by limiting initial visible columns and simplifying report labels.
+- Added report presets for `Overview`, `Governance`, `Lineage`, and `Traceability`.
+- Replaced low-level `parent / relation / child` labels with `source / relationship / target`.
+- Moved secondary admin registries under progressive disclosure.
+- Split `Import` into primary workflows and advanced workflows so merge, validate, dictionary, taxonomy, and chunking no longer compete with first-step ingestion actions.
+- Reworked expanded admin catalogs into lighter grouped sections with summary counts and per-catalog disclosure.
+- Removed the retired shared page-header component and its unused CSS so the old verbose header pattern is no longer carried in the branch.
+- Removed additional stale frontend code from the branch audit: the unused `whereused-wrapper` styles, the unused `depo-workflow-grid` selector, and retired commented blocks in `WhereUsedView` and `GraphHEB`.
+- Normalized cached and live ontology catalog options in the import workflows to eliminate duplicate select keys, and removed the dead `previewTaskId` state from the import pipeline.
+- Removed three unused retained helpers from `GraphHEB` (`performComparativeSearch`, `compareNodeHierarchies`, and `throttledTick`) that were only being kept behind eslint suppressions.
+- Removed the dead inline comparison state from `GraphHEB`; the compare flow now has one active path only: similarity search plus popup property comparison.
+- Tightened contextual graph results to instance-only behavior so the `Contextual Instances` mode now returns and renders only `Individual` nodes, not schema/class nodes mixed into the context view.
+
+Still open:
+
+- `Workspace` is partly superseded on this branch because there is no standalone `WorkspacePage` route now; any remaining table readability work should be tracked against graph, where-used, or report surfaces instead.

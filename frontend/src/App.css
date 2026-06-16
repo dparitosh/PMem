@@ -38,15 +38,6 @@ body {
   overflow: hidden;
 }
 
-.whereused-wrapper {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  /* Remove vertical centering so inner graph/hierarchy can use full height */
-  justify-content: flex-start;
-  padding: 0; /* let inner component manage spacing */
-}
-
 /* ===== RESIZABLE GRAPH/TABS SECTIONS ===== */
 .graph-section-container {
   display: flex;
@@ -239,12 +230,6 @@ body {
 
 .export-buttons .btn {
   font-size: 0.875rem;
-}
-
-/* Where Used hierarchy label color enforcement */
-.whereused-wrapper svg .hier-node-label {
-  fill: #000 !important;
-  stroke: none;
 }
 
 /* ===== CHALLENGE FIXES ===== */

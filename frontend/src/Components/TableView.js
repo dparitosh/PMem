@@ -197,9 +197,9 @@ const TableView = (props) => {
             <table className='table table-striped' style={{ marginBottom: 0 }}>
                 <thead className='sticky-top' style={{ backgroundColor: 'white', zIndex: 10 }}>
                     <tr>
-                    <th>parent</th>
-                    <th>relation type</th>
-                    <th>child</th>
+                    <th>source</th>
+                    <th>relationship</th>
+                    <th>target</th>
                     </tr>     
                 </thead>
               <tbody>

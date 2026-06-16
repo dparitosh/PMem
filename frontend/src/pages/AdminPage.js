@@ -89,9 +89,55 @@ export default function AdminPage({ onSchemaCleaned }) {
     services: registry?.services?.length || 0,
     routes: registry?.api_routes?.length || 0,
     sources: registry?.data_sources?.length || 0,
+    agents: registry?.agents?.length || 0,
+    packages: registry?.packages?.length || 0,
     workflows: registry?.workflows?.length || 0,
     config: registry?.configuration?.length || 0,
   }), [registry]);
+  const secondaryCatalogs = [
+    {
+      title: 'Agents',
+      count: counts.agents,
+      height: 220,
+      rows: registry?.agents || [],
+      columns: [
+        { field: 'id', flex: 1 },
+        { field: 'name', flex: 1.4 },
+        { field: 'provider' },
+        { field: 'model', flex: 1.2 },
+        { field: 'status' },
+        { field: 'health_endpoint', flex: 1.4 },
+        { field: 'config_source', flex: 1 },
+      ],
+    },
+    {
+      title: 'Runtime Configuration',
+      count: counts.config,
+      height: 300,
+      rows: registry?.configuration || [],
+      columns: configColumns,
+    },
+    {
+      title: 'Workflow Registry',
+      count: counts.workflows,
+      height: 280,
+      rows: registry?.workflows || [],
+    },
+    {
+      title: 'API Route Registry',
+      count: counts.routes,
+      height: 360,
+      rows: registry?.api_routes || [],
+      columns: routeColumns,
+    },
+    {
+      title: 'Package Rationalization',
+      count: counts.packages,
+      height: 360,
+      rows: registry?.packages || [],
+      columns: packageColumns,
+    },
+  ];
 
   return (
     <div className="depo-page">
@@ -126,8 +172,9 @@ export default function AdminPage({ onSchemaCleaned }) {
           { label: 'Services', value: counts.services },
           { label: 'API routes', value: counts.routes },
           { label: 'Datasources', value: counts.sources },
+          { label: 'Agents', value: counts.agents },
           { label: 'Configuration', value: counts.config },
-          { label: 'Workflow capabilities', value: counts.workflows },
+          { label: 'Workflows', value: counts.workflows },
         ]}
       />
 
@@ -144,22 +191,47 @@ export default function AdminPage({ onSchemaCleaned }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <RegistryWidget title="Service Catalog" rows={registry?.services || []} columns={serviceColumns} height={320} />
           <RegistryWidget title="Data Sources" rows={registry?.data_sources || []} columns={dataSourceColumns} height={250} />
-          <RegistryWidget title="Agents" rows={registry?.agents || []} height={220} columns={[
-            { field: 'id', flex: 1 },
-            { field: 'name', flex: 1.4 },
-            { field: 'provider' },
-            { field: 'model', flex: 1.2 },
-            { field: 'status' },
-            { field: 'health_endpoint', flex: 1.4 },
-            { field: 'config_source', flex: 1 },
-          ]} />
         </div>
       </div>
 
-      <RegistryWidget title="Runtime Configuration" rows={registry?.configuration || []} columns={configColumns} height={300} />
-      <RegistryWidget title="Workflow Registry" rows={registry?.workflows || []} height={280} />
-      <RegistryWidget title="API Route Registry" rows={registry?.api_routes || []} columns={routeColumns} height={360} />
-      <RegistryWidget title="Package Rationalization" rows={registry?.packages || []} columns={packageColumns} height={360} />
+      <details style={{ ...widgetCardStyle, padding: 12 }}>
+        <summary style={{ cursor: 'pointer', color: widgetColors.text, fontSize: 14, fontWeight: 800 }}>
+          Additional catalogs
+        </summary>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginTop: 12 }}>
+          {secondaryCatalogs.map((catalog) => (
+            <div
+              key={`summary-${catalog.title}`}
+              style={{
+                border: `1px solid ${widgetColors.border}`,
+                borderRadius: 10,
+                padding: '10px 12px',
+                background: '#f8fafc',
+              }}
+            >
+              <div style={{ fontSize: 11, color: widgetColors.muted, marginBottom: 4 }}>{catalog.title}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: widgetColors.text }}>{catalog.count}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+          {secondaryCatalogs.map((catalog) => (
+            <details key={catalog.title} style={{ border: `1px solid ${widgetColors.border}`, borderRadius: 10, padding: 10, background: '#fff' }}>
+              <summary style={{ cursor: 'pointer', color: widgetColors.text, fontSize: 13, fontWeight: 800 }}>
+                {catalog.title} ({catalog.count})
+              </summary>
+              <div style={{ marginTop: 10 }}>
+                <RegistryWidget
+                  title={catalog.title}
+                  rows={catalog.rows}
+                  columns={catalog.columns}
+                  height={catalog.height}
+                />
+              </div>
+            </details>
+          ))}
+        </div>
+      </details>
 
       <div style={{ ...widgetCardStyle, padding: 10, display: 'flex', gap: 8, alignItems: 'center', color: widgetColors.muted, fontSize: 12 }}>
         <Bot size={14} color={widgetColors.blue} />

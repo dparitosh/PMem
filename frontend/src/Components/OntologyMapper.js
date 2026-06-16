@@ -1393,8 +1393,12 @@ export default function OntologyMapper() {
   );
   const selectedImportTaskInfo = selectedImportTaskDetails || selectedImportTask;
   const selectedOntologyOption = useMemo(
-    () => mappingOptions.find((option) => (option.prefix || option.value) === selectedOntologyApi) || null,
-    [mappingOptions, selectedOntologyApi],
+    () => (
+      mappingOptions.find((option) => option.value === selectedMapping)
+      || mappingOptions.find((option) => option.prefix === selectedOntologyApi || option.value === selectedOntologyApi)
+      || null
+    ),
+    [mappingOptions, selectedMapping, selectedOntologyApi],
   );
   const selectedImportManifest = selectedImportTask?.artifact_manifest || selectedImportTask?.artifactManifest || null;
   const selectedBridgeSummary = unifyResult?.summary || null;
@@ -2053,7 +2057,7 @@ export default function OntologyMapper() {
     { id: 'dictionary', label: 'Data Dictionary' },
     { id: 'taxonomy', label: 'OWL Browser' },
     { id: 'vocabulary', label: 'Mapping Vocabulary' },
-    { id: 'alignment', label: 'Ontology Alignment' },
+    { id: 'alignment', label: 'Semantic Bridge' },
   ];
 
   return (
@@ -2079,7 +2083,7 @@ export default function OntologyMapper() {
           </div>
           <div>
             <div style={{ fontWeight: 800, fontSize: '14px', color: C.textPrimary }}>Active Ontology</div>
-            <div style={{ fontSize: '11px', color: C.textSec }}>Dictionary, vocabulary mappings, and ontology alignment</div>
+            <div style={{ fontSize: '11px', color: C.textSec }}>Dictionary, vocabulary mappings, and instance-to-ontology alignment</div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -2275,7 +2279,7 @@ export default function OntologyMapper() {
                     </select>
                   </div>
                   <div>
-                    <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>Ontology</label>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>Ontology target</label>
                     <select
                       value={selectedOntologyApi}
                       onChange={e => setSelectedOntologyApi(e.target.value)}
@@ -2328,7 +2332,7 @@ export default function OntologyMapper() {
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '10px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Ontology metadata</div>
+                    <div style={{ fontSize: '10px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Ontology target metadata</div>
                     <div style={{ fontSize: '12px', color: C.textPrimary, fontWeight: 700, marginTop: '3px' }}>
                       {selectedOntologyOption?.label || 'No ontology selected'}
                     </div>
@@ -2474,11 +2478,11 @@ export default function OntologyMapper() {
               <div style={{ fontSize: '13px', fontWeight: 600, color: C.textPrimary, marginBottom: '10px' }}>Semantic Bridge</div>
               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px', marginBottom: '16px', background: C.bg }}>
                 <div style={{ fontSize: '11px', color: C.textSec, marginBottom: '10px' }}>
-                  Active source instance: {selectedImportTaskInfo?.filename || 'None'} · additional instances can be bridged in separate runs to the same ontology.
+                  Selected instance: {selectedImportTaskInfo?.filename || 'None'} · bridge each imported instance separately to the same ontology target.
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
                   <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source type</label>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Instance source type</label>
                     <select
                       value={bridgeSourceKind}
                       onChange={(e) => setBridgeSourceKind(e.target.value)}
@@ -2488,7 +2492,7 @@ export default function OntologyMapper() {
                         <option key={kind} value={kind}>{kind}</option>
                       ))}
                     </select>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source term</label>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Instance term / value</label>
                     <select
                       value={bridgeSourceTerm}
                       onChange={(e) => setBridgeSourceTerm(e.target.value)}
@@ -2501,7 +2505,7 @@ export default function OntologyMapper() {
                     </select>
                   </div>
                   <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Target type</label>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Ontology target type</label>
                     <select
                       value={bridgeTargetKind}
                       onChange={(e) => setBridgeTargetKind(e.target.value)}
@@ -2513,7 +2517,7 @@ export default function OntologyMapper() {
                         </option>
                       ))}
                     </select>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Target term</label>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Ontology term / property</label>
                     <select
                       value={bridgeTargetTerm}
                       onChange={(e) => setBridgeTargetTerm(e.target.value)}
