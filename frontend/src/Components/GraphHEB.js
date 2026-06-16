@@ -508,6 +508,30 @@ const isIndividualTraversalNode = (node) => {
   return labels.includes('individual');
 };
 
+const isMetadataWrapperNode = (node) => {
+  if (!node) return false;
+  const labels = Array.isArray(node?.labels) ? node.labels.map((label) => String(label || '').toLowerCase()) : [];
+  const type = String(resolveNodeType(node) || '').toLowerCase();
+  const displayName = String(resolveNodeName(node) || '').trim().toLowerCase();
+
+  if (labels.some((label) => ['part', 'partversion', 'part_occurrence', 'ontologyclass', 'ontologyproperty'].includes(label))) {
+    return false;
+  }
+
+  if (/^id[\w:-]*$/i.test(displayName) || /^id\d+$/i.test(displayName)) {
+    return true;
+  }
+
+  return [
+    'accessintent',
+    'xmltag',
+    'xmlnode',
+    'metadata',
+    'metadatawrapper',
+    'documentfragment',
+  ].includes(type);
+};
+
 const getRelationshipVisual = (relationshipType) => {
   const key = String(relationshipType || '').toUpperCase();
   return RELATIONSHIP_THEME[key] || RELATIONSHIP_THEME.generic;
@@ -536,7 +560,7 @@ export const normalizeGraphDataset = (payload) => {
   if (Array.isArray(payload.nodes) && (Array.isArray(payload.relationships) || Array.isArray(payload.links))) {
     const rawRelationships = Array.isArray(payload.relationships) ? payload.relationships : payload.links;
     const nodes = payload.nodes
-      .filter((node) => node?.elementId)
+      .filter((node) => node?.elementId && !isMetadataWrapperNode(node))
       .map((node) => ({
         ...(node.properties || {}),
         elementId: node.elementId,
@@ -608,9 +632,11 @@ export const normalizeGraphDataset = (payload) => {
 
     const nodes = Array.from(nodesMap.values());
     const nodeIds = new Set(nodes.map((node) => node.elementId));
-    const links = Array.from(rawLinks.values()).filter(
-      (link) => nodeIds.has(link.source) && nodeIds.has(link.target)
-    );
+    const links = Array.from(rawLinks.values()).filter((link) => {
+      const sourceId = getLinkEndpointId(link.source);
+      const targetId = getLinkEndpointId(link.target);
+      return nodeIds.has(sourceId) && nodeIds.has(targetId);
+    });
     return { nodes, links };
   }
 
@@ -888,7 +914,11 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
 
         const nodes = Array.from(nodesMap.values());
         const nodeIds = new Set(nodes.map(n => n.elementId));
-        const links = Array.from(rawLinks.values()).filter(l => nodeIds.has(l.source) && nodeIds.has(l.target));
+        const links = Array.from(rawLinks.values()).filter((l) => {
+          const sourceId = getLinkEndpointId(l.source);
+          const targetId = getLinkEndpointId(l.target);
+          return nodeIds.has(sourceId) && nodeIds.has(targetId);
+        });
 
         const labelSet = new Set();
         nodes.forEach(n => (n.labels || []).forEach(l => labelSet.add(l)));
@@ -1016,7 +1046,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const [error, setError] = useState(null);
   // Performance: Add loading states for better UX
   const [searchLoading, setSearchLoading] = useState(false);
-  const [searchResultMode, setSearchResultMode] = useState('best');
+  const [searchResultMode, setSearchResultMode] = useState('broader');
   const [isLayoutSwitching] = useState(false);
   // New state for expand/collapse functionality
   const [expandedNodes, setExpandedNodes] = useState(new Set());
@@ -1233,6 +1263,41 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     setSearchResults(nodes);
   }, [setSearchResults, graphSearchActive]);
 
+  const commitGraphSlice = useCallback((nextData, options = {}) => {
+    const {
+      updateGraphData = false,
+      updateFullDataset = false,
+      updateSearchResultData = false,
+      nextActiveSearchId,
+      clearActiveSearchId = false,
+      resetCenteredSearch = false,
+      syncResults = false,
+      forceSearchResults = false,
+    } = options;
+
+    setFilteredData(nextData);
+    setData(nextData);
+    if (updateGraphData) setGraphData(nextData);
+    if (updateFullDataset) setFullDataset(nextData);
+    if (updateSearchResultData) setSearchResultData(nextData);
+
+    if (clearActiveSearchId) {
+      setActiveSearchResultId(null);
+      activeSearchResultIdRef.current = null;
+    } else if (typeof nextActiveSearchId !== 'undefined') {
+      setActiveSearchResultId(nextActiveSearchId);
+      activeSearchResultIdRef.current = nextActiveSearchId;
+    }
+
+    if (resetCenteredSearch) {
+      lastCenteredSearchRef.current = '';
+    }
+
+    if (syncResults) {
+      syncSharedSearchResults(nextData.nodes || [], { force: forceSearchResults });
+    }
+  }, [setData, syncSharedSearchResults]);
+
   const preferredOntologyValue = useMemo(() => {
     if (selectedOntology && selectedOntology !== 'ALL') return selectedOntology;
     const candidates = (ontologyOptions || []).filter((option) => option?.value && option.value !== 'ALL' && !option.disabled);
@@ -1361,8 +1426,8 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
 
     // Count incoming connections for each node
     links.forEach(link => {
-      const rawSource = typeof link.source === 'object' ? (link.source.elementId || link.source.id || link.source.identity) : link.source;
-      const rawTarget = typeof link.target === 'object' ? (link.target.elementId || link.target.id || link.target.identity) : link.target;
+      const rawSource = getLinkEndpointId(link.source);
+      const rawTarget = getLinkEndpointId(link.target);
       const sourceId = getNodeId({ elementId: rawSource });
       const targetId = getNodeId({ elementId: rawTarget });
 
@@ -1409,9 +1474,9 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     // Find potential root nodes - handle expanded datasets better
     let roots;
 
-    if (expandedNodes.size > 0) {
+    if (expandedNodesRef.current.size > 0) {
       // When we have expanded nodes, first try to find the originally expanded nodes as roots
-      const expandedNodeIds = Array.from(expandedNodes);
+      const expandedNodeIds = Array.from(expandedNodesRef.current);
       roots = nodes.filter(node => expandedNodeIds.includes(node.elementId));
 
       // If that gives us too many roots, prioritize by connection count
@@ -1479,8 +1544,8 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       // Find children of this node using explicit relationship rules
       let children = links
         .filter(link => {
-          const rawSource = typeof link.source === 'object' ? (link.source.elementId || link.source.id || link.source.identity) : link.source;
-          const rawTarget = typeof link.target === 'object' ? (link.target.elementId || link.target.id || link.target.identity) : link.target;
+          const rawSource = getLinkEndpointId(link.source);
+          const rawTarget = getLinkEndpointId(link.target);
           const sourceId = getNodeId({ elementId: rawSource });
           const targetId = getNodeId({ elementId: rawTarget });
           const relationshipType = link.type || link.properties?.type;
@@ -1507,8 +1572,8 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
           return isParentChild;
         })
         .map(link => {
-          const rawSource = typeof link.source === 'object' ? (link.source.elementId || link.source.id || link.source.identity) : link.source;
-          const rawTarget = typeof link.target === 'object' ? (link.target.elementId || link.target.id || link.target.identity) : link.target;
+          const rawSource = getLinkEndpointId(link.source);
+          const rawTarget = getLinkEndpointId(link.target);
           const sourceId = getNodeId({ elementId: rawSource });
           const targetId = getNodeId({ elementId: rawTarget });
           const relationshipType = link.type || link.properties?.type;
@@ -1554,8 +1619,8 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     });
 
     // For expansions, reorganize hierarchy to ensure proper parent-child relationships without duplicates
-    if (expandedNodes.size > 0 && hierarchy.length > 0) {
-      logger.render(`[Hierarchy] Reorganizing ${hierarchy.length} trees for ${expandedNodes.size} expanded nodes`);
+    if (expandedNodesRef.current.size > 0 && hierarchy.length > 0) {
+      logger.render(`[Hierarchy] Reorganizing ${hierarchy.length} trees for ${expandedNodesRef.current.size} expanded nodes`);
 
       // Collect all nodes from current hierarchy to avoid duplicates
       const allNodesInHierarchy = new Map();
@@ -1571,7 +1636,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       const updatedRoots = [];
       const processedRootIds = new Set();
 
-      expandedNodes.forEach(expandedNodeId => {
+      expandedNodesRef.current.forEach(expandedNodeId => {
         // Find which root tree contains this expanded node
         let containingRoot = null;
         for (const root of hierarchy) {
@@ -1768,7 +1833,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     }
 
     // After expansion, rebuild hierarchy with all available data to ensure proper levels
-    if (expandedNodes.size > 0 && data.links && data.links.length > 0) {
+    if (expandedNodesRef.current.size > 0 && data.links && data.links.length > 0) {
       logger.render('[TreeLayout] Rebuilding hierarchy after expansion with relationship data');
       hierarchicalData = createHierarchicalData(data.nodes, data.links);
     }
@@ -2338,7 +2403,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         .style('cursor', 'pointer')
         .on('click', async (event, d) => {
           event.stopPropagation();
-          if (expandedNodes.has(d.elementId)) {
+          if (expandedNodesRef.current.has(d.elementId)) {
             collapseNode(d.elementId);
           } else if (hasExpandableConnections(d)) {
             // Expand the node and then rebuild tree hierarchy
@@ -2599,7 +2664,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
   // Effect to handle tree layout updates when data changes from expansions
   useEffect(() => {
-    if (layoutType === 'indented-tree' && expandedNodes.size > 0) {
+    if (layoutType === 'indented-tree' && expandedNodesRef.current.size > 0) {
       logger.render('[TreeLayout] Data changed with expanded nodes, updating tree state');
 
       // When data changes due to expansions, ensure the tree expanded state includes
@@ -2612,7 +2677,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         const newTreeExpanded = new Set(treeExpandedNodes);
 
         const addExpandedChildren = (node) => {
-          if (expandedNodes.has(node.elementId) && node.children && node.children.length > 0) {
+          if (expandedNodesRef.current.has(node.elementId) && node.children && node.children.length > 0) {
             newTreeExpanded.add(node.elementId);
             node.children.forEach(addExpandedChildren);
           }
@@ -2639,8 +2704,8 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // First pass: identify all HAS_CHILD relationships
     links.forEach(link => {
       if (link.type === 'HAS_CHILD') {
-        const sourceId = typeof link.source === 'object' ? link.source.elementId : link.source;
-        const targetId = typeof link.target === 'object' ? link.target.elementId : link.target;
+        const sourceId = getLinkEndpointId(link.source);
+        const targetId = getLinkEndpointId(link.target);
         const pairKey = [sourceId, targetId].sort().join('-');
         hasChildPairs.add(pairKey);
       }
@@ -2649,8 +2714,8 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // Second pass: filter out HAS_PARENT if HAS_CHILD exists for the same node pair
     links.forEach(link => {
       if (link.type === 'HAS_PARENT') {
-        const sourceId = typeof link.source === 'object' ? link.source.elementId : link.source;
-        const targetId = typeof link.target === 'object' ? link.target.elementId : link.target;
+        const sourceId = getLinkEndpointId(link.source);
+        const targetId = getLinkEndpointId(link.target);
         const pairKey = [sourceId, targetId].sort().join('-');
 
         // Skip HAS_PARENT if HAS_CHILD exists for the same node pair
@@ -2667,8 +2732,8 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
     filteredLinks.forEach(link => {
       // Create a consistent key for node pairs (sorted to handle both directions)
-      const sourceId = typeof link.source === 'object' ? link.source.elementId : link.source;
-      const targetId = typeof link.target === 'object' ? link.target.elementId : link.target;
+      const sourceId = getLinkEndpointId(link.source);
+      const targetId = getLinkEndpointId(link.target);
       const pairKey = [sourceId, targetId].sort().join('-');
 
       if (!linkPairs.has(pairKey)) {
@@ -2718,8 +2783,8 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
     // Create consistent curve direction based on link direction and offset index
     // For bidirectional links, we want them to curve in opposite directions
-    const sourceId = typeof link.source === 'object' ? link.source.elementId : link.source;
-    const targetId = typeof link.target === 'object' ? link.target.elementId : link.target;
+      const sourceId = getLinkEndpointId(link.source);
+      const targetId = getLinkEndpointId(link.target);
 
     // Use source and target IDs to determine consistent curve direction
     const linkDirection = sourceId < targetId ? 1 : -1;
@@ -2794,10 +2859,12 @@ const getPrimaryNodeLabel = useCallback((d) => {
           logger.render(`[OK] Data processed successfully: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
           if (!cancelled) {
             startTransition(() => {
-              setData(dataSet);
-              setGraphData(dataSet);
-              setFilteredData(dataSet);
-              setFullDataset(dataSet);
+              commitGraphSlice(dataSet, {
+                updateGraphData: true,
+                updateFullDataset: true,
+                updateSearchResultData: true,
+                syncResults: true,
+              });
               setInitialData(dataSet);
             });
           }
@@ -2860,10 +2927,12 @@ const getPrimaryNodeLabel = useCallback((d) => {
           const dataSet = normalizeGraphDataset(graphResponse.data);
           if (dataSet.nodes.length > 0) {
             startTransition(() => {
-              setData(dataSet);
-              setGraphData(dataSet);
-              setFilteredData(dataSet);
-              setFullDataset(dataSet);
+              commitGraphSlice(dataSet, {
+                updateGraphData: true,
+                updateFullDataset: true,
+                updateSearchResultData: true,
+                syncResults: true,
+              });
             });
           }
         }
@@ -2875,7 +2944,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // Check health every 30 seconds
     const healthCheckInterval = setInterval(checkHealth, 30000);
     return () => clearInterval(healthCheckInterval);
-  }, [graphData.nodes.length, searchQuery, setData]);
+  }, [commitGraphSlice, graphData.nodes.length, searchQuery, setData]);
 
 
   // Performance: Optimized search with debouncing and caching
@@ -2883,7 +2952,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     if (!debouncedSearchQuery) {
       searchModeRef.current = false;
       // Only reset if no nodes are currently expanded
-      if (expandedNodes.size === 0) {
+      if (expandedNodesRef.current.size === 0) {
         // Reset to current data when search is cleared
         // Use filteredData if it has more nodes than graphData (indicating expanded state)
         const currentData = filteredData.nodes.length > graphData.nodes.length ? filteredData : graphData;
@@ -2931,10 +3000,11 @@ const getPrimaryNodeLabel = useCallback((d) => {
           const matchedNodes = nodeSearchFunction(searchData.nodes, debouncedSearchQuery);
           const selectedNodes = searchResultMode === 'best' ? matchedNodes.slice(0, 1) : matchedNodes;
           const selectedNodeIds = new Set(selectedNodes.map((node) => node.elementId));
-          const selectedLinks = searchData.links.filter(
-            (link) => selectedNodeIds.has(link.source?.elementId || link.source)
-              && selectedNodeIds.has(link.target?.elementId || link.target)
-          );
+          const selectedLinks = searchData.links.filter((link) => {
+            const sourceId = getLinkEndpointId(link.source);
+            const targetId = getLinkEndpointId(link.target);
+            return selectedNodeIds.has(sourceId) && selectedNodeIds.has(targetId);
+          });
           normalized = { nodes: selectedNodes, links: selectedLinks };
         } else {
           const response = await apiClient.get(API.graph.contextualSubgraph, {
@@ -2977,7 +3047,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           let finalLinks = validatedLinks;
 
           // Only preserve expansion data if the expanded nodes are part of current search results
-          if (expandedNodes.size > 0) {
+          if (expandedNodesRef.current.size > 0) {
             logger.render('[SEARCH] Checking expanded nodes for relevance to current search');
             const searchNodeIds = new Set(nodes.map(n => n.elementId));
             const relevantExpansions = new Set();
@@ -2997,8 +3067,8 @@ const getPrimaryNodeLabel = useCallback((d) => {
               setExpandedNodes(relevantExpansions);
               const updatedNodeExpansions = new Map();
               for (const nodeId of relevantExpansions) {
-                if (nodeExpansions.has(nodeId)) {
-                  updatedNodeExpansions.set(nodeId, nodeExpansions.get(nodeId));
+                if (nodeExpansionsRef.current.has(nodeId)) {
+                  updatedNodeExpansions.set(nodeId, nodeExpansionsRef.current.get(nodeId));
                 }
               }
               setNodeExpansions(updatedNodeExpansions);
@@ -3008,31 +3078,29 @@ const getPrimaryNodeLabel = useCallback((d) => {
           // Batch search result updates for better performance
         startTransition(() => {
           const searchGraph = { nodes: finalNodes, links: finalLinks };
-          setFilteredData(searchGraph);
-          setData(searchGraph);
-          // Store raw search results for label filtering
-          setSearchResultData(searchGraph);
           const currentActiveId = activeSearchResultIdRef.current;
           const bestMatchId = findBestSearchMatchId(finalNodes, debouncedSearchQuery);
           const nextActiveId = finalNodes.some((node) => node.elementId === currentActiveId)
             ? currentActiveId
             : bestMatchId;
-            setActiveSearchResultId(nextActiveId);
-            activeSearchResultIdRef.current = nextActiveId;
-            // Update search results for other components
-            syncSharedSearchResults(finalNodes, { force: true });
+          commitGraphSlice(searchGraph, {
+            updateSearchResultData: true,
+            nextActiveSearchId: nextActiveId,
+            resetCenteredSearch: true,
+            syncResults: true,
+            forceSearchResults: true,
           });
+        });
         } else {
         // Batch no results updates
         startTransition(() => {
-          setFilteredData({ nodes: [], links: [] });
-          setData({ nodes: [], links: [] });
-          setSearchResultData({ nodes: [], links: [] });
-          setActiveSearchResultId(null);
-          activeSearchResultIdRef.current = null;
-            // Update search results to empty array for other components
-            syncSharedSearchResults([], { clear: true });
+          commitGraphSlice({ nodes: [], links: [] }, {
+            updateSearchResultData: true,
+            clearActiveSearchId: true,
+            syncResults: true,
+            forceSearchResults: true,
           });
+        });
         }
 
         // Batch loading state updates
@@ -3054,18 +3122,18 @@ const getPrimaryNodeLabel = useCallback((d) => {
         );
         // Batch fallback search updates
         startTransition(() => {
-          setFilteredData({ nodes: filteredNodes, links: filteredLinks });
-          setData({ nodes: filteredNodes, links: filteredLinks });
-          setSearchResultData({ nodes: filteredNodes, links: filteredLinks });
           const currentActiveId = activeSearchResultIdRef.current;
           const bestMatchId = findBestSearchMatchId(filteredNodes, debouncedSearchQuery);
           const nextActiveId = filteredNodes.some((node) => node.elementId === currentActiveId)
             ? currentActiveId
             : bestMatchId;
-          setActiveSearchResultId(nextActiveId);
-          activeSearchResultIdRef.current = nextActiveId;
-          // Update search results for other components
-          syncSharedSearchResults(filteredNodes, { force: true });
+          commitGraphSlice({ nodes: filteredNodes, links: filteredLinks }, {
+            updateSearchResultData: true,
+            nextActiveSearchId: nextActiveId,
+            resetCenteredSearch: true,
+            syncResults: true,
+            forceSearchResults: true,
+          });
           setSearchLoading(false);
         });
       }
@@ -3075,18 +3143,19 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // Cleanup: abort in-flight request when query changes or component unmounts
     return () => abortController.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearchQuery, fullDataset, graphData, graphViewMode, nodeSearchFunction, selectedOntology, searchResultMode]);
+  }, [commitGraphSlice, debouncedSearchQuery, fullDataset, graphData, graphViewMode, nodeSearchFunction, selectedOntology, searchResultMode]);
 
   // ── Ontology viewer: fetch ontology graph when dropdown changes ─────────
   const fetchOntologyGraph = useCallback(async (ontologyType, partName) => {
     if (ontologyType === 'ALL') {
       // Reset to initial full graph
       setOntologyGraphMessage('');
-      setFilteredData(initialData);
-      setGraphData(initialData);
-      setFullDataset(initialData);
-      setData(initialData);
-      if (!searchModeRef.current) syncSharedSearchResults(initialData.nodes);
+      commitGraphSlice(initialData, {
+        updateGraphData: true,
+        updateFullDataset: true,
+        updateSearchResultData: true,
+        syncResults: !searchModeRef.current,
+      });
       setStepParts([]);
       setSelectedStepPart('ALL');
       return;
@@ -3144,21 +3213,23 @@ const getPrimaryNodeLabel = useCallback((d) => {
         } else {
           setOntologyGraphMessage('');
         }
-        setFilteredData(dataSet);
-        setGraphData(dataSet);
-        setFullDataset(dataSet);
-        setData(dataSet);
-        if (!searchModeRef.current) syncSharedSearchResults(dataSet.nodes);
+        commitGraphSlice(dataSet, {
+          updateGraphData: true,
+          updateFullDataset: true,
+          updateSearchResultData: true,
+          syncResults: !searchModeRef.current,
+        });
         logger.render(`[ONTOLOGY] Loaded ${ontologyType}: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
       } else {
         const empty = { nodes: [], links: [] };
         const fallbackData = initialData?.nodes?.length > 0 ? initialData : empty;
         setOntologyGraphMessage(response.data?.message || response.data?.error || 'Selected ontology scope returned no graph records.');
-        setFilteredData(fallbackData);
-        setGraphData(fallbackData);
-        setFullDataset(fallbackData);
-        setData(fallbackData);
-        if (!searchModeRef.current) syncSharedSearchResults(fallbackData.nodes || []);
+        commitGraphSlice(fallbackData, {
+          updateGraphData: true,
+          updateFullDataset: true,
+          updateSearchResultData: true,
+          syncResults: !searchModeRef.current,
+        });
       }
     } catch (err) {
       logger.error('[ONTOLOGY] Fetch error:', err);
@@ -3238,10 +3309,11 @@ const getPrimaryNodeLabel = useCallback((d) => {
     if (graphViewMode === 'individual') {
       const dataSet = buildIndividualViewDataset(initialData);
       startTransition(() => {
-        setFilteredData(dataSet);
-        setGraphData(dataSet);
-        setFullDataset(dataSet);
-        setData(dataSet);
+        commitGraphSlice(dataSet, {
+          updateGraphData: true,
+          updateFullDataset: true,
+          updateSearchResultData: true,
+        });
       });
       // Defer parent setState — must NOT be called inside a state updater or during render
       if (!searchModeRef.current) setTimeout(() => syncSharedSearchResults(dataSet.nodes), 0);
@@ -3250,10 +3322,12 @@ const getPrimaryNodeLabel = useCallback((d) => {
       const selected = selectedOntologyRef.current || 'ALL';
       if (selected === 'ALL') {
         startTransition(() => {
-          setFilteredData(initialData);
-          setGraphData(initialData);
-          setFullDataset(initialData);
-          setData(initialData);
+          commitGraphSlice(initialData, {
+            updateGraphData: true,
+            updateFullDataset: true,
+            updateSearchResultData: true,
+            syncResults: !searchModeRef.current,
+          });
         });
         if (!searchModeRef.current) setTimeout(() => syncSharedSearchResults(initialData.nodes), 0);
       } else {
@@ -3270,10 +3344,11 @@ const getPrimaryNodeLabel = useCallback((d) => {
     if (graphViewModeRef.current !== 'individual') return;
     const dataSet = buildIndividualViewDataset(initialData);
     startTransition(() => {
-      setFilteredData(dataSet);
-      setGraphData(dataSet);
-      setFullDataset(dataSet);
-      setData(dataSet);
+      commitGraphSlice(dataSet, {
+        updateGraphData: true,
+        updateFullDataset: true,
+        updateSearchResultData: true,
+      });
     });
     if (!searchModeRef.current) setTimeout(() => syncSharedSearchResults(dataSet.nodes), 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3391,7 +3466,9 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
           filteredData.links.forEach(link => {
             // Only add links that connect to nodes we're keeping
-            if (newNodesMap.has(link.source) && newNodesMap.has(link.target)) {
+            const sourceId = getLinkEndpointId(link.source);
+            const targetId = getLinkEndpointId(link.target);
+            if (newNodesMap.has(sourceId) && newNodesMap.has(targetId)) {
               newLinksMap.set(link.elementId, link);
             }
           });
@@ -3428,9 +3505,11 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
         // Validate links
         const existingNodeIds = new Set(finalNodes.map(node => node.elementId));
-        const validatedLinks = finalLinks.filter(link =>
-          existingNodeIds.has(link.source) && existingNodeIds.has(link.target)
-        );
+        const validatedLinks = finalLinks.filter((link) => {
+          const sourceId = getLinkEndpointId(link.source);
+          const targetId = getLinkEndpointId(link.target);
+          return existingNodeIds.has(sourceId) && existingNodeIds.has(targetId);
+        });
 
         // Batch all state updates for better performance
         startTransition(() => {
@@ -3490,7 +3569,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     const expansionInfo = nodeExpansionsRef.current.get(nodeId);
     if (!expansionInfo) {
       logger.render('ERROR: No expansion info found for node:', nodeId);
-      logger.render('Available expansions:', Array.from(nodeExpansions.keys()));
+      logger.render('Available expansions:', Array.from(nodeExpansionsRef.current.keys()));
       return;
     }
 
@@ -3531,26 +3610,25 @@ const getPrimaryNodeLabel = useCallback((d) => {
     });
 
     const remainingNodeIds = new Set(filteredNodes.map(n => n.elementId));
-    const filteredLinks = filteredData.links.filter(link => {
-      const shouldKeep = !linksToRemove.has(link.elementId)
-        && remainingNodeIds.has(link.source)
-        && remainingNodeIds.has(link.target);
-      if (!shouldKeep) {
-        logger.render('Removing link:', link.elementId, link.type);
-      }
-      return shouldKeep;
-    });
+          const filteredLinks = filteredData.links.filter(link => {
+            const shouldKeep = !linksToRemove.has(link.elementId)
+        && remainingNodeIds.has(getLinkEndpointId(link.source))
+        && remainingNodeIds.has(getLinkEndpointId(link.target));
+            if (!shouldKeep) {
+              logger.render('Removing link:', link.elementId, link.type);
+            }
+            return shouldKeep;
+          });
 
     logger.render('Nodes before collapse:', filteredData.nodes.length, 'after:', filteredNodes.length);
     logger.render('Links before collapse:', filteredData.links.length, 'after:', filteredLinks.length);
     logger.render('Remaining node IDs:', filteredNodes.map(n => n.elementId));
 
     // Validate that we're actually removing nodes
-    if (filteredNodes.length === filteredData.nodes.length) {
-      logger.error('ERROR: No nodes were actually removed! This indicates a problem with the collapse logic.');
-      logger.error('Check if addedNodeIds match the actual node elementIds');
-      logger.error('addedNodeIds:', Array.from(nodesToRemove));
-      logger.error('current node elementIds:', filteredData.nodes.map(n => n.elementId));
+    if (filteredNodes.length === filteredData.nodes.length && nodesToRemove.size > 0) {
+      logger.warn('No visible nodes were removed during collapse. The removed slice may already be absent from the current graph state.');
+      logger.warn('nodesToRemove:', Array.from(nodesToRemove));
+      logger.warn('current node elementIds:', filteredData.nodes.map(n => n.elementId));
     }
 
     // Update datasets
@@ -3560,8 +3638,14 @@ const getPrimaryNodeLabel = useCallback((d) => {
       linkCount: newData.links.length
     });
 
-    setFilteredData(newData);
-    setData(newData);
+    const nextActiveId = findBestSearchMatchId(newData.nodes, debouncedSearchQuery);
+    commitGraphSlice(newData, {
+      updateSearchResultData: true,
+      nextActiveSearchId: nextActiveId,
+      resetCenteredSearch: true,
+      syncResults: true,
+      forceSearchResults: !!debouncedSearchQuery,
+    });
 
     // Mirror expand behavior: only replace the backing dataset when we are not
     // currently viewing a search-derived slice of the graph.
@@ -3569,8 +3653,6 @@ const getPrimaryNodeLabel = useCallback((d) => {
       setFullDataset(newData);
       setGraphData(newData);
     }
-
-    syncSharedSearchResults(newData.nodes);
 
     // Remove this node from expanded set and expansion tracking
     setExpandedNodes(prev => {
@@ -4213,7 +4295,7 @@ const boundaryForce = (width, height) => {
 
             // Get all connected links for use in multiple sections below
             const connectedLinks = (filteredData.links || []).filter(link =>
-              link.source === d.elementId || link.target === d.elementId
+              getLinkEndpointId(link.source) === d.elementId || getLinkEndpointId(link.target) === d.elementId
             );
 
             // SECTION: Ontology Metadata (for OntologyClass nodes)
@@ -4247,10 +4329,10 @@ const boundaryForce = (width, height) => {
               tooltipContent += `</div>`;
             }
 
-            const subclassParents = connectedLinks.filter(link => link.type === 'SUBCLASS_OF' && link.source === d.elementId);
-            const subclassChildren = connectedLinks.filter(link => link.type === 'SUBCLASS_OF' && link.target === d.elementId);
-            const domainLinks = connectedLinks.filter(link => link.type === 'DOMAIN' && link.source === d.elementId);
-            const rangeLinks = connectedLinks.filter(link => link.type === 'RANGE' && link.source === d.elementId);
+            const subclassParents = connectedLinks.filter(link => link.type === 'SUBCLASS_OF' && getLinkEndpointId(link.source) === d.elementId);
+            const subclassChildren = connectedLinks.filter(link => link.type === 'SUBCLASS_OF' && getLinkEndpointId(link.target) === d.elementId);
+            const domainLinks = connectedLinks.filter(link => link.type === 'DOMAIN' && getLinkEndpointId(link.source) === d.elementId);
+            const rangeLinks = connectedLinks.filter(link => link.type === 'RANGE' && getLinkEndpointId(link.source) === d.elementId);
 
             if (subclassParents.length > 0 || subclassChildren.length > 0 || domainLinks.length > 0 || rangeLinks.length > 0) {
               tooltipContent += `<div style="margin-top: 12px; padding-top: 12px; border-top: 2px solid #e0e0e0;">
@@ -4261,7 +4343,7 @@ const boundaryForce = (width, height) => {
               const renderSemanticList = (title, links, direction) => {
                 if (links.length === 0) return '';
                 const rows = links.slice(0, 8).map((link) => {
-                  const targetId = direction === 'outgoing' ? link.target : link.source;
+                  const targetId = direction === 'outgoing' ? getLinkEndpointId(link.target) : getLinkEndpointId(link.source);
                   const targetNode = (filteredData.nodes || []).find(n => n.elementId === targetId);
                   return `<div style="margin: 4px 0; padding: 5px 8px; background: #f8fafc; border: 1px solid #e6edf5; border-radius: 5px; font-size: 11px; color: #334e68;">
                     [${escapeHtml(resolveNodeType(targetNode))}] ${escapeHtml(resolveNodeName(targetNode))}
@@ -4282,8 +4364,8 @@ const boundaryForce = (width, height) => {
 
             // SECTION: Data Properties (OntologyProperty nodes with PROPERTY_OF relationship)
             const dataProperties = connectedLinks.filter(link =>
-              (link.type === 'PROPERTY_OF' && link.source === d.elementId) ||
-              (link.type === 'PROPERTY_OF' && link.target === d.elementId)
+              (link.type === 'PROPERTY_OF' && getLinkEndpointId(link.source) === d.elementId) ||
+              (link.type === 'PROPERTY_OF' && getLinkEndpointId(link.target) === d.elementId)
             );
 
             if (dataProperties.length > 0) {
@@ -4293,8 +4375,8 @@ const boundaryForce = (width, height) => {
                 </div>`;
 
               dataProperties.forEach(link => {
-                const isPropOwner = link.source === d.elementId;
-                const propNodeId = isPropOwner ? link.target : link.source;
+                const isPropOwner = getLinkEndpointId(link.source) === d.elementId;
+                const propNodeId = isPropOwner ? getLinkEndpointId(link.target) : getLinkEndpointId(link.source);
                 const propNode = (filteredData.nodes || []).find(n => n.elementId === propNodeId);
                 const propName = propNode?.name || 'Unknown';
 
@@ -4316,8 +4398,8 @@ const boundaryForce = (width, height) => {
                 </div>`;
 
               otherRelationships.forEach(link => {
-                const isOutgoing = link.source === d.elementId;
-                const otherNodeId = isOutgoing ? link.target : link.source;
+                const isOutgoing = getLinkEndpointId(link.source) === d.elementId;
+                const otherNodeId = isOutgoing ? getLinkEndpointId(link.target) : getLinkEndpointId(link.source);
                 const otherNode = (filteredData.nodes || []).find(n => n.elementId === otherNodeId);
                 const otherNodeProps = otherNode?.properties || {};
                 const otherNodeName =
@@ -4727,11 +4809,12 @@ const boundaryForce = (width, height) => {
                   setSelectedOntology('ALL');
                   selectedOntologyRef.current = 'ALL';
                   resetGraphSelectionState({ resetOntology: false, resetStepPart: true, dataOverride: initialData });
-                  setGraphData(initialData);
-                  setFilteredData(initialData);
-                  setFullDataset(initialData);
-                  setData(initialData);
-                  if (!searchModeRef.current) syncSharedSearchResults(initialData.nodes);
+                  commitGraphSlice(initialData, {
+                    updateGraphData: true,
+                    updateFullDataset: true,
+                    updateSearchResultData: true,
+                    syncResults: !searchModeRef.current,
+                  });
                   return;
                 }
                 if (mode.id === 'individual') {
@@ -5002,10 +5085,12 @@ const boundaryForce = (width, height) => {
               setGraphViewMode('ontology');
               graphViewModeRef.current = 'ontology';
               resetGraphSelectionState({ dataOverride: initialData });
-              setGraphData(initialData);
-              setFilteredData(initialData);
-              setFullDataset(initialData);
-              if (!searchModeRef.current) syncSharedSearchResults(initialData.nodes);
+              commitGraphSlice(initialData, {
+                updateGraphData: true,
+                updateFullDataset: true,
+                updateSearchResultData: true,
+                syncResults: !searchModeRef.current,
+              });
             }}
             style={{padding:'5px 10px', border:'none', borderRadius:'6px', backgroundColor:TCS_GRAPH_THEME.primary, color:'#fff', fontSize:'12px', fontWeight:700, cursor:'pointer', transition:'all .2s ease'}}
           >Reset</button>

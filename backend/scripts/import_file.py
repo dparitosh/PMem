@@ -39,9 +39,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-url", default="http://localhost:8000", help="Backend base URL.")
     parser.add_argument("--clean-first", action="store_true", help="Clean Neo4j before import.")
     parser.add_argument("--poll-seconds", type=float, default=2.0, help="Polling interval in seconds.")
-    parser.add_argument("--preview-timeout", type=int, default=180, help="Seconds to wait for preview readiness.")
-    parser.add_argument("--commit-timeout", type=int, default=900, help="Seconds to wait for commit completion.")
-    parser.add_argument("--request-timeout", type=int, default=120, help="Per-request timeout in seconds.")
+    parser.add_argument("--preview-timeout", type=int, default=300, help="Seconds to wait for preview readiness.")
+    parser.add_argument("--commit-timeout", type=int, default=300, help="Seconds to wait for commit completion.")
+    parser.add_argument("--request-timeout", type=int, default=300, help="Per-request timeout in seconds.")
     parser.add_argument("--skip-commit", action="store_true", help="Stop after preview and do not load to Neo4j.")
     return parser.parse_args()
 

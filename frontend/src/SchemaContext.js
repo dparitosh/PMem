@@ -34,7 +34,7 @@ export function SchemaProvider({ children }) {
       try {
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
           try {
-            const res = await apiClient.get(buildUrl(API.schema.schema), { timeout: 20000 });
+            const res = await apiClient.get(buildUrl(API.schema.schema), { timeout: 300000 });
             if (!cancelled) setSchema(res.data);
             return;
           } catch (err) {

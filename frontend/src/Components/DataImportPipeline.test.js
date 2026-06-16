@@ -9,13 +9,13 @@ jest.mock('../config', () => ({
   default: {
     backendUrl: 'http://localhost:8000',
     apiUrl: 'http://localhost:8000',
-    requestTimeout: 30000,
+    requestTimeout: 300000,
     debug: false,
   },
   config: {
     backendUrl: 'http://localhost:8000',
     apiUrl: 'http://localhost:8000',
-    requestTimeout: 30000,
+    requestTimeout: 300000,
     debug: false,
   },
   API: {

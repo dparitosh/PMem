@@ -635,7 +635,7 @@ class TimeoutMiddleware:
     ⏱️ CRITICAL FIX: Handle request timeouts for long-running endpoints
     - Import operations: 5 minutes (300s)
     - Chat/streaming: 5 minutes (300s)
-    - Graph operations: 2 minutes (120s)
+    - Graph operations: 5 minutes (300s)
     - All others: 1 minute (60s)
     """
     
@@ -649,10 +649,10 @@ class TimeoutMiddleware:
             '/api/ontology/upload': 300,     # Legacy route
             '/chat': 300,            # 5 minutes for chat responses
             '/chat-stream': 300,     # 5 minutes for streaming responses
-            '/graphvis': 120,        # 2 minutes for graph visualization
-            '/graphfilter': 120,     # 2 minutes for filtering
+            '/graphvis': 300,        # 5 minutes for graph visualization
+            '/graphfilter': 300,     # 5 minutes for filtering
         }
-        self.default_timeout = 60  # 1 minute default
+        self.default_timeout = 60  # Keep unmatched endpoints fast-failing by default
     
     def get_timeout_for_path(self, path: str) -> int:
         """Get appropriate timeout for the given path"""
@@ -710,12 +710,12 @@ app.add_middleware(
 )
 
 # 🔒 SECURITY: Neo4j query timeout configuration
-NEO4J_QUERY_TIMEOUT = int(os.getenv("NEO4J_QUERY_TIMEOUT", "30"))  # 30 seconds default
+NEO4J_QUERY_TIMEOUT = int(os.getenv("NEO4J_QUERY_TIMEOUT", "300"))  # 5 minutes default
 NEO4J_DRIVER_TIMEOUT = 60  # Connection timeout
 
 # Chat/session timing controls
 # Extended timeouts for Ollama model inference and streaming responses
-CHAT_REQUEST_TIMEOUT_SECONDS = int(os.getenv("CHAT_REQUEST_TIMEOUT_SECONDS", "180"))  # 3 min
+CHAT_REQUEST_TIMEOUT_SECONDS = int(os.getenv("CHAT_REQUEST_TIMEOUT_SECONDS", "300"))  # 5 min
 CHAT_STREAM_TIMEOUT_SECONDS = int(os.getenv("CHAT_STREAM_TIMEOUT_SECONDS", "300"))  # 5 min
 SESSION_LOCK_TIMEOUT_SECONDS = int(os.getenv("SESSION_LOCK_TIMEOUT_SECONDS", "15"))  # Allow slower systems
 SESSION_LOCK_TTL_SECONDS = int(os.getenv("SESSION_LOCK_TTL_SECONDS", "1800"))
@@ -1224,7 +1224,7 @@ async def get_entire_graph():
         loop = asyncio.get_event_loop()
         results = await asyncio.wait_for(
             loop.run_in_executor(None, lambda: graph.query(connected_query)),
-            timeout=25.0
+            timeout=300.0
         )
         try:
             isolated = await asyncio.wait_for(
@@ -1458,7 +1458,7 @@ async def get_graph_by_ontology(prefix: str):
         loop = asyncio.get_event_loop()
         results = await asyncio.wait_for(
             loop.run_in_executor(None, lambda: graph.query(connected_query, params={"prefix": prefix_safe})),
-            timeout=25.0,
+            timeout=300.0,
         )
 
         try:
@@ -1486,7 +1486,7 @@ async def get_graph_by_ontology(prefix: str):
             try:
                 bootstrapped = await asyncio.wait_for(
                     loop.run_in_executor(None, lambda: _bootstrap_if_missing(prefix_safe)),
-                    timeout=60.0,
+                    timeout=300.0,
                 )
                 if bootstrapped:
                     nodes_only = await asyncio.wait_for(
@@ -1712,7 +1712,7 @@ async def get_schema_graph():
         # Query ontology/schema nodes
         results = await asyncio.wait_for(
             loop.run_in_executor(None, lambda: graph.query(schema_query)),
-            timeout=20.0
+            timeout=300.0
         )
         
         return {"results": results or [], "layerType": "schema"}
@@ -1841,7 +1841,7 @@ async def get_instance_graph():
         loop = asyncio.get_event_loop()
         results = await asyncio.wait_for(
             loop.run_in_executor(None, lambda: graph.query(instance_query)),
-            timeout=20.0,
+            timeout=300.0,
         )
         return {"results": results or [], "layerType": "instance"}
     except asyncio.TimeoutError:
@@ -3809,7 +3809,7 @@ async def commit_import(task_id: str):
                 if node_id:
                     label = node.get("label", "Element")
                     cypher = f"MERGE (n:{label} {{id: $id}}) SET n += $props"
-                    graph.query(cypher, {"id": node_id, "props": props}, timeout=30)
+                    graph.query(cypher, {"id": node_id, "props": props}, timeout=300)
                     committed_count += 1
             for rel in relationships:
                 from_id = rel.get("from_props", {}).get("id", "")
@@ -3817,7 +3817,7 @@ async def commit_import(task_id: str):
                 rel_type = rel.get("type", "RELATES_TO")
                 if from_id and to_id:
                     cypher = f"MATCH (a {{id: $from_id}}) MATCH (b {{id: $to_id}}) MERGE (a)-[:{rel_type}]->(b)"
-                    graph.query(cypher, {"from_id": from_id, "to_id": to_id}, timeout=30)
+                    graph.query(cypher, {"from_id": from_id, "to_id": to_id}, timeout=300)
                     committed_count += 1
 
             task["status"] = "committed"

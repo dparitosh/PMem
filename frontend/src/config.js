@@ -13,7 +13,7 @@ const baseConfig = {
   environment: process.env.REACT_APP_ENV || 'development',
   debug: process.env.REACT_APP_DEBUG === 'true',
   logLevel: process.env.REACT_APP_LOG_LEVEL || 'info',
-  requestTimeout: parseInt(process.env.REACT_APP_REQUEST_TIMEOUT || '30000', 10),
+  requestTimeout: parseInt(process.env.REACT_APP_REQUEST_TIMEOUT || '300000', 10),
 };
 
 // Deprecated: Keep old property for backward compatibility

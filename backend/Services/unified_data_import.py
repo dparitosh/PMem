@@ -116,6 +116,25 @@ def _plmxml_row_has_payload(row: Dict[str, Any], tag: str = '') -> bool:
         return True
     return bool(tag and tag not in _PLMXML_STRUCTURAL_TAGS and any(str(v).strip() for v in row.values()))
 
+
+def _detect_xml_family(file_content: bytes) -> str:
+    """Detect specialized XML families before falling back to generic XML."""
+    head = (file_content or b'')[:8192].lower()
+    if (
+        b'3ds.com/xsd/3dxml' in head
+        or b'vpmrepreference' in head
+        or b'vpmrepinstance' in head
+        or b'3dxml' in head and b'plmxml' not in head
+    ):
+        return '3dxml'
+    if (
+        b'<plmxml' in head
+        or b'plmxmlschema' in head
+        or b'plmxml.org' in head
+    ):
+        return 'plmxml'
+    return 'xml'
+
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -123,7 +142,7 @@ logger = logging.getLogger(__name__)
 # Keep write transactions moderate to reduce AuraDB timeout risk.
 IMPORT_WRITE_BATCH_SIZE = int(os.getenv('IMPORT_WRITE_BATCH_SIZE', '250'))
 IMPORT_LINK_BATCH_SIZE = int(os.getenv('IMPORT_LINK_BATCH_SIZE', str(max(100, IMPORT_WRITE_BATCH_SIZE))))
-IMPORT_COMMIT_QUERY_TIMEOUT = int(os.getenv('IMPORT_COMMIT_QUERY_TIMEOUT', os.getenv('NEO4J_IMPORT_QUERY_TIMEOUT', '120')))
+IMPORT_COMMIT_QUERY_TIMEOUT = int(os.getenv('IMPORT_COMMIT_QUERY_TIMEOUT', os.getenv('NEO4J_IMPORT_QUERY_TIMEOUT', '300')))
 
 class FileType(Enum):
     CSV = 'csv'
@@ -849,16 +868,13 @@ class FileParser:
                 )
             elif file_type == FileType.STEP:
                 return FileParser._parse_step(file_content)
+            elif file_type == FileType.THREEDXML:
+                return FileParser._parse_threedxml(file_content)
             elif file_type == FileType.XML:
-                # Content-sniff: if the root element is PLMXML (namespace or tag),
-                # treat it as PLMXML so we get namespace extraction + structured parsing.
-                _head = file_content[:4096]
-                _is_plmxml = (
-                    b'<PLMXML' in _head
-                    or b'PLMXMLSchema' in _head
-                    or b'plmxml.org' in _head
-                )
-                if _is_plmxml:
+                xml_family = _detect_xml_family(file_content)
+                if xml_family == '3dxml':
+                    return FileParser._parse_threedxml(file_content)
+                if xml_family == 'plmxml':
                     return FileParser._parse_plmxml(
                         file_content,
                         metadata_exclusion_tags=parse_options.get('metadata_exclusion_tags'),
@@ -1509,6 +1525,100 @@ class FileParser:
         except Exception as e:
             logging.error(f"PLMXML parse error: {e}")
             return [], {'error': str(e)}
+
+    @staticmethod
+    def _parse_threedxml(file_content: bytes) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """Parse 3DXML content using the dedicated extractor and flatten it for import."""
+        import tempfile
+        from pathlib import Path as _Path
+
+        try:
+            from .threedxml_ontology_extractor import ThreeDXMLExtractor
+        except Exception:
+            from backend.Services.threedxml_ontology_extractor import ThreeDXMLExtractor
+
+        try:
+            with tempfile.TemporaryDirectory(prefix='threedxml_import_') as temp_dir:
+                temp_path = _Path(temp_dir) / 'import.3dxml'
+                temp_path.write_bytes(file_content)
+                extractor = ThreeDXMLExtractor(temp_dir)
+                summary = extractor.extract()
+
+            rows: List[Dict[str, Any]] = []
+            rels: List[Dict[str, Any]] = []
+            columns = set()
+
+            for entity_name, entity in (extractor.entities or {}).items():
+                row: Dict[str, Any] = {
+                    'element_type': getattr(entity, 'entity_type', '3DXML'),
+                    'id': entity_name,
+                    'import_row_key': entity_name,
+                    'name': getattr(entity, 'name', entity_name),
+                    'label': getattr(entity, 'name', entity_name),
+                    'namespace': getattr(entity, 'namespace', ''),
+                    'description': getattr(entity, 'description', ''),
+                }
+                metadata = getattr(entity, 'metadata', {}) or {}
+                for key, value in metadata.items():
+                    if value in (None, '', [], {}):
+                        continue
+                    row[f'metadata_{key}'] = value
+                attributes = getattr(entity, 'attributes', {}) or {}
+                for attr_name, attr in attributes.items():
+                    attr_value = getattr(attr, 'description', None)
+                    if attr_value in (None, ''):
+                        attr_value = getattr(attr, 'name', None)
+                    if attr_name and attr_value not in (None, ''):
+                        row[str(attr_name)] = attr_value
+                rows.append(row)
+                columns.update(row.keys())
+
+            for rel in getattr(extractor, 'relationships', []) or []:
+                source = getattr(rel, 'source', '')
+                target = getattr(rel, 'target', '')
+                if not source or not target or source == target:
+                    continue
+                rel_payload = {
+                    'from_props': {'id': source},
+                    'to_props': {'id': target},
+                    'type': str(getattr(rel, 'relation_type', 'RELATED_TO') or 'RELATED_TO'),
+                }
+                rel_metadata = {
+                    'source_entity_type': getattr(rel, 'source_type', ''),
+                    'target_entity_type': getattr(rel, 'target_type', ''),
+                    'cardinality': getattr(rel, 'cardinality', ''),
+                    'description': getattr(rel, 'description', ''),
+                }
+                rel_payload['properties'] = {
+                    key: value for key, value in rel_metadata.items() if value not in (None, '', [], {})
+                }
+                rels.append(rel_payload)
+
+            stats = {
+                'format': '3DXML',
+                'row_count': len(rows),
+                'column_count': len(columns),
+                'columns': list(columns),
+                'entity_count': len(getattr(extractor, 'entities', {}) or {}),
+                'relationship_count': len(getattr(extractor, 'relationships', []) or []),
+                'entity_types': sorted(list(getattr(extractor, 'entity_types', set()) or [])),
+                '_xmi_relationships': rels,
+                'root_element': '3DXML',
+            }
+            if isinstance(summary, dict):
+                summary_meta = summary.get('metadata') or {}
+                summary_stats = summary_meta.get('stats') or {}
+                if isinstance(summary_stats, dict):
+                    for key in ('source_format', 'source_path'):
+                        if key in summary_meta and key not in stats:
+                            stats[key] = summary_meta[key]
+                    for key, value in summary_stats.items():
+                        if key not in stats and value not in (None, '', [], {}):
+                            stats[key] = value
+            return rows, stats
+        except Exception as e:
+            logging.error(f"3DXML parse error: {e}")
+            return FileParser._parse_xml(file_content)
 
     @staticmethod
     def _parse_step(file_content: bytes) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:

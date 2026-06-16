@@ -70,10 +70,10 @@ function getWorkflowNote({
     return `${fallbackWorkflow.title} is not connected yet.`;
   }
   if (selectedWorkflow === 'instance.link') {
-    return 'Upload files and select an ontology.';
+    return 'Upload a source instance and choose an ontology anchor.';
   }
   if (selectedWorkflow === 'ontology.merge') {
-    return 'Select source and target ontologies.';
+    return 'Review a source and target ontology merge pair.';
   }
   if (
     selectedWorkflow === 'ontology.validate'
@@ -95,8 +95,11 @@ function getWorkflowNote({
   if (selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'csv' || mappingFileTypeContext === 'excel')) {
     return 'CSV and Excel import as source data first.';
   }
-  if (selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'json' || mappingFileTypeContext === 'xml')) {
-    return 'JSON and XML import as source data first.';
+  if (
+    selectedWorkflow === 'instance.import'
+    && ['json', 'xml', 'plmxml', '3dxml'].includes(mappingFileTypeContext)
+  ) {
+    return 'JSON, XML, PLMXML, and 3DXML import as source data first.';
   }
   if (selectedWorkflow === 'instance.import' && mappingFileTypeContext === 'ontology') {
     return 'Use ontology registration for OWL, RDF, or TTL.';
@@ -138,25 +141,18 @@ export default function DataImportPipeline() {
       usage_count: ont.raw?.usageCount || ont.raw?.usage_count || 0,
       last_used: ont.raw?.lastUsed || ont.raw?.last_used || '',
     }));
-    const byKey = new Map();
-    allOntologies.forEach(o => {
-      const key = o.prefix || o.id;
-      if (!byKey.has(key) || o.uploaded_at > (byKey.get(key).uploaded_at || '')) {
-        byKey.set(key, o);
-      }
-    });
-    const byId = new Map();
-    Array.from(byKey.values()).forEach((o) => {
-      const key = o.value || o.id || `${o.prefix}:${o.file}`;
-      if (!byId.has(key) || o.uploaded_at > (byId.get(key).uploaded_at || '')) {
-        byId.set(key, {
+    const byOptionKey = new Map();
+    allOntologies.forEach((o) => {
+      const optionKey = `${o.value || o.id || 'unknown'}:${o.prefix || 'no-prefix'}:${o.file || 'no-file'}`;
+      if (!byOptionKey.has(optionKey) || o.uploaded_at > (byOptionKey.get(optionKey).uploaded_at || '')) {
+        byOptionKey.set(optionKey, {
           ...o,
-          optionKey: `${key}:${o.prefix || 'no-prefix'}:${o.file || 'no-file'}`,
-          optionValue: key,
+          optionKey,
+          optionValue: o.value || o.id || `${o.prefix}:${o.file}`,
         });
       }
     });
-    return Array.from(byId.values());
+    return Array.from(byOptionKey.values());
   }
 
   const [availableOntologies, setAvailableOntologies] = useState(() => {
@@ -541,7 +537,7 @@ export default function DataImportPipeline() {
 
       const uploadData = await apiClient.post(API.import.upload, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: getImportTimeoutMs(file.fileObj),
+        timeout: getImportTimeoutMs(),
       });
       const taskId = (uploadData.data || uploadData).task_id;
 
@@ -862,7 +858,7 @@ export default function DataImportPipeline() {
     try {
       const checkRes = await apiClient.get(
         buildUrl(replaceParams(API.import.preCommit, { task_id: taskId })),
-        { timeout: 15000 }
+        { timeout: 300000 }
       );
       const check = checkRes.data || {};
       if (!check.ready) {
@@ -880,8 +876,15 @@ export default function DataImportPipeline() {
       const rowCount = check.checks?.task?.rows;
       if (rowCount) setError(null); // clear any prior errors
     } catch (checkErr) {
-      // If the pre-check itself fails (network error) warn but allow proceeding
+      // If the pre-check itself fails, block the commit so we do not load blindly.
       console.warn('[pre-commit] check failed:', checkErr.message);
+      setPreCheck({
+        loading: false,
+        ready: false,
+        checks: { neo4j: { ok: false }, task: { ok: false } },
+        reason: checkErr.message || 'Pre-commit check failed.',
+      });
+      return;
     }
 
     // Close the review modal immediately — don't make the user wait 2-3 min
@@ -906,7 +909,7 @@ export default function DataImportPipeline() {
 
     // Run the actual commit in background — UI stays responsive
     const commitUrl = buildUrl(replaceParams(API.import.commit, { task_id: taskId }));
-    const commitTimeoutMs = Math.max(getImportTimeoutMs({ size: 0 }), 10 * 60 * 1000);
+    const commitTimeoutMs = getImportTimeoutMs();
     const fileId = Object.entries(pipelineStatus).find(([, status]) => status.taskId === taskId)?.[0] || taskId;
     fetch(commitUrl, {
       method: 'POST',
@@ -1051,13 +1054,8 @@ export default function DataImportPipeline() {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const getImportTimeoutMs = (file) => {
-    const size = file?.size || 0;
-    if (size <= 25 * 1024 * 1024) return 5 * 60 * 1000;
-    if (size <= 100 * 1024 * 1024) return 8 * 60 * 1000;
-    if (size <= 250 * 1024 * 1024) return 12 * 60 * 1000;
-    if (size <= 400 * 1024 * 1024) return 16 * 60 * 1000;
-    return 20 * 60 * 1000;
+  const getImportTimeoutMs = () => {
+    return 300 * 1000;
   };
 
   const getCommitPhaseLabel = (phase) => {
@@ -1619,7 +1617,7 @@ export default function DataImportPipeline() {
                   cursor: workflowLoading ? 'not-allowed' : 'pointer',
                 }}
               >
-                {workflowLoading ? 'Running...' : (selectedWorkflow === 'ontology.merge' ? 'Generate merge plan' : 'Run workflow')}
+                {workflowLoading ? 'Running...' : (selectedWorkflow === 'ontology.merge' ? 'Review merge plan' : 'Run workflow')}
               </button>
               {selectedWorkflow === 'ontology.merge' && (
                 <button
@@ -1679,7 +1677,7 @@ export default function DataImportPipeline() {
                 )}
                 {selectedWorkflow === 'ontology.merge' && (
                   <div style={{ marginTop: '6px', color: C.textPrimary, lineHeight: 1.45 }}>
-                    Use <strong>Generate merge plan</strong> to review ontology gaps, overlaps, and conflicts first.
+                    Use <strong>Review merge plan</strong> to inspect ontology gaps, overlaps, and conflicts first.
                     Use <strong>Merge into Neo4j</strong> when you want to commit the ontology prefix alignment in the graph.
                   </div>
                 )}
@@ -1771,7 +1769,7 @@ export default function DataImportPipeline() {
             display: 'grid',
             gap: '8px',
           }}>
-            {activeJobs.slice(0, 3).map(({ file, status }) => {
+            {activeJobs.map(({ file, status }) => {
               const batchLabel = formatBatchProgress(status.batchProgress);
               const phaseLabel = getCommitPhaseLabel(status.commitPhase) || getStageLabel(status.stage);
               return (
@@ -2485,16 +2483,17 @@ export default function DataImportPipeline() {
                           setConfirmingImport(status.taskId);
                           // Run pre-commit check immediately when modal opens
                           setPreCheck({ loading: true });
-                          apiClient.get(buildUrl(replaceParams(API.import.preCommit, { task_id: status.taskId })), { timeout: 15000 })
+                          apiClient.get(buildUrl(replaceParams(API.import.preCommit, { task_id: status.taskId })), { timeout: 300000 })
                             .then(r => {
                               const payload = r.data || {};
                               setPreCheck({ loading: false, ...payload });
-                              if (payload.ready) {
-                                // Auto-advance to Neo4j load once the review state is confirmed.
-                                setTimeout(() => commitImport(status.taskId), 0);
-                              }
                             })
-                            .catch(() => setPreCheck({ loading: false, ready: true, checks: {}, reason: null }));
+                            .catch((err) => setPreCheck({
+                              loading: false,
+                              ready: false,
+                              checks: { neo4j: { ok: false }, task: { ok: false } },
+                              reason: err?.message || 'Pre-commit check failed.',
+                            }));
                         }}
                         style={{
                           padding: '6px 10px',

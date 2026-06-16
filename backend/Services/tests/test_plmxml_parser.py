@@ -2,7 +2,7 @@ from pathlib import Path
 import asyncio
 import pytest
 
-from backend.Services.unified_data_import import DataTransformer, FileParser, UnifiedDataImportService, import_tasks
+from backend.Services.unified_data_import import DataTransformer, FileParser, FileType, UnifiedDataImportService, import_tasks, _detect_xml_family
 from backend.Services.plmxml_parser import parse_plmxml_file
 
 
@@ -349,3 +349,58 @@ def test_plmxml_commit_preserves_relationship_properties(monkeypatch):
     assert relationship_rows
     assert relationship_rows[0]["properties"]["reference_key"] == "partRef"
     assert result["relationships_created"] >= 1
+
+
+def test_xml_family_detector_prefers_specialized_plmxml_and_3dxml():
+    plmxml = b'<?xml version="1.0"?><PLMXML xmlns="http://www.plmxml.org/Schemas/PLMXMLSchema" />'
+    threedxml = b'<?xml version="1.0"?><VPMRepReference xmlns="http://www.3ds.com/xsd/3DXML" />'
+
+    assert _detect_xml_family(plmxml) == "plmxml"
+    assert _detect_xml_family(threedxml) == "3dxml"
+
+
+def test_fileparser_dispatches_xml_family_content_to_specialized_parsers(monkeypatch):
+    called = {"plmxml": 0, "3dxml": 0}
+
+    def fake_plmxml(*_args, **_kwargs):
+        called["plmxml"] += 1
+        return [{"id": "P1"}], {"format": "PLMXML"}
+
+    def fake_3dxml(*_args, **_kwargs):
+        called["3dxml"] += 1
+        return [{"id": "D1"}], {"format": "3DXML"}
+
+    monkeypatch.setattr(FileParser, "_parse_plmxml", staticmethod(fake_plmxml))
+    monkeypatch.setattr(FileParser, "_parse_threedxml", staticmethod(fake_3dxml))
+
+    rows_plmxml, stats_plmxml = FileParser.parse(
+        b'<?xml version="1.0"?><PLMXML xmlns="http://www.plmxml.org/Schemas/PLMXMLSchema" />',
+        FileType.XML,
+    )
+    rows_3dxml, stats_3dxml = FileParser.parse(
+        b'<?xml version="1.0"?><VPMRepReference xmlns="http://www.3ds.com/xsd/3DXML" />',
+        FileType.XML,
+    )
+
+    assert rows_plmxml == [{"id": "P1"}]
+    assert rows_3dxml == [{"id": "D1"}]
+    assert stats_plmxml["format"] == "PLMXML"
+    assert stats_3dxml["format"] == "3DXML"
+    assert called["plmxml"] == 1
+    assert called["3dxml"] == 1
+
+
+def test_fileparser_explicit_threedxml_type_uses_dedicated_parser(monkeypatch):
+    called = {"3dxml": 0}
+
+    def fake_3dxml(*_args, **_kwargs):
+        called["3dxml"] += 1
+        return [{"id": "D1"}], {"format": "3DXML"}
+
+    monkeypatch.setattr(FileParser, "_parse_threedxml", staticmethod(fake_3dxml))
+
+    rows, stats = FileParser.parse(b"<root />", FileType.THREEDXML)
+
+    assert rows == [{"id": "D1"}]
+    assert stats["format"] == "3DXML"
+    assert called["3dxml"] == 1

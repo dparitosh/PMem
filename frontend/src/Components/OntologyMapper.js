@@ -1828,11 +1828,11 @@ export default function OntologyMapper() {
 
   const handleUnifyInstanceWithOntology = async () => {
     if (!selectedImportTaskId) {
-      setUnifyResult({ kind: 'error', text: 'Select an imported instance to unify.' });
+      setUnifyResult({ kind: 'error', text: 'Select an imported instance to link.' });
       return;
     }
     if (!selectedOntologyApi) {
-      setUnifyResult({ kind: 'error', text: 'Select an ontology to unify with the instance.' });
+      setUnifyResult({ kind: 'error', text: 'Select an ontology to link with the instance.' });
       return;
     }
 
@@ -1886,14 +1886,14 @@ export default function OntologyMapper() {
       }
       setUnifyResult({
         kind: 'success',
-        text: d.result?.summary ? 'Instance unified with ontology.' : d.message || 'Instance unified with ontology.',
+        text: d.result?.summary ? 'Instance linked to ontology.' : d.message || 'Instance linked to ontology.',
         nodes: d.result?.summary?.applied_links,
         summary: d.result?.summary || null,
         candidates,
         manifest: manifest,
       });
     } catch (e) {
-      const detail = e?.response?.data?.detail || e?.message || 'Unify failed.';
+      const detail = e?.response?.data?.detail || e?.message || 'Linking failed.';
       setBridgeCandidates([]);
       setUnifyResult({ kind: 'error', text: detail });
     } finally {
@@ -2214,9 +2214,9 @@ export default function OntologyMapper() {
             <ErrorBoundary>
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '16px', minHeight: '400px' }}>
 
-              {/* ── Unify Instance with Ontology ─────────────────────────── */}
+              {/* ── Link Instance to Ontology ─────────────────────────────── */}
               <div style={{ marginBottom: '20px', border: `2px solid ${C.primary}`, borderRadius: '8px', padding: '16px', background: C.primaryLight }}>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>Unify instance with ontology</div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>Link instance to ontology</div>
                 <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '14px' }}>
                   Pick one imported instance and one ontology. Each instance is aligned independently; if you load a second instance, map it in a separate pass against the same ontology anchor to compare the results cleanly.
                 </div>
@@ -2306,7 +2306,7 @@ export default function OntologyMapper() {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {unifyBusy ? 'Unifying…' : 'Unify'}
+                    {unifyBusy ? 'Linking…' : 'Link'}
                   </button>
                 </div>
                 <div style={{

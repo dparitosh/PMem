@@ -13,7 +13,7 @@ import logger from '../utils/logger';
  */
 const apiClient = axios.create({
   baseURL: config.backendUrl,
-  timeout: config.requestTimeout || 30000,
+  timeout: config.requestTimeout || 300000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -261,7 +261,7 @@ export const importAPI = {
       timeout: 300000, // 5 minutes — Neo4j batch commit to AuraDB can take 2-3 min
     }),
   preCommitCheck: (taskId) =>
-    apiClient.get(buildUrl(replaceParams(API.import.preCommit, { task_id: taskId })), { timeout: 15000 }),
+    apiClient.get(buildUrl(replaceParams(API.import.preCommit, { task_id: taskId })), { timeout: 300000 }),
   cancel: (taskId) => 
     apiClient.post(buildUrl(replaceParams(API.import.cancel, { task_id: taskId }))),
   getOWL: (taskId) => 

@@ -64,7 +64,7 @@ class Neo4jConfig:
     socket_connection_timeout: float = 15.0
     
     # Query settings
-    query_timeout: int = 30  # seconds
+    query_timeout: int = 300  # seconds
     
     # SSL/TLS
     encrypted: bool = True
@@ -208,7 +208,7 @@ def get_config() -> Neo4jConfig:
             os.getenv("NEO4J_SOCKET_CONNECTION_TIMEOUT", "15")
         ),
         # Query settings
-        query_timeout=int(os.getenv("NEO4J_QUERY_TIMEOUT", "30")),
+        query_timeout=int(os.getenv("NEO4J_QUERY_TIMEOUT", "300")),
         # SSL settings
         encrypted=(
             encrypted_env.lower() == "true"

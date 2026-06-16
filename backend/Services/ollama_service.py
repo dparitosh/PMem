@@ -61,7 +61,7 @@ class OllamaService:
                     "temperature": temperature,
                 },
                 headers=self._headers(),
-                timeout=150,
+                timeout=300,
             )
             if response.status_code != 200:
                 logger.error(f"Ollama chat-style query failed: {response.status_code}")
@@ -115,7 +115,7 @@ class OllamaService:
                         "stream": False,
                     },
                     headers=self._headers(),
-                    timeout=200,  # Azure APIM can be very slow (200s max)
+                    timeout=300,  # Azure APIM can be very slow (300s max)
                 )
                 return response.status_code == 200
             except requests.Timeout:
@@ -184,7 +184,7 @@ Provide a helpful, structured response based on the context."""
                     "temperature": temperature,
                 },
                 headers=self._headers(),
-                timeout=120,  # Azure APIM can be very slow; allow up to 2 minutes
+                timeout=300,  # Azure APIM can be very slow; allow up to 5 minutes
             )
             
             if response.status_code == 200:
