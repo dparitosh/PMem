@@ -2059,24 +2059,24 @@ export default function OntologyMapper() {
 
   const VIEWS = [
     { id: 'dictionary', label: 'Data Dictionary' },
-    { id: 'taxonomy', label: 'OWL Browser' },
+    { id: 'taxonomy', label: 'Taxonomy / OWL' },
     { id: 'vocabulary', label: 'Mapping Vocabulary' },
     { id: 'alignment', label: 'Instance Alignment' },
   ];
 
   return (
-    <div style={{ background: C.bg, minHeight: '100%', padding: '10px', boxSizing: 'border-box' }}>
+    <div style={{ background: C.bg, minHeight: '100%', padding: 0, boxSizing: 'border-box' }}>
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        flexWrap: 'wrap', gap: '10px', marginBottom: '10px',
-        background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '10px 12px',
+        flexWrap: 'wrap', gap: '8px', marginBottom: '8px',
+        background: C.surface, border: `1px solid ${C.border}`, borderRadius: '6px', padding: '8px 10px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
+            width: 26,
+            height: 26,
+            borderRadius: 6,
             display: 'grid',
             placeItems: 'center',
             background: C.primaryLight,
@@ -2086,8 +2086,8 @@ export default function OntologyMapper() {
             <Network size={16} strokeWidth={2.4} />
           </div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: '14px', color: C.textPrimary }}>Ontology Junction</div>
-            <div style={{ fontSize: '11px', color: C.textSec }}>Use the alignment view for one imported instance at a time; use the merge workflow to compare two ontologies.</div>
+            <div style={{ fontWeight: 800, fontSize: '12px', color: C.textPrimary }}>Ontology workspace</div>
+            <div style={{ fontSize: '10px', color: C.textSec }}>Dictionary, taxonomy, OWL structure, vocabulary, and instance alignment.</div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -2112,7 +2112,7 @@ export default function OntologyMapper() {
                   setFilter('');
                 }}
                 disabled={mappingOptions.length === 0}
-                style={{ padding: '7px 12px', background: C.surface, border: `1px solid ${mappingOptionsError ? C.red : C.borderDark}`, color: C.textPrimary, borderRadius: '6px', fontWeight: 600, fontSize: '13px', cursor: mappingOptions.length === 0 ? 'not-allowed' : 'pointer', opacity: mappingOptions.length === 0 ? 0.6 : 1 }}
+                style={{ padding: '6px 10px', background: C.surface, border: `1px solid ${mappingOptionsError ? C.red : C.borderDark}`, color: C.textPrimary, borderRadius: '5px', fontWeight: 600, fontSize: '12px', cursor: mappingOptions.length === 0 ? 'not-allowed' : 'pointer', opacity: mappingOptions.length === 0 ? 0.6 : 1 }}
               >
                 <option value="">{mappingOptions.length === 0 ? '— No ontologies loaded —' : '— Select ontology —'}</option>
                 {Array.from(new Map(mappingOptions.map(o => [o.prefix, o])).values()).map((o, idx) => (
@@ -2122,7 +2122,7 @@ export default function OntologyMapper() {
                 ))}
               </select>
               {stats && (
-                <div style={{ fontSize: '12px', color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '20px', padding: '4px 12px' }}>
+                <div style={{ fontSize: '11px', color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '20px', padding: '4px 10px' }}>
                   {stats.total_terms} terms · {stats.total_vocabulary_mappings} mapping edges
                 </div>
               )}
@@ -2146,13 +2146,13 @@ export default function OntologyMapper() {
       ) : (
         <>
           {/* Sub-tab selector + search bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '6px', padding: '2px', gap: '1px' }}>
               {VIEWS.map(v => {
                 const active = activeView === v.id;
                 return (
                   <button key={v.id} onClick={() => { setActiveView(v.id); setFilter(''); setPrefixFilter(null); }}
-                    style={{ padding: '5px 12px', border: 'none', borderRadius: '4px', cursor: 'pointer', background: active ? C.primary : 'transparent', color: active ? '#fff' : C.textSec, fontWeight: active ? 700 : 500, fontSize: '11px', transition: 'all .15s' }}>
+                    style={{ padding: '5px 10px', border: 'none', borderRadius: '4px', cursor: 'pointer', background: active ? C.primary : 'transparent', color: active ? '#fff' : C.textSec, fontWeight: active ? 700 : 500, fontSize: '11px', transition: 'all .15s' }}>
                     {v.label}
                   </button>
                 );
@@ -2160,7 +2160,7 @@ export default function OntologyMapper() {
             </div>
 
             {/* Search / filter */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: 1, minWidth: '200px', maxWidth: '380px', background: C.surface, border: `1px solid ${C.borderDark}`, borderRadius: '5px', padding: '6px 8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '0 1 260px', minWidth: '180px', maxWidth: '260px', background: C.surface, border: `1px solid ${C.borderDark}`, borderRadius: '5px', padding: '5px 8px' }}>
               <Search
                 size={13}
                 color={C.textMuted}
@@ -2175,7 +2175,7 @@ export default function OntologyMapper() {
               />
               <input
                 type="text" value={filter}
-                placeholder={activeView === 'vocabulary' ? 'Filter mappings…' : 'Filter terms…'}
+                placeholder={activeView === 'taxonomy' ? 'Find taxonomy term' : activeView === 'vocabulary' ? 'Filter mappings' : 'Filter terms'}
                 onChange={e => setFilter(e.target.value)}
                 style={{ border: 'none', outline: 'none', fontSize: '13px', lineHeight: '1.4', flex: 1, background: 'transparent', color: C.textPrimary, minHeight: '20px' }}
               />

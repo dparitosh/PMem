@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, MessageSquare } from 'lucide-react';
+import { MessageSquare } from 'lucide-react';
 import { navigationItems, pageLabel } from './navigation';
 import './AppShell.css';
 
@@ -22,10 +22,6 @@ export default function AppShell({
             <div className="depo-rail__brand-meta">Digital Thread</div>
           </div>
         </div>
-        <button type="button" className="depo-rail__button" title="Home" onClick={onHome}>
-          <Home size={15} />
-          <span>Home</span>
-        </button>
         {navigationItems.map((item) => {
           const Icon = item.icon;
           const active = item.id === activePage;
@@ -36,7 +32,7 @@ export default function AppShell({
               className={`depo-rail__button ${active ? 'is-active' : ''}`}
               title={item.label}
               aria-label={item.label}
-              onClick={() => onPageChange(item.id)}
+              onClick={() => (item.id === 'home' ? onHome() : onPageChange(item.id))}
             >
               <Icon size={16} />
               <span>{item.label}</span>

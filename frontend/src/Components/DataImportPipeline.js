@@ -1222,7 +1222,7 @@ export default function DataImportPipeline() {
   }, [selectedWorkflow]);
 
   return (
-    <div style={{ background: C.bg, minHeight: '100%', padding: '10px', boxSizing: 'border-box' }}>
+    <div style={{ background: C.bg, minHeight: '100%', padding: 0, boxSizing: 'border-box' }}>
       {/* Ontology Metadata Form Modal */}
       {showMetadataForm && (
         <OntologyMetadataForm
@@ -1247,18 +1247,24 @@ export default function DataImportPipeline() {
         background: C.surface,
         border: `1px solid ${C.border}`,
         borderRadius: '6px',
-        padding: '8px 10px',
+        padding: '8px',
         marginBottom: '8px',
       }}>
-        <div style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary, marginBottom: '8px' }}>
-          Primary workflows
-        </div>
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '8px',
-          marginBottom: '10px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          flexWrap: 'wrap',
+          marginBottom: '8px',
         }}>
+          <span style={{
+            fontSize: '10px',
+            fontWeight: '800',
+            color: C.textPrimary,
+            marginRight: '2px',
+          }}>
+            Workflow
+          </span>
           {primaryWorkflows.map((workflow) => {
             const Icon = workflow.icon;
             const isActive = workflow.id === selectedWorkflow;
@@ -1269,73 +1275,59 @@ export default function DataImportPipeline() {
                 type="button"
                 onClick={() => setSelectedWorkflow(workflow.id)}
                 style={{
-                  textAlign: 'left',
                   border: `1px solid ${isActive ? C.primary : C.border}`,
-                  background: isActive ? '#F7FBFF' : C.surface,
-                  borderRadius: '6px',
-                  padding: '9px 10px',
+                  background: isActive ? C.primary : C.bg,
+                  color: isActive ? '#fff' : C.textPrimary,
+                  borderRadius: '4px',
+                  padding: '5px 8px',
                   cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  minHeight: '30px',
                 }}
+                title={workflow.description}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '6px',
-                    background: C.primaryLight,
-                    color: C.primary,
-                    display: 'grid',
-                    placeItems: 'center',
-                    flex: '0 0 auto',
-                  }}>
-                    <Icon size={13} strokeWidth={2.4} />
-                  </div>
-                  <div style={{ fontSize: '11px', fontWeight: '700', color: C.textPrimary }}>
-                    {workflow.title}
-                  </div>
-                </div>
-                <div style={{ fontSize: '10px', color: C.textSec, lineHeight: 1.35 }}>
-                  {workflow.description}
-                </div>
+                <Icon size={13} strokeWidth={2.4} />
+                <span style={{ fontSize: '10px', fontWeight: '800', whiteSpace: 'nowrap' }}>
+                  {workflow.title}
+                </span>
                 {isRecommended && (
-                  <div style={{ marginTop: '8px' }}>
-                    <span style={{
-                      fontSize: '9px',
-                      fontWeight: '700',
-                      color: C.primary,
-                      background: '#FFFFFF',
-                      border: `1px solid ${C.primaryLight}`,
-                      borderRadius: '999px',
-                      padding: '2px 7px',
-                    }}>
-                      Recommended
-                    </span>
-                  </div>
+                  <span style={{
+                    fontSize: '8px',
+                    fontWeight: '800',
+                    color: isActive ? '#fff' : C.primary,
+                    background: isActive ? 'rgba(255,255,255,0.16)' : '#FFFFFF',
+                    border: `1px solid ${isActive ? 'rgba(255,255,255,0.26)' : C.primaryLight}`,
+                    borderRadius: '999px',
+                    padding: '1px 5px',
+                  }}>
+                    Suggested
+                  </span>
                 )}
               </button>
             );
           })}
-        </div>
-        {advancedWorkflows.length > 0 && (
-          <div style={{ marginBottom: showAdvancedWorkflows ? '8px' : '0' }}>
+          {advancedWorkflows.length > 0 && (
             <button
               type="button"
               onClick={() => setShowAdvancedWorkflows((open) => !open)}
               style={{
                 background: 'transparent',
                 border: `1px solid ${C.border}`,
-                borderRadius: '999px',
-                padding: '4px 10px',
+                borderRadius: '4px',
+                padding: '5px 8px',
                 fontSize: '10px',
-                fontWeight: '700',
+                fontWeight: '800',
                 color: C.textPrimary,
                 cursor: 'pointer',
+                minHeight: '30px',
               }}
             >
-              {showAdvancedWorkflows ? 'Hide advanced workflows' : `Show advanced workflows (${advancedWorkflows.length})`}
+              {showAdvancedWorkflows ? 'Hide advanced' : `Advanced (${advancedWorkflows.length})`}
             </button>
-          </div>
-        )}
+          )}
+        </div>
         {showAdvancedWorkflows && (
           <>
         <div style={{
@@ -1450,7 +1442,7 @@ export default function DataImportPipeline() {
             borderRadius: '999px',
             padding: '3px 8px',
           }}>
-            7 workflows
+            {workflowOptions.length} workflows
           </span>
           <span style={{
             fontSize: '9px',
