@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Trash2 } from 'lucide-react';
+import { RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import { useOntologies } from '../contexts/OntologyContext';
 
@@ -137,6 +137,30 @@ export default function AdminPanel({ onSchemaCleaned }) {
       setLoading(false);
     }
   }, [fetchOntologies, loadAdminState, onSchemaCleaned]);
+
+  const clearCache = useCallback(async () => {
+    setLoading(true);
+    setMessage('');
+    setError('');
+    try {
+      const res = await API_METHODS.admin.clearCache();
+      const cleared = res.data?.cleared || {};
+      const parts = [
+        cleared.graph_cache ? 'graph cache' : null,
+        cleared.ontology_list_cache ? 'ontology list cache' : null,
+        cleared.config_cache ? 'config cache' : null,
+      ].filter(Boolean);
+      setMessage(parts.length > 0
+        ? `Cleared ${parts.join(', ')}.`
+        : res.data?.message || 'Application caches cleared.');
+      await loadAdminState();
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.message || 'Cache clear failed.';
+      setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    } finally {
+      setLoading(false);
+    }
+  }, [loadAdminState]);
 
   const deleteOldXsdSchemas = useCallback(async () => {
     setLoading(true);
@@ -385,6 +409,15 @@ export default function AdminPanel({ onSchemaCleaned }) {
             </div>
           )}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={clearCache}
+              disabled={loading}
+              style={buttonStyle}
+            >
+              <RotateCcw size={10} />
+              Clear Cache
+            </button>
             <button
               type="button"
               onClick={previewDeleteData}

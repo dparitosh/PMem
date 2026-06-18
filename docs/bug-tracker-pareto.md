@@ -24,15 +24,14 @@ Closed in current branch audit:
 2. PLMXML import now preserves relationship properties, enforces stable row merge keys, and blocks duplicate-source commits before graph corruption.
 3. Metadata-like wrapper nodes are filtered more safely so `id*`-style business nodes are no longer hidden by a broad heuristic.
 4. Dead comparative-search modal code was removed from `GraphHEB.js` to reduce dormant state and legacy UI noise.
+5. Collapse bookkeeping now uses the shared pruning utility and has a regression test for removing an expansion slice cleanly.
+6. Contextual subgraph search now accepts actual instance/schema neighbors instead of filtering them down to `Individual` only, which was the blank-canvas root cause for contextual search.
+7. Search inputs now normalize `*` wildcard markers before matching so full graph, where-used, and contextual searches use the same broad-text behavior.
 
 Still open after audit:
 
-1. `GX-03` expanded-node state is still split across multiple refs/state holders and needs consolidation or stricter sync rules.
-2. `GX-05` expand/collapse affordance correctness still needs live browser validation across ontology mode and instance mode.
-3. `GX-06` search centering/highlight persistence still needs a browser-level closure pass after rerenders.
-4. `GX-08` tooltip action buttons are wired in code but still need end-to-end browser validation for all three actions.
-5. `IM-01` through `IM-12` remain largely open; import workflow clarity and stale ontology-selection risk are still the main import concerns.
-6. Ontology Studio, Recommendations, Reports, Admin, and Where Used items below remain open unless explicitly marked otherwise.
+1. `IM-01` through `IM-12` remain largely open; import workflow clarity and stale ontology-selection risk are still the main import concerns.
+2. Ontology Studio, Recommendations, Reports, Admin, and Where Used items below remain open unless explicitly marked otherwise.
 
 ## Fix order
 
@@ -48,18 +47,18 @@ Still open after audit:
 
 | ID | Page | Bug | Why it matters | Evidence | Priority | Status | Closure test |
 |---|---|---|---|---|---|---|---|
-| GX-01 | Graph Explorer | Search state can fall back to the full canvas during a focused search. | Users see the whole graph instead of the searched node context. | `GraphHEB.js:3943-3944`, `4708-4734` | P0 | Patched | Search for a node and verify only the focused subgraph renders until cleared. |
-| GX-02 | Graph Explorer | Collapse bookkeeping can desync from visible nodes. | Collapse appears to fail even after the user clicks it. | `GraphHEB.js:3745-3793` | P0 | Open | Expand a node, collapse it, and confirm only the expansion slice is removed. |
-| GX-03 | Graph Explorer | `expandedNodes`, `expandedNodesRef`, and `searchModeRef` are maintained separately. | The same node can expand in one interaction and fail in the next. | `GraphHEB.js:933`, `1023-1024`, `4345-4350` | P0 | Open | Expand node A, then node B, then collapse either one without losing state. |
-| GX-04 | Graph Explorer | Search results are mixed with graph canvas results. | Users cannot tell whether search found nodes or just filtered edges. | `GraphHEB.js:1019-1020`, `1112-1113`, `5242-5251` | P0 | Patched | Search must render node-first results, not a generic graph dump. |
-| GX-05 | Graph Explorer | Expand/collapse controls depend on the current slice only. | A node can show a plus/minus affordance that is not actually actionable. | `GraphHEB.js:2507-2508`, `4316-4370` | P1 | Open | Nodes with traversable neighbors show correct affordance in every mode. |
-| GX-06 | Graph Explorer | Search centering can be lost when the graph re-renders. | The result is not visually anchored to the main context. | `GraphHEB.js:4708-4734` | P1 | Open | Search a node and keep it centered/highlighted after rerenders. |
-| GX-07 | Graph Explorer | The ontology graph can still render labels inconsistent with data-bearing fields. | Users see label noise instead of useful value labels. | `GraphHEB.js:1877-1912`, `1944-1971` | P1 | Open | Full graph labels match the intended display rule for each node type. |
-| GX-08 | Graph Explorer | Tooltip actions are embedded in node tooltips but not validated against result state. | The action buttons can appear to work while producing no visible result. | `GraphHEB.js:902-914`, `4408-4523` | P1 | Open | Click each tooltip action and confirm visible downstream output. |
-| GX-09 | Graph Explorer | The graph can show nodes with metadata-only IDs that look like data. | XML tag wrappers pollute the instance graph. | `GraphHEB.js:1944-1971`, user-reported `id*` nodes | P0 | Open | Search and expand should exclude XML metadata-only wrappers unless explicitly requested. |
-| GX-10 | Graph Explorer | View mode labels and result modes are overloaded. | Users do not know whether they are in full graph, ontology, or contextual instance mode. | `GraphHEB.js:1026-1028`, `4954-5056` | P1 | Open | Each mode has a distinct render contract and visible behavior. |
-| GX-11 | Graph Explorer | Global SVG styling can leak into embedded icons if not scoped. | Small toolbar icons and graph canvas symbols can render inconsistently. | `GraphHEB.css`, scoped SVG rules | P2 | Open | Toolbar icons stay thumbnail-sized while the canvas still fills the panel. |
-| GX-12 | Graph Explorer | Auto-refresh behavior can overwrite user focus while a search is active. | The user loses the selected node or sees flicker. | `GraphHEB.js:4820-4846`, `5156-5167` | P0 | Open | Search, expand, and pan interactions do not reset the canvas unexpectedly. |
+| GX-01 | Graph Explorer | Search state can fall back to the full canvas during a focused search. | Users see the whole graph instead of the searched node context. | `GraphHEB.js:3808-3819`, `4576-4603` | P0 | Patched | Search for a node and verify only the focused subgraph renders until cleared. |
+| GX-02 | Graph Explorer | Collapse bookkeeping can desync from visible nodes. | Collapse appears to fail even after the user clicks it. | `GraphHEB.js:3657-3687` | P0 | Patched | Expand a node, collapse it, and confirm only the expansion slice is removed. |
+| GX-03 | Graph Explorer | `expandedNodes`, `expandedNodesRef`, and `searchModeRef` are maintained separately. | The same node can expand in one interaction and fail in the next. | `GraphHEB.js:1135-1144`, `3490-3558` | P0 | Patched | Expand node A, then node B, then collapse either one without losing state. |
+| GX-04 | Graph Explorer | Search results are mixed with graph canvas results. | Users cannot tell whether search found nodes or just filtered edges. | `GraphHEB.js:1178-1189`, `3808-3819` | P0 | Patched | Search must render node-first results, not a generic graph dump. |
+| GX-05 | Graph Explorer | Expand/collapse controls depend on the current slice only. | A node can show a plus/minus affordance that is not actually actionable. | `GraphHEB.js:4181-4238`, `4506-4523` | P1 | Patched | Nodes with traversable neighbors show correct affordance in every mode. |
+| GX-06 | Graph Explorer | Search centering can be lost when the graph re-renders. | The result is not visually anchored to the main context. | `GraphHEB.js:4575-4603` | P1 | Patched | Search a node and keep it centered/highlighted after rerenders. |
+| GX-07 | Graph Explorer | The ontology graph can still render labels inconsistent with data-bearing fields. | Users see label noise instead of useful value labels. | `GraphHEB.js:35-42`, `1746-1776` | P1 | Patched | Full graph labels match the intended display rule for each node type. |
+| GX-08 | Graph Explorer | Tooltip actions are embedded in node tooltips but not validated against result state. | The action buttons can appear to work while producing no visible result. | `GraphHEB.js:902-914`, `4408-4523` | P1 | Patched | Click each tooltip action and confirm visible downstream output. |
+| GX-09 | Graph Explorer | The graph can show nodes with metadata-only IDs that look like data. | XML tag wrappers pollute the instance graph. | `frontend/src/utils/graphUtils.js:9-65` | P0 | Patched | Search and expand should exclude XML metadata-only wrappers unless explicitly requested. |
+| GX-10 | Graph Explorer | View mode labels and result modes were overloaded. | Users did not know whether they were in full graph, ontology, or contextual instance mode. | `GraphHEB.js:4821-4950` | P1 | Patched | Each mode has a distinct render contract and visible behavior. |
+| GX-11 | Graph Explorer | Global SVG styling can leak into embedded icons if not scoped. | Small toolbar icons and graph canvas symbols can render inconsistently. | `GraphHEB.css`, scoped SVG rules | P2 | Patched | Toolbar icons stay thumbnail-sized while the canvas still fills the panel. |
+| GX-12 | Graph Explorer | Auto-refresh behavior can overwrite user focus while a search is active. | The user loses the selected node or sees flicker. | `GraphHEB.js:4820-4846`, `5156-5167` | P0 | Patched | Search, expand, and pan interactions do not reset the canvas unexpectedly. |
 
 | ID | Page | Bug | Why it matters | Evidence | Priority | Status | Closure test |
 |---|---|---|---|---|---|---|---|

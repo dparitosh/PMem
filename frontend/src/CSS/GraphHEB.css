@@ -98,6 +98,30 @@ input[type="text"]::placeholder {
         max-width: min(100%, 280px) !important;
 }
 
+.graph-toolbar .graph-toolbar-icon {
+        width: 14px !important;
+        height: 14px !important;
+        min-width: 14px !important;
+        min-height: 14px !important;
+        max-width: 14px !important;
+        max-height: 14px !important;
+        display: block !important;
+        flex: 0 0 auto !important;
+}
+
+.graph-toolbar button {
+        box-shadow: none !important;
+        transform: none !important;
+}
+
+.graph-toolbar button:hover {
+        transform: none !important;
+}
+
+.graph-toolbar svg {
+        overflow: visible;
+}
+
 @media (max-width: 720px) {
         .graph-toolbar {
                 gap: 6px !important;

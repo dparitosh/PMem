@@ -1,14 +1,26 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo, startTransition } from 'react';
 import * as d3 from 'd3';
-import { Globe, Workflow, Network } from 'lucide-react';
 import '../CSS/GraphHEB.css';
 import { useSchema } from '../SchemaContext';
 import { useOntologies } from '../contexts/OntologyContext';
 import { logger } from '../utils/logger';
 import { safeGet, safeString } from '../utils/safeAccess';
+import {
+  deduplicateNodesAndLinks,
+  getOneHopNeighborhood,
+  mergeGraphData,
+  isMetadataWrapperNode,
+  normalizeGraphDataset as normalizeGraphDatasetShared,
+  normalizeRelationshipType,
+  normalizeSearchTerm,
+  removeExpandedSubgraph,
+  validateConnectivity,
+} from '../utils/graphUtils';
 import { buildUrl, replaceParams, API } from '../config';
 import { apiClient } from '../services/apiClient';
+import { graphApi } from '../services/graphApi';
 import { buildTooltipHeader } from './tooltipBuilder';
+import GraphExplorerToolbar from './GraphExplorerToolbar';
 
 // Security: HTML-escape utility for tooltip interpolation
 const escapeHtml = (str) => {
@@ -26,14 +38,14 @@ const escapeHtml = (str) => {
 // DISPLAY_NAME_PROPERTY  — priority-ordered list of node properties to try.
 //   The first property found on a node is used as the display name.
 //   Set to [] (empty array) to rely solely on the Neo4j label.
-const DISPLAY_NAME_PROPERTY = ['entity_type', 'name', 'title', 'code', 'key', 'abbreviation'];
+const DISPLAY_NAME_PROPERTY = ['name', 'title', 'code', 'key', 'abbreviation', 'entity_type'];
 //
 // DISPLAY_MODE  — controls what is shown in the node label.
 //   'both-label-first'  → "Label - PropertyValue"   (default)
 //   'both-prop-first'   → "PropertyValue (Label)"
 //   'label-only'        → "Label"
 //   'property-only'     → "PropertyValue"
-const DISPLAY_MODE = 'property-only';
+const DISPLAY_MODE = 'both-label-first';
 // ───────────────────────────────────────────────────────────────────────────
 
 // Define constants for graph tuning values.
@@ -47,8 +59,6 @@ const TREE_DEFAULT_HEIGHT_PX = 600;           // 600px - default tree container 
 const TREE_MIN_CONTENT_HEIGHT_PX = 560;       // 560px - minimum height before scrolling
 const DEFAULT_GRAPH_OVERVIEW_LIMIT = 900;
 const DEFAULT_ONTOLOGY_VIEW_LIMIT = 200;
-const GRAPH_LABEL_RENDER_LIMIT = 140;
-
 // Helper: resolve the first matching property from DISPLAY_NAME_PROPERTY list
 const resolveDisplayProp = (props) => {
   if (!props || !DISPLAY_NAME_PROPERTY || DISPLAY_NAME_PROPERTY.length === 0) return null;
@@ -193,8 +203,8 @@ const CENTER_FORCE_STRENGTH = 0.05;
 const VIEWPORT_PADDING = 50;
 
 // NEW CONSTANTS FOR EXPAND/COLLAPSE
-const EXPAND_SYMBOL_SIZE = 8;
-const EXPAND_CIRCLE_RADIUS = 10;
+const EXPAND_SYMBOL_SIZE = 10;
+const EXPAND_CIRCLE_RADIUS = 13;
 
 // NEW CONSTANTS FOR ARROWHEADS
 const ARROW_HEAD_LENGTH = 4.25;
@@ -214,6 +224,14 @@ const RELATIONSHIP_THEME = {
   ON_PROPERTY: { color: '#64748B', width: 1.25, dasharray: '2 3', markerId: 'arrowhead-on-property' },
   SOME_VALUES_FROM: { color: '#0E7490', width: 1.35, dasharray: null, markerId: 'arrowhead-some-values' },
   ALL_VALUES_FROM: { color: '#0369A1', width: 1.35, dasharray: null, markerId: 'arrowhead-all-values' },
+  MASTER_REFERENCE: { color: '#B7791F', width: 1.35, dasharray: null, markerId: 'arrowhead-master-reference' },
+  RELATED_REFERENCE: { color: '#D97706', width: 1.35, dasharray: null, markerId: 'arrowhead-related-reference' },
+  PART_REFERENCE: { color: '#975A16', width: 1.35, dasharray: null, markerId: 'arrowhead-part-reference' },
+  INSTANCE_REFERENCE: { color: '#2F855A', width: 1.35, dasharray: null, markerId: 'arrowhead-instance-reference' },
+  PARENT_REFERENCE: { color: '#718096', width: 1.35, dasharray: '4 2', markerId: 'arrowhead-parent-reference' },
+  SATISFIES: { color: '#B83280', width: 1.45, dasharray: '5 2', markerId: 'arrowhead-satisfies' },
+  GENERAL_RELATION: { color: '#4A5568', width: 1.3, dasharray: '3 3', markerId: 'arrowhead-general-relation' },
+  TRACE_LINK: { color: '#0F766E', width: 1.3, dasharray: '2 2', markerId: 'arrowhead-trace-link' },
 };
 
 const CHAR_MINUS      = '\u2212';     // −   minus sign
@@ -292,44 +310,62 @@ const useDebounce = (value, delay) => {
 
 // Performance: Memoized node search function
 const createNodeSearchFunction = () => {
-  const scoreFieldMatch = (value, lowerSearchTerm) => {
+  const normalizeRawSearch = (value) => String(value || '').trim().toLowerCase();
+
+  const scoreFieldMatch = (value, lowerSearchTerm, rawSearchTerm) => {
     if (value == null) return 0;
     const text = String(value).trim().toLowerCase();
     if (!text) return 0;
+    const wildcardPrefix = rawSearchTerm.endsWith('*')
+      ? rawSearchTerm.replace(/\*+$/g, '')
+      : '';
+
+    if (wildcardPrefix) {
+      if (text === wildcardPrefix) return 1000;
+      if (text.startsWith(wildcardPrefix)) return 900;
+      if (text.includes(wildcardPrefix)) return 650;
+    }
+
     if (text === lowerSearchTerm) return 1000;
     if (text.startsWith(lowerSearchTerm)) return 800;
     if (text.includes(lowerSearchTerm)) return 500;
     return 0;
   };
 
-  const containsSearchTerm = (value, lowerSearchTerm, depth = 0) => {
+  const containsSearchTerm = (value, lowerSearchTerm, rawSearchTerm, depth = 0) => {
     if (value == null || depth > 3) return false;
 
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-      return String(value).toLowerCase().includes(lowerSearchTerm);
+      const text = String(value).toLowerCase();
+      if (text.includes(lowerSearchTerm)) return true;
+      if (rawSearchTerm.endsWith('*')) {
+        return text.includes(rawSearchTerm.replace(/\*+$/g, ''));
+      }
+      return false;
     }
 
     if (Array.isArray(value)) {
-      return value.some((item) => containsSearchTerm(item, lowerSearchTerm, depth + 1));
+      return value.some((item) => containsSearchTerm(item, lowerSearchTerm, rawSearchTerm, depth + 1));
     }
 
     if (typeof value === 'object') {
-      return Object.entries(value).some(([key, item]) =>
-        String(key || '').toLowerCase().includes(lowerSearchTerm)
-        || containsSearchTerm(item, lowerSearchTerm, depth + 1)
-      );
+      return Object.values(value).some((item) => containsSearchTerm(item, lowerSearchTerm, rawSearchTerm, depth + 1));
     }
 
     return false;
   };
 
   return (nodes, searchTerm) => {
-    if (!searchTerm || searchTerm.length < 2) return nodes;
-
-    const lowerSearchTerm = searchTerm.toLowerCase();
+    const rawSearchTerm = normalizeRawSearch(searchTerm);
+    const lowerSearchTerm = normalizeSearchTerm(searchTerm);
+    if (!lowerSearchTerm || lowerSearchTerm.length < 2) return nodes;
     return nodes
       .map((node) => {
         let score = 0;
+
+        if (isMetadataWrapperNode(node)) {
+          score -= 250;
+        }
 
         const props = node?.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)
           ? node.properties
@@ -348,6 +384,9 @@ const createNodeSearchFunction = () => {
           props.code,
           props.key,
           props.identifier,
+          props.catalogue_id,
+          props.requirement_id,
+          props.requirement_ref,
           props.uuid,
           props.part_number,
           props.product_name,
@@ -360,17 +399,7 @@ const createNodeSearchFunction = () => {
         ];
 
         exactFields.forEach((field) => {
-          score = Math.max(score, scoreFieldMatch(field, lowerSearchTerm));
-        });
-
-        const labels = Array.isArray(node?.labels) ? node.labels : [];
-        labels.forEach((label) => {
-          score = Math.max(score, scoreFieldMatch(label, lowerSearchTerm));
-        });
-
-        const propertyKeys = Object.keys(props);
-        propertyKeys.forEach((key) => {
-          score = Math.max(score, scoreFieldMatch(key, lowerSearchTerm));
+          score = Math.max(score, scoreFieldMatch(field, lowerSearchTerm, rawSearchTerm));
         });
 
         if (node?.properties) {
@@ -380,7 +409,7 @@ const createNodeSearchFunction = () => {
           }
         }
 
-        if (containsSearchTerm(node, lowerSearchTerm)) {
+        if (containsSearchTerm(node, lowerSearchTerm, rawSearchTerm)) {
           score = Math.max(score, 100);
         }
 
@@ -508,33 +537,67 @@ const isIndividualTraversalNode = (node) => {
   return labels.includes('individual');
 };
 
-const isMetadataWrapperNode = (node) => {
-  if (!node) return false;
-  const labels = Array.isArray(node?.labels) ? node.labels.map((label) => String(label || '').toLowerCase()) : [];
-  const type = String(resolveNodeType(node) || '').toLowerCase();
-  const displayName = String(resolveNodeName(node) || '').trim().toLowerCase();
+const hasNodeLabel = (node, expected) => {
+  const labels = Array.isArray(node?.labels) ? node.labels : [];
+  return labels.some((label) => String(label || '').toLowerCase() === String(expected || '').toLowerCase());
+};
 
-  if (labels.some((label) => ['part', 'partversion', 'part_occurrence', 'ontologyclass', 'ontologyproperty'].includes(label))) {
-    return false;
-  }
-
-  if (/^id[\w:-]*$/i.test(displayName) || /^id\d+$/i.test(displayName)) {
-    return true;
-  }
-
-  return [
-    'accessintent',
-    'xmltag',
-    'xmlnode',
-    'metadata',
-    'metadatawrapper',
-    'documentfragment',
-  ].includes(type);
+const isRequirementContextNode = (node) => {
+  const props = node?.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)
+    ? node.properties
+    : node || {};
+  return (
+    hasNodeLabel(node, 'Requirement')
+    || hasNodeLabel(node, 'RequirementRevision')
+    || hasNodeLabel(node, 'GeneralRelation')
+    || Boolean(props.catalogue_id)
+    || Boolean(props.requirement_id)
+    || Boolean(props.requirement_ref)
+  );
 };
 
 const getRelationshipVisual = (relationshipType) => {
-  const key = String(relationshipType || '').toUpperCase();
+  const key = normalizeRelationshipType(relationshipType);
   return RELATIONSHIP_THEME[key] || RELATIONSHIP_THEME.generic;
+};
+
+const RELATIONSHIP_DISPLAY_NAMES = {
+  MASTER_REFERENCE: 'Master Reference',
+  MASTERREF: 'Master Reference',
+  MASTER_REF: 'Master Reference',
+  RELATED_REFERENCE: 'Related Reference',
+  RELATEDREFS: 'Related Reference',
+  RELATEDREF: 'Related Reference',
+  PART_REFERENCE: 'Part Reference',
+  PART_REF: 'Part Reference',
+  PARTREF: 'Part Reference',
+  OCCURRENCE_REFERENCE: 'Occurrence Reference',
+  OCCURRENCE_REF: 'Occurrence Reference',
+  OCCURRENCEREFS: 'Occurrence References',
+  INSTANCE_REFERENCE: 'Instance Reference',
+  INSTANCEDREF: 'Instance Reference',
+  INSTANCEREFS: 'Instance References',
+  HAS_CHILD_INSTANCE: 'Contains Instance',
+  HAS_PARENT_INSTANCE: 'Contained In Instance',
+  PARENT_REFERENCE: 'Parent Reference',
+  PARENTREF: 'Parent Reference',
+  SATISFIES: 'Satisfies',
+  SEG0SATISFY: 'Satisfies',
+  GENERAL_RELATION: 'General Relation',
+  GENERALRELATION: 'General Relation',
+  TRACE_LINK: 'Trace Link',
+  TRACE: 'Trace Link',
+};
+
+const getRelationshipDisplayName = (relationship) => {
+  const rawType = String(
+    typeof relationship === 'string'
+      ? relationship
+      : (relationship?.type || relationship?.properties?.type || '')
+  ).trim();
+  const normalized = normalizeRelationshipType(rawType);
+  if (relationship?.properties?.collapsed) return 'Trace Link';
+  return RELATIONSHIP_DISPLAY_NAMES[normalized] || RELATIONSHIP_DISPLAY_NAMES[rawType] || rawType || 'Relationship';
 };
 
 const getLinkEndpointId = (endpoint) => {
@@ -552,96 +615,7 @@ const getNodeCollisionRadius = (node, showLabels) => {
   return base + Math.max(10, Math.round(displayLength * 2.1));
 };
 
-export const normalizeGraphDataset = (payload) => {
-  if (!payload) {
-    return { nodes: [], links: [] };
-  }
-
-  if (Array.isArray(payload.nodes) && (Array.isArray(payload.relationships) || Array.isArray(payload.links))) {
-    const rawRelationships = Array.isArray(payload.relationships) ? payload.relationships : payload.links;
-    const nodes = payload.nodes
-      .filter((node) => node?.elementId && !isMetadataWrapperNode(node))
-      .map((node) => ({
-        ...(node.properties || {}),
-        elementId: node.elementId,
-        labels: node.labels || ['Node'],
-        label: node.labels?.[0] || 'Node',
-        properties: node.properties || {},
-        can_traverse: node.can_traverse,
-      }));
-
-    const nodeIds = new Set(nodes.map((node) => node.elementId));
-    const links = rawRelationships
-      .filter((rel) => {
-        const sourceId = rel?.start ?? getLinkEndpointId(rel?.source);
-        const targetId = rel?.end ?? getLinkEndpointId(rel?.target);
-        return rel?.elementId && nodeIds.has(sourceId) && nodeIds.has(targetId);
-      })
-      .map((rel) => ({
-        elementId: rel.elementId,
-        source: rel.start ?? getLinkEndpointId(rel.source),
-        target: rel.end ?? getLinkEndpointId(rel.target),
-        type: rel.type,
-        properties: rel.properties || {},
-      }));
-
-    return { nodes, links };
-  }
-
-  if (Array.isArray(payload.results)) {
-    const nodesMap = new Map();
-    const rawLinks = new Map();
-
-    payload.results.forEach((record) => {
-      const n = record.n;
-      const r = record.r;
-      const m = record.m;
-
-      if (n?.elementId && !nodesMap.has(n.elementId)) {
-        nodesMap.set(n.elementId, {
-          ...(n.properties || {}),
-          elementId: n.elementId,
-          labels: n.labels || ['Node'],
-          label: n.labels?.[0] || 'Node',
-          properties: n.properties || {},
-          can_traverse: n.can_traverse,
-        });
-      }
-
-      if (m?.elementId && !nodesMap.has(m.elementId)) {
-        nodesMap.set(m.elementId, {
-          ...(m.properties || {}),
-          elementId: m.elementId,
-          labels: m.labels || ['Node'],
-          label: m.labels?.[0] || 'Node',
-          properties: m.properties || {},
-          can_traverse: m.can_traverse,
-        });
-      }
-
-      if (r?.elementId && !rawLinks.has(r.elementId)) {
-        rawLinks.set(r.elementId, {
-          elementId: r.elementId,
-          source: r.start,
-          target: r.end,
-          type: r.type,
-          properties: r.properties || {},
-        });
-      }
-    });
-
-    const nodes = Array.from(nodesMap.values());
-    const nodeIds = new Set(nodes.map((node) => node.elementId));
-    const links = Array.from(rawLinks.values()).filter((link) => {
-      const sourceId = getLinkEndpointId(link.source);
-      const targetId = getLinkEndpointId(link.target);
-      return nodeIds.has(sourceId) && nodeIds.has(targetId);
-    });
-    return { nodes, links };
-  }
-
-  return { nodes: [], links: [] };
-};
+export const normalizeGraphDataset = (payload, options) => normalizeGraphDatasetShared(payload, options);
 
 const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTab, setVisibleRelationships, chatResults }) => {
   const svgRef = useRef();
@@ -652,6 +626,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
 
   const simulationRef = useRef(null);
   const gRef = useRef(null); // Ref for the main D3 group element
+  const zoomBehaviorRef = useRef(null);
   const tickFrameRef = useRef(null);
   const activeTooltipNodeRef = useRef(null); // Track which node/link the tooltip is showing for
   const timeoutsRef = useRef(new Set()); // Track active timeouts for cleanup
@@ -838,7 +813,19 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       : { part_name: normalizedName, node_id: context.nodeId, scope };
 
     apiClient.post(buildUrl(endpoint), body)
-      .then(resp => setRecPanel(prev => ({ ...prev, loading: false, result: resp.data })))
+      .then(resp => {
+        const payload = resp.data;
+        const hasVisibleResult = payload && (
+          (Array.isArray(payload) && payload.length > 0) ||
+          (typeof payload === 'object' && Object.keys(payload).length > 0)
+        );
+        setRecPanel(prev => ({
+          ...prev,
+          loading: false,
+          result: hasVisibleResult ? payload : null,
+          error: hasVisibleResult ? '' : 'No recommendation data returned for this selection.',
+        }));
+      })
       .catch(err => setRecPanel(prev => ({
         ...prev,
         loading: false,
@@ -925,7 +912,9 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
 
         startTransition(() => {
           setSearchResultData({ nodes, links });
-              setFilteredData({ nodes, links });
+          if (!graphSearchActiveRef.current) {
+            setFilteredData({ nodes, links });
+          }
           syncSharedSearchResults(nodes);
         });
       } catch (err) {
@@ -1082,6 +1071,8 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       setSearchQuery('');
       setSearchInput('');
       setSearchResultData({ nodes: [], links: [] });
+      setContextualSearchResults([]);
+      setHighlightedNodeIds(new Set());
       setActiveSearchResultId(null);
     }
     if (resetExpansion) {
@@ -1126,11 +1117,19 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   }, [resetGraphSelectionState, setData]);
   // Search result state: stores raw search results and active selection
   const [searchResultData, setSearchResultData] = useState({ nodes: [], links: [] });
+  const [, setContextualSearchResults] = useState([]);
+  const [highlightedNodeIds, setHighlightedNodeIds] = useState(new Set());
   const [activeSearchResultId, setActiveSearchResultId] = useState(null);
+  const [contextualRootNodeId, setContextualRootNodeId] = useState(null);
+  const filteredDataRef = useRef(filteredData);
+  const searchResultDataRef = useRef(searchResultData);
+  const highlightedNodeIdsRef = useRef(highlightedNodeIds);
   const activeSearchResultIdRef = useRef(null);
+  const contextualRootNodeIdRef = useRef(null);
   const searchModeRef = useRef(false);
   const expandedNodesRef = useRef(new Set());
   const nodeExpansionsRef = useRef(new Map());
+  const contextualSearchRequestIdRef = useRef(0);
   // ── Graph View Mode: 'ontology' = Ontology Graph Visualization, 'individual' = Contextual Individual Graph View
   const [graphViewMode, setGraphViewMode] = useState('ontology');
   const graphViewModeRef = useRef('ontology');
@@ -1154,21 +1153,48 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const [stepPartsError, setStepPartsError] = useState(null);
   // Performance: Debounced search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300); // 300ms delay
+  const debouncedSearchQueryRef = useRef(debouncedSearchQuery);
+  const searchInputRef = useRef(searchInput);
+  const submitSearchQuery = useCallback((queryOverride) => {
+    const nextQuery = typeof queryOverride === 'string' ? queryOverride : searchInputRef.current;
+    setSearchQuery(normalizeSearchTerm(nextQuery));
+  }, []);
   // Performance: Memoized search function
   const nodeSearchFunction = useMemo(() => createNodeSearchFunction(), []);
   const graphSearchActive = useMemo(
-    () => Boolean(searchQuery || searchLoading || debouncedSearchQuery),
-    [searchQuery, searchLoading, debouncedSearchQuery]
+    () => Boolean(searchQuery || debouncedSearchQuery),
+    [searchQuery, debouncedSearchQuery]
   );
-  const activeGraphDataset = useMemo(() => {
-    if (filteredData?.nodes?.length > 0) {
+  const graphSearchActiveRef = useRef(graphSearchActive);
+  const isOntologyGraphMode = graphViewMode === 'ontology' && selectedOntology !== 'ALL';
+  const isFullGraphMode = graphViewMode === 'ontology' && selectedOntology === 'ALL';
+  const activeDisplayData = useMemo(() => {
+    if (graphViewMode === 'individual') {
       return filteredData;
+    }
+
+    if (graphSearchActive) {
+      return searchResultData?.nodes?.length > 0
+        ? searchResultData
+        : { nodes: [], links: [] };
+    }
+
+    return graphData?.nodes?.length || graphData?.links?.length
+      ? graphData
+      : filteredData;
+  }, [filteredData, graphData, graphSearchActive, graphViewMode, searchResultData]);
+  const activeGraphDataset = useMemo(() => {
+    if (graphViewMode === 'individual') {
+      return filteredData?.nodes?.length > 0 ? filteredData : { nodes: [], links: [] };
+    }
+    if (activeDisplayData?.nodes?.length > 0) {
+      return activeDisplayData;
     }
     if (graphSearchActive) {
       return { nodes: [], links: [] };
     }
     return graphData;
-  }, [filteredData, graphData, graphSearchActive]);
+  }, [activeDisplayData, filteredData, graphData, graphSearchActive, graphViewMode]);
   const ontologySliceSummary = useMemo(() => {
     if (graphViewMode !== 'ontology' || selectedOntology === 'ALL') {
       return null;
@@ -1180,7 +1206,22 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       return null;
     }
 
-    const relationshipOrder = ['SUBCLASS_OF', 'DOMAIN', 'RANGE', 'SUBPROPERTY_OF', 'EQUIVALENT_CLASS', 'DISJOINT_WITH'];
+    const relationshipOrder = [
+      'SUBCLASS_OF',
+      'DOMAIN',
+      'RANGE',
+      'SUBPROPERTY_OF',
+      'EQUIVALENT_CLASS',
+      'DISJOINT_WITH',
+      'MASTER_REFERENCE',
+      'RELATED_REFERENCE',
+      'PART_REFERENCE',
+      'INSTANCE_REFERENCE',
+      'PARENT_REFERENCE',
+      'SATISFIES',
+      'GENERAL_RELATION',
+      'TRACE_LINK',
+    ];
     const relationshipCounts = links.reduce((acc, link) => {
       const type = safeString(link?.type, 'RELATED_TO');
       acc[type] = (acc[type] || 0) + 1;
@@ -1216,12 +1257,8 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     };
   }, [activeGraphDataset, graphViewMode, selectedOntology]);
 
-  const visibleSearchNodes = useMemo(() => {
-    return searchResultData.nodes || [];
-  }, [searchResultData.nodes]);
-
   const findBestSearchMatchId = useCallback((nodes, query) => {
-    const term = (query || '').trim().toLowerCase();
+    const term = normalizeSearchTerm(query);
     if (!term || !Array.isArray(nodes) || nodes.length === 0) return null;
 
     const pickField = (node, fields) => {
@@ -1236,11 +1273,11 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       return 0;
     };
 
-    const candidates = nodes.map((node) => ({
+      const candidates = nodes.map((node) => ({
       id: node.elementId,
       score: Math.max(
         pickField(node, ['elementId']),
-        pickField(node, ['id', 'uid', 'instance_id', 'identifier']),
+        pickField(node, ['id', 'uid', 'instance_id', 'identifier', 'catalogue_id', 'requirement_id', 'requirement_ref']),
         pickField(node, ['name', 'title', 'label', 'display_name', 'displayName', 'code']),
         pickField(node, ['source_filename', 'filename', 'file_name', 'file']),
         pickField(node, ['external_id', 'externalId', 'href', 'idref'])
@@ -1250,6 +1287,45 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     candidates.sort((a, b) => b.score - a.score);
     return candidates[0]?.id || nodes[0]?.elementId || null;
   }, []);
+
+  const findPreferredContextualRootId = useCallback((nodes, query) => {
+    const term = normalizeSearchTerm(query);
+    if (!Array.isArray(nodes) || nodes.length === 0) return null;
+
+    const getValue = (node, keys) => {
+      for (const key of keys) {
+        const value = node?.properties?.[key] ?? node?.[key];
+        const text = String(value ?? '').trim();
+        if (text) return text;
+      }
+      return '';
+    };
+
+    const scored = nodes.map((node) => {
+      const baseScore = Number(findBestSearchMatchId([node], query) ? 1 : 0);
+      const catalogueId = getValue(node, ['catalogue_id', 'requirement_id', 'requirement_ref']).toLowerCase();
+      const isRequirementRevision = hasNodeLabel(node, 'RequirementRevision');
+      const isRequirement = hasNodeLabel(node, 'Requirement');
+      const isGeneralRelation = hasNodeLabel(node, 'GeneralRelation');
+
+      let contextualBonus = 0;
+      if (term.startsWith('req')) {
+        if (catalogueId.startsWith(term)) contextualBonus += 2000;
+        if (isRequirementRevision) contextualBonus += 400;
+        else if (isRequirement) contextualBonus += 250;
+      }
+
+      if (isGeneralRelation) contextualBonus -= 300;
+
+      return {
+        id: node?.elementId,
+        score: contextualBonus + baseScore,
+      };
+    }).filter((entry) => entry.id);
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored[0]?.id || findBestSearchMatchId(nodes, query) || nodes[0]?.elementId || null;
+  }, [findBestSearchMatchId]);
 
   const syncSharedSearchResults = useCallback((nodes, { clear = false, force = false } = {}) => {
     if (!setSearchResults) return;
@@ -1263,8 +1339,76 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     setSearchResults(nodes);
   }, [setSearchResults, graphSearchActive]);
 
+  const clearExpansionState = useCallback(() => {
+    const clearedExpanded = new Set();
+    const clearedExpansions = new Map();
+    setExpandedNodes(clearedExpanded);
+    setNodeExpansions(clearedExpansions);
+    setTreeExpandedNodes(new Set());
+    setLoadingNodes(new Set());
+    expandedNodesRef.current = clearedExpanded;
+    nodeExpansionsRef.current = clearedExpansions;
+  }, []);
+
+  const syncContextualHighlights = useCallback((query, nodesOverride = null) => {
+    const sourceNodes = Array.isArray(nodesOverride)
+      ? nodesOverride
+      : (filteredDataRef.current?.nodes || []);
+    const matches = query ? nodeSearchFunction(sourceNodes, query) : [];
+    setHighlightedNodeIds(new Set(matches.map((node) => node.elementId)));
+  }, [nodeSearchFunction]);
+
+  const resolveSearchBaseDataset = useCallback(() => {
+    if (graphViewModeRef.current === 'individual') {
+      return filteredDataRef.current?.nodes?.length ? filteredDataRef.current : { nodes: [], links: [] };
+    }
+
+    if (selectedOntologyRef.current && selectedOntologyRef.current !== 'ALL') {
+      return filteredDataRef.current?.nodes?.length
+        ? filteredDataRef.current
+        : (graphData.nodes?.length ? graphData : { nodes: [], links: [] });
+    }
+
+    if (initialData?.nodes?.length) return initialData;
+    if (graphData.nodes?.length) return graphData;
+    return { nodes: [], links: [] };
+  }, [graphData, initialData]);
+
+  const buildSearchResultSlice = useCallback((baseData, query, mode = 'broader') => {
+    const safeBase = baseData?.nodes?.length || baseData?.links?.length
+      ? baseData
+      : { nodes: [], links: [] };
+    const matchedNodes = nodeSearchFunction(
+      (safeBase.nodes || []).filter((node) => !isMetadataWrapperNode(node)),
+      query
+    );
+    const selectedNodes = mode === 'best'
+      ? matchedNodes.slice(0, 1)
+      : matchedNodes.slice(0, 80);
+    const selectedNodeIds = new Set(selectedNodes.map((node) => node.elementId));
+    const selectedLinks = (safeBase.links || []).filter((link) => {
+      const sourceId = getLinkEndpointId(link.source);
+      const targetId = getLinkEndpointId(link.target);
+      return selectedNodeIds.has(sourceId) || selectedNodeIds.has(targetId);
+    });
+    const contextualNodeIds = new Set(selectedNodeIds);
+    selectedLinks.forEach((link) => {
+      const sourceId = getLinkEndpointId(link.source);
+      const targetId = getLinkEndpointId(link.target);
+      if (sourceId) contextualNodeIds.add(sourceId);
+      if (targetId) contextualNodeIds.add(targetId);
+    });
+    const contextualNodes = (safeBase.nodes || []).filter((node) => contextualNodeIds.has(node.elementId));
+
+    return {
+      nodes: contextualNodes,
+      links: selectedLinks,
+    };
+  }, [nodeSearchFunction]);
+
   const commitGraphSlice = useCallback((nextData, options = {}) => {
     const {
+      updateFilteredData = true,
       updateGraphData = false,
       updateFullDataset = false,
       updateSearchResultData = false,
@@ -1275,11 +1419,34 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       forceSearchResults = false,
     } = options;
 
-    setFilteredData(nextData);
-    setData(nextData);
-    if (updateGraphData) setGraphData(nextData);
-    if (updateFullDataset) setFullDataset(nextData);
-    if (updateSearchResultData) setSearchResultData(nextData);
+    const normalizedSlice = deduplicateNodesAndLinks(nextData?.nodes || [], nextData?.links || []);
+    const validatedSlice = validateConnectivity(normalizedSlice);
+    const connectedNodeIds = new Set();
+    (normalizedSlice.links || []).forEach((link) => {
+      const sourceId = getLinkEndpointId(link.source);
+      const targetId = getLinkEndpointId(link.target);
+      if (sourceId) connectedNodeIds.add(sourceId);
+      if (targetId) connectedNodeIds.add(targetId);
+    });
+    const prunedSlice = (normalizedSlice.links || []).length > 0
+      ? {
+          nodes: (normalizedSlice.nodes || []).filter((node) => connectedNodeIds.has(node.elementId)),
+          links: (normalizedSlice.links || []).filter((link) => {
+            const sourceId = getLinkEndpointId(link.source);
+            const targetId = getLinkEndpointId(link.target);
+            return connectedNodeIds.has(sourceId) && connectedNodeIds.has(targetId);
+          }),
+        }
+      : normalizedSlice;
+    if (validatedSlice.orphanNodeIds.length > 0 && isDevelopment) {
+      performanceWarn('[GRAPH] commitGraphSlice orphan nodes detected:', validatedSlice.orphanNodeIds);
+    }
+
+    if (updateFilteredData) setFilteredData(prunedSlice);
+    setData(prunedSlice);
+    if (updateGraphData) setGraphData(prunedSlice);
+    if (updateFullDataset) setFullDataset(prunedSlice);
+    if (updateSearchResultData) setSearchResultData(prunedSlice);
 
     if (clearActiveSearchId) {
       setActiveSearchResultId(null);
@@ -1294,9 +1461,162 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     }
 
     if (syncResults) {
-      syncSharedSearchResults(nextData.nodes || [], { force: forceSearchResults });
+      syncSharedSearchResults(prunedSlice.nodes || [], { force: forceSearchResults });
     }
   }, [setData, syncSharedSearchResults]);
+
+  const loadContextualRootGraph = useCallback(async (nodeId, { preserveSearch = true } = {}) => {
+    if (!nodeId) return;
+
+    setSearchLoading(true);
+    try {
+      const candidateNodes = [
+        ...(searchResultDataRef.current?.nodes || []),
+        ...(filteredDataRef.current?.nodes || []),
+      ];
+      const selectedNode = candidateNodes.find((node) => node?.elementId === nodeId) || null;
+      const semanticRequirementRoot = isRequirementContextNode(selectedNode);
+      const traversalDepth = 1;
+      const response = await graphApi.getTraversal(nodeId, traversalDepth);
+      const traversalData = normalizeGraphDataset(response.data, { collapseHiddenBridges: semanticRequirementRoot });
+      const rootedData = semanticRequirementRoot
+        ? traversalData
+        : getOneHopNeighborhood(traversalData, nodeId);
+
+      clearExpansionState();
+      setContextualRootNodeId(nodeId);
+      setContextualSearchResults([]);
+      commitGraphSlice(rootedData, {
+        updateFilteredData: true,
+        updateGraphData: false,
+        updateFullDataset: false,
+        updateSearchResultData: true,
+        nextActiveSearchId: nodeId,
+        resetCenteredSearch: true,
+        syncResults: preserveSearch,
+        forceSearchResults: preserveSearch,
+      });
+
+      if (preserveSearch) {
+        syncContextualHighlights(debouncedSearchQueryRef.current, rootedData.nodes);
+        syncSharedSearchResults(rootedData.nodes || [], { force: true });
+      } else {
+        setSearchQuery('');
+        setSearchInput('');
+        setHighlightedNodeIds(new Set());
+      }
+    } catch (loadError) {
+      logger.error('[CONTEXTUAL SEARCH] Failed to load selected root graph:', loadError);
+    } finally {
+      setSearchLoading(false);
+    }
+  }, [clearExpansionState, commitGraphSlice, syncContextualHighlights, syncSharedSearchResults]);
+
+  const selectRichContextualRootId = useCallback(async (matches, query, requestId) => {
+    const dedupedMatches = (matches || []).filter((node, index, array) => (
+      node?.elementId && array.findIndex((entry) => entry.elementId === node.elementId) === index
+    ));
+
+    if (dedupedMatches.length <= 1) {
+      return dedupedMatches[0]?.elementId || null;
+    }
+
+    const probeCandidates = dedupedMatches.slice(0, 24);
+    const scoredCandidates = await Promise.all(probeCandidates.map(async (candidate) => {
+      if (requestId !== contextualSearchRequestIdRef.current) return null;
+
+      try {
+        const response = await graphApi.getTraversal(candidate.elementId, 2);
+        const traversalData = normalizeGraphDataset(response.data, { collapseHiddenBridges: true });
+        const nodes = traversalData.nodes || [];
+        const links = traversalData.links || [];
+        const nodeLabelCount = new Set((nodes || []).flatMap((node) => Array.isArray(node?.labels) ? node.labels : [])).size;
+        const relTypeCount = new Set((links || []).map((link) => String(link.type || '').trim()).filter(Boolean)).size;
+        const businessNodeCount = (nodes || []).filter((node) => !isMetadataWrapperNode(node)).length;
+        const richTraceCount = (links || []).filter((link) => String(link?.properties?.collapsed || '') !== 'true').length;
+        const score =
+          (businessNodeCount * 100) +
+          (links.length * 35) +
+          (nodeLabelCount * 15) +
+          (relTypeCount * 20) +
+          (richTraceCount * 10);
+
+        return { id: candidate.elementId, score };
+      } catch (error) {
+        logger.warn('[CONTEXTUAL SEARCH] Root richness probe failed for candidate:', candidate?.elementId, error?.message || error);
+        return { id: candidate.elementId, score: -1 };
+      }
+    }));
+
+    const ranked = scoredCandidates.filter(Boolean).sort((a, b) => b.score - a.score);
+    const bestRichRoot = ranked[0]?.id;
+    return bestRichRoot || findPreferredContextualRootId(dedupedMatches, query);
+  }, [findPreferredContextualRootId]);
+
+  const loadContextualSearchMatch = useCallback(async (matches, query, requestId, sourceGraph = null) => {
+    const dedupedMatches = matches.filter((node, index, array) => (
+      array.findIndex((entry) => entry.elementId === node.elementId) === index
+    ));
+    const bestMatchId = (
+      await selectRichContextualRootId(dedupedMatches, query, requestId)
+    ) || findPreferredContextualRootId(dedupedMatches, query) || dedupedMatches[0]?.elementId || null;
+
+    if (!bestMatchId) {
+      setContextualSearchResults([]);
+      setHighlightedNodeIds(new Set());
+      setSearchLoading(false);
+      return;
+    }
+
+    if (requestId !== contextualSearchRequestIdRef.current) {
+      return;
+    }
+
+    setContextualSearchResults([]);
+    if (searchResultMode !== 'best') {
+      clearExpansionState();
+      setContextualRootNodeId(bestMatchId);
+      const connectedSlice = buildSearchResultSlice(
+        sourceGraph || { nodes: dedupedMatches, links: [] },
+        query,
+        'broader'
+      );
+      commitGraphSlice(connectedSlice, {
+        updateFilteredData: true,
+        updateSearchResultData: true,
+        nextActiveSearchId: bestMatchId,
+        resetCenteredSearch: true,
+        syncResults: true,
+        forceSearchResults: true,
+      });
+      syncContextualHighlights(query, connectedSlice.nodes);
+      syncSharedSearchResults(connectedSlice.nodes || [], { force: true });
+      setSearchLoading(false);
+      return;
+    }
+    await loadContextualRootGraph(bestMatchId, { preserveSearch: true });
+  }, [buildSearchResultSlice, clearExpansionState, commitGraphSlice, findPreferredContextualRootId, loadContextualRootGraph, searchResultMode, selectRichContextualRootId, syncContextualHighlights, syncSharedSearchResults]);
+
+  const resolveContextualEntryNodeId = useCallback((queryOverride = '') => {
+    const queryTerm = normalizeSearchTerm(queryOverride || debouncedSearchQueryRef.current || searchInput || searchQuery);
+    const candidateMap = new Map();
+
+    [...(searchResultDataRef.current?.nodes || []), ...(filteredDataRef.current?.nodes || [])]
+      .filter((node) => (
+        node?.elementId
+        && !isMetadataWrapperNode(node)
+        && !isSchemaTerminalNode(node)
+      ))
+      .forEach((node) => {
+        if (!candidateMap.has(node.elementId)) {
+          candidateMap.set(node.elementId, node);
+        }
+      });
+
+    const candidates = Array.from(candidateMap.values());
+    if (candidates.length === 0) return null;
+    return findBestSearchMatchId(candidates, queryTerm) || candidates[0]?.elementId || null;
+  }, [findBestSearchMatchId, searchInput, searchQuery]);
 
   const preferredOntologyValue = useMemo(() => {
     if (selectedOntology && selectedOntology !== 'ALL') return selectedOntology;
@@ -1309,11 +1629,40 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     activeSearchResultIdRef.current = activeSearchResultId;
   }, [activeSearchResultId]);
   useEffect(() => {
+    contextualRootNodeIdRef.current = contextualRootNodeId;
+  }, [contextualRootNodeId]);
+  useEffect(() => {
+    filteredDataRef.current = filteredData;
+  }, [filteredData]);
+  useEffect(() => {
+    searchResultDataRef.current = searchResultData;
+  }, [searchResultData]);
+  useEffect(() => {
+    highlightedNodeIdsRef.current = highlightedNodeIds;
+  }, [highlightedNodeIds]);
+  useEffect(() => {
     expandedNodesRef.current = expandedNodes;
   }, [expandedNodes]);
   useEffect(() => {
     nodeExpansionsRef.current = nodeExpansions;
   }, [nodeExpansions]);
+  useEffect(() => {
+    searchInputRef.current = searchInput;
+  }, [searchInput]);
+  useEffect(() => {
+    debouncedSearchQueryRef.current = debouncedSearchQuery;
+  }, [debouncedSearchQuery]);
+  useEffect(() => {
+    graphSearchActiveRef.current = graphSearchActive;
+  }, [graphSearchActive]);
+  const getCurrentGraphSlice = useCallback(() => {
+    if (graphViewModeRef.current === 'individual') {
+      return filteredDataRef.current;
+    }
+    return graphSearchActiveRef.current && (searchResultDataRef.current.nodes?.length || 0) > 0
+      ? searchResultDataRef.current
+      : filteredDataRef.current;
+  }, []);
 
   // Performance: Memoized color mapping - GENERIC VERSION
   const getNodeColor = useCallback((nodeLike) => {
@@ -1471,10 +1820,13 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     const debugNodes = Array.from(incomingConnections.entries()).slice(0, 5);
     performanceLog('Sample incoming connections:', debugNodes);
 
-    // Find potential root nodes - handle expanded datasets better
+    // Find potential root nodes - handle expanded datasets better.
+    // Contextual instance view should stay anchored to the graph topology
+    // instead of re-rooting around search hits or expansion state.
     let roots;
+    const isContextualInstanceView = graphViewModeRef.current === 'individual';
 
-    if (expandedNodesRef.current.size > 0) {
+    if (!isContextualInstanceView && expandedNodesRef.current.size > 0) {
       // When we have expanded nodes, first try to find the originally expanded nodes as roots
       const expandedNodeIds = Array.from(expandedNodesRef.current);
       roots = nodes.filter(node => expandedNodeIds.includes(node.elementId));
@@ -1618,8 +1970,9 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
       }
     });
 
-    // For expansions, reorganize hierarchy to ensure proper parent-child relationships without duplicates
-    if (expandedNodesRef.current.size > 0 && hierarchy.length > 0) {
+    // For expansions, reorganize hierarchy to ensure proper parent-child relationships without duplicates.
+    // Skip this in contextual instance view so search focus does not get promoted to a new tree root.
+    if (!isContextualInstanceView && expandedNodesRef.current.size > 0 && hierarchy.length > 0) {
       logger.render(`[Hierarchy] Reorganizing ${hierarchy.length} trees for ${expandedNodesRef.current.size} expanded nodes`);
 
       // Collect all nodes from current hierarchy to avoid duplicates
@@ -1788,8 +2141,20 @@ const getPrimaryNodeLabel = useCallback((d) => {
     props.uuid ??
     null;
 
-  if (displayValue == null || String(displayValue).trim() === '') return '';
-  return String(displayValue);
+  if (displayValue != null && String(displayValue).trim() !== '') {
+    return String(displayValue);
+  }
+
+  const semanticFallback =
+    resolveNodeName(d) ||
+    props.label ||
+    d.label ||
+    d.labels?.[0] ||
+    props.entity_type ||
+    d.entity_type ||
+    '';
+
+  return String(semanticFallback).trim();
 }, []);
 
 
@@ -2823,6 +3188,13 @@ const getPrimaryNodeLabel = useCallback((d) => {
     d.fy = null;
   }, []);
 
+  const handleZoom = useCallback(({ transform }) => {
+    userInteractedWithGraphRef.current = true;
+    if (gRef.current) {
+      gRef.current.attr('transform', transform);
+    }
+  }, []);
+
   // Performance: Optimized data fetching with caching and error handling
   useEffect(() => {
     let cancelled = false;
@@ -2915,6 +3287,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           previousConnected === false &&
           graphData.nodes.length === 0 &&
           !searchQuery &&
+          !graphSearchActiveRef.current &&
           !userInteractedWithGraphRef.current &&
           graphViewModeRef.current === 'ontology' &&
           selectedOntologyRef.current === 'ALL'
@@ -2949,81 +3322,94 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
   // Performance: Optimized search with debouncing and caching
   useEffect(() => {
+    const isContextualQuery = graphViewModeRef.current === 'individual';
+
     if (!debouncedSearchQuery) {
       searchModeRef.current = false;
-      // Only reset if no nodes are currently expanded
-      if (expandedNodesRef.current.size === 0) {
-        // Reset to current data when search is cleared
-        // Use filteredData if it has more nodes than graphData (indicating expanded state)
-        const currentData = filteredData.nodes.length > graphData.nodes.length ? filteredData : graphData;
-        setFilteredData(currentData);
-        // Reset search results for other components
-          if (!searchModeRef.current) syncSharedSearchResults(currentData.nodes);
-      }
-      setActiveSearchResultId(null);
       setSearchLoading(false);
+      setContextualSearchResults([]);
+      setHighlightedNodeIds(new Set());
+
+      if (isContextualQuery) {
+        setSearchResultData({ nodes: [], links: [] });
+        return;
+      }
+      const baseData = resolveSearchBaseDataset();
+      setSearchResultData({ nodes: [], links: [] });
+      syncSharedSearchResults(baseData.nodes || []);
+      setActiveSearchResultId(null);
       return;
     }
 
     // Cancel previous in-flight search request to prevent race conditions
     const abortController = new AbortController();
 
+    if (isContextualQuery) {
+      const requestId = ++contextualSearchRequestIdRef.current;
+      searchModeRef.current = true;
+      setSearchLoading(true);
+      syncContextualHighlights(debouncedSearchQuery);
+      syncSharedSearchResults([], { clear: true });
+
+      const performContextualSearch = async () => {
+        try {
+          const ontologyPrefix = resolveOntologySearchPrefix(selectedOntologyRef.current);
+          const response = await graphApi.getContextualSubgraph({
+            search: debouncedSearchQuery,
+            // Keep the backend search broad and object-centric; root context is
+            // chosen client-side from the returned matches so it is based on
+            // actual Neo4j hits instead of a premature server-side root guess.
+            limit: 24,
+            ...(ontologyPrefix ? { ontology_prefix: ontologyPrefix } : {}),
+            search_mode: 'broader',
+            expand_neighbors: false,
+          }, abortController.signal);
+
+          if (requestId !== contextualSearchRequestIdRef.current) {
+            return;
+          }
+
+          const normalized = normalizeGraphDataset(response.data);
+          const candidateNodes = normalized.nodes.filter((node) => (
+            node?.elementId
+            && !isMetadataWrapperNode(node)
+            && !isSchemaTerminalNode(node)
+          ));
+          const rankedMatches = nodeSearchFunction(candidateNodes, debouncedSearchQuery);
+          await loadContextualSearchMatch(rankedMatches, debouncedSearchQuery, requestId, normalized);
+        } catch (err) {
+          if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+          logger.error('[CONTEXTUAL SEARCH] Error:', err);
+          const visibleMatches = nodeSearchFunction(filteredDataRef.current?.nodes || [], debouncedSearchQuery);
+          if (requestId === contextualSearchRequestIdRef.current) {
+            await loadContextualSearchMatch(visibleMatches, debouncedSearchQuery, requestId, filteredDataRef.current);
+          }
+        }
+      };
+
+      performContextualSearch();
+      return () => abortController.abort();
+    }
+
     const performSearch = async () => {
       performanceLog('[SEARCH] Starting search for:', debouncedSearchQuery);
       searchModeRef.current = true;
       setSearchLoading(true);
-      // Each search should start from a clean expansion slate so stale expand/collapse
-      // state from a previous query cannot leak into the new result slice.
-      resetGraphSelectionState({
-        resetOntology: false,
-        resetStepPart: false,
-        resetSearch: false,
-        resetExpansion: true,
-        resetInteraction: false,
-      });
       setLoadingNodes(new Set());
       syncSharedSearchResults([], { clear: true });
       startTransition(() => {
-        setFilteredData({ nodes: [], links: [] });
         setSearchResultData({ nodes: [], links: [] });
         setActiveSearchResultId(null);
       });
+      const baseData = resolveSearchBaseDataset();
 
       try {
-        const isContextualQuery = graphViewModeRef.current === 'individual';
-        const isOntologyViewQuery = graphViewModeRef.current === 'ontology';
-        const ontologyPrefix = resolveOntologySearchPrefix(selectedOntologyRef.current);
-        let normalized;
-
-        if (isOntologyViewQuery) {
-          const searchData = fullDataset.nodes.length > 0 ? fullDataset : graphData;
-          const matchedNodes = nodeSearchFunction(searchData.nodes, debouncedSearchQuery);
-          const selectedNodes = searchResultMode === 'best' ? matchedNodes.slice(0, 1) : matchedNodes;
-          const selectedNodeIds = new Set(selectedNodes.map((node) => node.elementId));
-          const selectedLinks = searchData.links.filter((link) => {
-            const sourceId = getLinkEndpointId(link.source);
-            const targetId = getLinkEndpointId(link.target);
-            return selectedNodeIds.has(sourceId) && selectedNodeIds.has(targetId);
-          });
-          normalized = { nodes: selectedNodes, links: selectedLinks };
-        } else {
-          const response = await apiClient.get(API.graph.contextualSubgraph, {
-            params: {
-              search: debouncedSearchQuery.toLowerCase(),
-              limit: 280,
-              ...(ontologyPrefix ? { ontology_prefix: ontologyPrefix } : {}),
-              search_mode: searchResultMode,
-              expand_neighbors: false,
-            },
-            signal: abortController.signal,
-          });
-          normalized = normalizeGraphDataset(response.data);
-        }
+        const normalized = buildSearchResultSlice(baseData, debouncedSearchQuery, searchResultMode);
 
         performanceLog(
           '[SEARCH] Search API response:',
           normalized.nodes.length,
-          isOntologyViewQuery ? 'ontology view nodes' : (isContextualQuery ? 'contextual nodes' : 'focused nodes')
+          isOntologyGraphMode ? 'ontology view nodes' : (isFullGraphMode ? 'full graph nodes' : 'focused nodes')
         );
 
         const searchAnchorId = findBestSearchMatchId(normalized.nodes, debouncedSearchQuery);
@@ -3046,35 +3432,6 @@ const getPrimaryNodeLabel = useCallback((d) => {
           let finalNodes = nodes;
           let finalLinks = validatedLinks;
 
-          // Only preserve expansion data if the expanded nodes are part of current search results
-          if (expandedNodesRef.current.size > 0) {
-            logger.render('[SEARCH] Checking expanded nodes for relevance to current search');
-            const searchNodeIds = new Set(nodes.map(n => n.elementId));
-            const relevantExpansions = new Set();
-
-            // Only keep expansions where the original expanded node is in current search
-            for (const expandedNodeId of expandedNodes) {
-              if (searchNodeIds.has(expandedNodeId)) {
-                relevantExpansions.add(expandedNodeId);
-                logger.render('[SEARCH] Keeping expansion for:', expandedNodeId);
-              } else {
-                logger.render('[SEARCH] Removing irrelevant expansion for:', expandedNodeId);
-              }
-            }
-
-            // Batch expansion tracking updates
-            startTransition(() => {
-              setExpandedNodes(relevantExpansions);
-              const updatedNodeExpansions = new Map();
-              for (const nodeId of relevantExpansions) {
-                if (nodeExpansionsRef.current.has(nodeId)) {
-                  updatedNodeExpansions.set(nodeId, nodeExpansionsRef.current.get(nodeId));
-                }
-              }
-              setNodeExpansions(updatedNodeExpansions);
-            });
-          }
-
           // Batch search result updates for better performance
         startTransition(() => {
           const searchGraph = { nodes: finalNodes, links: finalLinks };
@@ -3083,7 +3440,11 @@ const getPrimaryNodeLabel = useCallback((d) => {
           const nextActiveId = finalNodes.some((node) => node.elementId === currentActiveId)
             ? currentActiveId
             : bestMatchId;
+          if (isContextualQuery) {
+            setContextualRootNodeId(nextActiveId || finalNodes[0]?.elementId || null);
+          }
           commitGraphSlice(searchGraph, {
+            updateFilteredData: isContextualQuery,
             updateSearchResultData: true,
             nextActiveSearchId: nextActiveId,
             resetCenteredSearch: true,
@@ -3094,7 +3455,11 @@ const getPrimaryNodeLabel = useCallback((d) => {
         } else {
         // Batch no results updates
         startTransition(() => {
+          if (isContextualQuery) {
+            setContextualRootNodeId(null);
+          }
           commitGraphSlice({ nodes: [], links: [] }, {
+            updateFilteredData: isContextualQuery,
             updateSearchResultData: true,
             clearActiveSearchId: true,
             syncResults: true,
@@ -3111,23 +3476,19 @@ const getPrimaryNodeLabel = useCallback((d) => {
         // Ignore cancelled requests (superseded by newer search)
         if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
         logger.error('Search Error:', err);
-        // Fallback to client-side search if server search fails
-        // Use fullDataset to include expanded nodes in search
-        const searchData = fullDataset.nodes.length > 0 ? fullDataset : graphData;
-        const filteredNodes = nodeSearchFunction(searchData.nodes, debouncedSearchQuery);
-        const filteredNodeIds = new Set(filteredNodes.map(n => n.elementId));
-        const filteredLinks = searchData.links.filter(
-          l => filteredNodeIds.has(l.source?.elementId || l.source) &&
-               filteredNodeIds.has(l.target?.elementId || l.target)
-        );
+        const fallbackGraph = buildSearchResultSlice(resolveSearchBaseDataset(), debouncedSearchQuery, searchResultMode);
         // Batch fallback search updates
         startTransition(() => {
           const currentActiveId = activeSearchResultIdRef.current;
-          const bestMatchId = findBestSearchMatchId(filteredNodes, debouncedSearchQuery);
-          const nextActiveId = filteredNodes.some((node) => node.elementId === currentActiveId)
+          const bestMatchId = findBestSearchMatchId(fallbackGraph.nodes, debouncedSearchQuery);
+          const nextActiveId = fallbackGraph.nodes.some((node) => node.elementId === currentActiveId)
             ? currentActiveId
             : bestMatchId;
-          commitGraphSlice({ nodes: filteredNodes, links: filteredLinks }, {
+          if (isContextualQuery) {
+            setContextualRootNodeId(nextActiveId || fallbackGraph.nodes[0]?.elementId || null);
+          }
+          commitGraphSlice(fallbackGraph, {
+            updateFilteredData: isContextualQuery,
             updateSearchResultData: true,
             nextActiveSearchId: nextActiveId,
             resetCenteredSearch: true,
@@ -3143,7 +3504,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // Cleanup: abort in-flight request when query changes or component unmounts
     return () => abortController.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [commitGraphSlice, debouncedSearchQuery, fullDataset, graphData, graphViewMode, nodeSearchFunction, selectedOntology, searchResultMode]);
+  }, [buildSearchResultSlice, commitGraphSlice, debouncedSearchQuery, graphViewMode, isFullGraphMode, isOntologyGraphMode, resolveSearchBaseDataset, searchResultMode]);
 
   // ── Ontology viewer: fetch ontology graph when dropdown changes ─────────
   const fetchOntologyGraph = useCallback(async (ontologyType, partName) => {
@@ -3178,11 +3539,8 @@ const getPrimaryNodeLabel = useCallback((d) => {
       } else if (ontologyType === 'mbse_instances') {
         response = await apiClient.get(API.graph.ontologyMbseInstances);
       } else {
-        const endpointPath = replaceParams(API.graph.graphOntologyView, { prefix: ontologyType });
         try {
-          response = await apiClient.get(endpointPath, {
-            params: { limit: DEFAULT_ONTOLOGY_VIEW_LIMIT },
-          });
+          response = await graphApi.getOntologyGraph(ontologyType, DEFAULT_ONTOLOGY_VIEW_LIMIT);
         } catch (primaryError) {
           logger.warn('[ONTOLOGY] Falling back to legacy ontology graph endpoint', primaryError);
           const legacyEndpointPath = replaceParams(API.graph.graphvisByOntology, { prefix: ontologyType });
@@ -3222,9 +3580,8 @@ const getPrimaryNodeLabel = useCallback((d) => {
         logger.render(`[ONTOLOGY] Loaded ${ontologyType}: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
       } else {
         const empty = { nodes: [], links: [] };
-        const fallbackData = initialData?.nodes?.length > 0 ? initialData : empty;
         setOntologyGraphMessage(response.data?.message || response.data?.error || 'Selected ontology scope returned no graph records.');
-        commitGraphSlice(fallbackData, {
+        commitGraphSlice(empty, {
           updateGraphData: true,
           updateFullDataset: true,
           updateSearchResultData: true,
@@ -3251,72 +3608,66 @@ const getPrimaryNodeLabel = useCallback((d) => {
     }
   }, [selectedOntology]);
 
-  // Build dataset for Contextual Individual Graph View from the latest graph snapshot
-  const buildIndividualViewDataset = useCallback((sourceData) => {
-    const nodes = sourceData?.nodes || [];
-    const links = sourceData?.links || [];
-
-    // Filter out ONLY ontology/schema nodes - keep everything else (all instance data)
-    const indNodes = nodes.filter(n => {
-      const labels = n.labels || [];
-      // Exclude pure ontology/schema nodes
-      if (
-        labels.includes('OntologyClass') ||
-        labels.includes('ObjectProperty') ||
-        labels.includes('DatatypeProperty') ||
-        labels.includes('Restriction') ||
-        labels.includes('Datatype')
-      ) {
-        return false;
-      }
-      // Include everything else (all instance nodes, data, etc.)
-      return true;
-    });
-
-    const indIds = new Set(indNodes.map(n => n.elementId));
-    // After D3 simulation runs, link.source/target are mutated to node objects — handle both
-    const getLinkEndId = (endpoint) =>
-      typeof endpoint === 'object' ? (endpoint?.elementId || endpoint?.id) : endpoint;
-
-    // Include all links where at least one endpoint is an individual/instance node
-    const indLinks = links.filter(l => {
-      const srcId = getLinkEndId(l.source);
-      const tgtId = getLinkEndId(l.target);
-      return indIds.has(srcId) || indIds.has(tgtId);
-    });
-
-    // Also bring in neighbor nodes referenced by those links so the connected graph is visible
-    const referencedNodeIds = new Set();
-    indLinks.forEach(l => {
-      referencedNodeIds.add(getLinkEndId(l.source));
-      referencedNodeIds.add(getLinkEndId(l.target));
-    });
-
-    const allNodeIds = new Set([...indIds, ...referencedNodeIds]);
-    const allNodes = nodes.filter(n => allNodeIds.has(n.elementId));
-
-    return { nodes: allNodes, links: indLinks };
-  }, []);
+  useEffect(() => {
+    if (graphViewMode !== 'individual') {
+      setContextualSearchResults([]);
+      setHighlightedNodeIds(new Set());
+      return;
+    }
+    if (!debouncedSearchQuery) {
+      setHighlightedNodeIds(new Set());
+      return;
+    }
+    syncContextualHighlights(debouncedSearchQuery);
+  }, [debouncedSearchQuery, filteredData, graphViewMode, syncContextualHighlights]);
 
   // When graph view mode switches, load the appropriate dataset
   useEffect(() => {
     graphViewModeRef.current = graphViewMode;
-    resetGraphSelectionState({ resetOntology: false, resetStepPart: false });
+    resetGraphSelectionState({
+      resetOntology: false,
+      resetStepPart: false,
+      resetSearch: false,
+      resetExpansion: true,
+      resetInteraction: false,
+    });
     if (graphSearchActive) {
       syncSharedSearchResults([], { clear: true });
     }
 
     if (graphViewMode === 'individual') {
-      const dataSet = buildIndividualViewDataset(initialData);
-      startTransition(() => {
-        commitGraphSlice(dataSet, {
-          updateGraphData: true,
-          updateFullDataset: true,
-          updateSearchResultData: true,
+      const currentRootId = contextualRootNodeIdRef.current;
+      const currentContext = filteredDataRef.current;
+      const hasVisibleRoot = Boolean(
+        currentRootId
+        && Array.isArray(currentContext?.nodes)
+        && currentContext.nodes.some((node) => node?.elementId === currentRootId)
+      );
+
+      if (hasVisibleRoot && (currentContext?.nodes?.length || 0) > 0) {
+        startTransition(() => {
+          commitGraphSlice(currentContext, {
+            updateGraphData: false,
+            updateSearchResultData: false,
+          });
         });
-      });
-      // Defer parent setState — must NOT be called inside a state updater or during render
-      if (!searchModeRef.current) setTimeout(() => syncSharedSearchResults(dataSet.nodes), 0);
+      } else {
+        const nextRootId = resolveContextualEntryNodeId();
+        if (nextRootId) {
+          loadContextualRootGraph(nextRootId, { preserveSearch: true });
+          return;
+        }
+        const emptyContext = { nodes: [], links: [] };
+        setContextualRootNodeId(null);
+        startTransition(() => {
+          commitGraphSlice(emptyContext, {
+            updateGraphData: false,
+            updateSearchResultData: false,
+            clearActiveSearchId: true,
+          });
+        });
+      }
+      if (!searchModeRef.current) setTimeout(() => syncSharedSearchResults([], { clear: true }), 0);
     } else {
       // Ontology mode — restore or refetch based on active ontology selection.
       const selected = selectedOntologyRef.current || 'ALL';
@@ -3337,22 +3688,26 @@ const getPrimaryNodeLabel = useCallback((d) => {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphViewMode, buildIndividualViewDataset, resetGraphSelectionState, graphSearchActive, syncSharedSearchResults]);
+  }, [graphViewMode, commitGraphSlice, resetGraphSelectionState, syncSharedSearchResults]);
 
   // Keep Individual view in sync when fresh initial graph data arrives.
   useEffect(() => {
     if (graphViewModeRef.current !== 'individual') return;
-    const dataSet = buildIndividualViewDataset(initialData);
+    if (contextualRootNodeIdRef.current) {
+      loadContextualRootGraph(contextualRootNodeIdRef.current, { preserveSearch: true });
+      return;
+    }
+    const emptyContext = { nodes: [], links: [] };
     startTransition(() => {
-      commitGraphSlice(dataSet, {
-        updateGraphData: true,
-        updateFullDataset: true,
-        updateSearchResultData: true,
+      commitGraphSlice(emptyContext, {
+        updateGraphData: false,
+        updateSearchResultData: false,
+        clearActiveSearchId: true,
       });
     });
-    if (!searchModeRef.current) setTimeout(() => syncSharedSearchResults(dataSet.nodes), 0);
+    if (!searchModeRef.current) setTimeout(() => syncSharedSearchResults([], { clear: true }), 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialData, buildIndividualViewDataset]);
+  }, [initialData, commitGraphSlice, loadContextualRootGraph, syncSharedSearchResults]);
 
   // When ontology selection changes, fetch graph and optionally fetch STEP parts
   useEffect(() => {
@@ -3364,7 +3719,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       // Fetch STEP parts list for secondary filter
       setStepPartsLoading(true);
       setStepPartsError(null);
-      apiClient.get(API.graph.stepParts)
+      graphApi.getStepParts()
         .then(res => {
           const parts = res.data?.parts || [];
           setStepParts(parts);
@@ -3401,16 +3756,16 @@ const getPrimaryNodeLabel = useCallback((d) => {
   const hasExpandableConnections = (nodeData) => {
     // Allow expansion in contextual-instance mode even without an active search.
     const isNotExpanded = !expandedNodesRef.current.has(nodeData.elementId);
-    const hasSearchQuery = !!debouncedSearchQuery;
+    const hasSearchQuery = !!debouncedSearchQueryRef.current;
     const isContextualMode = graphViewModeRef.current === 'individual';
     const backendTraversalHint = nodeData?.can_traverse ?? nodeData?.properties?.can_traverse;
     const nodeId = nodeData?.elementId;
-    const candidateLinkSets = [
-      Array.isArray(fullDataset?.links) ? fullDataset.links : [],
-      Array.isArray(graphData?.links) ? graphData.links : [],
-      Array.isArray(filteredData?.links) ? filteredData.links : [],
-    ];
-    const visibleLinks = candidateLinkSets.find((links) => links.length > 0) || [];
+    const currentSlice = getCurrentGraphSlice();
+    const visibleLinks = Array.isArray(currentSlice?.links) && currentSlice.links.length > 0
+      ? currentSlice.links
+      : (Array.isArray(filteredData?.links) && filteredData.links.length > 0
+        ? filteredData.links
+        : (Array.isArray(graphData?.links) ? graphData.links : []));
     const hasVisibleConnections = visibleLinks.some((link) => {
       const sourceId = getLinkEndpointId(link?.source);
       const targetId = getLinkEndpointId(link?.target);
@@ -3427,7 +3782,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
   const canCollapseNode = (nodeData) => {
     // Allow collapse in contextual-instance mode and search mode.
     const isExpanded = expandedNodesRef.current.has(nodeData.elementId);
-    const hasSearchQuery = !!debouncedSearchQuery; // Use debouncedSearchQuery for consistency
+    const hasSearchQuery = !!debouncedSearchQueryRef.current; // Use live debounced search state
     const isContextualMode = graphViewModeRef.current === 'individual';
 
     return (hasSearchQuery || isContextualMode) && isExpanded;
@@ -3439,6 +3794,16 @@ const getPrimaryNodeLabel = useCallback((d) => {
       return;
     }
 
+    const currentData = getCurrentGraphSlice();
+    const currentSearchQuery = debouncedSearchQueryRef.current;
+    const isContextualMode = graphViewModeRef.current === 'individual';
+    const hasVisibleContext = Array.isArray(currentData?.links) && currentData.links.length > 0;
+
+    if (isContextualMode && !hasVisibleContext) {
+      await loadContextualRootGraph(nodeId, { preserveSearch: true });
+      return;
+    }
+
     setLoadingNodes(prev => new Set([...prev, nodeId]));
 
     // Track nodes that will be added by this expansion
@@ -3446,89 +3811,57 @@ const getPrimaryNodeLabel = useCallback((d) => {
     const addedLinkIds = new Set();
 
     try {
-      const response = await apiClient.get(replaceParams(API.graph.graphtraverseNode, { node_id: nodeId }), {
-        params: { depth: 2 },
+      const response = await graphApi.getTraversal(nodeId, 1);
+      const traversalData = normalizeGraphDataset(response.data, {
+        collapseHiddenBridges: graphViewModeRef.current === 'individual',
       });
-      const traversalData = normalizeGraphDataset(response.data);
 
       if (traversalData.nodes.length > 0) {
-        // Start with ONLY the current search results, not all filteredData
-        const newNodesMap = new Map();
-        const newLinksMap = new Map();
+        const mergedData = mergeGraphData(currentData, traversalData);
 
-        // ONLY add nodes that are part of current search or already expanded
-        if (debouncedSearchQuery) {
-          // In search mode: keep the full currently visible slice so sibling search
-          // hits remain available for subsequent expansion clicks.
-          filteredData.nodes.forEach(node => {
-            newNodesMap.set(node.elementId, node);
-          });
-
-          filteredData.links.forEach(link => {
-            // Only add links that connect to nodes we're keeping
-            const sourceId = getLinkEndpointId(link.source);
-            const targetId = getLinkEndpointId(link.target);
-            if (newNodesMap.has(sourceId) && newNodesMap.has(targetId)) {
-              newLinksMap.set(link.elementId, link);
-            }
-          });
-        } else {
-          // Not in search mode: add all existing nodes
-          filteredData.nodes.forEach(node => {
-            newNodesMap.set(node.elementId, node);
-          });
-
-          filteredData.links.forEach(link => {
-            newLinksMap.set(link.elementId, link);
-          });
-        }
-
-        // Add the full 1-2 hop traversal slice returned by the backend.
         traversalData.nodes.forEach((node) => {
-          if (!newNodesMap.has(node.elementId)) {
-            newNodesMap.set(node.elementId, node);
+          if (!currentData.nodes.some((existing) => existing.elementId === node.elementId)) {
             addedNodeIds.add(node.elementId);
           }
         });
 
         traversalData.links.forEach((link) => {
-          if (!newLinksMap.has(link.elementId)) {
-            newLinksMap.set(link.elementId, link);
+          if (!currentData.links.some((existing) => existing.elementId === link.elementId)) {
             addedLinkIds.add(link.elementId);
           }
         });
 
-        const finalNodes = Array.from(newNodesMap.values());
-        const finalLinks = Array.from(newLinksMap.values());
+        const finalNodes = mergedData.nodes;
+        const finalLinks = mergedData.links;
 
         performanceLog('Two-hop expansion:', addedNodeIds.size, 'new nodes,', addedLinkIds.size, 'new links');
 
-        // Validate links
-        const existingNodeIds = new Set(finalNodes.map(node => node.elementId));
-        const validatedLinks = finalLinks.filter((link) => {
-          const sourceId = getLinkEndpointId(link.source);
-          const targetId = getLinkEndpointId(link.target);
-          return existingNodeIds.has(sourceId) && existingNodeIds.has(targetId);
-        });
+        const validated = deduplicateNodesAndLinks(finalNodes, finalLinks);
+        const existingNodeIds = new Set(validated.nodes.map(node => node.elementId));
+        const validatedLinks = validated.links.filter((link) => existingNodeIds.has(link.source) && existingNodeIds.has(link.target));
+        const newData = { nodes: validated.nodes, links: validatedLinks };
 
         // Batch all state updates for better performance
         startTransition(() => {
           // Update the current filtered data (what's currently displayed)
-          setFilteredData({ nodes: finalNodes, links: validatedLinks });
-          setData({ nodes: finalNodes, links: validatedLinks });
+          setFilteredData(newData);
+          setData(newData);
+          if (currentSearchQuery) {
+            setSearchResultData(newData);
+          }
 
           // ONLY update fullDataset if we're NOT in a search state
           // This prevents reverting to default nodes when expanding during search
-          if (!debouncedSearchQuery) {
-            setFullDataset({ nodes: finalNodes, links: validatedLinks });
-            setGraphData({ nodes: finalNodes, links: validatedLinks });
+          if (!currentSearchQuery) {
+            setFullDataset(newData);
+            setGraphData(newData);
           }
 
           // Update search results if search is active
-          if (debouncedSearchQuery) syncSharedSearchResults(finalNodes);
+          if (currentSearchQuery) syncSharedSearchResults(newData.nodes);
 
           if (setVisibleRelationships) {
-            setVisibleRelationships(validatedLinks);
+            setVisibleRelationships(newData.links);
           }
 
           // Store which nodes and links were added by this expansion
@@ -3563,7 +3896,8 @@ const getPrimaryNodeLabel = useCallback((d) => {
     logger.render('Collapsing node:', nodeId);
     logger.render('Current nodeExpansions:', Array.from(nodeExpansionsRef.current.entries()));
     logger.render('Current expandedNodes:', Array.from(expandedNodesRef.current));
-    logger.render('Current filteredData nodes:', filteredData.nodes.map(n => n.elementId));
+    const currentData = getCurrentGraphSlice();
+    logger.render('Current filteredData nodes:', currentData.nodes.map(n => n.elementId));
 
     // Get the expansion info for this node
     const expansionInfo = nodeExpansionsRef.current.get(nodeId);
@@ -3596,60 +3930,52 @@ const getPrimaryNodeLabel = useCallback((d) => {
     logger.render('Expanded branches to remove:', Array.from(descendantExpansionIds));
 
     // Debug: Check if the nodes to be removed are actually in the current data
-    const currentNodeIds = new Set(filteredData.nodes.map(n => n.elementId));
+    const currentNodeIds = new Set(currentData.nodes.map(n => n.elementId));
     const presentNodeIdsToRemove = Array.from(nodesToRemove).filter(id => currentNodeIds.has(id));
     logger.render('Nodes that will actually be removed (present in current data):', presentNodeIdsToRemove);
 
-    // Remove the nodes and links that were added by this expansion
-    const filteredNodes = filteredData.nodes.filter(node => {
-      const shouldKeep = !nodesToRemove.has(node.elementId);
-      if (!shouldKeep) {
-        logger.render('Removing node:', node.elementId, node.name || node.label);
-      }
-      return shouldKeep;
-    });
+    // Remove the nodes and links that were added by this expansion using the
+    // shared graph utility so pruning stays consistent across search / expand / collapse.
+    const prunedData = removeExpandedSubgraph(
+      currentData,
+      Array.from(nodesToRemove),
+      Array.from(linksToRemove)
+    );
 
-    const remainingNodeIds = new Set(filteredNodes.map(n => n.elementId));
-          const filteredLinks = filteredData.links.filter(link => {
-            const shouldKeep = !linksToRemove.has(link.elementId)
-        && remainingNodeIds.has(getLinkEndpointId(link.source))
-        && remainingNodeIds.has(getLinkEndpointId(link.target));
-            if (!shouldKeep) {
-              logger.render('Removing link:', link.elementId, link.type);
-            }
-            return shouldKeep;
-          });
+    const filteredNodes = prunedData.nodes;
+    const filteredLinks = prunedData.links;
 
-    logger.render('Nodes before collapse:', filteredData.nodes.length, 'after:', filteredNodes.length);
-    logger.render('Links before collapse:', filteredData.links.length, 'after:', filteredLinks.length);
+    logger.render('Nodes before collapse:', currentData.nodes.length, 'after:', filteredNodes.length);
+    logger.render('Links before collapse:', currentData.links.length, 'after:', filteredLinks.length);
     logger.render('Remaining node IDs:', filteredNodes.map(n => n.elementId));
 
     // Validate that we're actually removing nodes
-    if (filteredNodes.length === filteredData.nodes.length && nodesToRemove.size > 0) {
+    if (filteredNodes.length === currentData.nodes.length && nodesToRemove.size > 0) {
       logger.warn('No visible nodes were removed during collapse. The removed slice may already be absent from the current graph state.');
       logger.warn('nodesToRemove:', Array.from(nodesToRemove));
-      logger.warn('current node elementIds:', filteredData.nodes.map(n => n.elementId));
+      logger.warn('current node elementIds:', currentData.nodes.map(n => n.elementId));
     }
 
     // Update datasets
-    const newData = { nodes: filteredNodes, links: filteredLinks };
+    const newData = deduplicateNodesAndLinks(filteredNodes, filteredLinks);
     logger.render('Setting new data:', {
       nodeCount: newData.nodes.length,
       linkCount: newData.links.length
     });
 
-    const nextActiveId = findBestSearchMatchId(newData.nodes, debouncedSearchQuery);
+    const currentSearchQuery = debouncedSearchQueryRef.current;
+    const nextActiveId = findBestSearchMatchId(newData.nodes, currentSearchQuery);
     commitGraphSlice(newData, {
       updateSearchResultData: true,
       nextActiveSearchId: nextActiveId,
       resetCenteredSearch: true,
       syncResults: true,
-      forceSearchResults: !!debouncedSearchQuery,
+      forceSearchResults: !!currentSearchQuery,
     });
 
     // Mirror expand behavior: only replace the backing dataset when we are not
     // currently viewing a search-derived slice of the graph.
-    if (!debouncedSearchQuery) {
+    if (!currentSearchQuery) {
       setFullDataset(newData);
       setGraphData(newData);
     }
@@ -3724,6 +4050,11 @@ const boundaryForce = (width, height) => {
   useEffect(() => {
     const startTime = performance.now();
     logger.render(`[RENDER] Starting render with ${filteredData.nodes?.length || 0} nodes, ${filteredData.links?.length || 0} links`);
+    const svgElement = svgRef.current;
+    if (!svgElement) {
+      logger.warn('SVG ref is not available yet.');
+      return undefined;
+    }
 
     // Performance optimization: detect layout changes
     const layoutChanged = layoutType !== prevLayoutType;
@@ -3732,9 +4063,9 @@ const boundaryForce = (width, height) => {
       setPrevLayoutType(layoutType);
     }
 
-    const svg = d3.select(svgRef.current);
-    const width = svgRef.current.clientWidth || 800;
-    const height = svgRef.current.clientHeight || 600;
+    const svg = d3.select(svgElement);
+    const width = svgElement.clientWidth || 800;
+    const height = svgElement.clientHeight || 600;
 
     // Click on empty SVG background dismisses any open tooltip
     svg.on('click', function(event) {
@@ -3767,14 +4098,12 @@ const boundaryForce = (width, height) => {
       logger.render('D3 Arrowhead Marker defined in defs');
 
       gRef.current = svg.append('g'); // Main group for graph elements
-      // Initialize zoom behavior on the parent SVG
-      svg.call(d3.zoom()
-        .scaleExtent([0.1, 5])
-        .on('zoom', ({ transform }) => {
-          userInteractedWithGraphRef.current = true;
-          gRef.current.attr('transform', transform);
-        })
-      );
+      if (!zoomBehaviorRef.current) {
+        zoomBehaviorRef.current = d3.zoom()
+          .scaleExtent([0.1, 5])
+          .on('zoom', handleZoom);
+      }
+      svg.call(zoomBehaviorRef.current);
 
       logger.render('D3 SVG initialized with marker in persistent defs.');
     }
@@ -3782,19 +4111,18 @@ const boundaryForce = (width, height) => {
     // During search, never fall back to the full graph canvas.
     // That fallback makes the UI flash or stay on the full graph while a focused search result is loading.
     const hasData = graphSearchActive
-      ? filteredData.nodes.length > 0
-      : (filteredData.nodes.length > 0 || (graphData.nodes && graphData.nodes.length > 0));
+      ? activeDisplayData.nodes.length > 0
+      : (graphViewMode === 'individual'
+        ? activeDisplayData.nodes.length > 0
+        : (activeDisplayData.nodes.length > 0 || (graphData.nodes && graphData.nodes.length > 0)));
     const renderData = graphSearchActive
-      ? (filteredData.nodes.length > 0 ? filteredData : { nodes: [], links: [] })
-      : (filteredData.nodes.length > 0 ? filteredData :
-          (graphData.nodes && graphData.nodes.length > 0) ? graphData :
-          { nodes: [], links: [] });
-    const showNodeLabels = (
-      graphViewMode !== 'individual' ||
-      graphSearchActive ||
-      selectedOntology !== 'ALL' ||
-      renderData.nodes.length <= GRAPH_LABEL_RENDER_LIMIT
-    );
+      ? (activeDisplayData.nodes.length > 0 ? activeDisplayData : { nodes: [], links: [] })
+      : (graphViewMode === 'individual'
+        ? (activeDisplayData.nodes.length > 0 ? activeDisplayData : { nodes: [], links: [] })
+        : (activeDisplayData.nodes.length > 0 ? activeDisplayData :
+            (graphData.nodes && graphData.nodes.length > 0) ? graphData :
+            { nodes: [], links: [] }));
+    const showNodeLabels = true;
 
     if (!hasData) {
       if (gRef.current) {
@@ -3870,13 +4198,12 @@ const boundaryForce = (width, height) => {
       .text(`Nodes: ${renderData.nodes.length}`);
 
     // Re-enable zoom for force-directed layout
-    svg.call(d3.zoom()
-      .scaleExtent([0.1, 5])
-      .on('zoom', ({ transform }) => {
-        userInteractedWithGraphRef.current = true;
-        gRef.current.attr('transform', transform);
-      })
-    );
+    if (!zoomBehaviorRef.current) {
+      zoomBehaviorRef.current = d3.zoom()
+        .scaleExtent([0.1, 5])
+        .on('zoom', handleZoom);
+    }
+    svg.call(zoomBehaviorRef.current);
 
     logger.render(`[TARGET] Initializing graph layout with ${renderData.nodes.length} nodes, ${renderData.links.length} links`);
 
@@ -3952,10 +4279,46 @@ const boundaryForce = (width, height) => {
       }
     }
 
+    const simulationLinks = simulationRef.current?.force('link')?.links?.() || processedLinks;
+    const nodeById = new Map((renderData.nodes || []).map((node) => [node.elementId, node]));
+    const resolveLinkNode = (endpoint) => {
+      if (!endpoint) return null;
+      if (typeof endpoint === 'object') return endpoint;
+      return nodeById.get(endpoint) || null;
+    };
+    const renderLinkPath = (selection) => {
+      selection.each(function(d) {
+        const sourceNode = resolveLinkNode(d.source);
+        const targetNode = resolveLinkNode(d.target);
+        const sourceX = sourceNode?.x;
+        const sourceY = sourceNode?.y;
+        const targetX = targetNode?.x;
+        const targetY = targetNode?.y;
+        if (
+          !Number.isFinite(sourceX)
+          || !Number.isFinite(sourceY)
+          || !Number.isFinite(targetX)
+          || !Number.isFinite(targetY)
+        ) {
+          d3.select(this).attr('d', null);
+          return;
+        }
+        const pathData = calculateCurvedPath(d, sourceX, sourceY, targetX, targetY);
+        d3.select(this).attr('d', pathData);
+      });
+    };
+    const renderNodePositions = (selection) => {
+      selection.attr('transform', d => (
+        Number.isFinite(d?.x) && Number.isFinite(d?.y)
+          ? `translate(${d.x},${d.y})`
+          : null
+      ));
+    };
+
     // --- D3 Data Binding and Drawing ---
     // Links (paths for curved bidirectional links, lines for single links)
     const link = gRef.current.selectAll('.link')
-      .data(processedLinks, d => d.elementId)
+      .data(simulationLinks, d => d.elementId)
       .join(
         enter => {
           logger.render('[LINK] Creating new links with marker-end attribute', enter.size());
@@ -3983,7 +4346,7 @@ const boundaryForce = (width, height) => {
                 tooltipRef.current.style.opacity = 0.9;
               }
               // Get relationship type from your query
-              const relationshipType = d.type || 'Relationship';
+              const relationshipType = getRelationshipDisplayName(d);
 
               // Get properties - handle both nested and flat structure
               const props = d.properties && typeof d.properties === 'object' && !Array.isArray(d.properties)
@@ -4002,8 +4365,10 @@ const boundaryForce = (width, height) => {
               `;
 
               // Add relationship direction info
-              const srcNode = typeof d.source === 'object' ? d.source : (filteredData.nodes || []).find(n => n.elementId === d.source);
-              const tgtNode = typeof d.target === 'object' ? d.target : (filteredData.nodes || []).find(n => n.elementId === d.target);
+              const currentGraphSlice = getCurrentGraphSlice();
+              const currentNodes = currentGraphSlice.nodes || [];
+              const srcNode = typeof d.source === 'object' ? d.source : currentNodes.find(n => n.elementId === d.source);
+              const tgtNode = typeof d.target === 'object' ? d.target : currentNodes.find(n => n.elementId === d.target);
               const srcLabel = resolveNodeName(srcNode);
               const srcType = resolveNodeType(srcNode);
               const tgtLabel = resolveNodeName(tgtNode);
@@ -4059,7 +4424,29 @@ const boundaryForce = (width, height) => {
         },
         update => update,
         exit => exit.remove()
-    );
+      );
+
+    const shouldShowRelationshipLabels = simulationLinks.length <= 180;
+    const linkLabel = shouldShowRelationshipLabels
+      ? gRef.current.selectAll('.link-label')
+        .data(simulationLinks.filter((d) => d?.type), (d) => d.elementId)
+        .join(
+          (enter) => enter.append('text')
+            .attr('class', 'link-label')
+            .attr('font-size', 9)
+            .attr('font-weight', 600)
+            .attr('text-anchor', 'middle')
+            .attr('fill', '#516070')
+            .attr('paint-order', 'stroke fill')
+            .attr('stroke', '#ffffff')
+            .attr('stroke-width', 3)
+            .attr('stroke-linejoin', 'round')
+            .style('pointer-events', 'none')
+            .text((d) => getRelationshipDisplayName(d)),
+          (update) => update.text((d) => getRelationshipDisplayName(d)),
+          (exit) => exit.remove()
+        )
+      : gRef.current.selectAll('.link-label').remove();
 
     // const linkLabel = gRef.current
     //   .selectAll('text')
@@ -4100,6 +4487,15 @@ const boundaryForce = (width, height) => {
             .attr('stroke-dasharray', '5,4')
             .style('pointer-events', 'none')
             .style('opacity', d => d.elementId === activeSearchResultId ? 1 : 0);
+
+          group.append('circle')
+            .attr('class', 'search-match-ring')
+            .attr('r', NODE_RADIUS + 4)
+            .attr('fill', 'none')
+            .attr('stroke', '#2BB3C0')
+            .attr('stroke-width', 1.8)
+            .style('pointer-events', 'none')
+            .style('opacity', d => highlightedNodeIdsRef.current.has(d.elementId) ? 1 : 0);
 
           // Highlight glow ring for "View in Graph" from Recommendations
           group.append('circle')
@@ -4154,8 +4550,8 @@ const boundaryForce = (width, height) => {
           group.append('circle')
             .attr('class', 'expand-control-bg')
             .attr('r', EXPAND_CIRCLE_RADIUS)
-            .attr('cx', NODE_RADIUS + 18)
-            .attr('cy', -NODE_RADIUS - 2)
+            .attr('cx', NODE_RADIUS + 16)
+            .attr('cy', -NODE_RADIUS - 1)
             .attr('fill', d => {
               if (canCollapseNode(d)) return '#ff4444'; // Red for collapse
               if (hasExpandableConnections(d)) return '#4CAF50'; // Green for expand
@@ -4192,11 +4588,32 @@ const boundaryForce = (width, height) => {
               }
             });
 
+          group.append('circle')
+            .attr('class', 'expand-control-hitbox')
+            .attr('r', EXPAND_CIRCLE_RADIUS + 6)
+            .attr('cx', NODE_RADIUS + 16)
+            .attr('cy', -NODE_RADIUS - 1)
+            .attr('fill', 'transparent')
+            .style('cursor', d => (
+              (hasExpandableConnections(d) || canCollapseNode(d)) ? 'pointer' : 'default'
+            ))
+            .style('pointer-events', d => (
+              (hasExpandableConnections(d) || canCollapseNode(d)) ? 'all' : 'none'
+            ))
+            .on('click', (event, d) => {
+              event.stopPropagation();
+              if (expandedNodesRef.current.has(d.elementId)) {
+                collapseNode(d.elementId);
+              } else if (hasExpandableConnections(d)) {
+                expandNode(d.elementId);
+              }
+            });
+
           // Plus/Minus symbol
           group.append('text')
             .attr('class', 'expand-symbol')
-            .attr('x', NODE_RADIUS + 18)
-            .attr('y', -NODE_RADIUS + 2)
+            .attr('x', NODE_RADIUS + 16)
+            .attr('y', -NODE_RADIUS + 1)
             .attr('text-anchor', 'middle')
             .attr('font-size', EXPAND_SYMBOL_SIZE)
             .attr('font-weight', 'bold')
@@ -4230,14 +4647,13 @@ const boundaryForce = (width, height) => {
             }
             activeTooltipNodeRef.current = nodeId;
 
-            d3.select(this).select('.main-icon')
+            d3.select(this).select('.node-circle')
               .attr('stroke', 'black')
               .attr('stroke-width', 1.2);
-            d3.select(this).select('.fallback-circle')
-              .attr('stroke', 'black')
-              .attr('stroke-width', 1);
-            d3.select(tooltipRef.current).style('z-index', 12).style('display', 'block').style('pointer-events', 'auto');
-            d3.select(tooltipRef.current).style('opacity', 0.9);
+            if (tooltipRef.current) {
+              d3.select(tooltipRef.current).style('z-index', 12).style('display', 'block').style('pointer-events', 'auto');
+              d3.select(tooltipRef.current).style('opacity', 0.9);
+            }
 
             // Get properties - handle both nested and flat structure
             const props = d.properties && typeof d.properties === 'object' && !Array.isArray(d.properties)
@@ -4294,7 +4710,9 @@ const boundaryForce = (width, height) => {
             }
 
             // Get all connected links for use in multiple sections below
-            const connectedLinks = (filteredData.links || []).filter(link =>
+            const currentGraphSlice = getCurrentGraphSlice();
+            const currentNodes = currentGraphSlice.nodes || [];
+            const connectedLinks = (currentGraphSlice.links || []).filter(link =>
               getLinkEndpointId(link.source) === d.elementId || getLinkEndpointId(link.target) === d.elementId
             );
 
@@ -4342,9 +4760,9 @@ const boundaryForce = (width, height) => {
 
               const renderSemanticList = (title, links, direction) => {
                 if (links.length === 0) return '';
-                const rows = links.slice(0, 8).map((link) => {
+              const rows = links.slice(0, 8).map((link) => {
                   const targetId = direction === 'outgoing' ? getLinkEndpointId(link.target) : getLinkEndpointId(link.source);
-                  const targetNode = (filteredData.nodes || []).find(n => n.elementId === targetId);
+                  const targetNode = currentNodes.find(n => n.elementId === targetId);
                   return `<div style="margin: 4px 0; padding: 5px 8px; background: #f8fafc; border: 1px solid #e6edf5; border-radius: 5px; font-size: 11px; color: #334e68;">
                     [${escapeHtml(resolveNodeType(targetNode))}] ${escapeHtml(resolveNodeName(targetNode))}
                   </div>`;
@@ -4377,7 +4795,7 @@ const boundaryForce = (width, height) => {
               dataProperties.forEach(link => {
                 const isPropOwner = getLinkEndpointId(link.source) === d.elementId;
                 const propNodeId = isPropOwner ? getLinkEndpointId(link.target) : getLinkEndpointId(link.source);
-                const propNode = (filteredData.nodes || []).find(n => n.elementId === propNodeId);
+                const propNode = currentNodes.find(n => n.elementId === propNodeId);
                 const propName = propNode?.name || 'Unknown';
 
                 tooltipContent += `<div style="margin: 4px 0; padding: 4px; background: #f0f8f0; border-left: 3px solid #28A745; font-size: 11px;">
@@ -4400,7 +4818,7 @@ const boundaryForce = (width, height) => {
               otherRelationships.forEach(link => {
                 const isOutgoing = getLinkEndpointId(link.source) === d.elementId;
                 const otherNodeId = isOutgoing ? getLinkEndpointId(link.target) : getLinkEndpointId(link.source);
-                const otherNode = (filteredData.nodes || []).find(n => n.elementId === otherNodeId);
+                const otherNode = currentNodes.find(n => n.elementId === otherNodeId);
                 const otherNodeProps = otherNode?.properties || {};
                 const otherNodeName =
                   otherNode?.entity_type ||
@@ -4418,7 +4836,7 @@ const boundaryForce = (width, height) => {
                   otherNode?.label ||
                   otherNode?.labels?.[0] ||
                   'Node';
-                const relationshipType = escapeHtml(link.type || 'UNKNOWN');
+              const relationshipType = escapeHtml(getRelationshipDisplayName(link));
                 const arrow = isOutgoing ? '→' : '←';
 
                 tooltipContent += `<div style="margin: 6px 0; padding: 6px; background: #f5f5f5; border-radius: 3px; font-size: 11px;">
@@ -4444,10 +4862,7 @@ const boundaryForce = (width, height) => {
             }
           })
           .on('mouseout', function () {
-            d3.select(this).select('.main-icon')
-              .attr('stroke', null)
-              .attr('stroke-width', null);
-            d3.select(this).select('.fallback-circle')
+            d3.select(this).select('.node-circle')
               .attr('stroke', null)
               .attr('stroke-width', null);
           });
@@ -4462,6 +4877,9 @@ const boundaryForce = (width, height) => {
           update.select('.search-active-ring')
             .style('opacity', d => d.elementId === activeSearchResultId ? 1 : 0)
             .attr('stroke', d => d.elementId === activeSearchResultId ? TCS_GRAPH_THEME.primary : 'none');
+
+          update.select('.search-match-ring')
+            .style('opacity', d => highlightedNodeIdsRef.current.has(d.elementId) ? 1 : 0);
 
           update.each(function(d) {
             if (d.elementId === activeSearchResultId) {
@@ -4527,26 +4945,55 @@ const boundaryForce = (width, height) => {
     //  .attr('pointer-events', 'none')
     //  .attr('fill', '#333');
 
+    renderLinkPath(link);
+    renderNodePositions(node);
+    if (shouldShowRelationshipLabels && linkLabel) {
+      linkLabel
+        .attr('x', (d) => {
+          const sourceNode = resolveLinkNode(d.source);
+          const targetNode = resolveLinkNode(d.target);
+          const sourceX = sourceNode?.x ?? 0;
+          const targetX = targetNode?.x ?? 0;
+          return (sourceX + targetX) / 2;
+        })
+        .attr('y', (d) => {
+          const sourceNode = resolveLinkNode(d.source);
+          const targetNode = resolveLinkNode(d.target);
+          const sourceY = sourceNode?.y ?? 0;
+          const targetY = targetNode?.y ?? 0;
+          return ((sourceY + targetY) / 2) - 6;
+        });
+    }
+
     simulationRef.current.on('tick', () => {
       if (tickFrameRef.current) return;
       tickFrameRef.current = requestAnimationFrame(() => {
         tickFrameRef.current = null;
-        link.each(function(d) {
-          const sourceX = d.source.x;
-          const sourceY = d.source.y;
-          const targetX = d.target.x;
-          const targetY = d.target.y;
-          const pathData = calculateCurvedPath(d, sourceX, sourceY, targetX, targetY);
-          d3.select(this).attr('d', pathData);
-        });
-
-        node.attr('transform', d => `translate(${d.x},${d.y})`);
+        renderLinkPath(link);
+        renderNodePositions(node);
+        if (shouldShowRelationshipLabels && linkLabel) {
+          linkLabel
+            .attr('x', (d) => {
+              const sourceNode = resolveLinkNode(d.source);
+              const targetNode = resolveLinkNode(d.target);
+              const sourceX = sourceNode?.x ?? 0;
+              const targetX = targetNode?.x ?? 0;
+              return (sourceX + targetX) / 2;
+            })
+            .attr('y', (d) => {
+              const sourceNode = resolveLinkNode(d.source);
+              const targetNode = resolveLinkNode(d.target);
+              const sourceY = sourceNode?.y ?? 0;
+              const targetY = targetNode?.y ?? 0;
+              return ((sourceY + targetY) / 2) - 6;
+            });
+        }
       });
     });
 
     // Center the view on search results, prioritizing the active exact match
-    if (searchQuery && filteredData.nodes.length > 0 && lastCenteredSearchRef.current !== searchQuery) {
-      const focusNode = filteredData.nodes.find((d) => d.elementId === activeSearchResultId) || filteredData.nodes[0];
+    if (graphSearchActive && activeDisplayData.nodes.length > 0 && lastCenteredSearchRef.current !== debouncedSearchQuery) {
+      const focusNode = activeDisplayData.nodes.find((d) => d.elementId === activeSearchResultId) || activeDisplayData.nodes[0];
       const hasFocusCoords = Number.isFinite(focusNode?.x) && Number.isFinite(focusNode?.y);
 
       let centerX = width / 2;
@@ -4568,9 +5015,11 @@ const boundaryForce = (width, height) => {
         .translate(width / 2 - centerX, height / 2 - centerY)
         .scale(1);
 
-      svg.call(d3.zoom().transform, transform);
-      lastCenteredSearchRef.current = searchQuery;
-    } else if (!searchQuery && lastCenteredSearchRef.current) {
+      if (zoomBehaviorRef.current) {
+        svg.call(zoomBehaviorRef.current.transform, transform);
+      }
+      lastCenteredSearchRef.current = debouncedSearchQuery;
+    } else if (!graphSearchActive && lastCenteredSearchRef.current) {
       lastCenteredSearchRef.current = '';
       userInteractedWithGraphRef.current = false;
     }
@@ -4594,18 +5043,20 @@ const boundaryForce = (width, height) => {
         tickFrameRef.current = null;
       }
       if (simulationRef.current) {
-        simulationRef.current.stop();
-        simulationRef.current = null; // Clear reference for memory cleanup
-        performanceLog('D3 Simulation stopped and cleared on component unmount.');
+        // Keep the simulation instance alive across ordinary React effect reruns.
+        // Fully stopping and nulling it here forces unnecessary reinitialization
+        // and contributes to layout instability.
+        simulationRef.current.on('tick', null);
       }
       // Clear any remaining event listeners
       if (gRef.current) {
         gRef.current.selectAll('*').on('.drag', null);
       }
+      d3.select(svgElement).on('.zoom', null);
     };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredData, layoutType, treeExpandedNodes]);
+  }, [activeDisplayData, activeGraphDataset, searchResultData, filteredData, graphSearchActive, graphViewMode, selectedOntology, layoutType, treeExpandedNodes, handleZoom]);
 
   // Separate effect: apply/remove "View in Graph" highlights via direct D3 DOM manipulation
   // This avoids re-rendering the entire graph just to toggle highlights
@@ -4656,6 +5107,20 @@ const boundaryForce = (width, height) => {
     });
   }, [highlightedNodeNames]);
 
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = d3.select(svgRef.current);
+    svg.selectAll('.node-group').each(function(d) {
+      const group = d3.select(this);
+      const isHighlighted = highlightedNodeIds.has(d?.elementId);
+      group.select('.search-match-ring')
+        .style('opacity', isHighlighted ? 1 : 0)
+        .attr('stroke', isHighlighted ? '#2BB3C0' : 'none');
+      group.select('.node-label')
+        .attr('fill', isHighlighted ? TCS_GRAPH_THEME.primary : '#000');
+    });
+  }, [highlightedNodeIds]);
+
   // Keyboard shortcuts for expand/collapse
   useEffect(() => {
     const handleKeyPress = (event) => {
@@ -4687,7 +5152,6 @@ const boundaryForce = (width, height) => {
   // [OK] CLEANUP: Final cleanup on component unmount
   useEffect(() => {
     const timeouts = timeoutsRef.current;
-    const simulation = simulationRef.current;
     return () => {
       // Clear all pending timeouts
       if (timeouts) {
@@ -4695,8 +5159,8 @@ const boundaryForce = (width, height) => {
         timeouts.clear();
       }
       // Stop D3 simulation if running
-      if (simulation) {
-        simulation.stop();
+      if (simulationRef.current) {
+        simulationRef.current.stop();
         simulationRef.current = null;
       }
     };
@@ -4716,391 +5180,93 @@ const boundaryForce = (width, height) => {
       }}
     >
       {/* STATIC TOOLBAR (prevents overlap with graph + tree layouts) */}
-      <div
-        className="graph-toolbar"
-        style={{
-          display:'flex',
-          flexWrap:'wrap',
-          gap:'6px',
-          alignItems:'center',
-          padding:'6px 10px',
-          background:TCS_GRAPH_THEME.surface,
-          border:`1px solid ${TCS_GRAPH_THEME.border}`,
-          borderRadius:'8px',
-          boxShadow:'0 6px 18px rgba(15, 23, 42, 0.08)',
-          zIndex:1500, // raise above potential header overlay
-          position:'relative'
+      <GraphExplorerToolbar
+        theme={TCS_GRAPH_THEME}
+        graphViewMode={graphViewMode}
+        selectedOntology={selectedOntology}
+        searchInput={searchInput}
+        onSearchInputChange={setSearchInput}
+        onSearchSubmit={submitSearchQuery}
+        searchLoading={searchLoading}
+        searchResultMode={searchResultMode}
+        onSearchResultModeChange={setSearchResultMode}
+        onToolTargetSelect={(target) => {
+          if (typeof setActiveTab === 'function') setActiveTab(target);
         }}
-        >
-        <div className="dropdown" style={{ position:'relative' }}>
-          <button
-            className="btn btn-sm dropdown-toggle"
-            type="button"
-            title="Graph tools"
-            onClick={(e)=>{
-              const menu = e.currentTarget.nextSibling; if(menu) menu.classList.toggle('show');
-            }}
-            style={{
-              backgroundColor:TCS_GRAPH_THEME.surface,
-              color:TCS_GRAPH_THEME.primary,
-              fontWeight:700,
-              border:`1px solid ${TCS_GRAPH_THEME.borderStrong}`,
-              borderRadius:6,
-              padding:'5px 9px',
-              fontSize:12,
-              lineHeight:1.2
-            }}
-          >Tools</button>
-          <div
-            className="dropdown-menu p-1"
-            style={{
-              minWidth:150,
-              background:TCS_GRAPH_THEME.surface,
-              color:TCS_GRAPH_THEME.ink,
-              border:`1px solid ${TCS_GRAPH_THEME.border}`,
-              boxShadow:'0 12px 24px rgba(15, 23, 42, 0.12)',
-              position:'absolute',
-              top:'100%',
-              left:0,
-              marginTop:4,
-              zIndex:2000
-            }}
-          >
-            {[
-              ['Where Used', 'whereused'],
-              ['Table View', 'table'],
-              ['Reports', 'reports'],
-              ['Data Import', 'ingestion'],
-              ['Map & Align', 'ontology'],
-              ['Recommendations', 'recommendations'],
-              ['Admin', 'admin'],
-            ].map(([label, target]) => (
-              <button
-                key={target}
-                className="dropdown-item"
-                style={{ color:TCS_GRAPH_THEME.ink, fontSize:12, fontWeight:600, cursor:'pointer', padding:'5px 8px' }}
-                onClick={(e)=>{
-                  e.currentTarget.closest('.dropdown-menu')?.classList.remove('show');
-                  if(typeof setActiveTab==='function'){ setActiveTab(target); }
-                }}
-              >{label}</button>
-            ))}
-          </div>
-        </div>
-        {/* ── Graph view scope ─────────────────────────────────────────── */}
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`, borderRadius: 6, padding: 2, background: TCS_GRAPH_THEME.surfaceMuted, maxWidth: '100%', flexWrap: 'wrap' }}>
-          {[
-            { id: 'full', label: 'Full Graph', Icon: Globe, active: graphViewMode === 'ontology' && selectedOntology === 'ALL' },
-            { id: 'ontology', label: 'Ontology Schema', Icon: Workflow, active: graphViewMode === 'ontology' && selectedOntology !== 'ALL' },
-            { id: 'individual', label: 'Contextual Instances', Icon: Network, active: graphViewMode === 'individual' },
-          ].map((mode) => (
-            <button
-              key={mode.id}
-              type="button"
-              title={mode.label}
-              aria-label={mode.label}
-              onClick={() => {
-                if (mode.id === 'full') {
-                  if (selectedOntology && selectedOntology !== 'ALL') {
-                    lastSpecificOntologyRef.current = selectedOntology;
-                  }
-                  setGraphViewMode('ontology');
-                  graphViewModeRef.current = 'ontology';
-                  setSelectedOntology('ALL');
-                  selectedOntologyRef.current = 'ALL';
-                  resetGraphSelectionState({ resetOntology: false, resetStepPart: true, dataOverride: initialData });
-                  commitGraphSlice(initialData, {
-                    updateGraphData: true,
-                    updateFullDataset: true,
-                    updateSearchResultData: true,
-                    syncResults: !searchModeRef.current,
-                  });
-                  return;
-                }
-                if (mode.id === 'individual') {
-                  setGraphViewMode('individual');
-                  graphViewModeRef.current = 'individual';
-                  return;
-                }
-
-                const nextOntology = lastSpecificOntologyRef.current !== 'ALL'
-                  ? lastSpecificOntologyRef.current
-                  : preferredOntologyValue;
-                setGraphViewMode('ontology');
-                graphViewModeRef.current = 'ontology';
-                if (nextOntology !== 'ALL') {
-                  setSelectedOntology(nextOntology);
-                  selectedOntologyRef.current = nextOntology;
-                }
-              }}
-              style={{
-                width: 38,
-                height: 34,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                border: 'none',
-                borderRadius: 6,
-                background: mode.active ? TCS_GRAPH_THEME.primary : 'transparent',
-                color: mode.active ? '#fff' : TCS_GRAPH_THEME.inkSoft,
-                cursor: 'pointer',
-                padding: 0,
-                fontWeight: 800,
-                lineHeight: 0,
-                overflow: 'hidden',
-              }}
-            >
-              <mode.Icon
-                size={16}
-                strokeWidth={2.8}
-                color={mode.active ? '#fff' : TCS_GRAPH_THEME.inkSoft}
-                className="graph-toolbar-icon"
-                style={{ display: 'block', flex: '0 0 auto' }}
-              />
-            </button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <i className="fas fa-search" style={{ fontSize: '18px', color: '#555' }}></i>
-          <input
-            type="text"
-            placeholder={graphViewMode === 'individual' ? 'Query a contextual subgraph...' : 'Search nodes...'}
-            value={searchInput}
-            style={{
-              padding: '6px 10px',
-              borderRadius: '6px',
-              border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`,
-              minWidth: '190px',
-              fontSize: '13px',
-              fontWeight: 500,
-              lineHeight: 1.2,
-              background: TCS_GRAPH_THEME.surface,
-              color: TCS_GRAPH_THEME.ink
-            }}
-            onChange={e => {
-              const nextValue = e.target.value;
-              setSearchInput(nextValue);
-              setSearchQuery(nextValue.trim().toLowerCase());
-            }}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                setSearchQuery(e.target.value.trim().toLowerCase());
-              }
-            }}
-            onFocus={e => { e.target.style.borderColor = TCS_GRAPH_THEME.primary; e.target.style.boxShadow='0 0 0 2px rgba(31,61,99,0.12)'; }}
-            onBlur={e => { e.target.style.borderColor = TCS_GRAPH_THEME.borderStrong; e.target.style.boxShadow='none'; }}
-          />
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, border: `1px solid ${TCS_GRAPH_THEME.borderStrong}`, borderRadius: 6, padding: 2, background: TCS_GRAPH_THEME.surfaceMuted }}>
-            {[
-              { id: 'best', label: 'Best', title: 'Best match only' },
-              { id: 'broader', label: 'Many', title: 'Return multiple matching nodes' },
-            ].map((mode) => (
-              <button
-                key={mode.id}
-                type="button"
-                title={mode.title}
-                aria-label={mode.title}
-                onClick={() => setSearchResultMode(mode.id)}
-                style={{
-                  width: 42,
-                  height: 28,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: 'none',
-                  borderRadius: 4,
-                  background: searchResultMode === mode.id ? TCS_GRAPH_THEME.primary : 'transparent',
-                  color: searchResultMode === mode.id ? '#fff' : TCS_GRAPH_THEME.inkSoft,
-                  cursor: 'pointer',
-                  padding: 0,
-                  fontSize: 11,
-                  fontWeight: 800,
-                }}
-              >
-                {mode.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        {/* Ontology selector dropdown — only in Ontology Graph mode */}
-        {graphViewMode === 'ontology' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <i className="fas fa-project-diagram" style={{ fontSize: '14px', color: '#555' }}></i>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <select
-              value={selectedOntology}
-              onChange={e => setSelectedOntology(e.target.value)}
-              disabled={ontologyLoading || !!ontologyError}
-              style={{
-                padding: '6px 10px',
-                borderRadius: '6px',
-                border: ontologyError ? '1px solid #D32F2F' : `1px solid ${TCS_GRAPH_THEME.borderStrong}`,
-                backgroundColor: TCS_GRAPH_THEME.surface,
-                color: TCS_GRAPH_THEME.ink,
-                cursor: ontologyLoading || ontologyError ? 'not-allowed' : 'pointer',
-                fontSize: '13px',
-                fontWeight: 600,
-                minWidth: '200px',
-                transition: 'all .2s ease',
-                opacity: ontologyLoading || ontologyError ? 0.6 : 1
-              }}
-              title={ontologyError ? ontologyError : 'Select an ontology'}
-            >
-              <option value="ALL" style={{color:'#333', fontWeight:600}}>Overview Graph (all loaded data)</option>
-              {ontologyOptions.filter(o => o.value !== 'ALL' && !o.disabled).map((opt, idx) => (
-                <option key={opt.value || `ontology-opt-${idx}`} value={opt.value} style={{color:'#333'}}>
-                  {opt.prefix ? `[${opt.prefix}] ` : ''}{opt.label}{opt.type ? ` · ${opt.type}` : ''}{Number(opt.relationship_count || 0) === 0 ? ' · classes only' : ''}
-                </option>
-              ))}
-            </select>
-            {ontologyError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>Warning: {ontologyError}</span>}
-          </div>
-        </div>
-        )}
-        {/* STEP part sub-filter — only in Ontology mode and STEP selected */}
-        {graphViewMode === 'ontology' && selectedOntology === 'step' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <i className="fas fa-cogs" style={{ fontSize: '14px', color: '#555' }}></i>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <select
-                value={selectedStepPart}
-                onChange={e => setSelectedStepPart(e.target.value)}
-                disabled={stepPartsLoading || ontologyLoading || !!stepPartsError}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: '6px',
-                  border: stepPartsError ? '1px solid #D32F2F' : '1px solid #cfd6dc',
-                  backgroundColor: '#fff',
-                  color: '#333',
-                  cursor: stepPartsLoading || ontologyLoading || stepPartsError ? 'not-allowed' : 'pointer',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  minWidth: '200px',
-                  maxWidth: '320px',
-                  transition: 'all .2s ease',
-                  opacity: stepPartsLoading || ontologyLoading || stepPartsError ? 0.6 : 1
-                }}
-                title={stepPartsError ? stepPartsError : "Filter STEP data by part"}
-              >
-                <option key="ALL" value="ALL" style={{color:'#333'}}>All Parts{stepParts.length > 0 ? ` (${stepParts.length})` : ''}</option>
-                {stepParts.map(part => (
-                  <option key={part} value={part} style={{color:'#333'}}>
-                    {part.replace(/_/g, ' ')}
-                  </option>
-                ))}
-              </select>
-              {stepPartsError && <span style={{ fontSize: '11px', color: '#D32F2F' }}>Warning: {stepPartsError}</span>}
-            </div>
-          </div>
-        )}
-        {(searchLoading || isLayoutSwitching || ontologyLoading) && (
-          <div style={{display:'flex', alignItems:'center', gap:6, fontSize:13, color:'#004B87'}}>
-            <div className="spinner" style={{width:14,height:14,border:'2px solid #f3f3f3',borderTop:'2px solid #004B87',borderRadius:'50%',animation:'spin 1s linear infinite'}}></div>
-            {searchLoading ? 'Searching...' : ontologyLoading ? 'Loading ontology...' : 'Switching layout...'}
-          </div>
-        )}
-        {ontologyGraphMessage && (
-          <div style={{fontSize:12, color:'#8a5a00', background:'#fff8e1', border:'1px solid #ffe082', borderRadius:5, padding:'5px 8px'}}>
-            {ontologyGraphMessage}
-          </div>
-        )}
-        {ontologySliceSummary && (
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '6px 10px',
-              borderRadius: 6,
-              border: `1px solid ${TCS_GRAPH_THEME.border}`,
-              background: '#ffffff',
-              color: TCS_GRAPH_THEME.ink,
-              maxWidth: '100%'
-            }}
-          >
-            <span style={{ fontSize: 12, fontWeight: 700, color: TCS_GRAPH_THEME.ink }}>
-              Current schema slice
-            </span>
-            <span style={{ fontSize: 12, color: TCS_GRAPH_THEME.inkSoft }}>
-              {ontologySliceSummary.nodeCount} nodes
-            </span>
-            <span style={{ fontSize: 12, color: TCS_GRAPH_THEME.inkSoft }}>
-              {ontologySliceSummary.relationshipCount} links
-            </span>
-            {ontologySliceSummary.visibleSchemaLabels.map((entry) => (
-              <span
-                key={entry.label}
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: TCS_GRAPH_THEME.ink,
-                  background: TCS_GRAPH_THEME.surfaceAccent,
-                  border: `1px solid ${TCS_GRAPH_THEME.border}`,
-                  borderRadius: 999,
-                  padding: '3px 8px'
-                }}
-              >
-                {entry.label}: {entry.count}
-              </span>
-            ))}
-            {ontologySliceSummary.visibleRelationships.map((entry) => (
-              (() => {
-                const visual = getRelationshipVisual(entry.type);
-                return (
-                  <span
-                    key={entry.type}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      color: TCS_GRAPH_THEME.ink,
-                      background: '#f8fafc',
-                      border: `1px solid ${TCS_GRAPH_THEME.border}`,
-                      borderRadius: 999,
-                      padding: '3px 8px'
-                    }}
-                  >
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: 16,
-                        height: 0,
-                        borderTop: `${Math.max(2, Math.round(visual.width))}px ${visual.dasharray ? 'dashed' : 'solid'} ${visual.color}`,
-                        display: 'inline-block'
-                      }}
-                    />
-                    {entry.type}: {entry.count}
-                  </span>
-                );
-              })()
-            ))}
-          </div>
-        )}
-        {(graphSearchActive || selectedOntology !== 'ALL' || graphViewMode !== 'ontology') && (
-          <button
-            onClick={() => {
-              setGraphViewMode('ontology');
-              graphViewModeRef.current = 'ontology';
-              resetGraphSelectionState({ dataOverride: initialData });
-              commitGraphSlice(initialData, {
-                updateGraphData: true,
-                updateFullDataset: true,
-                updateSearchResultData: true,
-                syncResults: !searchModeRef.current,
-              });
-            }}
-            style={{padding:'5px 10px', border:'none', borderRadius:'6px', backgroundColor:TCS_GRAPH_THEME.primary, color:'#fff', fontSize:'12px', fontWeight:700, cursor:'pointer', transition:'all .2s ease'}}
-          >Reset</button>
-        )}
-        <button
-          onClick={toggleChat}
-          style={{padding:'5px 10px', border:'none', borderRadius:'6px', backgroundColor:TCS_GRAPH_THEME.primary, color:'#fff', fontSize:'12px', fontWeight:700, cursor:'pointer', transition:'all .2s ease'}}
-          title={showChat ? 'Hide chat assistant' : 'Show chat assistant'}
-        >{showChat ? 'Hide Chat' : 'Show Chat'}</button>
-      </div>
+        onOpenFullGraph={() => {
+          if (selectedOntology && selectedOntology !== 'ALL') {
+            lastSpecificOntologyRef.current = selectedOntology;
+          }
+          setGraphViewMode('ontology');
+          graphViewModeRef.current = 'ontology';
+          setSelectedOntology('ALL');
+          selectedOntologyRef.current = 'ALL';
+          resetGraphSelectionState({ resetOntology: false, resetStepPart: true, dataOverride: initialData });
+          commitGraphSlice(initialData, {
+            updateGraphData: true,
+            updateFullDataset: true,
+            updateSearchResultData: true,
+            syncResults: !searchModeRef.current,
+          });
+        }}
+        onOpenOntologyGraph={() => {
+          const nextOntology = lastSpecificOntologyRef.current !== 'ALL'
+            ? lastSpecificOntologyRef.current
+            : preferredOntologyValue;
+          setGraphViewMode('ontology');
+          graphViewModeRef.current = 'ontology';
+          if (nextOntology === 'ALL') {
+            setOntologyGraphMessage('No registered ontology graph is available yet.');
+          }
+          if (nextOntology !== 'ALL') {
+            setSelectedOntology(nextOntology);
+            selectedOntologyRef.current = nextOntology;
+          }
+        }}
+        onOpenContextualGraph={() => {
+          setGraphViewMode('individual');
+          graphViewModeRef.current = 'individual';
+          setSelectedOntology('ALL');
+          selectedOntologyRef.current = 'ALL';
+          const nextRootId = resolveContextualEntryNodeId(searchInput);
+          if (nextRootId) {
+            setTimeout(() => {
+              loadContextualRootGraph(nextRootId, { preserveSearch: true });
+            }, 0);
+            return;
+          }
+          if (searchInput?.trim()) {
+            setSearchQuery(normalizeSearchTerm(searchInput));
+          }
+        }}
+        ontologyLoading={ontologyLoading}
+        ontologyError={ontologyError}
+        ontologyOptions={ontologyOptions}
+        onSelectedOntologyChange={setSelectedOntology}
+        selectedStepPart={selectedStepPart}
+        stepPartsLoading={stepPartsLoading}
+        stepPartsError={stepPartsError}
+        stepParts={stepParts}
+        onSelectedStepPartChange={setSelectedStepPart}
+        isLayoutSwitching={isLayoutSwitching}
+        ontologyGraphMessage={ontologyGraphMessage}
+        ontologySliceSummary={ontologySliceSummary}
+        getRelationshipVisual={getRelationshipVisual}
+        graphSearchActive={graphSearchActive}
+        onReset={() => {
+          setGraphViewMode('ontology');
+          graphViewModeRef.current = 'ontology';
+          resetGraphSelectionState({ dataOverride: initialData });
+          commitGraphSlice(initialData, {
+            updateGraphData: true,
+            updateFullDataset: true,
+            updateSearchResultData: true,
+            syncResults: !searchModeRef.current,
+          });
+        }}
+        showChat={showChat}
+        onToggleChat={toggleChat}
+      />
       {isLoading && (
         <div className="loading-state" style={{
           position: 'absolute',
@@ -5143,7 +5309,7 @@ const boundaryForce = (width, height) => {
           <div style={{ fontSize: '14px', color: '#7f8c8d' }}>{error}</div>
         </div>
       )}
-      {!isLoading && !error && visibleSearchNodes.length === 0 && debouncedSearchQuery && !searchLoading && (
+      {!isLoading && !error && graphViewMode !== 'individual' && graphSearchActive && !searchLoading && debouncedSearchQuery && searchResultData.nodes.length === 0 && (
         <div style={{
           position: 'absolute',
           top: '50%',
@@ -5165,7 +5331,7 @@ const boundaryForce = (width, height) => {
           <div style={{ fontSize: '12px', color: '#95a5a6' }}>Try adjusting your search terms</div>
         </div>
       )}
-      {!isLoading && !error && graphData.nodes.length === 0 && !searchQuery && (
+      {!isLoading && !error && graphViewMode !== 'individual' && graphData.nodes.length === 0 && !searchQuery && (
         <div style={{
           position: 'absolute',
           top: '50%',
@@ -5186,8 +5352,29 @@ const boundaryForce = (width, height) => {
           <div style={{ fontSize: '14px', color: '#7f8c8d' }}>No graph data available from Neo4j database</div>
         </div>
       )}
+      {!isLoading && !error && graphViewMode === 'individual' && !searchLoading && activeGraphDataset.nodes.length === 0 && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 11,
+          background: 'rgba(255,255,255,0.98)',
+          padding: '28px 34px',
+          borderRadius: '16px',
+          textAlign: 'center',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.1)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(0,0,0,0.08)',
+          minWidth: '320px'
+        }}>
+          <div style={{ marginBottom: '12px', fontSize: '18px', fontWeight: 700, color: '#2C2C2C' }}>Contextual Instance Graph</div>
+          <div style={{ fontSize: '13px', color: '#7f8c8d', marginBottom: '4px' }}>Search for an instance to load its one-hop connected graph.</div>
+          <div style={{ fontSize: '12px', color: '#95a5a6' }}>Matched nodes open as the root and can be expanded one hop at a time.</div>
+        </div>
+      )}
 
-  <svg ref={svgRef} style={{ width: '100%', height: '100%', flexGrow: 1, margin: 0, padding: 0 }}></svg>
+  <svg ref={svgRef} style={{ width: '100%', flex: '1 1 auto', minHeight: 0, margin: 0, padding: 0, position: 'relative', zIndex: 0 }}></svg>
 
       <div ref={tooltipRef} className="tooltip" style={{
         position: 'absolute',
@@ -5264,16 +5451,4 @@ if (!document.head.querySelector('style[data-spinner]')) {
   document.head.appendChild(spinnerStyles);
 }
 
-// Memoize component to prevent unnecessary re-renders.
-export default React.memo(GraphHEB, (prevProps, nextProps) => {
-  // Custom comparison: only re-render if specific props change
-  return (
-    prevProps.graphData === nextProps.graphData &&
-    prevProps.onNodeClick === nextProps.onNodeClick &&
-    prevProps.onLinkClick === nextProps.onLinkClick &&
-    prevProps.selectedNode === nextProps.selectedNode &&
-    prevProps.selectedLink === nextProps.selectedLink &&
-    prevProps.highlightedNodes === nextProps.highlightedNodes &&
-    prevProps.chatResults === nextProps.chatResults
-  );
-});
+export default React.memo(GraphHEB);

@@ -1534,12 +1534,14 @@ export default function OntologyMapper() {
 
       if (options.length === 0) {
         setMappingOptionsError('No ontologies available. Please upload an ontology first.');
+        setLoading(false);
         return;
       }
 
       // Initialize defaults only once (or if current selection no longer exists)
       const selectedOption = resolveSelectedOntologyOption(options, selectedMapping);
       if (!selectedOption) {
+        setLoading(false);
         return;
       }
 
@@ -1558,6 +1560,7 @@ export default function OntologyMapper() {
     } catch (e) {
       const errorMsg = e.message || 'Failed to process ontologies';
       setMappingOptionsError(errorMsg);
+      setLoading(false);
       console.warn('Failed to process ontologies:', e);
     }
   }, [contextOntologies, buildOntologyOptions, resolveSelectedOntologyOption, selectedMapping, selectedMappingType, selectedOntologyApi]);
@@ -1637,6 +1640,7 @@ export default function OntologyMapper() {
 
   useEffect(() => {
     if (!selectedOntologyApi || !selectedMappingType) {
+      setLoading(false);
       return;
     }
     let cancelled = false;
@@ -2057,7 +2061,7 @@ export default function OntologyMapper() {
     { id: 'dictionary', label: 'Data Dictionary' },
     { id: 'taxonomy', label: 'OWL Browser' },
     { id: 'vocabulary', label: 'Mapping Vocabulary' },
-    { id: 'alignment', label: 'Semantic Bridge' },
+    { id: 'alignment', label: 'Instance Alignment' },
   ];
 
   return (
@@ -2082,8 +2086,8 @@ export default function OntologyMapper() {
             <Network size={16} strokeWidth={2.4} />
           </div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: '14px', color: C.textPrimary }}>Active Ontology</div>
-            <div style={{ fontSize: '11px', color: C.textSec }}>Dictionary, vocabulary mappings, and instance-to-ontology alignment</div>
+            <div style={{ fontWeight: 800, fontSize: '14px', color: C.textPrimary }}>Ontology Junction</div>
+            <div style={{ fontSize: '11px', color: C.textSec }}>Use the alignment view for one imported instance at a time; use the merge workflow to compare two ontologies.</div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -2216,9 +2220,10 @@ export default function OntologyMapper() {
 
               {/* ── Link Instance to Ontology ─────────────────────────────── */}
               <div style={{ marginBottom: '20px', border: `2px solid ${C.primary}`, borderRadius: '8px', padding: '16px', background: C.primaryLight }}>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>Link instance to ontology</div>
-                <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '14px' }}>
-                  Pick one imported instance and one ontology. Each instance is aligned independently; if you load a second instance, map it in a separate pass against the same ontology anchor to compare the results cleanly.
+                <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>Instance-to-ontology bridge</div>
+                <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '14px', lineHeight: 1.45 }}>
+                  Pick one imported instance and one target ontology. Use this panel to generate or apply semantic links for that one instance only.
+                  To compare or merge two ontologies, use the separate merge workflow in Data Import.
                 </div>
                 <div style={{
                   display: 'flex',
@@ -2258,7 +2263,7 @@ export default function OntologyMapper() {
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {mapBusy ? 'Working…' : 'Preview mappings'}
+                      {mapBusy ? 'Working…' : 'Preview bridge suggestions'}
                     </button>
                   </div>
                 </div>
@@ -2475,14 +2480,15 @@ export default function OntologyMapper() {
               </div>
 
               {/* ── Entity Mapper ───────────────────────────────────────────── */}
-              <div style={{ fontSize: '13px', fontWeight: 600, color: C.textPrimary, marginBottom: '10px' }}>Semantic Bridge</div>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: C.textPrimary, marginBottom: '10px' }}>Advanced: add one manual bridge mapping</div>
               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px', marginBottom: '16px', background: C.bg }}>
-                <div style={{ fontSize: '11px', color: C.textSec, marginBottom: '10px' }}>
-                  Selected instance: {selectedImportTaskInfo?.filename || 'None'} · bridge each imported instance separately to the same ontology target.
+                <div style={{ fontSize: '11px', color: C.textSec, marginBottom: '10px', lineHeight: 1.45 }}>
+                  <span style={{ color: C.textPrimary, fontWeight: 700 }}>Imported instance:</span> {selectedImportTaskInfo?.filename || 'None'}.
+                  Use the suggestions table above for normal alignment. Use this panel only to add or edit a single custom bridge row.
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
                   <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Instance source type</label>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source signal type</label>
                     <select
                       value={bridgeSourceKind}
                       onChange={(e) => setBridgeSourceKind(e.target.value)}
@@ -2492,7 +2498,7 @@ export default function OntologyMapper() {
                         <option key={kind} value={kind}>{kind}</option>
                       ))}
                     </select>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Instance term / value</label>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source term</label>
                     <select
                       value={bridgeSourceTerm}
                       onChange={(e) => setBridgeSourceTerm(e.target.value)}
@@ -2505,7 +2511,7 @@ export default function OntologyMapper() {
                     </select>
                   </div>
                   <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Ontology target type</label>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Ontology concept type</label>
                     <select
                       value={bridgeTargetKind}
                       onChange={(e) => setBridgeTargetKind(e.target.value)}
@@ -2517,7 +2523,7 @@ export default function OntologyMapper() {
                         </option>
                       ))}
                     </select>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Ontology term / property</label>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Target term</label>
                     <select
                       value={bridgeTargetTerm}
                       onChange={(e) => setBridgeTargetTerm(e.target.value)}

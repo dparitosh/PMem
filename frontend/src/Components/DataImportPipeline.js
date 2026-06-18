@@ -7,6 +7,7 @@ import {
   Network,
   Check,
   Upload,
+  RotateCcw,
   Loader2,
 } from 'lucide-react';
 import OntologyMetadataForm from './OntologyMetadataForm';
@@ -70,10 +71,10 @@ function getWorkflowNote({
     return `${fallbackWorkflow.title} is not connected yet.`;
   }
   if (selectedWorkflow === 'instance.link') {
-    return 'Upload a source instance and choose an ontology anchor.';
+    return 'Select one imported instance and one target ontology, then preview or apply the semantic bridge.';
   }
   if (selectedWorkflow === 'ontology.merge') {
-    return 'Review a source and target ontology merge pair.';
+    return 'Select a source ontology and a different target ontology, then review the merge plan.';
   }
   if (
     selectedWorkflow === 'ontology.validate'
@@ -1055,7 +1056,7 @@ export default function DataImportPipeline() {
   };
 
   const getImportTimeoutMs = () => {
-    return 300 * 1000;
+    return 900 * 1000;
   };
 
   const getCommitPhaseLabel = (phase) => {
@@ -1538,7 +1539,11 @@ export default function DataImportPipeline() {
             flexWrap: 'wrap',
           }}>
             <label style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
-              {selectedWorkflow === 'ontology.merge' ? 'Source ontology:' : 'Ontology anchor:'}
+              {selectedWorkflow === 'instance.link'
+                ? 'Target ontology:'
+                : selectedWorkflow === 'ontology.merge'
+                  ? 'Source ontology:'
+                  : 'Ontology anchor:'}
             </label>
             <select
               value={workflowOntologyId}
@@ -1617,7 +1622,13 @@ export default function DataImportPipeline() {
                   cursor: workflowLoading ? 'not-allowed' : 'pointer',
                 }}
               >
-                {workflowLoading ? 'Running...' : (selectedWorkflow === 'ontology.merge' ? 'Review merge plan' : 'Run workflow')}
+                {workflowLoading ? 'Running...' : (
+                  selectedWorkflow === 'ontology.merge'
+                    ? 'Review merge plan'
+                    : selectedWorkflow === 'instance.link'
+                      ? 'Preview bridge'
+                      : 'Run workflow'
+                )}
               </button>
               {selectedWorkflow === 'ontology.merge' && (
                 <button
@@ -1678,7 +1689,7 @@ export default function DataImportPipeline() {
                 {selectedWorkflow === 'ontology.merge' && (
                   <div style={{ marginTop: '6px', color: C.textPrimary, lineHeight: 1.45 }}>
                     Use <strong>Review merge plan</strong> to inspect ontology gaps, overlaps, and conflicts first.
-                    Use <strong>Merge into Neo4j</strong> when you want to commit the ontology prefix alignment in the graph.
+                    Use <strong>Merge into Neo4j</strong> when you want to commit the selected source ontology into the chosen target ontology.
                   </div>
                 )}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '4px' }}>
@@ -2477,7 +2488,12 @@ export default function DataImportPipeline() {
                         <RefreshCw size={12} /> Processing
                       </button>
                     )}
-                    {(isStarted || !!status.taskId) && (status.stage === 'verify' || status.backendStage === 'preview') && !status.error && !status.committed && !isCommitInFlight(status) && (
+                    {(isStarted || !!status.taskId)
+                      && (status.stage === 'verify' || status.backendStage === 'preview' || status.commitPhase === 'error' || status.commitError)
+                      && !status.error
+                      && !status.committed
+                      && !isCommitInFlight(status)
+                      && (
                       <button
                         onClick={() => {
                           setConfirmingImport(status.taskId);
@@ -2508,9 +2524,10 @@ export default function DataImportPipeline() {
                           alignItems: 'center',
                           gap: '4px',
                         }}
-                        title="Load to Neo4j"
+                        title={status.commitError || status.commitPhase === 'error' ? 'Retry commit to Neo4j' : 'Load to Neo4j'}
                       >
-                        <Upload size={12} /> Load to Neo4j
+                        {status.commitError || status.commitPhase === 'error' ? <RotateCcw size={12} /> : <Upload size={12} />}
+                        {status.commitError || status.commitPhase === 'error' ? 'Retry commit' : 'Load to Neo4j'}
                       </button>
                     )}
                     {isCommitInFlight(status) && (

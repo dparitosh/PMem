@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from xml.etree import ElementTree as ET
@@ -85,6 +86,9 @@ class GraphViewService:
         "Product",
         "ProductRevision",
         "Part",
+        "Requirement",
+        "RequirementRevision",
+        "GeneralRelation",
         "Occurrence",
         "InstanceGraph",
         "ProductInstance",
@@ -106,6 +110,11 @@ class GraphViewService:
         with driver.session(database=config.database) as session:
             result = session.run(cypher, params or {})
             return [dict(record) for record in result]
+
+    @staticmethod
+    def _normalize_search_term(value: str) -> str:
+        normalized = re.sub(r"\*+", "", str(value or "")).strip().lower()
+        return re.sub(r"^[^a-z0-9]+|[^a-z0-9]+$", "", normalized)
 
     @classmethod
     def _resolve_ontology_prefix(cls, value: str) -> str:
@@ -260,7 +269,13 @@ class GraphViewService:
     @staticmethod
     def _is_individual_node(node: Dict[str, Any]) -> bool:
         labels = {str(label or "") for label in (node.get("labels") or [])}
-        return bool(labels.intersection(GraphViewService.INSTANCE_NODE_LABELS)) if labels else False
+        props = node.get("properties") or {}
+        semantic_role = str(props.get("semantic_role") or "").strip().lower()
+        if labels and labels.intersection(GraphViewService.INSTANCE_NODE_LABELS):
+            return True
+        if semantic_role == "entity" and not GraphViewService._is_schema_node(node):
+            return True
+        return False
 
     @classmethod
     def _is_schema_node(cls, node: Dict[str, Any]) -> bool:
@@ -1192,36 +1207,72 @@ RETURN count(res) AS count
         ontology_prefix = cls._resolve_ontology_prefix(ontology_prefix) if ontology_prefix else ""
         search_mode = str(search_mode or "best").strip().lower()
         search_limit = max(1, min(int(limit), 2000))
+        raw_search = str(search or "")
+        normalized_search = cls._normalize_search_term(raw_search)
+        wildcard_prefix_search = "*" in raw_search
+
+        if not normalized_search:
+            return {
+                "nodes": [],
+                "relationships": [],
+                "counts": {"nodes": 0, "relationships": 0},
+                "view": {
+                    "type": "contextual-subgraph",
+                    "search": raw_search,
+                    "ontology_prefix": ontology_prefix or "",
+                    "import_id": import_id or "",
+                },
+            }
 
         neighbor_match = """
         OPTIONAL MATCH (seed)-[r]-(adjacent)
-        WHERE adjacent IS NULL OR (adjacent:Individual AND NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk))
+        WHERE adjacent IS NULL OR (
+          NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
+          AND (
+            any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
+            OR coalesce(adjacent.semantic_role, '') = 'entity'
+          )
+        )
         WITH seed, r, adjacent
         """ if expand_neighbors else """
         WITH seed, NULL AS r, NULL AS adjacent
         """
 
         query = """
-        CALL {
-          WITH toLower(trim($search)) AS search_term, $ontology_prefix AS ontology_prefix, $import_id AS import_id
+        CALL () {
+          WITH toLower(trim($search)) AS search_term,
+               $ontology_prefix AS ontology_prefix,
+               $import_id AS import_id,
+               $wildcard_prefix_search AS wildcard_prefix_search
         MATCH (seed)
         WHERE NOT (seed:DatasheetChunk OR seed:GraphChunk)
             AND (
+              any(label IN labels(seed) WHERE label IN $instance_node_labels)
+              OR coalesce(seed.semantic_role, '') = 'entity'
+            )
+            AND (
               search_term = '' OR
-              toLower(elementId(seed)) CONTAINS search_term OR
-            any(label IN labels(seed) WHERE toLower(label) CONTAINS search_term) OR
-            any(key IN keys(seed) WHERE
-              toLower(key) CONTAINS search_term OR
-              toLower(coalesce(toStringOrNull(seed[key]), '')) CONTAINS search_term
-            ) OR
-            EXISTS {
-              MATCH (seed)-[matched_rel]-()
-              WHERE toLower(type(matched_rel)) CONTAINS search_term
-                   OR any(key IN keys(matched_rel) WHERE
-                     toLower(key) CONTAINS search_term OR
-                     toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS search_term
-                   )
-              }
+              CASE
+                WHEN wildcard_prefix_search THEN
+                  toLower(elementId(seed)) STARTS WITH search_term OR
+                  any(value IN [
+                    properties(seed)['id'],
+                    properties(seed)['uid'],
+                    properties(seed)['instance_id'],
+                    properties(seed)['identifier'],
+                    properties(seed)['catalogue_id'],
+                    properties(seed)['requirement_id'],
+                    properties(seed)['requirement_ref'],
+                    properties(seed)['code'],
+                    properties(seed)['external_id'],
+                    properties(seed)['externalId']
+                  ] WHERE toLower(coalesce(toStringOrNull(value), '')) STARTS WITH search_term)
+                ELSE
+                  toLower(elementId(seed)) CONTAINS search_term OR
+                  any(key IN keys(seed) WHERE
+                    toLower(coalesce(toStringOrNull(seed[key]), '')) CONTAINS search_term
+                  )
+              END
             )
             AND (
               ontology_prefix = '' OR
@@ -1237,6 +1288,9 @@ RETURN count(res) AS count
           WITH seed, search_term,
             CASE
               WHEN search_term = '' THEN 0
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['catalogue_id']), '')) = search_term THEN 1300
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['requirement_id']), '')) = search_term THEN 1290
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['requirement_ref']), '')) = search_term THEN 1280
               WHEN toLower(elementId(seed)) = search_term THEN 1010
               WHEN toLower(coalesce(toStringOrNull(seed.id), '')) = search_term THEN 1000
               WHEN toLower(coalesce(toStringOrNull(properties(seed)['uid']), '')) = search_term THEN 990
@@ -1253,11 +1307,19 @@ RETURN count(res) AS count
               WHEN toLower(coalesce(toStringOrNull(properties(seed)['source_filename']), '')) = search_term THEN 905
               WHEN toLower(coalesce(toStringOrNull(properties(seed)['idref']), '')) = search_term THEN 900
               WHEN toLower(coalesce(toStringOrNull(properties(seed)['href']), '')) = search_term THEN 900
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['part_type']), '')) = search_term THEN 890
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['element_type']), '')) = search_term THEN 880
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['catalogue_id']), '')) STARTS WITH search_term THEN 1270
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['requirement_id']), '')) STARTS WITH search_term THEN 1260
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['requirement_ref']), '')) STARTS WITH search_term THEN 1250
               WHEN any(value IN [
                 properties(seed)['id'],
                 properties(seed)['uid'],
                 properties(seed)['instance_id'],
                 properties(seed)['identifier'],
+                properties(seed)['catalogue_id'],
+                properties(seed)['requirement_id'],
+                properties(seed)['requirement_ref'],
                 properties(seed)['name'],
                 properties(seed)['title'],
                 properties(seed)['code'],
@@ -1268,13 +1330,18 @@ RETURN count(res) AS count
                 properties(seed)['externalId'],
                 properties(seed)['source_filename'],
                 properties(seed)['idref'],
-                properties(seed)['href']
+                properties(seed)['href'],
+                properties(seed)['part_type'],
+                properties(seed)['element_type']
               ] WHERE toLower(coalesce(toStringOrNull(value), '')) STARTS WITH search_term) THEN 800
               WHEN any(value IN [
                 properties(seed)['id'],
                 properties(seed)['uid'],
                 properties(seed)['instance_id'],
                 properties(seed)['identifier'],
+                properties(seed)['catalogue_id'],
+                properties(seed)['requirement_id'],
+                properties(seed)['requirement_ref'],
                 properties(seed)['name'],
                 properties(seed)['title'],
                 properties(seed)['code'],
@@ -1285,26 +1352,29 @@ RETURN count(res) AS count
                 properties(seed)['externalId'],
                 properties(seed)['source_filename'],
                 properties(seed)['idref'],
-                properties(seed)['href']
+                properties(seed)['href'],
+                properties(seed)['part_type'],
+                properties(seed)['element_type']
               ] WHERE toLower(coalesce(toStringOrNull(value), '')) CONTAINS search_term) THEN 500
               WHEN toLower(elementId(seed)) STARTS WITH search_term THEN 450
               WHEN toLower(elementId(seed)) CONTAINS search_term THEN 400
-              WHEN any(label IN labels(seed) WHERE toLower(label) CONTAINS search_term) THEN 300
-              WHEN any(key IN keys(seed) WHERE toLower(key) CONTAINS search_term) THEN 250
-              WHEN EXISTS {
-                MATCH (seed)-[matched_rel]-()
-                WHERE toLower(type(matched_rel)) CONTAINS search_term
-                   OR any(key IN keys(matched_rel) WHERE
-                     toLower(key) CONTAINS search_term OR
-                     toLower(coalesce(toStringOrNull(matched_rel[key]), '')) CONTAINS search_term
-                   )
-              } THEN 200
               WHEN any(key IN keys(seed) WHERE toLower(coalesce(toStringOrNull(seed[key]), '')) CONTAINS search_term) THEN 100
               ELSE 0
             END AS score
           WHERE search_term = '' OR score > 0
-          RETURN DISTINCT seed AS seed, score AS score
-          ORDER BY score DESC, toLower(coalesce(
+          RETURN DISTINCT seed AS seed, score AS score, search_term AS search_term
+          ORDER BY score DESC,
+            CASE
+              WHEN any(label IN labels(seed) WHERE label IN ['Requirement', 'RequirementRevision']) THEN 4
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['catalogue_id']), '')) STARTS WITH search_term THEN 4
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['requirement_id']), '')) STARTS WITH search_term THEN 4
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['requirement_ref']), '')) STARTS WITH search_term THEN 4
+              WHEN any(label IN labels(seed) WHERE label IN ['Part', 'Product', 'ProductRevision']) THEN 3
+              WHEN toLower(coalesce(toStringOrNull(properties(seed)['part_type']), '')) CONTAINS 'requirement' THEN 2
+              WHEN coalesce(seed.semantic_role, '') = 'entity' THEN 1
+              ELSE 0
+            END DESC,
+            toLower(coalesce(
             properties(seed)['name'],
             properties(seed)['title'],
             properties(seed)['label'],
@@ -1314,7 +1384,7 @@ RETURN count(res) AS count
             ''
           )) ASC, elementId(seed) ASC
           LIMIT CASE
-            WHEN trim($search) = '' THEN toInteger($limit)
+            WHEN $expand_neighbors THEN 1
             WHEN $search_mode = 'broader' THEN toInteger($limit)
             ELSE 1
           END
@@ -1332,8 +1402,8 @@ RETURN count(res) AS count
               MATCH (seed)-[]-(candidate)
               WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
                 AND (
-                  any(label IN labels(candidate) WHERE label IN $instance_node_labels) OR
-                  any(label IN labels(candidate) WHERE label IN $schema_node_labels)
+                  any(label IN labels(candidate) WHERE label IN $instance_node_labels)
+                  OR coalesce(candidate.semantic_role, '') = 'entity'
                 )
             }
           } AS n,
@@ -1346,12 +1416,12 @@ RETURN count(res) AS count
             labels: labels(adjacent),
             properties: properties(adjacent),
             can_traverse: CASE
-              WHEN any(label IN labels(adjacent) WHERE label IN $instance_node_labels) THEN EXISTS {
+              WHEN any(label IN labels(adjacent) WHERE label IN $instance_node_labels) OR coalesce(adjacent.semantic_role, '') = 'entity' THEN EXISTS {
                 MATCH (adjacent)-[]-(candidate)
                 WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
                   AND (
-                    any(label IN labels(candidate) WHERE label IN $instance_node_labels) OR
-                    any(label IN labels(candidate) WHERE label IN $schema_node_labels)
+                    any(label IN labels(candidate) WHERE label IN $instance_node_labels)
+                    OR coalesce(candidate.semantic_role, '') = 'entity'
                   )
               }
               ELSE false
@@ -1361,23 +1431,21 @@ RETURN count(res) AS count
         rows = cls._run(
             query,
             {
-                "search": search or "",
+                "search": normalized_search,
                 "ontology_prefix": ontology_prefix or "",
                 "import_id": import_id or "",
                 "limit": search_limit,
                 "expand_neighbors": bool(expand_neighbors),
+                "wildcard_prefix_search": bool(wildcard_prefix_search),
                 "search_mode": search_mode,
                 "schema_node_labels": cls.SCHEMA_NODE_LABELS,
                 "instance_node_labels": cls.INSTANCE_NODE_LABELS,
             },
         )
-        graph = cls._filter_graph_nodes(
-            cls.rows_to_graph(rows),
-            only_individual_nodes=True,
-        )
+        graph = cls._filter_graph_nodes(cls.rows_to_graph(rows), only_individual_nodes=True)
         graph["view"] = {
             "type": "contextual-subgraph",
-            "search": search or "",
+            "search": raw_search,
             "ontology_prefix": ontology_prefix or "",
             "import_id": import_id or "",
         }
@@ -1402,8 +1470,8 @@ RETURN count(res) AS count
               MATCH ($node_var)-[]-(candidate)
               WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
                 AND (
-                  any(label IN labels(candidate) WHERE label IN $instance_node_labels) OR
-                  any(label IN labels(candidate) WHERE label IN $schema_node_labels)
+                  any(label IN labels(candidate) WHERE label IN $instance_node_labels)
+                  OR coalesce(candidate.semantic_role, '') = 'entity'
                 )
             }
           }
@@ -1414,12 +1482,12 @@ RETURN count(res) AS count
             labels: labels($node_var),
             properties: properties($node_var),
             can_traverse: CASE
-              WHEN any(label IN labels($node_var) WHERE label IN $instance_node_labels) THEN EXISTS {
+              WHEN any(label IN labels($node_var) WHERE label IN $instance_node_labels) OR coalesce($node_var.semantic_role, '') = 'entity' THEN EXISTS {
                 MATCH ($node_var)-[]-(candidate)
                 WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
                   AND (
-                    any(label IN labels(candidate) WHERE label IN $instance_node_labels) OR
-                    any(label IN labels(candidate) WHERE label IN $schema_node_labels)
+                    any(label IN labels(candidate) WHERE label IN $instance_node_labels)
+                    OR coalesce(candidate.semantic_role, '') = 'entity'
                   )
               }
               ELSE false
@@ -1436,8 +1504,8 @@ RETURN count(res) AS count
               WHERE adjacent IS NULL OR (
                 NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
                 AND (
-                  any(label IN labels(adjacent) WHERE label IN $instance_node_labels) OR
-                  any(label IN labels(adjacent) WHERE label IN $schema_node_labels)
+                  any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
+                  OR coalesce(adjacent.semantic_role, '') = 'entity'
                 )
               )
               RETURN seed AS source_node, r AS rel, adjacent AS target_node
@@ -1449,12 +1517,12 @@ RETURN count(res) AS count
               WHERE NOT (mid:DatasheetChunk OR mid:GraphChunk)
                 AND NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
                 AND (
-                  any(label IN labels(mid) WHERE label IN $instance_node_labels) OR
-                  any(label IN labels(mid) WHERE label IN $schema_node_labels)
+                  any(label IN labels(mid) WHERE label IN $instance_node_labels)
+                  OR coalesce(mid.semantic_role, '') = 'entity'
                 )
                 AND (
-                  any(label IN labels(adjacent) WHERE label IN $instance_node_labels) OR
-                  any(label IN labels(adjacent) WHERE label IN $schema_node_labels)
+                  any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
+                  OR coalesce(adjacent.semantic_role, '') = 'entity'
                 )
               RETURN mid AS source_node, r2 AS rel, adjacent AS target_node
             }
@@ -1478,8 +1546,8 @@ RETURN count(res) AS count
             WHERE adjacent IS NULL OR (
               NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
               AND (
-                any(label IN labels(adjacent) WHERE label IN $instance_node_labels) OR
-                any(label IN labels(adjacent) WHERE label IN $schema_node_labels)
+                any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
+                OR coalesce(adjacent.semantic_role, '') = 'entity'
               )
             )
             RETURN
@@ -1491,8 +1559,8 @@ RETURN count(res) AS count
                   MATCH (seed)-[]-(candidate)
                   WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
                     AND (
-                      any(label IN labels(candidate) WHERE label IN $instance_node_labels) OR
-                      any(label IN labels(candidate) WHERE label IN $schema_node_labels)
+                      any(label IN labels(candidate) WHERE label IN $instance_node_labels)
+                      OR coalesce(candidate.semantic_role, '') = 'entity'
                     )
                 }
               } AS n,
@@ -1505,12 +1573,12 @@ RETURN count(res) AS count
                 labels: labels(adjacent),
                 properties: properties(adjacent),
                 can_traverse: CASE
-                  WHEN any(label IN labels(adjacent) WHERE label IN $instance_node_labels) THEN EXISTS {
+                  WHEN any(label IN labels(adjacent) WHERE label IN $instance_node_labels) OR coalesce(adjacent.semantic_role, '') = 'entity' THEN EXISTS {
                     MATCH (adjacent)-[]-(candidate)
                     WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
                       AND (
-                        any(label IN labels(candidate) WHERE label IN $instance_node_labels) OR
-                        any(label IN labels(candidate) WHERE label IN $schema_node_labels)
+                        any(label IN labels(candidate) WHERE label IN $instance_node_labels)
+                        OR coalesce(candidate.semantic_role, '') = 'entity'
                       )
                   }
                   ELSE false
@@ -1529,7 +1597,7 @@ RETURN count(res) AS count
             },
         )
         graph = cls.rows_to_graph(rows)
-        graph = cls._filter_graph_nodes(graph)
+        graph = cls._filter_graph_nodes(graph, only_individual_nodes=True)
         graph["view"] = {
             "type": "traversal-slice",
             "node_id": node_id,

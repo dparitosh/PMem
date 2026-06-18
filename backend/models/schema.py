@@ -1,9 +1,13 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional
+from typing import Any, Optional
 
 class ChatRequest(BaseModel):
     session_id: str = Field(..., min_length=1, max_length=256, description="Session identifier")
     message: str = Field(..., min_length=1, max_length=4000, description="User message")
+    graph_context: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Optional compact graph context from the UI (visible nodes/relationships, active view, selection hints)",
+    )
     
     @field_validator('session_id')
     def validate_session_id(cls, v):

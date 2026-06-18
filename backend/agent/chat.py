@@ -123,6 +123,103 @@ def _graph_payload_to_context_docs(payload: dict, *, title: str, query: str) -> 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     session_id: str
+    graph_context: dict
+
+
+def _format_graph_context(graph_context) -> str:
+    """Convert a compact frontend graph snapshot into a short system prompt block."""
+    if not graph_context or not isinstance(graph_context, dict):
+        return ""
+
+    def _extract_section(source):
+        if not isinstance(source, dict):
+            return [], []
+        nodes = source.get("nodes")
+        links = source.get("links") or source.get("relationships")
+        return (
+            nodes if isinstance(nodes, list) else [],
+            links if isinstance(links, list) else [],
+        )
+
+    def _coalesce(*values):
+        for value in values:
+            if value not in (None, "", [], {}, ()):  # keep the first meaningful value
+                return value
+        return None
+
+    def _node_name(node):
+        if not isinstance(node, dict):
+            return str(node)
+        props = node.get("properties") if isinstance(node.get("properties"), dict) else node
+        return (
+            _coalesce(
+                props.get("name") if isinstance(props, dict) else None,
+                props.get("label") if isinstance(props, dict) else None,
+                props.get("title") if isinstance(props, dict) else None,
+                node.get("name"),
+                node.get("label"),
+                node.get("type"),
+                node.get("entity_type"),
+                node.get("elementId"),
+                "node",
+            )
+        )
+
+    def _node_type(node):
+        if not isinstance(node, dict):
+            return ""
+        props = node.get("properties") if isinstance(node.get("properties"), dict) else node
+        return _coalesce(
+            node.get("label"),
+            node.get("type"),
+            node.get("entity_type"),
+            props.get("label") if isinstance(props, dict) else None,
+            props.get("type") if isinstance(props, dict) else None,
+            props.get("entity_type") if isinstance(props, dict) else None,
+            props.get("class_name") if isinstance(props, dict) else None,
+            "",
+        )
+
+    nodes = graph_context.get("nodes") or graph_context.get("visible_nodes") or []
+    links = graph_context.get("links") or graph_context.get("relationships") or []
+    if not nodes or not links:
+        visible_nodes, visible_links = _extract_section(graph_context.get("visibleGraph"))
+        search_nodes, search_links = _extract_section(graph_context.get("searchResults"))
+        nodes = nodes or visible_nodes or search_nodes
+        links = links or visible_links or search_links
+    selected = graph_context.get("selected") or graph_context.get("selected_node") or {}
+    view_mode = graph_context.get("view_mode") or graph_context.get("mode") or ""
+    ontology = graph_context.get("ontology") or graph_context.get("selectedOntology") or ""
+    search_query = graph_context.get("search_query") or graph_context.get("query") or ""
+
+    lines = ["== CURRENT GRAPH CONTEXT =="]
+    if view_mode:
+        lines.append(f"View mode: {view_mode}")
+    if ontology:
+        lines.append(f"Ontology: {ontology}")
+    if search_query:
+        lines.append(f"Search query: {search_query}")
+    if selected:
+        lines.append(f"Selected node: {_node_name(selected)}")
+
+    lines.append(f"Visible nodes: {len(nodes)}")
+    lines.append(f"Visible relationships: {len(links)}")
+
+    if nodes:
+        lines.append("Nodes:")
+        for node in nodes[:12]:
+            lines.append(f"- {_node_name(node)}{f' [{_node_type(node)}]' if _node_type(node) else ''}")
+
+    if links:
+        lines.append("Relationships:")
+        for link in links[:12]:
+            if isinstance(link, dict):
+                rel_type = link.get("type") or link.get("label") or "REL"
+                start = link.get("start") or link.get("source") or link.get("from") or ""
+                end = link.get("end") or link.get("target") or link.get("to") or ""
+                lines.append(f"- {start} -[{rel_type}]-> {end}")
+
+    return "\n".join(lines)
 
 # Define tools using the @tool decorator
 @tool
@@ -168,7 +265,10 @@ def graph_context_search(query: str) -> str:
         "ontology", "class", "property", "datatype", "object property", "annotation",
         "domain", "range", "subclass", "instance", "individual", "relationship",
         "neo4j", "graph", "xsd", "owl", "rdf", "shacl", "plmxml", "step", "xmi",
-        "import", "mapping", "alignment", "bridge"
+        "import", "mapping", "alignment", "bridge",
+        "mbse", "ebom", "mbom", "sbom", "bop", "bom", "traceability",
+        "system architecture", "system design", "parameter", "tolerance", "lifespan",
+        "life cycle", "requirements to process", "design to manufacturing"
     }
     q_lower = (query or "").strip().lower()
     graph_like_query = any(term in q_lower for term in graph_query_terms)
@@ -440,6 +540,7 @@ tools = [
 # Define the assistant node
 async def call_model(state: AgentState):
     messages = list(state["messages"])
+    graph_context_text = _format_graph_context(state.get("graph_context"))
 
     # ── Short-circuit: if the last message is a ToolMessage from one of our
     # recommendation tools, return its content directly as the final answer
@@ -460,7 +561,7 @@ async def call_model(state: AgentState):
     system_prompt = """You are a senior Digital Engineering expert with deep expertise in Manufacturing Engineering, Systems Engineering (MBSE/SysML), and 3DEXPERIENCE PLM platform. You help Manufacturing Engineers, Operations Managers, and Systems Engineers understand their product and process data.
 
 == KNOWLEDGE GRAPH CONTEXT ==
-The graph (Neo4j, database: spdm) contains two domains:
+The graph (Neo4j, using the configured customer database) contains two domains:
 
 1. Motor Assembly — 3DEXPERIENCE (ds3dx):
    - 5 HP MOTOR ASSEMBLY with 15 parts: ROTOR SHAFT, LAMINATED ROTOR CORE, THREE PHASE WINDINGS, LAMINATED STATOR CORE, SKF_6205-2Z, SKF_6306-2Z, END BELL, MOTOR COVER, FAN, FAN COVER, BEARING_HOLDER, CIRCLIP_1, FLANGE, ROTOR SHAFT KEY, TERMINAL BOX
@@ -474,6 +575,16 @@ The graph (Neo4j, database: spdm) contains two domains:
    - Packages: Problem Domain, Functional Analysis, Logical Architecture, Bearing Subsystem, etc.
    - Actor: Service Engineer
 
+== TRACEABILITY PRIORITY ==
+When the user asks about engineering traceability, prefer this chain:
+MBSE requirement / block / parameter → design realization → EBOM / SBOM / MBOM → bill of process / routing / work instruction → change impact / where-used / verification.
+
+Explicitly understand these customer terms:
+- Systems engineering, system design, and system architecture design
+- Parameters, tolerances, performance limits, lifespan, and scenario analysis
+- EBOM, MBOM, SBOM, and BOP as downstream PLM/manufacturing structures
+- Cross-domain links between requirements, design, manufacturing, and service
+
 == RESPONSE STYLE — CRITICAL ==
 You are talking to: Manufacturing Engineers, Operations Managers, Systems Engineers, and PLM Analysts.
 
@@ -485,6 +596,8 @@ ALWAYS:
 - When listing operations, present them as a numbered sequence (Step 1, Step 2...) not raw database names.
 - When discussing change requests, frame them as engineering actions with severity and risk context.
 - When discussing requirements, explain what they mean in physical/functional terms.
+- When discussing traceability, explain the path from requirements and architecture to BOMs and process steps.
+- When asked about MBSE, EBOM, MBOM, SBOM, or BOP, answer in traceability terms rather than abstract definitions.
 
 NEVER:
 - Show tool names, function calls, or code snippets (e.g. NEVER show `project_product_info(...)`).
@@ -505,6 +618,7 @@ Pass part names EXACTLY as typed by the user. Do NOT shorten or rephrase.
 - change_impact_analysis → change impact, ripple effects, affected parts/requirements
 - recommend_manufacturing_processes → manufacturing processes, assembly steps, how a part is made
 - project_product_info → graph facts, MBSE elements, ontology lookups, node/relationship queries
+- project_product_info → graph facts, MBSE elements, EBOM/MBOM/SBOM/BOP traceability, ontology lookups, node/relationship queries
 - vector_search → datasheet content, document evidence, definitions
 - general_chat → greetings ONLY
 
@@ -512,8 +626,11 @@ Graph-first rule: Always call the appropriate tool before answering. Never fabri
 """
 
     # Prepend system message only if not already present
+    context_messages = [SystemMessage(content=graph_context_text)] if graph_context_text else []
     if not messages or not isinstance(messages[0], SystemMessage):
-        messages = [SystemMessage(content=system_prompt)] + messages
+        messages = [SystemMessage(content=system_prompt), *context_messages] + messages
+    elif context_messages:
+        messages = [messages[0], *context_messages] + messages[1:]
 
     # Bind tools to the LLM and invoke with retry for transient network failures
     llm_with_tools = llm.bind_tools(tools)
@@ -570,7 +687,7 @@ memory = MemorySaver()
 # Compile the graph
 chat_agent = workflow.compile(checkpointer=memory)
 
-async def generate_response(session_id: str, user_input: str) -> str:
+async def generate_response(session_id: str, user_input: str, graph_context: dict | None = None) -> str:
     """Generate response using LangGraph agent"""
     if not LLM_AVAILABLE:
         return "LLM is not available. Please check your LLM configuration and ensure the service is running."
@@ -581,7 +698,8 @@ async def generate_response(session_id: str, user_input: str) -> str:
         # Create initial state with user message
         initial_state = {
             "messages": [HumanMessage(content=user_input)],
-            "session_id": session_id
+            "session_id": session_id,
+            "graph_context": graph_context or {},
         }
         
         # Run the graph asynchronously (required when call_model is async)
@@ -619,7 +737,7 @@ _TOOL_LABELS = {
     "general_chat": "[CHAT] Thinking…",
 }
 
-async def generate_response_stream(session_id: str, user_input: str) -> AsyncGenerator[str, None]:
+async def generate_response_stream(session_id: str, user_input: str, graph_context: dict | None = None) -> AsyncGenerator[str, None]:
     """Yield Server-Sent Events (SSE).
 
     Uses chat_agent.astream() (same execution path as generate_response/invoke)
@@ -639,6 +757,7 @@ async def generate_response_stream(session_id: str, user_input: str) -> AsyncGen
         initial_state = {
             "messages": [HumanMessage(content=user_input)],
             "session_id": session_id,
+            "graph_context": graph_context or {},
         }
 
         logger.info(f"Initial state prepared, about to call chat_agent.astream()")

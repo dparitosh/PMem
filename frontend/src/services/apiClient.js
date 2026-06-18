@@ -342,6 +342,7 @@ export const adminAPI = {
   registry: () => apiClient.get(buildUrl(API.admin.registry)),
   cleanSchema: () =>
     apiClient.post(buildUrl(API.admin.cleanSchema), { confirm: 'CLEAN_NEO4J_SCHEMA' }),
+  clearCache: () => apiClient.post(buildUrl(API.admin.clearCache)),
   deleteData: ({ label, prefix, property, value, batchSize = 10000, dryRun = false }) =>
     apiClient.post(buildUrl(API.admin.deleteData), {
       label: label || null,

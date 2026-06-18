@@ -140,9 +140,10 @@ from enum import Enum
 logger = logging.getLogger(__name__)
 
 # Keep write transactions moderate to reduce AuraDB timeout risk.
+# Relationship-heavy imports usually benefit from smaller batches than node writes.
 IMPORT_WRITE_BATCH_SIZE = int(os.getenv('IMPORT_WRITE_BATCH_SIZE', '250'))
-IMPORT_LINK_BATCH_SIZE = int(os.getenv('IMPORT_LINK_BATCH_SIZE', str(max(100, IMPORT_WRITE_BATCH_SIZE))))
-IMPORT_COMMIT_QUERY_TIMEOUT = int(os.getenv('IMPORT_COMMIT_QUERY_TIMEOUT', os.getenv('NEO4J_IMPORT_QUERY_TIMEOUT', '300')))
+IMPORT_LINK_BATCH_SIZE = int(os.getenv('IMPORT_LINK_BATCH_SIZE', '150'))
+IMPORT_COMMIT_QUERY_TIMEOUT = int(os.getenv('IMPORT_COMMIT_QUERY_TIMEOUT', os.getenv('NEO4J_IMPORT_QUERY_TIMEOUT', '600')))
 
 class FileType(Enum):
     CSV = 'csv'

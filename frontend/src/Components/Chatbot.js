@@ -6,7 +6,7 @@ import { API, buildUrl } from '../config';
 import { validateChatInput, ValidationError } from '../utils/validation';
 import { logger } from '../utils/logger';
 
-const Chatbot = ({ setChatResults }) => {
+const Chatbot = ({ setChatResults, graphData, searchResults }) => {
     const [chatMessages, setChatMessages] = useState([]);
     const [question, setQuestion] = useState('');
     const [showSpinner, setShowSpinner] = useState(false);
@@ -19,6 +19,57 @@ const Chatbot = ({ setChatResults }) => {
             : Math.random().toString(36).slice(2) + Date.now().toString(36)
     );
     const assistantIdRef = useRef(null);
+
+    const buildGraphContextSnapshot = () => {
+        const summarizeNode = (node) => {
+            const props = node?.properties && typeof node.properties === 'object' ? node.properties : {};
+            return {
+                elementId: node?.elementId || node?.id || props.elementId || props.id || '',
+                name: node?.name || props.name || node?.title || props.title || node?.label || props.label || '',
+                label: node?.label || node?.labels?.[0] || props.label || props.class_label || props.class_name || '',
+                type: node?.entity_type || props.entity_type || props.type || props.original_type || '',
+            };
+        };
+
+        const summarizeLink = (link) => ({
+            type: link?.type || link?.label || '',
+            source: typeof link?.source === 'object' ? (link.source.elementId || link.source.id || link.source.name || '') : (link?.source || ''),
+            target: typeof link?.target === 'object' ? (link.target.elementId || link.target.id || link.target.name || '') : (link?.target || ''),
+        });
+
+        const normalizeGraph = (payload) => {
+            if (!payload) return { nodes: [], links: [] };
+            if (Array.isArray(payload)) {
+                return { nodes: payload, links: [] };
+            }
+            return {
+                nodes: Array.isArray(payload.nodes) ? payload.nodes : [],
+                links: Array.isArray(payload.links) ? payload.links : payload.relationships || [],
+            };
+        };
+
+        const visibleGraph = normalizeGraph(graphData);
+        const searchGraph = normalizeGraph(searchResults);
+
+        const graphSummary = (graph, name) => ({
+            name,
+            nodeCount: graph.nodes.length,
+            linkCount: graph.links.length,
+            nodes: graph.nodes.slice(0, 12).map(summarizeNode),
+            links: graph.links.slice(0, 16).map(summarizeLink),
+        });
+
+        if (!visibleGraph.nodes.length && !visibleGraph.links.length && !searchGraph.nodes.length && !searchGraph.links.length) {
+            return null;
+        }
+
+        return {
+            source: 'frontend-graph-context',
+            capturedAt: new Date().toISOString(),
+            visibleGraph: graphSummary(visibleGraph, 'visibleGraph'),
+            searchResults: graphSummary(searchGraph, 'searchResults'),
+        };
+    };
 
     // [OK] SECURE: Markdown parser with DOMPurify sanitization
     const parseMarkdown = (text) => {
@@ -78,11 +129,11 @@ const Chatbot = ({ setChatResults }) => {
     };
 
     const [sampleQueries, setSampleQueries] = useState([
-        'Show the assembly sequence for 5 HP MOTOR ASSEMBLY',
-        'Recommend manufacturing processes for ROTOR SHAFT',
-        'Find substitute candidates for LAMINATED ROTOR CORE',
-        'Show SysML requirements linked to the Variable Speed Drive',
-        'Analyse change impact if ROTOR SHAFT is modified',
+        'Show MBSE to EBOM traceability for the Variable Speed Drive',
+        'Compare EBOM and MBOM for 5 HP MOTOR ASSEMBLY',
+        'Show the bill of process for MOTOR COVER',
+        'Show requirements linked to the Variable Speed Drive',
+        'Analyse change impact if ROTOR SHAFT tolerance is modified',
     ]);
 
     // [OK] SECURE: Input validation + error handling
@@ -117,7 +168,11 @@ const Chatbot = ({ setChatResults }) => {
             const response = await fetch(buildUrl(API.chat.chatStream), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: sessionIdRef.current, message: validated }),
+                body: JSON.stringify({
+                    session_id: sessionIdRef.current,
+                    message: validated,
+                    graph_context: buildGraphContextSnapshot(),
+                }),
                 signal: controller.signal,
             });
 
@@ -252,7 +307,7 @@ const Chatbot = ({ setChatResults }) => {
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Sparkles size={14} />
-                    <span style={{ fontSize: 15, fontWeight: 700 }}>Assistant</span>
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>Knowledge Companion</span>
                     {chatMessages.length > 0 && (
                         <span style={{
                             background: 'rgba(255,255,255,0.2)', borderRadius: 10,
@@ -429,5 +484,11 @@ const Chatbot = ({ setChatResults }) => {
     );
 };
 
-// 🔒 MEDIUM PRIORITY: Memoize component to prevent unnecessary re-renders
-export default React.memo(Chatbot, (prevProps, nextProps) => prevProps.setChatResults === nextProps.setChatResults);
+// Memoize while still allowing graph context updates to flow into chat prompts
+export default React.memo(
+    Chatbot,
+    (prevProps, nextProps) =>
+        prevProps.setChatResults === nextProps.setChatResults &&
+        prevProps.graphData === nextProps.graphData &&
+        prevProps.searchResults === nextProps.searchResults
+);

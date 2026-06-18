@@ -739,3 +739,49 @@ async def reset_database(recreate_indexes: bool = True):
     except Exception as e:
         logger.exception("Failed to reset database")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/clear-cache")
+async def clear_cache():
+    """
+    Clear non-destructive application caches used by admin and graph views.
+    This does not delete Neo4j data.
+    """
+    cleared = {
+        "graph_cache": False,
+        "ontology_list_cache": False,
+        "config_cache": False,
+    }
+    try:
+        try:
+            from backend.main import invalidate_graphvis_cache
+        except ImportError:
+            from main import invalidate_graphvis_cache
+        invalidate_graphvis_cache()
+        cleared["graph_cache"] = True
+    except Exception as exc:
+        logger.warning("Could not clear graph cache: %s", exc)
+
+    try:
+        from backend.Services.ontology_upload_manager import OntologyUploadManager
+        OntologyUploadManager._invalidate_list_cache()
+        cleared["ontology_list_cache"] = True
+    except Exception as exc:
+        logger.warning("Could not clear ontology list cache: %s", exc)
+
+    try:
+        try:
+            from backend.core.db_config import get_config
+        except ImportError:
+            from core.db_config import get_config
+        if hasattr(get_config, "cache_clear"):
+            get_config.cache_clear()
+            cleared["config_cache"] = True
+    except Exception as exc:
+        logger.warning("Could not clear config cache: %s", exc)
+
+    return {
+        "status": "success",
+        "message": "Application caches cleared.",
+        "cleared": cleared,
+    }

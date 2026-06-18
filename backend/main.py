@@ -111,21 +111,37 @@ except Exception as _exc:
         # Fallback: Simple Ollama-based chat without the complex agent
         from Services.ollama_service import get_ollama_service
         
-        async def _fallback_generate_response(session_id: str, message: str) -> str:
+        def _format_graph_context_for_fallback(graph_context) -> str:
+            if not graph_context:
+                return ""
+            try:
+                return "Current graph context:\n" + json.dumps(graph_context, indent=2, default=str)[:3500]
+            except Exception:
+                return f"Current graph context: {str(graph_context)[:3500]}"
+
+        async def _fallback_generate_response(session_id: str, message: str, graph_context=None) -> str:
             """Fallback chat implementation using Ollama directly"""
             try:
                 service = get_ollama_service()
-                response = service.query(message)
+                prompt = message
+                context_text = _format_graph_context_for_fallback(graph_context)
+                if context_text:
+                    prompt = f"{context_text}\n\nUser question: {message}"
+                response = service.query(prompt)
                 return response or "I couldn't generate a response. Please try again."
             except Exception as e:
                 logger.error(f"Fallback chat error: {type(e).__name__}: {e}", exc_info=True)
                 return "I encountered an error processing your request. Please try again later."
         
-        async def _fallback_generate_response_stream(session_id: str, message: str):
+        async def _fallback_generate_response_stream(session_id: str, message: str, graph_context=None):
             """Fallback streaming chat implementation using Ollama directly"""
             try:
                 service = get_ollama_service()
-                response = service.query(message)
+                prompt = message
+                context_text = _format_graph_context_for_fallback(graph_context)
+                if context_text:
+                    prompt = f"{context_text}\n\nUser question: {message}"
+                response = service.query(prompt)
                 if response:
                     # Stream the response in chunks
                     chunk_size = 6
@@ -179,6 +195,11 @@ from contextlib import asynccontextmanager
 class TextSearchRequest(BaseModel):
     search: str
     ontology_prefix: str = ""
+
+
+def _normalize_search_term(value: str) -> str:
+    normalized = re.sub(r"\*+", "", str(value or "")).strip().lower()
+    return re.sub(r"^[^a-z0-9]+|[^a-z0-9]+$", "", normalized)
 
 
 class WorkflowExecuteRequest(BaseModel):
@@ -774,11 +795,11 @@ async def _run_with_timeout(func, timeout_seconds: int, *args):
         return await asyncio.wait_for(asyncio.to_thread(func, *args), timeout=timeout_seconds)
 
 
-async def _stream_with_timeout(session_id: str, message: str):
+async def _stream_with_timeout(session_id: str, message: str, graph_context=None):
     stream_iter = None
     try:
         async with _session_lock(session_id):
-            stream_iter = generate_response_stream(session_id, message)
+            stream_iter = generate_response_stream(session_id, message, graph_context)
             deadline = time.monotonic() + CHAT_STREAM_TIMEOUT_SECONDS
             while True:
                 remaining = deadline - time.monotonic()
@@ -989,6 +1010,7 @@ async def chat(request: ChatRequest):
                 CHAT_REQUEST_TIMEOUT_SECONDS,
                 request.session_id,
                 request.message,
+                request.graph_context,
             )
         return ChatResponse(session_id=request.session_id, response=result)
     except HTTPException:
@@ -1014,7 +1036,7 @@ async def chat_stream(request: ChatRequest):
         raise HTTPException(status_code=503, detail="Chat stream service is unavailable. Please check backend configuration.")
 
     return StreamingResponse(
-        _stream_with_timeout(request.session_id, request.message),
+        _stream_with_timeout(request.session_id, request.message, request.graph_context),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -1855,7 +1877,7 @@ async def get_instance_graph():
 @app.post("/graphfilter")
 def filter_graph_nodes(request: TextSearchRequest):
     """Search graph nodes by text and return local relationships in graphvis shape."""
-    input_val = (request.search or "").strip()
+    input_val = _normalize_search_term(request.search)
     ontology_prefix = (request.ontology_prefix or "").strip()
     if not input_val:
         return {"results": []}
@@ -2169,7 +2191,8 @@ def filter_graph_nodes_multi(request: MultiNameSearchRequest):
     """Fetch a set of named nodes and any relationships between them.
     Used by the 'View in Graph' feature to load recommendation result nodes."""
     # Cap at 50 names to avoid overloading Neo4j
-    names = [n.strip() for n in request.names if n and n.strip()][:50]
+    names = [_normalize_search_term(n) for n in request.names if n and n.strip()][:50]
+    names = [n for n in names if n]
     if not names:
         return {"results": []}
 
