@@ -1,14 +1,32 @@
-import React from 'react';
-import { Globe, Network, Workflow } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Boxes,
+  Database,
+  FileBarChart2,
+  GitFork,
+  Globe,
+  Loader2,
+  MessageSquare,
+  Network,
+  RefreshCcw,
+  Search,
+  Settings,
+  Sparkles,
+  Table2,
+  UploadCloud,
+  Wrench,
+  Workflow,
+  X,
+} from 'lucide-react';
 
 const TOOL_ITEMS = [
-  ['Where Used', 'whereused'],
-  ['Table View', 'table'],
-  ['Reports', 'reports'],
-  ['Data Import', 'ingestion'],
-  ['Map & Align', 'ontology'],
-  ['Recommendations', 'recommendations'],
-  ['Admin', 'admin'],
+  ['Where Used', 'whereused', GitFork],
+  ['Table View', 'table', Table2],
+  ['Reports', 'reports', FileBarChart2],
+  ['Data Import', 'ingestion', UploadCloud],
+  ['Map & Align', 'ontology', Boxes],
+  ['Recommendations', 'recommendations', Sparkles],
+  ['Admin', 'admin', Settings],
 ];
 
 const SEARCH_MODES = [
@@ -54,11 +72,35 @@ function GraphExplorerToolbar({
   showChat,
   onToggleChat,
 }) {
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const toolsRef = useRef(null);
   const viewModeState = {
     full: graphViewMode === 'ontology' && selectedOntology === 'ALL',
     ontology: graphViewMode === 'ontology' && selectedOntology !== 'ALL',
     individual: graphViewMode === 'individual',
   };
+  const trimmedSearch = String(searchInput || '').trim();
+  const showClearSearch = Boolean(trimmedSearch || graphSearchActive);
+
+  useEffect(() => {
+    if (!toolsOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!toolsRef.current?.contains(event.target)) {
+        setToolsOpen(false);
+      }
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setToolsOpen(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [toolsOpen]);
 
   return (
     <div
@@ -79,14 +121,15 @@ function GraphExplorerToolbar({
         pointerEvents: 'auto',
       }}
     >
-      <div className="dropdown" style={{ position: 'relative' }}>
+      <div className="dropdown" ref={toolsRef} style={{ position: 'relative' }}>
         <button
           className="btn btn-sm dropdown-toggle"
           type="button"
           title="Graph tools"
+          aria-expanded={toolsOpen}
           onClick={(event) => {
-            const menu = event.currentTarget.nextSibling;
-            if (menu) menu.classList.toggle('show');
+            event.stopPropagation();
+            setToolsOpen((open) => !open);
           }}
           style={{
             backgroundColor: theme.surface,
@@ -97,12 +140,16 @@ function GraphExplorerToolbar({
             padding: '5px 9px',
             fontSize: 12,
             lineHeight: 1.2,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
           }}
         >
+          <Wrench size={14} strokeWidth={2.4} />
           Tools
         </button>
         <div
-          className="dropdown-menu p-1"
+          className={`dropdown-menu p-1 ${toolsOpen ? 'show' : ''}`}
           style={{
             minWidth: 150,
             background: theme.surface,
@@ -116,16 +163,18 @@ function GraphExplorerToolbar({
             zIndex: 2000,
           }}
         >
-          {TOOL_ITEMS.map(([label, target]) => (
+          {TOOL_ITEMS.map(([label, target, Icon]) => (
             <button
               key={target}
               className="dropdown-item"
-              style={{ color: theme.ink, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '5px 8px' }}
+              style={{ color: theme.ink, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 8 }}
               onClick={(event) => {
                 event.currentTarget.closest('.dropdown-menu')?.classList.remove('show');
+                setToolsOpen(false);
                 onToolTargetSelect?.(target);
               }}
             >
+              <Icon size={14} strokeWidth={2.2} />
               {label}
             </button>
           ))}
@@ -172,8 +221,8 @@ function GraphExplorerToolbar({
         ))}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', position: 'relative' }}>
-        <i className="fas fa-search" style={{ fontSize: '18px', color: '#555' }}></i>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', position: 'relative', flexWrap: 'wrap' }}>
+        <Search size={17} color={theme.inkSoft} strokeWidth={2.4} aria-hidden="true" />
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -213,6 +262,7 @@ function GraphExplorerToolbar({
               const currentValue = event.currentTarget.form?.querySelector('input')?.value ?? searchInput;
               onSearchSubmit?.(currentValue);
             }}
+            disabled={searchLoading}
             style={{
               height: 30,
               padding: '0 12px',
@@ -222,12 +272,43 @@ function GraphExplorerToolbar({
               color: '#fff',
               fontSize: 12,
               fontWeight: 700,
-              cursor: 'pointer',
+              cursor: searchLoading ? 'not-allowed' : 'pointer',
               flex: '0 0 auto',
+              opacity: searchLoading ? 0.72 : 1,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
             }}
           >
+            {searchLoading && <Loader2 size={13} className="spinner" />}
             Search
           </button>
+          {showClearSearch && (
+            <button
+              type="button"
+              title="Clear search"
+              aria-label="Clear search"
+              onClick={() => {
+                onSearchInputChange?.('');
+                onSearchSubmit?.('');
+              }}
+              style={{
+                width: 30,
+                height: 30,
+                border: `1px solid ${theme.borderStrong}`,
+                borderRadius: 6,
+                background: theme.surface,
+                color: theme.inkSoft,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              <X size={14} strokeWidth={2.4} />
+            </button>
+          )}
         </form>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2, border: `1px solid ${theme.borderStrong}`, borderRadius: 6, padding: 2, background: theme.surfaceMuted }}>
           {SEARCH_MODES.map((mode) => (
@@ -262,7 +343,7 @@ function GraphExplorerToolbar({
 
       {graphViewMode === 'ontology' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <i className="fas fa-project-diagram" style={{ fontSize: '14px', color: '#555' }}></i>
+          <Database size={15} color={theme.inkSoft} strokeWidth={2.4} aria-hidden="true" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <select
               value={selectedOntology}
@@ -297,7 +378,7 @@ function GraphExplorerToolbar({
 
       {graphViewMode === 'ontology' && selectedOntology === 'step' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <i className="fas fa-cogs" style={{ fontSize: '14px', color: '#555' }}></i>
+          <Settings size={15} color={theme.inkSoft} strokeWidth={2.4} aria-hidden="true" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <select
               value={selectedStepPart}
@@ -344,7 +425,7 @@ function GraphExplorerToolbar({
           visibility: (searchLoading || isLayoutSwitching || ontologyLoading) ? 'visible' : 'hidden',
         }}
       >
-        <div className="spinner" style={{ width: 14, height: 14, border: '2px solid #f3f3f3', borderTop: '2px solid #004B87', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+        <Loader2 size={14} className="spinner" />
         {searchLoading ? 'Searching...' : ontologyLoading ? 'Loading ontology...' : 'Switching layout...'}
       </div>
 
@@ -424,15 +505,18 @@ function GraphExplorerToolbar({
 
       <button
         onClick={onReset}
-        style={{ padding: '5px 10px', border: 'none', borderRadius: '6px', backgroundColor: theme.primary, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all .2s ease', opacity: (graphSearchActive || selectedOntology !== 'ALL' || graphViewMode !== 'ontology') ? 1 : 0.78 }}
+        title="Reset graph"
+        style={{ padding: '5px 10px', border: 'none', borderRadius: '6px', backgroundColor: theme.primary, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all .2s ease', opacity: (graphSearchActive || selectedOntology !== 'ALL' || graphViewMode !== 'ontology') ? 1 : 0.78, display: 'inline-flex', alignItems: 'center', gap: 6 }}
       >
+        <RefreshCcw size={13} strokeWidth={2.4} />
         Reset
       </button>
       <button
         onClick={onToggleChat}
-        style={{ padding: '5px 10px', border: 'none', borderRadius: '6px', backgroundColor: theme.primary, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all .2s ease' }}
+        style={{ padding: '5px 10px', border: 'none', borderRadius: '6px', backgroundColor: theme.primary, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all .2s ease', display: 'inline-flex', alignItems: 'center', gap: 6 }}
         title={showChat ? 'Hide chat assistant' : 'Show chat assistant'}
       >
+        <MessageSquare size={13} strokeWidth={2.4} />
         {showChat ? 'Hide Chat' : 'Show Chat'}
       </button>
     </div>

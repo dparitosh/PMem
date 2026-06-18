@@ -3329,9 +3329,19 @@ const getPrimaryNodeLabel = useCallback((d) => {
       setSearchLoading(false);
       setContextualSearchResults([]);
       setHighlightedNodeIds(new Set());
+      setActiveSearchResultId(null);
+      activeSearchResultIdRef.current = null;
 
       if (isContextualQuery) {
+        setContextualRootNodeId(null);
         setSearchResultData({ nodes: [], links: [] });
+        commitGraphSlice({ nodes: [], links: [] }, {
+          updateFilteredData: true,
+          updateGraphData: false,
+          updateSearchResultData: true,
+          clearActiveSearchId: true,
+        });
+        syncSharedSearchResults([], { clear: true });
         return;
       }
       const baseData = resolveSearchBaseDataset();
@@ -5185,11 +5195,23 @@ const boundaryForce = (width, height) => {
         graphViewMode={graphViewMode}
         selectedOntology={selectedOntology}
         searchInput={searchInput}
-        onSearchInputChange={setSearchInput}
+        onSearchInputChange={(value) => {
+          const nextValue = typeof value === 'string' ? value : '';
+          setSearchInput(nextValue);
+          if (!normalizeSearchTerm(nextValue)) {
+            contextualSearchRequestIdRef.current += 1;
+            setSearchQuery('');
+          }
+        }}
         onSearchSubmit={submitSearchQuery}
         searchLoading={searchLoading}
         searchResultMode={searchResultMode}
-        onSearchResultModeChange={setSearchResultMode}
+        onSearchResultModeChange={(mode) => {
+          setSearchResultMode(mode);
+          if (debouncedSearchQueryRef.current) {
+            lastCenteredSearchRef.current = '';
+          }
+        }}
         onToolTargetSelect={(target) => {
           if (typeof setActiveTab === 'function') setActiveTab(target);
         }}
@@ -5247,7 +5269,12 @@ const boundaryForce = (width, height) => {
         stepPartsLoading={stepPartsLoading}
         stepPartsError={stepPartsError}
         stepParts={stepParts}
-        onSelectedStepPartChange={setSelectedStepPart}
+        onSelectedStepPartChange={(part) => {
+          setSelectedStepPart(part);
+          if (part === 'ALL' && selectedOntologyRef.current === 'step') {
+            fetchOntologyGraph('step', 'ALL');
+          }
+        }}
         isLayoutSwitching={isLayoutSwitching}
         ontologyGraphMessage={ontologyGraphMessage}
         ontologySliceSummary={ontologySliceSummary}
