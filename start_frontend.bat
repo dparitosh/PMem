@@ -6,11 +6,12 @@ setlocal enabledelayedexpansion
 :: ────────────────────────────────────────────────────────────────────────────
 :: Purpose: Start React frontend dev server on port 3000
 :: Location: Project root directory
-:: Usage:    .\start_frontend.bat [port]
+:: Usage:    .\start_frontend.bat [port] [backend_url] [host]
 ::
 :: Examples:
-::   .\start_frontend.bat          # Start on default port 3000
-::   .\start_frontend.bat 3001     # Start on port 3001
+::   .\start_frontend.bat                          # Start on default port 3000
+::   .\start_frontend.bat 3001                     # Start on port 3001
+::   .\start_frontend.bat 3000 http://192.168.1.50:8000 0.0.0.0
 ::
 :: Dependencies:
 ::   - Node.js 18+ and npm
@@ -23,7 +24,11 @@ cd /d "%~dp0"
 
 :: Parse command line arguments
 set "PORT=3000"
+set "BACKEND_URL=http://localhost:8000"
+set "HOST=localhost"
 if not "%~1"=="" set "PORT=%~1"
+if not "%~2"=="" set "BACKEND_URL=%~2"
+if not "%~3"=="" set "HOST=%~3"
 
 echo.
 echo ════════════════════════════════════════════════════════════════════════════
@@ -31,7 +36,8 @@ echo   FRONTEND SERVICE STARTUP
 echo ════════════════════════════════════════════════════════════════════════════
 echo.
 echo   Port: %PORT%
-echo   URL: http://localhost:%PORT%
+echo   URL: http://%HOST%:%PORT%
+echo   Backend URL: %BACKEND_URL%
 echo.
 
 :: Check if Node.js is installed
@@ -76,7 +82,8 @@ echo ═════════════════════════
 
 cd /d "%~dp0frontend"
 set "PORT=%PORT%"
-set "REACT_APP_BACKEND_URL=http://localhost:8000"
+set "HOST=%HOST%"
+set "REACT_APP_BACKEND_URL=%BACKEND_URL%"
 set "BROWSER=none"
 set "FAST_REFRESH=true"
 

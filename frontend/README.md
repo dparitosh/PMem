@@ -68,3 +68,18 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 ### `npm run build` fails to minify
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+
+## LAN / IP setup
+
+To open the app from another machine on your network, set the frontend backend URL and CORS origins to your server IP instead of localhost:
+
+```env
+REACT_APP_BACKEND_URL=http://192.168.1.50:8000
+ALLOWED_ORIGINS=http://192.168.1.50:3000
+```
+
+You can also start the frontend launcher with explicit values:
+
+```bat
+.\start_frontend.bat 3000 http://192.168.1.50:8000 0.0.0.0
+```
