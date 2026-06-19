@@ -158,7 +158,7 @@ async def get_generic_data_dictionary(
        to derive the real property keys that were written by the data-import commit.
     3. Relationship types between nodes carrying those class labels → relationships section.
 
-    Fallback: ap239 hardcoded catalog when no schema nodes exist.
+    Fallback: derive a lightweight dictionary from live instance labels/properties when no schema nodes exist.
     """
     try:
         normalized_prefix = (prefix or "").strip()
@@ -523,7 +523,7 @@ async def get_generic_mappings(
 @router.post("/ap239/map-entity")
 async def map_entity_to_ap239(request: EntityMappingRequest):
     """
-    Map a single entity to AP239 ontology.
+    Legacy single-entity seed mapping to AP239. Use Semantic Bridge instance.link for persisted instance-to-ontology alignment.
     
     Returns:
     - Remapped entity with AP239 type and electronics properties
@@ -549,6 +549,10 @@ async def map_entity_to_ap239(request: EntityMappingRequest):
             "original_entity": request.entity,
             "mapped_entity": mapped_entity,
             "electronics_properties": mapped_entity.get("electronics_properties", {}),
+            "deprecated": True,
+            "mode": "legacy_single_entity_seed_mapping",
+            "replacement_workflow": "instance.link",
+            "replacement_endpoint": "/api/v1/workflows/execute",
         }
     except Exception as e:
         logger.exception("Failed to map entity to AP239")
@@ -586,6 +590,10 @@ async def map_entity_generic(prefix: str, request: EntityMappingRequest):
             "original_entity": entity,
             "mapped_entity": mapped_entity,
             "mapping_strategy": "ui_selected_target" if selected_target else "passthrough",
+            "deprecated": True,
+            "mode": "legacy_single_entity_seed_mapping",
+            "replacement_workflow": "instance.link",
+            "replacement_endpoint": "/api/v1/workflows/execute",
         }
     except HTTPException:
         raise

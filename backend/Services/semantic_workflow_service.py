@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .ontology_reasoning_service import OntologyReasoningService
 from .ontology_taxonomy_service import OntologyTaxonomyService
 from .ontology_upload_manager import OntologyUploadManager
 from .unified_data_import import UnifiedDataImportService
@@ -219,38 +220,42 @@ class SemanticWorkflowService:
         """Load ontology classes and properties into a bridge lookup table."""
         ontology_identifier = cls._resolve_ontology_id(ontology_prefix) or ontology_prefix
         try:
+            lookup = OntologyReasoningService.build_term_lookup(
+                ontology_identifier,
+                normalizer=cls._normalized_key,
+                tokenizer=_tokenize,
+                generic_checker=cls._is_generic_term,
+            )
+            if lookup:
+                return lookup
+        except Exception as exc:
+            logger.info(f"Ontology reasoning lookup fallback for '{ontology_prefix}': {exc}")
+
+        try:
             reasoning = OntologyTaxonomyService.get_reasoning(ontology_identifier)
         except Exception as exc:
             logger.info(f"Ontology term lookup fallback for '{ontology_prefix}': {exc}")
-            reasoning = {}
+            return {}
 
         lookup: Dict[str, List[Dict[str, Any]]] = {}
-
-        def add_rows(items: List[Dict[str, Any]], target_type: str) -> None:
-            for item in items or []:
-                label = str(item.get("label") or item.get("name") or item.get("term_id") or item.get("iri") or item.get("uri") or "").strip()
-                normalized = cls._normalized_key(label)
-                if not normalized:
-                    continue
-                entry = {
-                    "element_id": item.get("iri") or item.get("uri") or item.get("term_id") or label,
-                    "class_name": label,
-                    "term_name": label,
-                    "prefix": item.get("ontology_prefix") or reasoning.get("prefix") or ontology_prefix,
-                    "normalized": normalized,
-                    "tokens": _tokenize(label),
-                    "is_generic": cls._is_generic_term(label),
-                    "target_ontology_type": target_type,
-                    "domain": item.get("domain") or [],
-                    "range": item.get("range") or [],
-                }
-                lookup.setdefault(normalized, []).append(entry)
-
-        add_rows(reasoning.get("classes") or [], "Class")
-        add_rows(reasoning.get("object_properties") or [], "ObjectProperty")
-        add_rows(reasoning.get("datatype_properties") or [], "DatatypeProperty")
-        add_rows(reasoning.get("annotation_properties") or [], "AnnotationProperty")
-
+        for item in OntologyReasoningService.iter_semantic_terms(reasoning):
+            label = str(item.get("label") or "").strip()
+            normalized = cls._normalized_key(label)
+            if not normalized:
+                continue
+            entry = {
+                "element_id": item.get("element_id") or label,
+                "class_name": label,
+                "term_name": label,
+                "prefix": item.get("ontology_prefix") or reasoning.get("prefix") or ontology_prefix,
+                "normalized": normalized,
+                "tokens": _tokenize(label),
+                "is_generic": cls._is_generic_term(label),
+                "target_ontology_type": item.get("target_ontology_type") or "Class",
+                "domain": item.get("domain") or [],
+                "range": item.get("range") or [],
+            }
+            lookup.setdefault(normalized, []).append(entry)
         return lookup
 
     @staticmethod
@@ -410,6 +415,16 @@ class SemanticWorkflowService:
         return max(0.0, min(1.0, round(score, 4)))
 
     @classmethod
+    def _validate_candidate_pair(cls, source_type: str, target_type: str, match: Dict[str, Any], row: Dict[str, Any]) -> Dict[str, Any]:
+        result = OntologyReasoningService.validate_mapping(source_type, target_type, match, row)
+        return {
+            "is_valid": result.get("status") != "invalid",
+            "status": result.get("status", "valid"),
+            "errors": result.get("errors", []),
+            "warnings": result.get("warnings", []),
+        }
+
+    @classmethod
     def _build_link_candidates(
         cls,
         rows: List[Dict[str, Any]],
@@ -420,7 +435,13 @@ class SemanticWorkflowService:
         class_lookup = UnifiedDataImportService._load_ontology_class_lookup(ontology_prefix)
         term_lookup = cls._load_ontology_term_lookup(ontology_prefix)
         for key, values in class_lookup.items():
-            term_lookup.setdefault(key, values)
+            existing_values = term_lookup.setdefault(key, [])
+            existing_ids = {str(item.get("element_id") or item.get("iri") or item.get("class_name") or "") for item in existing_values}
+            for value in values:
+                value_id = str(value.get("element_id") or value.get("iri") or value.get("class_name") or "")
+                if value_id and value_id in existing_ids:
+                    continue
+                existing_values.append({**value, "target_ontology_type": value.get("target_ontology_type") or "Class"})
         candidates: List[Dict[str, Any]] = []
         metadata_signals = cls._collect_manifest_signals(import_task or {})
 
@@ -434,6 +455,10 @@ class SemanticWorkflowService:
             for signal in [*cls._collect_row_signals(row), *metadata_signals]:
                 matches = term_lookup.get(signal["normalized"], [])
                 for match in matches:
+                    target_type = match.get("target_ontology_type") or "Class"
+                    validation = cls._validate_candidate_pair(source_type, target_type, match, row)
+                    if not validation["is_valid"]:
+                        continue
                     score = cls._score_link_candidate(signal, match, row, source_type)
                     if score < cls.REVIEW_CONFIDENCE:
                         continue
@@ -447,7 +472,11 @@ class SemanticWorkflowService:
                         "source_type": source_type,
                         "ontology_term": match["class_name"],
                         "ontology_class_element_id": match["element_id"],
-                        "target_ontology_type": match.get("target_ontology_type") or "Class",
+                        "target_ontology_type": target_type,
+                        "mapping_type": "closeMatch" if score < cls.AUTO_APPLY_CONFIDENCE else "exactMatch",
+                        "validation_status": validation["status"],
+                        "validation_errors": validation["errors"],
+                        "validation_warnings": validation["warnings"],
                         "confidence": score,
                         "mapping": ontology_prefix,
                         "match_source": signal["source_field"],
@@ -475,12 +504,15 @@ class SemanticWorkflowService:
             for idx, item in enumerate(ranked[:3]):
                 item["rank"] = idx + 1
                 item["ambiguous"] = ambiguous_count > 1 and item["rank"] <= ambiguous_count
-                item["selected_for_apply"] = (
-                    idx == 0
+                eligible_for_auto_apply = (
+                    item.get("validation_status") in {"valid", "warning"}
+                    and idx == 0
                     and not item["ambiguous"]
                     and not item["generic_match"]
                     and item["confidence"] >= cls.AUTO_APPLY_CONFIDENCE
                 )
+                item["validation_status"] = "auto_approved" if eligible_for_auto_apply else item.get("validation_status", "needs_review")
+                item["selected_for_apply"] = eligible_for_auto_apply
                 candidates.append(item)
 
         return candidates
@@ -498,14 +530,26 @@ class SemanticWorkflowService:
             link_cypher = """
             UNWIND $rows AS row
             MATCH (n {import_row_key: row.import_row_key, import_id: row.import_id})
-            MATCH (c:OntologyClass)
-            WHERE elementId(c) = row.ontology_class_element_id
-            MERGE (n)-[rel:INSTANCE_OF]->(c)
-            SET rel.mapping = row.mapping,
-                rel.class_name = row.ontology_term,
-                rel.import_id = row.import_id,
-                rel.linked_by = 'semantic_bridge'
-            RETURN count(rel) AS linked
+            MATCH (target)
+            WHERE elementId(target) = row.ontology_class_element_id
+            MERGE (n)-[bridge:SEMANTICALLY_MAPPED_TO]->(target)
+            SET bridge.mapping = row.mapping,
+                bridge.ontology_term = row.ontology_term,
+                bridge.target_ontology_type = row.target_ontology_type,
+                bridge.source_type = row.source_type,
+                bridge.confidence = row.confidence,
+                bridge.mapping_type = row.mapping_type,
+                bridge.validation_status = row.validation_status,
+                bridge.import_id = row.import_id,
+                bridge.linked_by = 'semantic_bridge'
+            FOREACH (_ IN CASE WHEN row.target_ontology_type = 'Class' THEN [1] ELSE [] END |
+                MERGE (n)-[inst:INSTANCE_OF]->(target)
+                SET inst.mapping = row.mapping,
+                    inst.class_name = row.ontology_term,
+                    inst.import_id = row.import_id,
+                    inst.linked_by = 'semantic_bridge'
+            )
+            RETURN count(bridge) AS linked
             """
 
             linked_total = 0
@@ -782,6 +826,8 @@ class SemanticWorkflowService:
                 "selected_for_apply": len(approved_candidates),
                 "high_confidence_candidates": sum(1 for candidate in candidates if candidate["confidence"] >= cls.AUTO_APPLY_CONFIDENCE),
                 "ambiguous_candidates": sum(1 for candidate in candidates if candidate.get("ambiguous")),
+                "validation_warning_candidates": sum(1 for candidate in candidates if candidate.get("validation_status") == "warning"),
+                "auto_approved_candidates": sum(1 for candidate in candidates if candidate.get("validation_status") == "auto_approved"),
                 "generic_matches_filtered": sum(1 for candidate in candidates if candidate.get("generic_match") and not candidate.get("selected_for_apply")),
                 "metadata_signals_used": sum(1 for candidate in candidates for source in candidate.get("evidence", []) if str(source).startswith("manifest.") or str(source).startswith("preview.")),
                 "source_kinds": {

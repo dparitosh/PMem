@@ -1,30 +1,27 @@
 @echo off
 setlocal enabledelayedexpansion
 
-:: ────────────────────────────────────────────────────────────────────────────
 :: Backend Service Startup Script
-:: ────────────────────────────────────────────────────────────────────────────
-:: Purpose: Start FastAPI backend server on port 8000
-:: Location: Project root directory
-:: Usage:    .\start_backend.bat [port] [--reload]
-::
+:: Usage: .\start_backend.bat [port] [--reload]
 :: Examples:
-::   .\start_backend.bat                # Start fast on default port 8000
-::   .\start_backend.bat 8080           # Start fast on port 8080
-::   .\start_backend.bat 8000 --reload  # Start with file watching
-::
-:: Dependencies:
-::   - Python 3.11+
-::   - Virtual environment at backend/.dt_venv
-::   - requirements.txt installed
-:: ────────────────────────────────────────────────────────────────────────────
+::   .\start_backend.bat
+::   .\start_backend.bat 8080
+::   set APP_HOST=192.168.1.50 && .\start_backend.bat
+::   set BACKEND_HOST=0.0.0.0 && .\start_backend.bat 8000 --reload
 
-setlocal
 cd /d "%~dp0"
 
-:: Parse command line arguments
 set "PORT=8000"
+set "BIND_HOST=%BACKEND_HOST%"
+if "%BIND_HOST%"=="" set "BIND_HOST=0.0.0.0"
+set "LAN_HOST=%APP_HOST%"
+if "%LAN_HOST%"=="" (
+    for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' -and $_.PrefixOrigin -ne 'WellKnown' } | Select-Object -First 1 -ExpandProperty IPAddress)"`) do set "LAN_HOST=%%I"
+)
+if "%LAN_HOST%"=="" set "LAN_HOST=localhost"
+set "DISPLAY_HOST=%LAN_HOST%"
 set "RELOAD_FLAG="
+
 if not "%~1"=="" set "PORT=%~1"
 if /I "%~1"=="--reload" (
     set "PORT=8000"
@@ -35,13 +32,14 @@ if /I "%~2"=="--reload" (
 )
 
 echo.
-echo ════════════════════════════════════════════════════════════════════════════
+echo ================================================================================
 echo   BACKEND SERVICE STARTUP
-echo ════════════════════════════════════════════════════════════════════════════
+echo ================================================================================
 echo.
+echo   Bind Host: %BIND_HOST%
 echo   Port: %PORT%
-echo   API Docs: http://localhost:%PORT%/docs
-echo   OpenAPI: http://localhost:%PORT%/openapi.json
+echo   API Docs: http://%DISPLAY_HOST%:%PORT%/docs
+echo   OpenAPI: http://%DISPLAY_HOST%:%PORT%/openapi.json
 if defined RELOAD_FLAG (
     echo   Mode: Development reload
 ) else (
@@ -49,27 +47,32 @@ if defined RELOAD_FLAG (
 )
 echo.
 
-:: Check if virtual environment exists
 if not exist "backend\.dt_venv\Scripts\python.exe" (
     echo [ERROR] Virtual environment Python not found at backend\.dt_venv
-    echo.
-    echo [INFO] Run setup to create it:
-    echo        cd backend
-    echo        .\setup.bat
-    echo.
+    echo [INFO] Run: cd backend ^&^& .\setup.bat
     exit /b 1
 )
 
-echo [1/1] Starting FastAPI server...
-echo.
-echo ════════════════════════════════════════════════════════════════════════════
-set PYTHONPATH=%CD%
-call backend\.dt_venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port %PORT% %RELOAD_FLAG%
+set "EXISTING_BACKEND_PID="
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R /C:":%PORT% .*LISTENING"') do (
+    set "EXISTING_BACKEND_PID=%%P"
+)
 
+if not "%EXISTING_BACKEND_PID%"=="" (
+    echo [INFO] Backend already appears to be running on port %PORT%.
+    echo [INFO] Existing listener PID: %EXISTING_BACKEND_PID%
+    echo [INFO] API Docs: http://%DISPLAY_HOST%:%PORT%/docs
+    echo [INFO] Health:   http://%DISPLAY_HOST%:%PORT%/health
+    echo.
+    echo [INFO] To restart it, run:
+    echo        .\stop_backend.bat
+    echo        .\start_backend.bat %PORT%
+    exit /b 0
+)
+
+set "PYTHONPATH=%CD%"
+call backend\.dt_venv\Scripts\python.exe -m uvicorn backend.main:app --host %BIND_HOST% --port %PORT% %RELOAD_FLAG%
 if errorlevel 1 (
-    echo.
-    echo [ERROR] Backend server failed to start
+    echo [ERROR] Backend server failed to start.
     exit /b 1
 )
-
-endlocal

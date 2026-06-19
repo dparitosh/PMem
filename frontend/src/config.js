@@ -6,9 +6,32 @@
 
 const configuredBackendUrl = process.env.REACT_APP_BACKEND_URL;
 
+const resolveBackendUrl = () => {
+  const fallbackHost = typeof window !== 'undefined' && window.location?.hostname
+    ? window.location.hostname
+    : '127.0.0.1';
+  const fallback = `http://${fallbackHost}:8000`;
+  if (!configuredBackendUrl) return fallback;
+
+  try {
+    const configured = new URL(configuredBackendUrl);
+    const browserHost = typeof window !== 'undefined' ? window.location?.hostname : '';
+    const isLocalConfigured = configured.hostname === 'localhost' || configured.hostname === '127.0.0.1';
+    const isRemoteBrowser = browserHost && browserHost !== 'localhost' && browserHost !== '127.0.0.1';
+    if (isLocalConfigured && isRemoteBrowser) {
+      configured.hostname = browserHost;
+      return configured.toString().replace(/\/$/, '');
+    }
+  } catch (_err) {
+    return fallback;
+  }
+
+  return configuredBackendUrl;
+};
+
 // Base configuration
 const baseConfig = {
-  backendUrl: configuredBackendUrl || 'http://127.0.0.1:8000',
+  backendUrl: resolveBackendUrl(),
   apiVersion: process.env.REACT_APP_API_VERSION || 'v1',
   environment: process.env.REACT_APP_ENV || 'development',
   debug: process.env.REACT_APP_DEBUG === 'true',
@@ -293,7 +316,7 @@ if (baseConfig.debug) {
 // Validate required configuration
 if (!configuredBackendUrl && baseConfig.environment !== 'test') {
   // eslint-disable-next-line no-console
-  console.warn('[CONFIG] Missing REACT_APP_BACKEND_URL. Using default: http://localhost:8000');
+  console.warn('[CONFIG] Missing REACT_APP_BACKEND_URL. Using browser host with backend port 8000.');
 }
 
 export default config;

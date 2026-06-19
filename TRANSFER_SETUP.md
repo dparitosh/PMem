@@ -54,17 +54,45 @@ npm run build
 - The database name in `.env` should match your AuraDB instance
 
 ### 4. **Start Services**
-```bash
-# Terminal 1 - Backend
-cd Depo_onto/backend
-.dt_venv\Scripts\activate
-python start_backend.py
 
-# Terminal 2 - Frontend
-cd Depo_onto/frontend
-npm start
+From the project root, use the checked-in launchers. They bind services for remote access and print the URL to use.
+
+```bat
+:: Terminal 1 - Backend
+.\start_backend.bat
+
+:: Terminal 2 - Frontend
+.\start_frontend.bat
 ```
 
+For a cloud VM, set `APP_HOST` to the public DNS name, public IP, or load-balancer hostname that browser users will open. Do not use `localhost` for remote users.
+
+```bat
+:: Public cloud VM IP
+set APP_HOST=203.0.113.25
+.\start_backend.bat
+.\start_frontend.bat
+
+:: DNS name behind a load balancer/reverse proxy
+set APP_HOST=depo-demo.customer.com
+.\start_backend.bat
+.\start_frontend.bat
+```
+
+The backend binds to `0.0.0.0` by default. The frontend binds to `0.0.0.0` and sets `REACT_APP_BACKEND_URL` to `http://%APP_HOST%:8000` unless you pass an explicit backend URL.
+
+```bat
+:: Explicit values: port, backend URL, frontend bind host
+.\start_frontend.bat 3000 http://203.0.113.25:8000 0.0.0.0
+```
+
+Open the frontend using the same host value:
+
+```text
+http://203.0.113.25:3000
+```
+
+If you manually open `http://localhost:3000`, the browser address bar will still show localhost. That only works on the VM itself, not from a customer machine.
 ---
 
 ## Important Files to Check
@@ -94,3 +122,52 @@ Check `Depo_onto/logs/error.log` for issues. Common problems:
 - [ ] Run frontend setup (npm install)
 - [ ] Test Neo4j connection before starting
 - [ ] Start backend and frontend services
+---
+
+## Cloud VM / Remote Access Checklist
+
+Use this when installing on AWS, Azure, GCP, VMware, or any remote Windows VM.
+
+1. Choose the user-facing host:
+   - Private LAN VM: use the VM private IP, for example `192.168.1.50`.
+   - Cloud VM direct access: use the VM public IP or public DNS.
+   - Reverse proxy/load balancer: use the DNS name, for example `depo-demo.customer.com`.
+
+2. Set runtime host before starting both services:
+
+```bat
+set APP_HOST=<public-ip-or-dns>
+.\start_backend.bat
+.\start_frontend.bat
+```
+
+3. Open firewall / security-group inbound rules:
+   - TCP `3000` for the React UI, if serving the dev UI directly.
+   - TCP `8000` for the FastAPI backend, if the browser calls the backend directly.
+   - TCP `7687` only if Neo4j is remote and explicitly required; do not expose Neo4j publicly unless the customer security team approves it.
+   - TCP `11434` only if Ollama is remote and explicitly required; prefer keeping Ollama private to the VM/VNet.
+
+4. Configure CORS for the frontend origin in `backend/.env`:
+
+```env
+BACKEND_HOST=0.0.0.0
+BACKEND_PORT=8000
+ALLOWED_ORIGINS=http://<public-ip-or-dns>:3000
+```
+
+5. Configure the frontend backend URL in `frontend/.env` when not using the launcher:
+
+```env
+HOST=0.0.0.0
+REACT_APP_BACKEND_URL=http://<public-ip-or-dns>:8000
+```
+
+6. Validate from another machine, not from inside the VM:
+
+```text
+http://<public-ip-or-dns>:3000
+http://<public-ip-or-dns>:8000/health
+http://<public-ip-or-dns>:8000/docs
+```
+
+For production behind HTTPS, put Nginx/IIS/Application Gateway in front and expose only `443`. In that case set `APP_HOST`/`REACT_APP_BACKEND_URL` to the HTTPS DNS URL, and update `ALLOWED_ORIGINS` to the HTTPS frontend origin.

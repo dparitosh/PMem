@@ -69,17 +69,38 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/d
 
 This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
 
-## LAN / IP setup
+## LAN / Cloud VM / IP setup
 
-To open the app from another machine on your network, set the frontend backend URL and CORS origins to your server IP instead of localhost:
+To open the app from another machine, use the IP or DNS name that the user will type in the browser. This may be a LAN IP, a cloud public IP, or a load-balancer DNS name.
 
-```env
-REACT_APP_BACKEND_URL=http://192.168.1.50:8000
-ALLOWED_ORIGINS=http://192.168.1.50:3000
-```
-
-You can also start the frontend launcher with explicit values:
+Recommended startup from the project root:
 
 ```bat
-.\start_frontend.bat 3000 http://192.168.1.50:8000 0.0.0.0
+set APP_HOST=<public-ip-or-dns>
+.\start_backend.bat
+.\start_frontend.bat
 ```
+
+Examples:
+
+```bat
+set APP_HOST=192.168.1.50
+set APP_HOST=203.0.113.25
+set APP_HOST=depo-demo.customer.com
+```
+
+When not using the launcher, set frontend and backend env files explicitly:
+
+```env
+# frontend/.env
+HOST=0.0.0.0
+REACT_APP_BACKEND_URL=http://<public-ip-or-dns>:8000
+
+# backend/.env
+BACKEND_HOST=0.0.0.0
+ALLOWED_ORIGINS=http://<public-ip-or-dns>:3000
+```
+
+Cloud firewall/security-group rules must allow inbound TCP `3000` and `8000`, unless a reverse proxy exposes the app through HTTPS on `443`.
+
+If the browser address bar shows `localhost`, you opened the app locally on the VM. Remote users must open `http://<public-ip-or-dns>:3000`.

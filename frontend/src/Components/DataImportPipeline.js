@@ -71,7 +71,7 @@ function getWorkflowNote({
     return `${fallbackWorkflow.title} is not connected yet.`;
   }
   if (selectedWorkflow === 'instance.link') {
-    return 'Select one imported instance and one target ontology, then preview or apply the semantic bridge.';
+    return 'Select one imported instance artifact and one ontology, then preview or apply semantic mappings.';
   }
   if (selectedWorkflow === 'ontology.merge') {
     return 'Select a source ontology and a different target ontology, then review the merge plan.';
@@ -1532,7 +1532,7 @@ export default function DataImportPipeline() {
           }}>
             <label style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
               {selectedWorkflow === 'instance.link'
-                ? 'Target ontology:'
+                ? 'Ontology:'
                 : selectedWorkflow === 'ontology.merge'
                   ? 'Source ontology:'
                   : 'Ontology anchor:'}
@@ -1674,8 +1674,8 @@ export default function DataImportPipeline() {
                 {selectedWorkflow === 'instance.link' && workflowRun?.result?.summary && (
                   <div style={{ marginTop: '6px', color: C.textPrimary }}>
                     {workflowApplyLinks
-                      ? 'Only high-confidence, non-ambiguous matches are written to Neo4j.'
-                      : 'Dry-run mode: review candidates first, then rerun with "Apply approved links to Neo4j" if the result looks right.'}
+                      ? 'Only high-confidence, non-ambiguous semantic links are written to Neo4j.'
+                      : 'Dry-run mode: review entity, attribute, relationship, and metadata mappings before applying links to Neo4j.'}
                   </div>
                 )}
                 {selectedWorkflow === 'ontology.merge' && (

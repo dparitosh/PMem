@@ -1406,7 +1406,7 @@ export default function OntologyMapper() {
     const baseEdges = (mappingEdges || []).filter(edge => String(edge.mapping_type || '').toLowerCase() !== 'property_of');
     if (baseEdges.length > 0) return baseEdges;
     return (bridgeCandidates || [])
-      .filter((candidate) => candidate && (candidate.selected_for_apply || candidate.confidence >= 0.55))
+      .filter(Boolean)
       .map((candidate) => ({
         source_instance_id: selectedImportTaskId || candidate.source_instance_id || 'instance',
         source_instance_label: selectedImportTask?.filename || candidate.source_instance_label || 'Imported instance',
@@ -1416,7 +1416,7 @@ export default function OntologyMapper() {
         target_term: candidate.ontology_class_element_id || candidate.ontology_term || selectedOntologyApi || 'ontology',
         target_label: candidate.ontology_term || selectedOntologyOption?.label || candidate.ontology_class_element_id || 'Ontology class',
         target_ontology_type: candidate.target_ontology_type || 'Class',
-        mapping_type: candidate.selected_for_apply ? 'autoMap' : 'autoMapPreview',
+        mapping_type: candidate.selected_for_apply ? 'autoMap' : (candidate.validation_status || 'suggested'),
         confidence: candidate.confidence,
         evidence: candidate.evidence || [],
         signal_type: candidate.signal_type || 'metadata',
@@ -1916,7 +1916,7 @@ export default function OntologyMapper() {
       target_term: candidate.ontology_class_element_id || candidate.ontology_term || selectedOntologyApi,
       target_label: candidate.ontology_term || selectedOntologyOption?.label || candidate.ontology_class_element_id || selectedOntologyApi,
       target_ontology_type: candidate.target_ontology_type || 'Class',
-      mapping_type: candidate.selected_for_apply ? 'autoMap' : 'autoMapPreview',
+      mapping_type: candidate.selected_for_apply ? 'autoMap' : (candidate.validation_status || 'suggested'),
       confidence: candidate.confidence,
       evidence: candidate.evidence || [],
       signal_type: candidate.signal_type || 'metadata',
@@ -1949,7 +1949,7 @@ export default function OntologyMapper() {
       };
     });
     setSelectedMappingEdgeIndex(visibleMappingEdges.findIndex((edge) => edge?.source_term === newRow.source_term && edge?.target_term === newRow.target_term));
-    setMapMessage({ kind: 'success', text: 'Auto-map candidate added to the mapping table.' });
+    setMapMessage({ kind: 'success', text: 'Semantic mapping candidate added to the mapping table.' });
   };
 
   const handleAddBridgeMapping = () => {
@@ -2005,7 +2005,7 @@ export default function OntologyMapper() {
       };
     });
     setSelectedMappingEdgeIndex(visibleMappingEdges.findIndex((edge) => edge?.source_term === newRow.source_term && edge?.target_term === newRow.target_term));
-    setMapMessage({ kind: 'success', text: 'Bridge mapping added to the mapping table.' });
+    setMapMessage({ kind: 'success', text: 'Semantic bridge mapping added to the mapping table.' });
   };
 
   const handleEditMappingEdge = (edge) => {
@@ -2222,8 +2222,8 @@ export default function OntologyMapper() {
               <div style={{ marginBottom: '20px', border: `2px solid ${C.primary}`, borderRadius: '8px', padding: '16px', background: C.primaryLight }}>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>Instance-to-ontology bridge</div>
                 <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '14px', lineHeight: 1.45 }}>
-                  Pick one imported instance and one target ontology. Use this panel to generate or apply semantic links for that one instance only.
-                  To compare or merge two ontologies, use the separate merge workflow in Data Import.
+                  Pick one imported instance artifact and one ontology. This bridge maps instance entities, attributes, relationships, and metadata to ontology classes and properties.
+                  Ontology-to-ontology merge is separate; this panel is for instance-to-ontology alignment.
                 </div>
                 <div style={{
                   display: 'flex',
@@ -2452,7 +2452,7 @@ export default function OntologyMapper() {
                                     target_term: candidate.ontology_class_element_id || candidate.ontology_term || '',
                                     target_label: candidate.ontology_term || candidate.ontology_class_element_id || '',
                                     target_ontology_type: candidate.target_ontology_type || 'Class',
-                                    mapping_type: candidate.selected_for_apply ? 'autoMap' : 'autoMapPreview',
+                                    mapping_type: candidate.selected_for_apply ? 'autoMap' : (candidate.validation_status || 'suggested'),
                                     approvedByUser: candidate.selected_for_apply,
                                     userComment: candidate.user_comment || '',
                                   })}
@@ -2680,7 +2680,7 @@ export default function OntologyMapper() {
                     ) : (
                       <tr>
                         <td colSpan={4} style={{ ...TD(), textAlign: 'center', color: C.textMuted, padding: '24px' }}>
-                          No mappings discovered yet. Pick an imported instance and ontology, then preview suggestions or save a bridge mapping.
+                          No semantic mappings yet. Select an imported instance artifact and ontology, then preview suggestions or add a mapping.
                         </td>
                       </tr>
                     )}
@@ -2695,4 +2695,3 @@ export default function OntologyMapper() {
     </div>
   );
 }
-

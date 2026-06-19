@@ -100,10 +100,10 @@ class UploadResponse(BaseModel):
 
 
 class OntologyMappingRequest(BaseModel):
-    """Request for ontology mapping"""
+    """Legacy request for source profile mapping. Prefer SemanticWorkflowService instance.link for instance-to-ontology alignment."""
     task_id: str
-    target_ontology: str = Field(..., description="Target ontology (windchill, ap242_product, pifrl)")
-    confidence_threshold: float = Field(0.6, ge=0.0, le=1.0, description="Minimum confidence for entity mappings")
+    target_ontology: str = Field(..., description="Legacy target/profile id for ontology-to-ontology mapping; not required for Semantic Bridge instance linking")
+    confidence_threshold: float = Field(0.6, ge=0.0, le=1.0, description="Minimum confidence for legacy entity-to-entity mapping suggestions")
 
 
 class OntologyMappingResponse(BaseModel):
@@ -668,4 +668,3 @@ async def cleanup_old_xsd_schemas(body: dict):
             "neo4j_deleted_by_id_or_source": batch_neo4j_primary,
             "neo4j_deleted_by_prefix": batch_neo4j_prefix,
         })
-

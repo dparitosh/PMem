@@ -3024,11 +3024,21 @@ def recommendations_health():
 
 from Services.ontology_mapper_service import OntologyMapperService
 
+LEGACY_ONTOLOGY_MAPPER_NOTICE = {
+    "deprecated": True,
+    "mode": "legacy_seed_profile",
+    "replacement_workflow": "instance.link",
+    "replacement_endpoint": "/api/v1/workflows/execute",
+    "message": "Legacy seed profiles are compatibility templates. Use Semantic Bridge instance.link for instance-to-ontology alignment.",
+}
+
+
 @app.get("/ontology-mapper/options")
 def get_mapping_options():
     """Get available ontology mapping options."""
     try:
         return {
+            **LEGACY_ONTOLOGY_MAPPER_NOTICE,
             "options": OntologyMapperService.get_mapping_options(),
             "mapping_types": OntologyMapperService.MAPPING_TYPES,
         }
@@ -3044,6 +3054,7 @@ def get_ontology_mappings(mapping_type: str = Path(..., description="plmxml, ste
         if not mappings:
             raise HTTPException(status_code=404, detail=f"No mappings found for type: {mapping_type}")
         return {
+            **LEGACY_ONTOLOGY_MAPPER_NOTICE,
             "mapping_type": mapping_type,
             "total": len(mappings),
             "mappings": mappings,
@@ -3062,6 +3073,7 @@ def get_data_dictionary(mapping_type: str = Path(..., description="plmxml, step,
         if not terms:
             raise HTTPException(status_code=404, detail=f"No data dictionary found for type: {mapping_type}")
         return {
+            **LEGACY_ONTOLOGY_MAPPER_NOTICE,
             "mapping_type": mapping_type,
             "total_terms": len(terms),
             "terms": terms,
@@ -3080,6 +3092,7 @@ def get_vocabulary_mappings(mapping_type: str = Path(..., description="plmxml, s
         if not vocabulary:
             raise HTTPException(status_code=404, detail=f"No vocabulary found for type: {mapping_type}")
         return {
+            **LEGACY_ONTOLOGY_MAPPER_NOTICE,
             "mapping_type": mapping_type,
             "total_mappings": len(vocabulary),
             "mappings": vocabulary,
@@ -3095,7 +3108,7 @@ def get_mapping_stats(mapping_type: str = Path(..., description="plmxml, step, o
     """Get statistics about a mapping type."""
     try:
         stats = OntologyMapperService.get_mapping_stats(mapping_type)
-        return stats
+        return {**LEGACY_ONTOLOGY_MAPPER_NOTICE, **stats}
     except Exception as e:
         safe_error("/ontology-mapper/{mapping_type}/stats", e)
 

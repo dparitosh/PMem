@@ -1,6 +1,5 @@
 """
-Ontology Mapping Service - Integrates PLMXML → AP242, STEP → AP242, and Windchill → AP242 mappings
-with support for data dictionary generation and vocabulary mapping.
+Legacy ontology mapping seed service - provides built-in PLMXML -> AP242, STEP -> AP242, and Windchill -> AP242 templates for compatibility. The primary Semantic Bridge flow is SemanticWorkflowService.instance.link, which aligns imported instances and metadata to loaded ontology classes/properties.
 """
 
 from dataclasses import dataclass
@@ -370,7 +369,7 @@ class WindchilltoAP242Mapper:
 
 
 class OntologyMapperService:
-    """Main service for ontology mapping operations"""
+    """Legacy seed mapper. Prefer SemanticWorkflowService for instance-to-ontology bridge mappings."""
     
     MAPPERS = {
         "plmxml": PLMXMLtoAP242Mapper,
@@ -379,9 +378,9 @@ class OntologyMapperService:
     }
     
     MAPPING_OPTIONS = [
-        {"value": "plmxml", "label": "PLMXML → AP242"},
-        {"value": "step", "label": "STEP → AP242"},
-        {"value": "windchill", "label": "Windchill → AP242"},
+        {"value": "plmxml", "label": "PLMXML → AP242 seed profile", "legacy": True},
+        {"value": "step", "label": "STEP → AP242 seed profile", "legacy": True},
+        {"value": "windchill", "label": "Windchill → AP242 seed profile", "legacy": True},
     ]
     
     MAPPING_TYPES = [

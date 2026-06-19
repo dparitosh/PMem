@@ -1,7 +1,24 @@
 from unittest.mock import patch
 
 from backend.Services.semantic_workflow_service import SemanticWorkflowService
+from backend.Services.ontology_reasoning_service import OntologyReasoningService
 
+
+
+
+def test_reasoning_validation_accepts_ui_type_aliases():
+    result = OntologyReasoningService.validate_mapping(
+        "attribute",
+        "DataProperty",
+        {"range": ["xsd:string"]},
+        {"datatype": "string"},
+    )
+
+    assert result["status"] == "valid"
+    assert result["errors"] == []
+
+    invalid = OntologyReasoningService.validate_mapping("relationship", "Class")
+    assert invalid["status"] == "invalid"
 
 def test_resolve_ontology_id_accepts_prefix_and_storage_id():
     with patch("backend.Services.semantic_workflow_service.OntologyUploadManager.get_ontology") as get_ontology, \

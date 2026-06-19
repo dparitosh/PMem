@@ -3,15 +3,30 @@
  * Simple frontend startup script
  */
 const { execSync } = require('child_process');
+const os = require('os');
 const path = require('path');
 const fs = require('fs');
 
 const frontendPath = path.join(__dirname, 'frontend');
 process.chdir(frontendPath);
 
+function detectLanIp() {
+    const networks = os.networkInterfaces();
+    for (const entries of Object.values(networks)) {
+        for (const entry of entries || []) {
+            if (entry.family === 'IPv4' && !entry.internal && !entry.address.startsWith('169.254.')) {
+                return entry.address;
+            }
+        }
+    }
+    return 'localhost';
+}
+
 const port = process.env.PORT || process.argv[2] || '3000';
-const backendUrl = process.env.REACT_APP_BACKEND_URL || process.argv[3] || 'http://localhost:8000';
-const host = process.env.HOST || process.argv[4] || 'localhost';
+const lanHost = process.env.APP_HOST || detectLanIp();
+const backendUrl = process.env.REACT_APP_BACKEND_URL || process.argv[3] || `http://${lanHost}:8000`;
+const host = process.env.HOST || process.argv[4] || '0.0.0.0';
+const displayHost = host === '0.0.0.0' ? lanHost : host;
 
 console.log('='.repeat(70));
 console.log('FRONTEND STARTUP SCRIPT');
@@ -35,7 +50,7 @@ if (!fs.existsSync(path.join(frontendPath, 'node_modules'))) {
 
 console.log();
 console.log('='.repeat(70));
-console.log(`Starting React frontend on http://${host}:${port}`);
+console.log(`Starting React frontend on http://${displayHost}:${port}`);
 console.log('='.repeat(70));
 console.log();
 

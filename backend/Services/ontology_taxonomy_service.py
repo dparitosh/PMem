@@ -17,6 +17,7 @@ from rdflib import Graph, URIRef
 from rdflib.namespace import OWL, RDF, RDFS, SKOS
 
 from .owlready_runtime import OwlreadyOntologyRuntime
+from .ontology_reasoning_service import OntologyReasoningService
 from .ontology_upload_manager import OntologyUploadManager
 
 
@@ -327,14 +328,4 @@ class OntologyTaxonomyService:
     @classmethod
     def get_reasoning(cls, ontology_identifier: str) -> Dict[str, Any]:
         """Return Owlready2-backed ontology semantics for the registered ontology."""
-        context = cls._semantic_context(ontology_identifier)
-        meta = context["meta"]
-        cache_key = cls._cache_key_for_path(context["file_path"])
-        result = dict(cls._cached_reasoning(cache_key[0], cache_key[1], cache_key[2], context["prefix"]))
-        result.update({
-            "ontology_id": meta.get("ontology_id"),
-            "ontology_name": meta.get("ontology_name"),
-            "prefix": context["prefix"],
-            "source_filename": meta.get("original_filename") or meta.get("stored_filename"),
-        })
-        return result
+        return OntologyReasoningService.inspect_context(cls._semantic_context(ontology_identifier))
