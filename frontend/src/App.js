@@ -83,8 +83,6 @@ function App() {
 
   const renderPage = () => {
     switch (activePage) {
-      case 'workspace':
-        return <GraphExplorerPage {...graphProps} />;
       case 'import':
         return <ImportPage />;
       case 'ontology':

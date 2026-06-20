@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Path, Request, APIRouter, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response
 import logging as _logging
 from logging.handlers import RotatingFileHandler
 import json
@@ -717,9 +717,20 @@ class TimeoutMiddleware:
 
 app.add_middleware(TimeoutMiddleware)
 
-# ✅ SECURE: Load allowed origins from environment with fallback
-allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
-allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
+# ✅ SECURE: Load allowed origins from environment with fallback.
+# Include localhost, loopback, and the configured/LAN frontend host so the app
+# works when the UI is opened locally but calls a LAN-bound backend URL.
+def _build_allowed_origins() -> list[str]:
+    configured = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+    origins = {origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()}
+    for host in ("localhost", "127.0.0.1", os.getenv("APP_HOST", "").strip()):
+        if host:
+            origins.add(f"http://{host}:3000")
+            origins.add(f"https://{host}:3000")
+    return sorted(origins)
+
+
+allowed_origins = _build_allowed_origins()
 
 # Add CORS middleware last so it wraps error responses too.
 app.add_middleware(
@@ -1071,12 +1082,39 @@ async def get_sample_queries():
             except Exception:
                 return []
 
-        parts       = _fetch("MATCH (n:ProvidedPart) RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 5")
-        operations  = _fetch("MATCH (n:GeneralOperation) RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 3")
-        assemblies  = _fetch("MATCH (n:ManufacturingAssembly) RETURN DISTINCT n.name AS name LIMIT 2")
+        parts       = _fetch("""
+            MATCH (n)
+            WHERE n.name IS NOT NULL
+              AND (n:ProvidedPart OR n:Part OR n:Product OR n:ProductRevision OR toLower(coalesce(n.element_type, '')) CONTAINS 'part')
+            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 5
+        """)
+        operations  = _fetch("""
+            MATCH (n)
+            WHERE n.name IS NOT NULL
+              AND (n:GeneralOperation OR n:HeaderOperation OR n:LoadingOperation OR n:Process OR toLower(coalesce(n.element_type, '')) CONTAINS 'operation')
+            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 3
+        """)
+        assemblies  = _fetch("""
+            MATCH (n)
+            WHERE n.name IS NOT NULL
+              AND (n:ManufacturingAssembly OR n:Assembly OR toLower(coalesce(n.element_type, '')) CONTAINS 'assembly')
+            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 2
+        """)
+        requirements = _fetch("""
+            MATCH (n)
+            WHERE n.name IS NOT NULL
+              AND (n:Requirement OR n:RequirementRevision OR toLower(coalesce(n.name, '')) CONTAINS 'requirement' OR toLower(coalesce(n.element_type, '')) CONTAINS 'requirement')
+            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 5
+        """)
         mbse_cls    = _fetch("MATCH (n:Class:MbseNode) WHERE n.name IS NOT NULL AND size(n.name) > 3 RETURN n.name AS name ORDER BY n.name LIMIT 3")
         use_cases   = _fetch("MATCH (n:UseCase:MbseNode) WHERE n.name IS NOT NULL AND size(n.name) > 3 RETURN n.name AS name LIMIT 2")
         packages    = _fetch("MATCH (n:Package:MbseNode) WHERE n.name IS NOT NULL AND NOT n.name STARTS WITH 'Basic' RETURN n.name AS name LIMIT 2")
+        generic_entities = _fetch("""
+            MATCH (n)
+            WHERE n.name IS NOT NULL
+              AND NOT (n:DatasheetChunk OR n:GraphChunk OR n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty)
+            RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 8
+        """)
         ontology_rows = (registry.get("ontologies", []) if isinstance(registry, dict) else [])[:3]
         ontology_names = [
             str(row.get("ontology_name") or row.get("name") or row.get("prefix") or row.get("ontology_id") or "").strip()
@@ -1084,39 +1122,53 @@ async def get_sample_queries():
             if str(row.get("ontology_name") or row.get("name") or row.get("prefix") or row.get("ontology_id") or "").strip()
         ]
 
-        data_available = any([parts, operations, assemblies, mbse_cls, use_cases, ontology_names])
+        data_available = any([parts, operations, assemblies, requirements, mbse_cls, use_cases, ontology_names, generic_entities])
 
         if data_available:
-            part1  = parts[0]       if parts       else "ROTOR SHAFT"
-            part2  = parts[1]       if len(parts) > 1 else "LAMINATED ROTOR CORE"
-            part3  = parts[2]       if len(parts) > 2 else "THREE PHASE WINDINGS"
-            asm1   = assemblies[0]  if assemblies  else "5 HP MOTOR ASSEMBLY"
+            part1  = parts[0]       if parts       else (generic_entities[0] if generic_entities else "selected part")
+            part2  = parts[1]       if len(parts) > 1 else (generic_entities[1] if len(generic_entities) > 1 else part1)
+            part3  = parts[2]       if len(parts) > 2 else (generic_entities[2] if len(generic_entities) > 2 else part1)
+            asm1   = assemblies[0]  if assemblies  else (generic_entities[0] if generic_entities else "selected assembly")
             op1    = operations[0]  if operations  else "#170_Operation-FDA Unit Electric A"
             cls1   = mbse_cls[0]    if mbse_cls    else "Variable Speed Drive"
             cls2   = mbse_cls[1]    if len(mbse_cls) > 1 else "Sugar Production Plant"
-            uc1    = use_cases[0]   if use_cases   else "Energy efficiency for juice purification"
+            uc1    = use_cases[0]   if use_cases   else (requirements[0] if requirements else "selected requirement")
             pkg1   = packages[0]    if packages    else "2 Functional Analysis"
             onto1  = ontology_names[0] if ontology_names else "the selected ontology"
             onto2  = ontology_names[1] if len(ontology_names) > 1 else onto1
 
-            sample_queries = [
-                # Motor / XPDMXML domain
-                f'What are all the parts in the "{asm1}" and in what sequence are they assembled?',
-                f'Show the complete assembly operation sequence for "{asm1}"',
-                f'Recommend manufacturing processes for "{part1}"',
-                f'Find parts similar to "{part2}" that could be substituted',
-                f'What operations does "{part3}" go through during assembly?',
-                f'Analyse change impact if "{part1}" is modified',
-                # SysML / MBSE domain
-                f'What are the SysML requirements related to "{cls1}"?',
-                f'Show all use cases and actors in the "{pkg1}" package',
-                f'Trace the MBSE requirements for use case "{uc1}"',
-                f'Which SysML blocks are associated with "{cls2}"?',
-                # Cross-domain
-                f'Analyse change impact if "{part1}" is modified',
+            sample_queries = []
+            if assemblies:
+                sample_queries.extend([
+                    f'What are all the parts in the "{asm1}" and in what sequence are they assembled?',
+                    f'Show the complete assembly operation sequence for "{asm1}"',
+                ])
+            if parts:
+                sample_queries.extend([
+                    f'Recommend manufacturing processes for "{part1}"',
+                    f'Find parts similar to "{part2}" that could be substituted',
+                    f'What operations does "{part3}" go through during assembly?',
+                    f'Analyse change impact if "{part1}" is modified',
+                ])
+            if requirements:
+                sample_queries.append(f'Trace requirement context and downstream realization for "{uc1}"')
+            if mbse_cls or use_cases:
+                sample_queries.extend([
+                    f'What are the SysML requirements related to "{cls1}"?',
+                    f'Show all use cases and actors in the "{pkg1}" package',
+                    f'Trace the MBSE requirements for use case "{uc1}"',
+                    f'Which SysML blocks are associated with "{cls2}"?',
+                ])
+            if generic_entities:
+                sample_queries.extend([
+                    f'Show one-hop graph context for "{generic_entities[0]}"',
+                    f'Find traceability links around "{generic_entities[min(1, len(generic_entities)-1)]}"',
+                ])
+            sample_queries.extend([
                 f'What ontology classes does "{onto1}" expose?',
                 f'Compare the taxonomy of "{onto1}" and "{onto2}"',
-            ]
+            ])
+            sample_queries = sample_queries[:8]
         else:
             # Registry-driven fallbacks for empty graphs
             ontology1 = ontology_names[0] if ontology_names else "the selected ontology"
@@ -1132,7 +1184,7 @@ async def get_sample_queries():
                 'Analyse change impact for a selected entity in the active ontology scope',
             ]
 
-        all_entities = parts + operations + assemblies + mbse_cls + use_cases
+        all_entities = parts + operations + assemblies + requirements + mbse_cls + use_cases + generic_entities
         return JSONResponse({
             "queries": sample_queries,
             "data_available": data_available,
@@ -1272,6 +1324,19 @@ async def get_entire_graph():
         return {"results": [], "message": "Neo4j database temporarily unavailable. Graph will display when database is connected."}
 
 
+def _empty_graph_service_response(message: str, *, status_code: int = 503) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "unavailable",
+            "message": message,
+            "nodes": [],
+            "relationships": [],
+            "counts": {"nodes": 0, "relationships": 0},
+        },
+    )
+
+
 @app.get("/api/v1/graph/view")
 async def get_graph_view(limit: int = 1000):
     """Return a visualization-ready graph payload using the official Neo4j driver."""
@@ -1280,7 +1345,11 @@ async def get_graph_view(limit: int = 1000):
     except Exception:
         from Services.graph_view_service import GraphViewService
 
-    return GraphViewService.get_graph_overview(limit=limit)
+    try:
+        return GraphViewService.get_graph_overview(limit=limit)
+    except RuntimeError as exc:
+        logger.warning("/api/v1/graph/view unavailable: %s", exc)
+        return _empty_graph_service_response(str(exc))
 
 
 @app.get("/api/v1/graph/view/ontology/{prefix}")
@@ -1291,7 +1360,11 @@ async def get_virtual_ontology_view(prefix: str, limit: int = 1000):
     except Exception:
         from Services.graph_view_service import GraphViewService
 
-    return GraphViewService.get_virtual_ontology_view(prefix=prefix, limit=limit)
+    try:
+        return GraphViewService.get_virtual_ontology_view(prefix=prefix, limit=limit)
+    except RuntimeError as exc:
+        logger.warning("/api/v1/graph/view/ontology/%s unavailable: %s", prefix, exc)
+        return _empty_graph_service_response(str(exc))
 
 
 @app.get("/api/v1/graph/contextual-subgraph")
@@ -1309,14 +1382,18 @@ async def get_contextual_subgraph(
     except Exception:
         from Services.graph_view_service import GraphViewService
 
-    return GraphViewService.get_contextual_subgraph(
-        search=search,
-        ontology_prefix=ontology_prefix,
-        import_id=import_id,
-        limit=limit,
-        expand_neighbors=expand_neighbors,
-        search_mode=search_mode,
-    )
+    try:
+        return GraphViewService.get_contextual_subgraph(
+            search=search,
+            ontology_prefix=ontology_prefix,
+            import_id=import_id,
+            limit=limit,
+            expand_neighbors=expand_neighbors,
+            search_mode=search_mode,
+        )
+    except RuntimeError as exc:
+        logger.warning("/api/v1/graph/contextual-subgraph unavailable: %s", exc)
+        return _empty_graph_service_response(str(exc))
 
 
 @app.get("/graphvis/by-ontology/{prefix}")
@@ -1639,9 +1716,9 @@ async def get_uploaded_ontology_taxonomy(ontology_id: str):
 async def get_uploaded_ontology_reasoning(ontology_id: str):
     """Return Owlready2-backed classes, properties, individuals, and diagnostics."""
     try:
-        from backend.Services.ontology_taxonomy_service import OntologyTaxonomyService
+        from backend.Services.ontology_reasoning_service import OntologyReasoningService
 
-        return OntologyTaxonomyService.get_reasoning(ontology_id)
+        return OntologyReasoningService.get_reasoning(ontology_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -3547,6 +3624,51 @@ def get_import_owl(task_id: str):
     except Exception as e:
         safe_error("/api/v1/import/owl/{task_id}", e)
 
+
+
+@app.get("/api/v1/import/owl/{task_id}/export")
+def export_import_owl(task_id: str, format: str = Query("ttl", pattern="^(ttl|rdf|owl|jsonld)$")):
+    """Download generated ontology content as TTL, RDF/XML, OWL/XML, or JSON-LD."""
+    try:
+        from rdflib import Graph as RDFGraph
+        from backend.Services.unified_data_import import UnifiedDataImportService
+
+        status = UnifiedDataImportService.get_status(task_id)
+        if not status:
+            raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
+
+        owl_ttl = status.get("owl_ttl")
+        if not owl_ttl:
+            raise HTTPException(status_code=404, detail=f"No OWL content available for task: {task_id}")
+
+        export_format = (format or "ttl").lower()
+        filename_base = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(status.get("filename") or f"ontology_{task_id}"))
+        filename_base = re.sub(r"\.(ttl|rdf|owl|jsonld|json)$", "", filename_base, flags=re.IGNORECASE)
+        export_map = {
+            "ttl": {"rdflib": "turtle", "media": "text/turtle", "ext": "ttl"},
+            "rdf": {"rdflib": "xml", "media": "application/rdf+xml", "ext": "rdf"},
+            "owl": {"rdflib": "pretty-xml", "media": "application/rdf+xml", "ext": "owl"},
+            "jsonld": {"rdflib": "json-ld", "media": "application/ld+json", "ext": "jsonld"},
+        }
+        spec = export_map[export_format]
+
+        if export_format == "ttl":
+            content = owl_ttl
+        else:
+            graph = RDFGraph()
+            try:
+                graph.parse(data=owl_ttl, format="turtle")
+                content = graph.serialize(format=spec["rdflib"])
+            except Exception as exc:
+                raise HTTPException(status_code=422, detail=f"Generated Turtle could not be serialized as {export_format}: {exc}")
+
+        body = content if isinstance(content, bytes) else str(content).encode("utf-8")
+        headers = {"Content-Disposition": f'attachment; filename="{filename_base}.{spec["ext"]}"'}
+        return Response(content=body, media_type=f'{spec["media"]}; charset=utf-8', headers=headers)
+    except HTTPException:
+        raise
+    except Exception as e:
+        safe_error("/api/v1/import/owl/{task_id}/export", e)
 
 @app.get("/api/v1/import/artifacts/{task_id}")
 def get_import_artifacts(task_id: str):

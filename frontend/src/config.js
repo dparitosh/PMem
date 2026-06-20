@@ -151,6 +151,7 @@ const IMPORT_ENDPOINTS = {
   preCommit: process.env.REACT_APP_API_IMPORT_PRE_COMMIT || '/api/v1/import/pre-commit/{task_id}',
   cancel: process.env.REACT_APP_API_IMPORT_CANCEL || '/api/v1/import/cancel/{task_id}',
   owl: process.env.REACT_APP_API_IMPORT_OWL || '/api/v1/import/owl/{task_id}',
+  owlExport: process.env.REACT_APP_API_IMPORT_OWL_EXPORT || '/api/v1/import/owl/{task_id}/export',
   artifacts: process.env.REACT_APP_API_IMPORT_ARTIFACTS || '/api/v1/import/artifacts/{task_id}',
   convertSchema: process.env.REACT_APP_API_IMPORT_CONVERT_SCHEMA || '/api/v1/import/convert-schema',
   parseSchema: process.env.REACT_APP_API_IMPORT_PARSE_SCHEMA || '/api/v1/import/parse-schema',

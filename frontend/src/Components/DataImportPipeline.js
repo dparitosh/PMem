@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   X,
   Play,
@@ -50,6 +50,10 @@ const C = {
 const IMPORT_JOBS_STORAGE_KEY = 'depo.import.jobs.v2';
 const IMPORT_ONTOLOGIES_CACHE_KEY = 'depo.import.ontologies.v1';
 const PRIMARY_WORKFLOW_IDS = new Set(['instance.import', 'ontology.create', 'instance.link']);
+const RESUMABLE_JOB_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const ONTOLOGY_SOURCE_TYPES = new Set(['ontology', 'xsd', 'xmi', 'express']);
+const ONTOLOGY_METADATA_EXTENSIONS = new Set(['.xsd', '.xmi', '.mdxml', '.owl', '.rdf', '.ttl', '.exp']);
+
 
 function serializeFileForPersistence(file) {
   if (!file) return null;
@@ -61,17 +65,68 @@ function serializeFileForPersistence(file) {
   };
 }
 
+function getStatusTimestamp(status = {}, file = null) {
+  return (
+    status.lastUpdatedAt ||
+    status.completedAtIso ||
+    file?.updatedAt ||
+    file?.createdAt ||
+    null
+  );
+}
+
+function isTerminalPipelineStatus(status = {}) {
+  return Boolean(
+    status.error ||
+    status.status === 'failed' ||
+    status.committed ||
+    status.status === 'completed' ||
+    status.commitPhase === 'complete' ||
+    status.progress === 100
+  );
+}
+
+function isResumablePersistedJob(file, status) {
+  if (!file?.taskId || !status) return false;
+  if (isTerminalPipelineStatus(status)) return false;
+  const stamp = getStatusTimestamp(status, file);
+  if (!stamp) return false;
+  const parsed = Date.parse(stamp);
+  if (Number.isNaN(parsed)) return false;
+  return (Date.now() - parsed) <= RESUMABLE_JOB_MAX_AGE_MS;
+}
+
+function getFileExtensionFromName(fileName = '') {
+  const parts = String(fileName).split('.');
+  return parts.length > 1 ? `.${parts.pop().toLowerCase()}` : '';
+}
+
+function isOntologySourceFile(fileName = '') {
+  return ONTOLOGY_SOURCE_TYPES.has(inferFileTypeFromExtension(fileName));
+}
+
+function requiresOntologyMetadataCapture(fileName = '') {
+  return ONTOLOGY_METADATA_EXTENSIONS.has(getFileExtensionFromName(fileName));
+}
+
 function getWorkflowNote({
   canRunSelectedWorkflow,
   fallbackWorkflow,
   mappingFileTypeContext,
   selectedWorkflow,
+  selectedImportArtifactEntry,
 }) {
   if (!canRunSelectedWorkflow) {
     return `${fallbackWorkflow.title} is not connected yet.`;
   }
   if (selectedWorkflow === 'instance.link') {
-    return 'Select one imported instance artifact and one ontology, then preview or apply semantic mappings.';
+    if (!selectedImportArtifactEntry) {
+      return 'Select one completed import artifact first, then choose the ontology you want to align against.';
+    }
+    return 'Review one imported instance artifact against one ontology, then preview or apply semantic mappings.';
+  }
+  if (selectedWorkflow === 'ontology.create') {
+    return 'Use this workflow only for ontology or schema registration. XSD, OWL, RDF, TTL, XMI, MDXML, and EXPRESS files belong here; instance files belong in Import instance graph.';
   }
   if (selectedWorkflow === 'ontology.merge') {
     return 'Select a source ontology and a different target ontology, then review the merge plan.';
@@ -83,9 +138,6 @@ function getWorkflowNote({
     || selectedWorkflow === 'graph.chunk'
   ) {
     return 'Select an ontology to generate the artifact.';
-  }
-  if (selectedWorkflow === 'ontology.create' && mappingFileTypeContext !== 'express') {
-    return 'Register ontology metadata before upload.';
   }
   if (mappingFileTypeContext === 'express') {
     return 'EXPRESS creates ontology structure.';
@@ -102,8 +154,8 @@ function getWorkflowNote({
   ) {
     return 'JSON, XML, PLMXML, and 3DXML import as source data first.';
   }
-  if (selectedWorkflow === 'instance.import' && mappingFileTypeContext === 'ontology') {
-    return 'Use ontology registration for OWL, RDF, or TTL.';
+  if (selectedWorkflow === 'instance.import' && ['ontology', 'xsd', 'xmi', 'express'].includes(mappingFileTypeContext)) {
+    return 'Use Create ontology for OWL, RDF, TTL, XSD, XMI, MDXML, or EXPRESS files.';
   }
   if (selectedWorkflow === 'instance.import' && !mappingFileTypeContext) {
     return 'Select files to continue.';
@@ -126,6 +178,7 @@ export default function DataImportPipeline() {
   const [workflowOptions, setWorkflowOptions] = useState(workflowCatalog);
   const [workflowOntologyId, setWorkflowOntologyId] = useState('');
   const [workflowTargetOntologyId, setWorkflowTargetOntologyId] = useState('');
+  const [workflowSourceFileId, setWorkflowSourceFileId] = useState('');
   const [workflowRun, setWorkflowRun] = useState(null);
   const [workflowLoading, setWorkflowLoading] = useState(false);
   const [workflowApplyLinks, setWorkflowApplyLinks] = useState(false);
@@ -179,82 +232,98 @@ export default function DataImportPipeline() {
     loading: availableOntologies.length === 0,
     stale: false,
     message: '',
+    source: availableOntologies.length > 0 ? 'cache' : 'none',
+    lastLoadedAt: null,
   });
 
   // Get ontologies from centralized context (shared across all components)
   const { ontologies: contextOntologies } = useOntologies();
 
-  // Transform context ontologies into DataImportPipeline format
-  useEffect(() => {
-    const loadOntologyOptions = async () => {
-      const cachedRaw = window.localStorage.getItem(IMPORT_ONTOLOGIES_CACHE_KEY);
-      const cachedOntologies = (() => {
-        try {
-          return normalizeOntologyOptions(cachedRaw ? JSON.parse(cachedRaw) : []);
-        } catch (_err) {
-          return [];
-        }
-      })();
-
+  const loadOntologyOptions = useCallback(async ({ forceLive = false } = {}) => {
+    const cachedRaw = window.localStorage.getItem(IMPORT_ONTOLOGIES_CACHE_KEY);
+    const cachedOntologies = (() => {
       try {
-        let sourceOntologies = contextOntologies;
-        if (!sourceOntologies?.length) {
-          let lastErr = null;
-          for (let attempt = 0; attempt < 3; attempt += 1) {
-            try {
-              const response = await API_METHODS.ontology.listRegistered();
-              sourceOntologies = response?.data?.ontologies || [];
-              lastErr = null;
-              break;
-            } catch (err) {
-              lastErr = err;
-              await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
-            }
-          }
-          if (lastErr) throw lastErr;
-        }
-        const normalized = normalizeOntologyOptions(sourceOntologies);
-        if (normalized.length > 0) {
-          setAvailableOntologies(normalized);
-          window.localStorage.setItem(IMPORT_ONTOLOGIES_CACHE_KEY, JSON.stringify(normalized));
-          setOntologyCatalogState({ loading: false, stale: false, message: '' });
-        } else {
-          if (cachedOntologies.length > 0) {
-            setAvailableOntologies(cachedOntologies);
-            setOntologyCatalogState({
-              loading: false,
-              stale: true,
-              message: 'Using cached ontology catalog while the latest registry data catches up.',
-            });
-          } else {
-            setOntologyCatalogState({
-              loading: true,
-              stale: false,
-              message: 'Ontology catalog is still loading.',
-            });
+        return normalizeOntologyOptions(cachedRaw ? JSON.parse(cachedRaw) : []);
+      } catch (_err) {
+        return [];
+      }
+    })();
+
+    setOntologyCatalogState((prev) => ({ ...prev, loading: true, message: forceLive ? 'Refreshing ontology catalog...' : prev.message }));
+
+    try {
+      let sourceOntologies = !forceLive ? contextOntologies : [];
+      if (!sourceOntologies?.length) {
+        let lastErr = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            const response = await API_METHODS.ontology.listRegistered();
+            sourceOntologies = response?.data?.ontologies || [];
+            lastErr = null;
+            break;
+          } catch (err) {
+            lastErr = err;
+            await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
           }
         }
-      } catch (err) {
-        console.error('Failed to process ontologies:', err);
-        if (cachedOntologies.length > 0) {
-          setAvailableOntologies(cachedOntologies);
-          setOntologyCatalogState({
-            loading: false,
-            stale: true,
-            message: 'Using cached ontology catalog because the live registry is temporarily unavailable.',
-          });
-          return;
-        }
+        if (lastErr) throw lastErr;
+      }
+      const normalized = normalizeOntologyOptions(sourceOntologies);
+      if (normalized.length > 0) {
+        setAvailableOntologies(normalized);
+        window.localStorage.setItem(IMPORT_ONTOLOGIES_CACHE_KEY, JSON.stringify(normalized));
         setOntologyCatalogState({
           loading: false,
           stale: false,
-          message: 'Ontology catalog is temporarily unavailable. Retry in a moment.',
+          message: '',
+          source: 'live',
+          lastLoadedAt: new Date().toISOString(),
+        });
+      } else if (cachedOntologies.length > 0) {
+        setAvailableOntologies(cachedOntologies);
+        setOntologyCatalogState({
+          loading: false,
+          stale: true,
+          message: 'Using cached ontology catalog while the latest registry data catches up.',
+          source: 'cache',
+          lastLoadedAt: new Date().toISOString(),
+        });
+      } else {
+        setOntologyCatalogState({
+          loading: false,
+          stale: false,
+          message: 'Ontology catalog is still loading.',
+          source: 'none',
+          lastLoadedAt: null,
         });
       }
-    };
-    setOntologyCatalogState((prev) => ({ ...prev, loading: true }));
-    loadOntologyOptions();
+    } catch (err) {
+      console.error('Failed to process ontologies:', err);
+      if (cachedOntologies.length > 0) {
+        setAvailableOntologies(cachedOntologies);
+        setOntologyCatalogState({
+          loading: false,
+          stale: true,
+          message: 'Using cached ontology catalog because the live registry is temporarily unavailable.',
+          source: 'cache',
+          lastLoadedAt: new Date().toISOString(),
+        });
+        return;
+      }
+      setOntologyCatalogState({
+        loading: false,
+        stale: false,
+        message: 'Ontology catalog is temporarily unavailable. Retry in a moment.',
+        source: 'none',
+        lastLoadedAt: null,
+      });
+    }
   }, [contextOntologies]);
+
+  // Transform context ontologies into DataImportPipeline format
+  useEffect(() => {
+    loadOntologyOptions();
+  }, [loadOntologyOptions]);
 
   
 
@@ -300,6 +369,7 @@ export default function DataImportPipeline() {
     if (!didRestoreJobsRef.current) return;
     try {
       const payload = {
+        savedAt: new Date().toISOString(),
         files: files.map(serializeFileForPersistence).filter(Boolean),
         pipelineStatus,
         startedFiles: Array.from(startedFiles),
@@ -333,6 +403,12 @@ export default function DataImportPipeline() {
     }
   }, [selectedWorkflow, workflowApplyLinks]);
 
+  useEffect(() => {
+    if (selectedWorkflow !== 'instance.link' && workflowSourceFileId) {
+      setWorkflowSourceFileId('');
+    }
+  }, [selectedWorkflow, workflowSourceFileId]);
+
   const handleFileInput = (e) => {
     if (e.target.files && e.target.files[0]) {
       handleFiles(e.target.files);
@@ -341,7 +417,7 @@ export default function DataImportPipeline() {
 
   const handleFiles = (fileList) => {
     const newFiles = Array.from(fileList).filter(file => {
-      const ext = '.' + file.name.split('.').pop().toLowerCase();
+      const ext = getFileExtensionFromName(file.name);
       return supportedFormats.some(f => f.ext === ext);
     });
 
@@ -350,7 +426,6 @@ export default function DataImportPipeline() {
       return;
     }
 
-    // F3: client-side file size validation (500 MB cap matches backend MAX_FILE_SIZE)
     const MAX_SIZE = 500 * 1024 * 1024;
     const oversized = newFiles.filter(f => f.size > MAX_SIZE);
     if (oversized.length > 0) {
@@ -358,13 +433,21 @@ export default function DataImportPipeline() {
       return;
     }
 
-    // Check if this is an ontology file requiring metadata capture
-    const firstFile = newFiles[0];
-    const ext = '.' + firstFile.name.split('.').pop().toLowerCase();
-    const recommendedWorkflow = recommendWorkflowForFile(firstFile.name);
-    setSelectedWorkflow(recommendedWorkflow);
-    
-    if (['.xsd', '.xmi', '.mdxml', '.owl', '.rdf', '.ttl'].includes(ext)) {
+    const ontologyFiles = newFiles.filter((file) => isOntologySourceFile(file.name));
+    const instanceFiles = newFiles.filter((file) => !isOntologySourceFile(file.name));
+
+    if (selectedWorkflow === 'ontology.create') {
+      if (instanceFiles.length > 0) {
+        setError(`Create ontology only accepts ontology or schema sources. Move these files to Import instance graph: ${instanceFiles.map((file) => file.name).join(', ')}`);
+        return;
+      }
+
+      const firstFile = ontologyFiles[0];
+      if (!firstFile) {
+        setError('Select an ontology or schema file to continue.');
+        return;
+      }
+
       const fileId = firstFile.name + '_' + Math.random().toString(36).substr(2, 9);
       const ontologyPendingFile = {
         fileId,
@@ -375,6 +458,7 @@ export default function DataImportPipeline() {
         createdAt: new Date().toLocaleTimeString(),
         pendingMetadata: true,
       };
+
       setFiles(prev => [...prev, ontologyPendingFile]);
       setStartedFiles(prev => new Set([...prev, fileId]));
       setPipelineStatus(prev => ({
@@ -384,7 +468,9 @@ export default function DataImportPipeline() {
           backendStage: 'upload',
           progress: 0,
           status: 'processing',
-          message: 'Awaiting namespace and prefix capture',
+          message: requiresOntologyMetadataCapture(firstFile.name)
+            ? 'Awaiting namespace and prefix capture'
+            : 'Preparing ontology registration',
           error: false,
         }
       }));
@@ -396,13 +482,17 @@ export default function DataImportPipeline() {
       return;
     }
 
-    // For regular files, add to list and proceed normally
-    const filesWithIds = newFiles.map(file => ({
+    if (selectedWorkflow === 'instance.import' && ontologyFiles.length > 0) {
+      setError(`Import instance graph only accepts source data files. Move these files to Create ontology: ${ontologyFiles.map((file) => file.name).join(', ')}`);
+      return;
+    }
+
+    const filesWithIds = instanceFiles.map(file => ({
       fileId: file.name + '_' + Math.random().toString(36).substr(2, 9),
       name: file.name,
       size: file.size,
       fileObj: file,
-      workflowId: recommendWorkflowForFile(file.name),
+      workflowId: 'instance.import',
       createdAt: new Date().toLocaleTimeString()
     }));
 
@@ -606,7 +696,8 @@ export default function DataImportPipeline() {
                 stage: 'upload',
                 progress: 5,
                 status: 'processing',
-                message: 'Initializing task...'
+                message: 'Initializing task...',
+                lastUpdatedAt: new Date().toISOString()
               }
             }));
             setTimeout(poll, 2000);
@@ -638,6 +729,7 @@ export default function DataImportPipeline() {
         setPipelineStatus(prev => ({
           ...prev,
           [fileId]: {
+            ...(prev[fileId] || {}),
             taskId,
             stage: mappedStage,
             backendStage: data.current_stage,
@@ -650,6 +742,8 @@ export default function DataImportPipeline() {
               : ((data.current_stage === 'ingest' || !!data.commit_phase) && data.status !== 'completed' && data.status !== 'failed'),
             error: data.error ? true : false,
             completedAt: data.status === 'completed' ? new Date().toLocaleTimeString() : null,
+            completedAtIso: data.status === 'completed' ? new Date().toISOString() : (prev[fileId]?.completedAtIso || null),
+            lastUpdatedAt: new Date().toISOString(),
             commitPhase: data.commit_phase || null,
             batchProgress: data.batch_progress || null,
             commitMetrics: data.commit_metrics || null,
@@ -657,6 +751,7 @@ export default function DataImportPipeline() {
             shaclFile,
             artifact_manifest: data.artifact_manifest,
             workflow_id: data.workflow_id,
+            resumeExpired: false,
           }
         }));
 
@@ -713,6 +808,7 @@ export default function DataImportPipeline() {
               ...(prev[fileId] || {}),
               taskId,
               message: `Waiting for service response... ${err.message}`,
+              lastUpdatedAt: new Date().toISOString(),
             }
           }));
           setTimeout(poll, 3000);
@@ -731,17 +827,39 @@ export default function DataImportPipeline() {
 
   useEffect(() => {
     if (!didRestoreJobsRef.current || resumedPersistedJobsRef.current) return;
-    const resumableJobs = files.filter((file) => {
+    const resumableJobs = [];
+    const staleFileIds = [];
+
+    files.forEach((file) => {
       const status = pipelineStatus[file.fileId];
-      return (
-        file?.taskId &&
-        startedFiles.has(file.fileId) &&
-        status &&
-        status.status !== 'completed' &&
-        status.status !== 'failed'
-      );
+      if (!file?.taskId || !startedFiles.has(file.fileId) || !status) return;
+      if (isResumablePersistedJob(file, status)) {
+        resumableJobs.push(file);
+        return;
+      }
+      if (!isTerminalPipelineStatus(status)) {
+        staleFileIds.push(file.fileId);
+      }
     });
+
     resumedPersistedJobsRef.current = true;
+
+    if (staleFileIds.length) {
+      setPipelineStatus((prev) => {
+        const next = { ...prev };
+        staleFileIds.forEach((fileId) => {
+          next[fileId] = {
+            ...(next[fileId] || {}),
+            committing: false,
+            resumeExpired: true,
+            message: 'Previous session found. Re-run status or restart this file to continue safely.',
+            lastUpdatedAt: new Date().toISOString(),
+          };
+        });
+        return next;
+      });
+    }
+
     resumableJobs.forEach((file) => {
       pollPipelineProgress(file.taskId, file.fileId);
     });
@@ -756,8 +874,8 @@ export default function DataImportPipeline() {
 
     const filesToImport = files.filter(f => {
       if (startedFiles.has(f.fileId)) return false;
+      if ((f.workflowId || selectedWorkflow) !== 'instance.import') return false;
       const policy = getAlignmentPolicy(f.name);
-      // Direct ontology files are handled by metadata upload flow, not import pipeline.
       if (policy.isDirectOntology) return false;
       return true;
     });
@@ -776,31 +894,17 @@ export default function DataImportPipeline() {
       startAllImports();
       return;
     }
-    if (!workflowOntologyId) {
-      setError('Select an ontology catalog entry before running this workflow.');
-      return;
-    }
-    if (selectedWorkflow === 'ontology.merge' && !workflowTargetOntologyId) {
-      setError('Select a target ontology before running merge.');
-      return;
-    }
-    if (selectedWorkflow === 'ontology.merge' && workflowTargetOntologyId === workflowOntologyId) {
-      setError('Choose two different ontologies for merge.');
+    if (workflowBlockReason) {
+      setError(workflowBlockReason);
       return;
     }
 
-    const selectedImportManifest = contextFile?.artifact_manifest
-      || contextFile?.artifactManifest
-      || contextFile?.manifest
-      || null;
-    if (selectedWorkflow === 'instance.link' && !selectedImportManifest) {
-      setError('Import an instance file first so the link workflow has retained source artifacts to analyze.');
-      return;
-    }
+    const selectedImportManifest = selectedImportArtifactEntry?.artifactManifest || null;
     const payload = {
       ontology_id: workflowOntologyId,
       source_ontology_id: workflowOntologyId,
       import_artifact_manifest: selectedImportManifest,
+      import_source_file_id: selectedImportArtifactEntry?.fileId || null,
       apply_links: selectedWorkflow === 'instance.link' ? workflowApplyLinks : false,
     };
     if (selectedWorkflow === 'ontology.merge') {
@@ -901,7 +1005,8 @@ export default function DataImportPipeline() {
             committing: true,
             progress: 80,
             commitPhase: 'queued',
-            message: 'Queued for Neo4j commit...',
+            message: 'Queued for Neo4j commit. You can stay on this page while batches continue.',
+            lastUpdatedAt: new Date().toISOString(),
           };
         }
       }
@@ -937,7 +1042,8 @@ export default function DataImportPipeline() {
                   backendStage: 'ingest',
                   progress: Math.max(status.progress || 80, 80),
                   commitPhase: 'queued',
-                  message: commitData.message || 'Neo4j commit queued in background...',
+                  message: commitData.message || 'Neo4j commit queued in background. The loader will keep polling until the write finishes.',
+                  lastUpdatedAt: new Date().toISOString(),
                 };
               }
             }
@@ -969,6 +1075,8 @@ export default function DataImportPipeline() {
                 committing: false,
                 commitPhase: 'complete',
                 completedAt: new Date().toLocaleTimeString(),
+                completedAtIso: new Date().toISOString(),
+                lastUpdatedAt: new Date().toISOString(),
                 stats: {
                   ...status.stats,
                   entities_found: entityCount,
@@ -994,6 +1102,7 @@ export default function DataImportPipeline() {
                 committing: false,
                 commitPhase: 'error',
                 commitError: err.message,
+                lastUpdatedAt: new Date().toISOString(),
               };
             }
           }
@@ -1028,21 +1137,20 @@ export default function DataImportPipeline() {
       const phaseLabel = getCommitPhaseLabel(commitPhase);
       return { text: phaseLabel ? `Loading · ${phaseLabel}` : 'Loading to Neo4j...', bg: '#FFF8E1', color: '#F57F17' };
     }
-    if (commitError) {
-      return { text: 'Commit Failed', bg: '#FFEBEE', color: C.red };
+    if (commitError || commitPhase === 'error') {
+      return { text: 'Commit Retry Needed', bg: '#FFEBEE', color: C.red };
     }
     if (error) {
-      return { text: 'Error', bg: '#FFEBEE', color: C.red };
+      return { text: 'Attention Needed', bg: '#FFEBEE', color: C.red };
     }
-    // 'preview' backend stage = pipeline parsed OK, waiting for user to commit to Neo4j
-    if (backendStage === 'preview' || (stage === 'verify' && progress >= 75 && progress < 100)) {
+    if (backendStage === 'preview' || backendStage === 'verify' || stage === 'validate' || stage === 'verify') {
       return { text: 'Ready to Load', bg: '#E8F5E9', color: C.green };
     }
     if (progress === 100) {
       return { text: 'Complete', bg: '#E8F5E9', color: C.green };
     }
     if (progress > 0) {
-      return { text: 'In Progress', bg: '#E3F2FD', color: C.primary };
+      return { text: 'Processing', bg: '#E3F2FD', color: C.primary };
     }
     return { text: 'Pending', bg: C.bg, color: C.textMuted };
   };
@@ -1088,8 +1196,46 @@ export default function DataImportPipeline() {
     return `${scope}${batchProgress.batch_index || 0}/${batchProgress.total_batches}`;
   };
 
+  const downloadOntologyExport = async (taskId, format = 'ttl') => {
+    if (!taskId) return;
+    try {
+      const response = await API_METHODS.import.exportOWL(taskId, format);
+      const blob = response.data instanceof Blob ? response.data : new Blob([response.data]);
+      const disposition = response.headers?.['content-disposition'] || '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] || `ontology_${taskId}.${format}`;
+      const url = window.URL.createObjectURL(blob);
+      const anchorEl = document.createElement('a');
+      anchorEl.href = url;
+      anchorEl.download = filename;
+      document.body.appendChild(anchorEl);
+      anchorEl.click();
+      anchorEl.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err.message || 'Export failed';
+      setError(String(detail));
+    }
+  };
+
   const isCommitInFlight = (status = {}) =>
     !!(status.committing || (status.commitPhase && status.commitPhase !== 'complete' && status.commitPhase !== 'error'));
+
+  const isReadyToLoad = (status = {}) =>
+    !!(
+      !status.error &&
+      !status.committed &&
+      (status.backendStage === 'preview' || status.backendStage === 'verify' || status.stage === 'validate' || status.stage === 'verify')
+    );
+
+  const isProcessingJob = (status = {}) =>
+    !!(
+      !status.error &&
+      !status.commitError &&
+      !isCommitInFlight(status) &&
+      !isReadyToLoad(status) &&
+      !isTerminalPipelineStatus(status)
+    );
 
   const activeWorkflow = useMemo(
     () => workflowOptions.find(w => w.id === selectedWorkflow) || workflowOptions[0] || resolveWorkflow(selectedWorkflow),
@@ -1145,11 +1291,78 @@ export default function DataImportPipeline() {
     () => files.reduce((count, f) => count + (startedFiles.has(f.fileId) ? 0 : 1), 0),
     [files, startedFiles]
   );
+  const workflowRequiresOntology = !isImportWorkflow(selectedWorkflow);
+  const workflowRequiresTargetOntology = selectedWorkflow === 'ontology.merge';
+  const workflowRequiresImportArtifact = selectedWorkflow === 'instance.link';
+  const importArtifactCandidates = useMemo(
+    () => files
+      .map((file) => {
+        const status = fileStatusIndex.get(file.fileId) || {};
+        const artifactManifest = file.artifact_manifest || file.artifactManifest || file.manifest || status.artifact_manifest || null;
+        const isImportedInstance = (file.workflowId || selectedWorkflow) === 'instance.import';
+        const isCompletedArtifact = status.committed || status.status === 'completed' || status.progress === 100;
+        if (!artifactManifest || !isImportedInstance || !isCompletedArtifact) return null;
+        return {
+          fileId: file.fileId,
+          name: file.name,
+          label: `${file.name} (${status.completedAt || file.createdAt || 'available'})`,
+          artifactManifest,
+          status,
+        };
+      })
+      .filter(Boolean),
+    [fileStatusIndex, files, selectedWorkflow]
+  );
+  const selectedImportArtifactEntry = useMemo(
+    () => importArtifactCandidates.find((entry) => entry.fileId === workflowSourceFileId) || importArtifactCandidates[0] || null,
+    [importArtifactCandidates, workflowSourceFileId]
+  );
+  const workflowActionLabel = selectedWorkflow === 'ontology.merge'
+    ? 'Review merge plan'
+    : selectedWorkflow === 'instance.link'
+      ? 'Preview bridge'
+      : selectedWorkflow === 'ontology.create'
+        ? 'Register ontology'
+        : 'Run workflow';
+  const workflowBlockReason = (() => {
+    if (!canRunSelectedWorkflow) {
+      return `${fallbackWorkflow.title} is not connected to backend services yet.`;
+    }
+    if (isImportWorkflow(selectedWorkflow)) {
+      if (pendingFileCount === 0) return 'Add at least one new file to start this workflow.';
+      return '';
+    }
+    if (workflowRequiresImportArtifact && !selectedImportArtifactEntry) {
+      return 'Select one completed instance import artifact before running the bridge workflow.';
+    }
+    if (workflowRequiresOntology && !workflowOntologyId) {
+      return selectedWorkflow === 'ontology.merge' ? 'Select a source ontology.' : 'Select an ontology.';
+    }
+    if (workflowRequiresTargetOntology && !workflowTargetOntologyId) {
+      return 'Select a target ontology.';
+    }
+    if (workflowRequiresTargetOntology && workflowTargetOntologyId === workflowOntologyId) {
+      return 'Choose two different ontologies for merge.';
+    }
+    return '';
+  })();
+  useEffect(() => {
+    if (selectedWorkflow !== 'instance.link') return;
+    if (importArtifactCandidates.length === 0) {
+      if (workflowSourceFileId) setWorkflowSourceFileId('');
+      return;
+    }
+    const stillValid = importArtifactCandidates.some((entry) => entry.fileId === workflowSourceFileId);
+    if (!workflowSourceFileId || !stillValid) {
+      setWorkflowSourceFileId(importArtifactCandidates[0].fileId);
+    }
+  }, [importArtifactCandidates, selectedWorkflow, workflowSourceFileId]);
+
   const activeProcessingCount = useMemo(
     () => files.reduce((count, file) => {
       const status = fileStatusIndex.get(file.fileId) || {};
       if (!startedFiles.has(file.fileId)) return count;
-      if (status.error || status.commitError) return count;
+      if (status.error || status.commitError || status.resumeExpired) return count;
       if (status.committed || status.status === 'completed' || status.progress === 100) return count;
       return count + 1;
     }, 0),
@@ -1162,7 +1375,7 @@ export default function DataImportPipeline() {
         summary.pending += 1;
         return summary;
       }
-      if (status.error || status.commitError || status.status === 'failed') {
+      if (status.error || status.commitError || status.status === 'failed' || status.resumeExpired) {
         summary.failed += 1;
         return summary;
       }
@@ -1530,12 +1743,33 @@ export default function DataImportPipeline() {
             gap: '8px',
             flexWrap: 'wrap',
           }}>
+            {selectedWorkflow === 'instance.link' && (
+              <>
+                <label style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
+                  Source instance
+                </label>
+                <select
+                  value={workflowSourceFileId || selectedImportArtifactEntry?.fileId || ''}
+                  onChange={(e) => setWorkflowSourceFileId(e.target.value)}
+                  style={{
+                    minWidth: '220px',
+                    padding: '4px 8px',
+                    fontSize: '10px',
+                    border: `1px solid ${C.borderDark}`,
+                    borderRadius: '3px',
+                  }}
+                >
+                  <option value="">{importArtifactCandidates.length > 0 ? 'Select imported instance' : 'No completed import artifacts available'}</option>
+                  {importArtifactCandidates.map((entry) => (
+                    <option key={entry.fileId} value={entry.fileId}>
+                      {entry.label}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
             <label style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
-              {selectedWorkflow === 'instance.link'
-                ? 'Ontology:'
-                : selectedWorkflow === 'ontology.merge'
-                  ? 'Source ontology:'
-                  : 'Ontology anchor:'}
+              {selectedWorkflow === 'ontology.merge' ? 'Source ontology:' : 'Ontology:'}
             </label>
             <select
               value={workflowOntologyId}
@@ -1555,6 +1789,28 @@ export default function DataImportPipeline() {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => loadOntologyOptions({ forceLive: true })}
+              disabled={ontologyCatalogState.loading}
+              title={ontologyCatalogState.loading ? 'Refreshing ontology catalog...' : 'Refresh ontology catalog from live registry'}
+              style={{
+                padding: '4px 8px',
+                background: '#fff',
+                color: C.primary,
+                border: `1px solid ${C.borderDark}`,
+                borderRadius: '3px',
+                fontSize: '10px',
+                fontWeight: '700',
+                cursor: ontologyCatalogState.loading ? 'not-allowed' : 'pointer',
+                opacity: ontologyCatalogState.loading ? 0.6 : 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              <RefreshCw size={12} /> Refresh
+            </button>
             {selectedWorkflow === 'ontology.merge' && (
               <>
                 <label style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
@@ -1602,25 +1858,20 @@ export default function DataImportPipeline() {
             <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               <button
                 onClick={runSelectedWorkflow}
-                disabled={workflowLoading}
+                disabled={workflowLoading || !!workflowBlockReason}
+                title={workflowBlockReason || workflowActionLabel}
                 style={{
                   padding: '5px 10px',
-                  background: workflowLoading ? C.textMuted : C.primary,
+                  background: (workflowLoading || workflowBlockReason) ? C.textMuted : C.primary,
                   color: '#fff',
                   border: 'none',
                   borderRadius: '3px',
                   fontSize: '10px',
                   fontWeight: '700',
-                  cursor: workflowLoading ? 'not-allowed' : 'pointer',
+                  cursor: (workflowLoading || workflowBlockReason) ? 'not-allowed' : 'pointer',
                 }}
               >
-                {workflowLoading ? 'Running...' : (
-                  selectedWorkflow === 'ontology.merge'
-                    ? 'Review merge plan'
-                    : selectedWorkflow === 'instance.link'
-                      ? 'Preview bridge'
-                      : 'Run workflow'
-                )}
+                {workflowLoading ? 'Running...' : workflowActionLabel}
               </button>
               {selectedWorkflow === 'ontology.merge' && (
                 <button
@@ -1775,6 +2026,9 @@ export default function DataImportPipeline() {
             {activeJobs.map(({ file, status }) => {
               const batchLabel = formatBatchProgress(status.batchProgress);
               const phaseLabel = getCommitPhaseLabel(status.commitPhase) || getStageLabel(status.stage);
+              const countsLabel = status.commitMetrics
+                ? `${(status.commitMetrics.nodes_written || status.stats?.entities_found || 0).toLocaleString()} nodes · ${(status.commitMetrics.relationships_written || status.stats?.relationships_found || 0).toLocaleString()} rels`
+                : `${(status.stats?.entities_found || 0).toLocaleString()} entities · ${(status.stats?.relationships_found || 0).toLocaleString()} rels`;
               return (
                 <div
                   key={`job-${file.fileId}`}
@@ -1807,9 +2061,7 @@ export default function DataImportPipeline() {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: '10px', color: C.textSec }}>Counts</div>
                     <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary }}>
-                      {(status.commitMetrics?.nodes_written || status.stats?.entities_found || 0).toLocaleString()} nodes
-                      {' · '}
-                      {(status.commitMetrics?.relationships_written || status.stats?.relationships_found || 0).toLocaleString()} rels
+                      {countsLabel}
                     </div>
                   </div>
                 </div>
@@ -2103,6 +2355,79 @@ export default function DataImportPipeline() {
         style={{ display: 'none' }}
       />
 
+      {selectedWorkflow === 'ontology.create' && (
+      <div style={{
+        background: C.surface,
+        border: `1px solid ${C.border}`,
+        borderRadius: '4px',
+        padding: '8px 10px',
+        marginBottom: '8px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        flexWrap: 'wrap',
+      }}>
+        <div style={{ minWidth: 0, flex: '1 1 420px' }}>
+          <div style={{ fontSize: '10px', fontWeight: '700', color: C.textPrimary }}>
+            Ontology registration workflow
+          </div>
+          <div style={{ fontSize: '10px', color: C.textSec, lineHeight: 1.45, marginTop: '2px' }}>
+            Use this flow for ontology or schema sources only. Namespace capture, preview, and registration happen here; instance ingestion stays in
+            <span style={{ color: C.primary, fontWeight: '700' }}> Import instance graph</span>.
+          </div>
+          {ontologyCatalogState.message && (
+            <div style={{
+              fontSize: '9px',
+              color: ontologyCatalogState.stale ? C.orange : C.textSec,
+              marginTop: '4px',
+            }}>
+              {ontologyCatalogState.message}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => loadOntologyOptions({ forceLive: true })}
+          disabled={ontologyCatalogState.loading}
+          style={{
+            padding: '4px 10px',
+            background: '#fff',
+            color: C.primary,
+            border: `1px solid ${C.borderDark}`,
+            borderRadius: '3px',
+            fontSize: '10px',
+            fontWeight: '700',
+            cursor: ontologyCatalogState.loading ? 'not-allowed' : 'pointer',
+            opacity: ontologyCatalogState.loading ? 0.6 : 1,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+          }}
+        >
+          <RefreshCw size={12} /> Refresh ontology list
+        </button>
+        <button
+          type="button"
+          onClick={runSelectedWorkflow}
+          disabled={!!workflowBlockReason || workflowLoading}
+          style={{
+            padding: '4px 12px',
+            background: (workflowBlockReason || workflowLoading) ? C.textMuted : C.green,
+            color: '#fff',
+            border: 'none',
+            borderRadius: '3px',
+            fontSize: '10px',
+            fontWeight: '700',
+            cursor: (workflowBlockReason || workflowLoading) ? 'not-allowed' : 'pointer',
+            opacity: (workflowBlockReason || workflowLoading) ? 0.5 : 1,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {workflowLoading ? 'Running...' : 'Register ontology'}
+        </button>
+      </div>
+      )}
+
       {/* Structural import kickoff */}
       {selectedWorkflow === 'instance.import' && (
       <div style={{
@@ -2133,21 +2458,26 @@ export default function DataImportPipeline() {
               {ontologyCatalogState.message}
             </div>
           )}
+          {ontologyCatalogState.lastLoadedAt && (
+            <div style={{ fontSize: '9px', color: C.textMuted, marginTop: '4px' }}>
+              Ontology catalog source: {ontologyCatalogState.source === 'live' ? 'live registry' : ontologyCatalogState.source === 'cache' ? 'cached catalog' : 'unavailable'}
+            </div>
+          )}
         </div>
         <button
           onClick={runSelectedWorkflow}
-          disabled={pendingFileCount === 0 || !canRunSelectedWorkflow || workflowLoading}
+          disabled={!!workflowBlockReason || workflowLoading}
           style={{
             marginLeft: 'auto',
             padding: '4px 12px',
-            background: (pendingFileCount === 0 || !canRunSelectedWorkflow || workflowLoading) ? C.textMuted : C.green,
+            background: (workflowBlockReason || workflowLoading) ? C.textMuted : C.green,
             color: '#fff',
             border: 'none',
             borderRadius: '3px',
             fontSize: '10px',
             fontWeight: '700',
-            cursor: (pendingFileCount === 0 || !canRunSelectedWorkflow || workflowLoading) ? 'not-allowed' : 'pointer',
-            opacity: (pendingFileCount === 0 || !canRunSelectedWorkflow || workflowLoading) ? 0.5 : 1,
+            cursor: (workflowBlockReason || workflowLoading) ? 'not-allowed' : 'pointer',
+            opacity: (workflowBlockReason || workflowLoading) ? 0.5 : 1,
             whiteSpace: 'nowrap',
           }}
         >
@@ -2172,7 +2502,11 @@ export default function DataImportPipeline() {
           fallbackWorkflow,
           mappingFileTypeContext,
           selectedWorkflow,
+          selectedImportArtifactEntry,
         })}
+        {workflowBlockReason && !workflowLoading && (
+          <span style={{ color: C.orange, fontWeight: '700' }}> {' '}Action needed: {workflowBlockReason}</span>
+        )}
       </div>
 
       {/* Data table */}
@@ -2459,7 +2793,7 @@ export default function DataImportPipeline() {
                         <Play size={12} /> {status.error ? 'Retry' : 'Start'}
                       </button>
                     )}
-                    {isStarted && !status.error && !status.commitError && status.stage !== 'verify' && status.status !== 'completed' && status.progress < 75 && (
+                    {isStarted && isProcessingJob(status) && (
                       <button
                         style={{
                           padding: '6px 10px',
@@ -2481,7 +2815,7 @@ export default function DataImportPipeline() {
                       </button>
                     )}
                     {(isStarted || !!status.taskId)
-                      && (status.stage === 'verify' || status.backendStage === 'preview' || status.commitPhase === 'error' || status.commitError)
+                      && (isReadyToLoad(status) || status.commitPhase === 'error' || status.commitError)
                       && !status.error
                       && !status.committed
                       && !isCommitInFlight(status)
@@ -2542,6 +2876,33 @@ export default function DataImportPipeline() {
                       >
                         <Loader2 size={12} /> {getCommitPhaseLabel(status.commitPhase) ? `${getCommitPhaseLabel(status.commitPhase)}...` : 'Loading to Neo4j...'}
                       </button>
+                    )}
+                    {status.taskId && (status.status === 'completed' || status.progress === 100) && !status.error && (
+                      <select
+                        defaultValue=""
+                        onChange={(event) => {
+                          const format = event.target.value;
+                          event.target.value = '';
+                          if (format) downloadOntologyExport(status.taskId, format);
+                        }}
+                        title="Export generated ontology"
+                        style={{
+                          padding: '6px 8px',
+                          border: `1px solid ${C.border}`,
+                          borderRadius: '4px',
+                          background: C.bg,
+                          color: C.textPrimary,
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          maxWidth: '118px',
+                        }}
+                      >
+                        <option value="">Export</option>
+                        <option value="ttl">TTL</option>
+                        <option value="rdf">RDF/XML</option>
+                        <option value="owl">OWL/XML</option>
+                        <option value="jsonld">JSON-LD</option>
+                      </select>
                     )}
                     {status.progress === 100 && !status.error && status.committed && (
                       <div style={{

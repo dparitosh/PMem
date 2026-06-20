@@ -49,12 +49,24 @@ def test_deployment_type_detection():
     elif "bolt+s://" in config.uri:
         assert config.deployment_type == Neo4jDeploymentType.ENTERPRISE
         print("[PASS] Correctly detected Enterprise deployment")
-    # Should detect on-premises deployment for bolt:// URIs
-    elif "bolt://" in config.uri:
+    # Should detect on-premises deployment for bolt:// and plain neo4j:// URIs
+    elif "bolt://" in config.uri or "neo4j://" in config.uri:
         assert config.deployment_type == Neo4jDeploymentType.ON_PREMISES
         assert config.encrypted is False
         print("[PASS] Correctly detected on-premises deployment")
 
+
+
+
+def test_detect_deployment_type_for_supported_uri_schemes():
+    """Plain neo4j:// is routed on-prem/non-TLS, not Aura."""
+    from core.db_config import Neo4jDeploymentType, _detect_deployment_type
+
+    assert _detect_deployment_type("neo4j+s://example.databases.neo4j.io") == Neo4jDeploymentType.AURA
+    assert _detect_deployment_type("neo4j://127.0.0.1:7687") == Neo4jDeploymentType.ON_PREMISES
+    assert _detect_deployment_type("bolt://127.0.0.1:7687") == Neo4jDeploymentType.ON_PREMISES
+    assert _detect_deployment_type("bolt+s://neo4j.example.com:7687") == Neo4jDeploymentType.ENTERPRISE
+    assert _detect_deployment_type("neo4j+ssc://neo4j.example.com:7687") == Neo4jDeploymentType.ENTERPRISE
 
 def test_placeholder_process_env_does_not_override_backend_env(monkeypatch):
     """A template Neo4j URI inherited from the shell must not beat backend/.env."""

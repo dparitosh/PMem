@@ -21,6 +21,71 @@ const DISPLAY_NAME_PROPERTY = ['name', 'title', 'code', 'key', 'abbreviation', '
 const DISPLAY_MODE = 'both-label-first';
 // ───────────────────────────────────────────────────────────────────────────
 
+const SEARCHABLE_NODE_KEYS = [
+  'name', 'title', 'code', 'key', 'abbreviation', 'id', 'description', 'label',
+  'external_id', 'external_version', 'version', 'entity_type', 'node_type',
+  'source_name', 'target_name', 'class_name', 'type', 'value', 'identifier',
+];
+
+const normalizeSearchValue = (value) => String(value || '').trim().toLowerCase();
+
+const getNodeProps = (node) => node?.properties || node || {};
+
+const getNodeLabel = (node) => node?.labels?.[0] || node?.label || 'Node';
+
+const collectSearchableNodeValues = (node) => {
+  const props = getNodeProps(node);
+  const values = new Set([node?.elementId, getNodeLabel(node)]);
+
+  SEARCHABLE_NODE_KEYS.forEach((key) => {
+    if (props[key] != null) values.add(props[key]);
+  });
+
+  Object.entries(props).forEach(([key, value]) => {
+    if (value == null) return;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      values.add(value);
+      values.add(key);
+    }
+  });
+
+  return Array.from(values).map(normalizeSearchValue).filter(Boolean);
+};
+
+const scoreNodeMatch = (node, rawTerm) => {
+  const term = normalizeSearchValue(rawTerm);
+  if (!term) return 0;
+
+  const props = getNodeProps(node);
+  const label = normalizeSearchValue(getNodeLabel(node));
+  const elementId = normalizeSearchValue(node?.elementId);
+  const preferredName = normalizeSearchValue(resolveDisplayProp(props) || props.name || props.title || props.code || '');
+  const corpus = collectSearchableNodeValues(node);
+
+  let score = 0;
+  if (elementId === term) score += 500;
+  if (preferredName === term) score += 450;
+  if (label === term) score += 350;
+  if (preferredName.startsWith(term)) score += 220;
+  if (elementId.startsWith(term)) score += 200;
+  if (label.startsWith(term)) score += 150;
+  if (corpus.some((value) => value.includes(term))) score += 80;
+  if (corpus.some((value) => term.includes('*') && value.includes(term.replace(/\*/g, '')))) score += 60;
+  return score;
+};
+
+const buildRelationshipKey = (relationship) => relationship?.elementId || `${relationship?.start || relationship?.source}-${relationship?.type}-${relationship?.end || relationship?.target}`;
+
+const hydrateGraphNode = (rawNode) => {
+  if (!rawNode) return null;
+  return {
+    ...rawNode.properties,
+    elementId: rawNode.elementId,
+    labels: rawNode.labels || ['Node'],
+    label: rawNode.labels?.[0] || rawNode.label || 'Node',
+  };
+};
+
 // Helper: resolve the first matching property from DISPLAY_NAME_PROPERTY list
 const resolveDisplayProp = (props) => {
   if (!props || !DISPLAY_NAME_PROPERTY || DISPLAY_NAME_PROPERTY.length === 0) return null;
@@ -128,56 +193,47 @@ const WhereUsedView = ({
         setIsSearching(true);
         setSearchError(null);
         try {
-            // Use graphfilter endpoint similar to GraphHEB implementation
             const response = await apiClient.post(buildUrl(API.graph.graphfilter), { search: term.toLowerCase() });
             const records = response.data?.results || [];
-            if (records.length === 0) {
-                setHierarchySearchResults([]);
-                setIsSearching(false);
-                return;
-            }
-            // Extract nodes like in GraphHEB
             const nodesMap = new Map();
+
             records.forEach(record => {
-                const n = record['n'];
-                const r = record['r'];
-                const m = record['m'];
-                if (n) {
-                    const nodeIdN = n.elementId;
-                    const nodeN = {
-                        ...n.properties,
-                        elementId: nodeIdN,
-                        labels: n.labels || ['Node'],
-                        label: n.labels?.[0] || 'Node'
-                    };
-                    if (!nodesMap.has(nodeIdN)) nodesMap.set(nodeIdN, nodeN);
-                }
-                if (r && m) {
-                    const nodeIdM = m.elementId;
-                    if (!nodesMap.has(nodeIdM)) {
-                        nodesMap.set(nodeIdM, {
-                            ...m.properties,
-                            elementId: nodeIdM,
-                            labels: m.labels || ['Node'],
-                            label: m.labels?.[0] || 'Node'
-                        });
-                    }
-                }
+                [record['n'], record['m']].forEach((rawNode) => {
+                    const hydrated = hydrateGraphNode(rawNode);
+                    if (!hydrated?.elementId) return;
+                    const existing = nodesMap.get(hydrated.elementId);
+                    nodesMap.set(hydrated.elementId, existing ? { ...existing, ...hydrated } : hydrated);
+                });
             });
-            const nodes = Array.from(nodesMap.values());
+
+            const nodes = Array.from(nodesMap.values())
+                .map((node) => ({ node, score: scoreNodeMatch(node, term) }))
+                .filter(({ score }) => score > 0)
+                .sort((a, b) => b.score - a.score)
+                .map(({ node }) => node);
+
             setHierarchySearchResults(nodes);
+            if (nodes.length === 0) {
+                setSelectedNode(null);
+                setTreeData(null);
+                setLevels([]);
+            }
         } catch (err) {
             logger.search('Search error (server):', err);
-            // Fallback to client-side filtering of provided data
             try {
-                const fallbackNodes = (data?.nodes || []).filter(n => {
-                    const name = (n.name || '').toLowerCase();
-                    const version = (n.external_version || n.version || '').toLowerCase();
-                    return name.includes(term.toLowerCase()) || version.includes(term.toLowerCase());
-                });
+                const fallbackNodes = (data?.nodes || [])
+                    .map((node) => ({ node, score: scoreNodeMatch(node, term) }))
+                    .filter(({ score }) => score > 0)
+                    .sort((a, b) => b.score - a.score)
+                    .map(({ node }) => node);
                 setHierarchySearchResults(fallbackNodes);
                 setSearchError('Server search failed. Showing local filtered results.');
-            } catch (fe) {
+                if (fallbackNodes.length === 0) {
+                    setSelectedNode(null);
+                    setTreeData(null);
+                    setLevels([]);
+                }
+            } catch (_fe) {
                 setHierarchySearchResults([]);
                 setSearchError('Search failed.');
             }
@@ -188,108 +244,96 @@ const WhereUsedView = ({
 
     // Upward expansion logic: recursively fetch parents via graphtraverse until top-level
     const expandAllParents = useCallback(async (startNode) => {
-        if (!startNode) return;
+        if (!startNode?.elementId) return;
         setIsExpandingUpwards(true);
         setExpansionError(null);
         try {
-            const ancestorMap = new Map();
-            const linkSet = new Map(); // key: elementId
+            const ancestorMap = new Map([[startNode.elementId, startNode]]);
+            const linkSet = new Map();
             const visited = new Set();
-            const queue = [{ node: startNode, level: 0 }];
-            ancestorMap.set(startNode.elementId, startNode);
+            const queue = [startNode.elementId];
 
             while (queue.length > 0) {
-                const current = queue.shift();
-                const currentNode = current.node;
-                const currentLevel = current.level;
-                if (visited.has(currentNode.elementId)) continue;
-                visited.add(currentNode.elementId);
+                const currentNodeId = queue.shift();
+                if (!currentNodeId || visited.has(currentNodeId)) continue;
+                visited.add(currentNodeId);
 
-                // Call traverse API for current node
                 try {
-                    const resp = await apiClient.get(buildUrl(replaceParams(API.graph.graphtraverseNode, { node_id: currentNode.elementId })));
+                    const resp = await apiClient.get(buildUrl(replaceParams(API.graph.graphtraverseNode, { node_id: currentNodeId })));
                     const records = resp.data?.results || [];
-                    records.forEach(record => {
-                        const n = record['n'];
-                        const r = record['r'];
-                        const m = record['m'];
-                        if (!r) return;
-                        // Relationship direction: r.start -> r.end
-                        // We want parents of current node: links where current is target (r.end === currentNode.elementId)
-                        if (r.end === currentNode.elementId) {
-                            // Parent is r.start
-                            const parentNodeRaw = (n && n.elementId === r.start) ? n : (m && m.elementId === r.start ? m : null);
-                            if (parentNodeRaw) {
-                                const parentNode = {
-                                    ...parentNodeRaw.properties,
-                                    elementId: parentNodeRaw.elementId,
-                                    labels: parentNodeRaw.labels || ['Node'],
-                                    label: parentNodeRaw.labels?.[0] || 'Node'
-                                };
-                                if (!ancestorMap.has(parentNode.elementId)) {
-                                    ancestorMap.set(parentNode.elementId, parentNode);
-                                    queue.push({ node: parentNode, level: currentLevel + 1 });
-                                }
-                                if (!linkSet.has(r.elementId)) {
-                                    linkSet.set(r.elementId, {
-                                        elementId: r.elementId,
-                                        source: r.start,
-                                        target: r.end,
-                                        type: r.type,
-                                        properties: r.properties
-                                    });
-                                }
+
+                    records.forEach((record) => {
+                        const relationship = record['r'];
+                        if (!relationship) return;
+
+                        const relatedNodes = [record['n'], record['m']]
+                            .map(hydrateGraphNode)
+                            .filter(Boolean);
+                        relatedNodes.forEach((node) => {
+                            if (!ancestorMap.has(node.elementId)) {
+                                ancestorMap.set(node.elementId, node);
+                            }
+                        });
+
+                        const sourceId = relationship.start || relationship.source;
+                        const targetId = relationship.end || relationship.target;
+                        if (!sourceId || !targetId) return;
+
+                        if (targetId === currentNodeId) {
+                            const key = buildRelationshipKey(relationship);
+                            if (!linkSet.has(key)) {
+                                linkSet.set(key, {
+                                    elementId: relationship.elementId || key,
+                                    source: sourceId,
+                                    target: targetId,
+                                    type: relationship.type,
+                                    properties: relationship.properties || {},
+                                });
+                            }
+                            if (!visited.has(sourceId)) {
+                                queue.push(sourceId);
                             }
                         }
                     });
                 } catch (e) {
-                        logger.warn('Traverse fetch failed for %s: %s', currentNode.elementId, e.message);
+                    logger.warn('Traverse fetch failed for %s: %s', currentNodeId, e.message);
                 }
             }
 
-            // Organize nodes into levels (distance from selected node upward)
-            const levelMap = new Map();
-            // We'll BFS again using links to compute distance (already tracked during traversal via queue level)
-            // Reconstruct levels from queue processing by computing minimal distance using parent relationships
-            ancestorMap.forEach((node, id) => {
-                if (id === startNode.elementId) {
-                    if (!levelMap.has(0)) levelMap.set(0, []);
-                    levelMap.get(0).push(node);
-                }
-            });
-            // We stored levels during queue pushes; recompute by exploring parents from start node:
-            const distances = new Map();
-            distances.set(startNode.elementId, 0);
             const parentLinks = Array.from(linkSet.values());
+            const distances = new Map([[startNode.elementId, 0]]);
             const pending = [startNode.elementId];
+
             while (pending.length) {
                 const childId = pending.shift();
-                const childDist = distances.get(childId);
-                parentLinks.forEach(l => {
-                    if (l.target === childId) {
-                        const parentId = l.source;
-                        if (!distances.has(parentId) || distances.get(parentId) > childDist + 1) {
-                            distances.set(parentId, childDist + 1);
-                            pending.push(parentId);
-                        }
+                const childDist = distances.get(childId) || 0;
+                parentLinks.forEach((link) => {
+                    if (link.target !== childId) return;
+                    const parentId = link.source;
+                    if (!distances.has(parentId) || distances.get(parentId) > childDist + 1) {
+                        distances.set(parentId, childDist + 1);
+                        pending.push(parentId);
                     }
                 });
             }
+
+            const levelMap = new Map();
             distances.forEach((dist, nodeId) => {
                 const nodeObj = ancestorMap.get(nodeId);
+                if (!nodeObj) return;
                 if (!levelMap.has(dist)) levelMap.set(dist, []);
                 levelMap.get(dist).push(nodeObj);
             });
-            const sortedLevels = Array.from(levelMap.entries()).sort((a,b) => b[0]-a[0]).map(e => e[1]); // top ancestors first
-            
+
+            const sortedLevels = Array.from(levelMap.entries())
+                .sort((a, b) => b[0] - a[0])
+                .map((entry) => entry[1]);
+
             logger.data('WhereUsed - Hierarchy built:');
             logger.data('  Total nodes: %d', Array.from(ancestorMap.values()).length);
             logger.data('  Total links: %d', parentLinks.length);
             logger.data('  Levels: %d', sortedLevels.length);
-            sortedLevels.forEach((level, idx) => {
-                logger.data('  Level %d: %d nodes', idx, level.length);
-            });
-            
+
             setLevels(sortedLevels);
             setTreeData({
                 nodes: Array.from(ancestorMap.values()),
@@ -363,6 +407,8 @@ const WhereUsedView = ({
                 const nodeLabel = node.labels?.[0] || node.label || 'Node';
                 return {
                     id: `${levelIndex}-${node.elementId}`,
+                    nodeId: node.elementId,
+                    node,
                     depth,
                     level: depth === 0 ? 'Selected node' : `Ancestor level ${depth}`,
                     displayName: getNodeDisplayName(node),
@@ -411,7 +457,30 @@ const WhereUsedView = ({
         { headerName: 'Label', field: 'label', flex: 0.6, minWidth: 150 },
         { headerName: 'Relationships', field: 'relationships', flex: 1, minWidth: 220, tooltipField: 'relationships' },
         { headerName: 'Links', field: 'relationshipCount', width: 90, type: 'numericColumn' },
-    ], []);
+        {
+            headerName: 'Action',
+            field: 'nodeId',
+            width: 140,
+            sortable: false,
+            filter: false,
+            cellRenderer: (params) => (
+                <button
+                    type="button"
+                    onClick={() => handleNodeSelect(params.data.node)}
+                    style={{
+                        ...buttonStyle,
+                        minHeight: 28,
+                        padding: '4px 10px',
+                        fontSize: 12,
+                        background: selectedNode?.elementId === params.data.nodeId ? WU.subtle : WU.primary,
+                    }}
+                    title="Focus hierarchy on this node"
+                >
+                    Focus
+                </button>
+            ),
+        },
+    ], [handleNodeSelect, selectedNode]);
 
     return (
         <div style={{ padding: '14px 18px', boxSizing: 'border-box', overflow: 'hidden', display:'flex', flexDirection:'column', flex:1, minHeight:0, background: WU.bg }}>

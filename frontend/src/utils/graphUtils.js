@@ -98,7 +98,6 @@ export const isMetadataWrapperNode = (node) => {
     'occurrence',
     'requirement',
     'requirementrevision',
-    'generalrelation',
     'connection',
     'connectionrevision',
     'connectioninstance',
@@ -131,6 +130,28 @@ export const isMetadataWrapperNode = (node) => {
     'metadatawrapper',
     'documentfragment',
   ].includes(label));
+};
+
+export const isRelationshipCarrierNode = (node) => {
+  if (!node) return false;
+  const labels = Array.isArray(node?.labels)
+    ? node.labels.map((label) => String(label || '').toLowerCase())
+    : [];
+  const props = node?.properties && typeof node.properties === 'object' ? node.properties : {};
+  const elementType = String(
+    props.element_type ||
+    props.type ||
+    node?.type ||
+    ''
+  ).trim().toLowerCase();
+  const semanticRole = String(props.semantic_role || '').trim().toLowerCase();
+  const subType = String(props.sub_type || props.relationship_type || '').trim().toLowerCase();
+  const relatedCount = Number(props.related_count || 0);
+
+  if (semanticRole === 'relationship') return true;
+  if (labels.includes('generalrelation') || elementType === 'generalrelation') return true;
+  if (subType && /trace|satisf|allocat|realiz|ref/.test(subType) && relatedCount >= 1) return true;
+  return false;
 };
 
 const normalizeNode = (node) => ({
@@ -238,9 +259,14 @@ const normalizeRawDataset = (payload) => {
   return { nodes: [], links: [] };
 };
 
-const collapseBridgeNodes = (nodes = [], links = []) => {
+const collapseBridgeNodes = (nodes = [], links = [], options = {}) => {
+  const { collapseMetadataWrappers = true, collapseRelationshipCarriers = true } = options;
   const nodeMap = new Map(nodes.map((node) => [node.elementId, node]));
-  const visibleNodes = nodes.filter((node) => !isMetadataWrapperNode(node));
+  const shouldHideNode = (node) => (
+    (collapseMetadataWrappers && isMetadataWrapperNode(node))
+    || (collapseRelationshipCarriers && isRelationshipCarrierNode(node))
+  );
+  const visibleNodes = nodes.filter((node) => !shouldHideNode(node));
   const visibleIds = new Set(visibleNodes.map((node) => node.elementId));
   const incidentMap = new Map();
 
@@ -280,7 +306,7 @@ const collapseBridgeNodes = (nodes = [], links = []) => {
   });
 
   nodes
-    .filter((node) => !visibleIds.has(node.elementId))
+    .filter((node) => !visibleIds.has(node.elementId) && shouldHideNode(node))
     .forEach((hiddenNode) => {
       const incidentLinks = incidentMap.get(hiddenNode.elementId) || [];
       const visibleNeighbors = incidentLinks
@@ -325,6 +351,15 @@ const collapseBridgeNodes = (nodes = [], links = []) => {
   return deduplicateNodesAndLinks(visibleNodes, projectedLinks);
 };
 
+export const buildLinkSignature = (link) => {
+  const sourceId = getLinkEndpointId(link?.source);
+  const targetId = getLinkEndpointId(link?.target);
+  if (!sourceId || !targetId) return null;
+  const type = normalizeRelationshipType(link?.type || link?.properties?.raw_type || '');
+  if (!type) return null;
+  return `${sourceId}:${targetId}:${type}`;
+};
+
 export const deduplicateNodesAndLinks = (nodes = [], links = []) => {
   const nodeMap = new Map();
   nodes.forEach((node) => {
@@ -337,9 +372,9 @@ export const deduplicateNodesAndLinks = (nodes = [], links = []) => {
   links.forEach((link) => {
     const sourceId = getLinkEndpointId(link?.source);
     const targetId = getLinkEndpointId(link?.target);
-    if (!link?.elementId || !sourceId || !targetId) return;
+    const key = buildLinkSignature(link);
+    if (!link?.elementId || !sourceId || !targetId || !key) return;
     const type = normalizeRelationshipType(link?.type || link?.properties?.raw_type || '');
-    const key = `${sourceId}:${targetId}:${type}`;
     const existing = linkMap.get(key);
     if (!existing) {
       linkMap.set(key, {
@@ -417,14 +452,15 @@ export const getOneHopNeighborhood = (baseData = { nodes: [], links: [] }, rootN
   );
 };
 
-export const removeExpandedSubgraph = (baseData = { nodes: [], links: [] }, removedNodeIds = [], removedLinkIds = []) => {
+export const removeExpandedSubgraph = (baseData = { nodes: [], links: [] }, removedNodeIds = [], removedLinkRefs = []) => {
   const removedNodes = new Set(removedNodeIds);
-  const removedLinks = new Set(removedLinkIds);
+  const removedLinks = new Set(removedLinkRefs);
   return {
     nodes: (baseData.nodes || []).filter((node) => node?.elementId && !removedNodes.has(node.elementId)),
     links: (baseData.links || []).filter((link) => {
-      if (!link?.elementId) return true;
-      if (removedLinks.has(link.elementId)) return false;
+      const signature = buildLinkSignature(link);
+      if (link?.elementId && removedLinks.has(link.elementId)) return false;
+      if (signature && removedLinks.has(signature)) return false;
       const sourceId = getLinkEndpointId(link.source);
       const targetId = getLinkEndpointId(link.target);
       return !removedNodes.has(sourceId) && !removedNodes.has(targetId);
@@ -458,7 +494,18 @@ export const normalizeGraphDataset = (payload, options = {}) => {
   const { collapseHiddenBridges = false } = options;
   const normalizedRaw = normalizeRawDataset(payload);
   if (collapseHiddenBridges) {
-    return collapseBridgeNodes(normalizedRaw.nodes, normalizedRaw.links);
+    return collapseBridgeNodes(normalizedRaw.nodes, normalizedRaw.links, {
+      collapseMetadataWrappers: true,
+      collapseRelationshipCarriers: true,
+    });
+  }
+
+  const containsRelationshipCarrier = normalizedRaw.nodes.some((node) => isRelationshipCarrierNode(node));
+  if (containsRelationshipCarrier) {
+    return collapseBridgeNodes(normalizedRaw.nodes, normalizedRaw.links, {
+      collapseMetadataWrappers: false,
+      collapseRelationshipCarriers: true,
+    });
   }
 
   const nodes = normalizedRaw.nodes.filter((node) => node?.elementId && !isMetadataWrapperNode(node));

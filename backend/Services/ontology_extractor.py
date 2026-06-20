@@ -387,6 +387,168 @@ class SPLMSchemaExtractor(OntologyExtractor):
         """System definitions are reference data, skipped during extraction"""
         pass
 
+class OWLRDFExtractor(OntologyExtractor):
+    """Extract OWL/RDF ontologies through the canonical Owlready2 runtime."""
+
+    def __init__(self, source_path: str):
+        super().__init__(source_path, OntologyFormat.OWL_RDF)
+
+    def _source_files(self) -> List[Path]:
+        path = Path(self.source_path)
+        if path.is_file() and path.suffix.lower() in {".owl", ".rdf", ".ttl"}:
+            return [path]
+        if path.is_dir():
+            return sorted(
+                item for item in path.iterdir()
+                if item.is_file() and item.suffix.lower() in {".owl", ".rdf", ".ttl"}
+            )
+        return []
+
+    @staticmethod
+    def _label(value: Any) -> str:
+        if isinstance(value, dict):
+            return str(value.get("label") or value.get("name") or value.get("iri") or value.get("uri") or "").strip()
+        return str(value or "").strip()
+
+    @staticmethod
+    def _namespace(iri: str) -> str:
+        text = str(iri or "")
+        if "#" in text:
+            return text.rsplit("#", 1)[0] + "#"
+        if "/" in text:
+            return text.rsplit("/", 1)[0] + "/"
+        return ""
+
+    def _rdflib_reasoning(self, file_path: Path, prefix: str) -> Dict[str, Any]:
+        from rdflib import Graph, URIRef
+        from rdflib.namespace import OWL, RDF, RDFS
+
+        graph = Graph()
+        ext = file_path.suffix.lower()
+        formats = ["turtle", "xml", "n3"] if ext == ".ttl" else ["xml", "turtle", "n3"]
+        last_error = None
+        for fmt in formats:
+            try:
+                graph.parse(str(file_path), format=fmt)
+                break
+            except Exception as exc:
+                last_error = exc
+        else:
+            raise ValueError(f"Could not parse RDF ontology {file_path}: {last_error}")
+
+        def ref(uri: URIRef) -> Dict[str, str]:
+            text = str(uri)
+            label = str(graph.value(uri, RDFS.label) or text.rsplit("#", 1)[-1].rsplit("/", 1)[-1])
+            return {"label": label, "iri": text}
+
+        classes = [ref(s) for s in set(graph.subjects(RDF.type, OWL.Class)) if isinstance(s, URIRef)]
+        object_properties = []
+        datatype_properties = []
+        for prop_type, target in ((OWL.ObjectProperty, object_properties), (OWL.DatatypeProperty, datatype_properties)):
+            for prop in set(graph.subjects(RDF.type, prop_type)):
+                if not isinstance(prop, URIRef):
+                    continue
+                row = ref(prop)
+                row["domain"] = [ref(o) for o in graph.objects(prop, RDFS.domain) if isinstance(o, URIRef)]
+                row["range"] = [ref(o) for o in graph.objects(prop, RDFS.range) if isinstance(o, URIRef)]
+                target.append(row)
+
+        subclass_edges = []
+        for child, _, parent in graph.triples((None, RDFS.subClassOf, None)):
+            if isinstance(child, URIRef) and isinstance(parent, URIRef):
+                subclass_edges.append({"source_label": ref(child)["label"], "target_label": ref(parent)["label"]})
+
+        return {
+            "engine": "rdflib_fallback",
+            "prefix": prefix,
+            "classes": classes,
+            "object_properties": object_properties,
+            "datatype_properties": datatype_properties,
+            "annotation_properties": [],
+            "subclass_edges": subclass_edges,
+        }
+    def extract(self) -> Dict[str, Any]:
+        try:
+            from .owlready_runtime import OwlreadyOntologyRuntime
+        except Exception:
+            from Services.owlready_runtime import OwlreadyOntologyRuntime
+
+        files = self._source_files()
+        if not files:
+            raise FileNotFoundError(f"No OWL/RDF/TTL files found in: {self.source_path}")
+
+        for file_path in files:
+            prefix = file_path.stem
+            reasoning = OwlreadyOntologyRuntime.inspect_ontology(file_path, prefix)
+            if reasoning.get("status") in {"unsupported", "unavailable"} or not (reasoning.get("classes") or reasoning.get("object_properties") or reasoning.get("datatype_properties")):
+                reasoning = self._rdflib_reasoning(file_path, prefix)
+
+            for row in reasoning.get("classes") or []:
+                name = self._label(row)
+                if not name:
+                    continue
+                self.entities.setdefault(name, Entity(
+                    name=name,
+                    entity_type="OntologyClass",
+                    namespace=self._namespace(row.get("iri") or row.get("uri") or ""),
+                    description=str(row.get("comment") or ""),
+                    metadata={"iri": row.get("iri") or row.get("uri"), "source_file": file_path.name},
+                ))
+                self.entity_types.add("OntologyClass")
+
+            for edge in reasoning.get("subclass_edges") or []:
+                source = self._label(edge.get("source_label") or edge.get("source"))
+                target = self._label(edge.get("target_label") or edge.get("target"))
+                if source and target:
+                    self.relationships.append(RelationshipDef(
+                        name="SUBCLASS_OF",
+                        source=source,
+                        target=target,
+                        relation_type="inherits",
+                        description="OWL subclass relationship",
+                    ))
+
+            for prop_key, relation_type in (("object_properties", "object_property"), ("datatype_properties", "datatype_property")):
+                for prop in reasoning.get(prop_key) or []:
+                    prop_name = self._label(prop)
+                    if not prop_name:
+                        continue
+                    self.all_attributes.add(prop_name)
+                    domains = [self._label(item) for item in (prop.get("domain") or []) if self._label(item)]
+                    ranges = [self._label(item) for item in (prop.get("range") or []) if self._label(item)]
+                    if prop_key == "datatype_properties":
+                        for domain in domains:
+                            entity = self.entities.get(domain)
+                            if entity:
+                                entity.add_attribute(Attribute(
+                                    name=prop_name,
+                                    data_type=", ".join(ranges) if ranges else "literal",
+                                    description=str(prop.get("comment") or ""),
+                                    metadata={"iri": prop.get("iri") or prop.get("uri"), "source_file": file_path.name},
+                                ))
+                    else:
+                        for domain in domains or [""]:
+                            for range_label in ranges or [""]:
+                                if domain and range_label:
+                                    self.relationships.append(RelationshipDef(
+                                        name=prop_name,
+                                        source=domain,
+                                        target=range_label,
+                                        relation_type=relation_type,
+                                        description=str(prop.get("comment") or ""),
+                                        metadata={"iri": prop.get("iri") or prop.get("uri"), "source_file": file_path.name},
+                                    ))
+
+        self._build_graph_connections()
+        return self.to_dict()
+
+    def validate(self) -> Tuple[bool, List[str]]:
+        errors = []
+        if not self._source_files():
+            errors.append("No OWL/RDF/TTL source files found")
+        if not self.entities:
+            errors.append("No ontology classes extracted")
+        return len(errors) == 0, errors
 
 class OntologyExtractorFactory:
     """Factory for creating appropriate extractor based on source format"""
@@ -415,8 +577,7 @@ class OntologyExtractorFactory:
                 from Services.threedxml_ontology_extractor import ThreeDXMLExtractor
             return ThreeDXMLExtractor(source_path)
         elif format_type == OntologyFormat.OWL_RDF:
-            # TODO: Implement OWL/RDF extractor
-            raise NotImplementedError("OWL/RDF extractor not yet implemented")
+            return OWLRDFExtractor(source_path)
         else:
             raise ValueError(f"Unknown format: {format_type}")
     

@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .ontology_reasoning_service import OntologyReasoningService
-from .ontology_taxonomy_service import OntologyTaxonomyService
 from .ontology_upload_manager import OntologyUploadManager
 from .unified_data_import import UnifiedDataImportService
 from .workflow_artifact_service import WorkflowArtifactService
@@ -134,6 +133,99 @@ class SemanticWorkflowService:
         terms = sorted(seen.values(), key=lambda x: (-x["frequency"], x["normalized"]))
         return terms[:500]
 
+    @classmethod
+    def _semantic_terms_for_ontology(cls, ontology_id: str, meta: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Prefer Owlready2 semantic terms over raw ontology text scanning."""
+        try:
+            reasoning = OntologyReasoningService.get_reasoning(ontology_id)
+            terms: List[Dict[str, Any]] = []
+            seen: set[str] = set()
+            for item in OntologyReasoningService.iter_semantic_terms(reasoning):
+                term = str(item.get("label") or item.get("name") or "").strip()
+                if not term:
+                    continue
+                normalized = cls._normalized_key(term)
+                if not normalized or normalized in seen:
+                    continue
+                seen.add(normalized)
+                terms.append({
+                    "term": term,
+                    "normalized": normalized,
+                    "frequency": 1,
+                    "tokens": _tokenize(term),
+                    "semantic_type": item.get("target_ontology_type") or "OntologyTerm",
+                    "iri": item.get("element_id") or item.get("iri") or item.get("uri"),
+                    "domain": item.get("domain") or [],
+                    "range": item.get("range") or [],
+                    "source": "owlready2",
+                })
+            if terms:
+                return sorted(terms, key=lambda item: (item.get("semantic_type", ""), item["term"].lower()))[:500]
+        except Exception as exc:
+            logger.info("Owlready2 term extraction fallback for %s: %s", ontology_id, exc)
+
+        terms = cls._extract_terms(cls._read_ontology_file(meta))
+        for term in terms:
+            term.setdefault("semantic_type", "RawTerm")
+            term.setdefault("source", "text_fallback")
+        return terms
+    @classmethod
+    def _write_ontology_graph_exports(cls, task_id: str, source_id: str, target_id: str) -> None:
+        """Pre-generate merged ontology export artifacts to avoid request-time serialization timeouts."""
+        try:
+            from rdflib import Graph as RDFGraph
+            graph = RDFGraph()
+            loaded = []
+            for ontology_id in (source_id, target_id):
+                context = OntologyReasoningService.semantic_context(ontology_id)
+                path = Path(context.get("file_path") or context.get("source_file_path") or "")
+                if not path.exists():
+                    continue
+                formats = ["turtle", "xml", "n3"] if path.suffix.lower() == ".ttl" else ["xml", "turtle", "n3"]
+                for fmt in formats:
+                    try:
+                        graph.parse(str(path), format=fmt)
+                        loaded.append(path.name)
+                        break
+                    except Exception:
+                        continue
+            if not graph:
+                return
+            for filename, fmt, artifact_type in (
+                ("merged_ontology.ttl", "turtle", "ontology_export_ttl"),
+                ("merged_ontology.rdf", "xml", "ontology_export_rdf"),
+                ("merged_ontology.owl", "pretty-xml", "ontology_export_owl"),
+                ("merged_ontology.jsonld", "json-ld", "ontology_export_jsonld"),
+            ):
+                WorkflowArtifactService.write_text(task_id, "ontology", filename, str(graph.serialize(format=fmt)), artifact_type, {"source_ontology_id": source_id, "target_ontology_id": target_id, "source_files": loaded})
+        except Exception as exc:
+            logger.warning("Merged ontology export generation failed: %s", exc)
+
+    @classmethod
+    def _write_bridge_mapping_exports(cls, task_id: str, report: Dict[str, Any]) -> None:
+        """Write Semantic Bridge mapping exports as JSON-LD and Turtle artifacts."""
+        try:
+            candidates = report.get("candidate_mappings") or report.get("candidates") or []
+            if not candidates:
+                return
+            graph_jsonld = {"@context": {"bridge": "http://depo-onto.local/semantic-bridge#", "skos": "http://www.w3.org/2004/02/skos/core#"}, "@graph": []}
+            ttl_lines = ["@prefix bridge: <http://depo-onto.local/semantic-bridge#> .", "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .", ""]
+            for idx, row in enumerate(candidates[:5000], start=1):
+                source = str(row.get("source_name") or row.get("source_field") or row.get("import_row_key") or "").replace('"', '\\"')
+                target = str(row.get("ontology_term") or "").replace('"', '\\"')
+                target_iri = str(row.get("target_ontology_iri") or row.get("ontology_class_element_id") or "").replace('"', '\\"')
+                source_type = str(row.get("source_type") or "Entity")
+                target_type = str(row.get("target_ontology_type") or "Class")
+                confidence = float(row.get("confidence") or 0)
+                validation = str(row.get("validation_status") or "unknown")
+                mapping_type = str(row.get("mapping_type") or "relatedMatch")
+                subject = f"bridge:mapping_{idx:06d}"
+                graph_jsonld["@graph"].append({"@id": subject, "@type": "bridge:SemanticBridgeMapping", "bridge:sourceField": source, "bridge:targetOntologyIRI": target_iri, "bridge:targetOntologyType": target_type, "bridge:confidenceScore": confidence, "bridge:validationStatus": validation, "bridge:mappingType": mapping_type})
+                ttl_lines.extend([f"{subject} a bridge:SemanticBridgeMapping ;", f"  bridge:sourceField \"{source}\" ;", f"  bridge:sourceType \"{source_type}\" ;", f"  bridge:targetOntologyIRI \"{target_iri}\" ;", f"  bridge:targetOntologyType \"{target_type}\" ;", f"  bridge:targetLabel \"{target}\" ;", f"  bridge:confidenceScore \"{confidence:.4f}\"^^xsd:decimal ;", f"  bridge:validationStatus \"{validation}\" ;", f"  bridge:mappingType \"{mapping_type}\" .", ""])
+            WorkflowArtifactService.write_json(task_id, "ontology", "semantic_bridge_mappings.jsonld", graph_jsonld, "semantic_bridge_jsonld")
+            WorkflowArtifactService.write_text(task_id, "ontology", "semantic_bridge_mappings.ttl", "\n".join(ttl_lines), "semantic_bridge_ttl")
+        except Exception as exc:
+            logger.warning("Semantic Bridge export generation failed: %s", exc)
     @staticmethod
     def _load_import_task(import_manifest: Dict[str, Any]) -> Dict[str, Any]:
         import_task_id = str((import_manifest or {}).get("task_id") or "").strip()
@@ -232,7 +324,7 @@ class SemanticWorkflowService:
             logger.info(f"Ontology reasoning lookup fallback for '{ontology_prefix}': {exc}")
 
         try:
-            reasoning = OntologyTaxonomyService.get_reasoning(ontology_identifier)
+            reasoning = OntologyReasoningService.get_reasoning(ontology_identifier)
         except Exception as exc:
             logger.info(f"Ontology term lookup fallback for '{ontology_prefix}': {exc}")
             return {}
@@ -623,13 +715,13 @@ class SemanticWorkflowService:
         if not ontology_id:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
-        text = cls._read_ontology_file(meta)
         task_id = cls._new_task("dictionary.generate", meta.get("original_filename", ""))
-        terms = cls._extract_terms(text)
+        terms = cls._semantic_terms_for_ontology(ontology_id, meta)
         dictionary = {
             "workflow_id": "dictionary.generate",
             "ontology_id": ontology_id,
             "prefix": meta.get("prefix"),
+            "term_source": terms[0].get("source") if terms else "empty",
             "generated_at": datetime.now().isoformat(),
             "terms": [
                 {
@@ -644,7 +736,7 @@ class SemanticWorkflowService:
         }
         WorkflowArtifactService.write_json(task_id, "reports", "data_dictionary.json", dictionary, "data_dictionary")
         csv_lines = ["term,frequency,status,source"] + [
-            f"{json.dumps(t['term'])},{t['frequency']},needs_review,{json.dumps(meta.get('original_filename', ''))}"
+            f"{json.dumps(t['term'])},{t['frequency']},needs_review,{json.dumps(t.get('source') or meta.get('original_filename', ''))}"
             for t in terms
         ]
         WorkflowArtifactService.write_text(task_id, "reports", "data_dictionary.csv", "\n".join(csv_lines), "data_dictionary_csv")
@@ -656,17 +748,17 @@ class SemanticWorkflowService:
         if not ontology_id:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
-        text = cls._read_ontology_file(meta)
         task_id = cls._new_task("taxonomy.generate", meta.get("original_filename", ""))
-        terms = cls._extract_terms(text)
+        terms = cls._semantic_terms_for_ontology(ontology_id, meta)
         groups: Dict[str, List[str]] = {}
         for item in terms:
-            key = item["normalized"][0].upper()
+            key = item.get("semantic_type") or item["normalized"][0].upper()
             groups.setdefault(key, []).append(item["term"])
         taxonomy = {
             "workflow_id": "taxonomy.generate",
             "ontology_id": ontology_id,
             "root": meta.get("ontology_name") or meta.get("prefix") or ontology_id,
+            "term_source": terms[0].get("source") if terms else "empty",
             "generated_at": datetime.now().isoformat(),
             "children": [
                 {"label": letter, "children": [{"label": term} for term in sorted(set(values))[:50]]}
@@ -684,8 +776,8 @@ class SemanticWorkflowService:
             raise ValueError("source_ontology_id and target_ontology_id are required")
         source = cls._ontology_metadata(source_id)
         target = cls._ontology_metadata(target_id)
-        source_reasoning = OntologyTaxonomyService.get_reasoning(source_id)
-        target_reasoning = OntologyTaxonomyService.get_reasoning(target_id)
+        source_reasoning = OntologyReasoningService.get_reasoning(source_id)
+        target_reasoning = OntologyReasoningService.get_reasoning(target_id)
         task_id = cls._new_task("ontology.merge", f"{source_id}__{target_id}")
 
         def normalized_label(value: str) -> str:
@@ -796,6 +888,7 @@ class SemanticWorkflowService:
             },
         }
         WorkflowArtifactService.write_json(task_id, "reports", "merge_plan.json", report, "merge_plan")
+        cls._write_ontology_graph_exports(task_id, source_id, target_id)
         return {"task_id": task_id, "status": "completed", "result": report, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
 
     @classmethod
@@ -843,6 +936,7 @@ class SemanticWorkflowService:
             },
         }
         WorkflowArtifactService.write_json(task_id, "reports", "link_candidates.json", report, "link_candidates")
+        cls._write_bridge_mapping_exports(task_id, report)
         return {"task_id": task_id, "status": "completed", "result": report, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
 
     @classmethod
@@ -852,7 +946,7 @@ class SemanticWorkflowService:
         if not ontology_id:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
-        terms = cls._extract_terms(cls._read_ontology_file(meta))
+        terms = cls._semantic_terms_for_ontology(ontology_id, meta)
         task_id = cls._new_task("graph.chunk", meta.get("original_filename", ""))
         chunks = []
         for idx in range(0, len(terms), chunk_size):

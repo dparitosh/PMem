@@ -271,6 +271,8 @@ class GraphViewService:
         labels = {str(label or "") for label in (node.get("labels") or [])}
         props = node.get("properties") or {}
         semantic_role = str(props.get("semantic_role") or "").strip().lower()
+        if 'GeneralRelation' in labels or semantic_role == 'relationship':
+            return False
         if labels and labels.intersection(GraphViewService.INSTANCE_NODE_LABELS):
             return True
         if semantic_role == "entity" and not GraphViewService._is_schema_node(node):
@@ -338,11 +340,11 @@ class GraphViewService:
     def _reasoning_projection_graph(cls, prefix: str) -> Dict[str, Any]:
         try:
             try:
-                from backend.Services.ontology_taxonomy_service import OntologyTaxonomyService
+                from backend.Services.ontology_reasoning_service import OntologyReasoningService
             except Exception:
-                from Services.ontology_taxonomy_service import OntologyTaxonomyService
+                from Services.ontology_reasoning_service import OntologyReasoningService
 
-            reasoning = OntologyTaxonomyService.get_reasoning(prefix)
+            reasoning = OntologyReasoningService.get_reasoning(prefix)
         except Exception as exc:  # pragma: no cover - defensive runtime fallback
             logger.warning("Reasoning projection failed for prefix=%s: %s", prefix, exc)
             return {"nodes": [], "relationships": [], "counts": {"nodes": 0, "relationships": 0}}

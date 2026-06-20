@@ -218,7 +218,7 @@ def test_build_link_candidates_classifies_relationship_rows_to_object_properties
         fake_lookup,
     )
     monkeypatch.setattr(
-        "backend.Services.semantic_workflow_service.OntologyTaxonomyService.get_reasoning",
+        "backend.Services.semantic_workflow_service.OntologyReasoningService.get_reasoning",
         lambda ontology_id: {
             "classes": [],
             "object_properties": [
@@ -306,7 +306,7 @@ def test_merge_ontologies_uses_semantic_structure_instead_of_raw_tokens(monkeypa
         }
 
     monkeypatch.setattr(
-        "backend.Services.semantic_workflow_service.OntologyTaxonomyService.get_reasoning",
+        "backend.Services.semantic_workflow_service.OntologyReasoningService.get_reasoning",
         fake_reasoning,
     )
 

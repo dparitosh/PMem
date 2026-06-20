@@ -1,5 +1,4 @@
 import {
-  Boxes,
   FileBarChart2,
   GitFork,
   Home,
@@ -11,7 +10,6 @@ import {
 
 export const navigationItems = [
   { id: 'home', label: 'Home', icon: Home },
-  { id: 'workspace', label: 'Workspace', icon: Boxes },
   { id: 'import', label: 'Import', icon: UploadCloud },
   { id: 'ontology', label: 'Ontology Studio', icon: Network },
   { id: 'graph', label: 'Graph Explorer', icon: GitFork },
@@ -30,7 +28,7 @@ export const pageAliases = {
   recommendations: 'quality',
   admin: 'admin',
   whereused: 'whereused',
-  workspace: 'workspace',
+  workspace: 'graph',
   import: 'import',
   quality: 'quality',
 };
@@ -41,7 +39,6 @@ export function normalizePage(page) {
 
 export function pageLabel(page) {
   if (page === 'whereused') return 'Where Used';
-  if (page === 'workspace') return 'Workspace';
   const item = navigationItems.find((nav) => nav.id === page);
   return item?.label || 'Graph Explorer';
 }

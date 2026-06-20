@@ -266,6 +266,8 @@ export const importAPI = {
     apiClient.post(buildUrl(replaceParams(API.import.cancel, { task_id: taskId }))),
   getOWL: (taskId) => 
     apiClient.get(buildUrl(replaceParams(API.import.owl, { task_id: taskId }))),
+  exportOWL: (taskId, format = 'ttl') =>
+    apiClient.get(buildUrl(replaceParams(API.import.owlExport, { task_id: taskId })), { params: { format }, responseType: 'blob' }),
   convertSchema: (schemaData) => 
     apiClient.post(buildUrl(API.import.convertSchema), schemaData),
   parseSchema: (file) => {

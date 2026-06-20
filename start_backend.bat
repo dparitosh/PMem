@@ -70,6 +70,8 @@ if not "%EXISTING_BACKEND_PID%"=="" (
     exit /b 0
 )
 
+if "%ALLOWED_ORIGINS%"=="" set "ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://%LAN_HOST%:3000"
+
 set "PYTHONPATH=%CD%"
 call backend\.dt_venv\Scripts\python.exe -m uvicorn backend.main:app --host %BIND_HOST% --port %PORT% %RELOAD_FLAG%
 if errorlevel 1 (

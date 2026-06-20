@@ -197,49 +197,52 @@ def _match_docs_by_labels(docs: List[Document], labels: Optional[List[str]]) -> 
 
 def deep_vector_search(input: str):
     _require_general_chain()
-    # Step 1: Retrieve node chunks 
     node_results = general_retrieval_chain.invoke({"input": input})
-    node_chunks = node_results["context"] 
-    node_ids = [doc.metadata["node_id"] for doc in node_chunks if "node_id" in doc.metadata]
+    node_chunks = node_results.get("context") or []
+    if not node_chunks:
+        return node_results
 
-    # Step 2: Get related relationships
+    node_ids = [
+        str(doc.metadata.get("node_id")).strip()
+        for doc in node_chunks
+        if getattr(doc, "metadata", None) and doc.metadata.get("node_id") not in (None, "")
+    ]
+    if not node_ids:
+        return node_results
 
     rel_query = """
-
-    WITH $node_ids AS ids
-
-    UNWIND ids AS nid
-
-    MATCH (a)-[r]-(b)
-
-    WHERE id(a) = nid OR id(b) = nid
-
-    AND a:GraphChunk AND b:GraphChunk
-
+    UNWIND $node_ids AS node_id
+    MATCH (a:GraphChunk)-[r]-(b:GraphChunk)
+    WHERE toString(a.node_id) = node_id OR toString(b.node_id) = node_id
     RETURN {
-
-    type: type(r),
-
-    properties: properties(r),
-
-    source: {id: id(a), labels: labels(a), properties: properties(a)},
-
-    target: {id: id(b), labels: labels(b), properties: properties(b)}
-
+      type: type(r),
+      properties: properties(r),
+      source: {
+        node_id: toString(a.node_id),
+        labels: labels(a),
+        properties: properties(a)
+      },
+      target: {
+        node_id: toString(b.node_id),
+        labels: labels(b),
+        properties: properties(b)
+      }
     } AS rel
-
     """
 
-    relationship_data = graph.query(rel_query, params={"node_ids": node_ids})
-
-
-
-    # Step 3: Format context and call LLM
+    try:
+        relationship_data = graph.query(rel_query, params={"node_ids": node_ids})
+    except Exception as exc:
+        logger.warning("GraphRAG relationship enrichment failed: %s", exc)
+        relationship_data = []
 
     context = format_graph_context(node_chunks, relationship_data)
     docs = [Document(page_content=context)]
 
-    return general_qa_chain.invoke({"input": input, "context": docs})
+    return {
+        "answer": general_qa_chain.invoke({"input": input, "context": docs}),
+        "context": docs,
+    }
 
 def get_data_info(query: str, labels: Optional[List[str]] = None, k: int = 5) -> Dict[str, Any]:
     """

@@ -68,7 +68,7 @@ export const workflowCatalog = [
     execution: 'File upload',
     prerequisite: 'Choose one or more files',
     icon: Database,
-    stages: ['Upload', 'Parse & preview', 'Structure check', 'Load & verify'],
+    stages: ['Upload files', 'Parse and preview', 'Validate structure', 'Load to Neo4j'],
     writes_to_neo4j: true,
     retains_artifacts: true,
   },
@@ -84,7 +84,7 @@ export const workflowCatalog = [
     execution: 'File upload',
     prerequisite: 'Choose an ontology/schema file',
     icon: FileCode2,
-    stages: ['Upload schema file', 'Capture namespace and prefix', 'Generate ontology preview', 'Review and register ontology'],
+    stages: ['Upload schema file', 'Read namespace and prefix', 'Generate ontology preview', 'Review and register ontology'],
     writes_to_neo4j: false,
     retains_artifacts: true,
   },
@@ -100,7 +100,7 @@ export const workflowCatalog = [
     execution: 'Artifact workflow',
     prerequisite: 'Run an import first, then select the instance artifact and ontology',
     icon: Link2,
-    stages: ['Select imported instance', 'Select ontology', 'Preview semantic mappings', 'Review and apply'],
+    stages: ['Select imported instance', 'Select ontology', 'Review bridge suggestions', 'Apply approved mappings'],
     writes_to_neo4j: true,
     retains_artifacts: true,
   },
@@ -266,11 +266,32 @@ export const buildWorkflowStages = (workflow) =>
   (workflow?.stages || []).map((stage, idx) => ({
     id: toWorkflowStageId(workflow.id, stage, idx),
     label: stage,
-    description: idx === 0
-      ? workflow.inputs
-      : idx === (workflow.stages.length - 1)
-        ? workflow.outputs.join(', ')
-        : workflow.description,
+    description: workflow.id === 'instance.import'
+      ? [
+          'Attach one or more source files for parsing.',
+          'Parse the file and review detected entities, attributes, relationships, and metadata.',
+          'Check structural quality and prepare the load package.',
+          'Commit the prepared graph to Neo4j and verify the result.',
+        ][idx]
+      : workflow.id === 'ontology.create'
+        ? [
+            'Attach one ontology or schema source file.',
+            'Read namespace, prefix, and source metadata from the file.',
+            'Preview generated ontology classes, properties, and structure.',
+            'Approve registration and retain the ontology artifact.',
+          ][idx]
+        : workflow.id === 'instance.link'
+          ? [
+              'Choose one completed import artifact as the source instance graph.',
+              'Choose the ontology that should classify and validate the instance data.',
+              'Inspect suggested entity, property, and relationship mappings.',
+              'Approve mappings and write the bridge result.',
+            ][idx]
+          : idx === 0
+            ? workflow.inputs
+            : idx === (workflow.stages.length - 1)
+              ? workflow.outputs.join(', ')
+              : workflow.description,
     backendIds: workflow.id === 'instance.import'
       ? [
           ['upload', 'detect'],

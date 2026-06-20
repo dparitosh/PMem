@@ -3,6 +3,7 @@ import os
 import sys
 import json
 import logging
+import re
 from typing import TypedDict, Annotated, Sequence, AsyncGenerator
 from typing_extensions import Literal
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -45,9 +46,13 @@ def _normalize_retrieval_response(result, title: str) -> str:
     context = result.get("context") or []
     lines = [f"## {title}", "", str(answer)]
 
+    snippets = []
     sources = []
     for doc in context[:5]:
         metadata = getattr(doc, "metadata", {}) or {}
+        page_content = str(getattr(doc, "page_content", "") or "").strip()
+        if page_content:
+            snippets.append(page_content[:2500])
         source_name = (
             metadata.get("filename")
             or metadata.get("node_id")
@@ -57,12 +62,63 @@ def _normalize_retrieval_response(result, title: str) -> str:
         if source_name:
             sources.append(f"- {source_name}")
 
+    if snippets:
+        lines.extend(["", "### Retrieved Context", *snippets])
     if sources:
         lines.extend(["", "### Sources", *sources])
 
     return "\n".join(lines)
 
 
+
+
+def _extract_graph_search_terms(query: str) -> list[str]:
+    """Extract entity-like search terms from a natural-language graph question."""
+    text = str(query or "").strip()
+    if not text:
+        return []
+
+    terms: list[str] = []
+
+    def add(value: str) -> None:
+        cleaned = str(value or "").strip().strip('"\'`.,;:()[]{}')
+        if len(cleaned) < 2:
+            return
+        lowered = cleaned.lower()
+        stop = {
+            "show", "what", "which", "where", "when", "why", "how", "all", "the", "and", "for",
+            "with", "from", "into", "about", "related", "trace", "impact", "analysis", "compare",
+            "list", "find", "give", "tell", "does", "data", "graph", "context", "ontology",
+        }
+        if lowered in stop:
+            return
+        if cleaned not in terms:
+            terms.append(cleaned)
+
+    for quoted in re.findall(r'"([^"]+)"|\'([^\']+)\'', text):
+        add(quoted[0] or quoted[1])
+
+    for token in re.findall(r"\b[A-Za-z]{2,}[-_][A-Za-z0-9*._-]+\b|\b[A-Za-z]+-\*\b|\b\d{3,}[A-Za-z0-9._-]*\b", text):
+        add(token)
+
+    # Preserve high-value noun phrases before falling back to individual words.
+    phrase_patterns = [
+        r"\b(requirement(?:s)?(?:\s+[A-Za-z0-9_-]+){0,3})\b",
+        r"\b(part(?:s)?(?:\s+[A-Za-z0-9_-]+){0,3})\b",
+        r"\b(functional(?:\s+[A-Za-z0-9_-]+){0,3})\b",
+        r"\b(logical(?:\s+[A-Za-z0-9_-]+){0,3})\b",
+        r"\b(physical(?:\s+[A-Za-z0-9_-]+){0,3})\b",
+        r"\b(process(?:es)?(?:\s+[A-Za-z0-9_-]+){0,3})\b",
+        r"\b(system(?:\s+[A-Za-z0-9_-]+){0,3})\b",
+    ]
+    for pattern in phrase_patterns:
+        for match in re.findall(pattern, text, flags=re.IGNORECASE):
+            add(match)
+
+    for token in re.findall(r"\b[A-Za-z][A-Za-z0-9]{3,}\b", text):
+        add(token)
+
+    return terms[:8]
 def _graph_payload_to_context_docs(payload: dict, *, title: str, query: str) -> dict:
     """Convert a graph payload into a retrieval-style response."""
     nodes = payload.get("nodes") or []
@@ -93,11 +149,20 @@ def _graph_payload_to_context_docs(payload: dict, *, title: str, query: str) -> 
                 details.append(f"{key}={value}")
         node_lines.append(f"{_node_name(node)} [{labels}] | {'; '.join(details[:6])}")
 
+    node_names_by_id = {node.get("elementId"): _node_name(node) for node in nodes if node.get("elementId")}
     rel_lines = []
     for rel in relationships[:30]:
         rel_type = rel.get("type") or "REL"
         rel_props = rel.get("properties") or {}
-        rel_lines.append(f"{rel.get('start')} -[:{rel_type} {rel_props}]-> {rel.get('end')}")
+        start_name = node_names_by_id.get(rel.get("start"), rel.get("start"))
+        end_name = node_names_by_id.get(rel.get("end"), rel.get("end"))
+        prop_bits = []
+        for key in ("name", "label", "role", "source", "target"):
+            value = rel_props.get(key)
+            if value not in (None, ""):
+                prop_bits.append(f"{key}={value}")
+        prop_text = f" ({'; '.join(prop_bits[:3])})" if prop_bits else ""
+        rel_lines.append(f"{start_name} -[:{rel_type}]-> {end_name}{prop_text}")
 
     context_text = "\n".join(
         [
@@ -272,26 +337,45 @@ def graph_context_search(query: str) -> str:
     }
     q_lower = (query or "").strip().lower()
     graph_like_query = any(term in q_lower for term in graph_query_terms)
+    graph_payload = None
     try:
         try:
             from backend.Services.graph_view_service import GraphViewService
         except Exception:
             from Services.graph_view_service import GraphViewService
 
-        payload = GraphViewService.get_contextual_subgraph(search=query, limit=180)
-        if payload and (payload.get("nodes") or payload.get("relationships")):
-            return _normalize_retrieval_response(
-                _graph_payload_to_context_docs(payload, title="Graph Context Insights", query=query),
-                "Graph Context Insights",
+        search_terms = _extract_graph_search_terms(query) or [query]
+        for term in search_terms:
+            payload = GraphViewService.get_contextual_subgraph(
+                search=term,
+                limit=180,
+                search_mode="broader",
+                expand_neighbors=True,
             )
-        if graph_like_query:
-            return "No matching graph context was found for this ontology or graph query."
+            if payload and (payload.get("nodes") or payload.get("relationships")):
+                graph_payload = payload
+                break
     except Exception as exc:
         logger.warning("Schema-aware graph context lookup failed, falling back to vector search: %s", exc)
 
+    if graph_payload:
+        return _normalize_retrieval_response(
+            _graph_payload_to_context_docs(graph_payload, title="Graph Context Insights", query=query),
+            "Graph Context Insights",
+        )
+
+    try:
+        fallback = deep_vector_search(query)
+        fallback_context = fallback.get("context") if isinstance(fallback, dict) else None
+        fallback_answer = str((fallback.get("answer") or fallback.get("result") or "")).strip() if isinstance(fallback, dict) else str(fallback or "").strip()
+        if fallback_context or fallback_answer:
+            return _normalize_retrieval_response(fallback, "Graph Context Insights")
+    except Exception as exc:
+        logger.warning("GraphRAG fallback search failed: %s", exc)
+
     if graph_like_query:
         return "No matching graph context was found for this ontology or graph query."
-    return _normalize_retrieval_response(deep_vector_search(query), "Graph Context Insights")
+    return "No contextual answer found."
 
 
 @tool

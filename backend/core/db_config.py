@@ -103,16 +103,22 @@ def _has_placeholder_neo4j_uri() -> bool:
 
 
 def _detect_deployment_type(uri: str) -> Neo4jDeploymentType:
-    """Detect deployment type from URI scheme"""
-    if uri.startswith("neo4j+s://"):
+    """Detect deployment type from URI scheme.
+
+    Neo4j URI schemes encode both routing and TLS. `neo4j://` is a routed
+    non-TLS URI and is common for local/on-prem databases, while `neo4j+s://`
+    is the Aura/TLS form.
+    """
+    normalized = str(uri or "").lower()
+    if normalized.startswith("neo4j+s://"):
         return Neo4jDeploymentType.AURA
-    elif uri.startswith("bolt+s://"):
+    if normalized.startswith("neo4j+ssc://"):
         return Neo4jDeploymentType.ENTERPRISE
-    elif uri.startswith("bolt://"):
+    if normalized.startswith("bolt+s://") or normalized.startswith("bolt+ssc://"):
+        return Neo4jDeploymentType.ENTERPRISE
+    if normalized.startswith("bolt://") or normalized.startswith("neo4j://"):
         return Neo4jDeploymentType.ON_PREMISES
-    else:
-        # Default to Aura for neo4j+s if scheme not recognized
-        return Neo4jDeploymentType.AURA
+    return Neo4jDeploymentType.ON_PREMISES
 
 
 def _load_environment() -> None:

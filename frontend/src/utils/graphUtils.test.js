@@ -2,6 +2,7 @@ import {
   deduplicateNodesAndLinks,
   getOneHopNeighborhood,
   isMetadataWrapperNode,
+  isRelationshipCarrierNode,
   mergeGraphData,
   normalizeGraphDataset,
   normalizeRelationshipType,
@@ -77,6 +78,41 @@ test('normalizeGraphDataset can collapse hidden bridge nodes into direct visible
   expect(result.links[0].properties.collapsed).toBe(true);
 });
 
+test('normalizeGraphDataset collapses general relation carriers into direct business edges by default', () => {
+  const payload = {
+    nodes: [
+      {
+        elementId: 'req1',
+        labels: ['Requirement'],
+        properties: { name: 'Requirement A', catalogue_id: 'REQ-1' },
+      },
+      {
+        elementId: 'rel1',
+        labels: ['GeneralRelation'],
+        properties: { name: 'Seg0Satisfy', sub_type: 'Seg0Satisfy', related_count: '1' },
+      },
+      {
+        elementId: 'part1',
+        labels: ['Part'],
+        properties: { name: 'Part A', part_number: 'P-1' },
+      },
+    ],
+    relationships: [
+      { elementId: 'r1', start: 'req1', end: 'rel1', type: 'TRACE_LINK' },
+      { elementId: 'r2', start: 'rel1', end: 'part1', type: 'PART_REF' },
+    ],
+  };
+
+  const result = normalizeGraphDataset(payload);
+
+  expect(result.nodes.map((n) => n.elementId)).toEqual(['req1', 'part1']);
+  expect(result.links).toHaveLength(1);
+  expect(result.links[0].source).toBe('req1');
+  expect(result.links[0].target).toBe('part1');
+  expect(result.links[0].type).toBe('GENERAL_RELATION');
+  expect(result.links[0].properties.collapsed).toBe(true);
+});
+
 test('normalizeRelationshipType canonicalizes raw XML bridge codes into semantic relationship names', () => {
   expect(normalizeRelationshipType('MASTERREF')).toBe('MASTER_REFERENCE');
   expect(normalizeRelationshipType('RELATEDREFS')).toBe('RELATED_REFERENCE');
@@ -113,8 +149,8 @@ test('deduplicateNodesAndLinks keeps a single copy of nodes and links', () => {
       { elementId: 'n1', name: 'A duplicate' },
     ],
     [
-      { elementId: 'r1', source: 'n1', target: 'n1' },
-      { elementId: 'r1', source: 'n1', target: 'n1' },
+      { elementId: 'r1', source: 'n1', target: 'n1', type: 'RELATED_TO' },
+      { elementId: 'r1', source: 'n1', target: 'n1', type: 'RELATED_TO' },
     ]
   );
 
@@ -124,8 +160,8 @@ test('deduplicateNodesAndLinks keeps a single copy of nodes and links', () => {
 
 test('mergeGraphData unions graph slices without duplicates', () => {
   const result = mergeGraphData(
-    { nodes: [{ elementId: 'n1' }], links: [{ elementId: 'r1', source: 'n1', target: 'n1' }] },
-    { nodes: [{ elementId: 'n2' }], links: [{ elementId: 'r2', source: 'n1', target: 'n2' }] }
+    { nodes: [{ elementId: 'n1' }], links: [{ elementId: 'r1', source: 'n1', target: 'n1', type: 'RELATED_TO' }] },
+    { nodes: [{ elementId: 'n2' }], links: [{ elementId: 'r2', source: 'n1', target: 'n2', type: 'RELATED_TO' }] }
   );
 
   expect(result.nodes.map((n) => n.elementId)).toEqual(['n1', 'n2']);
@@ -137,9 +173,9 @@ test('getOneHopNeighborhood returns the root node and its direct neighbors only'
     {
       nodes: [{ elementId: 'root' }, { elementId: 'n1' }, { elementId: 'n2' }, { elementId: 'n3' }],
       links: [
-        { elementId: 'r1', source: 'root', target: 'n1' },
-        { elementId: 'r2', source: 'n2', target: 'n3' },
-        { elementId: 'r3', source: 'root', target: 'n2' },
+        { elementId: 'r1', source: 'root', target: 'n1', type: 'RELATED_TO' },
+        { elementId: 'r2', source: 'n2', target: 'n3', type: 'RELATED_TO' },
+        { elementId: 'r3', source: 'root', target: 'n2', type: 'RELATED_TO' },
       ],
     },
     'root'
@@ -154,8 +190,8 @@ test('removeExpandedSubgraph removes the requested expansion slice', () => {
     {
       nodes: [{ elementId: 'root' }, { elementId: 'child' }, { elementId: 'keep' }],
       links: [
-        { elementId: 'r1', source: 'root', target: 'child' },
-        { elementId: 'r2', source: 'root', target: 'keep' },
+        { elementId: 'r1', source: 'root', target: 'child', type: 'RELATED_TO' },
+        { elementId: 'r2', source: 'root', target: 'keep', type: 'RELATED_TO' },
       ],
     },
     ['child'],
@@ -169,7 +205,7 @@ test('removeExpandedSubgraph removes the requested expansion slice', () => {
 test('validateConnectivity flags orphan nodes', () => {
   const result = validateConnectivity({
     nodes: [{ elementId: 'n1' }, { elementId: 'n2' }],
-    links: [{ elementId: 'r1', source: 'n1', target: 'n1' }],
+    links: [{ elementId: 'r1', source: 'n1', target: 'n1', type: 'RELATED_TO' }],
   });
 
   expect(result.isConnected).toBe(false);
@@ -197,5 +233,19 @@ test('isMetadataWrapperNode hides technical id nodes but keeps requirement busin
       name: 'Ability to work in various environmental conditions',
       catalogue_id: 'REQ-000023',
     },
+  })).toBe(false);
+});
+
+test('isRelationshipCarrierNode flags general relation carriers but not business objects', () => {
+  expect(isRelationshipCarrierNode({
+    elementId: 'rel1',
+    labels: ['GeneralRelation'],
+    properties: { sub_type: 'Seg0Satisfy', related_count: '2' },
+  })).toBe(true);
+
+  expect(isRelationshipCarrierNode({
+    elementId: 'part1',
+    labels: ['Part'],
+    properties: { name: 'Rotor', part_number: 'P-100' },
   })).toBe(false);
 });
