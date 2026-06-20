@@ -170,13 +170,43 @@ const getHeaders = (rows) => {
 const discoverTypes = (rows) => {
   const types = new Map();
   rows.forEach((row) => {
-    const firstType = row.type?.split(',')[0]?.trim() || row.label || '';
+    const firstType = getPrimaryType(row);
     if (!firstType) return;
     types.set(firstType, (types.get(firstType) || 0) + 1);
   });
   return Array.from(types.entries())
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([type, count]) => ({ type, count }));
+};
+
+const getPrimaryType = (row) => {
+  if (!row) return '';
+
+  const rawType = row.type;
+  if (Array.isArray(rawType)) {
+    const first = rawType.map((value) => String(value || '').trim()).find(Boolean);
+    if (first) return first;
+  }
+  if (typeof rawType === 'string') {
+    const first = rawType
+      .split(',')
+      .map((value) => value.trim())
+      .find(Boolean);
+    if (first) return first;
+  }
+  if (typeof rawType === 'number' || typeof rawType === 'boolean') {
+    return String(rawType);
+  }
+
+  const label = row.label;
+  if (Array.isArray(label)) {
+    const first = label.map((value) => String(value || '').trim()).find(Boolean);
+    if (first) return first;
+  }
+  if (typeof label === 'string' && label.trim()) return label.trim();
+
+  const fallback = row.entity_type || row.node_type || row.class_name || row.ontology_class || row.name;
+  return fallback == null ? '' : String(fallback).trim();
 };
 
 const buildRelationshipRows = (graphData) => {
@@ -238,6 +268,22 @@ const pageSlice = (rows, page, pageSize) => {
   return rows.slice(start, start + pageSize);
 };
 
+const buildNodeReportRows = (graphData, searchResults) => {
+  const fromSearch = processSearchResults(searchResults);
+  if (fromSearch.length > 0) return fromSearch;
+
+  const graphNodes = graphData?.nodes || [];
+  return stripUnwanted(
+    graphNodes.map((node) => ({
+      elementId: node.elementId || node.id,
+      type: Array.isArray(node.labels) ? node.labels.join(', ') : (node.label || ''),
+      ...(node.properties || {}),
+      name: node.name || node.properties?.name || node.label || node.properties?.label,
+      label: node.label || node.properties?.label,
+    }))
+  );
+};
+
 const ReportsTab = ({ searchResults, graphData }) => {
   const [activeReport, setActiveReport] = useState('search');
   const [filters, setFilters] = useState({});
@@ -252,7 +298,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
   const [relSearchTerm, setRelSearchTerm] = useState('');
   const [relPage, setRelPage] = useState(1);
 
-  const processedResults = useMemo(() => processSearchResults(searchResults), [searchResults]);
+  const processedResults = useMemo(() => buildNodeReportRows(graphData, searchResults), [graphData, searchResults]);
   const availableTypes = useMemo(() => discoverTypes(processedResults), [processedResults]);
   const relationshipRows = useMemo(() => buildRelationshipRows(graphData), [graphData]);
 
@@ -268,7 +314,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
 
   const nodeRows = useMemo(() => {
     if (activeReport === 'search') return processedResults;
-    return processedResults.filter((row) => (row.type?.split(',')[0]?.trim() || row.label || '') === activeReport);
+    return processedResults.filter((row) => getPrimaryType(row) === activeReport);
   }, [activeReport, processedResults]);
 
   const filterableHeaders = useMemo(() => {
@@ -343,11 +389,15 @@ const ReportsTab = ({ searchResults, graphData }) => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeReport, filters, itemsPerPage, sortColumn, sortDirection]);
+  }, [activeReport, itemsPerPage]);
 
   useEffect(() => {
-    setRelPage(1);
-  }, [relTypeFilter, relSearchTerm]);
+    setCurrentPage((page) => Math.min(Math.max(page, 1), totalNodePages));
+  }, [totalNodePages]);
+
+  useEffect(() => {
+    setRelPage((page) => Math.min(Math.max(page, 1), totalRelationshipPages));
+  }, [totalRelationshipPages]);
 
   useEffect(() => {
     setVisibleColumns((previous) => {

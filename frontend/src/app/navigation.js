@@ -1,4 +1,5 @@
 import {
+  Boxes,
   FileBarChart2,
   GitFork,
   Home,
@@ -13,6 +14,7 @@ export const navigationItems = [
   { id: 'import', label: 'Import', icon: UploadCloud },
   { id: 'ontology', label: 'Ontology Studio', icon: Network },
   { id: 'graph', label: 'Graph Explorer', icon: GitFork },
+  { id: 'whereused', label: 'Where Used', icon: Boxes },
   { id: 'quality', label: 'Recommendations', icon: Sparkles },
   { id: 'reports', label: 'Reports', icon: FileBarChart2 },
   { id: 'admin', label: 'Admin', icon: Settings },

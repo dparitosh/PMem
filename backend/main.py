@@ -1057,6 +1057,63 @@ async def chat_stream(request: ChatRequest):
     )
 
 
+@app.get("/chat/health")
+async def chat_health():
+    return {
+        "status": "ok" if generate_response is not None else "unavailable",
+        "chat_post_available": generate_response is not None,
+        "chat_stream_available": generate_response_stream is not None,
+        "methods": {
+            "ask": "POST /chat",
+            "stream": "POST /chat-stream",
+            "sample_queries": "GET /chat/sample-queries",
+            "health": "GET /chat/health",
+            "capabilities": "GET /chat/capabilities",
+        },
+    }
+
+
+@app.get("/chat/capabilities")
+async def chat_capabilities():
+    return {
+        "name": "knowledge-companion",
+        "integration_pattern": "POST for question execution, GET for discovery/health/sample prompts",
+        "endpoints": {
+            "ask": {
+                "method": "POST",
+                "path": "/chat",
+                "body": {
+                    "session_id": "string",
+                    "message": "string",
+                    "graph_context": "optional object",
+                },
+            },
+            "stream": {
+                "method": "POST",
+                "path": "/chat-stream",
+                "body": {
+                    "session_id": "string",
+                    "message": "string",
+                    "graph_context": "optional object",
+                },
+            },
+            "sample_queries": {
+                "method": "GET",
+                "path": "/chat/sample-queries",
+            },
+            "health": {
+                "method": "GET",
+                "path": "/chat/health",
+            },
+        },
+        "notes": [
+            "Use POST /chat for Teamcenter action-handler invocations that execute a user question.",
+            "Use GET companion endpoints for readiness checks, UI bootstrap, and integration discovery.",
+            "GET should not be used for prompt execution because prompts can be large and may carry graph context.",
+        ],
+    }
+
+
 @app.get("/chat/sample-queries")
 async def get_sample_queries():
     """Return dynamically generated sample queries based on actual Neo4j data.

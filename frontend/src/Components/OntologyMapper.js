@@ -346,11 +346,13 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
     if (!iri) return '';
     const prefix = String(ref?.ontology_prefix || taxonomy?.ontology_prefix || '').trim();
     const local = String(ref?.label || iri.split(/[/#]/).pop() || iri).trim();
+    if (!ref?.term_id && /^tmp[a-z0-9_]{6,}$/i.test(local)) return '';
     return ref?.term_id || (prefix ? `${prefix}:${local}` : iri);
   }, [taxonomy]);
-  const refLabel = useCallback((ref) => (
-    String(ref?.label || ref?.name || ref?.term_id || ref?.iri || ref?.uri || '').split(/[/#]/).pop()
-  ), []);
+  const refLabel = useCallback((ref) => {
+    const raw = String(ref?.label || ref?.name || ref?.term_id || ref?.iri || ref?.uri || '').split(/[/#]/).pop();
+    return /^tmp[a-z0-9_]{6,}$/i.test(raw) ? '' : raw;
+  }, []);
 
   const reasoningClassNodes = useMemo(() => (reasoning?.classes || []).map((cls) => ({
     term_id: termIdFromRef(cls),
@@ -758,12 +760,14 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
     if (!iri) return '';
     const prefix = String(ref?.ontology_prefix || taxonomy?.ontology_prefix || '').trim();
     const local = String(ref?.label || iri.split(/[/#]/).pop() || iri).trim();
+    if (!ref?.term_id && /^tmp[a-z0-9_]{6,}$/i.test(local)) return '';
     return ref?.term_id || (prefix ? `${prefix}:${local}` : iri);
   }, [taxonomy]);
 
-  const refLabel = useCallback((ref) => (
-    String(ref?.label || ref?.name || ref?.term_id || ref?.iri || ref?.uri || '').split(/[/#]/).pop()
-  ), []);
+  const refLabel = useCallback((ref) => {
+    const raw = String(ref?.label || ref?.name || ref?.term_id || ref?.iri || ref?.uri || '').split(/[/#]/).pop();
+    return /^tmp[a-z0-9_]{6,}$/i.test(raw) ? '' : raw;
+  }, []);
 
   const reasoningClassNodes = useMemo(() => (reasoning?.classes || []).map((cls) => ({
     term_id: termIdFromRef(cls),
@@ -1071,8 +1075,9 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
     {
       headerName: 'Class',
       field: 'label',
-      flex: 1,
-      minWidth: 180,
+      pinned: 'left',
+      flex: 1.2,
+      minWidth: 240,
       tooltipField: 'termId',
       cellStyle: { ...gridTextCell, display: 'flex', alignItems: 'center' },
       cellRenderer: (params) => (
@@ -1087,7 +1092,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
   ], [gridTextCell]);
 
   const propertyColumns = useMemo(() => [
-    { headerName: 'Property', field: 'property', flex: 1.15, minWidth: 176, tooltipField: 'id', cellStyle: gridTextCell },
+    { headerName: 'Property', field: 'property', pinned: 'left', flex: 1.2, minWidth: 230, tooltipField: 'id', cellStyle: gridTextCell },
     { headerName: 'Kind', field: 'kind', width: 124, cellStyle: gridTextCell },
     { headerName: 'Domain', field: 'domain', flex: 1, minWidth: 148, tooltipField: 'domain', cellStyle: gridTextCell },
     { headerName: 'Range', field: 'range', flex: 1, minWidth: 148, tooltipField: 'range', cellStyle: gridTextCell },
@@ -1095,7 +1100,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
   ], [gridTextCell]);
 
   const axiomColumns = useMemo(() => [
-    { headerName: 'Source', field: 'source', flex: 1, minWidth: 152, tooltipField: 'sourceId', cellStyle: gridTextCell },
+    { headerName: 'Source', field: 'source', pinned: 'left', flex: 1.1, minWidth: 210, tooltipField: 'sourceId', cellStyle: gridTextCell },
     { headerName: 'Axiom', field: 'axiom', width: 124, cellStyle: gridTextCell },
     { headerName: 'Target', field: 'target', flex: 1, minWidth: 152, tooltipField: 'targetId', cellStyle: gridTextCell },
     { headerName: 'Prefix', field: 'prefix', width: 96, cellStyle: gridTextCell },
@@ -1153,7 +1158,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
         </div>
       </section>
 
-      <div className="owl-browser-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 0.8fr) minmax(0, 1.7fr) minmax(280px, 0.9fr)', gap: 12, minHeight: 620, alignItems: 'start' }}>
+      <div className="owl-browser-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 0.95fr) minmax(520px, 1.9fr) minmax(300px, 1fr)', gap: 12, minHeight: 620, alignItems: 'start' }}>
         <section style={{ minWidth: 0, border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'hidden' }}>
           <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary }}>Hierarchy</div>
@@ -1860,13 +1865,33 @@ export default function OntologyMapper() {
         const mappings = mapPayload.mappings || {};
         const mappingEdges = Array.isArray(mapPayload.mapping_edges) ? mapPayload.mapping_edges : null;
 
+        const synthesizedDictionaryNodes = [
+          ...Object.keys(entities).map((entityKey) => ({
+            term_id: `${selectedOntologyApi}:${entityKey}`,
+            label: entityKey,
+            ontology_prefix: selectedOntologyApi,
+            source: 'dictionary-class',
+            definition: entities[entityKey]?.definition || '',
+          })),
+          ...Object.keys(dictData.properties || {}).map((propertyKey) => ({
+            term_id: `${selectedOntologyApi}:${propertyKey}`,
+            label: propertyKey,
+            ontology_prefix: selectedOntologyApi,
+            source: 'dictionary-datatype-property',
+            definition: dictData.properties[propertyKey]?.definition || '',
+          })),
+          ...Object.keys(dictData.relationships || {}).map((relationshipKey) => ({
+            term_id: `${selectedOntologyApi}:${relationshipKey}`,
+            label: relationshipKey,
+            ontology_prefix: selectedOntologyApi,
+            source: 'dictionary-object-property',
+            definition: dictData.relationships[relationshipKey]?.definition || '',
+          })),
+        ];
+
         const nodes = taxonomyData?.nodes?.length
           ? taxonomyData.nodes
-          : Object.keys(entities).map((entityKey) => ({
-              term_id: `${selectedOntologyApi}:${entityKey}`,
-              label: entityKey,
-              ontology_prefix: selectedOntologyApi,
-            }));
+          : synthesizedDictionaryNodes;
 
         const edges = mappingEdges && mappingEdges.length > 0
           ? mappingEdges.map((edge) => ({
@@ -2369,7 +2394,6 @@ export default function OntologyMapper() {
                 value={selectedMapping}
                 onChange={e => {
                   applyOntologySelection(e.target.value);
-                  setFilter('');
                 }}
                 disabled={mappingOptions.length === 0}
                 style={{ minWidth: '320px', padding: '6px 10px', background: C.surface, border: `1px solid ${mappingOptionsError ? C.red : C.borderDark}`, color: C.textPrimary, borderRadius: '5px', fontWeight: 600, fontSize: '12px', cursor: mappingOptions.length === 0 ? 'not-allowed' : 'pointer', opacity: mappingOptions.length === 0 ? 0.6 : 1 }}
@@ -2411,7 +2435,7 @@ export default function OntologyMapper() {
               {VIEWS.map(v => {
                 const active = activeView === v.id;
                 return (
-                  <button key={v.id} onClick={() => { setActiveView(v.id); setFilter(''); setPrefixFilter(null); }}
+                  <button key={v.id} onClick={() => { setActiveView(v.id); }}
                     style={{ padding: '5px 10px', border: 'none', borderRadius: '4px', cursor: 'pointer', background: active ? C.primary : 'transparent', color: active ? '#fff' : C.textSec, fontWeight: active ? 700 : 500, fontSize: '11px', transition: 'all .15s' }}>
                     {v.label}
                   </button>
@@ -2445,6 +2469,23 @@ export default function OntologyMapper() {
                 </button>
               )}
             </div>
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+            <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.surface, fontSize: '11px', fontWeight: 700, color: C.textPrimary }}>
+              {selectedOntologyOption?.label || 'No active ontology selected'}
+            </div>
+            <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '11px', fontWeight: 700, color: C.textSec }}>
+              Prefix {selectedOntologyOption?.prefix || selectedOntologyApi || 'n/a'}
+            </div>
+            <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${dictionarySourceMode === 'taxonomy-fallback' ? '#F7C948' : C.border}`, background: dictionarySourceMode === 'taxonomy-fallback' ? '#FFF8E1' : C.bg, fontSize: '11px', fontWeight: 700, color: dictionarySourceMode === 'taxonomy-fallback' ? '#8A5A00' : C.textSec }}>
+              {dictionarySourceMode === 'taxonomy-fallback' ? 'Taxonomy fallback view' : 'Primary ontology dictionary'}
+            </div>
+            {selectedOntologyOption?.type && (
+              <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '11px', fontWeight: 700, color: C.textSec }}>
+                Source format {selectedOntologyOption.type}
+              </div>
+            )}
           </div>
 
           {activeView !== 'alignment' && dictionarySourceMode === 'taxonomy-fallback' && (
@@ -2619,7 +2660,10 @@ export default function OntologyMapper() {
                       Prefix {selectedOntologyOption?.prefix || selectedOntologyApi || 'n/a'} · id {selectedOntologyOption?.value || 'n/a'}
                     </div>
                     <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
-                      {selectedOntologyOption?.source ? `Source ${selectedOntologyOption.source}` : 'Active ontology used for semantic bridge validation and export.'}
+                      {selectedOntologyOption?.source ? `Registered from ${selectedOntologyOption.source}` : 'Active ontology used as the semantic target for bridge validation and export.'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
+                      {selectedOntologyOption?.type ? `Ontology role: ${selectedOntologyOption.type.toUpperCase()} semantic model` : 'Ontology role: semantic target model'}
                     </div>
                     {targetDictionarySourceMode === 'taxonomy-fallback' && (
                       <div style={{ fontSize: '11px', color: '#8A5A00', marginTop: '6px' }}>

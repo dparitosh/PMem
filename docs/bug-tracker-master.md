@@ -170,9 +170,9 @@ Suggested execution rule:
 
 | ID | Page | Bug | Why it matters | Evidence | Priority | Status | Closure test |
 |---|---|---|---|---|---|---|---|
-| RP-01 | Reports | Report filtering assumes `row.type.split(',')[0]` is always valid. | Valid rows can disappear if type formatting differs. | `ReportsTab.js:227-230` | P0 | Open | Reports show all expected rows from the source dataset. |
+| RP-01 | Reports | Report filtering assumed `row.type.split(',')[0]` was always valid. | Valid rows could disappear if type formatting differed. | `ReportsTab.js:170-224`, `285-318` | P0 | Fixed | Reports show all expected rows from the source dataset, including rows whose type comes from labels or fallback semantic fields. |
 | RP-02 | Reports | Column toggling stores `false` as the only hidden state. | A column can reappear unintentionally after repeated toggles. | `ReportsTab.js:349-353`, `785-786` | P1 | Open | Toggling a column on/off is stable across page changes. |
-| RP-03 | Reports | Pagination resets on every filter or report change without preserving user intent. | The table jumps around during review. | `ReportsTab.js:266-304`, `917-941` | P1 | Open | Filters do not unexpectedly send the user back to page 1 unless necessary. |
+| RP-03 | Reports | Pagination reset on every filter or report change without preserving user intent. | The table jumped around during review. | `ReportsTab.js:390-400`, `1038-1075` | P1 | Fixed | Filters and sorting keep the user on the current page unless the filtered result set no longer has that page. |
 | RP-04 | Reports | Relationship rows are built from graph edges, not necessarily from the same semantic scope as the search report. | Users can compare incompatible datasets in one panel. | `ReportsTab.js:141-177`, `517-585` | P1 | Open | Relationship reports clearly state their source scope. |
 | RP-05 | Reports | Search report export and relationship export are handled through separate paths with different row shapes. | Export consistency is fragile. | `ReportsTab.js:467-493`, `949-951` | P1 | Open | Export output schema matches what the user sees. |
 | RP-06 | Reports | Dynamic type tabs are derived from the current processed results only. | Tabs can vanish when the filter changes. | `ReportsTab.js:213-223`, `442-453` | P2 | Open | Tabs remain stable for the current dataset. |

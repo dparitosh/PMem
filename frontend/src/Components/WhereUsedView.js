@@ -25,6 +25,8 @@ const SEARCHABLE_NODE_KEYS = [
   'name', 'title', 'code', 'key', 'abbreviation', 'id', 'description', 'label',
   'external_id', 'external_version', 'version', 'entity_type', 'node_type',
   'source_name', 'target_name', 'class_name', 'type', 'value', 'identifier',
+  'ontology_prefix', 'prefix', 'ontology_name', 'source_ontology', 'namespace',
+  'import_id', 'file_name', 'filename', 'part_number', 'part_id', 'requirement_id',
 ];
 
 const normalizeSearchValue = (value) => String(value || '').trim().toLowerCase();
@@ -213,7 +215,9 @@ const WhereUsedView = ({
                 .map(({ node }) => node);
 
             setHierarchySearchResults(nodes);
-            if (nodes.length === 0) {
+            if (nodes.length > 0) {
+                handleNodeSelect(nodes[0]);
+            } else {
                 setSelectedNode(null);
                 setTreeData(null);
                 setLevels([]);
@@ -228,7 +232,9 @@ const WhereUsedView = ({
                     .map(({ node }) => node);
                 setHierarchySearchResults(fallbackNodes);
                 setSearchError('Server search failed. Showing local filtered results.');
-                if (fallbackNodes.length === 0) {
+                if (fallbackNodes.length > 0) {
+                    handleNodeSelect(fallbackNodes[0]);
+                } else {
                     setSelectedNode(null);
                     setTreeData(null);
                     setLevels([]);
@@ -442,13 +448,38 @@ const WhereUsedView = ({
                         fontSize: 12,
                         background: selectedNode?.elementId === params.data.id ? WU.subtle : WU.primary,
                     }}
-                    title="Load where-used hierarchy for this node"
+                    title="Show where this business object is used"
                 >
                     Select
                 </button>
             ),
         },
     ], [selectedNode, handleNodeSelect]);
+
+    const usageSummary = useMemo(() => {
+        if (!selectedNode || !treeData?.nodes?.length) return '';
+
+        const selectedId = selectedNode.elementId;
+        const directParents = (treeData.links || [])
+            .filter((link) => link?.target === selectedId)
+            .map((link) => treeData.nodes.find((node) => node.elementId === link.source))
+            .filter(Boolean);
+
+        const uniqueParents = Array.from(
+            new Map(
+                directParents.map((node) => [node.elementId, getNodeDisplayName(node)])
+            ).values()
+        );
+
+        const selectedName = getNodeDisplayName(selectedNode);
+        if (!uniqueParents.length) {
+            return `${selectedName} is not currently shown as used by another loaded business object.`;
+        }
+
+        const preview = uniqueParents.slice(0, 3).join(', ');
+        const suffix = uniqueParents.length > 3 ? ` and ${uniqueParents.length - 3} more` : '';
+        return `${selectedName} is used in ${preview}${suffix}.`;
+    }, [selectedNode, treeData, getNodeDisplayName]);
 
     const hierarchyGridColumns = useMemo(() => [
         { headerName: 'Level', field: 'level', width: 170 },
@@ -474,7 +505,7 @@ const WhereUsedView = ({
                         fontSize: 12,
                         background: selectedNode?.elementId === params.data.nodeId ? WU.subtle : WU.primary,
                     }}
-                    title="Focus hierarchy on this node"
+                    title="Focus on this business object"
                 >
                     Focus
                 </button>
@@ -522,6 +553,7 @@ const WhereUsedView = ({
                         columns={searchGridColumns}
                         height={220}
                         emptyLabel="No matching nodes"
+                        onRowClicked={(row) => row?.node && handleNodeSelect(row.node)}
                     />
                 </div>
             )}
@@ -531,10 +563,10 @@ const WhereUsedView = ({
                 <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:0 }}>
                     <div style={{ ...panelStyle, display:'flex', alignItems:'center', gap:12, flexWrap:'wrap', marginBottom:8, padding: '10px 12px' }}>
                         <div style={{ minWidth: 260, flex: '1 1 320px' }}>
-                            <div style={fieldLabelStyle}>Parent hierarchy</div>
+                            <div style={fieldLabelStyle}>Business object</div>
                             <div style={{ fontSize: 14, color: WU.text, fontWeight: 800, marginTop: 4 }}>{getNodeDisplayName(selectedNode)}</div>
                         </div>
-                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Levels {levels.length}</span>
+                        <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Usage levels {levels.length}</span>
                         <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Ancestors {treeData.nodes.length - 1}</span>
                         <span style={{ fontSize: 12, color: WU.muted, fontWeight: 700 }}>Links {treeData.links.length}</span>
                         {isExpandingUpwards && <span style={{ color: WU.primary, fontSize: 12, fontWeight: 700 }}>Expanding...</span>}
@@ -543,13 +575,17 @@ const WhereUsedView = ({
                             <button onClick={() => expandAllParents(selectedNode)} style={buttonStyle}>Expand Upwards</button>
                         )}
                     </div>
+                    <div style={{ ...panelStyle, marginBottom: 8, padding: '10px 12px', fontSize: 13, fontWeight: 600, color: WU.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {usageSummary || 'Select a business object to see where it is used.'}
+                    </div>
                     <div style={{ flex: 1, minHeight: 0 }}>
                         <DataGridWidget
-                            title="Where-used hierarchy"
+                            title="Business object usage"
                             rows={hierarchyGridRows}
                             columns={hierarchyGridColumns}
                             height={420}
-                            emptyLabel="No hierarchy rows"
+                            emptyLabel="No business usage rows"
+                            onRowClicked={(row) => row?.node && handleNodeSelect(row.node)}
                         />
                     </div>
                 </div>

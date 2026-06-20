@@ -1,8 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import {
-  Boxes,
   Database,
-  FileBarChart2,
   GitFork,
   Globe,
   Loader2,
@@ -11,23 +9,10 @@ import {
   RefreshCcw,
   Search,
   Settings,
-  Sparkles,
-  Table2,
-  UploadCloud,
-  Wrench,
   Workflow,
   X,
 } from 'lucide-react';
 
-const TOOL_ITEMS = [
-  ['Where Used', 'whereused', GitFork],
-  ['Table View', 'table', Table2],
-  ['Reports', 'reports', FileBarChart2],
-  ['Data Import', 'ingestion', UploadCloud],
-  ['Map & Align', 'ontology', Boxes],
-  ['Recommendations', 'recommendations', Sparkles],
-  ['Admin', 'admin', Settings],
-];
 
 const SEARCH_MODES = [
   { id: 'best', label: 'Best Match', title: 'Best match only' },
@@ -50,7 +35,6 @@ function GraphExplorerToolbar({
   searchLoading,
   searchResultMode,
   onSearchResultModeChange,
-  onToolTargetSelect,
   onOpenFullGraph,
   onOpenOntologyGraph,
   onOpenContextualGraph,
@@ -72,8 +56,7 @@ function GraphExplorerToolbar({
   showChat,
   onToggleChat,
 }) {
-  const [toolsOpen, setToolsOpen] = useState(false);
-  const toolsRef = useRef(null);
+
   const viewModeState = {
     full: graphViewMode === 'ontology' && selectedOntology === 'ALL',
     ontology: graphViewMode === 'ontology' && selectedOntology !== 'ALL',
@@ -81,26 +64,6 @@ function GraphExplorerToolbar({
   };
   const trimmedSearch = String(searchInput || '').trim();
   const showClearSearch = Boolean(trimmedSearch || graphSearchActive);
-
-  useEffect(() => {
-    if (!toolsOpen) return undefined;
-
-    const handlePointerDown = (event) => {
-      if (!toolsRef.current?.contains(event.target)) {
-        setToolsOpen(false);
-      }
-    };
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') setToolsOpen(false);
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [toolsOpen]);
 
   return (
     <div
@@ -121,66 +84,6 @@ function GraphExplorerToolbar({
         pointerEvents: 'auto',
       }}
     >
-      <div className="dropdown" ref={toolsRef} style={{ position: 'relative' }}>
-        <button
-          className="btn btn-sm dropdown-toggle"
-          type="button"
-          title="Graph tools"
-          aria-expanded={toolsOpen}
-          onClick={(event) => {
-            event.stopPropagation();
-            setToolsOpen((open) => !open);
-          }}
-          style={{
-            backgroundColor: theme.surface,
-            color: theme.primary,
-            fontWeight: 700,
-            border: `1px solid ${theme.borderStrong}`,
-            borderRadius: 6,
-            padding: '5px 9px',
-            fontSize: 12,
-            lineHeight: 1.2,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          <Wrench size={14} strokeWidth={2.4} />
-          Tools
-        </button>
-        <div
-          className={`dropdown-menu p-1 ${toolsOpen ? 'show' : ''}`}
-          style={{
-            minWidth: 150,
-            background: theme.surface,
-            color: theme.ink,
-            border: `1px solid ${theme.border}`,
-            boxShadow: '0 12px 24px rgba(15, 23, 42, 0.12)',
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            marginTop: 4,
-            zIndex: 2000,
-          }}
-        >
-          {TOOL_ITEMS.map(([label, target, Icon]) => (
-            <button
-              key={target}
-              className="dropdown-item"
-              style={{ color: theme.ink, fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 8 }}
-              onClick={(event) => {
-                event.currentTarget.closest('.dropdown-menu')?.classList.remove('show');
-                setToolsOpen(false);
-                onToolTargetSelect?.(target);
-              }}
-            >
-              <Icon size={14} strokeWidth={2.2} />
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: `1px solid ${theme.borderStrong}`, borderRadius: 6, padding: 2, background: theme.surfaceMuted, maxWidth: '100%', flexWrap: 'wrap' }}>
         {VIEW_MODES.map((mode) => (
           <button

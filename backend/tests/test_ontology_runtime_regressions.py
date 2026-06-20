@@ -81,6 +81,9 @@ def test_owlready_reasoning_extracts_classes_properties_and_individuals(tmp_path
             <rdfs:domain rdf:resource="http://example.com/reason#Part"/>
             <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
           </owl:DatatypeProperty>
+          <owl:AnnotationProperty rdf:about="http://example.com/reason#sourceSystem">
+            <rdfs:label>source system</rdfs:label>
+          </owl:AnnotationProperty>
           <owl:NamedIndividual rdf:about="http://example.com/reason#bolt1">
             <rdf:type rdf:resource="http://example.com/reason#Fastener"/>
             <rdfs:label>Bolt 1</rdfs:label>
@@ -97,10 +100,12 @@ def test_owlready_reasoning_extracts_classes_properties_and_individuals(tmp_path
     assert result["summary"]["classes"] == 2
     assert result["summary"]["object_properties"] == 1
     assert result["summary"]["datatype_properties"] == 1
+    assert result["summary"]["annotation_properties"] == 1
     assert result["summary"]["individuals"] == 1
     assert any(edge["type"] == "subClassOf" for edge in result["subclass_edges"])
     assert result["object_properties"][0]["domain"][0]["label"] == "Part"
     assert result["object_properties"][0]["range"][0]["label"] == "Part"
+    assert result["annotation_properties"][0]["label"] == "source system"
 
 
 def test_owlready_reasoning_ignores_unavailable_external_imports(tmp_path: Path):

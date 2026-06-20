@@ -443,6 +443,7 @@ class OwlreadyOntologyRuntime:
 
         object_properties: List[Dict[str, Any]] = []
         datatype_properties: List[Dict[str, Any]] = []
+        annotation_properties: List[Dict[str, Any]] = []
         missing_domain_range: List[Dict[str, str]] = []
 
         for prop in ontology.properties():
@@ -466,6 +467,8 @@ class OwlreadyOntologyRuntime:
                 object_properties.append(row)
             elif isinstance(prop, DataPropertyClass):
                 datatype_properties.append(row)
+            else:
+                annotation_properties.append(row)
 
         individuals: List[Dict[str, Any]] = []
         for individual in ontology.individuals():
@@ -520,7 +523,7 @@ class OwlreadyOntologyRuntime:
             })
 
         triple_count = len(list(world.as_rdflib_graph())) if hasattr(world, "as_rdflib_graph") else 0
-        if not classes and not object_properties and not datatype_properties and triple_count:
+        if not classes and not object_properties and not datatype_properties and not annotation_properties and triple_count:
             fallback = _rdflib_semantic_fallback(file_path, prefix)
             if fallback.get("summary", {}).get("classes") or fallback.get("summary", {}).get("object_properties") or fallback.get("summary", {}).get("datatype_properties"):
                 return fallback
@@ -532,6 +535,7 @@ class OwlreadyOntologyRuntime:
             "classes": classes,
             "object_properties": object_properties,
             "datatype_properties": datatype_properties,
+            "annotation_properties": annotation_properties,
             "individuals": individuals,
             "subclass_edges": subclass_edges,
             "diagnostics": diagnostics,
@@ -539,6 +543,7 @@ class OwlreadyOntologyRuntime:
                 "classes": len(classes),
                 "object_properties": len(object_properties),
                 "datatype_properties": len(datatype_properties),
+                "annotation_properties": len(annotation_properties),
                 "individuals": len(individuals),
                 "subclass_edges": len(subclass_edges),
                 "orphan_classes": len(orphan_classes),

@@ -313,3 +313,20 @@ html {
   -webkit-font-smoothing: antialiased;
   will-change: transform;
 }
+
+
+.owl-browser-layout {
+  width: 100%;
+}
+
+@media (max-width: 1480px) {
+  .owl-browser-layout {
+    grid-template-columns: minmax(260px, 0.9fr) minmax(420px, 1.6fr) minmax(280px, 0.95fr) !important;
+  }
+}
+
+@media (max-width: 1180px) {
+  .owl-browser-layout {
+    grid-template-columns: 1fr !important;
+  }
+}
