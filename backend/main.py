@@ -82,6 +82,30 @@ def sanitize_log_message(message: str) -> str:
     
     return message
 
+_CYPHER_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _safe_cypher_identifier(value: str, *, default: str) -> str:
+    candidate = (value or "").strip()
+    if not candidate:
+        return default
+    if not _CYPHER_IDENTIFIER_PATTERN.fullmatch(candidate):
+        logger.warning("Unsafe Cypher identifier '%s' replaced with '%s'", candidate, default)
+        return default
+    return candidate
+
+
+def _graph_service_unavailable(endpoint: str, exc: Exception) -> HTTPException:
+    logger.warning("%s unavailable: %s", endpoint, exc)
+    return HTTPException(
+        status_code=503,
+        detail={
+            "status": "unavailable",
+            "endpoint": endpoint,
+            "message": str(exc),
+        },
+    )
+
 # Ensure Neo4j vector + keyword indexes exist BEFORE any module tries to
 # connect to them (e.g. chains/vector.py imported via agent.chat).
 ensure_indexes_standalone = None
@@ -991,22 +1015,14 @@ def schema():
         return get_graph_schema()
     except Exception as e:
         logger.error(f"Schema endpoint error: {type(e).__name__}: {str(e)}", exc_info=True)
-        # Return empty schema gracefully instead of 500 error
-        return {
-            "node_labels": {},
-            "rel_types": {},
-            "display_names": {},
-            "message": "Neo4j database temporarily unavailable. Schema will load when database is connected."
-        }
-
-
-# @app.post("/chat")
-# def chat(prompt):
-#     try:
-#       completion = secure_models.complete(prompt)
-#       return {"results": completion.text}
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "unavailable",
+                "endpoint": "/schema",
+                "message": "Neo4j database temporarily unavailable. Schema will load when database is connected.",
+            },
+        )
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -1405,8 +1421,7 @@ async def get_graph_view(limit: int = 1000):
     try:
         return GraphViewService.get_graph_overview(limit=limit)
     except RuntimeError as exc:
-        logger.warning("/api/v1/graph/view unavailable: %s", exc)
-        return _empty_graph_service_response(str(exc))
+        raise _graph_service_unavailable("/api/v1/graph/view", exc)
 
 
 @app.get("/api/v1/graph/view/ontology/{prefix}")
@@ -1420,8 +1435,7 @@ async def get_virtual_ontology_view(prefix: str, limit: int = 1000):
     try:
         return GraphViewService.get_virtual_ontology_view(prefix=prefix, limit=limit)
     except RuntimeError as exc:
-        logger.warning("/api/v1/graph/view/ontology/%s unavailable: %s", prefix, exc)
-        return _empty_graph_service_response(str(exc))
+        raise _graph_service_unavailable(f"/api/v1/graph/view/ontology/{prefix}", exc)
 
 
 @app.get("/api/v1/graph/contextual-subgraph")
@@ -1449,8 +1463,7 @@ async def get_contextual_subgraph(
             search_mode=search_mode,
         )
     except RuntimeError as exc:
-        logger.warning("/api/v1/graph/contextual-subgraph unavailable: %s", exc)
-        return _empty_graph_service_response(str(exc))
+        raise _graph_service_unavailable("/api/v1/graph/contextual-subgraph", exc)
 
 
 @app.get("/graphvis/by-ontology/{prefix}")
@@ -4022,16 +4035,16 @@ async def commit_import(task_id: str):
                 props = node.get("properties", {})
                 node_id = props.get("id", "")
                 if node_id:
-                    label = node.get("label", "Element")
-                    cypher = f"MERGE (n:{label} {{id: $id}}) SET n += $props"
+                    label = _safe_cypher_identifier(node.get("label", "Element"), default="Element")
+                    cypher = f"MERGE (n:`{label}` {{id: $id}}) SET n += $props"
                     graph.query(cypher, {"id": node_id, "props": props}, timeout=300)
                     committed_count += 1
             for rel in relationships:
                 from_id = rel.get("from_props", {}).get("id", "")
                 to_id = rel.get("to_props", {}).get("id", "")
-                rel_type = rel.get("type", "RELATES_TO")
+                rel_type = _safe_cypher_identifier(rel.get("type", "RELATES_TO"), default="RELATES_TO")
                 if from_id and to_id:
-                    cypher = f"MATCH (a {{id: $from_id}}) MATCH (b {{id: $to_id}}) MERGE (a)-[:{rel_type}]->(b)"
+                    cypher = f"MATCH (a {{id: $from_id}}) MATCH (b {{id: $to_id}}) MERGE (a)-[:`{rel_type}`]->(b)"
                     graph.query(cypher, {"from_id": from_id, "to_id": to_id}, timeout=300)
                     committed_count += 1
 

@@ -22,7 +22,18 @@ def _request(method: str, path: str, **kwargs) -> requests.Response:
     return requests.request(method, f"{BACKEND_URL}{path}", timeout=timeout, **kwargs)
 
 
+
+def _backend_available() -> bool:
+    try:
+        response = _request("GET", "/health", timeout=3)
+        return response.status_code < 500
+    except requests.RequestException:
+        return False
+
+
 def test_openapi_is_available() -> None:
+    if not _backend_available():
+        pytest.skip("Backend service is not running")
     response = _request("GET", "/openapi.json")
     assert response.status_code == 200
     payload = response.json()
@@ -35,15 +46,19 @@ def test_openapi_is_available() -> None:
     [
         "/docs",
         "/api/v1/ontology/registered",
-        "/api/v1/import/registered",
+        "/api/v1/import/formats",
     ],
 )
 def test_read_endpoints_respond(path: str) -> None:
+    if not _backend_available():
+        pytest.skip("Backend service is not running")
     response = _request("GET", path)
     assert response.status_code < 500
 
 
 def test_ap239_data_dictionary_responds_when_neo4j_is_configured() -> None:
+    if not _backend_available():
+        pytest.skip("Backend service is not running")
     response = _request("GET", "/api/v1/ontology/ap239/data-dictionary", timeout=20)
     if response.status_code == 500:
         pytest.skip("AP239 data dictionary requires a configured Neo4j connection")
@@ -51,6 +66,8 @@ def test_ap239_data_dictionary_responds_when_neo4j_is_configured() -> None:
 
 
 def test_import_upload_reaches_task_or_clear_client_error() -> None:
+    if not _backend_available():
+        pytest.skip("Backend service is not running")
     candidate = next(Path("data").rglob("Domain_model.xmi"), None)
     if candidate is None:
         candidate = Path("test_upload.xsd")

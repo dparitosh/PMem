@@ -450,7 +450,7 @@ async def get_admin_registry(request: Request):
     route_group_services = _route_group_services(api_routes)
     backend_health = _route_available(api_routes, "/health")
     llm_health = _route_available(api_routes, "/api/v1/import/ollama/health")
-    chat_health = _route_available(api_routes, "/chat/sample-queries")
+    chat_health = _route_available(api_routes, "/chat/health")
 
     return {
         "services": [
