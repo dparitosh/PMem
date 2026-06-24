@@ -135,9 +135,6 @@ const ONTOLOGY_ENDPOINTS = {
   alignmentOptions: process.env.REACT_APP_API_ONTOLOGY_ALIGNMENT_OPTIONS || '/ontology-mappings',
   merge: process.env.REACT_APP_API_ONTOLOGY_MERGE || '/api/v1/ontology/merge',
   cleanupOldXsd: process.env.REACT_APP_API_ONTOLOGY_CLEANUP_OLD_XSD || '/api/v1/ontology/cleanup-old-xsd',
-  // Legacy endpoints for backward compatibility
-  uploadLegacy: process.env.REACT_APP_API_ONTOLOGY_UPLOAD_LEGACY || '/api/ontology/upload',
-  registeredLegacy: process.env.REACT_APP_API_ONTOLOGY_REGISTERED_LEGACY || '/api/ontology/registered',
 };
 
 /**
@@ -161,14 +158,6 @@ const IMPORT_ENDPOINTS = {
   ollamaHealth: process.env.REACT_APP_API_IMPORT_OLLAMA_HEALTH || '/api/v1/import/ollama/health',
   mapOntology: process.env.REACT_APP_API_IMPORT_MAP_ONTOLOGY || '/api/v1/import/map-ontology',
   tasks: process.env.REACT_APP_API_IMPORT_TASKS || '/api/v1/import/tasks',
-  // Legacy endpoints for backward compatibility
-  uploadLegacy: process.env.REACT_APP_API_IMPORT_UPLOAD_LEGACY || '/api/import/upload',
-  statusLegacy: process.env.REACT_APP_API_IMPORT_STATUS_LEGACY || '/api/import/status/{task_id}',
-  previewLegacy: process.env.REACT_APP_API_IMPORT_PREVIEW_LEGACY || '/api/import/preview/{task_id}',
-  preCommitLegacy: process.env.REACT_APP_API_IMPORT_PRE_COMMIT_LEGACY || '/api/import/pre-commit/{task_id}',
-  commitLegacy: process.env.REACT_APP_API_IMPORT_COMMIT_LEGACY || '/api/import/commit/{task_id}',
-  cancelLegacy: process.env.REACT_APP_API_IMPORT_CANCEL_LEGACY || '/api/import/cancel/{task_id}',
-  tasksLegacy: process.env.REACT_APP_API_IMPORT_TASKS_LEGACY || '/api/import/tasks',
   uploadDataImport: process.env.REACT_APP_API_DATA_IMPORT_UPLOAD || '/data-import/upload',
   statusDataImport: process.env.REACT_APP_API_DATA_IMPORT_STATUS || '/data-import/status/{task_id}',
   previewDataImport: process.env.REACT_APP_API_DATA_IMPORT_PREVIEW || '/data-import/preview/{task_id}',
@@ -242,7 +231,6 @@ const ONTOLOGY_MAPPER_ENDPOINTS = {
 const INTEGRATION_ENDPOINTS = {
   embeddingsBuild: process.env.REACT_APP_API_EMBEDDINGS_BUILD || '/embeddings/build',
   neo4jWebhookV1: process.env.REACT_APP_API_WEBHOOKS_NEO4J_V1 || '/api/v1/webhooks/neo4j',
-  neo4jWebhookLegacy: process.env.REACT_APP_API_WEBHOOKS_NEO4J_LEGACY || '/api/webhooks/neo4j',
 };
 
 /**

@@ -128,7 +128,14 @@ export default function LandingPage({ setChatResults, onNavigate }) {
     setMetricsLoading(true);
     try {
       const response = await healthAPI.graphMetrics();
-      setMetrics(response.data);
+      setMetrics(response?.data ?? {
+        total_nodes: 0,
+        total_relationships: 0,
+        node_labels: [],
+        relationship_types: [],
+        ontology_breakdown: [],
+        ontology_kpis: {},
+      });
       setLastRefreshed(new Date());
     } catch (error) {
       logger.error('Failed to load metrics:', error);
@@ -149,7 +156,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
     setOntologiesLoading(true);
     try {
       const response = await healthAPI.ontologiesAvailable();
-      setOntologies(response.data.ontologies || []);
+      setOntologies(response?.data?.ontologies || []);
     } catch (error) {
       logger.error('Failed to load ontologies:', error);
       setOntologies([]);

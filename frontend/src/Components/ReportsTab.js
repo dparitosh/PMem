@@ -1,4 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { API, buildUrl } from '../config';
+import { apiClient } from '../services/apiClient';
+import { normalizeGraphDataset as normalizeGraphDatasetShared } from '../utils/graphUtils';
 
 const NOISY_COLUMNS = new Set([
   'args',
@@ -38,6 +41,7 @@ const PRIORITY_COLUMNS = [
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const RELATIONSHIP_PAGE_SIZE = 25;
+const RELATIONSHIP_EXPORT_HEADERS = ['relationship_type', 'source', 'target', 'count'];
 const DEFAULT_VISIBLE_COLUMNS = [
   'entity_type',
   'name',
@@ -273,7 +277,7 @@ const buildNodeReportRows = (graphData, searchResults) => {
   if (fromSearch.length > 0) return fromSearch;
 
   const graphNodes = graphData?.nodes || [];
-  return stripUnwanted(
+  const rows = stripUnwanted(
     graphNodes.map((node) => ({
       elementId: node.elementId || node.id,
       type: Array.isArray(node.labels) ? node.labels.join(', ') : (node.label || ''),
@@ -282,6 +286,17 @@ const buildNodeReportRows = (graphData, searchResults) => {
       label: node.label || node.properties?.label,
     }))
   );
+
+  const ontologyTypes = new Set(['OntologyClass', 'ObjectProperty', 'DatatypeProperty']);
+  const businessRows = rows.filter((row) => {
+    const primaryType = getPrimaryType(row);
+    const name = String(row.name || row.title || row.code || row.id || '').trim();
+    if (ontologyTypes.has(primaryType)) return false;
+    if (!name) return false;
+    return !/^id[\w:-]*$/i.test(name);
+  });
+
+  return businessRows.length > 0 ? businessRows : rows;
 };
 
 const ReportsTab = ({ searchResults, graphData }) => {
@@ -297,10 +312,42 @@ const ReportsTab = ({ searchResults, graphData }) => {
   const [relTypeFilter, setRelTypeFilter] = useState('');
   const [relSearchTerm, setRelSearchTerm] = useState('');
   const [relPage, setRelPage] = useState(1);
+  const [fallbackGraphData, setFallbackGraphData] = useState({ nodes: [], links: [] });
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphError, setGraphError] = useState('');
 
-  const processedResults = useMemo(() => buildNodeReportRows(graphData, searchResults), [graphData, searchResults]);
+  const effectiveGraphData = useMemo(() => {
+    const hasPrimaryGraph = (graphData?.nodes || []).length > 0 || (graphData?.links || []).length > 0;
+    return hasPrimaryGraph ? graphData : fallbackGraphData;
+  }, [fallbackGraphData, graphData]);
+
+  useEffect(() => {
+    const hasPrimaryGraph = (graphData?.nodes || []).length > 0 || (graphData?.links || []).length > 0;
+    if (hasPrimaryGraph || (fallbackGraphData.nodes || []).length > 0) return undefined;
+
+    let cancelled = false;
+    const loadGraph = async () => {
+      setGraphLoading(true);
+      setGraphError('');
+      try {
+        const response = await apiClient.get(buildUrl(API.graph.graphView), { params: { limit: 5000 } });
+        const normalized = normalizeGraphDatasetShared(response.data);
+        if (!cancelled) setFallbackGraphData(normalized);
+      } catch (error) {
+        if (!cancelled) setGraphError(error?.response?.data?.detail || error.message || 'Failed to load graph data for reports.');
+      } finally {
+        if (!cancelled) setGraphLoading(false);
+      }
+    };
+
+    loadGraph();
+    return () => { cancelled = true; };
+  }, [fallbackGraphData.nodes, graphData]);
+
+  const processedResults = useMemo(() => buildNodeReportRows(effectiveGraphData, searchResults), [effectiveGraphData, searchResults]);
+  const baseNodeHeaders = useMemo(() => getHeaders(processedResults), [processedResults]);
   const availableTypes = useMemo(() => discoverTypes(processedResults), [processedResults]);
-  const relationshipRows = useMemo(() => buildRelationshipRows(graphData), [graphData]);
+  const relationshipRows = useMemo(() => buildRelationshipRows(effectiveGraphData), [effectiveGraphData]);
 
   const relTypesSummary = useMemo(() => {
     const counts = new Map();
@@ -316,6 +363,17 @@ const ReportsTab = ({ searchResults, graphData }) => {
     if (activeReport === 'search') return processedResults;
     return processedResults.filter((row) => getPrimaryType(row) === activeReport);
   }, [activeReport, processedResults]);
+
+  const relationshipScopeLabel = useMemo(() => {
+    const searchCount = Array.isArray(searchResults) ? searchResults.length : 0;
+    if (searchCount > 0) {
+      return `Relationship rows are derived from the current graph canvas while node rows are filtered to ${searchCount} selected search result(s).`;
+    }
+    const graphNodeCount = (effectiveGraphData?.nodes || []).length;
+    return graphNodeCount > 0
+      ? `Relationship rows are derived from the current graph canvas (${graphNodeCount} visible node(s)).`
+      : 'Relationship rows are derived from the current graph canvas.';
+  }, [effectiveGraphData, searchResults]);
 
   const filterableHeaders = useMemo(() => {
     const headers = getHeaders(nodeRows);
@@ -401,20 +459,18 @@ const ReportsTab = ({ searchResults, graphData }) => {
 
   useEffect(() => {
     setVisibleColumns((previous) => {
-      const headers = getHeaders(nodeRows);
-      if (!headers.length) return {};
+      const headers = baseNodeHeaders.length ? baseNodeHeaders : getHeaders(nodeRows);
+      if (!headers.length) return previous;
 
-      const next = {};
+      const next = { ...previous };
       headers.forEach((header) => {
-        if (Object.prototype.hasOwnProperty.call(previous, header)) {
-          next[header] = previous[header];
-          return;
+        if (!Object.prototype.hasOwnProperty.call(next, header)) {
+          next[header] = DEFAULT_VISIBLE_COLUMNS.includes(header);
         }
-        next[header] = DEFAULT_VISIBLE_COLUMNS.includes(header);
       });
       return next;
     });
-  }, [nodeRows]);
+  }, [baseNodeHeaders, nodeRows]);
 
   const clearFilters = () => setFilters({});
 
@@ -427,7 +483,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
       return;
     }
     setActiveReport('search');
-    setVisibleColumns(buildPresetVisibility(getHeaders(processedResults), presetId));
+    setVisibleColumns(buildPresetVisibility(baseNodeHeaders, presetId));
   };
 
   const handleFilterChange = (header, value) => {
@@ -628,9 +684,14 @@ const ReportsTab = ({ searchResults, graphData }) => {
                   className="btn btn-sm"
                   onClick={() =>
                     downloadCsv(
-                      `relationships_${new Date().toISOString().split('T')[0]}.csv`,
-                      ['relationship_type', 'source', 'target', 'count'],
-                      filteredRelationshipRows
+                      `relationships_${relTypeFilter || 'all'}_${new Date().toISOString().split('T')[0]}.csv`,
+                      RELATIONSHIP_EXPORT_HEADERS,
+                      filteredRelationshipRows.map((row) => ({
+                        relationship_type: row.relationship_type,
+                        source: row.source,
+                        target: row.target,
+                        count: row.count,
+                      }))
                     )
                   }
                   style={{
@@ -652,8 +713,29 @@ const ReportsTab = ({ searchResults, graphData }) => {
             </div>
           </div>
 
+          {(graphLoading || graphError) && (
+            <div
+              style={{
+                marginBottom: 12,
+                padding: '10px 12px',
+                borderRadius: 8,
+                border: `1px solid ${graphError ? '#fecaca' : '#d9e2ec'}`,
+                background: graphError ? '#fef2f2' : '#f8fafc',
+                color: graphError ? '#991b1b' : '#52606d',
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              {graphLoading ? 'Loading graph data for reports...' : graphError}
+            </div>
+          )}
+
           {activeReport === 'relationships' ? (
             <>
+              <div style={{ fontSize: 12, color: '#52606d', marginBottom: 12 }}>
+                {relationshipScopeLabel}
+              </div>
+
               {relTypesSummary.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                   {relTypesSummary.map(({ type, count }) => (
@@ -973,7 +1055,11 @@ const ReportsTab = ({ searchResults, graphData }) => {
                     {activeReport === 'search'
                       ? Object.keys(filters).length > 0
                         ? 'No rows match the current filters.'
-                        : 'No report rows are available yet.'
+                        : graphLoading
+                          ? 'Loading report rows...'
+                          : graphError
+                            ? 'Report rows could not be loaded from the current graph.'
+                            : 'No report rows are available yet.'
                       : `No ${activeReport} rows are available.`}
                   </div>
                 ) : (

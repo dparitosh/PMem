@@ -15,6 +15,12 @@ from .recommendation_scope import cypher_scope_filter
 
 logger = logging.getLogger(__name__)
 
+def _is_business_name(value: str) -> bool:
+    text = str(value or '').strip()
+    if not text:
+        return False
+    return SequenceMatcher(None, text.lower(), 'id').ratio() < 1 and not text.lower().startswith('id')
+
 
 class ChangeImpactRecommender:
     """Analyse change impact across the PLM knowledge graph."""
@@ -42,6 +48,8 @@ class ChangeImpactRecommender:
             change_entity = self._find_change_entity_by_id(str(node_id), scope=scope)
         if not change_entity and change_name:
             change_entity = self._find_change_entity(change_name, scope=scope)
+        if not change_entity and change_name:
+            change_entity = self._find_part_as_change_proxy(change_name, scope=scope)
         if not change_entity and part_name:
             if node_id:
                 change_entity = self._find_part_by_id(str(node_id), scope=scope)
@@ -103,12 +111,10 @@ class ChangeImpactRecommender:
         scope_clause, scope_params = cypher_scope_filter("cr", scope)
         rows = self._graph.query(
             """
-            MATCH (cr:Individual)
+            MATCH (cr)
             WHERE elementId(cr) = $node_id
-              AND cr.sourceTag IN ['ChangeNotice', 'ChangeNoticeRevision',
-                                   'ChangeRequestRevision', 'ChangeRequest']
             """ + scope_clause + """
-            RETURN cr.name AS name, cr.sourceTag AS source_tag,
+            RETURN cr.name AS name, head(labels(cr)) AS source_tag,
                    cr.revision AS revision, elementId(cr) AS eid
             LIMIT 1
             """,
@@ -125,11 +131,11 @@ class ChangeImpactRecommender:
         scope_clause, scope_params = cypher_scope_filter("p", scope)
         rows = self._graph.query(
             """
-            MATCH (p:Individual)
+            MATCH (p)
             WHERE elementId(p) = $node_id
             """ + scope_clause + """
             OPTIONAL MATCH (p)-[:INSTANCE_OF]->(cls:OntologyClass)
-            RETURN p.name AS name, p.sourceTag AS source_tag,
+            RETURN p.name AS name, coalesce(cls.name, head(labels(p))) AS source_tag,
                    p.revision AS revision, elementId(p) AS eid,
                    cls.name AS class_name
             LIMIT 1
@@ -145,12 +151,10 @@ class ChangeImpactRecommender:
         scope_clause, scope_params = cypher_scope_filter("cr", scope)
         rows = self._graph.query(
             """
-            MATCH (cr:Individual)
-            WHERE cr.sourceTag IN ['ChangeNotice', 'ChangeNoticeRevision',
-                                   'ChangeRequestRevision', 'ChangeRequest']
-              AND toLower(cr.name) CONTAINS toLower($name)
+            MATCH (cr)
+            WHERE toLower(cr.name) CONTAINS toLower($name)
             """ + scope_clause + """
-            RETURN cr.name AS name, cr.sourceTag AS source_tag,
+            RETURN cr.name AS name, head(labels(cr)) AS source_tag,
                    cr.revision AS revision, elementId(cr) AS eid
             LIMIT 5
             """,
@@ -167,11 +171,11 @@ class ChangeImpactRecommender:
         scope_clause, scope_params = cypher_scope_filter("p", scope)
         rows = self._graph.query(
             """
-            MATCH (p:Individual)
+            MATCH (p)
             WHERE toLower(p.name) CONTAINS toLower($name)
             """ + scope_clause + """
             OPTIONAL MATCH (p)-[:INSTANCE_OF]->(cls:OntologyClass)
-            RETURN p.name AS name, p.sourceTag AS source_tag,
+            RETURN p.name AS name, coalesce(cls.name, head(labels(p))) AS source_tag,
                    p.revision AS revision, elementId(p) AS eid,
                    cls.name AS class_name
             LIMIT 5
@@ -188,14 +192,14 @@ class ChangeImpactRecommender:
         """Find parts impacted via GeneralRelation."""
         rows = self._graph.query(
             """
-            MATCH (cr:Individual) WHERE elementId(cr) = $eid
-            OPTIONAL MATCH (gr:Individual)-[:source]->(cr)
+            MATCH (cr) WHERE elementId(cr) = $eid
+            OPTIONAL MATCH (gr)-[:source]->(cr)
             WHERE gr.traceSubType IN ['CMHasImpactedItem', 'CMHasProblemItem', 'CMHasSolutionItem']
-            OPTIONAL MATCH (gr)-[:target]->(impacted:Individual)
+            OPTIONAL MATCH (gr)-[:target]->(impacted)
             -[:INSTANCE_OF]->(cls:OntologyClass)
             WHERE impacted <> cr
             RETURN DISTINCT impacted.name AS name,
-                   impacted.sourceTag AS source_tag,
+                   head(labels(impacted)) AS source_tag,
                    gr.traceSubType AS relation_type,
                    cls.name AS class_name,
                    elementId(impacted) AS eid
@@ -205,14 +209,14 @@ class ChangeImpactRecommender:
         # Also try reverse direction (change entity as target)
         rows2 = self._graph.query(
             """
-            MATCH (cr:Individual) WHERE elementId(cr) = $eid
-            OPTIONAL MATCH (gr:Individual)-[:target]->(cr)
+            MATCH (cr) WHERE elementId(cr) = $eid
+            OPTIONAL MATCH (gr)-[:target]->(cr)
             WHERE gr.traceSubType IN ['CMHasImpactedItem', 'CMHasProblemItem', 'CMHasSolutionItem']
-            OPTIONAL MATCH (gr)-[:source]->(impacted:Individual)
+            OPTIONAL MATCH (gr)-[:source]->(impacted)
             -[:INSTANCE_OF]->(cls:OntologyClass)
             WHERE impacted <> cr
             RETURN DISTINCT impacted.name AS name,
-                   impacted.sourceTag AS source_tag,
+                   head(labels(impacted)) AS source_tag,
                    gr.traceSubType AS relation_type,
                    cls.name AS class_name,
                    elementId(impacted) AS eid
@@ -222,7 +226,7 @@ class ChangeImpactRecommender:
         seen = set()
         parts = []
         for r in rows + rows2:
-            if r.get("name") and r["eid"] not in seen:
+            if r.get("name") and _is_business_name(r.get("name")) and r["eid"] not in seen:
                 seen.add(r["eid"])
                 parts.append({
                     "name": r["name"],
@@ -238,27 +242,13 @@ class ChangeImpactRecommender:
         if not impacted_parts:
             return []
         eids = [p["elementId"] for p in impacted_parts]
-        # Strategy 1: via PLMXMLFile → ProductInstance → hasChildInstance
-        rows = self._graph.query(
-            """
-            UNWIND $eids AS eid
-            MATCH (part:Individual) WHERE elementId(part) = eid
-            OPTIONAL MATCH (file:Individual)-[:contains]->(part)
-            OPTIONAL MATCH (file)-[:contains]->(pi:Individual)
-                     -[:INSTANCE_OF]->(:OntologyClass {name: 'ProductInstance'})
-            OPTIONAL MATCH path = (pi)<-[:hasChildInstance*1..4]-(ancestor:Individual)
-            RETURN DISTINCT part.name AS part_name,
-                   ancestor.name AS assembly_name,
-                   length(path) AS depth
-            """,
-            params={"eids": eids},
-        )
+        rows = []
         # Strategy 2: direct hasChildInstance from entity (for ProductInstances)
         rows2 = self._graph.query(
             """
             UNWIND $eids AS eid
-            MATCH (part:Individual) WHERE elementId(part) = eid
-            OPTIONAL MATCH path = (part)<-[:hasChildInstance*1..4]-(ancestor:Individual)
+            MATCH (part) WHERE elementId(part) = eid
+            OPTIONAL MATCH path = (part)<-[:hasChildInstance*1..4]-(ancestor)
             RETURN DISTINCT part.name AS part_name,
                    ancestor.name AS assembly_name,
                    length(path) AS depth
@@ -266,20 +256,7 @@ class ChangeImpactRecommender:
             params={"eids": eids},
         )
         # Strategy 3: PLMXMLFile siblings (all entities in same file)
-        rows3 = self._graph.query(
-            """
-            UNWIND $eids AS eid
-            MATCH (part:Individual) WHERE elementId(part) = eid
-            MATCH (file:Individual)-[:contains]->(part)
-            MATCH (file)-[:contains]->(sib:Individual)
-            WHERE sib <> part AND sib.name IS NOT NULL
-            RETURN DISTINCT part.name AS part_name,
-                   sib.name AS assembly_name,
-                   1 AS depth
-            LIMIT 100
-            """,
-            params={"eids": eids},
-        )
+        rows3 = []
         assemblies = []
         seen = set()
         for r in rows + rows2 + rows3:
@@ -301,10 +278,10 @@ class ChangeImpactRecommender:
         rows = self._graph.query(
             """
             UNWIND $eids AS eid
-            MATCH (part:Individual) WHERE elementId(part) = eid
-            OPTIONAL MATCH (gr:Individual)-[:target]->(part)
+            MATCH (part) WHERE elementId(part) = eid
+            OPTIONAL MATCH (gr)-[:target]->(part)
             WHERE gr.traceSubType IN ['Seg0Satisfy', 'FND_TraceLink']
-            OPTIONAL MATCH (gr)-[:source]->(req:Individual)
+            OPTIONAL MATCH (gr)-[:source]->(req)
                      -[:INSTANCE_OF]->(:OntologyClass {name: 'Requirement'})
             RETURN DISTINCT req.name AS name,
                    req.catalogueId AS catalogue_id,
@@ -331,38 +308,12 @@ class ChangeImpactRecommender:
         if not impacted_parts:
             return []
         eids = [p["elementId"] for p in impacted_parts]
-        # Strategy 1: Process nodes in same file
-        rows = self._graph.query(
-            """
-            UNWIND $eids AS eid
-            MATCH (part:Individual) WHERE elementId(part) = eid
-            MATCH (file:Individual)-[:contains]->(part)
-            MATCH (file)-[:contains]->(proc:Individual)
-                  -[:INSTANCE_OF]->(:OntologyClass {name: 'Process'})
-            RETURN DISTINCT proc.name AS name,
-                   proc.sourceTag AS source_tag,
-                   part.name AS from_part
-            """,
-            params={"eids": eids},
-        )
-        # Strategy 2: ProcessInstance nodes in same file
-        rows2 = self._graph.query(
-            """
-            UNWIND $eids AS eid
-            MATCH (part:Individual) WHERE elementId(part) = eid
-            MATCH (file:Individual)-[:contains]->(part)
-            MATCH (file)-[:contains]->(proc:Individual)
-                  -[:INSTANCE_OF]->(:OntologyClass {name: 'ProcessInstance'})
-            RETURN DISTINCT proc.name AS name,
-                   proc.sourceTag AS source_tag,
-                   part.name AS from_part
-            """,
-            params={"eids": eids},
-        )
+        rows = []
+        rows2 = []
         seen = set()
         results = []
         for r in rows + rows2:
-            if r.get("name") and r["name"] not in seen:
+            if r.get("name") and _is_business_name(r.get("name")) and r["name"] not in seen:
                 seen.add(r["name"])
                 results.append({"name": r["name"], "source_tag": r.get("source_tag"), "from_part": r.get("from_part")})
         return results
@@ -376,11 +327,11 @@ class ChangeImpactRecommender:
         rows = self._graph.query(
             """
             UNWIND $eids AS eid
-            MATCH (part:Individual) WHERE elementId(part) = eid
-            OPTIONAL MATCH (part)-[r:realizes|tracesTo|linkedTo|allocates]-(connected:Individual)
+            MATCH (part) WHERE elementId(part) = eid
+            OPTIONAL MATCH (part)-[r:FND_TRACELINK|RELATEDREFS|SEG0SATISFY|MASTERREF|MASTER_REF|PART_REF|PARTREF|PRODUCT_REF|REVISIONREF|INSTANCEDREF]-(connected)
             RETURN DISTINCT connected.name AS name,
                    type(r) AS link_type,
-                   connected.sourceTag AS source_tag,
+                   head(labels(connected)) AS source_tag,
                    part.name AS from_part
             """,
             params={"eids": eids},
@@ -389,13 +340,13 @@ class ChangeImpactRecommender:
         rows2 = self._graph.query(
             """
             UNWIND $eids AS eid
-            MATCH (part:Individual) WHERE elementId(part) = eid
-            MATCH (part)-[r]-(connected:Individual)
-            WHERE NOT type(r) IN ['contains', 'INSTANCE_OF']
+            MATCH (part) WHERE elementId(part) = eid
+            MATCH (part)-[r]-(connected)
+            WHERE NOT type(r) IN ['INSTANCE_OF']
               AND connected.name IS NOT NULL
             RETURN DISTINCT connected.name AS name,
                    type(r) AS link_type,
-                   connected.sourceTag AS source_tag,
+                   head(labels(connected)) AS source_tag,
                    part.name AS from_part
             LIMIT 50
             """,
@@ -404,7 +355,7 @@ class ChangeImpactRecommender:
         seen = set()
         results = []
         for r in rows + rows2:
-            if r.get("name") and r["name"] not in seen:
+            if r.get("name") and _is_business_name(r.get("name")) and r["name"] not in seen:
                 seen.add(r["name"])
                 results.append({
                     "name": r["name"], "link_type": r.get("link_type"),

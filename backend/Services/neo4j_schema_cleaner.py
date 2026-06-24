@@ -370,6 +370,8 @@ class Neo4jSchemaCleaner:
     def delete_nodes_by_prefix(
         self,
         prefix: str,
+        property_name: str | None = None,
+        property_value: Any | None = None,
         batch_size: int = 10000,
     ) -> Dict[str, Any]:
         """Delete nodes whose ontology_prefix or prefix matches the supplied value."""
@@ -383,7 +385,13 @@ class Neo4jSchemaCleaner:
             raise ValueError("Prefix must be 100 characters or fewer.")
         batch_size = _safe_batch_size(batch_size)
         params = {"prefix": prefix}
-        filter_clause = "WHERE coalesce(n.ontology_prefix, n.prefix) = $prefix"
+        has_property_filter = bool(property_name)
+        property_clause = ""
+        if has_property_filter:
+            property_name = _safe_identifier(property_name or "", "property")
+            property_clause = f" AND n.`{property_name}` = $property_value"
+            params["property_value"] = property_value
+        filter_clause = f"WHERE coalesce(n.ontology_prefix, n.prefix) = $prefix{property_clause}"
         count_query = f"MATCH (n) {filter_clause} RETURN count(n) AS count"
         delete_query = f"""
         MATCH (n)
@@ -406,6 +414,8 @@ class Neo4jSchemaCleaner:
                     "status": "SUCCESS",
                     "message": f"Deleted {deleted} nodes with prefix {prefix}",
                     "prefix": prefix,
+                    "property": property_name if has_property_filter else "",
+                    "property_value": property_value if has_property_filter else None,
                     "batch_size": batch_size,
                     "matched_before": before_count,
                     "matched_after": after_count,
@@ -417,10 +427,16 @@ class Neo4jSchemaCleaner:
                 "status": "FAIL",
                 "message": str(e),
                 "prefix": prefix,
+                "property": property_name if has_property_filter else "",
                 "deleted_nodes": 0,
             }
 
-    def count_nodes_by_prefix(self, prefix: str) -> Dict[str, Any]:
+    def count_nodes_by_prefix(
+        self,
+        prefix: str,
+        property_name: str | None = None,
+        property_value: Any | None = None,
+    ) -> Dict[str, Any]:
         """Preview nodes whose ontology_prefix or prefix matches the supplied value."""
         if not self.driver:
             return {"status": "FAIL", "message": "No database connection", "matched_nodes": 0}
@@ -432,7 +448,13 @@ class Neo4jSchemaCleaner:
             raise ValueError("Prefix must be 100 characters or fewer.")
 
         params = {"prefix": prefix}
-        filter_clause = "WHERE coalesce(n.ontology_prefix, n.prefix) = $prefix"
+        has_property_filter = bool(property_name)
+        property_clause = ""
+        if has_property_filter:
+            property_name = _safe_identifier(property_name or "", "property")
+            property_clause = f" AND n.`{property_name}` = $property_value"
+            params["property_value"] = property_value
+        filter_clause = f"WHERE coalesce(n.ontology_prefix, n.prefix) = $prefix{property_clause}"
         count_query = f"MATCH (n) {filter_clause} RETURN count(n) AS count"
         try:
             with self.driver.session(database=self.database) as session:
@@ -442,6 +464,8 @@ class Neo4jSchemaCleaner:
                     "status": "SUCCESS",
                     "message": f"Matched {matched} nodes with prefix {prefix}",
                     "prefix": prefix,
+                    "property": property_name if has_property_filter else "",
+                    "property_value": property_value if has_property_filter else None,
                     "matched_nodes": matched,
                 }
         except Exception as e:
@@ -450,6 +474,7 @@ class Neo4jSchemaCleaner:
                 "status": "FAIL",
                 "message": str(e),
                 "prefix": prefix,
+                "property": property_name if has_property_filter else "",
                 "matched_nodes": 0,
             }
     

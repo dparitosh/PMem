@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   Database,
-  GitFork,
   Globe,
   Loader2,
   MessageSquare,

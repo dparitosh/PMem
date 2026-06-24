@@ -1,4 +1,4 @@
-import { normalizeGraphDataset } from './graphNormalization';
+import { normalizeGraphDataset } from '../utils/graphUtils';
 
 test('normalizeGraphDataset preserves top-level can_traverse from graph responses', () => {
   const payload = {

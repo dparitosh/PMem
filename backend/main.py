@@ -3140,25 +3140,84 @@ def recommendations_health():
             WHERE NOT raw:OntologyClass
               AND NOT raw:ObjectProperty
               AND NOT raw:DatatypeProperty
+            WITH individual_count, count(raw) AS raw_graph_count
+            OPTIONAL MATCH (biz)
+            WHERE NOT biz:OntologyClass
+              AND NOT biz:ObjectProperty
+              AND NOT biz:DatatypeProperty
+              AND coalesce(biz.name, biz.title, biz.code, biz.part_number, biz.requirement_id, '') <> ''
+              AND NOT toLower(coalesce(biz.name, '')) STARTS WITH 'id'
+            WITH individual_count, raw_graph_count, count(biz) AS business_object_count
+            OPTIONAL MATCH (proc)
+            WHERE NOT proc:OntologyClass
+              AND NOT proc:ObjectProperty
+              AND NOT proc:DatatypeProperty
+              AND NOT proc:GeneralRelation
+              AND NOT proc:ProductInstance
+              AND NOT proc:ProductView
+              AND NOT proc:UserData
+              AND NOT proc:Transform
+              AND NOT proc:AttributeContext
+              AND coalesce(proc.name, proc.title, proc.code, '') <> ''
+              AND NOT toLower(coalesce(proc.name, '')) STARTS WITH 'id'
+              AND (
+                toLower(coalesce(proc.name, proc.title, proc.code, '')) CONTAINS 'process' OR
+                toLower(coalesce(proc.name, proc.title, proc.code, '')) CONTAINS 'operation' OR
+                toLower(coalesce(proc.name, proc.title, proc.code, '')) CONTAINS 'activity' OR
+                toLower(coalesce(proc.name, proc.title, proc.code, '')) CONTAINS 'service' OR
+                toLower(coalesce(proc.name, proc.title, proc.code, '')) CONTAINS 'validate' OR
+                toLower(coalesce(proc.name, proc.title, proc.code, '')) CONTAINS 'monitor' OR
+                toLower(coalesce(proc.name, proc.title, proc.code, '')) CONTAINS 'prepare'
+              )
             RETURN individual_count,
-                   count(raw) AS raw_graph_count
+                   raw_graph_count,
+                   business_object_count,
+                   count(proc) AS process_context_count
         """)
         model_count_row = model_counts[0] if model_counts else {}
         individual_count = int(model_count_row.get("individual_count") or 0)
         raw_graph_count = int(model_count_row.get("raw_graph_count") or 0)
+        business_object_count = int(model_count_row.get("business_object_count") or 0)
+        process_context_count = int(model_count_row.get("process_context_count") or 0)
+        has_business_graph = individual_count > 0 or business_object_count > 0
+        service_readiness = {
+            "change-impact": {
+                "ready": has_business_graph,
+                "message": "Change impact can traverse the current business graph." if has_business_graph else "Load business objects or normalized instances first.",
+            },
+            "similar-parts": {
+                "ready": has_business_graph,
+                "message": "Similar-part recommendations can compare the current business graph." if has_business_graph else "Load business objects or normalized instances first.",
+            },
+            "manufacturing": {
+                "ready": has_business_graph and process_context_count > 0,
+                "message": (
+                    "Manufacturing guidance can use process-like business context from the current graph."
+                    if has_business_graph and process_context_count > 0
+                    else "Manufacturing guidance needs process-like business objects or operational traceability in the loaded graph."
+                ),
+            },
+        }
         return {
             "status": "ok",
             "services": ["change-impact", "similar-parts", "manufacturing"],
             "neo4j_counts": {r["class_name"]: r["cnt"] for r in counts},
             "readiness": {
-                "scenario_ready": individual_count > 0,
+                "scenario_ready": has_business_graph,
                 "individual_count": individual_count,
                 "raw_graph_count": raw_graph_count,
+                "business_object_count": business_object_count,
+                "process_context_count": process_context_count,
+                "service_readiness": service_readiness,
                 "required_model": "Individual nodes linked to OntologyClass with business names",
                 "message": (
-                    "Recommendation scenarios are ready."
+                    "Recommendation scenarios are ready on normalized instances."
                     if individual_count > 0
-                    else "Recommendation scenarios need normalized instance data before they can return business results."
+                    else (
+                        "Recommendation scenarios can run on current business objects, but the graph is not fully normalized into ontology-linked instances yet."
+                        if business_object_count > 0
+                        else "Recommendation scenarios need normalized instance data before they can return business results."
+                    )
                 ),
             },
             "ontology_scopes": (registered.get("ontologies", []) if isinstance(registered, dict) else []),

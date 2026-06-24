@@ -82,6 +82,15 @@ Still open after 2026-06-20 WS-02 audit:
 1. No open `IM-*` item remains in the current import workflow clarification set; remaining work is broader cross-page architecture and backend standardization.
 2. Backend task/progress semantics still need more standardization than this UI-side workflow clarification patch provides, but the frontend state machine is now materially safer for long-running imports, ontology selection workflows, and file-intent routing.
 
+
+## Audit update - 2026-06-21
+
+Closed in current branch audit:
+
+1. `AD-02` Prefix cleanup now supports optional property/value filters, so targeted deletion by ontology scope and import/job metadata is possible without falling back to raw Cypher.
+2. `AD-03` Admin preview and execute now use one shared scope model, which keeps previewed and destructive cleanup parameters aligned.
+3. Validation passed with `python -m py_compile backend/Services/neo4j_schema_cleaner.py backend/routes/admin_routes.py`, `pytest backend/tests/test_neo4j_fixes.py -q`, and `npm run build` (one unrelated ESLint warning remains in `GraphExplorerToolbar.js`).
+
 ## Fix order
 
 1. Graph Explorer search and expand/collapse correctness.
@@ -161,8 +170,8 @@ Suggested execution rule:
 
 | ID | Page | Bug | Why it matters | Evidence | Priority | Status | Closure test |
 |---|---|---|---|---|---|---|---|
-| RC-01 | Recommendations | Result renderers can return `null` for valid backend responses. | The user sees blank success states. | `RecommendationsTab.js:309-359`, `1170-1266` | P0 | Open | Every successful API response produces visible content. |
-| RC-02 | Recommendations | Health/readiness defaults are permissive when the backend payload is incomplete. | The user can run a scenario that is not ready. | `RecommendationsTab.js:414-416` | P1 | Open | Missing health data shows “unavailable,” not “ready.” |
+| RC-01 | Recommendations | Result renderers can return `null` for valid backend responses. | The user sees blank success states. | `RecommendationsTab.js:347-380`, `1200-1331` | P0 | Fixed | Successful but sparse recommendation responses now render an explicit empty-state card instead of disappearing. |
+| RC-02 | Recommendations | Health/readiness defaults are permissive when the backend payload is incomplete. | The user can run a scenario that is not ready. | `RecommendationsTab.js:447-450` | P1 | Fixed | Missing or degraded readiness payloads now fail closed and show the service as unavailable instead of implicitly ready. |
 | RC-03 | Recommendations | Prefill event flow depends on `dt-rec-prefill` and a global window fallback. | The feature can look inconsistent across pages. | `RecommendationsTab.js:443-460` | P1 | Open | Graph tooltip actions and recommendation panel always sync. |
 | RC-04 | Recommendations | The scenario entry point is stateful but not strongly validated against input type. | Wrong inputs can still trigger service calls. | `RecommendationsTab.js:463-491` | P1 | Open | Input validation is explicit per scenario. |
 | RC-05 | Recommendations | Search/impact/manufacturing results use different internal shapes. | Consistent reporting and export become harder. | `RecommendationsTab.js:641-643` | P1 | Open | Result schema is normalized before render. |
@@ -171,17 +180,17 @@ Suggested execution rule:
 | ID | Page | Bug | Why it matters | Evidence | Priority | Status | Closure test |
 |---|---|---|---|---|---|---|---|
 | RP-01 | Reports | Report filtering assumed `row.type.split(',')[0]` was always valid. | Valid rows could disappear if type formatting differed. | `ReportsTab.js:170-224`, `285-318` | P0 | Fixed | Reports show all expected rows from the source dataset, including rows whose type comes from labels or fallback semantic fields. |
-| RP-02 | Reports | Column toggling stores `false` as the only hidden state. | A column can reappear unintentionally after repeated toggles. | `ReportsTab.js:349-353`, `785-786` | P1 | Open | Toggling a column on/off is stable across page changes. |
+| RP-02 | Reports | Column toggling stores `false` as the only hidden state. | A column can reappear unintentionally after repeated toggles. | `ReportsTab.js:303-304`, `415-428` | P1 | Fixed | Column visibility now persists across report-type switches because defaults are seeded from the full dataset header set instead of the current slice only. |
 | RP-03 | Reports | Pagination reset on every filter or report change without preserving user intent. | The table jumped around during review. | `ReportsTab.js:390-400`, `1038-1075` | P1 | Fixed | Filters and sorting keep the user on the current page unless the filtered result set no longer has that page. |
-| RP-04 | Reports | Relationship rows are built from graph edges, not necessarily from the same semantic scope as the search report. | Users can compare incompatible datasets in one panel. | `ReportsTab.js:141-177`, `517-585` | P1 | Open | Relationship reports clearly state their source scope. |
-| RP-05 | Reports | Search report export and relationship export are handled through separate paths with different row shapes. | Export consistency is fragile. | `ReportsTab.js:467-493`, `949-951` | P1 | Open | Export output schema matches what the user sees. |
+| RP-04 | Reports | Relationship rows are built from graph edges, not necessarily from the same semantic scope as the search report. | Users can compare incompatible datasets in one panel. | `ReportsTab.js:322-331`, `655-725` | P1 | Fixed | Relationship reports now explicitly state that they come from the current graph canvas and call out when node rows are filtered by search results. |
+| RP-05 | Reports | Search report export and relationship export are handled through separate paths with different row shapes. | Export consistency is fragile. | `ReportsTab.js:637-650`, `1078-1086` | P1 | Fixed | Relationship export now uses a normalized row schema and filenames aligned to the current filter scope, matching the visible table columns. |
 | RP-06 | Reports | Dynamic type tabs are derived from the current processed results only. | Tabs can vanish when the filter changes. | `ReportsTab.js:213-223`, `442-453` | P2 | Open | Tabs remain stable for the current dataset. |
 
 | ID | Page | Bug | Why it matters | Evidence | Priority | Status | Closure test |
 |---|---|---|---|---|---|---|---|
 | AD-01 | Admin | Bulk delete requires either label or prefix, but the UX makes the destructive scope easy to misread. | A cleanup action can delete too much data. | `AdminPanel.js:177-192`, `388-418` | P0 | Open | Cleanup actions require an explicit scope preview and confirmation. |
-| AD-02 | Admin | Prefix deletes forbid property/value filters. | The user cannot do targeted prefix-based cleanup. | `AdminPanel.js:183-192` | P1 | Open | Prefix cleanup supports safe filtering rules or is clearly scoped. |
-| AD-03 | Admin | Preview state and destructive action state are separate and can diverge. | The user may preview one scope and execute another. | `AdminPanel.js:233-280`, `382-405` | P0 | Open | Preview and delete use the same exact query parameters. |
+| AD-02 | Admin | Prefix deletes forbid property/value filters. | The user cannot do targeted prefix-based cleanup. | `AdminPanel.js:201-293`, `admin_routes.py:617-654`, `neo4j_schema_cleaner.py:370-450` | P1 | Fixed | Prefix cleanup now supports the same optional property/value scope in both preview and delete paths. |
+| AD-03 | Admin | Preview state and destructive action state are separate and can diverge. | The user may preview one scope and execute another. | `AdminPanel.js:200-293` | P0 | Fixed | Preview and delete now use one shared scope builder and send the same query parameters to the backend. |
 | AD-04 | Admin | Schema cleanup bundles nodes, relationships, metadata, indexes, and constraints into one irreversible action. | Recovery becomes hard and risky. | `AdminPanel.js:116-139` | P0 | Open | The UI clearly separates reset, purge, and targeted cleanup. |
 | AD-05 | Admin | Registry state is read only, but the page still implies broader system control. | Operators may expect configuration edits that are not present. | `AdminPage.js:164-167` | P2 | Open | Read-only scope is explicit and stable. |
 | AD-06 | Admin | Cleanup messages do not distinguish between graph data and ontology storage. | Users cannot tell what was actually deleted. | `AdminPanel.js:126-129`, `156-170` | P1 | Open | Deletion feedback splits graph, metadata, and file store outcomes. |
@@ -193,6 +202,25 @@ Suggested execution rule:
 | WU-03 | Where Used | Search results and hierarchy rows are displayed as separate grids without a direct link between them. | Users cannot intuitively move from result to context. | `WhereUsedView.js:352-489` | P1 | Patched | Search results and hierarchy rows now use the same focus action and update the hierarchy around the chosen node. |
 | WU-04 | Where Used | The selected node can be expanded upward, but search and expansion are not tied to the same selection model. | Second-click expansion can feel inconsistent. | `WhereUsedView.js:314-320`, `479-489` | P1 | Patched | Search selection and hierarchy focus now share one node-selection path. |
 | WU-05 | Where Used | Ancestor-level counts are calculated from reconstructed links rather than a stable graph model. | The displayed depth can drift from the real traversal. | `WhereUsedView.js:256-289` | P2 | Patched | Ancestor depth is now derived from the traversed parent-link set produced during expansion. |
+
+
+## Audit update - 2026-06-21 (Recommendations)
+
+Closed in current branch audit:
+
+1. `RC-01` Recommendation results now render explicit empty-state cards for sparse-but-successful payloads instead of silently returning `null` from D3 helper sections.
+2. `RC-02` Recommendation readiness now fails closed when the health payload is missing or degraded, so the page no longer treats incomplete health data as implicitly ready.
+3. Validation passed with `npm run build`; one unrelated ESLint warning remains for unused `GitFork` in `GraphExplorerToolbar.js`.
+
+
+## Audit update - 2026-06-21 (Reports)
+
+Closed in current branch audit:
+
+1. `RP-02` Column visibility now persists across report-type switches because the visibility map is seeded from the full processed dataset, not rebuilt from the current slice alone.
+2. `RP-04` Relationship reports now state their scope explicitly so users can see that link rows come from the current graph canvas while node rows may reflect a narrower search subset.
+3. `RP-05` Relationship CSV export now uses one normalized row schema and a scope-aware filename instead of drifting from the visible table structure.
+4. Validation passed with `npm run build`; one unrelated ESLint warning remains for unused `GitFork` in `GraphExplorerToolbar.js`.
 
 ## Closure checklist
 

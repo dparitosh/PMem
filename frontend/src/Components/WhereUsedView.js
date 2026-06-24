@@ -1,10 +1,11 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import '../App.css';
 import { API, buildUrl, replaceParams } from '../config';
 import { apiClient } from '../services/apiClient';
 import { useSchema } from '../SchemaContext';
 import DataGridWidget from '../widgets/DataGridWidget';
 import logger from '../utils/logger';
+import { normalizeGraphDataset as normalizeGraphDatasetShared } from '../utils/graphUtils';
 
 // ──── DEVELOPER CONFIG: Node Display Label ────────────────────────────────
 //
@@ -185,8 +186,39 @@ const WhereUsedView = ({
     const [autoExpanded, setAutoExpanded] = useState(false);
     const [expansionError, setExpansionError] = useState(null);
     const [levels, setLevels] = useState([]); // Array of arrays: ancestors by distance
+    const [fallbackGraphData, setFallbackGraphData] = useState({ nodes: [], links: [] });
+    const [graphLoading, setGraphLoading] = useState(false);
+    const [graphError, setGraphError] = useState('');
     // Schema-driven display
     const { getDisplayName: schemaDisplayName } = useSchema() || {};
+
+    const effectiveGraphData = useMemo(() => {
+        const hasPrimaryGraph = (data?.nodes || []).length > 0 || (data?.links || []).length > 0;
+        return hasPrimaryGraph ? data : fallbackGraphData;
+    }, [data, fallbackGraphData]);
+
+    useEffect(() => {
+        const hasPrimaryGraph = (data?.nodes || []).length > 0 || (data?.links || []).length > 0;
+        if (hasPrimaryGraph || (fallbackGraphData.nodes || []).length > 0) return undefined;
+
+        let cancelled = false;
+        const loadGraph = async () => {
+            setGraphLoading(true);
+            setGraphError('');
+            try {
+                const response = await apiClient.get(buildUrl(API.graph.graphView), { params: { limit: 5000 } });
+                const normalized = normalizeGraphDatasetShared(response.data);
+                if (!cancelled) setFallbackGraphData(normalized);
+            } catch (error) {
+                if (!cancelled) setGraphError(error?.response?.data?.detail || error.message || 'Failed to load graph data for Where Used.');
+            } finally {
+                if (!cancelled) setGraphLoading(false);
+            }
+        };
+
+        loadGraph();
+        return () => { cancelled = true; };
+    }, [data, fallbackGraphData.nodes]);
     
     // Unified search using same backend logic as GraphHEB (POST /graphfilter)
     const handleSearch = async () => {
@@ -214,9 +246,20 @@ const WhereUsedView = ({
                 .sort((a, b) => b.score - a.score)
                 .map(({ node }) => node);
 
-            setHierarchySearchResults(nodes);
-            if (nodes.length > 0) {
-                handleNodeSelect(nodes[0]);
+            const localFallbackNodes = (effectiveGraphData?.nodes || [])
+                .map((node) => ({ node, score: scoreNodeMatch(node, term) }))
+                .filter(({ score }) => score > 0)
+                .sort((a, b) => b.score - a.score)
+                .map(({ node }) => node);
+
+            const finalNodes = nodes.length > 0 ? nodes : localFallbackNodes;
+            if (nodes.length === 0 && localFallbackNodes.length > 0) {
+                setSearchError('Server search returned no ranked matches. Showing local graph matches.');
+            }
+
+            setHierarchySearchResults(finalNodes);
+            if (finalNodes.length > 0) {
+                handleNodeSelect(finalNodes[0]);
             } else {
                 setSelectedNode(null);
                 setTreeData(null);
@@ -225,7 +268,7 @@ const WhereUsedView = ({
         } catch (err) {
             logger.search('Search error (server):', err);
             try {
-                const fallbackNodes = (data?.nodes || [])
+                const fallbackNodes = (effectiveGraphData?.nodes || [])
                     .map((node) => ({ node, score: scoreNodeMatch(node, term) }))
                     .filter(({ score }) => score > 0)
                     .sort((a, b) => b.score - a.score)
@@ -513,8 +556,17 @@ const WhereUsedView = ({
         },
     ], [handleNodeSelect, selectedNode]);
 
+    const totalSearchableNodes = (effectiveGraphData?.nodes || []).length;
+
     return (
         <div style={{ padding: '14px 18px', boxSizing: 'border-box', overflow: 'hidden', display:'flex', flexDirection:'column', flex:1, minHeight:0, background: WU.bg }}>
+            <div style={{ ...panelStyle, marginBottom: 12, padding: '10px 12px' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: WU.text, marginBottom: 4 }}>Business object where-used analysis</div>
+                <div style={{ fontSize: 12, color: WU.muted, lineHeight: 1.5 }}>Search for a part, requirement, instance, or named business object. We rank matches, select the best one, then build its upward usage chain from the graph.</div>
+                <div style={{ marginTop: 8, fontSize: 11, color: graphError ? WU.error : WU.subtle, fontWeight: 600 }}>
+                    {graphLoading ? 'Loading graph context...' : graphError ? graphError : `${totalSearchableNodes} business-object candidates are available for local fallback search.`}
+                </div>
+            </div>
             <div style={{ ...panelStyle, marginBottom: 12 }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 1fr) auto', gap: 10, alignItems: 'end' }}>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>

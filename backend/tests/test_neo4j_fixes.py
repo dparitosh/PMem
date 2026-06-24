@@ -503,6 +503,79 @@ async def test_admin_delete_data_accepts_prefix_mode():
 
 
 @pytest.mark.asyncio
+async def test_admin_delete_data_accepts_prefix_property_filters():
+    """Admin route should allow scoped prefix deletes with property filters."""
+    from routes.admin_routes import DeleteDataRequest, delete_data_by_label
+
+    with patch('routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
+        with patch('routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
+            mock_cleaner = MagicMock()
+            mock_cleaner.delete_nodes_by_prefix.return_value = {
+                "status": "SUCCESS",
+                "deleted_nodes": 3,
+                "matched_before": 3,
+                "matched_after": 0,
+                "prefix": "ap239domain",
+                "property": "import_id",
+                "property_value": "job-7",
+            }
+            mock_cleaner_class.return_value = mock_cleaner
+
+            response = await delete_data_by_label(DeleteDataRequest(
+                prefix="ap239domain",
+                property="import_id",
+                value="job-7",
+                batch_size=5000,
+                confirm="DELETE_NEO4J_DATA",
+            ))
+
+            mock_cleaner.delete_nodes_by_prefix.assert_called_once_with(
+                prefix="ap239domain",
+                property_name="import_id",
+                property_value="job-7",
+                batch_size=5000,
+            )
+            assert response["success"] is True
+            assert response["deleted_nodes"] == 3
+
+
+@pytest.mark.asyncio
+async def test_admin_delete_data_prefix_dry_run_accepts_property_filters():
+    """Admin dry-run should preview the same scoped prefix query used by delete."""
+    from routes.admin_routes import DeleteDataRequest, delete_data_by_label
+
+    with patch('routes.admin_routes.Neo4jSchemaCleaner') as mock_cleaner_class:
+        with patch('routes.admin_routes.SCHEMA_CLEANER_AVAILABLE', True):
+            mock_cleaner = MagicMock()
+            mock_cleaner.count_nodes_by_prefix.return_value = {
+                "status": "SUCCESS",
+                "matched_nodes": 7,
+                "prefix": "ap239domain",
+                "property": "import_id",
+                "property_value": "job-7",
+            }
+            mock_cleaner_class.return_value = mock_cleaner
+
+            response = await delete_data_by_label(DeleteDataRequest(
+                prefix="ap239domain",
+                property="import_id",
+                value="job-7",
+                batch_size=10000,
+                dry_run=True,
+                confirm="DELETE_NEO4J_DATA",
+            ))
+
+            mock_cleaner.count_nodes_by_prefix.assert_called_once_with(
+                prefix="ap239domain",
+                property_name="import_id",
+                property_value="job-7",
+            )
+            mock_cleaner.delete_nodes_by_prefix.assert_not_called()
+            assert response["success"] is True
+            assert response["matched_nodes"] == 7
+
+
+@pytest.mark.asyncio
 async def test_admin_delete_data_dry_run_does_not_delete():
     """Admin dry-run should call preview count and skip the destructive delete method."""
     from routes.admin_routes import DeleteDataRequest, delete_data_by_label

@@ -22,7 +22,7 @@ export const OntologyProvider = ({ children }) => {
     try {
       setError(null);
       const res = await API_METHODS.ontology.listRegistered();
-      const ontologyList = (res.data?.ontologies || []).map(o => ({
+      const ontologyList = (res?.data?.ontologies || []).map(o => ({
         value: o.ontology_id || o.id || o.prefix || o.value || o.name,
         label: o.ontology_name || o.name || o.label || o.ontology_id || o.prefix || o.id,
         prefix: o.prefix || o.ontology_prefix || o.ontology_id || o.id,

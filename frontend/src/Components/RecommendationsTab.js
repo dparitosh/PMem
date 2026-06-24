@@ -152,6 +152,19 @@ const SectionHeader = ({ icon: Icon, label, count, color = C.primary }) => (
   </div>
 );
 
+const ResultEmptyState = ({
+  icon: Icon = Info,
+  title = 'No result details available',
+  message = 'The service returned successfully, but there is no structured recommendation content to display yet.',
+  color = C.textSec,
+}) => (
+  <div style={{ ...CARD, textAlign: 'center', padding: '30px' }}>
+    <Icon size={24} color={color} style={{ display: 'block', margin: '0 auto 10px' }} />
+    <div style={{ fontWeight: 700, color: C.textPrimary, marginBottom: '6px' }}>{title}</div>
+    <div style={{ color: C.textSec, lineHeight: 1.6 }}>{message}</div>
+  </div>
+);
+
 // Check / blank cell indicator
 const CheckCell = ({ value }) => value
   ? <CheckCircle size={14} color={C.green} strokeWidth={2.5} />
@@ -198,7 +211,7 @@ const ResultTabBar = ({ tabs, active, onChange }) => (
 // ============================================================
 // Welcome / Scenario Panel — shown when no service is selected
 // ============================================================
-const ScenarioPanel = ({ onSelect }) => {
+const ScenarioPanel = ({ onSelect, health }) => {
   const scenarios = [
     {
       id: 'change-impact',
@@ -227,10 +240,10 @@ const ScenarioPanel = ({ onSelect }) => {
       Icon: Factory,
       color: C.green,
       lightColor: C.greenLight,
-      title: 'Manufacturing Process',
-      tagline: 'List direct, related, and instance-level manufacturing steps.',
-      scenario: `A process planner needs to document all manufacturing steps for the Motor Cover before submitting the production order. Instead of manually cross-referencing PLM files, the AI traverses direct process links, process instance chains, and related assembly processes to deliver a complete process picture for human review.`,
-      tryWith: 'Motor Cover Machined',
+      title: 'Process Context',
+      tagline: 'Use process-like and operational graph context around a business object.',
+      scenario: `A process planner needs to document the operational and manufacturing context around the Motor Cover before submitting the production order. The AI looks for direct process links, traceability-connected activities, and neighboring operational objects so the user can review a grounded context instead of a blind graph dump.`,
+      tryWith: 'Sugarplant Requirement Specification',
       tryLabel: 'Use sample',
     },
   ];
@@ -367,7 +380,16 @@ const AIInsightBanner = ({ service, data }) => {
     };
   }
 
-  if (!insight) return null;
+  if (!insight) {
+    insight = {
+      color: C.primary,
+      bg: C.primaryLight,
+      Icon: Info,
+      headline: 'Analysis completed',
+      chips: [],
+      cta: data?.message || 'The recommendation service returned a response, but there is no structured summary for this result yet.',
+    };
+  }
   const { color, bg, Icon, headline, chips, cta } = insight;
   return (
     <div style={{
@@ -422,10 +444,11 @@ const RecommendationsTab = () => {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
-  const recommendationReady = health?.readiness?.scenario_ready !== false;
-  const readinessMessage = health?.readiness?.message || (
-    healthLoading ? 'Checking recommendation readiness...' : ''
+  const recommendationReady = health?.status === 'ok' && health?.readiness?.scenario_ready === true;
+  const readinessMessage = health?.readiness?.message || health?.error || (
+    healthLoading ? 'Checking recommendation readiness...' : 'Recommendation readiness is unavailable.'
   );
+  const activeServiceReadiness = activeService ? health?.readiness?.service_readiness?.[activeService] : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -502,7 +525,7 @@ const RecommendationsTab = () => {
   const services = [
     { id: 'change-impact',  Icon: Zap,     label: 'Change Impact',        color: C.orange  },
     { id: 'similar-parts',  Icon: Search,  label: 'Similar Parts',        color: C.primary },
-    { id: 'manufacturing',  Icon: Factory, label: 'Manufacturing Process', color: C.green   },
+    { id: 'manufacturing',  Icon: Factory, label: 'Process Context', color: C.green   },
   ];
   return (
     <div style={{ padding: '20px', minHeight: '100%', overflowX: 'hidden', background: C.bg, boxSizing: 'border-box' }}>
@@ -548,13 +571,14 @@ const RecommendationsTab = () => {
           <AlertTriangle size={10} color={C.amber} strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 800, color: C.textPrimary, marginBottom: 2 }}>
-              Recommendation scenarios need instance data
+              Recommendation graph readiness
             </div>
             <div style={{ fontSize: 11, lineHeight: 1.35, color: C.textSec }}>
               {readinessMessage}
               {health?.readiness && (
                 <span>
                   {' '}Current graph: {health.readiness.individual_count || 0} normalized instances,
+                  {' '}{health.readiness.business_object_count || 0} business objects,
                   {' '}{health.readiness.raw_graph_count || 0} raw graph nodes.
                 </span>
               )}
@@ -564,11 +588,19 @@ const RecommendationsTab = () => {
       )}
 
       {/* Welcome scenario panel — shown when no service chosen */}
-      {!activeService && <ScenarioPanel onSelect={handleSelect} />}
+      {!activeService && <ScenarioPanel onSelect={handleSelect} health={health} />}
 
       {/* Input area */}
       {activeService && (
         <div style={{ ...CARD, padding: '14px 16px' }}>
+          {activeServiceReadiness && activeServiceReadiness.ready === false && (
+            <div style={{ ...COMPACT_ALERT, background: C.amberLight, marginBottom: 12 }}>
+              <AlertTriangle size={10} color={C.amber} strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
+              <div style={{ minWidth: 0, fontSize: 11, lineHeight: 1.35, color: C.textSec }}>
+                {activeServiceReadiness.message}
+              </div>
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1.2fr) minmax(240px, 0.8fr) auto', gap: 12, alignItems: 'end' }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
               <span style={FIELD_LABEL}>
@@ -1175,10 +1207,28 @@ const RadialImpactGraph = ({ data }) => {
 
   }, [data]);
 
-  if (!data?.change_entity) return null;
+  if (!data?.change_entity) {
+    return (
+      <ResultEmptyState
+        icon={Target}
+        title="No radial impact view available"
+        message={data?.message || 'The change-impact response did not include a structured change entity for radial visualization.'}
+        color={C.orange}
+      />
+    );
+  }
   const hasAnyData = (data.impacted_parts?.length || data.assembly_impact?.length ||
     data.impacted_requirements?.length || data.process_impacts?.length || data.realization_chain?.length);
-  if (!hasAnyData) return null;
+  if (!hasAnyData) {
+    return (
+      <ResultEmptyState
+        icon={Target}
+        title="No radial impact view available"
+        message="The change-impact response loaded successfully, but there are no impacted nodes to visualize in the radial view."
+        color={C.orange}
+      />
+    );
+  }
 
   return (
     <div style={{ ...CARD, padding: '12px' }}>
@@ -1272,9 +1322,27 @@ const ProcessFlowTimeline = ({ data }) => {
     });
   }, [data]);
 
-  if (!data?.part) return null;
+  if (!data?.part) {
+    return (
+      <ResultEmptyState
+        icon={BarChart2}
+        title="No process timeline available"
+        message={data?.message || 'The manufacturing response did not include a structured part for timeline rendering.'}
+        color={C.green}
+      />
+    );
+  }
   const hasAny = data.direct_processes?.length || data.process_instances?.length || data.related_part_processes?.length;
-  if (!hasAny) return null;
+  if (!hasAny) {
+    return (
+      <ResultEmptyState
+        icon={BarChart2}
+        title="No process timeline available"
+        message="The manufacturing response loaded successfully, but there are no direct, instance, or related processes to draw in the timeline."
+        color={C.green}
+      />
+    );
+  }
 
   return (
     <div style={{ ...CARD, padding: '12px' }}>

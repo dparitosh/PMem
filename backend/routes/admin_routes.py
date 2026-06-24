@@ -618,8 +618,6 @@ async def delete_data_by_label(body: DeleteDataRequest):
         raise HTTPException(status_code=400, detail="Provide either label or prefix.")
     if body.label and body.prefix:
         raise HTTPException(status_code=400, detail="Use either label or prefix, not both.")
-    if body.prefix and (body.property or body.value is not None):
-        raise HTTPException(status_code=400, detail="Property filters are only supported with label deletes.")
     if body.property and body.value is None:
         raise HTTPException(status_code=400, detail="Property value is required when property is provided.")
     if not body.property and body.value is not None:
@@ -629,7 +627,11 @@ async def delete_data_by_label(body: DeleteDataRequest):
     try:
         cleaner = Neo4jSchemaCleaner()
         if body.dry_run and body.prefix:
-            result = cleaner.count_nodes_by_prefix(prefix=body.prefix)
+            kwargs = {"prefix": body.prefix}
+            if body.property:
+                kwargs["property_name"] = body.property
+                kwargs["property_value"] = body.value
+            result = cleaner.count_nodes_by_prefix(**kwargs)
         elif body.dry_run:
             result = cleaner.count_nodes_by_label_property(
                 label=body.label or "",
@@ -637,10 +639,14 @@ async def delete_data_by_label(body: DeleteDataRequest):
                 property_value=body.value,
             )
         elif body.prefix:
-            result = cleaner.delete_nodes_by_prefix(
-                prefix=body.prefix,
-                batch_size=body.batch_size,
-            )
+            kwargs = {
+                "prefix": body.prefix,
+                "batch_size": body.batch_size,
+            }
+            if body.property:
+                kwargs["property_name"] = body.property
+                kwargs["property_value"] = body.value
+            result = cleaner.delete_nodes_by_prefix(**kwargs)
         else:
             result = cleaner.delete_nodes_by_label_property(
                 label=body.label or "",

@@ -197,35 +197,54 @@ export default function AdminPanel({ onSchemaCleaned }) {
       setLoading(false);
     }
   }, [fetchOntologies, loadAdminState]);
-
-  const deleteDataByLabel = useCallback(async () => {
+  const buildDeleteScope = useCallback(() => {
     const label = deleteLabel.trim();
     const prefix = deletePrefix.trim();
     const property = deleteProperty.trim();
     const value = deleteValue;
     const batchSize = Number(deleteBatchSize) || 10000;
+
     if (!label && !prefix) {
-      setError('Enter a Neo4j label or ontology prefix to delete.');
-      return;
+      return { error: 'Enter a Neo4j label or ontology prefix.' };
     }
     if (label && prefix) {
-      setError('Use either label or prefix, not both.');
-      return;
-    }
-    if (prefix && (property || value !== '')) {
-      setError('Prefix delete does not use property filters. Clear property and value first.');
-      return;
+      return { error: 'Use either label or prefix, not both.' };
     }
     if ((property && value === '') || (!property && value !== '')) {
-      setError('Enter both property and value, or leave both empty.');
+      return { error: 'Enter both property and value, or leave both empty.' };
+    }
+
+    const target = prefix
+      ? property
+        ? `prefix ${prefix} where ${property} = "${value}"`
+        : `prefix ${prefix}`
+      : property
+        ? `label ${label} where ${property} = "${value}"`
+        : `label ${label}`;
+
+    return {
+      request: {
+        label,
+        prefix,
+        property,
+        value,
+        batchSize,
+      },
+      target,
+      batchSize,
+    };
+  }, [deleteBatchSize, deleteLabel, deletePrefix, deleteProperty, deleteValue]);
+
+
+  const deleteDataByLabel = useCallback(async () => {
+    const scope = buildDeleteScope();
+    if (scope.error) {
+      setError(scope.error);
       return;
     }
 
-    const filterText = prefix
-      ? `nodes where ontology_prefix/prefix = "${prefix}"`
-      : property ? `:${label} where ${property} = "${value}"` : `all :${label} nodes`;
     const ok = window.confirm(
-      `Delete ${filterText} in batches of ${batchSize}? This cannot be undone.`
+      `Delete ${scope.target} in batches of ${scope.batchSize}? This cannot be undone.`
     );
     if (!ok) return;
 
@@ -233,17 +252,10 @@ export default function AdminPanel({ onSchemaCleaned }) {
     setMessage('');
     setError('');
     try {
-      const result = await API_METHODS.admin.deleteData({
-        label,
-        prefix,
-        property,
-        value,
-        batchSize,
-      });
+      const result = await API_METHODS.admin.deleteData(scope.request);
       const deleted = result?.data?.deleted_nodes ?? 0;
       const matched = result?.data?.matched_before ?? deleted;
-      const target = prefix ? `prefix ${prefix}` : label;
-      setMessage(`Deleted ${deleted} of ${matched} matched ${target} node(s) using batched transactions.`);
+      setMessage(`Deleted ${deleted} of ${matched} matched ${scope.target} node(s) using batched transactions.`);
       setDeletePreview(null);
       await loadAdminState();
     } catch (err) {
@@ -252,28 +264,12 @@ export default function AdminPanel({ onSchemaCleaned }) {
     } finally {
       setLoading(false);
     }
-  }, [deleteBatchSize, deleteLabel, deletePrefix, deleteProperty, deleteValue, loadAdminState]);
+  }, [buildDeleteScope, loadAdminState]);
 
   const previewDeleteData = useCallback(async () => {
-    const label = deleteLabel.trim();
-    const prefix = deletePrefix.trim();
-    const property = deleteProperty.trim();
-    const value = deleteValue;
-    const batchSize = Number(deleteBatchSize) || 10000;
-    if (!label && !prefix) {
-      setError('Enter a Neo4j label or ontology prefix to preview.');
-      return;
-    }
-    if (label && prefix) {
-      setError('Use either label or prefix, not both.');
-      return;
-    }
-    if (prefix && (property || value !== '')) {
-      setError('Prefix preview does not use property filters. Clear property and value first.');
-      return;
-    }
-    if ((property && value === '') || (!property && value !== '')) {
-      setError('Enter both property and value, or leave both empty.');
+    const scope = buildDeleteScope();
+    if (scope.error) {
+      setError(scope.error);
       return;
     }
 
@@ -282,26 +278,19 @@ export default function AdminPanel({ onSchemaCleaned }) {
     setError('');
     try {
       const result = await API_METHODS.admin.deleteData({
-        label,
-        prefix,
-        property,
-        value,
-        batchSize,
+        ...scope.request,
         dryRun: true,
       });
       const matched = result?.data?.matched_nodes ?? 0;
-      const target = prefix
-        ? `prefix ${prefix}`
-        : property ? `label ${label} where ${property} = "${value}"` : `label ${label}`;
-      setDeletePreview({ matched, target, batchSize });
-      setMessage(`Preview matched ${matched} node(s) for ${target}. No data was deleted.`);
+      setDeletePreview({ matched, target: scope.target, batchSize: scope.batchSize });
+      setMessage(`Preview matched ${matched} node(s) for ${scope.target}. No data was deleted.`);
     } catch (err) {
       const detail = err?.response?.data?.detail || err?.message || 'Delete preview failed.';
       setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
     } finally {
       setLoading(false);
     }
-  }, [deleteBatchSize, deleteLabel, deletePrefix, deleteProperty, deleteValue]);
+  }, [buildDeleteScope]);
 
   const statusText = useMemo(() => {
     if (loading) return 'Refreshing';
@@ -386,7 +375,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
               <input
                 value={deleteValue}
                 onChange={(event) => setDeleteValue(event.target.value)}
-                placeholder="optional"
+                placeholder="required when property is set"
                 style={{ border: `1px solid ${colors.border}`, borderRadius: 4, padding: '5px 6px', fontSize: 12 }}
               />
             </label>
@@ -425,7 +414,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
               style={buttonStyle}
             >
               <RefreshCw size={10} />
-              Preview Count
+              Preview Scope
             </button>
             <button
               type="button"
@@ -434,7 +423,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
               style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}
             >
               <Trash2 size={10} />
-              Delete Matching Nodes
+              Delete Scoped Nodes
             </button>
             <button type="button" onClick={deleteOldXsdSchemas} disabled={loading} style={buttonStyle}>
               <Trash2 size={10} />
