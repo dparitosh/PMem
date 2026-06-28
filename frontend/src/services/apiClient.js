@@ -221,6 +221,9 @@ export const ontologyAPI = {
       ...(options || {}),
     }),
   cleanupOldXsd: (body) => apiClient.post(buildUrl(API.ontology.cleanupOldXsd), body),
+  exportUrl: (ontologyId, format = 'ttl') => `${buildUrl(replaceParams(API.ontology.exportRegistered, { ontology: ontologyId }))}?format=${encodeURIComponent(format)}`,
+  exportRegistered: (ontologyId, format = 'ttl') =>
+    apiClient.get(buildUrl(replaceParams(API.ontology.exportRegistered, { ontology: ontologyId })), { params: { format }, responseType: 'blob' }),
   extract3dxml: (file, metadata = {}) => {
     const formData = new FormData();
     formData.append('file', file);

@@ -4,6 +4,7 @@ import {
   Database,
   FileCode2,
   GitMerge,
+  FileText,
   Link2,
   ShieldCheck,
   Tags,
@@ -53,6 +54,11 @@ export const supportedFormats = [
   { ext: '.xml', name: 'XML' },
   { ext: '.xsd', name: 'XSD' },
   { ext: '.exp', name: 'EXPRESS' },
+  { ext: '.pdf', name: 'PDF' },
+  { ext: '.doc', name: 'Word' },
+  { ext: '.docx', name: 'Word' },
+  { ext: '.ppt', name: 'PowerPoint' },
+  { ext: '.pptx', name: 'PowerPoint' },
 ];
 
 export const workflowCatalog = [
@@ -86,6 +92,22 @@ export const workflowCatalog = [
     icon: FileCode2,
     stages: ['Upload schema file', 'Read namespace and prefix', 'Generate ontology preview', 'Review and register ontology'],
     writes_to_neo4j: false,
+    retains_artifacts: true,
+  },
+  {
+    id: 'document.unstructured',
+    label: 'Unstructured document pipeline',
+    title: 'Unstructured document pipeline',
+    category: 'AI Ingestion',
+    description: 'Extract text, chunks, embeddings, and graph-search context from PDFs, Word documents, and PowerPoint decks.',
+    inputs: 'PDF, Word, PowerPoint',
+    outputs: ['Document chunks', 'Embedding index', 'GraphRAG retrieval context'],
+    status: 'available',
+    execution: 'Document upload',
+    prerequisite: 'Choose one or more documents',
+    icon: FileText,
+    stages: ['Upload documents', 'Extract content', 'Chunk and embed', 'Index for GraphRAG'],
+    writes_to_neo4j: true,
     retains_artifacts: true,
   },
   {
@@ -232,7 +254,7 @@ export const getWorkflowDisplayName = (workflowId) => {
 };
 
 export const isImportWorkflow = (workflowId) =>
-  workflowId === 'instance.import' || workflowId === 'ontology.create';
+  workflowId === 'instance.import' || workflowId === 'ontology.create' || workflowId === 'document.unstructured';
 
 export const getFileExtension = (fileName) =>
   `.${String(fileName || '').split('.').pop().toLowerCase()}`;
@@ -250,12 +272,14 @@ export const inferFileTypeFromExtension = (fileName) => {
   if (['.xmi', '.mdxml'].includes(ext)) return 'xmi';
   if (['.xsd'].includes(ext)) return 'xsd';
   if (['.exp'].includes(ext)) return 'express';
+  if (['.pdf', '.doc', '.docx', '.ppt', '.pptx'].includes(ext)) return 'document';
   return '';
 };
 
 export const recommendWorkflowForFile = (fileName) => {
   const fileType = inferFileTypeFromExtension(fileName);
   if (['ontology', 'xsd', 'xmi', 'express'].includes(fileType)) return 'ontology.create';
+  if (fileType === 'document') return 'document.unstructured';
   return 'instance.import';
 };
 
@@ -266,7 +290,14 @@ export const buildWorkflowStages = (workflow) =>
   (workflow?.stages || []).map((stage, idx) => ({
     id: toWorkflowStageId(workflow.id, stage, idx),
     label: stage,
-    description: workflow.id === 'instance.import'
+    description: workflow.id === 'document.unstructured'
+      ? [
+          'Attach one or more unstructured documents.',
+          'Extract text and document structure.',
+          'Create chunks and embeddings for retrieval.',
+          'Index the document context for GraphRAG and Knowledge Companion.',
+        ][idx]
+      : workflow.id === 'instance.import'
       ? [
           'Attach one or more source files for parsing.',
           'Parse the file and review detected entities, attributes, relationships, and metadata.',
@@ -292,7 +323,14 @@ export const buildWorkflowStages = (workflow) =>
             : idx === (workflow.stages.length - 1)
               ? workflow.outputs.join(', ')
               : workflow.description,
-    backendIds: workflow.id === 'instance.import'
+    backendIds: workflow.id === 'document.unstructured'
+      ? [
+          ['upload'],
+          ['extract', 'parse'],
+          ['chunk', 'embed'],
+          ['index', 'verify'],
+        ][idx] || []
+      : workflow.id === 'instance.import'
       ? [
           ['upload', 'detect'],
           ['parse', 'convert', 'preview'],

@@ -267,6 +267,8 @@ class OWLGenerationService:
                 schema_dir=str(tmp_dir),
                 output_ttl=str(tmp_out),
             )
+            cfg.source_ns = target_namespace
+            cfg.source_standard = target_namespace or "XML Schema"
             result_path = convert_xsd_to_owl(cfg)
             ttl_str, report = _read_and_validate(result_path)
             metadata = {

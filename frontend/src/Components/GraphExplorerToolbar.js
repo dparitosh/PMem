@@ -267,9 +267,9 @@ function GraphExplorerToolbar({
               title={ontologyError ? ontologyError : 'Select an ontology'}
             >
               <option value="ALL" style={{ color: '#333', fontWeight: 600 }}>Overview Graph (all loaded data)</option>
-              {ontologyOptions.filter((option) => option.value !== 'ALL' && !option.disabled).map((option, index) => (
+              {ontologyOptions.filter((option) => option.value !== 'ALL').map((option, index) => (
                 <option key={option.value || `ontology-opt-${index}`} value={option.value} style={{ color: '#333' }}>
-                  {option.prefix ? `[${option.prefix}] ` : ''}{option.label}{option.type ? ` · ${option.type}` : ''}{Number(option.relationship_count || 0) === 0 ? ' · classes only' : ''}
+                  {option.prefix ? `[${option.prefix}] ` : ''}{option.label}{option.type ? ` · ${option.type}` : ''}{option.graph_available === false ? ' · registered only' : Number(option.relationship_count || 0) === 0 ? ' · classes only' : ''}
                 </option>
               ))}
             </select>

@@ -13,6 +13,7 @@ import re
 from collections import defaultdict
 from difflib import SequenceMatcher
 
+from .recommendation_semantics import pick_semantic_source
 from .recommendation_scope import cypher_scope_filter
 
 logger = logging.getLogger(__name__)
@@ -107,7 +108,8 @@ class ManufacturingProcessRecommender:
             """ + scope_clause + """
             OPTIONAL MATCH (p)-[:INSTANCE_OF]->(cls:OntologyClass)
             RETURN p.name AS name, coalesce(cls.name, head(labels(p))) AS source_tag,
-                   elementId(p) AS eid, cls.name AS class_name
+                   elementId(p) AS eid, cls.name AS class_name, labels(p) AS labels,
+                   p.element_type AS element_type
             LIMIT 1
             """,
             params={"node_id": node_id, **scope_params},
@@ -131,14 +133,15 @@ class ManufacturingProcessRecommender:
             """ + scope_clause + """
             OPTIONAL MATCH (p)-[:INSTANCE_OF]->(cls:OntologyClass)
             RETURN p.name AS name, coalesce(cls.name, head(labels(p))) AS source_tag,
-                   elementId(p) AS eid, cls.name AS class_name
-            LIMIT 5
+                   elementId(p) AS eid, cls.name AS class_name, labels(p) AS labels,
+                   p.element_type AS element_type
+            LIMIT 25
             """,
             params={"name": name, **scope_params},
         )
         if not rows:
             return None
-        best = max(rows, key=lambda r: SequenceMatcher(None, name.lower(), (r["name"] or "").lower()).ratio())
+        best = pick_semantic_source(name, rows, prefer="part")
         return best
 
     def _find_direct_processes(self, source: dict) -> list[dict]:

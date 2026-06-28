@@ -360,6 +360,43 @@ END_SCHEMA;
     assert "GeometricDimension" in ttl
 
 
+def test_ap242_bom_is_found_under_repo_style_business_object_models(monkeypatch, tmp_path):
+    """AP242 domain integration should discover bom.xsd/bom.exp in repo-style business_object_models folders."""
+    from backend.Services import owl_step_engine
+
+    repo_like_root = tmp_path / "repo_like_root"
+    smrl_dir = repo_like_root / "data" / "business_object_models" / "managed_model_based_3d_engineering"
+    smrl_dir.mkdir(parents=True)
+    (smrl_dir / "bom.xsd").write_text(
+        """<?xml version="1.0"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            targetNamespace="http://standards.iso.org/iso/ts/10303/-3001/-ed-2/tech/xml-schema/bo_model"
+            version="2016-03-30"/>
+""",
+        encoding="utf-8",
+    )
+    (smrl_dir / "bom.exp").write_text(
+        """SCHEMA managed_model_based_3d_engineering_bom;
+ENTITY ShapeAspect;
+  name : STRING;
+END_ENTITY;
+END_SCHEMA;
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(owl_step_engine, "_configured_domain_model_path", lambda _default: repo_like_root)
+
+    ttl = owl_step_engine._integrate_domain_models(
+        "http://example.org/step#",
+        "step",
+        "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING",
+    )
+
+    assert "bom.exp" in ttl
+    assert "ShapeAspect" in ttl
+
+
 def test_xsd_to_owl_generates_rich_semantics():
     """XSD conversion should emit classes, properties, subclassing, and cardinality."""
     from backend.Services.owl_generation_service import OWLGenerationService
@@ -498,3 +535,84 @@ if __name__ == "__main__":
     else:
         print(f"\n✗ {total - passed} test(s) failed.")
         sys.exit(1)
+
+
+def test_step_parser_preserves_ap242_compound_entity_types(tmp_path):
+    """AP242 compound Part 21 instances should retain every top-level entity type."""
+    from backend.Services.step_parser import iter_part21_entities, parse_step_with_pmi
+
+    step = """ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF'));
+ENDSEC;
+DATA;
+#1 = PRODUCT('P-200','Compound Demo','Demo part',());
+#2 = (REPRESENTATION_ITEM('axis') GEOMETRIC_REPRESENTATION_ITEM() CARTESIAN_POINT('axis origin',(0.0,0.0,0.0)));
+#3 = (GEOMETRIC_TOLERANCE('GT-1','Position tolerance','compound tolerance',#2,#1) SHAPE_ASPECT_RELATIONSHIP('rel','',#1,#2));
+ENDSEC;
+END-ISO-10303-21;
+"""
+    path = tmp_path / "compound_ap242.stp"
+    path.write_text(step, encoding="utf-8")
+
+    entities = list(iter_part21_entities(path))
+    compound_geometry = next(entity for entity in entities if entity.step_id == 2)
+    compound_tolerance = next(entity for entity in entities if entity.step_id == 3)
+
+    assert compound_geometry.entity_type == "REPRESENTATION_ITEM"
+    assert compound_geometry.compound_entity_types == [
+        "REPRESENTATION_ITEM",
+        "GEOMETRIC_REPRESENTATION_ITEM",
+        "CARTESIAN_POINT",
+    ]
+    assert "GEOMETRIC_TOLERANCE" in compound_tolerance.compound_entity_types
+
+    doc = parse_step_with_pmi(path)
+    assert any(item.id == 2 for item in doc.cad_representations)
+    assert any(item.id == 3 for item in doc.geometric_tolerances)
+
+    from backend.Services.unified_data_import import FileParser
+    rows, stats = FileParser._parse_step(path.read_bytes())
+    row_by_id = {row["id"]: row for row in rows}
+    assert row_by_id["#2"]["compound_entity_types"] == compound_geometry.compound_entity_types
+    assert stats["entity_types"]["REPRESENTATION_ITEM"] == 1
+
+
+def test_step_to_ttl_types_compound_entities_with_all_ap242_classes(tmp_path):
+    """Generated OWL/RDF should not collapse AP242 compound entities to only the first type."""
+    from rdflib import Graph, Namespace
+    from rdflib.namespace import RDF
+    from backend.Services.owl_step_engine import convert_step_to_ttl
+
+    step = """ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF'));
+ENDSEC;
+DATA;
+#2 = (REPRESENTATION_ITEM('axis') GEOMETRIC_REPRESENTATION_ITEM() CARTESIAN_POINT('axis origin',(0.0,0.0,0.0)));
+ENDSEC;
+END-ISO-10303-21;
+"""
+    path = tmp_path / "compound_export.stp"
+    path.write_text(step, encoding="utf-8")
+
+    ttl_path = tmp_path / "compound_export.ttl"
+    metadata = convert_step_to_ttl(
+        file_path=path,
+        output_path=ttl_path,
+        base_uri="http://example.com/ap242/compound#",
+        namespace_prefix="cmp",
+        include_pmi=True,
+        validate_against_domain=False,
+        copy_reference_ontology=False,
+    )
+    graph = Graph().parse(str(ttl_path), format="turtle")
+    inst = Namespace("http://example.com/ap242/compound#")
+    ap242 = Namespace("http://www.step-nc.org/ap242#")
+
+    assert metadata["success"] is True
+    assert (inst.entity_2, RDF.type, ap242.REPRESENTATION_ITEM) in graph
+    assert (inst.entity_2, RDF.type, ap242.GEOMETRIC_REPRESENTATION_ITEM) in graph
+    assert (inst.entity_2, RDF.type, ap242.CARTESIAN_POINT) in graph
+
+

@@ -33,6 +33,18 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
         "retains_artifacts": True,
     },
     {
+        "id": "document.unstructured",
+        "label": "Unstructured document pipeline",
+        "category": "AI Ingestion",
+        "execution_surface": "upload",
+        "inputs": "PDF, Word, PowerPoint",
+        "outputs": "Document chunks, embedding index, GraphRAG retrieval context",
+        "status": "existing_upload_pipeline",
+        "execution": "Document upload",
+        "prerequisite": "Choose one or more documents",
+        "writes_to_neo4j": True,
+        "retains_artifacts": True,
+    },    {
         "id": "instance.link",
         "label": "Link instances to ontology",
         "category": "Mapping",

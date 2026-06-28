@@ -1577,9 +1577,10 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     const dedupedMatches = matches.filter((node, index, array) => (
       array.findIndex((entry) => entry.elementId === node.elementId) === index
     ));
-    const bestMatchId = (
+    const preferredMatchId = findPreferredContextualRootId(dedupedMatches, query);
+    const bestMatchId = preferredMatchId || (
       await selectRichContextualRootId(dedupedMatches, query, requestId)
-    ) || findPreferredContextualRootId(dedupedMatches, query) || dedupedMatches[0]?.elementId || null;
+    ) || dedupedMatches[0]?.elementId || null;
 
     if (!bestMatchId) {
       setContextualSearchResults([]);
@@ -1593,18 +1594,37 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     }
 
     setContextualSearchResults([]);
+    const matchIds = new Set(dedupedMatches.map((node) => node.elementId).filter(Boolean));
     const searchCatalog = {
       nodes: dedupedMatches,
-      links: sourceGraph?.links || [],
+      links: (sourceGraph?.links || []).filter((link) => {
+        const sourceId = getLinkEndpointId(link?.source);
+        const targetId = getLinkEndpointId(link?.target);
+        return matchIds.has(sourceId) && matchIds.has(targetId);
+      }),
     };
     searchResultDataRef.current = searchCatalog;
     setSearchResultData(searchCatalog);
     setContextualRootNodeId(bestMatchId);
 
-    // In contextual mode, even "many" should still anchor to one selected root.
-    // Broader mode influences candidate matching, not a graph dump onto the canvas.
+    if (searchResultMode === 'broader' && dedupedMatches.length > 1) {
+      setHighlightedNodeIds(new Set(matchIds));
+      commitGraphSlice(searchCatalog, {
+        updateFilteredData: true,
+        updateGraphData: false,
+        updateFullDataset: false,
+        updateSearchResultData: true,
+        nextActiveSearchId: bestMatchId,
+        resetCenteredSearch: true,
+        syncResults: true,
+        forceSearchResults: true,
+      });
+      setSearchLoading(false);
+      return;
+    }
+
     await loadContextualRootGraph(bestMatchId, { preserveSearch: true });
-  }, [findPreferredContextualRootId, loadContextualRootGraph, selectRichContextualRootId]);
+  }, [commitGraphSlice, findPreferredContextualRootId, loadContextualRootGraph, searchResultMode, selectRichContextualRootId]);
 
   const resolveContextualEntryNodeId = useCallback((queryOverride = '') => {
     const queryTerm = normalizeSearchTerm(queryOverride || debouncedSearchQueryRef.current || searchInput || searchQuery);
@@ -1637,7 +1657,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
 
   const preferredOntologyValue = useMemo(() => {
     if (selectedOntology && selectedOntology !== 'ALL') return selectedOntology;
-    const candidates = (ontologyOptions || []).filter((option) => option?.value && option.value !== 'ALL' && !option.disabled);
+    const candidates = (ontologyOptions || []).filter((option) => option?.value && option.value !== 'ALL');
     const preferred = candidates.find((option) => Number(option.relationship_count || 0) > 0) || candidates[0];
     return preferred?.value || 'ALL';
   }, [ontologyOptions, selectedOntology]);
@@ -3866,7 +3886,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
         const validated = deduplicateNodesAndLinks(finalNodes, finalLinks);
         const existingNodeIds = new Set(validated.nodes.map(node => node.elementId));
-        const validatedLinks = validated.links.filter((link) => existingNodeIds.has(link.source) && existingNodeIds.has(link.target));
+        const validatedLinks = validated.links.filter((link) => existingNodeIds.has(getLinkEndpointId(link.source)) && existingNodeIds.has(getLinkEndpointId(link.target)));
         const newData = { nodes: validated.nodes, links: validatedLinks };
 
         // Batch all state updates for better performance

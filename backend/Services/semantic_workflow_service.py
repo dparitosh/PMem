@@ -18,6 +18,7 @@ from .ontology_reasoning_service import OntologyReasoningService
 from .ontology_upload_manager import OntologyUploadManager
 from .unified_data_import import UnifiedDataImportService
 from .workflow_artifact_service import WorkflowArtifactService
+from .oslc_trs_service import OSLCTRSService
 
 logger = logging.getLogger(__name__)
 
@@ -533,7 +534,13 @@ class SemanticWorkflowService:
                 value_id = str(value.get("element_id") or value.get("iri") or value.get("class_name") or "")
                 if value_id and value_id in existing_ids:
                     continue
-                existing_values.append({**value, "target_ontology_type": value.get("target_ontology_type") or "Class"})
+                existing_values.append({
+                    **value,
+                    "target_ontology_type": value.get("target_ontology_type") or "Class",
+                    "graph_linkable": True,
+                    "graph_element_id": value.get("element_id"),
+                    "target_ontology_iri": value.get("iri") or value.get("uri"),
+                })
         candidates: List[Dict[str, Any]] = []
         metadata_signals = cls._collect_manifest_signals(import_task or {})
 
@@ -548,23 +555,30 @@ class SemanticWorkflowService:
                 matches = term_lookup.get(signal["normalized"], [])
                 for match in matches:
                     target_type = match.get("target_ontology_type") or "Class"
+                    graph_element_id = match.get("graph_element_id") or (match.get("element_id") if match.get("graph_linkable") else "")
+                    target_iri = match.get("target_ontology_iri") or match.get("iri") or match.get("uri")
+                    if not target_iri and not graph_element_id:
+                        target_iri = match.get("element_id")
                     validation = cls._validate_candidate_pair(source_type, target_type, match, row)
                     if not validation["is_valid"]:
                         continue
                     score = cls._score_link_candidate(signal, match, row, source_type)
                     if score < cls.REVIEW_CONFIDENCE:
                         continue
-                    existing = scored_matches.get(match["element_id"])
+                    match_key = graph_element_id or target_iri or match["element_id"]
+                    existing = scored_matches.get(match_key)
                     if existing and existing["confidence"] >= score:
                         continue
-                    scored_matches[match["element_id"]] = {
+                    scored_matches[match_key] = {
                         "import_id": import_task_id,
                         "import_row_key": row_key,
                         "source_term": cls._candidate_display_value(row),
                         "source_type": source_type,
                         "ontology_term": match["class_name"],
-                        "ontology_class_element_id": match["element_id"],
+                        "ontology_class_element_id": graph_element_id,
+                        "target_ontology_iri": target_iri,
                         "target_ontology_type": target_type,
+                        "graph_linkable": bool(graph_element_id),
                         "mapping_type": "closeMatch" if score < cls.AUTO_APPLY_CONFIDENCE else "exactMatch",
                         "validation_status": validation["status"],
                         "validation_errors": validation["errors"],
@@ -585,12 +599,14 @@ class SemanticWorkflowService:
 
             ranked = sorted(
                 scored_matches.values(),
-                key=lambda item: (-item["confidence"], item["generic_match"], item["ontology_term"].lower()),
+                key=lambda item: (-item["confidence"], not item.get("graph_linkable"), item["generic_match"], item["ontology_term"].lower()),
             )
             best_confidence = ranked[0]["confidence"]
+            best_is_graph_linkable = bool(ranked[0].get("graph_linkable"))
             ambiguous_count = sum(
                 1 for item in ranked
                 if best_confidence - item["confidence"] <= cls.AMBIGUITY_DELTA
+                and bool(item.get("graph_linkable")) == best_is_graph_linkable
             )
 
             for idx, item in enumerate(ranked[:3]):
@@ -601,6 +617,7 @@ class SemanticWorkflowService:
                     and idx == 0
                     and not item["ambiguous"]
                     and not item["generic_match"]
+                    and item.get("graph_linkable")
                     and item["confidence"] >= cls.AUTO_APPLY_CONFIDENCE
                 )
                 item["validation_status"] = "auto_approved" if eligible_for_auto_apply else item.get("validation_status", "needs_review")
@@ -611,6 +628,7 @@ class SemanticWorkflowService:
 
     @classmethod
     def _apply_instance_links(cls, candidates: List[Dict[str, Any]]) -> int:
+        candidates = [candidate for candidate in (candidates or []) if candidate.get("ontology_class_element_id")]
         if not candidates:
             return 0
         try:
@@ -889,6 +907,15 @@ class SemanticWorkflowService:
         }
         WorkflowArtifactService.write_json(task_id, "reports", "merge_plan.json", report, "merge_plan")
         cls._write_ontology_graph_exports(task_id, source_id, target_id)
+        try:
+            OSLCTRSService.publish_event(
+                f"{OSLCTRSService.base_url()}/api/v1/ontology/{target_id}",
+                "Modification",
+                title=f"Ontology merge into {target_id}",
+                metadata={"workflow_id": "ontology.merge", "task_id": task_id, "source_ontology_id": source_id, "target_ontology_id": target_id},
+            )
+        except Exception as exc:
+            logger.warning("OSLC TRS publish skipped for ontology.merge: %s", exc)
         return {"task_id": task_id, "status": "completed", "result": report, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
 
     @classmethod
@@ -937,6 +964,15 @@ class SemanticWorkflowService:
         }
         WorkflowArtifactService.write_json(task_id, "reports", "link_candidates.json", report, "link_candidates")
         cls._write_bridge_mapping_exports(task_id, report)
+        try:
+            OSLCTRSService.publish_event(
+                f"{OSLCTRSService.base_url()}/api/v1/ontology/{ontology_id}",
+                "Modification",
+                title=f"Semantic bridge link update for {ontology_id}",
+                metadata={"workflow_id": "instance.link", "task_id": task_id, "ontology_id": ontology_id, "import_task_id": import_task_id, "applied_links": applied_links},
+            )
+        except Exception as exc:
+            logger.warning("OSLC TRS publish skipped for instance.link: %s", exc)
         return {"task_id": task_id, "status": "completed", "result": report, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
 
     @classmethod

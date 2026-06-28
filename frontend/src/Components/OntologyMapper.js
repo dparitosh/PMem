@@ -46,7 +46,64 @@ const TAXONOMY_MAX_ROOTS = 18;
 const TAXONOMY_MAX_CHILDREN = 12;
 const TAXONOMY_MAX_DEPTH = 3;
 const TAXONOMY_MAX_RENDERED_NODES = 220;
+const OWLREADY_TEMP_SEGMENT_RE = /^tmp[a-z0-9_]{6,}[.:](.+)$/i;
+const OWLREADY_TEMP_TOKEN_RE = /^tmp[a-z0-9_]{6,}$/i;
 
+function ontologyFragment(value = '') {
+  return String(value || '').trim().split(/[/#]/).pop() || '';
+}
+
+function stripOwlreadyTempSegment(value = '') {
+  const raw = String(value || '').trim();
+  const match = raw.match(OWLREADY_TEMP_SEGMENT_RE);
+  return match ? match[1] : raw;
+}
+
+function cleanOntologyPrefix(value = '', fallback = '') {
+  const raw = String(value || '').trim();
+  if (!raw || OWLREADY_TEMP_TOKEN_RE.test(raw)) return String(fallback || '').trim();
+  return stripOwlreadyTempSegment(raw);
+}
+
+function ontologyDisplayName(ref = {}) {
+  const raw = String(
+    ref?.label ||
+    ref?.name ||
+    ref?.local_name ||
+    ontologyFragment(ref?.iri || ref?.uri) ||
+    ontologyFragment(ref?.term_id || ref?.id) ||
+    ''
+  ).trim();
+  return stripOwlreadyTempSegment(raw);
+}
+
+function ontologyTermId(ref = {}, prefixHint = '') {
+  const prefix = cleanOntologyPrefix(ref?.ontology_prefix || ref?.prefix, prefixHint);
+  const uri = String(ref?.iri || ref?.uri || '').trim();
+  const rawTermId = String(ref?.term_id || ref?.id || '').trim();
+  const termLocal = rawTermId.includes(':') ? rawTermId.split(':').slice(1).join(':') : rawTermId;
+  const hasTempLocal = OWLREADY_TEMP_SEGMENT_RE.test(termLocal);
+  const local = ontologyDisplayName({
+    ...ref,
+    label: ref?.local_name || ref?.label || (uri ? ontologyFragment(uri) : stripOwlreadyTempSegment(termLocal)),
+  });
+
+  if (!hasTempLocal && rawTermId) return rawTermId;
+  if (prefix && local) return `${prefix}:${local}`;
+  return uri || local || rawTermId;
+}
+
+function normalizeOntologyBrowserNode(node = {}, prefixHint = '') {
+  const label = ontologyDisplayName(node);
+  const termId = ontologyTermId({ ...node, label }, prefixHint);
+  return {
+    ...node,
+    term_id: termId,
+    id: termId,
+    label,
+    ontology_prefix: cleanOntologyPrefix(node.ontology_prefix || node.prefix, prefixHint),
+  };
+}
 // ── CSV export ─────────────────────────────────────────────────────────────────
 function exportCSV(rows, headers, filename) {
   const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -341,18 +398,8 @@ function VocabularyTable({ edges, filter }) {
 
 function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
   const lc = filter.toLowerCase();
-  const termIdFromRef = useCallback((ref) => {
-    const iri = String(ref?.iri || ref?.uri || ref?.term_id || ref?.id || '').trim();
-    if (!iri) return '';
-    const prefix = String(ref?.ontology_prefix || taxonomy?.ontology_prefix || '').trim();
-    const local = String(ref?.label || iri.split(/[/#]/).pop() || iri).trim();
-    if (!ref?.term_id && /^tmp[a-z0-9_]{6,}$/i.test(local)) return '';
-    return ref?.term_id || (prefix ? `${prefix}:${local}` : iri);
-  }, [taxonomy]);
-  const refLabel = useCallback((ref) => {
-    const raw = String(ref?.label || ref?.name || ref?.term_id || ref?.iri || ref?.uri || '').split(/[/#]/).pop();
-    return /^tmp[a-z0-9_]{6,}$/i.test(raw) ? '' : raw;
-  }, []);
+  const termIdFromRef = useCallback((ref) => ontologyTermId(ref, taxonomy?.ontology_prefix || ''), [taxonomy]);
+  const refLabel = useCallback((ref) => ontologyDisplayName(ref), []);
 
   const reasoningClassNodes = useMemo(() => (reasoning?.classes || []).map((cls) => ({
     term_id: termIdFromRef(cls),
@@ -380,7 +427,9 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
     const rawNodes = taxonomy?.nodes?.length ? taxonomy.nodes : nodes;
     const merged = new Map();
     [...(rawNodes || []), ...reasoningClassNodes, ...reasoningPropertyNodes].forEach((node) => {
-      if (node?.term_id && !merged.has(node.term_id)) merged.set(node.term_id, node);
+      const normalizedNode = normalizeOntologyBrowserNode(node, taxonomy?.ontology_prefix || '');
+      const key = normalizedNode.uri || normalizedNode.term_id;
+      if (normalizedNode.term_id && !merged.has(key)) merged.set(key, normalizedNode);
     });
     return Array.from(merged.values());
   }, [nodes, reasoningClassNodes, reasoningPropertyNodes, taxonomy]);
@@ -755,19 +804,8 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
     whiteSpace: 'nowrap',
     lineHeight: '32px',
   }), []);
-  const termIdFromRef = useCallback((ref) => {
-    const iri = String(ref?.iri || ref?.uri || ref?.term_id || ref?.id || '').trim();
-    if (!iri) return '';
-    const prefix = String(ref?.ontology_prefix || taxonomy?.ontology_prefix || '').trim();
-    const local = String(ref?.label || iri.split(/[/#]/).pop() || iri).trim();
-    if (!ref?.term_id && /^tmp[a-z0-9_]{6,}$/i.test(local)) return '';
-    return ref?.term_id || (prefix ? `${prefix}:${local}` : iri);
-  }, [taxonomy]);
-
-  const refLabel = useCallback((ref) => {
-    const raw = String(ref?.label || ref?.name || ref?.term_id || ref?.iri || ref?.uri || '').split(/[/#]/).pop();
-    return /^tmp[a-z0-9_]{6,}$/i.test(raw) ? '' : raw;
-  }, []);
+  const termIdFromRef = useCallback((ref) => ontologyTermId(ref, taxonomy?.ontology_prefix || ''), [taxonomy]);
+  const refLabel = useCallback((ref) => ontologyDisplayName(ref), []);
 
   const reasoningClassNodes = useMemo(() => (reasoning?.classes || []).map((cls) => ({
     term_id: termIdFromRef(cls),
@@ -795,7 +833,9 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
     const rawNodes = taxonomy?.nodes?.length ? taxonomy.nodes : nodes;
     const merged = new Map();
     [...(rawNodes || []), ...reasoningClassNodes, ...reasoningPropertyNodes].forEach((node) => {
-      if (node?.term_id && !merged.has(node.term_id)) merged.set(node.term_id, node);
+      const normalizedNode = normalizeOntologyBrowserNode(node, taxonomy?.ontology_prefix || '');
+      const key = normalizedNode.uri || normalizedNode.term_id;
+      if (normalizedNode.term_id && !merged.has(key)) merged.set(key, normalizedNode);
     });
     return Array.from(merged.values());
   }, [nodes, reasoningClassNodes, reasoningPropertyNodes, taxonomy]);
@@ -932,21 +972,34 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
     };
   }), [taxonomyEdges, nodeById]);
 
-  const classRows = useMemo(() => visibleNodes.filter((node) => !String(node.source || '').includes('property')).map((node) => {
-    const parents = hierarchy.parentByChild.get(node.term_id) || [];
-    const children = hierarchy.childrenByParent.get(node.term_id) || [];
-    return {
-      id: node.term_id,
-      termId: node.term_id,
-      label: node.label || String(node.term_id || '').split(':').pop(),
-      prefix: node.ontology_prefix || '',
-      parents: parents.map((id) => nodeById.get(id)?.label || id).join(', ') || 'Thing',
-      children: children.length,
-      definition: node.definition || node.comment || '',
-      type: 'Class',
-      node,
-    };
-  }), [visibleNodes, hierarchy, nodeById]);
+  const classRows = useMemo(() => {
+    const classNodes = visibleNodes.filter((node) => !String(node.source || '').includes('property'));
+    const labelCounts = new Map();
+    classNodes.forEach((node) => {
+      const label = node.label || String(node.term_id || '').split(':').pop();
+      labelCounts.set(label, (labelCounts.get(label) || 0) + 1);
+    });
+    return classNodes.map((node) => {
+      const parents = hierarchy.parentByChild.get(node.term_id) || [];
+      const children = hierarchy.childrenByParent.get(node.term_id) || [];
+      const baseLabel = node.label || String(node.term_id || '').split(':').pop();
+      const localId = String(node.uri || node.term_id || '').split(/[#:]/).pop();
+      const label = labelCounts.get(baseLabel) > 1 && localId && localId !== baseLabel
+        ? `${baseLabel} (${localId})`
+        : baseLabel;
+      return {
+        id: node.term_id,
+        termId: node.term_id,
+        label,
+        prefix: node.ontology_prefix || '',
+        parents: parents.map((id) => nodeById.get(id)?.label || id).join(', ') || 'Thing',
+        children: children.length,
+        definition: node.definition || node.comment || '',
+        type: 'Class',
+        node,
+      };
+    });
+  }, [visibleNodes, hierarchy, nodeById]);
 
   const reasoningPropertyRows = useMemo(() => [
     ...(reasoning?.object_properties || []).map((prop) => ({ ...prop, property_kind: 'ObjectProperty' })),
@@ -2405,6 +2458,21 @@ export default function OntologyMapper() {
                   </option>
                 ))}
               </select>
+              {selectedMapping && (
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
+                  {['ttl', 'rdf', 'owl', 'jsonld'].map((format) => (
+                    <a
+                      key={format}
+                      href={API_METHODS.ontology.exportUrl(selectedMapping, format)}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 7px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', color: C.primaryDark, background: C.surface, fontSize: '10px', fontWeight: 800, textDecoration: 'none', textTransform: 'uppercase' }}
+                    >
+                      <Download size={11} /> {format}
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
             {stats && (
               <div style={{ fontSize: '11px', color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '20px', padding: '4px 10px' }}>
@@ -2809,13 +2877,13 @@ export default function OntologyMapper() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: '10px', alignItems: 'end' }}>
                   <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Source ontology</label>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Ontology to merge</label>
                     <select
                       value={mergeSourceOntologyId}
                       onChange={(e) => setMergeSourceOntologyId(e.target.value)}
                       style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }}
                     >
-                      <option value="">Select source ontology</option>
+                      <option value="">Select ontology to merge</option>
                       {mergeSourceOptions.map((option) => (
                         <option key={option.value} value={option.value}>{option.label}</option>
                       ))}
@@ -2978,6 +3046,33 @@ export default function OntologyMapper() {
                     Selected mapping: {selectedMappingEdge.source_label || selectedMappingEdge.source_term || 'source'} → {selectedMappingEdge.target_label || selectedMappingEdge.target_term || 'target'}
                   </div>
                 )}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => exportCSV(
+                      visibleMappingEdges.map((edge) => ({
+                        source_instance_id: edge.source_instance_id || '',
+                        source_instance_label: edge.source_instance_label || '',
+                        source_term: edge.source_term || '',
+                        source_type: edge.source_type || '',
+                        mapping_type: edge.mapping_type || '',
+                        target_term: edge.target_term || '',
+                        target_label: edge.target_label || '',
+                        target_ontology_type: edge.target_ontology_type || '',
+                        confidence: edge.confidence ?? '',
+                        validation_status: edge.validation_status || '',
+                        approved: edge.approvedByUser ? 'true' : 'false',
+                        comment: edge.userComment || '',
+                      })),
+                      ['source_instance_id', 'source_instance_label', 'source_term', 'source_type', 'mapping_type', 'target_term', 'target_label', 'target_ontology_type', 'confidence', 'validation_status', 'approved', 'comment'],
+                      'semantic_bridge_mappings.csv'
+                    )}
+                    disabled={visibleMappingEdges.length === 0}
+                    style={{ padding: '6px 10px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: visibleMappingEdges.length ? C.surface : C.bg, color: visibleMappingEdges.length ? C.primary : C.textMuted, fontSize: '11px', fontWeight: 700, cursor: visibleMappingEdges.length ? 'pointer' : 'not-allowed' }}
+                  >
+                    Export mappings CSV
+                  </button>
+                </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: C.primary }}>

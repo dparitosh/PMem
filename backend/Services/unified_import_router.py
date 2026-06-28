@@ -19,6 +19,7 @@ from .unified_data_import import (
 )
 from .ontology_upload_manager import OntologyUploadManager
 from .owl_generation_service import _extract_xsd_target_namespace, _normalize_base_uri
+from .oslc_trs_service import OSLCTRSService
 
 logger = logging.getLogger(__name__)
 
@@ -461,6 +462,16 @@ async def merge_ontologies(body: dict):
     except Exception:
         # Non-fatal
         pass
+
+    try:
+        OSLCTRSService.publish_event(
+            f"{OSLCTRSService.base_url()}/api/v1/ontology/{to_id}",
+            "Modification",
+            title=f"Ontology merge from {from_id} into {to_id}",
+            metadata={"from_ontology_id": from_id, "to_ontology_id": to_id, "from_prefix": from_prefix, "to_prefix": to_prefix, "nodes_updated": nodes_updated},
+        )
+    except Exception as exc:
+        logger.warning("OSLC TRS publish skipped for ontology merge %s -> %s: %s", from_id, to_id, exc)
 
     response = {
         "status": "success",

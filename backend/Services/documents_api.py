@@ -11,11 +11,92 @@ from datetime import datetime
 from fastapi import APIRouter, File, UploadFile, HTTPException, Form
 from pydantic import BaseModel
 
-from document_processor import (
-    process_documents_batch,
-    get_format_description,
-    cleanup_temp_directory
-)
+
+
+
+def _default_format_description() -> dict:
+    return {
+        "pdf": "Portable Document Format with page-to-image or text extraction",
+        "word": "Microsoft Word document conversion and extraction",
+        "powerpoint": "Microsoft PowerPoint slide conversion and extraction",
+    }
+
+
+def _load_document_processor():
+    errors = []
+    candidates = [
+        "backend.Services.document_processor",
+        "Services.document_processor",
+        "document_processor",
+    ]
+    for module_name in candidates:
+        try:
+            module = __import__(module_name, fromlist=[
+                "process_documents_batch",
+                "get_format_description",
+                "cleanup_temp_directory",
+            ])
+            return (
+                getattr(module, "process_documents_batch"),
+                getattr(module, "get_format_description"),
+                getattr(module, "cleanup_temp_directory"),
+                module_name,
+            )
+        except Exception as exc:
+            errors.append(f"{module_name}: {exc}")
+
+    def _unavailable_process_documents_batch(*args, **kwargs):
+        raise RuntimeError(
+            "Document processing backend is not installed or importable. "
+            + " | ".join(errors)
+        )
+
+    def _fallback_get_format_description():
+        return _default_format_description()
+
+    def _noop_cleanup_temp_directory():
+        return None
+
+    return (
+        _unavailable_process_documents_batch,
+        _fallback_get_format_description,
+        _noop_cleanup_temp_directory,
+        "unavailable",
+    )
+
+
+def _document_processor_status() -> dict:
+    process_documents_batch, get_format_description, cleanup_temp_directory, module_name = _load_document_processor()
+    available = module_name != "unavailable"
+    runtime = {}
+    if available:
+        try:
+            runtime = __import__(module_name, fromlist=["runtime_status"]).runtime_status()
+            available = bool(runtime.get("available"))
+        except Exception as exc:
+            runtime = {"available": False, "errors": [str(exc)]}
+            available = False
+    return {
+        "available": available,
+        "module": module_name,
+        "runtime": runtime,
+        "process_documents_batch": process_documents_batch,
+        "get_format_description": get_format_description,
+        "cleanup_temp_directory": cleanup_temp_directory,
+    }
+
+
+def _require_document_processor() -> dict:
+    status = _document_processor_status()
+    if not status["available"]:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Document processing pipeline is unavailable in this deployment. "
+                "Install or package the document processor module and embeddings backend before using upload endpoints."
+            ),
+        )
+    return status
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -133,7 +214,8 @@ async def get_supported_formats_endpoint():
         Information about supported formats and constraints
     """
     try:
-        format_desc = get_format_description()
+        processor = _document_processor_status()
+        format_desc = processor["get_format_description"]()
         formats_info = []
         
         # Map formats to extensions
@@ -155,7 +237,8 @@ async def get_supported_formats_endpoint():
             constraints={
                 "max_file_size_mb": MAX_FILE_SIZE_MB,
                 "max_files_per_upload": MAX_FILES_PER_UPLOAD,
-                "note": "LLM model must have vision capability (GPT-4V, Claude, etc.)"
+                "note": "LLM model must have vision capability (GPT-4V, Claude, etc.)",
+            "upload_ready": _document_processor_status()["available"]
             }
         )
     
@@ -237,7 +320,8 @@ async def upload_documents(
         logger.info(f"✅ All files uploaded. Processing {len(saved_files)} document(s)...")
         
         # Process documents using batch processor
-        processing_result = process_documents_batch(
+        processor = _require_document_processor()
+        processing_result = processor["process_documents_batch"](
             saved_files,
             index_name=index_name or "datasheet_index"
         )
@@ -274,7 +358,7 @@ async def upload_documents(
         
         # Also cleanup document processor temp directory
         try:
-            cleanup_temp_directory()
+            _document_processor_status()["cleanup_temp_directory"]()
         except:
             pass
 
@@ -315,7 +399,8 @@ async def upload_single_document(
         file_path = save_uploaded_file(file, temp_dir)
         
         # Process document
-        processing_result = process_documents_batch(
+        processor = _require_document_processor()
+        processing_result = processor["process_documents_batch"](
             [file_path],
             index_name=index_name or "datasheet_index"
         )
@@ -352,7 +437,7 @@ async def upload_single_document(
             cleanup_temp_files(temp_dir)
         
         try:
-            cleanup_temp_directory()
+            _document_processor_status()["cleanup_temp_directory"]()
         except:
             pass
 
@@ -366,13 +451,17 @@ async def health_check():
     """
     try:
         return {
-            "status": "healthy",
+            **({"status": "healthy"} if _document_processor_status()["available"] else {"status": "degraded"}),
             "service": "Document Upload API",
-            "supported_formats": list(get_format_description().keys()),
+            "processor_available": _document_processor_status()["available"],
+            "processor_module": _document_processor_status()["module"],
+            "processor_runtime": _document_processor_status()["runtime"],
+            "supported_formats": list(_document_processor_status()["get_format_description"]().keys()),
             "max_file_size_mb": MAX_FILE_SIZE_MB,
             "max_files_per_upload": MAX_FILES_PER_UPLOAD,
             "timestamp": datetime.now().isoformat(),
-            "note": "LLM model must have vision capability (GPT-4V, Claude, etc.)"
+            "note": "LLM model must have vision capability (GPT-4V, Claude, etc.)",
+            "upload_ready": _document_processor_status()["available"]
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")

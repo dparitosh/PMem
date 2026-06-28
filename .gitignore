@@ -37,6 +37,11 @@ venv.bak/
 
 # Local environment
 .env
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
 
 # IDE
 .vscode/

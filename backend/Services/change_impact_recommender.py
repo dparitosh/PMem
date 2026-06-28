@@ -11,6 +11,7 @@ Given a change entity name OR a part name, traverses the Neo4j graph to find:
 import logging
 from difflib import SequenceMatcher
 
+from .recommendation_semantics import pick_semantic_source
 from .recommendation_scope import cypher_scope_filter
 
 logger = logging.getLogger(__name__)
@@ -137,7 +138,8 @@ class ChangeImpactRecommender:
             OPTIONAL MATCH (p)-[:INSTANCE_OF]->(cls:OntologyClass)
             RETURN p.name AS name, coalesce(cls.name, head(labels(p))) AS source_tag,
                    p.revision AS revision, elementId(p) AS eid,
-                   cls.name AS class_name
+                   cls.name AS class_name, labels(p) AS labels,
+                   p.element_type AS element_type
             LIMIT 1
             """,
             params={"node_id": node_id, **scope_params},
@@ -163,7 +165,7 @@ class ChangeImpactRecommender:
         if not rows:
             return None
         # pick best fuzzy match
-        best = max(rows, key=lambda r: SequenceMatcher(None, name.lower(), (r["name"] or "").lower()).ratio())
+        best = pick_semantic_source(name, rows, prefer="part")
         return {"name": best["name"], "source_tag": best["source_tag"],
                 "revision": best.get("revision"), "elementId": best["eid"]}
 
@@ -177,14 +179,15 @@ class ChangeImpactRecommender:
             OPTIONAL MATCH (p)-[:INSTANCE_OF]->(cls:OntologyClass)
             RETURN p.name AS name, coalesce(cls.name, head(labels(p))) AS source_tag,
                    p.revision AS revision, elementId(p) AS eid,
-                   cls.name AS class_name
-            LIMIT 5
+                   cls.name AS class_name, labels(p) AS labels,
+                   p.element_type AS element_type
+            LIMIT 25
             """,
             params={"name": name, **scope_params},
         )
         if not rows:
             return None
-        best = max(rows, key=lambda r: SequenceMatcher(None, name.lower(), (r["name"] or "").lower()).ratio())
+        best = pick_semantic_source(name, rows, prefer="part")
         return {"name": best["name"], "source_tag": best["source_tag"],
                 "revision": best.get("revision"), "elementId": best["eid"]}
 
@@ -193,36 +196,20 @@ class ChangeImpactRecommender:
         rows = self._graph.query(
             """
             MATCH (cr) WHERE elementId(cr) = $eid
-            OPTIONAL MATCH (gr)-[:source]->(cr)
-            WHERE gr.traceSubType IN ['CMHasImpactedItem', 'CMHasProblemItem', 'CMHasSolutionItem']
-            OPTIONAL MATCH (gr)-[:target]->(impacted)
-            -[:INSTANCE_OF]->(cls:OntologyClass)
+            MATCH (cr)-[rel:FND_TRACELINK|RELATEDREFS|SEG0SATISFY|MASTERREF|MASTER_REF|PART_REF|PARTREF|PRODUCT_REF|REVISIONREF|INSTANCEDREF]-(impacted)
             WHERE impacted <> cr
+              AND NOT any(lbl IN labels(impacted) WHERE lbl IN ['DatasheetChunk', 'GraphChunk', 'GeneralRelation', 'RelationshipCarrier'])
+            OPTIONAL MATCH (impacted)-[:INSTANCE_OF]->(cls:OntologyClass)
             RETURN DISTINCT impacted.name AS name,
-                   head(labels(impacted)) AS source_tag,
-                   gr.traceSubType AS relation_type,
+                   coalesce(cls.name, head(labels(impacted))) AS source_tag,
+                   type(rel) AS relation_type,
                    cls.name AS class_name,
                    elementId(impacted) AS eid
+            LIMIT 100
             """,
             params={"eid": change_entity["elementId"]},
-        )
-        # Also try reverse direction (change entity as target)
-        rows2 = self._graph.query(
-            """
-            MATCH (cr) WHERE elementId(cr) = $eid
-            OPTIONAL MATCH (gr)-[:target]->(cr)
-            WHERE gr.traceSubType IN ['CMHasImpactedItem', 'CMHasProblemItem', 'CMHasSolutionItem']
-            OPTIONAL MATCH (gr)-[:source]->(impacted)
-            -[:INSTANCE_OF]->(cls:OntologyClass)
-            WHERE impacted <> cr
-            RETURN DISTINCT impacted.name AS name,
-                   head(labels(impacted)) AS source_tag,
-                   gr.traceSubType AS relation_type,
-                   cls.name AS class_name,
-                   elementId(impacted) AS eid
-            """,
-            params={"eid": change_entity["elementId"]},
-        )
+        ) or []
+        rows2 = []
         seen = set()
         parts = []
         for r in rows + rows2:
@@ -243,18 +230,20 @@ class ChangeImpactRecommender:
             return []
         eids = [p["elementId"] for p in impacted_parts]
         rows = []
-        # Strategy 2: direct hasChildInstance from entity (for ProductInstances)
+        # Assembly context from current PLM/XML reference relationships.
         rows2 = self._graph.query(
             """
             UNWIND $eids AS eid
             MATCH (part) WHERE elementId(part) = eid
-            OPTIONAL MATCH path = (part)<-[:hasChildInstance*1..4]-(ancestor)
+            MATCH path = (part)-[:MASTERREF|MASTER_REF|PART_REF|PARTREF|PRODUCT_REF|REVISIONREF|INSTANCEDREF*1..4]-(ancestor)
+            WHERE ancestor.name IS NOT NULL AND NOT toLower(ancestor.name) STARTS WITH 'id'
             RETURN DISTINCT part.name AS part_name,
                    ancestor.name AS assembly_name,
                    length(path) AS depth
+            LIMIT 200
             """,
             params={"eids": eids},
-        )
+        ) or []
         # Strategy 3: PLMXMLFile siblings (all entities in same file)
         rows3 = []
         assemblies = []
@@ -279,17 +268,19 @@ class ChangeImpactRecommender:
             """
             UNWIND $eids AS eid
             MATCH (part) WHERE elementId(part) = eid
-            OPTIONAL MATCH (gr)-[:target]->(part)
-            WHERE gr.traceSubType IN ['Seg0Satisfy', 'FND_TraceLink']
-            OPTIONAL MATCH (gr)-[:source]->(req)
-                     -[:INSTANCE_OF]->(:OntologyClass {name: 'Requirement'})
+            MATCH (part)-[rel:FND_TRACELINK|RELATEDREFS|SEG0SATISFY]-(req)
+            OPTIONAL MATCH (req)-[:INSTANCE_OF]->(cls:OntologyClass)
+            WHERE coalesce(cls.name, head(labels(req)), '') CONTAINS 'Requirement'
+               OR toLower(coalesce(req.name, '')) STARTS WITH 'req'
+            WITH req, part, properties(req) AS req_props
             RETURN DISTINCT req.name AS name,
-                   req.catalogueId AS catalogue_id,
-                   req.bodyText AS body_text,
+                   coalesce(req_props['catalogueId'], req_props['uid'], req_props['id'], '') AS catalogue_id,
+                   coalesce(req_props['bodyText'], req_props['description'], req_props['label'], '') AS body_text,
                    part.name AS linked_part
+            LIMIT 200
             """,
             params={"eids": eids},
-        )
+        ) or []
         reqs = []
         seen = set()
         for r in rows:

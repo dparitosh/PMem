@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { API, buildUrl } from '../config';
 import { apiClient } from '../services/apiClient';
 import { normalizeGraphDataset as normalizeGraphDatasetShared } from '../utils/graphUtils';
+import { useOntologies } from '../contexts/OntologyContext';
 
 const NOISY_COLUMNS = new Set([
   'args',
@@ -114,32 +115,24 @@ const downloadCsv = (filename, headers, rows) => {
   URL.revokeObjectURL(url);
 };
 
+const normalizeReportNode = (item = {}) => {
+  const node = item?.n || item?.node || item;
+  const props = node?.properties || item?.properties || {};
+  const labels = node?.labels || item?.node_labels || item?.labels || [];
+  const type = Array.isArray(labels) ? labels.join(', ') : String(labels || item?.type || node?.label || '');
+  return {
+    elementId: node?.elementId || node?.element_id || node?.id || item?.elementId || item?.element_id,
+    type,
+    ...props,
+    ...Object.fromEntries(Object.entries(item || {}).filter(([key]) => !['n', 'node', 'properties', 'labels', 'node_labels'].includes(key))),
+    name: props.name || node?.name || item?.name || props.label || node?.label || item?.label,
+    label: props.label || node?.label || item?.label,
+  };
+};
+
 const processSearchResults = (results) => {
   if (!Array.isArray(results)) return [];
-
-  return stripUnwanted(
-    results.map((item) => {
-      if (item?.n) {
-        const node = item.n;
-        return {
-          elementId: node.elementId,
-          type: (node.labels || []).join(', '),
-          ...(node.properties || {}),
-        };
-      }
-
-      if (item?.node) {
-        const node = item.node;
-        return {
-          elementId: node.elementId,
-          type: (item.node_labels || []).join(', '),
-          ...(node.properties || node),
-        };
-      }
-
-      return item;
-    })
-  );
+  return stripUnwanted(results.map(normalizeReportNode));
 };
 
 const getHeaders = (rows) => {
@@ -300,6 +293,7 @@ const buildNodeReportRows = (graphData, searchResults) => {
 };
 
 const ReportsTab = ({ searchResults, graphData }) => {
+  const { ontologies } = useOntologies();
   const [activeReport, setActiveReport] = useState('search');
   const [filters, setFilters] = useState({});
   const [sortColumn, setSortColumn] = useState('');
@@ -344,6 +338,18 @@ const ReportsTab = ({ searchResults, graphData }) => {
     return () => { cancelled = true; };
   }, [fallbackGraphData.nodes, graphData]);
 
+  const ontologyRows = useMemo(() => (ontologies || []).map((ontology) => ({
+    ontology: ontology.label || ontology.ontology_id || ontology.prefix,
+    prefix: ontology.prefix || ontology.ontology_prefix || '',
+    ontology_id: ontology.ontology_id || ontology.value || '',
+    status: ontology.status || '',
+    availability: ontology.graph_available === false ? 'registered only' : (ontology.availability || 'available'),
+    type: ontology.type || '',
+    namespace: ontology.namespace || ontology.target_namespace || ontology.source_namespace || '',
+    nodes: ontology.node_count || 0,
+    relationships: ontology.relationship_count || 0,
+  })), [ontologies]);
+
   const processedResults = useMemo(() => buildNodeReportRows(effectiveGraphData, searchResults), [effectiveGraphData, searchResults]);
   const baseNodeHeaders = useMemo(() => getHeaders(processedResults), [processedResults]);
   const availableTypes = useMemo(() => discoverTypes(processedResults), [processedResults]);
@@ -360,9 +366,10 @@ const ReportsTab = ({ searchResults, graphData }) => {
   }, [relationshipRows]);
 
   const nodeRows = useMemo(() => {
+    if (activeReport === 'ontologies') return ontologyRows;
     if (activeReport === 'search') return processedResults;
     return processedResults.filter((row) => getPrimaryType(row) === activeReport);
-  }, [activeReport, processedResults]);
+  }, [activeReport, ontologyRows, processedResults]);
 
   const relationshipScopeLabel = useMemo(() => {
     const searchCount = Array.isArray(searchResults) ? searchResults.length : 0;
@@ -480,6 +487,11 @@ const ReportsTab = ({ searchResults, graphData }) => {
     setShowColumnSelector(false);
     if (presetId === 'traceability') {
       setActiveReport('relationships');
+      return;
+    }
+    if (presetId === 'governance') {
+      setActiveReport('ontologies');
+      setVisibleColumns({});
       return;
     }
     setActiveReport('search');
@@ -608,7 +620,25 @@ const ReportsTab = ({ searchResults, graphData }) => {
                   </span>
                 )}
               </button>
-              {availableTypes.map(({ type, count }) => (
+              <button
+                className="btn btn-sm"
+                style={{
+                  color: activeReport === 'ontologies' ? '#fff' : '#6b4e00',
+                  background: activeReport === 'ontologies' ? '#6b4e00' : '#fff8e1',
+                  border: '1px solid #c49a00',
+                  fontWeight: 700,
+                  fontSize: 13,
+                  borderRadius: 999,
+                  padding: '6px 12px',
+                }}
+                onClick={() => {
+                  setReportPreset('governance');
+                  setActiveReport('ontologies');
+                }}
+              >
+                Ontologies
+                <span style={{ marginLeft: 6, opacity: 0.8, fontSize: 11 }}>{ontologyRows.length}</span>
+              </button>              {availableTypes.map(({ type, count }) => (
                 <button
                   key={type}
                   className="btn btn-sm"

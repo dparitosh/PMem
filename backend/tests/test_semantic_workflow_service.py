@@ -320,3 +320,85 @@ def test_merge_ontologies_uses_semantic_structure_instead_of_raw_tokens(monkeypa
     assert summary["conflict_count"] == 1
     assert summary["subclass_gap_count"] == 1
     assert captured["payload"]["overlaps"][0]["match_basis"] == "label"
+
+
+def test_instance_link_does_not_auto_apply_owlready_only_iri_targets(monkeypatch):
+    rows = [
+        {
+            "import_row_key": "row-iri-only",
+            "entity_type": "Requirement",
+            "name": "REQ-001",
+        }
+    ]
+
+    monkeypatch.setattr(
+        "backend.Services.semantic_workflow_service.UnifiedDataImportService._load_ontology_class_lookup",
+        lambda _prefix: {},
+    )
+    monkeypatch.setattr(
+        "backend.Services.semantic_workflow_service.OntologyReasoningService.get_reasoning",
+        lambda ontology_id: {
+            "classes": [{"label": "Requirement", "iri": "urn:onto:Requirement"}],
+            "object_properties": [],
+            "datatype_properties": [],
+            "annotation_properties": [],
+            "subclass_edges": [],
+        },
+    )
+
+    candidates = SemanticWorkflowService._build_link_candidates(rows, "mbse", "import-iri")
+
+    assert len(candidates) == 1
+    assert candidates[0]["target_ontology_iri"] == "urn:onto:Requirement"
+    assert candidates[0]["ontology_class_element_id"] == ""
+    assert candidates[0]["graph_linkable"] is False
+    assert candidates[0]["selected_for_apply"] is False
+
+
+def test_instance_link_prefers_graph_linkable_class_target(monkeypatch):
+    rows = [
+        {
+            "import_row_key": "row-linked",
+            "entity_type": "Requirement",
+            "name": "REQ-001",
+        }
+    ]
+
+    monkeypatch.setattr(
+        SemanticWorkflowService,
+        "AUTO_APPLY_CONFIDENCE",
+        0.8,
+    )
+    monkeypatch.setattr(
+        "backend.Services.semantic_workflow_service.UnifiedDataImportService._load_ontology_class_lookup",
+        lambda _prefix: {
+            "REQUIREMENT": [
+                {
+                    "element_id": "neo4j-class-1",
+                    "class_name": "Requirement",
+                    "prefix": "mbse",
+                    "normalized": "REQUIREMENT",
+                    "tokens": ["requirement"],
+                    "is_generic": False,
+                    "iri": "urn:onto:Requirement",
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        "backend.Services.semantic_workflow_service.OntologyReasoningService.get_reasoning",
+        lambda ontology_id: {
+            "classes": [{"label": "Requirement", "iri": "urn:onto:Requirement"}],
+            "object_properties": [],
+            "datatype_properties": [],
+            "annotation_properties": [],
+            "subclass_edges": [],
+        },
+    )
+
+    candidates = SemanticWorkflowService._build_link_candidates(rows, "mbse", "import-linked")
+    auto_candidates = [candidate for candidate in candidates if candidate.get("selected_for_apply")]
+
+    assert auto_candidates
+    assert auto_candidates[0]["ontology_class_element_id"] == "neo4j-class-1"
+    assert auto_candidates[0]["graph_linkable"] is True

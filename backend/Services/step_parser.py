@@ -77,7 +77,55 @@ def normalize_ap242_entity_type(entity_type: str) -> str:
     squashed = upper.replace("_", "")
     return _AP242_ENTITY_ALIASES.get(squashed, upper)
 
+def _extract_compound_entity_types(inner: str) -> List[str]:
+    """Return top-level entity names from a Part 21 compound entity instance."""
+    types: List[str] = []
+    depth = 0
+    token_start: Optional[int] = None
+    i = 0
+    while i < len(inner):
+        ch = inner[i]
+        if ch == "'":
+            i += 1
+            while i < len(inner):
+                if inner[i] == "'":
+                    if i + 1 < len(inner) and inner[i + 1] == "'":
+                        i += 2
+                        continue
+                    break
+                i += 1
+        elif ch == "(":
+            if depth == 0 and token_start is not None:
+                raw_name = inner[token_start:i].strip()
+                if raw_name:
+                    normalized = normalize_ap242_entity_type(raw_name)
+                    if normalized:
+                        types.append(normalized)
+                token_start = None
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            if token_start is None and (ch.isalpha() or ch == "_"):
+                token_start = i
+            elif token_start is not None and not (ch.isalnum() or ch == "_"):
+                token_start = None
+        i += 1
 
+    return types
+
+
+def _entity_type_candidates(entity: "StepP21Entity") -> List[str]:
+    """Primary plus compound AP242 entity types, preserving order and uniqueness."""
+    candidates = [entity.entity_type, *getattr(entity, "compound_entity_types", [])]
+    seen = set()
+    ordered: List[str] = []
+    for candidate in candidates:
+        normalized = normalize_ap242_entity_type(candidate)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            ordered.append(normalized)
+    return ordered
 @dataclass
 class StepFileMeta:
     format: str
@@ -94,6 +142,7 @@ class StepP21Entity:
     entity_type: str
     raw_args: str
     ref_ids: List[int] = field(default_factory=list)
+    compound_entity_types: List[str] = field(default_factory=list)
     attributes: Dict[str, str] = field(default_factory=dict)
     text_value: str = ""
     source_identifier: str = ""
@@ -336,14 +385,14 @@ def _iter_part21_entities(file_path: Path, _text: Optional[str] = None) -> Itera
             if m_compound:
                 step_id = int(m_compound.group(1))
                 inner = m_compound.group(2)
-                # Extract first entity type token from compound form
-                first_m = re.match(r'\s*([A-Z][A-Z0-9_]*)\s*\(', inner, re.IGNORECASE)
-                etype = normalize_ap242_entity_type(first_m.group(1)) if first_m else 'COMPOUND_ENTITY'
+                compound_types = _extract_compound_entity_types(inner)
+                etype = compound_types[0] if compound_types else 'COMPOUND_ENTITY'
                 yield StepP21Entity(
                     step_id=step_id,
                     entity_type=etype,
                     raw_args=inner[:500],
                     ref_ids=[int(v) for v in _REF_RE.findall(inner)],
+                    compound_entity_types=compound_types,
                 )
             continue
 
@@ -457,15 +506,15 @@ def iter_part21_entities(file_path: Path) -> Iterator[StepP21Entity]:
 
 
 def _classify_cad_entity(entity: StepP21Entity) -> Optional[str]:
-    et = entity.entity_type.upper()
-    if et in {"PRODUCT", "PRODUCT_RELATED_PRODUCT_CATEGORY", "PRODUCT_CATEGORY"}:
-        return "product"
-    if "REPRESENTATION" in et:
-        return "representation"
-    if any(token in et for token in ("EDGE", "FACE", "SHELL", "TOPO")):
-        return "topology"
-    if any(token in et for token in ("POINT", "CURVE", "SURFACE", "GEOMETRIC")):
-        return "geometry"
+    for et in _entity_type_candidates(entity):
+        if et in {"PRODUCT", "PRODUCT_RELATED_PRODUCT_CATEGORY", "PRODUCT_CATEGORY"}:
+            return "product"
+        if "REPRESENTATION" in et:
+            return "representation"
+        if any(token in et for token in ("EDGE", "FACE", "SHELL", "TOPO")):
+            return "topology"
+        if any(token in et for token in ("POINT", "CURVE", "SURFACE", "GEOMETRIC")):
+            return "geometry"
     return None
 
 
@@ -480,17 +529,17 @@ def _first_number(raw_args: str) -> Optional[float]:
 
 
 def _classify_pmi_entity(entity: StepP21Entity) -> Optional[str]:
-    et = entity.entity_type.upper()
-    if "GEOMETRIC_TOLERANCE" in et or et.endswith("_TOLERANCE"):
-        return "geometric_tolerance"
-    if "DATUM" in et:
-        return "datum"
-    if "DIMENSION" in et or et in {"DIMENSIONAL_SIZE", "DIMENSIONAL_LOCATION"}:
-        return "dimension"
-    if "ANNOTATION" in et or "DRAUGHTING" in et:
-        return "annotation"
-    if "SURFACE_FINISH" in et or "SURFACE_TEXTURE" in et or "ROUGHNESS" in et:
-        return "surface_finish"
+    for et in _entity_type_candidates(entity):
+        if "GEOMETRIC_TOLERANCE" in et or et.endswith("_TOLERANCE"):
+            return "geometric_tolerance"
+        if "DATUM" in et:
+            return "datum"
+        if "DIMENSION" in et or et in {"DIMENSIONAL_SIZE", "DIMENSIONAL_LOCATION"}:
+            return "dimension"
+        if "ANNOTATION" in et or "DRAUGHTING" in et:
+            return "annotation"
+        if "SURFACE_FINISH" in et or "SURFACE_TEXTURE" in et or "ROUGHNESS" in et:
+            return "surface_finish"
     return None
 
 
@@ -627,3 +676,6 @@ def get_pmi_summary(doc: StepPMIDocument) -> Dict[str, int | bool]:
         "cad_geometry": len(doc.cad_geometry),
         "has_cad_semantics": bool(doc.cad_products or doc.cad_representations or doc.cad_topology or doc.cad_geometry),
     }
+
+
+

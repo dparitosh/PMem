@@ -311,6 +311,22 @@ def ensure_indexes(driver):
             except Exception as exc:
                 logger.warning("Operational index creation note for %s: %s", label, exc)
 
+        # --- Operational uniqueness constraints ---
+        # These are best-effort because legacy customer databases may already contain
+        # duplicates. Import/search code still uses parameterized MERGE and indexes;
+        # clean deployments get stronger duplicate protection automatically.
+        for statement, label in [
+            ("CREATE CONSTRAINT `uniq_graphchunk_node_id` IF NOT EXISTS FOR (c:GraphChunk) REQUIRE c.node_id IS UNIQUE", "GraphChunk.node_id"),
+            ("CREATE CONSTRAINT `uniq_ontologyclass_uri` IF NOT EXISTS FOR (n:OntologyClass) REQUIRE n.uri IS UNIQUE", "OntologyClass.uri"),
+            ("CREATE CONSTRAINT `uniq_objectproperty_uri` IF NOT EXISTS FOR (n:ObjectProperty) REQUIRE n.uri IS UNIQUE", "ObjectProperty.uri"),
+            ("CREATE CONSTRAINT `uniq_datatypeproperty_uri` IF NOT EXISTS FOR (n:DatatypeProperty) REQUIRE n.uri IS UNIQUE", "DatatypeProperty.uri"),
+        ]:
+            try:
+                session.run(statement)
+                logger.info("Operational constraint ensured for %s", label)
+            except Exception as exc:
+                logger.warning("Operational constraint creation skipped for %s: %s", label, exc)
+
         # --- GraphChunk vector index ---
         try:
             session.run(f"""

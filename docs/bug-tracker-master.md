@@ -91,6 +91,37 @@ Closed in current branch audit:
 2. `AD-03` Admin preview and execute now use one shared scope model, which keeps previewed and destructive cleanup parameters aligned.
 3. Validation passed with `python -m py_compile backend/Services/neo4j_schema_cleaner.py backend/routes/admin_routes.py`, `pytest backend/tests/test_neo4j_fixes.py -q`, and `npm run build` (one unrelated ESLint warning remains in `GraphExplorerToolbar.js`).
 
+
+## Audit update - 2026-06-28 (release blockers)
+
+Closed or materially improved in this pass:
+
+1. `EXP-01` Registered ontology export is now first-class through `GET /api/v1/ontology/{ontology_id}/export?format=ttl|rdf|owl|jsonld`.
+2. `EXP-02` XSD/XMI ontology registration now pre-generates durable TTL, RDF/XML, OWL/XML, and JSON-LD artifact files in ontology metadata.
+3. `OWL-01` XSD-derived ontology metadata now promotes `targetNamespace` into stored namespace/prefix so generated ontology identity is not silently replaced by a UI fallback prefix.
+4. `OWL-02` XSD OWL generation now writes source namespace into the generated ontology header metadata for OSLC/RDF consumers.
+5. `ON-07` Ontology Junction now exposes compact active-ontology export links for TTL, RDF, OWL, and JSON-LD.
+6. `ON-08` Semantic Bridge/merge workflow artifact links remain manifest-based and now align with the direct ontology export API.
+7. `AD-05` Added read-only duplicate ontology audit endpoint at `GET /api/v1/admin/ontology-duplicate-audit` to diagnose duplicate `OntologyClass`/`OntologyProperty` keys before destructive cleanup.
+8. `OSLC-04` OSLC ResourceShape payloads now expose ontology export links for external semantic clients.
+9. `RP-01` Added backend compatibility report endpoints `POST /reports` and `POST /api/v1/reports` for customer environments where the Reports page/API integration expected this route.
+10. `DQ-01` XSD smoke validation confirms header namespace `http://example.com/customer/plmxml` produces prefix `plmxml` and durable export formats `ttl/rdf/owl/jsonld`.
+
+Validation in this pass:
+
+- `python -m py_compile backend/main.py backend/routes/admin_routes.py backend/Services/ontology_upload_manager.py backend/Services/owl_generation_service.py backend/Services/oslc_service.py backend/Services/semantic_workflow_service.py`
+- `npm run build` in `frontend/`
+- `git diff --check` for touched backend/frontend files
+- XSD engine smoke test for targetNamespace-derived prefix/base URI
+- Ontology registration smoke test in temporary storage verifying export artifacts
+
+Still open / requires customer-data confirmation:
+
+1. Existing Neo4j duplicate schema data must be cleaned or reprocessed before uniqueness constraints can be safely enabled.
+2. Existing backend process must be restarted before new `/api/v1/admin/ontology-duplicate-audit`, `/reports`, and ontology export routes are visible live.
+3. Reports and recommendations now have safer API contracts, but customer graph semantics still need validation against the actual customer dataset.
+4. Full OSLC write/update flows remain out of scope; current OSLC coverage is read/query/shape/taxonomy/dictionary/TRS/export discovery.
+
 ## Fix order
 
 1. Graph Explorer search and expand/collapse correctness.
@@ -434,3 +465,28 @@ Status legend:
 - For release, the next practical step is to turn this tracker into a working backlog board and close the `Open` items in Pareto order.
 
 
+
+### Audit update - 2026-06-28 late release smoke
+
+Closed / improved in this pass:
+- Duplicate ontology uniqueness blocker: live `/api/v1/admin/ontology-duplicate-audit` returns HTTP 200 and `duplicate_group_count = 0` against the active `semantic` Neo4j database. Uniqueness constraints are already present per Neo4j schema notices.
+- Stale backend routes: restarted backend on `0.0.0.0:8000`; live `/health` returns 200 and `/docs` returns HTML 200.
+- Reports API customer validation: live `/reports` and `/api/v1/reports` return HTTP 200 with paged results. Report queries now filter obvious metadata/wrapper nodes (`GeneralRelation`, `RelationshipCarrier`, `AttributeContext`, `MetadataWrapper`) and `id*` display names.
+- Recommendation semantic source selection: `Bearing` now resolves to `Bearing System` with source tag `Part` for similar-parts, manufacturing, and change-impact. The previous false resolution to `Bearing Life` requirement is fixed.
+- Recommendation performance: similar-parts no longer calls external embedding/vector similarity by default. Embedding similarity is opt-in via `scope.use_embeddings`, avoiding customer `CRITICAL SLOW` logs when Ollama/embedding gateway is down.
+- Change-impact query hygiene: removed stale lowercase `source`/`target`, `traceSubType`, `hasChildInstance`, and missing-property assumptions from the default customer-data path.
+- Registered ontology export: `/api/v1/ontology/{ontology_id}/export?format=ttl|rdf|owl|jsonld` is available and Semantic Bridge/Ontology Junction exposes export links for active ontology outputs.
+- XSD ontology generation: XSD `targetNamespace` is captured before registration, promoted into metadata, and generated semantic artifacts include TTL/RDF/OWL/JSON-LD.
+
+Live smoke results:
+- `/health`: 200
+- `/docs`: 200
+- `/api/v1/admin/ontology-duplicate-audit`: 200
+- `/reports` overview: 200, total 2157
+- `/api/v1/reports` traceability: 200, total 2277
+- `/recommendations/similar-parts` for `Bearing`: 200, ~35 ms, source `Bearing System` / `Part`
+- `/recommendations/manufacturing` for `Bearing`: 200, ~48 ms, source `Bearing System` / `Part`
+- `/recommendations/change-impact` for `Bearing`: 200, ~38 ms, source `Bearing System` / `Part`
+
+Remaining watch item:
+- Report overview still includes `Document` business rows derived from PLMXML datasets. That is valid as a business object only if customer wants document/data-set entities in reports; otherwise add a UI/API report scope to include/exclude Document entities separately.

@@ -301,6 +301,17 @@ def _literal_if_value(graph: Graph, subject: URIRef, predicate: URIRef, value: A
 def _display_label(entity_type: str) -> str:
     return (entity_type or "").replace("_", " ").title()
 
+def _entity_type_candidates(entity: StepP21Entity) -> List[str]:
+    candidates = [getattr(entity, "entity_type", ""), *getattr(entity, "compound_entity_types", [])]
+    seen = set()
+    ordered: List[str] = []
+    for candidate in candidates:
+        normalized = str(candidate or "").strip().upper()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            ordered.append(normalized)
+    return ordered
+
 
 def _declare_class(graph: Graph, class_uri: URIRef, label: str, parent: Optional[URIRef] = None, comment: str = "") -> None:
     graph.add((class_uri, RDF.type, OWL.Class))
@@ -441,7 +452,7 @@ def _generate_step_rdf_ttl(
         _declare_datatype_property(graph, prop, label, domain, range_)
 
     entity_map = {entity.step_id: entity for entity in entities}
-    encountered_types = sorted({entity.entity_type for entity in entities if entity.entity_type})
+    encountered_types = sorted({etype for entity in entities for etype in _entity_type_candidates(entity)})
     for entity_type in encountered_types:
         ap242_class = _AP242[entity_type]
         _declare_class(
@@ -461,17 +472,20 @@ def _generate_step_rdf_ttl(
 
     for entity in entities:
         subject = _entity_uri(instance_ns, entity.step_id)
-        ap242_class = _AP242[entity.entity_type]
+        entity_types = _entity_type_candidates(entity) or [entity.entity_type]
         graph.add((subject, RDF.type, OWL.NamedIndividual))
         graph.add((subject, RDF.type, _STEP.Entity))
-        graph.add((subject, RDF.type, ap242_class))
-        mapped_bom_class = _AP242_PART_DATA_MODEL_MAPPINGS.get(entity.entity_type)
-        if mapped_bom_class:
-            graph.add((subject, RDF.type, _BOM[mapped_bom_class]))
+        for entity_type in entity_types:
+            graph.add((subject, RDF.type, _AP242[entity_type]))
+            mapped_bom_class = _AP242_PART_DATA_MODEL_MAPPINGS.get(entity_type)
+            if mapped_bom_class:
+                graph.add((subject, RDF.type, _BOM[mapped_bom_class]))
         graph.add((subject, RDFS.label, Literal(f"#{entity.step_id} {entity.entity_type}")))
         graph.add((subject, SKOS.notation, Literal(f"#{entity.step_id}")))
         graph.add((subject, _STEP.stepId, Literal(entity.step_id, datatype=XSD.integer)))
         graph.add((subject, _STEP.entityType, Literal(entity.entity_type)))
+        for compound_type in getattr(entity, "compound_entity_types", []) or []:
+            graph.add((subject, _STEP.entityType, Literal(compound_type)))
         graph.add((subject, _STEP.rawArgs, Literal((entity.raw_args or "")[:1000])))
         _literal_if_value(graph, subject, _STEP.fileSchema, metadata.file_schema)
         _literal_if_value(graph, subject, DCTERMS.source, metadata.file_name)
@@ -553,6 +567,7 @@ def _integrate_domain_models(base_uri: str, prefix: str, schema: Optional[str]) 
     local_mbd3d_path = _BACKEND_DIR / "data" / "MBD3D_BO"
 
     configured_domain_path = _configured_domain_model_path(local_mbd3d_path)
+    repo_root = _BACKEND_DIR.parent
     ap242_domain = describe_ap242_domain_model()
     ap242_bom = describe_ap242_mbd_bom()
 
@@ -565,8 +580,23 @@ def _integrate_domain_models(base_uri: str, prefix: str, schema: Optional[str]) 
         local_mbd3d_path / "bom.exp",
     ]
 
-    # Additional search roots from the env-configured domain path
-    for root in [configured_domain_path]:
+    additional_search_roots: List[Path] = []
+    for candidate_root in [
+        configured_domain_path,
+        configured_domain_path.parent if configured_domain_path.name.lower() in {"bom.xsd", "bom.exp", "domainmodel.xsd", "domainmodel.exp"} else None,
+        repo_root,
+        repo_root / "data",
+        repo_root / "Depo_onto",
+        repo_root / "Depo_onto" / "data",
+    ]:
+        if candidate_root is None:
+            continue
+        candidate_path = Path(candidate_root)
+        if candidate_path not in additional_search_roots:
+            additional_search_roots.append(candidate_path)
+
+    # Additional search roots from env-configured path and common repo layouts
+    for root in additional_search_roots:
         if not root.exists():
             continue
         bom_candidates.extend([
@@ -574,6 +604,7 @@ def _integrate_domain_models(base_uri: str, prefix: str, schema: Optional[str]) 
             root / "DomainModel.xsd",
             root / "data" / "business_object_models" / "managed_model_based_3d_engineering" / "bom.xsd",
             root / "business_object_models" / "managed_model_based_3d_engineering" / "bom.xsd",
+            root / "Depo_onto" / "data" / "business_object_models" / "managed_model_based_3d_engineering" / "bom.xsd",
             root / "managed_model_based_3d_engineering_domain" / "Domain_model" / "DomainModel.xsd",
             root / "managed_model_based_3d_engineering_domain" / "Domain_model" / "bom.xsd",
         ])
@@ -582,6 +613,7 @@ def _integrate_domain_models(base_uri: str, prefix: str, schema: Optional[str]) 
             root / "DomainModel.exp",
             root / "data" / "business_object_models" / "managed_model_based_3d_engineering" / "bom.exp",
             root / "business_object_models" / "managed_model_based_3d_engineering" / "bom.exp",
+            root / "Depo_onto" / "data" / "business_object_models" / "managed_model_based_3d_engineering" / "bom.exp",
             root / "managed_model_based_3d_engineering_domain" / "Domain_model" / "DomainModel.exp",
             root / "managed_model_based_3d_engineering_domain" / "Domain_model" / "bom.exp",
         ])
@@ -727,3 +759,4 @@ def _count_ttl_properties(ttl_content: str) -> int:
 def _count_ttl_individuals(ttl_content: str) -> int:
     """Count OWL individuals in TTL content."""
     return ttl_content.count('owl:NamedIndividual')
+

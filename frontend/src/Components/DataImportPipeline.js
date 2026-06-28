@@ -223,6 +223,7 @@ export default function DataImportPipeline() {
   const [showMetadataForm, setShowMetadataForm] = useState(false);
   const [pendingFileForMetadata, setPendingFileForMetadata] = useState(null);
   const [pendingMetadataFileId, setPendingMetadataFileId] = useState('');
+  const [pendingMetadataQueue, setPendingMetadataQueue] = useState([]);
   const [isMetadataLoading, setIsMetadataLoading] = useState(false);
   const [metadataFormPrefill, setMetadataFormPrefill] = useState(null);
   const didRestoreJobsRef = useRef(false);
@@ -413,6 +414,58 @@ export default function DataImportPipeline() {
     if (e.target.files && e.target.files[0]) {
       handleFiles(e.target.files);
     }
+    e.target.value = '';
+  };
+
+  const queueOntologyRegistration = (selectedOntologyFiles) => {
+    const queuedFiles = selectedOntologyFiles.map(file => ({
+      fileId: file.name + '_' + Math.random().toString(36).substr(2, 9),
+      name: file.name,
+      size: file.size,
+      fileObj: file,
+      workflowId: 'ontology.create',
+      createdAt: new Date().toLocaleTimeString(),
+      pendingMetadata: true,
+      description: '',
+      generationType: '',
+      schemaType: 'schema',
+      prefix: '',
+      ontologyName: '',
+    }));
+
+    setFiles(prev => [...prev, ...queuedFiles]);
+    setPipelineStatus(prev => {
+      const next = { ...prev };
+      queuedFiles.forEach((file) => {
+        next[file.fileId] = {
+          stage: 'upload',
+          backendStage: 'upload',
+          progress: 0,
+          status: 'pending',
+          message: requiresOntologyMetadataCapture(file.name)
+            ? 'Add ontology details to continue'
+            : 'Ready for ontology registration',
+          error: false,
+        };
+      });
+      return next;
+    });
+    setPendingMetadataQueue(prev => [...prev, ...queuedFiles.map(file => file.fileId)]);
+    setError(null);
+  };
+
+  const queueInstanceImports = (selectedInstanceFiles) => {
+    const filesWithIds = selectedInstanceFiles.map(file => ({
+      fileId: file.name + '_' + Math.random().toString(36).substr(2, 9),
+      name: file.name,
+      size: file.size,
+      fileObj: file,
+      workflowId: 'instance.import',
+      createdAt: new Date().toLocaleTimeString()
+    }));
+
+    setFiles(prev => [...prev, ...filesWithIds]);
+    setError(null);
   };
 
   const handleFiles = (fileList) => {
@@ -436,110 +489,151 @@ export default function DataImportPipeline() {
     const ontologyFiles = newFiles.filter((file) => isOntologySourceFile(file.name));
     const instanceFiles = newFiles.filter((file) => !isOntologySourceFile(file.name));
 
-    if (selectedWorkflow === 'ontology.create') {
+    const routeToOntologyWorkflow = selectedWorkflow === 'instance.import' && ontologyFiles.length > 0 && instanceFiles.length === 0;
+    const routeToInstanceWorkflow = selectedWorkflow === 'ontology.create' && instanceFiles.length > 0 && ontologyFiles.length === 0;
+    const effectiveWorkflow = routeToOntologyWorkflow
+      ? 'ontology.create'
+      : routeToInstanceWorkflow
+        ? 'instance.import'
+        : selectedWorkflow;
+
+    if (effectiveWorkflow !== selectedWorkflow) {
+      setSelectedWorkflow(effectiveWorkflow);
+    }
+
+    if (effectiveWorkflow === 'ontology.create') {
       if (instanceFiles.length > 0) {
         setError(`Create ontology only accepts ontology or schema sources. Move these files to Import instance graph: ${instanceFiles.map((file) => file.name).join(', ')}`);
         return;
       }
 
-      const firstFile = ontologyFiles[0];
-      if (!firstFile) {
+      if (ontologyFiles.length === 0) {
         setError('Select an ontology or schema file to continue.');
         return;
       }
 
-      const fileId = firstFile.name + '_' + Math.random().toString(36).substr(2, 9);
-      const ontologyPendingFile = {
-        fileId,
-        name: firstFile.name,
-        size: firstFile.size,
-        fileObj: firstFile,
-        workflowId: 'ontology.create',
-        createdAt: new Date().toLocaleTimeString(),
-        pendingMetadata: true,
-      };
-
-      setFiles(prev => [...prev, ontologyPendingFile]);
-      setStartedFiles(prev => new Set([...prev, fileId]));
-      setPipelineStatus(prev => ({
-        ...prev,
-        [fileId]: {
-          stage: 'upload',
-          backendStage: 'upload',
-          progress: 0,
-          status: 'processing',
-          message: requiresOntologyMetadataCapture(firstFile.name)
-            ? 'Awaiting namespace and prefix capture'
-            : 'Preparing ontology registration',
-          error: false,
-        }
-      }));
-      setMetadataFormPrefill(null);
-      setPendingFileForMetadata(firstFile);
-      setPendingMetadataFileId(fileId);
-      setShowMetadataForm(true);
-      setError(null);
+      queueOntologyRegistration(ontologyFiles);
       return;
     }
 
-    if (selectedWorkflow === 'instance.import' && ontologyFiles.length > 0) {
+    if (effectiveWorkflow === 'instance.import' && ontologyFiles.length > 0) {
       setError(`Import instance graph only accepts source data files. Move these files to Create ontology: ${ontologyFiles.map((file) => file.name).join(', ')}`);
       return;
     }
 
-    const filesWithIds = instanceFiles.map(file => ({
-      fileId: file.name + '_' + Math.random().toString(36).substr(2, 9),
-      name: file.name,
-      size: file.size,
-      fileObj: file,
-      workflowId: 'instance.import',
-      createdAt: new Date().toLocaleTimeString()
-    }));
-
-    setFiles(prev => [...prev, ...filesWithIds]);
-    setError(null);
+    queueInstanceImports(instanceFiles);
   };
 
   // Handle metadata form submission for ontology files
   const handleMetadataSubmit = async (metadata) => {
     if (!pendingFileForMetadata) return;
-    
-    setIsMetadataLoading(true);
-    
-    try {
-      // Upload to ontology-specific endpoint (apiClient handles FormData internally)
-      const uploadData = await API_METHODS.ontology.upload(pendingFileForMetadata, metadata);
-      const uploadDataBody = uploadData.data || uploadData;
-      
-      const fileId = pendingMetadataFileId || pendingFileForMetadata.name + '_' + Math.random().toString(36).substr(2, 9);
-      const completedFile = {
-        fileId,
-        name: pendingFileForMetadata.name,
-        size: pendingFileForMetadata.size,
-        fileObj: pendingFileForMetadata,
-        createdAt: new Date().toLocaleTimeString(),
-        taskId: uploadDataBody.task_id,
-        ontologyId: uploadDataBody.ontology_id,
-        ontologyName: metadata.ontologyName,
-        prefix: metadata.prefix,
-        generationType: metadata.generationType,
-        sourceNamespace: uploadDataBody.source_namespace || uploadDataBody.target_namespace || '',
-        baseUri: uploadDataBody.base_uri || '',
-        workflowId: 'ontology.create',
-        pendingMetadata: false,
-      };
 
-      setFiles(prev => prev.map(f => (f.fileId === fileId ? completedFile : f)));
+    setIsMetadataLoading(true);
+
+    try {
+      const fileId = pendingMetadataFileId || pendingFileForMetadata.name + '_' + Math.random().toString(36).substr(2, 9);
+
+      setFiles(prev => prev.map(f => (
+        f.fileId === fileId
+          ? {
+              ...f,
+              ontologyName: metadata.ontologyName,
+              prefix: metadata.prefix,
+              generationType: metadata.generationType,
+              description: metadata.description || '',
+              schemaType: metadata.schemaType || 'schema',
+              fileType: metadata.fileType,
+              pendingMetadata: false,
+            }
+          : f
+      )));
       setPipelineStatus(prev => ({
         ...prev,
         [fileId]: {
+          ...(prev[fileId] || {}),
+          stage: 'upload',
+          backendStage: 'upload',
+          progress: 0,
+          status: 'pending',
+          message: `Metadata saved for '${metadata.ontologyName}'. Click Start to register ontology.`,
+          error: false,
+        }
+      }));
+      setPendingMetadataQueue(prev => prev.filter(id => id !== fileId));
+      setMetadataFormPrefill(null);
+      setShowMetadataForm(false);
+      setPendingFileForMetadata(null);
+      setPendingMetadataFileId('');
+      setError(null);
+    } finally {
+      setIsMetadataLoading(false);
+    }
+  };
+
+  const startOntologyRegistration = async (file) => {
+    const fileId = file.fileId;
+    if (file.pendingMetadata || !file.ontologyName || !file.prefix || !file.generationType) {
+      setMetadataFormPrefill({
+        ontologyName: file.ontologyName || '',
+        prefix: file.prefix || '',
+        description: file.description || '',
+        generationType: file.generationType || '',
+        schemaType: file.schemaType || 'schema',
+      });
+      setPendingFileForMetadata(file.fileObj);
+      setPendingMetadataFileId(fileId);
+      setShowMetadataForm(true);
+      setError(`Complete ontology details for ${file.name} before starting.`);
+      return;
+    }
+
+    try {
+      setStartedFiles(prev => new Set([...prev, fileId]));
+      setPipelineStatus(prev => ({
+        ...prev,
+        [fileId]: {
+          ...(prev[fileId] || {}),
+          stage: 'upload',
+          backendStage: 'upload',
+          progress: 15,
+          status: 'processing',
+          message: `Registering ontology '${file.ontologyName}'...`,
+          error: false,
+        }
+      }));
+
+      const uploadData = await API_METHODS.ontology.upload(file.fileObj, {
+        ontologyName: file.ontologyName,
+        prefix: file.prefix,
+        description: file.description || '',
+        generationType: file.generationType,
+        schemaType: file.schemaType || 'schema',
+        fileType: file.fileType,
+      });
+      const uploadDataBody = uploadData.data || uploadData;
+
+      setFiles(prev => prev.map(f => (
+        f.fileId === fileId
+          ? {
+              ...f,
+              taskId: uploadDataBody.task_id,
+              ontologyId: uploadDataBody.ontology_id,
+              sourceNamespace: uploadDataBody.source_namespace || uploadDataBody.target_namespace || '',
+              baseUri: uploadDataBody.base_uri || '',
+            }
+          : f
+      )));
+      setPipelineStatus(prev => ({
+        ...prev,
+        [fileId]: {
+          ...(prev[fileId] || {}),
           taskId: uploadDataBody.task_id,
           stage: 'verify',
           backendStage: 'verify',
           progress: 100,
           status: 'completed',
           committed: true,
-          message: `Ontology '${metadata.ontologyName}' uploaded and registered`,
+          message: `Ontology '${file.ontologyName}' uploaded and registered`,
           stats: {
             entities_found: uploadDataBody.nodes_merged ?? null,
             relationships_found: null,
@@ -548,14 +642,9 @@ export default function DataImportPipeline() {
           completedAt: new Date().toLocaleTimeString(),
         }
       }));
-      setMetadataFormPrefill(null);
-      setShowMetadataForm(false);
-      setPendingFileForMetadata(null);
-      setPendingMetadataFileId('');
       setError(null);
-
     } catch (err) {
-      const fileId = pendingMetadataFileId || pendingFileForMetadata.name + '_' + Math.random().toString(36).substr(2, 9);
+      const detail = err?.response?.data?.detail || err.message;
       setPipelineStatus(prev => ({
         ...prev,
         [fileId]: {
@@ -564,13 +653,16 @@ export default function DataImportPipeline() {
           backendStage: 'error',
           progress: 0,
           status: 'failed',
-          message: err.message,
+          message: String(detail),
           error: true,
         }
       }));
-      setError(`Error uploading ontology: ${err.message}`);
-    } finally {
-      setIsMetadataLoading(false);
+      setStartedFiles(prev => {
+        const next = new Set(prev);
+        next.delete(fileId);
+        return next;
+      });
+      setError(`Error uploading ontology: ${detail}`);
     }
   };
 
@@ -599,6 +691,73 @@ export default function DataImportPipeline() {
     };
   };
 
+  const startDocumentPipeline = async (file) => {
+    const workflow = workflowOptions.find(w => w.id === (file.workflowId || selectedWorkflow)) || resolveWorkflow(file.workflowId || selectedWorkflow);
+    if (workflow?.status !== 'available') {
+      setError(`${getWorkflowDisplayName(file.workflowId || selectedWorkflow)} is not connected to backend services yet.`);
+      return;
+    }
+
+    const fileId = file.fileId;
+    try {
+      setStartedFiles(prev => new Set([...prev, fileId]));
+      setPipelineStatus(prev => ({
+        ...prev,
+        [fileId]: {
+          stage: 'upload',
+          backendStage: 'upload',
+          progress: 5,
+          status: 'processing',
+          message: 'Uploading document to unstructured pipeline...',
+          lastUpdatedAt: new Date().toISOString(),
+        },
+      }));
+
+      const safeIndexBase = String(file?.name || 'document').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48) || 'document';
+      const response = await API_METHODS.document.upload([file.fileObj], { index_name: safeIndexBase + '_index' });
+      const result = response.data || response;
+      setPipelineStatus(prev => ({
+        ...prev,
+        [fileId]: {
+          ...(prev[fileId] || {}),
+          stage: 'verify',
+          backendStage: 'indexed',
+          progress: 100,
+          status: result?.status === 'success' || result?.success !== false ? 'completed' : 'completed',
+          message: result?.message || 'Document indexed for GraphRAG search.',
+          stats: {
+            entities_found: result?.processed_documents ?? result?.documents_processed ?? result?.total_documents ?? 1,
+            relationships_found: result?.chunks_created ?? result?.total_chunks ?? 0,
+          },
+          result,
+          completedAt: new Date().toLocaleTimeString(),
+          completedAtIso: new Date().toISOString(),
+          lastUpdatedAt: new Date().toISOString(),
+        },
+      }));
+      setError(null);
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.response?.data?.error || err.message;
+      setPipelineStatus(prev => ({
+        ...prev,
+        [fileId]: {
+          ...(prev[fileId] || {}),
+          stage: 'error',
+          backendStage: 'error',
+          progress: 0,
+          status: 'failed',
+          message: String(detail),
+          error: true,
+        },
+      }));
+      setStartedFiles(prev => {
+        const next = new Set(prev);
+        next.delete(fileId);
+        return next;
+      });
+      setError(`Error processing document: ${detail}`);
+    }
+  };
   const startImport = async (file) => {
     const workflow = workflowOptions.find(w => w.id === (file.workflowId || selectedWorkflow)) || resolveWorkflow(file.workflowId || selectedWorkflow);
     if (workflow?.status !== 'available') {
@@ -668,6 +827,29 @@ export default function DataImportPipeline() {
       });
     }
   };
+
+  useEffect(() => {
+    if (showMetadataForm || isMetadataLoading) return;
+    if (!pendingMetadataQueue.length) return;
+
+    const nextFileId = pendingMetadataQueue[0];
+    const nextFile = files.find(f => f.fileId === nextFileId);
+    if (!nextFile) {
+      setPendingMetadataQueue(prev => prev.filter(id => id !== nextFileId));
+      return;
+    }
+
+    setMetadataFormPrefill({
+      ontologyName: nextFile.ontologyName || '',
+      prefix: nextFile.prefix || '',
+      description: nextFile.description || '',
+      generationType: nextFile.generationType || '',
+      schemaType: nextFile.schemaType || 'schema',
+    });
+    setPendingFileForMetadata(nextFile.fileObj);
+    setPendingMetadataFileId(nextFileId);
+    setShowMetadataForm(true);
+  }, [files, isMetadataLoading, pendingMetadataQueue, showMetadataForm]);
 
   const pollPipelineProgress = async (taskId, fileId) => {
     const pollerKey = `${taskId}:${fileId}`;
@@ -874,18 +1056,34 @@ export default function DataImportPipeline() {
 
     const filesToImport = files.filter(f => {
       if (startedFiles.has(f.fileId)) return false;
-      if ((f.workflowId || selectedWorkflow) !== 'instance.import') return false;
-      const policy = getAlignmentPolicy(f.name);
-      if (policy.isDirectOntology) return false;
-      return true;
+      if ((f.workflowId || selectedWorkflow) !== selectedWorkflow) return false;
+      if (selectedWorkflow === 'instance.import') {
+        const policy = getAlignmentPolicy(f.name);
+        return !policy.isDirectOntology;
+      }
+      if (selectedWorkflow === 'document.unstructured') {
+        return inferFileTypeFromExtension(f.name) === 'document';
+      }
+      if (selectedWorkflow === 'ontology.create') {
+        return !f.pendingMetadata;
+      }
+      return false;
     });
     if (filesToImport.length === 0) {
-      setError('All files have already been started');
+      setError(selectedWorkflow === 'ontology.create'
+        ? 'Complete ontology details before starting registration.'
+        : 'All files have already been started');
       return;
     }
 
     for (const file of filesToImport) {
-      startImport(file);
+      if (selectedWorkflow === 'ontology.create') {
+        startOntologyRegistration(file);
+      } else if (selectedWorkflow === 'document.unstructured') {
+        startDocumentPipeline(file);
+      } else {
+        startImport(file);
+      }
     }
   };
 
@@ -1116,6 +1314,14 @@ export default function DataImportPipeline() {
     const fileStatus = pipelineStatus[fileId];
     if (fileStatus?.taskId) {
       activePollersRef.current.delete(`${fileStatus.taskId}:${fileId}`);
+    }
+
+    setPendingMetadataQueue(prev => prev.filter(id => id !== fileId));
+    if (pendingMetadataFileId === fileId) {
+      setShowMetadataForm(false);
+      setPendingFileForMetadata(null);
+      setPendingMetadataFileId('');
+      setMetadataFormPrefill(null);
     }
     
     // Cancel task if in progress
@@ -1442,6 +1648,21 @@ export default function DataImportPipeline() {
           selectedFile={pendingFileForMetadata}
           onSubmit={handleMetadataSubmit}
           onCancel={() => {
+            if (pendingMetadataFileId) {
+              setPendingMetadataQueue(prev => prev.filter(id => id !== pendingMetadataFileId));
+              setPipelineStatus(prev => ({
+                ...prev,
+                [pendingMetadataFileId]: {
+                  ...(prev[pendingMetadataFileId] || {}),
+                  stage: 'upload',
+                  backendStage: 'upload',
+                  progress: 0,
+                  status: 'pending',
+                  message: 'Ontology details required before registration.',
+                  error: false,
+                }
+              }));
+            }
             setMetadataFormPrefill(null);
             setShowMetadataForm(false);
             setPendingFileForMetadata(null);
@@ -2765,6 +2986,27 @@ export default function DataImportPipeline() {
                     {!isStarted && (status.stage === 'upload' || status.error) && (
                       <button
                         onClick={() => {
+                          if (file.workflowId === 'document.unstructured') {
+                            startDocumentPipeline(file);
+                            return;
+                          }
+                          if (file.workflowId === 'ontology.create') {
+                            if (file.pendingMetadata) {
+                              setMetadataFormPrefill({
+                                ontologyName: file.ontologyName || '',
+                                prefix: file.prefix || '',
+                                description: file.description || '',
+                                generationType: file.generationType || '',
+                                schemaType: file.schemaType || 'schema',
+                              });
+                              setPendingFileForMetadata(file.fileObj);
+                              setPendingMetadataFileId(file.fileId);
+                              setShowMetadataForm(true);
+                              return;
+                            }
+                            startOntologyRegistration(file);
+                            return;
+                          }
                           startImport(file);
                         }}
                         disabled={!canRunSelectedWorkflow || (!file.fileObj && file.persisted)}
@@ -2785,12 +3027,14 @@ export default function DataImportPipeline() {
                         title={
                           !file.fileObj && file.persisted
                             ? 'This restored entry can be monitored, but it cannot be restarted without re-attaching the source file.'
+                            : file.workflowId === 'ontology.create' && file.pendingMetadata
+                              ? 'Add ontology details before registration'
                             : canRunSelectedWorkflow
                               ? 'Start workflow for this file'
                               : 'Selected workflow is not connected to backend services yet'
                         }
                       >
-                        <Play size={12} /> {status.error ? 'Retry' : 'Start'}
+                        <Play size={12} /> {file.workflowId === 'ontology.create' && file.pendingMetadata ? 'Details' : (status.error ? 'Retry' : 'Start')}
                       </button>
                     )}
                     {isStarted && isProcessingJob(status) && (

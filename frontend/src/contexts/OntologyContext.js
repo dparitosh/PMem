@@ -37,7 +37,12 @@ export const OntologyProvider = ({ children }) => {
         availability: o.availability || o.status,
         node_count: Number(o.node_count || o.neo4j_nodes_merged || 0),
         relationship_count: Number(o.relationship_count || o.neo4j_relationships_merged || 0),
-        disabled: o.disabled || ((Number(o.node_count || o.neo4j_nodes_merged || 0)) === 0),
+        graph_available:
+          Boolean(o.graph_available) ||
+          Number(o.node_count || o.neo4j_nodes_merged || 0) > 0 ||
+          Number(o.relationship_count || o.neo4j_relationships_merged || 0) > 0 ||
+          String(o.status || o.availability || '').toLowerCase() === 'uploaded',
+        disabled: Boolean(o.disabled),
         raw: o, // Keep full metadata
       }));
       setOntologies(ontologyList);

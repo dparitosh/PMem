@@ -1664,6 +1664,8 @@ class FileParser:
                         'args': args_preview,
                         'ref_ids': list(entity.ref_ids),
                     }
+                    if getattr(entity, 'compound_entity_types', None):
+                        row['compound_entity_types'] = list(entity.compound_entity_types)
                     if entity.source_identifier:
                         row['source_identifier'] = entity.source_identifier
                         row['source_identifier_kind'] = entity.source_identifier_kind
@@ -1678,6 +1680,7 @@ class FileParser:
                             'id', 'entity_type', 'args', 'ref_ids', 'import_row_key',
                             'source_identifier', 'source_identifier_kind',
                             'text_value', 'parent_step_id', 'unresolved_refs',
+                            'compound_entity_types',
                         }
                         for attr_key, attr_value in entity.attributes.items():
                             safe_key = str(attr_key).strip()
@@ -3479,3 +3482,4 @@ class UnifiedDataImportService:
                 task['completed_at'] = datetime.now().isoformat()
                 cls._persist_task(task_id)
                 logger.info(f"Task {task_id} cancelled")
+

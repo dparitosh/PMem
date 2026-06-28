@@ -248,6 +248,15 @@ const ScenarioPanel = ({ onSelect, health }) => {
     },
   ];
 
+  const inferenceQueries = [
+    'Show change impact for REQ-006 across requirement, function, logical, physical, part, and process links.',
+    'Find requirements satisfied by SKF_6306-2Z and the affected EBOM/MBOM/BOP objects.',
+    'Compare EBOM to MBOM and list missing or extra manufacturing objects.',
+    'Trace design-to-manufacturing flow for Induction Motor Assembly from system function to process step.',
+    'Find similar parts by type, dimensions, tolerance, material, and connected requirements.',
+    'List ontology classes and object properties involved in requirement-to-part traceability.',
+    'Validate whether a selected instance violates ontology domain/range or SHACL constraints.',
+  ];
   return (
     <div>
       <div style={{
@@ -262,6 +271,34 @@ const ScenarioPanel = ({ onSelect, health }) => {
         </div>
       </div>
 
+      <div style={{ ...CARD, padding: '14px 16px', marginBottom: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: C.textPrimary, marginBottom: 8 }}>
+          High-value ontology inference prompts
+        </div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          {inferenceQueries.map((query) => (
+            <button
+              key={query}
+              type="button"
+              onClick={() => {
+                onSelect('change-impact', query);
+              }}
+              style={{
+                textAlign: 'left',
+                border: `1px solid ${C.border}`,
+                borderRadius: 6,
+                background: C.bg,
+                color: C.textPrimary,
+                padding: '7px 9px',
+                fontSize: 12,
+                cursor: 'pointer',
+              }}
+            >
+              {query}
+            </button>
+          ))}
+        </div>
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {scenarios.map(s => (
           <div

@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 import logging
 import re
+import xml.etree.ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,109 @@ class OntologyUploadManager:
         cls.ONTOLOGY_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
         logger.info(f"Ontology storage initialized at: {cls.ONTOLOGY_STORAGE_DIR}")
     
+    @classmethod
+    def _materialize_semantic_artifacts(
+        cls,
+        ontology_dir: Path,
+        file_path: Path,
+        file_content: bytes,
+        filename: str,
+        file_type: str,
+        generation_type: str,
+    ) -> Dict[str, Any]:
+        """Generate and persist semantic OWL/SHACL artifacts beside the uploaded source file."""
+        result: Dict[str, Any] = {
+            "owl_file_path": "",
+            "rdf_file_path": "",
+            "jsonld_file_path": "",
+            "ontology_export_artifacts": [],
+            "shacl_file_path": "",
+            "shacl_report_path": "",
+            "owl_generation_metadata": {},
+            "shacl_report": {},
+            "semantic_artifacts_status": "not_generated",
+        }
+        try:
+            if file_type == "ontology":
+                if file_path.suffix.lower() in {".ttl", ".rdf", ".owl", ".xml"}:
+                    result["owl_file_path"] = str(file_path)
+                    result["ontology_export_artifacts"] = [{
+                        "format": file_path.suffix.lower().lstrip(".") or "source",
+                        "path": str(file_path),
+                        "source": True,
+                    }]
+                    result["semantic_artifacts_status"] = "source_registered"
+                return result
+
+            if file_type not in {"xsd", "xmi"}:
+                return result
+
+            from .owl_generation_service import OWLGenerationService
+            from .shacl_service import ShaclValidationService
+
+            ttl_text, owl_metadata = OWLGenerationService.generate_owl(file_content, filename)
+            owl_path = ontology_dir / f"{Path(filename).stem}.generated.ttl"
+            owl_path.write_text(ttl_text, encoding="utf-8")
+
+            export_artifacts = [{
+                "format": "ttl",
+                "path": str(owl_path),
+                "source": False,
+            }]
+            try:
+                from rdflib import Graph as RDFGraph
+
+                rdf_graph = RDFGraph()
+                rdf_graph.parse(data=ttl_text, format="turtle")
+                export_specs = (
+                    ("rdf", "xml", ontology_dir / f"{Path(filename).stem}.generated.rdf"),
+                    ("owl", "pretty-xml", ontology_dir / f"{Path(filename).stem}.generated.owl"),
+                    ("jsonld", "json-ld", ontology_dir / f"{Path(filename).stem}.generated.jsonld"),
+                )
+                for export_format, rdflib_format, export_path in export_specs:
+                    serialized = rdf_graph.serialize(format=rdflib_format)
+                    export_path.write_text(str(serialized), encoding="utf-8")
+                    export_artifacts.append({
+                        "format": export_format,
+                        "path": str(export_path),
+                        "source": False,
+                    })
+            except Exception as export_exc:
+                logger.warning("Ontology export serialization skipped for %s: %s", filename, export_exc)
+
+            shacl_service = ShaclValidationService()
+            shacl_ttl = shacl_service.create_default_shapes()
+            shacl_path = ontology_dir / f"{Path(filename).stem}.shacl.ttl"
+            shacl_path.write_text(shacl_ttl, encoding="utf-8")
+
+            shacl_report = OWLGenerationService.validate_with_shacl(
+                ttl_text,
+                shacl_shapes=shacl_ttl,
+                ontology_context=owl_metadata.get("owlready2"),
+            )
+            shacl_report_path = ontology_dir / f"{Path(filename).stem}.shacl_report.json"
+            shacl_report_path.write_text(json.dumps(shacl_report, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+
+            result.update({
+                "owl_file_path": str(owl_path),
+                "rdf_file_path": next((a["path"] for a in export_artifacts if a["format"] == "rdf"), ""),
+                "jsonld_file_path": next((a["path"] for a in export_artifacts if a["format"] == "jsonld"), ""),
+                "ontology_export_artifacts": export_artifacts,
+                "shacl_file_path": str(shacl_path),
+                "shacl_report_path": str(shacl_report_path),
+                "owl_generation_metadata": owl_metadata,
+                "shacl_report": shacl_report,
+                "semantic_artifacts_status": "generated",
+            })
+            return result
+        except Exception as exc:
+            logger.warning("Semantic artifact generation skipped for %s: %s", filename, exc)
+            result.update({
+                "semantic_artifacts_status": "generation_failed",
+                "semantic_artifacts_error": str(exc),
+            })
+            return result
+
     @classmethod
     def save_ontology_file(
         cls,
@@ -82,6 +186,19 @@ class OntologyUploadManager:
         try:
             cls.initialize()
 
+            if file_type == "xsd" and file_content:
+                try:
+                    root = ET.fromstring(file_content)
+                    xsd_namespace = str(root.attrib.get("targetNamespace") or "").strip()
+                    if xsd_namespace:
+                        source_namespace = source_namespace or xsd_namespace
+                        ns_token = xsd_namespace.rstrip("#/").rsplit("/", 1)[-1].rsplit("#", 1)[-1]
+                        ns_prefix = re.sub(r"[^a-zA-Z0-9_]+", "_", ns_token).strip("_").lower()
+                        if ns_prefix:
+                            prefix = ns_prefix[:32]
+                except Exception as ns_exc:
+                    logger.debug("Could not derive XSD targetNamespace for %s: %s", filename, ns_exc)
+
             # ── Versioning: detect existing entry for same prefix+file_type+generation_type ──
             existing = cls._find_existing(prefix, file_type, generation_type)
             version = (existing.get('version', 1) + 1) if existing else 1
@@ -110,6 +227,23 @@ class OntologyUploadManager:
             with open(file_path, 'wb') as f:
                 f.write(file_content)
 
+            semantic_artifacts = cls._materialize_semantic_artifacts(
+                ontology_dir=ontology_dir,
+                file_path=file_path,
+                file_content=file_content,
+                filename=filename,
+                file_type=file_type,
+                generation_type=generation_type,
+            )
+            generated_meta = semantic_artifacts.get("owl_generation_metadata") or {}
+            if file_type == "xsd" and generated_meta:
+                generated_prefix = str(generated_meta.get("ontology_prefix") or generated_meta.get("prefix") or "").strip()
+                generated_namespace = str(generated_meta.get("target_namespace") or generated_meta.get("base_uri") or "").strip()
+                if generated_prefix:
+                    prefix = generated_prefix
+                if generated_namespace:
+                    source_namespace = generated_namespace.rstrip("#/") if generated_namespace.endswith(("#", "/")) else generated_namespace
+
             # Create metadata with version info
             metadata = {
                 'ontology_id': ontology_id,
@@ -133,12 +267,13 @@ class OntologyUploadManager:
                 'is_latest': True,
                 'replaces': replaces,
                 'previous_versions': previous_versions,
+                **semantic_artifacts,
             }
 
             # Save metadata (no BOM)
             metadata_path = ontology_dir / 'metadata.json'
             with open(metadata_path, 'w', encoding='utf-8') as f:
-                json.dump(metadata, f, indent=2)
+                json.dump(metadata, f, indent=2, ensure_ascii=False)
 
             logger.info(f"Saved ontology {ontology_id} v{version} to {ontology_dir}")
             cls._invalidate_list_cache()
@@ -181,6 +316,36 @@ class OntologyUploadManager:
         except Exception as e:
             logger.exception("Error retrieving ontology")
             return {'status': 'error', 'error': str(e)}
+
+    @classmethod
+    def refresh_semantic_artifacts(cls, ontology_id: str) -> Dict[str, Any]:
+        """Backfill generated OWL/SHACL artifacts for an already-registered ontology."""
+        try:
+            result = cls.get_ontology(ontology_id)
+            if result.get('status') != 'success':
+                return result
+            meta = result['metadata']
+            file_path = Path(meta.get('file_path', ''))
+            if not file_path.exists():
+                return {'status': 'error', 'error': f'Missing ontology source file: {file_path}'}
+            ontology_dir = file_path.parent
+            semantic_artifacts = cls._materialize_semantic_artifacts(
+                ontology_dir=ontology_dir,
+                file_path=file_path,
+                file_content=file_path.read_bytes(),
+                filename=file_path.name,
+                file_type=str(meta.get('file_type') or '').strip(),
+                generation_type=str(meta.get('generation_type') or '').strip(),
+            )
+            cls.update_metadata(ontology_id, semantic_artifacts)
+            return {
+                'status': 'success',
+                'ontology_id': ontology_id,
+                'semantic_artifacts': semantic_artifacts,
+            }
+        except Exception as exc:
+            logger.exception('Could not refresh semantic artifacts for %s', ontology_id)
+            return {'status': 'error', 'error': str(exc)}
     
     @classmethod
     def list_ontologies(cls) -> Dict[str, Any]:
@@ -566,10 +731,10 @@ class OntologyUploadManager:
 
     @classmethod
     def _generate_rdf_for_source(cls, file_content: bytes, filename: str, file_type: str, generation_type: str) -> tuple[Any, str, Dict[str, Any]]:
-        if file_type == "xsd":
+        if file_type in {"xsd", "xmi"}:
             from rdflib import Graph as RDFGraph
             from .owl_generation_service import OWLGenerationService
-            ttl, metadata = OWLGenerationService.generate_owl_from_xsd(file_content, filename)
+            ttl, metadata = OWLGenerationService.generate_owl(file_content, filename)
             rdf_graph = RDFGraph()
             rdf_graph.parse(data=ttl, format="turtle")
             return rdf_graph, ttl, metadata
@@ -810,20 +975,26 @@ RETURN count(r) AS count
             # Use schema_type from metadata or parameter override
             determined_schema_type = schema_type or meta.get('schema_type', 'schema')
 
-            if determined_schema_type == "schema" and file_type in {"xsd", "ontology"}:
-                rdf_graph, ttl_text, owl_metadata = cls._generate_rdf_for_source(
-                    file_content=file_content,
-                    filename=file_path.name,
-                    file_type=file_type,
-                    generation_type=meta.get("generation_type", ""),
-                )
-                owl_file_path = ""
-                if file_type == "xsd":
-                    owl_path = file_path.with_suffix(".generated.ttl")
-                    owl_path.write_text(ttl_text, encoding="utf-8")
-                    owl_file_path = str(owl_path)
-                elif file_path.suffix.lower() in {".ttl", ".rdf", ".owl"}:
-                    owl_file_path = str(file_path)
+            if determined_schema_type == "schema" and file_type in {"xsd", "xmi", "ontology"}:
+                owl_file_path = str(meta.get("owl_file_path") or "").strip()
+                owl_metadata = dict(meta.get("owl_generation_metadata") or {})
+                ttl_text = ""
+                if owl_file_path and Path(owl_file_path).exists():
+                    ttl_text = Path(owl_file_path).read_text(encoding="utf-8")
+                    rdf_graph = cls._parse_rdf_content(ttl_text.encode("utf-8"), Path(owl_file_path).name)
+                else:
+                    rdf_graph, ttl_text, owl_metadata = cls._generate_rdf_for_source(
+                        file_content=file_content,
+                        filename=file_path.name,
+                        file_type=file_type,
+                        generation_type=meta.get("generation_type", ""),
+                    )
+                    if file_type in {"xsd", "xmi"}:
+                        owl_path = file_path.with_suffix(".generated.ttl")
+                        owl_path.write_text(ttl_text, encoding="utf-8")
+                        owl_file_path = str(owl_path)
+                    elif file_path.suffix.lower() in {".ttl", ".rdf", ".owl", ".xml"}:
+                        owl_file_path = str(file_path)
 
                 rdf_result = cls._push_rdf_graph_to_neo4j(
                     ontology_id=ontology_id,

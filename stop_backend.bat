@@ -1,6 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
 
+set "PORT=8000"
+set "STOPPED_PIDS="
+
 :: ────────────────────────────────────────────────────────────────────────────
 :: Backend Service Stop Script
 :: ────────────────────────────────────────────────────────────────────────────
@@ -19,28 +22,46 @@ echo   BACKEND SERVICE STOP
 echo ════════════════════════════════════════════════════════════════════════════
 echo.
 
-:: Try to stop via named window first (from start.bat)
-taskkill /FI "WINDOWTITLE eq DT-Backend*" /T /F >nul 2>&1
-if not errorlevel 1 (
-    echo [OK] Backend stopped (named window: DT-Backend)
+call :collect_listener_pids
+if not defined LISTENER_PIDS (
+    echo [INFO] Backend service was not running on port %PORT%
     echo.
     goto end
 )
 
-:: If no named window, try to kill Python processes on port 8000
-echo [INFO] Looking for Python processes on port 8000...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8000"') do (
-    set "PID=%%a"
-    taskkill /PID !PID! /F >nul 2>&1
+echo [INFO] Looking for backend process on port %PORT%...
+echo [INFO] Existing listener PID(s): !LISTENER_PIDS!
+
+:: Try to stop any legacy titled backend consoles, but verify the port is actually released.
+taskkill /FI "WINDOWTITLE eq DT-Backend*" /T /F >nul 2>&1
+
+for %%P in (%LISTENER_PIDS%) do (
+    taskkill /PID %%P /T /F >nul 2>&1
     if not errorlevel 1 (
-        echo [OK] Backend stopped (PID: !PID!)
-        echo.
-        goto end
+        set "STOPPED_PIDS=!STOPPED_PIDS! %%P"
     )
 )
 
-echo [INFO] Backend service was not running
+call :collect_listener_pids
+if not defined LISTENER_PIDS (
+    if defined STOPPED_PIDS (
+        echo [OK] Backend stopped (PID(s): !STOPPED_PIDS!)
+    ) else (
+        echo [OK] Backend stopped
+    )
+    echo.
+    goto end
+)
+
+echo [ERROR] Backend is still listening on port %PORT% (PID(s): !LISTENER_PIDS!)
+echo [INFO] Try closing the owning terminal or stopping the process manually.
 echo.
+exit /b 1
+
+:collect_listener_pids
+set "LISTENER_PIDS="
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "(Get-NetTCPConnection -LocalPort %PORT% -State Listen -ErrorAction SilentlyContinue ^| Select-Object -ExpandProperty OwningProcess -Unique) -join ' '"`) do set "LISTENER_PIDS=%%P"
+goto :eof
 
 :end
 echo ════════════════════════════════════════════════════════════════════════════

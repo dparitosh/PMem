@@ -12,6 +12,8 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
+from ..Services.oslc_trs_service import OSLCTRSService
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin"])
 CLEAN_SCHEMA_CONFIRM_TOKEN = "CLEAN_NEO4J_SCHEMA"
@@ -576,6 +578,16 @@ async def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             logger.warning(f"Could not clear metadata: {e}")
             metadata_cleared = 0
         
+        try:
+            OSLCTRSService.publish_event(
+                f"{OSLCTRSService.base_url()}/api/v1/admin/schema-stats",
+                "Deletion",
+                title="Neo4j schema cleaned",
+                metadata={"operation": "clean-schema", "metadata_cleared": metadata_cleared},
+            )
+        except Exception as exc:
+            logger.warning("OSLC TRS publish skipped for clean-schema: %s", exc)
+
         return {
             "success": True,
             "status": result.get("status"),
@@ -656,6 +668,16 @@ async def delete_data_by_label(body: DeleteDataRequest):
             )
         if result.get("status") != "SUCCESS":
             raise HTTPException(status_code=400, detail=result.get("message", "Delete failed"))
+        if not body.dry_run:
+            try:
+                OSLCTRSService.publish_event(
+                    f"{OSLCTRSService.base_url()}/api/v1/admin/schema-stats",
+                    "Deletion",
+                    title="Neo4j data deleted",
+                    metadata={"operation": "delete-data", "label": body.label, "prefix": body.prefix, "property": body.property, "batch_size": body.batch_size},
+                )
+            except Exception as exc:
+                logger.warning("OSLC TRS publish skipped for delete-data: %s", exc)
         return {"success": True, "dry_run": body.dry_run, **result}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -724,6 +746,69 @@ async def get_schema_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/ontology-duplicate-audit")
+async def ontology_duplicate_audit(limit: int = 100):
+    """Read-only audit for duplicate ontology schema nodes that block uniqueness constraints."""
+    try:
+        try:
+            from backend.core.db_config import get_config, get_driver
+        except ImportError:
+            from core.db_config import get_config, get_driver
+
+        config = get_config()
+        driver = get_driver()
+        query = """
+        CALL () {
+          MATCH (n:OntologyClass)
+          WHERE n.uri IS NOT NULL
+          WITH 'OntologyClass.uri' AS key, n.uri AS value, collect(elementId(n)) AS ids, count(*) AS count
+          WHERE count > 1
+          RETURN key, value, ids, count
+          UNION ALL
+          MATCH (n:OntologyProperty)
+          WHERE n.uri IS NOT NULL
+          WITH 'OntologyProperty.uri' AS key, n.uri AS value, collect(elementId(n)) AS ids, count(*) AS count
+          WHERE count > 1
+          RETURN key, value, ids, count
+          UNION ALL
+          MATCH (n:OntologyClass)
+          WITH 'OntologyClass.prefix_name' AS key,
+               coalesce(n.ontology_prefix, n.prefix, '') + '::' + coalesce(n.name, n.label, '') AS value,
+               collect(elementId(n)) AS ids,
+               count(*) AS count
+          WHERE value <> '::' AND count > 1
+          RETURN key, value, ids, count
+          UNION ALL
+          MATCH (n:OntologyProperty)
+          WITH 'OntologyProperty.prefix_name' AS key,
+               coalesce(n.ontology_prefix, n.prefix, '') + '::' + coalesce(n.name, n.label, '') AS value,
+               collect(elementId(n)) AS ids,
+               count(*) AS count
+          WHERE value <> '::' AND count > 1
+          RETURN key, value, ids, count
+        }
+        RETURN key, value, count, ids[0..5] AS sample_element_ids
+        ORDER BY count DESC, key, value
+        LIMIT toInteger($limit)
+        """
+        with driver.session(database=config.database) as session:
+            rows = [dict(record) for record in session.run(query, {"limit": max(1, min(int(limit or 100), 500))})]
+        return {
+            "status": "ok",
+            "duplicate_group_count": len(rows),
+            "duplicates": rows,
+            "destructive_cleanup_required": len(rows) > 0,
+            "recommendation": (
+                "Duplicates exist. Reprocess after clean-schema or run a targeted reviewed cleanup before creating uniqueness constraints."
+                if rows else
+                "No duplicate ontology schema keys found for the audited fields."
+            ),
+        }
+    except Exception as e:
+        logger.exception("Failed to audit ontology duplicates")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/reset-database")
 async def reset_database(recreate_indexes: bool = True):
     """
@@ -737,6 +822,15 @@ async def reset_database(recreate_indexes: bool = True):
         result = cleaner.reset_database(recreate_indexes=recreate_indexes)
         cleaner.close()
         
+        try:
+            OSLCTRSService.publish_event(
+                f"{OSLCTRSService.base_url()}/api/v1/admin/schema-stats",
+                "Deletion",
+                title="Neo4j database reset",
+                metadata={"operation": "reset-database", "recreate_indexes": recreate_indexes},
+            )
+        except Exception as exc:
+            logger.warning("OSLC TRS publish skipped for reset-database: %s", exc)
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

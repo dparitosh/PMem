@@ -328,17 +328,19 @@ class OwlreadyOntologyRuntime:
         edges: List[Dict[str, str]] = []
 
         def add_node(entity: Any, source: str) -> Optional[str]:
-            label = _first_text(getattr(entity, "label", [])) or _fragment(entity)
-            if not label:
+            iri = _iri(entity)
+            local_name = _fragment(iri)
+            label = _first_text(getattr(entity, "label", [])) or local_name
+            if not label or not local_name:
                 return None
-            term_id = f"{prefix}:{_fragment(entity)}" if prefix else _fragment(entity)
+            term_id = f"{prefix}:{local_name}" if prefix else iri
             if term_id in node_ids:
                 return term_id
             node_ids.add(term_id)
             nodes.append(
                 {
                     "term_id": term_id,
-                    "uri": getattr(entity, "iri", str(entity)),
+                    "uri": iri,
                     "label": label,
                     "definition": _first_text(getattr(entity, "comment", [])),
                     "ontology_prefix": prefix,

@@ -88,11 +88,19 @@ class GraphViewService:
         "Part",
         "Requirement",
         "RequirementRevision",
-        "GeneralRelation",
         "Occurrence",
         "InstanceGraph",
         "ProductInstance",
         "ProcessInstance",
+        "Document",
+        "Site",
+    ]
+
+    RELATIONSHIP_NODE_LABELS = [
+        "GeneralRelation",
+        "Connection",
+        "ConnectionInstance",
+        "ConnectionRevision",
     ]
 
     @staticmethod
@@ -244,6 +252,10 @@ class GraphViewService:
         labels = {str(label or "").lower() for label in (node.get("labels") or [])}
         element_type = str(props.get("element_type") or "").strip().lower()
         semantic_role = str(props.get("semantic_role") or "").strip().lower()
+        display_name = _first_text_value(
+            props,
+            ("name", "title", "label", "display_name", "displayName", "id", "uid"),
+        ).strip()
         metadata_markers = {
             "userdata",
             "form",
@@ -255,9 +267,13 @@ class GraphViewService:
             "uservalue",
         }
 
-        if semantic_role in {"metadata", "structural"}:
+        if labels.intersection({label.lower() for label in GraphViewService.RELATIONSHIP_NODE_LABELS}):
+            return True
+        if semantic_role in {"metadata", "structural", "relationship"}:
             return True
         if element_type in metadata_markers:
+            return True
+        if re.fullmatch(r"id\d+", display_name, flags=re.IGNORECASE):
             return True
         return bool(labels.intersection(metadata_markers))
 
@@ -271,7 +287,7 @@ class GraphViewService:
         labels = {str(label or "") for label in (node.get("labels") or [])}
         props = node.get("properties") or {}
         semantic_role = str(props.get("semantic_role") or "").strip().lower()
-        if 'GeneralRelation' in labels or semantic_role == 'relationship':
+        if labels.intersection(set(GraphViewService.RELATIONSHIP_NODE_LABELS)) or semantic_role == 'relationship':
             return False
         if labels and labels.intersection(GraphViewService.INSTANCE_NODE_LABELS):
             return True
@@ -1146,25 +1162,78 @@ RETURN count(res) AS count
     def get_graph_overview(cls, limit: int = 1000) -> Dict[str, Any]:
         rows = cls._run(
             """
-            MATCH (n)-[r]->(m)
-            WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR m:DatasheetChunk OR m:GraphChunk)
+            CALL () {
+              MATCH (n)-[r]->(m)
+              WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR m:DatasheetChunk OR m:GraphChunk)
+                AND NOT any(label IN labels(n) WHERE label IN $schema_node_labels)
+                AND NOT any(label IN labels(m) WHERE label IN $schema_node_labels)
+                AND NOT any(label IN labels(n) WHERE label IN $relationship_node_labels)
+                AND NOT any(label IN labels(m) WHERE label IN $relationship_node_labels)
+                AND (
+                  any(label IN labels(n) WHERE label IN $instance_node_labels)
+                  OR coalesce(n.semantic_role, '') = 'entity'
+                )
+                AND (
+                  any(label IN labels(m) WHERE label IN $instance_node_labels)
+                  OR coalesce(m.semantic_role, '') = 'entity'
+                )
+              RETURN n, r, m
+              LIMIT $direct_limit
+              UNION
+              MATCH (n)--(bridge)--(m)
+              WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR m:DatasheetChunk OR m:GraphChunk)
+                AND any(label IN labels(bridge) WHERE label IN $relationship_node_labels)
+                AND NOT any(label IN labels(n) WHERE label IN $schema_node_labels)
+                AND NOT any(label IN labels(m) WHERE label IN $schema_node_labels)
+                AND NOT any(label IN labels(n) WHERE label IN $relationship_node_labels)
+                AND NOT any(label IN labels(m) WHERE label IN $relationship_node_labels)
+                AND elementId(n) < elementId(m)
+                AND (
+                  any(label IN labels(n) WHERE label IN $instance_node_labels)
+                  OR coalesce(n.semantic_role, '') = 'entity'
+                )
+                AND (
+                  any(label IN labels(m) WHERE label IN $instance_node_labels)
+                  OR coalesce(m.semantic_role, '') = 'entity'
+                )
+              WITH n, bridge, m
+              RETURN n,
+                {
+                  elementId: 'bridge:' + elementId(bridge) + ':' + elementId(n) + ':' + elementId(m),
+                  type: coalesce(properties(bridge)['element_type'], properties(bridge)['relationship_type'], properties(bridge)['name'], labels(bridge)[0], 'RELATED'),
+                  properties: properties(bridge),
+                  start: elementId(n),
+                  end: elementId(m)
+                } AS r,
+                m
+              LIMIT $bridge_limit
+            }
             WITH n, r, m
             ORDER BY
+              CASE WHEN coalesce(n.semantic_role, '') = 'entity' THEN 0 ELSE 1 END ASC,
               coalesce(n.ontology_prefix, n.prefix, '') ASC,
-              coalesce(n.name, n.title, n.code, labels(n)[0], elementId(n)) ASC,
-              type(r) ASC,
+              coalesce(n.name, n.title, properties(n)['code'], labels(n)[0], elementId(n)) ASC,
+              coalesce(r.type, '') ASC,
               coalesce(m.ontology_prefix, m.prefix, '') ASC,
-              coalesce(m.name, m.title, m.code, labels(m)[0], elementId(m)) ASC
+              coalesce(m.name, m.title, properties(m)['code'], labels(m)[0], elementId(m)) ASC
             RETURN
               {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
-              {elementId: elementId(r), type: type(r), properties: properties(r),
-               start: elementId(startNode(r)), end: elementId(endNode(r))} AS r,
+              r,
               {elementId: elementId(m), labels: labels(m), properties: properties(m)} AS m
             LIMIT $limit
             """,
-            {"limit": max(1, min(int(limit), 5000))},
+            {
+                "limit": max(1, min(int(limit), 5000)),
+                "direct_limit": max(1, min(int(limit), 5000)) // 2,
+                "bridge_limit": max(1, min(int(limit), 5000)),
+                "schema_node_labels": cls.SCHEMA_NODE_LABELS,
+                "instance_node_labels": cls.INSTANCE_NODE_LABELS,
+                "relationship_node_labels": cls.RELATIONSHIP_NODE_LABELS,
+            },
         )
-        return cls._filter_graph_nodes(cls.rows_to_graph(rows))
+        graph = cls._filter_graph_nodes(cls.rows_to_graph(rows), only_individual_nodes=True)
+        graph["view"] = {"type": "overview", "scope": "business-instances"}
+        return graph
 
     @classmethod
     def get_virtual_ontology_view(cls, prefix: str, limit: int = 1000) -> Dict[str, Any]:
@@ -1227,14 +1296,35 @@ RETURN count(res) AS count
             }
 
         neighbor_match = """
-        OPTIONAL MATCH (seed)-[r]-(adjacent)
-        WHERE adjacent IS NULL OR (
-          NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
-          AND (
-            any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
-            OR coalesce(adjacent.semantic_role, '') = 'entity'
+        CALL (seed) {
+          OPTIONAL MATCH (seed)-[direct_rel]-(direct_adjacent)
+          WHERE direct_adjacent IS NULL OR (
+            NOT (direct_adjacent:DatasheetChunk OR direct_adjacent:GraphChunk)
+            AND NOT any(label IN labels(direct_adjacent) WHERE label IN $relationship_node_labels)
+            AND (
+              any(label IN labels(direct_adjacent) WHERE label IN $instance_node_labels)
+              OR coalesce(direct_adjacent.semantic_role, '') = 'entity'
+            )
           )
-        )
+          RETURN direct_rel AS r, direct_adjacent AS adjacent
+          UNION
+          MATCH (seed)--(bridge)--(bridge_adjacent)
+          WHERE NOT (bridge:DatasheetChunk OR bridge:GraphChunk OR bridge_adjacent:DatasheetChunk OR bridge_adjacent:GraphChunk)
+            AND any(label IN labels(bridge) WHERE label IN $relationship_node_labels)
+            AND NOT any(label IN labels(bridge_adjacent) WHERE label IN $relationship_node_labels)
+            AND (
+              any(label IN labels(bridge_adjacent) WHERE label IN $instance_node_labels)
+              OR coalesce(bridge_adjacent.semantic_role, '') = 'entity'
+            )
+          RETURN {
+            elementId: 'bridge:' + elementId(bridge) + ':' + elementId(seed) + ':' + elementId(bridge_adjacent),
+            type: coalesce(properties(bridge)['element_type'], properties(bridge)['relationship_type'], properties(bridge)['name'], labels(bridge)[0], 'RELATED'),
+            properties: properties(bridge),
+            start: elementId(seed),
+            end: elementId(bridge_adjacent)
+          } AS r,
+          bridge_adjacent AS adjacent
+        }
         WITH seed, r, adjacent
         """ if expand_neighbors else """
         WITH seed, NULL AS r, NULL AS adjacent
@@ -1252,6 +1342,7 @@ RETURN count(res) AS count
               any(label IN labels(seed) WHERE label IN $instance_node_labels)
               OR coalesce(seed.semantic_role, '') = 'entity'
             )
+            AND NOT any(label IN labels(seed) WHERE label IN $relationship_node_labels)
             AND (
               search_term = '' OR
               CASE
@@ -1442,15 +1533,19 @@ RETURN count(res) AS count
                 "search_mode": search_mode,
                 "schema_node_labels": cls.SCHEMA_NODE_LABELS,
                 "instance_node_labels": cls.INSTANCE_NODE_LABELS,
+                "relationship_node_labels": cls.RELATIONSHIP_NODE_LABELS,
             },
         )
         graph = cls._filter_graph_nodes(cls.rows_to_graph(rows), only_individual_nodes=True)
+        root_node = (graph.get("nodes") or [None])[0]
         graph["view"] = {
             "type": "contextual-subgraph",
             "search": raw_search,
             "ontology_prefix": ontology_prefix or "",
             "import_id": import_id or "",
+            "root_node_id": root_node.get("elementId") if root_node else None,
         }
+        graph["root"] = root_node
         return graph
 
     @classmethod
@@ -1600,9 +1695,12 @@ RETURN count(res) AS count
         )
         graph = cls.rows_to_graph(rows)
         graph = cls._filter_graph_nodes(graph, only_individual_nodes=True)
+        root_node = next((node for node in graph.get("nodes", []) if node.get("elementId") == node_id), None)
         graph["view"] = {
             "type": "traversal-slice",
             "node_id": node_id,
             "depth": traversal_depth,
+            "root_node_id": node_id,
         }
+        graph["root"] = root_node
         return graph

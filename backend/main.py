@@ -188,8 +188,14 @@ try:
     from .data_ingestion import router as ingestion_router
     from .Services.unified_import_router import router as unified_import_router, ontology_router as ontology_upload_router
     from .routes.ontology_routes import router as ontology_router
+    from .routes.oslc_routes import router as oslc_router
     from .routes.threedxml_routes import router as threedxml_router
     from .routes.admin_routes import router as admin_router
+    try:
+        from .Services.documents_api import router as documents_router
+    except Exception:
+        documents_router = None
+    from .Services.oslc_trs_service import OSLCTRSService
 except ImportError:
     # Script mode (python backend/main.py): add project root for backend.* imports.
     _backend_dir = os.path.dirname(os.path.abspath(__file__))
@@ -202,8 +208,14 @@ except ImportError:
     from backend.data_ingestion import router as ingestion_router
     from backend.Services.unified_import_router import router as unified_import_router, ontology_router as ontology_upload_router
     from backend.routes.ontology_routes import router as ontology_router
+    from backend.routes.oslc_routes import router as oslc_router
     from backend.routes.threedxml_routes import router as threedxml_router
     from backend.routes.admin_routes import router as admin_router
+    try:
+        from backend.Services.documents_api import router as documents_router
+        from backend.Services.oslc_trs_service import OSLCTRSService
+    except Exception:
+        documents_router = None
 
 # Optional imports - gracefully handle missing modules
 try:
@@ -966,8 +978,13 @@ app.include_router(ingestion_router, prefix="/api/v1", tags=["v1-ingestion"])
 app.include_router(unified_import_router, prefix="/api/v1", tags=["v1-data-import"])
 app.include_router(ontology_upload_router, prefix="/api/v1", tags=["v1-ontology-upload"])
 app.include_router(ontology_router, prefix="/api/v1", tags=["v1-ontology"])
+app.include_router(oslc_router)
 app.include_router(threedxml_router, prefix="/api/v1", tags=["v1-3dxml"])
 app.include_router(admin_router, prefix="/api/v1", tags=["v1-admin"])
+if documents_router is not None:
+    app.include_router(documents_router, prefix="/api/v1", tags=["v1-documents"])
+else:
+    logger.warning("Documents router not mounted because document pipeline imports are unavailable")
 
 # API versioning enabled: All endpoints use /api/v1/* for consistent routing
 # Legacy /api/* routes have been deprecated and removed (June 2026)
@@ -3055,6 +3072,116 @@ def build_graph_embeddings(force: bool = False):
         safe_error("/embeddings/build", e)
 
 
+
+@app.post("/reports")
+@app.post("/api/v1/reports")
+def get_reports(body: dict):
+    """Compatibility report endpoint for customer deployments and external clients."""
+    try:
+        report_type = str((body or {}).get("type") or (body or {}).get("report_type") or "overview").strip().lower()
+        page = max(1, int((body or {}).get("page") or 1))
+        page_size = max(1, min(int((body or {}).get("page_size") or (body or {}).get("pageSize") or 25), 500))
+        skip = (page - 1) * page_size
+
+        if report_type in {"ontology", "ontologies", "governance"}:
+            try:
+                from Services.ontology_upload_manager import OntologyUploadManager
+            except Exception:
+                from backend.Services.ontology_upload_manager import OntologyUploadManager
+            registry = OntologyUploadManager.list_ontologies_with_neo4j_counts(graph)
+            rows = registry.get("ontologies", []) if isinstance(registry, dict) else []
+            return {
+                "status": "success",
+                "type": report_type,
+                "page": page,
+                "page_size": page_size,
+                "total": len(rows),
+                "results": rows[skip:skip + page_size],
+            }
+
+        if report_type in {"relationship", "relationships", "traceability", "lineage"}:
+            rows = graph.query(
+                """
+                MATCH (a)-[r]->(b)
+                WITH a, r, b,
+                     coalesce(a.name, a.label, a.id, '') AS from_name,
+                     coalesce(b.name, b.label, b.id, '') AS to_name
+                WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
+                  AND from_name <> '' AND to_name <> ''
+                  AND NOT toLower(from_name) STARTS WITH 'id'
+                  AND NOT toLower(to_name) STARTS WITH 'id'
+                  AND NOT any(lbl IN labels(a) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
+                  AND NOT any(lbl IN labels(b) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
+                RETURN type(r) AS relationship_type,
+                       from_name AS from_name,
+                       labels(a) AS from_labels,
+                       to_name AS to_name,
+                       labels(b) AS to_labels,
+                       properties(r) AS relationship_properties
+                ORDER BY relationship_type, from_name, to_name
+                SKIP $skip LIMIT $limit
+                """,
+                params={"skip": skip, "limit": page_size},
+            ) or []
+            total_rows = graph.query(
+                """
+                MATCH (a)-[r]->(b)
+                WITH a, r, b,
+                     coalesce(a.name, a.label, a.id, '') AS from_name,
+                     coalesce(b.name, b.label, b.id, '') AS to_name
+                WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
+                  AND from_name <> '' AND to_name <> ''
+                  AND NOT toLower(from_name) STARTS WITH 'id'
+                  AND NOT toLower(to_name) STARTS WITH 'id'
+                  AND NOT any(lbl IN labels(a) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
+                  AND NOT any(lbl IN labels(b) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
+                RETURN count(r) AS total
+                """
+            ) or []
+            total = int(total_rows[0].get("total") or 0) if total_rows else len(rows)
+            return {"status": "success", "type": report_type, "page": page, "page_size": page_size, "total": total, "results": rows}
+
+        rows = graph.query(
+            """
+            MATCH (n)
+            WITH n, coalesce(n.name, n.label, n.id, '') AS display_name
+            WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
+              AND display_name <> ''
+              AND NOT toLower(display_name) STARTS WITH 'id'
+              AND NOT any(lbl IN labels(n) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
+            RETURN elementId(n) AS elementId,
+                   labels(n) AS labels,
+                   properties(n) AS properties
+            ORDER BY display_name
+            SKIP $skip LIMIT $limit
+            """,
+            params={"skip": skip, "limit": page_size},
+        ) or []
+        total_rows = graph.query(
+            """
+            MATCH (n)
+            WITH n, coalesce(n.name, n.label, n.id, '') AS display_name
+            WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
+              AND display_name <> ''
+              AND NOT toLower(display_name) STARTS WITH 'id'
+              AND NOT any(lbl IN labels(n) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
+            RETURN count(n) AS total
+            """
+        ) or []
+        total = int(total_rows[0].get("total") or 0) if total_rows else len(rows)
+        normalized = []
+        for row in rows:
+            props = dict(row.get("properties") or {})
+            normalized.append({
+                "elementId": row.get("elementId"),
+                "type": ", ".join(row.get("labels") or []),
+                **props,
+                "name": props.get("name") or props.get("label") or props.get("id") or row.get("elementId"),
+            })
+        return {"status": "success", "type": report_type, "page": page, "page_size": page_size, "total": total, "results": normalized}
+    except Exception as e:
+        safe_error("/reports", e)
+
 # ======================== RECOMMENDATION ENDPOINTS ========================
 
 from Services.change_impact_recommender import ChangeImpactRecommender
@@ -3799,6 +3926,62 @@ def export_import_owl(task_id: str, format: str = Query("ttl", pattern="^(ttl|rd
     except Exception as e:
         safe_error("/api/v1/import/owl/{task_id}/export", e)
 
+
+@app.get("/api/v1/ontology/{ontology_id}/export")
+def export_registered_ontology(ontology_id: str, format: str = Query("ttl", pattern="^(ttl|rdf|owl|jsonld)$")):
+    """Download a registered/generated ontology as TTL, RDF/XML, OWL/XML, or JSON-LD."""
+    try:
+        from rdflib import Graph as RDFGraph
+        from backend.Services.ontology_upload_manager import OntologyUploadManager
+
+        meta_result = OntologyUploadManager.get_ontology(ontology_id)
+        if meta_result.get("status") != "success":
+            raise HTTPException(status_code=404, detail=f"Ontology not found: {ontology_id}")
+        meta = meta_result.get("metadata") or {}
+        export_format = (format or "ttl").lower()
+        artifacts = meta.get("ontology_export_artifacts") or []
+        direct = next((item for item in artifacts if str(item.get("format") or "").lower() == export_format), None)
+        if direct:
+            direct_path = _Path(str(direct.get("path") or ""))
+            if direct_path.exists():
+                filename_base = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(meta.get("ontology_name") or meta.get("prefix") or ontology_id))
+                ext = "ttl" if export_format == "ttl" else export_format
+                return FileResponse(path=str(direct_path), filename=f"{filename_base}.{ext}")
+
+        source_path = _Path(str(meta.get("owl_file_path") or meta.get("file_path") or ""))
+        if not source_path.exists():
+            raise HTTPException(status_code=404, detail=f"Ontology semantic file is missing for: {ontology_id}")
+
+        export_map = {
+            "ttl": {"rdflib": "turtle", "media": "text/turtle", "ext": "ttl"},
+            "rdf": {"rdflib": "xml", "media": "application/rdf+xml", "ext": "rdf"},
+            "owl": {"rdflib": "pretty-xml", "media": "application/rdf+xml", "ext": "owl"},
+            "jsonld": {"rdflib": "json-ld", "media": "application/ld+json", "ext": "jsonld"},
+        }
+        spec = export_map[export_format]
+        graph_obj = RDFGraph()
+        parse_formats = ["turtle", "xml", "n3"] if source_path.suffix.lower() == ".ttl" else ["xml", "turtle", "n3"]
+        last_error = None
+        for parse_format in parse_formats:
+            try:
+                graph_obj.parse(str(source_path), format=parse_format)
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+        if last_error:
+            raise HTTPException(status_code=422, detail=f"Ontology could not be parsed for export: {last_error}")
+        content = graph_obj.serialize(format=spec["rdflib"])
+        body = content if isinstance(content, bytes) else str(content).encode("utf-8")
+        filename_base = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(meta.get("ontology_name") or meta.get("prefix") or ontology_id))
+        headers = {"Content-Disposition": f'attachment; filename="{filename_base}.{spec["ext"]}"'}
+        return Response(content=body, media_type=f'{spec["media"]}; charset=utf-8', headers=headers)
+    except HTTPException:
+        raise
+    except Exception as e:
+        safe_error("/api/v1/ontology/{ontology_id}/export", e)
+
+
 @app.get("/api/v1/import/artifacts/{task_id}")
 def get_import_artifacts(task_id: str):
     """Return retained workflow artifacts for an import task."""
@@ -4051,6 +4234,15 @@ async def commit_import(task_id: str):
             try:
                 result = await UnifiedDataImportService.commit_import(task_id)
                 invalidate_graphvis_cache()
+                try:
+                    OSLCTRSService.publish_event(
+                        f"{OSLCTRSService.base_url()}/api/v1/import/status/{task_id}",
+                        "Modification",
+                        title=f"Import committed for {task_id}",
+                        metadata={"task_id": task_id, "path": "unified_commit", "result_summary": str(result)[:500]},
+                    )
+                except Exception as exc:
+                    logger.warning("OSLC TRS publish skipped for import commit %s: %s", task_id, exc)
                 return {"success": True, "task_id": task_id, "message": "Committed via unified service", "result": result}
             except ValueError as ve:
                 # Task not found or not ready
@@ -4111,6 +4303,15 @@ async def commit_import(task_id: str):
             task["committed_count"] = committed_count
             task["completed_at"] = time.time()
             invalidate_graphvis_cache()
+            try:
+                OSLCTRSService.publish_event(
+                    f"{OSLCTRSService.base_url()}/api/v1/import/status/{task_id}",
+                    "Modification",
+                    title=f"Import committed for {task_id}",
+                    metadata={"task_id": task_id, "path": "legacy_commit", "committed_count": committed_count},
+                )
+            except Exception as exc:
+                logger.warning("OSLC TRS publish skipped for import commit %s: %s", task_id, exc)
             return {
                 "success": True,
                 "task_id": task_id,

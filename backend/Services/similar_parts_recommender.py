@@ -13,6 +13,7 @@ import os
 import re
 from difflib import SequenceMatcher
 
+from .recommendation_semantics import pick_semantic_source
 from .recommendation_scope import cypher_scope_filter
 
 logger = logging.getLogger(__name__)
@@ -64,7 +65,9 @@ class SimilarPartsRecommender:
             cand["trace_link"] = t.get("link_type")
 
         # Factor 4: semantic candidates from graph embeddings when available
-        semantic = self._find_semantic_candidates(source, part_name, top_n=max(top_n * 3, 15))
+        semantic = []
+        if isinstance(scope, dict) and scope.get('use_embeddings'):
+            semantic = self._find_semantic_candidates(source, part_name, top_n=max(top_n * 3, 15))
         for s in semantic:
             cand = candidates.setdefault(s["eid"], {**s, "assembly": False, "trace_link": None, "semantic_similarity": 0.0})
             cand["semantic_similarity"] = max(float(cand.get("semantic_similarity") or 0.0), float(s.get("semantic_similarity") or 0.0))
@@ -133,7 +136,8 @@ class SimilarPartsRecommender:
             OPTIONAL MATCH (p)-[:INSTANCE_OF]->(cls:OntologyClass)
             RETURN p.name AS name, coalesce(cls.name, head(labels(p))) AS source_tag,
                    cls.name AS rflp_layer, elementId(p) AS eid,
-                   cls.name AS class_name
+                   cls.name AS class_name, labels(p) AS labels,
+                   p.element_type AS element_type
             LIMIT 1
             """,
             params={"node_id": node_id, **scope_params},
@@ -159,14 +163,15 @@ class SimilarPartsRecommender:
             OPTIONAL MATCH (p)-[:INSTANCE_OF]->(cls:OntologyClass)
             RETURN p.name AS name, coalesce(cls.name, head(labels(p))) AS source_tag,
                    cls.name AS rflp_layer, elementId(p) AS eid,
-                   cls.name AS class_name
-            LIMIT 5
+                   cls.name AS class_name, labels(p) AS labels,
+                   p.element_type AS element_type
+            LIMIT 25
             """,
             params={"name": name, **scope_params},
         )
         if not rows:
             return None
-        best = max(rows, key=lambda r: SequenceMatcher(None, name.lower(), (r["name"] or "").lower()).ratio())
+        best = pick_semantic_source(name, rows, prefer="part")
         return best
 
     def _find_assembly_siblings(self, source: dict) -> list[dict]:
