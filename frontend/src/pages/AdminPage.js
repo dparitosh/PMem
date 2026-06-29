@@ -141,7 +141,10 @@ export default function AdminPage({ onSchemaCleaned }) {
 
   return (
     <div className="depo-page">
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12, color: widgetColors.muted, lineHeight: 1.4, maxWidth: 720 }}>
+          Registry tables are read-only operational views. Use the maintenance panel for cache, targeted graph cleanup, ontology metadata cleanup, and reset actions.
+        </div>
         <button
           type="button"
           onClick={loadRegistry}

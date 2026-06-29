@@ -352,7 +352,14 @@ const ReportsTab = ({ searchResults, graphData }) => {
 
   const processedResults = useMemo(() => buildNodeReportRows(effectiveGraphData, searchResults), [effectiveGraphData, searchResults]);
   const baseNodeHeaders = useMemo(() => getHeaders(processedResults), [processedResults]);
-  const availableTypes = useMemo(() => discoverTypes(processedResults), [processedResults]);
+  const discoveredTypes = useMemo(() => discoverTypes(processedResults), [processedResults]);
+  const [stableAvailableTypes, setStableAvailableTypes] = useState([]);
+  useEffect(() => {
+    if (discoveredTypes.length > 0) {
+      setStableAvailableTypes(discoveredTypes);
+    }
+  }, [discoveredTypes]);
+  const availableTypes = stableAvailableTypes.length > 0 ? stableAvailableTypes : discoveredTypes;
   const relationshipRows = useMemo(() => buildRelationshipRows(effectiveGraphData), [effectiveGraphData]);
 
   const relTypesSummary = useMemo(() => {
@@ -451,6 +458,13 @@ const ReportsTab = ({ searchResults, graphData }) => {
     1,
     Math.ceil(filteredRelationshipRows.length / RELATIONSHIP_PAGE_SIZE)
   );
+
+  useEffect(() => {
+    if (activeReport !== 'search' && activeReport !== 'ontologies' && activeReport !== 'relationships') {
+      const hasType = availableTypes.some(({ type }) => type === activeReport);
+      if (!hasType) setActiveReport('search');
+    }
+  }, [activeReport, availableTypes]);
 
   useEffect(() => {
     setCurrentPage(1);

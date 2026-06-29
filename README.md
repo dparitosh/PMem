@@ -26,6 +26,10 @@ This repository contains two deliverables that can be released together to the c
 
 ## Quick Start
 
+### Runtime Prerequisite
+
+Use Node.js 20 LTS with npm 10 for the React frontend. The root `.nvmrc` / `.node-version` files and `frontend/package.json` all target Node 20. After upgrading Node.js, run `cd frontend && npm install && npm run build`.
+
 ### Main app
 
 ```bat

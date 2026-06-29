@@ -177,3 +177,59 @@ For customer integration, the safest pattern is:
 - If you provide `node_id`, the service uses it to narrow the lookup inside the active scope.
 - If no `scope` is provided, the service falls back to the default configured graph context.
 
+
+## 10) Async chat pattern for Teamcenter Active Workspace
+
+For AWC, prefer the async job endpoint when the answer may require GraphRAG, Neo4j traversal, or Ollama/APIM model generation. This avoids browser/client timeout and avoids freezing the Active Workspace action.
+
+### Submit job
+
+```http
+POST /chat/jobs
+```
+
+```json
+{
+  "session_id": "ECR-000016",
+  "message": "what is the impact of change in REQ-006 associated with SKF_6306-2Z",
+  "graph_context": {
+    "source": "teamcenter-awc",
+    "selected_object_id": "ECR-000016",
+    "intent": "change_impact_analysis"
+  }
+}
+```
+
+Expected immediate response:
+
+```json
+{
+  "status": "accepted",
+  "job_id": "chatjob-...",
+  "session_id": "ECR-000016",
+  "poll_endpoint": "/chat/jobs/chatjob-..."
+}
+```
+
+### Poll job
+
+```http
+GET /chat/jobs/{job_id}
+```
+
+AWC should keep polling until `status` is one of `completed`, `failed`, or `timeout`. When `status` is `completed`, read the `response` field and bind it to the UI response property.
+
+Recommended polling interval: 2-5 seconds. Recommended UI behavior: show `Generating response...` while status is `queued` or `running`.
+
+### Timeout settings
+
+Backend defaults are now set for longer model calls:
+
+```env
+CHAT_REQUEST_TIMEOUT_SECONDS=900
+CHAT_STREAM_TIMEOUT_SECONDS=900
+CHAT_JOB_TTL_SECONDS=3600
+CHAT_JOB_MAX_COUNT=200
+```
+
+Use direct `POST /chat` only for short internal calls. Use `POST /chat/jobs` for Teamcenter customer workflows.

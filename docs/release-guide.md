@@ -150,3 +150,20 @@ Use this wording:
 - The **main DEPO application** is the primary user-facing platform.
 - The **standalone ontology agentic service** is an auxiliary ontology workflow service for API-driven automation and semantic processing.
 - Unstructured document processing is supported by the backend API, but operational readiness depends on the embedding runtime configured in the deployment environment.
+
+
+## Node.js Runtime Requirement
+
+Use Node.js 20 LTS with npm 10 for the frontend. This avoids old Node runtime failures such as `react-scripts` not being recognized and keeps the release on a stable LTS baseline.
+
+Recommended verification:
+
+```bat
+node -v
+npm -v
+cd D:\Depo_Onto_Engine\frontend
+npm install
+npm run build
+```
+
+The frontend startup script now checks for Node.js 20 or newer before starting.

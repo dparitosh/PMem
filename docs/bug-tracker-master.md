@@ -203,10 +203,10 @@ Suggested execution rule:
 |---|---|---|---|---|---|---|---|
 | RC-01 | Recommendations | Result renderers can return `null` for valid backend responses. | The user sees blank success states. | `RecommendationsTab.js:347-380`, `1200-1331` | P0 | Fixed | Successful but sparse recommendation responses now render an explicit empty-state card instead of disappearing. |
 | RC-02 | Recommendations | Health/readiness defaults are permissive when the backend payload is incomplete. | The user can run a scenario that is not ready. | `RecommendationsTab.js:447-450` | P1 | Fixed | Missing or degraded readiness payloads now fail closed and show the service as unavailable instead of implicitly ready. |
-| RC-03 | Recommendations | Prefill event flow depends on `dt-rec-prefill` and a global window fallback. | The feature can look inconsistent across pages. | `RecommendationsTab.js:443-460` | P1 | Open | Graph tooltip actions and recommendation panel always sync. |
-| RC-04 | Recommendations | The scenario entry point is stateful but not strongly validated against input type. | Wrong inputs can still trigger service calls. | `RecommendationsTab.js:463-491` | P1 | Open | Input validation is explicit per scenario. |
-| RC-05 | Recommendations | Search/impact/manufacturing results use different internal shapes. | Consistent reporting and export become harder. | `RecommendationsTab.js:641-643` | P1 | Open | Result schema is normalized before render. |
-| RC-06 | Recommendations | The page mixes business guidance and action triggers, which can overstate certainty. | Users may treat guidance as authoritative truth. | `RecommendationsTab.js:199-248`, `555-584` | P2 | Open | The panel clearly separates suggestion from decision. |
+| RC-03 | Recommendations | Prefill event flow depends on `dt-rec-prefill` and a global window fallback. | The feature can look inconsistent across pages. | `RecommendationsTab.js:443-460` | P1 | Fixed | Recommendation prefill now accepts legacy and explicit events, normalizes service aliases, and safely extracts node/display/query fields. |
+| RC-04 | Recommendations | The scenario entry point is stateful but not strongly validated against input type. | Wrong inputs can still trigger service calls. | `RecommendationsTab.js:463-491` | P1 | Fixed | Service selection now normalizes aliases before execution and keeps input clearing/result clearing consistent across selection paths. |
+| RC-05 | Recommendations | Search/impact/manufacturing results use different internal shapes. | Consistent reporting and export become harder. | `RecommendationsTab.js:641-643` | P1 | Fixed | Result payloads are normalized before render so missing arrays become empty arrays instead of blank/null render paths. |
+| RC-06 | Recommendations | The page mixes business guidance and action triggers, which can overstate certainty. | Users may treat guidance as authoritative truth. | `RecommendationsTab.js:199-248`, `555-584` | P2 | Fixed | A visible decision-support note now separates recommendations from approval/decision authority. |
 
 | ID | Page | Bug | Why it matters | Evidence | Priority | Status | Closure test |
 |---|---|---|---|---|---|---|---|
@@ -215,16 +215,16 @@ Suggested execution rule:
 | RP-03 | Reports | Pagination reset on every filter or report change without preserving user intent. | The table jumped around during review. | `ReportsTab.js:390-400`, `1038-1075` | P1 | Fixed | Filters and sorting keep the user on the current page unless the filtered result set no longer has that page. |
 | RP-04 | Reports | Relationship rows are built from graph edges, not necessarily from the same semantic scope as the search report. | Users can compare incompatible datasets in one panel. | `ReportsTab.js:322-331`, `655-725` | P1 | Fixed | Relationship reports now explicitly state that they come from the current graph canvas and call out when node rows are filtered by search results. |
 | RP-05 | Reports | Search report export and relationship export are handled through separate paths with different row shapes. | Export consistency is fragile. | `ReportsTab.js:637-650`, `1078-1086` | P1 | Fixed | Relationship export now uses a normalized row schema and filenames aligned to the current filter scope, matching the visible table columns. |
-| RP-06 | Reports | Dynamic type tabs are derived from the current processed results only. | Tabs can vanish when the filter changes. | `ReportsTab.js:213-223`, `442-453` | P2 | Open | Tabs remain stable for the current dataset. |
+| RP-06 | Reports | Dynamic type tabs are derived from the current processed results only. | Tabs can vanish when the filter changes. | `ReportsTab.js:213-223`, `442-453` | P2 | Fixed | Type tabs now use a stable discovered-type cache and fall back to search if the active type no longer exists. |
 
 | ID | Page | Bug | Why it matters | Evidence | Priority | Status | Closure test |
 |---|---|---|---|---|---|---|---|
-| AD-01 | Admin | Bulk delete requires either label or prefix, but the UX makes the destructive scope easy to misread. | A cleanup action can delete too much data. | `AdminPanel.js:177-192`, `388-418` | P0 | Open | Cleanup actions require an explicit scope preview and confirmation. |
+| AD-01 | Admin | Bulk delete requires either label or prefix, but the UX makes the destructive scope easy to misread. | A cleanup action can delete too much data. | `AdminPanel.js:177-192`, `388-418` | P0 | Fixed | Scoped delete now requires previewing the exact same label/prefix/property/value/batch scope before execution. |
 | AD-02 | Admin | Prefix deletes forbid property/value filters. | The user cannot do targeted prefix-based cleanup. | `AdminPanel.js:201-293`, `admin_routes.py:617-654`, `neo4j_schema_cleaner.py:370-450` | P1 | Fixed | Prefix cleanup now supports the same optional property/value scope in both preview and delete paths. |
 | AD-03 | Admin | Preview state and destructive action state are separate and can diverge. | The user may preview one scope and execute another. | `AdminPanel.js:200-293` | P0 | Fixed | Preview and delete now use one shared scope builder and send the same query parameters to the backend. |
-| AD-04 | Admin | Schema cleanup bundles nodes, relationships, metadata, indexes, and constraints into one irreversible action. | Recovery becomes hard and risky. | `AdminPanel.js:116-139` | P0 | Open | The UI clearly separates reset, purge, and targeted cleanup. |
-| AD-05 | Admin | Registry state is read only, but the page still implies broader system control. | Operators may expect configuration edits that are not present. | `AdminPage.js:164-167` | P2 | Open | Read-only scope is explicit and stable. |
-| AD-06 | Admin | Cleanup messages do not distinguish between graph data and ontology storage. | Users cannot tell what was actually deleted. | `AdminPanel.js:126-129`, `156-170` | P1 | Open | Deletion feedback splits graph, metadata, and file store outcomes. |
+| AD-04 | Admin | Schema cleanup bundles nodes, relationships, metadata, indexes, and constraints into one irreversible action. | Recovery becomes hard and risky. | `AdminPanel.js:116-139` | P0 | Fixed | Admin cleanup is split into targeted graph cleanup, cache/ontology metadata maintenance, graph-only reset, and full schema cleanup with typed confirmations. |
+| AD-05 | Admin | Registry state is read only, but the page still implies broader system control. | Operators may expect configuration edits that are not present. | `AdminPage.js:164-167` | P2 | Fixed | Admin registry tables now explicitly state they are read-only operational views. |
+| AD-06 | Admin | Cleanup messages do not distinguish between graph data and ontology storage. | Users cannot tell what was actually deleted. | `AdminPanel.js:126-129`, `156-170` | P1 | Fixed | Cleanup messages now state whether graph data, ontology registry metadata, cache, or old XSD schema nodes were affected. |
 
 | ID | Page | Bug | Why it matters | Evidence | Priority | Status | Closure test |
 |---|---|---|---|---|---|---|---|
@@ -490,3 +490,88 @@ Live smoke results:
 
 Remaining watch item:
 - Report overview still includes `Document` business rows derived from PLMXML datasets. That is valid as a business object only if customer wants document/data-set entities in reports; otherwise add a UI/API report scope to include/exclude Document entities separately.
+
+### Audit update - 2026-06-29 chat API and report scope
+
+Closed / improved in this pass:
+- Chat API now accepts omitted, blank, or `null` `session_id` from external apps and generates a safe backend session id. Existing caller-provided ids such as `tc-ECR-000016` are preserved.
+- Added `GET /chat/status` as a lightweight health/status alias for external apps.
+- Added `POST /chat/validate` so Teamcenter/AWC and other clients can validate payload shape without invoking Ollama/LLM.
+- Chat capability response documents that `session_id` is optional.
+- Frontend shared API client now exposes `chat.validate`, `chat.health`, `chat.status`, and `chat.capabilities`.
+- Report overview excludes PLMXML `Document` / `DataSet` rows by default. Use `include_documents` or `includeDocuments` to include document/data-set records explicitly.
+- `/chat/sample-queries` no longer uses missing-label-sensitive Cypher label syntax; it uses `labels(n)` checks to avoid customer-environment warning noise.
+
+Live smoke results on `localhost:8000`:
+- `/health`: 200
+- `/docs`: 200
+- `/chat/status`: 200, `session_id_required = false`
+- `/chat/capabilities`: 200
+- `/chat/validate` with omitted session: 200 and generated session id
+- `/chat/validate` with `session_id: null`: 200 and generated session id
+- `/reports` overview default: 200, total 2118, first row is Requirement, not Document/DataSet
+- `/reports` with `include_documents: true`: 200, total 2157, document rows included intentionally
+
+Remaining watch item:
+- Live `/chat` execution still depends on the configured Ollama/APIM model path and can take longer than validation/status routes. External apps should call `/chat/validate` during integration tests and use `/chat` only for actual question execution, preferably asynchronously from AWC.
+
+### Audit update - 2026-06-29 chat timeout and async job mode
+
+Closed / improved in this pass:
+- Increased backend chat execution timeout defaults from 300 seconds to 900 seconds through `CHAT_REQUEST_TIMEOUT_SECONDS` and `CHAT_STREAM_TIMEOUT_SECONDS`.
+- Added `POST /chat/jobs` for Teamcenter/AWC and other external clients that cannot safely hold a long synchronous HTTP request open.
+- Added `GET /chat/jobs/{job_id}` so external clients can poll `queued`, `running`, `completed`, `failed`, or `timeout` status.
+- Added job retention controls through `CHAT_JOB_TTL_SECONDS` and `CHAT_JOB_MAX_COUNT`.
+- Exposed async chat job endpoints in `/chat/status`, `/chat/capabilities`, frontend config, and the shared frontend API client.
+- Updated backend env examples and frontend env settings so customer deployments can configure timeout/job paths without code changes.
+
+Live smoke results on `localhost:8000`:
+- `/health`: 200
+- `/chat/status`: 200 and includes `submit_job: POST /chat/jobs`, `poll_job: GET /chat/jobs/{job_id}`
+- `/chat/jobs`: 202 in 0.009 seconds with a poll endpoint
+- `/chat/jobs/{job_id}`: 200 and returns job state; live model completion still depends on configured Ollama/APIM response time
+
+Release guidance:
+- Teamcenter Active Workspace should use `/chat/jobs` plus polling for long GraphRAG or LLM answers.
+- Keep direct `POST /chat` only for short internal calls or environments where the caller can tolerate a long request.
+
+
+### Audit update - 2026-06-29 frontend/API alignment pass
+
+Closed / improved in this pass:
+- Recommendation tooltip/prefill alignment: supports legacy `dt-rec-prefill`, explicit `dt-recommendation-prefill`, service aliases, and multiple node/query field names.
+- Recommendation render safety: change-impact, similar-parts, and manufacturing responses are normalized before rendering to prevent blank success panels from missing arrays.
+- Report tab stability: dynamic node-type tabs now persist from the discovered dataset and do not disappear during filtering/search slices.
+- Admin scoped cleanup safety: destructive scoped delete requires a preview of the exact same scope before execution; changing label, prefix, property, value, or batch size clears the preview.
+- Admin full schema cleanup safety: full Neo4j schema cleanup now requires typed confirmation.
+- Where Used API alignment: traversal now uses the central `/graphtraverse/{node_id}` wrapper and normalizes traversal relationship endpoints.
+
+Validation:
+- `git diff --check` passed for touched frontend files.
+- `npm run build` completed successfully with no warnings.
+
+Remaining frontend watch items:
+- `AD-04` remains open because full admin schema cleanup still needs deeper separation between reset, purge, targeted cleanup, metadata cleanup, indexes, and constraints.
+- Graph Explorer still requires live UI smoke on customer graph data for search, contextual expansion, labels, and tooltip actions.
+
+
+### Audit update - 2026-06-29 admin cleanup separation
+
+Closed / improved in this pass:
+- Admin destructive cleanup is no longer presented as one ambiguous action. The UI now separates targeted graph cleanup, non-destructive cache cleanup, old XSD ontology metadata cleanup, graph-only reset, and full schema cleanup.
+- Scoped graph delete still requires previewing the exact same scope before execution.
+- Graph-only reset uses the existing admin reset API and states that uploaded ontology metadata is preserved.
+- Full schema cleanup requires typed confirmation and clearly states that graph data, indexes/constraints, and ontology registry metadata are cleared together.
+- Admin registry tables are explicitly labeled as read-only operational views.
+- Recommendation UI now states that results are decision-support outputs and must be reviewed before approval/release use.
+- Pareto tracker IM/ON stale statuses were synchronized with the master tracker.
+
+Validation:
+- `npm run build` completed successfully.
+
+### 2026-06-29 graph search audit update
+
+- `NEO-09` / `GX-04` tightened again: `/graphfilter` no longer treats internal property-key names as user-facing node hits, ranks business labels and display values ahead of ontology/schema or XML/id carrier nodes, and penalizes id-only `ProductInstance`/generic carrier matches.
+- Live API smoke after backend restart: `REQ-*` returns `Requirement` nodes first, `Bearing` returns `Part` nodes first, and `Part` returns `Part` nodes first instead of `ProductInstance id*` or relationship/view carrier nodes.
+- Remaining validation: browser-level Graph Explorer canvas behavior still needs UI smoke on the active customer dataset because the local browser bridge has previously been blocked by Windows sandbox ACLs.
+

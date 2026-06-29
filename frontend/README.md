@@ -14,6 +14,27 @@ React frontend for the DEPO application.
 
 ## Start The Frontend
 
+## Node.js Runtime
+
+Use Node.js 20 LTS with npm 10 for customer release builds. The repository includes `.nvmrc` and `.node-version` at the root, and `frontend/package.json` enforces:
+
+```json
+"engines": {
+  "node": ">=20.11.0 <23",
+  "npm": ">=10.2.0"
+}
+```
+
+After upgrading Node.js, reinstall frontend dependencies:
+
+```bat
+cd D:\Depo_Onto_Engine\frontend
+npm install
+npm run build
+```
+
+`start_frontend.bat` now checks Node.js at startup and stops with a clear message if the machine is below Node.js 20.
+
 From repository root:
 
 ```bat

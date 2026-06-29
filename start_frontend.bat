@@ -39,9 +39,27 @@ echo   URL: http://%DISPLAY_HOST%:%PORT%
 echo   Backend URL: %BACKEND_URL%
 echo.
 
+where node >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Node.js not found. Please install Node.js 20 LTS or newer.
+    exit /b 1
+)
+
+for /f "usebackq delims=" %%N in (`node -p "process.versions.node.split('.')[0]"`) do set "NODE_MAJOR=%%N"
+if "!NODE_MAJOR!"=="" (
+    echo [ERROR] Unable to detect Node.js version. Please install Node.js 20 LTS or newer.
+    exit /b 1
+)
+if !NODE_MAJOR! LSS 20 (
+    echo [ERROR] Node.js 20 LTS or newer is required. Detected Node.js major version !NODE_MAJOR!.
+    echo [INFO] Install Node.js 20 LTS, then run: cd frontend ^&^& npm install
+    exit /b 1
+)
+echo [INFO] Node.js major version !NODE_MAJOR! detected.
+
 where npm >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] npm not found. Please install Node.js first.
+    echo [ERROR] npm not found. Please install Node.js 20 LTS or newer.
     exit /b 1
 )
 

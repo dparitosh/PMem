@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import '../App.css';
-import { API, buildUrl, replaceParams } from '../config';
-import { apiClient } from '../services/apiClient';
+import { API, buildUrl } from '../config';
+import { apiClient, API_METHODS } from '../services/apiClient';
 import { useSchema } from '../SchemaContext';
 import DataGridWidget from '../widgets/DataGridWidget';
 import logger from '../utils/logger';
-import { normalizeGraphDataset as normalizeGraphDatasetShared } from '../utils/graphUtils';
+import { normalizeGraphDataset as normalizeGraphDatasetShared, getLinkEndpointId } from '../utils/graphUtils';
 
 // ──── DEVELOPER CONFIG: Node Display Label ────────────────────────────────
 //
@@ -308,34 +308,35 @@ const WhereUsedView = ({
                 visited.add(currentNodeId);
 
                 try {
-                    const resp = await apiClient.get(buildUrl(replaceParams(API.graph.graphtraverseNode, { node_id: currentNodeId })));
+                    const resp = await API_METHODS.graph.traverse(currentNodeId);
                     const records = resp.data?.results || [];
+                    const normalizedTraversal = records.length ? null : normalizeGraphDatasetShared(resp.data);
 
-                    records.forEach((record) => {
-                        const relationship = record['r'];
+                    const relationships = records.length
+                        ? records.map((record) => ({ relationship: record['r'], nodes: [record['n'], record['m']].map(hydrateGraphNode).filter(Boolean) }))
+                        : (normalizedTraversal.links || []).map((relationship) => ({ relationship, nodes: normalizedTraversal.nodes || [] }));
+
+                    relationships.forEach(({ relationship, nodes }) => {
                         if (!relationship) return;
 
-                        const relatedNodes = [record['n'], record['m']]
-                            .map(hydrateGraphNode)
-                            .filter(Boolean);
-                        relatedNodes.forEach((node) => {
-                            if (!ancestorMap.has(node.elementId)) {
+                        nodes.forEach((node) => {
+                            if (node?.elementId && !ancestorMap.has(node.elementId)) {
                                 ancestorMap.set(node.elementId, node);
                             }
                         });
 
-                        const sourceId = relationship.start || relationship.source;
-                        const targetId = relationship.end || relationship.target;
+                        const sourceId = getLinkEndpointId(relationship.start ?? relationship.source);
+                        const targetId = getLinkEndpointId(relationship.end ?? relationship.target);
                         if (!sourceId || !targetId) return;
 
                         if (targetId === currentNodeId) {
-                            const key = buildRelationshipKey(relationship);
+                            const key = buildRelationshipKey({ ...relationship, source: sourceId, target: targetId });
                             if (!linkSet.has(key)) {
                                 linkSet.set(key, {
                                     elementId: relationship.elementId || key,
                                     source: sourceId,
                                     target: targetId,
-                                    type: relationship.type,
+                                    type: relationship.type || relationship.label || 'RELATED',
                                     properties: relationship.properties || {},
                                 });
                             }

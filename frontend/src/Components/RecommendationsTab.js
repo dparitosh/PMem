@@ -170,6 +170,66 @@ const CheckCell = ({ value }) => value
   ? <CheckCircle size={14} color={C.green} strokeWidth={2.5} />
   : <Minus size={13} color={C.textMuted} />;
 
+
+const SERVICE_ALIASES = {
+  impact: 'change-impact',
+  'change_impact': 'change-impact',
+  changeImpact: 'change-impact',
+  similar: 'similar-parts',
+  'similar_parts': 'similar-parts',
+  similarParts: 'similar-parts',
+  process: 'manufacturing',
+  manufacturing: 'manufacturing',
+  mfg: 'manufacturing',
+};
+
+const normalizeRecommendationService = (service) => {
+  const key = String(service || '').trim();
+  return SERVICE_ALIASES[key] || key;
+};
+
+const extractRecommendationInput = (detail = {}) => (
+  detail.nodeName ||
+  detail.name ||
+  detail.label ||
+  detail.displayName ||
+  detail.value ||
+  detail.query ||
+  detail.partName ||
+  detail.changeName ||
+  ''
+);
+
+const normalizeRecommendationResult = (service, payload) => {
+  const data = payload || {};
+  if (service === 'change-impact') {
+    return {
+      ...data,
+      impacted_parts: Array.isArray(data.impacted_parts) ? data.impacted_parts : [],
+      assembly_impact: Array.isArray(data.assembly_impact) ? data.assembly_impact : [],
+      impacted_requirements: Array.isArray(data.impacted_requirements) ? data.impacted_requirements : [],
+      process_impacts: Array.isArray(data.process_impacts) ? data.process_impacts : [],
+      realization_chain: Array.isArray(data.realization_chain) ? data.realization_chain : [],
+    };
+  }
+  if (service === 'similar-parts') {
+    return {
+      ...data,
+      similar_parts: Array.isArray(data.similar_parts) ? data.similar_parts : [],
+    };
+  }
+  if (service === 'manufacturing') {
+    return {
+      ...data,
+      direct_processes: Array.isArray(data.direct_processes) ? data.direct_processes : [],
+      process_instances: Array.isArray(data.process_instances) ? data.process_instances : [],
+      related_processes: Array.isArray(data.related_processes) ? data.related_processes : [],
+      process_summary: data.process_summary || {},
+    };
+  }
+  return data;
+};
+
 // ============================================================
 // Result sub-tab bar — reused across all three result components
 // ============================================================
@@ -513,22 +573,28 @@ const RecommendationsTab = () => {
 
   // Listen for prefill events from graph tooltip recommendation buttons
   useEffect(() => {
-    const handler = (e) => {
-      const { service, nodeName } = e.detail || {};
-      if (service && nodeName) {
+    const applyPrefill = (detail = {}) => {
+      const service = normalizeRecommendationService(detail.service);
+      const input = extractRecommendationInput(detail);
+      if (service && input) {
         setActiveService(service);
-        setInputValue(nodeName);
+        setInputValue(input);
         setResult(null);
         setError('');
       }
     };
+
+    const handler = (e) => applyPrefill(e.detail || {});
     window.addEventListener('dt-rec-prefill', handler);
+    window.addEventListener('dt-recommendation-prefill', handler);
     if (window.__dt_rec_prefill) {
-      const { service, nodeName } = window.__dt_rec_prefill;
-      if (service && nodeName) { setActiveService(service); setInputValue(nodeName); }
+      applyPrefill(window.__dt_rec_prefill);
       delete window.__dt_rec_prefill;
     }
-    return () => window.removeEventListener('dt-rec-prefill', handler);
+    return () => {
+      window.removeEventListener('dt-rec-prefill', handler);
+      window.removeEventListener('dt-recommendation-prefill', handler);
+    };
   }, []);
 
   const handleAnalyse = useCallback(async () => {
@@ -543,7 +609,7 @@ const RecommendationsTab = () => {
       } else if (activeService === 'manufacturing') {
         resp = await API_METHODS.recommendations.manufacturing(inputValue.trim(), {});
       }
-      setResult(resp.data);
+      setResult(normalizeRecommendationResult(activeService, resp.data));
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'Request failed');
     } finally {
@@ -554,7 +620,7 @@ const RecommendationsTab = () => {
   const handleKeyDown = (e) => { if (e.key === 'Enter') handleAnalyse(); };
 
   const handleSelect = (id, prefill) => {
-    setActiveService(id);
+    setActiveService(normalizeRecommendationService(id));
     if (prefill) setInputValue(prefill);
     setResult(null); setError('');
   };
@@ -623,6 +689,13 @@ const RecommendationsTab = () => {
           </div>
         </div>
       )}
+
+      <div style={{ ...COMPACT_ALERT, background: C.primaryLight, borderLeftColor: C.primary, marginBottom: 12 }}>
+        <Info size={10} color={C.primary} strokeWidth={2.2} style={{ marginTop: 1, flexShrink: 0 }} />
+        <div style={{ minWidth: 0, fontSize: 11, lineHeight: 1.35, color: C.textSec }}>
+          Recommendations are decision-support outputs grounded in the current graph. Review source objects, confidence, and traceability before using them for approval or release decisions.
+        </div>
+      </div>
 
       {/* Welcome scenario panel — shown when no service chosen */}
       {!activeService && <ScenarioPanel onSelect={handleSelect} health={health} />}

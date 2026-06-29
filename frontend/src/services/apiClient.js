@@ -144,7 +144,7 @@ export const graphAPI = {
   filterMulti: (filters) => 
     apiClient.post(buildUrl(API.graph.graphfilterMulti), filters),
   traverse: (nodeId) => 
-    apiClient.get(buildUrl(replaceParams(API.graph.graphtraverse, { node_id: nodeId }))),
+    apiClient.get(buildUrl(replaceParams(API.graph.graphtraverseNode, { node_id: nodeId }))),
   getSchemaGraph: () => apiClient.get(buildUrl(API.graph.schemaGraph)),
   getInstanceGraph: () => apiClient.get(buildUrl(API.graph.instanceGraph)),
   getOntologyInstances: (ontologyId, params = {}) =>
@@ -163,10 +163,18 @@ export const schemaAPI = {
 
 // ========== CHAT ENDPOINTS ==========
 export const chatAPI = {
-  sendMessage: (message, sessionId = null) => 
-    apiClient.post(buildUrl(API.chat.chat), { message, session_id: sessionId }),
-  streamChat: (message, sessionId = null) => 
-    apiClient.post(buildUrl(API.chat.chatStream), { message, session_id: sessionId }),
+  sendMessage: (message, sessionId = null, graphContext = null) =>
+    apiClient.post(buildUrl(API.chat.chat), { message, session_id: sessionId, graph_context: graphContext }),
+  streamChat: (message, sessionId = null, graphContext = null) =>
+    apiClient.post(buildUrl(API.chat.chatStream), { message, session_id: sessionId, graph_context: graphContext }),
+  validate: (message, sessionId = null, graphContext = null) =>
+    apiClient.post(buildUrl(API.chat.validate), { message, session_id: sessionId, graph_context: graphContext }),
+  submitJob: (message, sessionId = null, graphContext = null) =>
+    apiClient.post(buildUrl(API.chat.jobs), { message, session_id: sessionId, graph_context: graphContext }),
+  getJob: (jobId) => apiClient.get(buildUrl(replaceParams(API.chat.jobStatus, { job_id: jobId }))),
+  health: () => apiClient.get(buildUrl(API.chat.health)),
+  status: () => apiClient.get(buildUrl(API.chat.status)),
+  capabilities: () => apiClient.get(buildUrl(API.chat.capabilities)),
   sampleQueries: () => apiClient.get(buildUrl(API.chat.sampleQueries)),
 };
 

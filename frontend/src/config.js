@@ -102,6 +102,12 @@ const SCHEMA_ENDPOINTS = {
 const CHAT_ENDPOINTS = {
   chat: process.env.REACT_APP_API_CHAT || '/chat',
   chatStream: process.env.REACT_APP_API_CHAT_STREAM || '/chat-stream',
+  validate: process.env.REACT_APP_API_CHAT_VALIDATE || '/chat/validate',
+  jobs: process.env.REACT_APP_API_CHAT_JOBS || '/chat/jobs',
+  jobStatus: process.env.REACT_APP_API_CHAT_JOB_STATUS || '/chat/jobs/{job_id}',
+  health: process.env.REACT_APP_API_CHAT_HEALTH || '/chat/health',
+  status: process.env.REACT_APP_API_CHAT_STATUS || '/chat/status',
+  capabilities: process.env.REACT_APP_API_CHAT_CAPABILITIES || '/chat/capabilities',
   sampleQueries: process.env.REACT_APP_API_CHAT_SAMPLE_QUERIES || '/chat/sample-queries',
 };
 

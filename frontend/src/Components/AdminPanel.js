@@ -114,10 +114,13 @@ export default function AdminPanel({ onSchemaCleaned }) {
   }, [loadAdminState]);
 
   const cleanSchema = useCallback(async () => {
-    const ok = window.confirm(
-      'Clean Neo4j schema? This will delete all nodes, relationships, uploaded ontology metadata, indexes, and constraints.'
+    const typed = window.prompt(
+      'Full reset deletes Neo4j graph data, indexes/constraints, and uploaded ontology registry metadata. Type CLEAN NEO4J to continue.'
     );
-    if (!ok) return;
+    if (typed !== 'CLEAN NEO4J') {
+      setMessage('Full schema cleanup cancelled.');
+      return;
+    }
 
     setLoading(true);
     setMessage('');
@@ -125,7 +128,8 @@ export default function AdminPanel({ onSchemaCleaned }) {
     try {
       const res = await API_METHODS.admin.cleanSchema();
       const metadataCleared = res.data?.metadata_cleared ?? 0;
-      setMessage(`${res.data?.message || 'Schema cleanup completed.'} Ontology folders cleared: ${metadataCleared}.`);
+      const graphMessage = res.data?.message || 'Neo4j graph reset completed.';
+      setMessage(`Graph reset: ${graphMessage} Ontology metadata files cleared: ${metadataCleared}. Caches and ontology registry were refreshed.`);
       await fetchOntologies();
       window.dispatchEvent(new Event('dt-schema-cleaned'));
       if (typeof onSchemaCleaned === 'function') onSchemaCleaned();
@@ -137,6 +141,32 @@ export default function AdminPanel({ onSchemaCleaned }) {
       setLoading(false);
     }
   }, [fetchOntologies, loadAdminState, onSchemaCleaned]);
+
+  const resetGraphDatabase = useCallback(async () => {
+    const typed = window.prompt(
+      'Graph reset deletes Neo4j nodes and relationships and recreates operational indexes. It does not clear uploaded ontology files. Type RESET GRAPH to continue.'
+    );
+    if (typed !== 'RESET GRAPH') {
+      setMessage('Graph reset cancelled.');
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+    setError('');
+    try {
+      const res = await API_METHODS.admin.resetDatabase(true);
+      setMessage(`Graph reset completed. ${res.data?.message || 'Neo4j data was cleared and indexes were recreated.'} Uploaded ontology metadata was not deleted.`);
+      window.dispatchEvent(new Event('dt-schema-cleaned'));
+      if (typeof onSchemaCleaned === 'function') onSchemaCleaned();
+      await loadAdminState();
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.message || 'Graph reset failed.';
+      setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    } finally {
+      setLoading(false);
+    }
+  }, [loadAdminState, onSchemaCleaned]);
 
   const clearCache = useCallback(async () => {
     setLoading(true);
@@ -151,8 +181,8 @@ export default function AdminPanel({ onSchemaCleaned }) {
         cleared.config_cache ? 'config cache' : null,
       ].filter(Boolean);
       setMessage(parts.length > 0
-        ? `Cleared ${parts.join(', ')}.`
-        : res.data?.message || 'Application caches cleared.');
+        ? `Cache cleanup completed: ${parts.join(', ')}. No Neo4j graph data or ontology files were deleted.`
+        : res.data?.message || 'Application caches cleared. No Neo4j graph data or ontology files were deleted.');
       await loadAdminState();
     } catch (err) {
       const detail = err?.response?.data?.detail || err?.message || 'Cache clear failed.';
@@ -187,7 +217,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       });
       const deleted = result?.data?.deleted_count || 0;
       const deletedNodes = result?.data?.neo4j_deleted_nodes || 0;
-      setMessage(`Deleted ${deleted} old XSD schema entries and ${deletedNodes} Neo4j nodes.`);
+      setMessage(`Ontology metadata cleanup completed. File registry entries deleted: ${deleted}. Neo4j schema nodes deleted: ${deletedNodes}. Business instance data outside those old XSD schemas was not targeted.`);
       await fetchOntologies();
       await loadAdminState();
     } catch (err) {
@@ -222,14 +252,17 @@ export default function AdminPanel({ onSchemaCleaned }) {
         ? `label ${label} where ${property} = "${value}"`
         : `label ${label}`;
 
+    const request = {
+      label,
+      prefix,
+      property,
+      value,
+      batchSize,
+    };
+
     return {
-      request: {
-        label,
-        prefix,
-        property,
-        value,
-        batchSize,
-      },
+      request,
+      scopeKey: JSON.stringify(request),
       target,
       batchSize,
     };
@@ -243,8 +276,13 @@ export default function AdminPanel({ onSchemaCleaned }) {
       return;
     }
 
+    if (!deletePreview || deletePreview.scopeKey !== scope.scopeKey) {
+      setError('Preview this exact cleanup scope before deleting. Change in label, prefix, property, value, or batch size requires a new preview.');
+      return;
+    }
+
     const ok = window.confirm(
-      `Delete ${scope.target} in batches of ${scope.batchSize}? This cannot be undone.`
+      `Delete ${deletePreview.matched} matched node(s) for ${scope.target} in batches of ${scope.batchSize}? This cannot be undone.`
     );
     if (!ok) return;
 
@@ -255,7 +293,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       const result = await API_METHODS.admin.deleteData(scope.request);
       const deleted = result?.data?.deleted_nodes ?? 0;
       const matched = result?.data?.matched_before ?? deleted;
-      setMessage(`Deleted ${deleted} of ${matched} matched ${scope.target} node(s) using batched transactions.`);
+      setMessage(`Scoped graph cleanup completed. Deleted ${deleted} of ${matched} matched ${scope.target} node(s) using batched transactions. Ontology files and registry metadata were not deleted.`);
       setDeletePreview(null);
       await loadAdminState();
     } catch (err) {
@@ -264,7 +302,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
     } finally {
       setLoading(false);
     }
-  }, [buildDeleteScope, loadAdminState]);
+  }, [buildDeleteScope, deletePreview, loadAdminState]);
 
   const previewDeleteData = useCallback(async () => {
     const scope = buildDeleteScope();
@@ -282,8 +320,8 @@ export default function AdminPanel({ onSchemaCleaned }) {
         dryRun: true,
       });
       const matched = result?.data?.matched_nodes ?? 0;
-      setDeletePreview({ matched, target: scope.target, batchSize: scope.batchSize });
-      setMessage(`Preview matched ${matched} node(s) for ${scope.target}. No data was deleted.`);
+      setDeletePreview({ matched, target: scope.target, batchSize: scope.batchSize, scopeKey: scope.scopeKey });
+      setMessage(`Preview matched ${matched} node(s) for ${scope.target}. No data was deleted. Review this exact scope before deleting.`);
     } catch (err) {
       const detail = err?.response?.data?.detail || err?.message || 'Delete preview failed.';
       setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
@@ -291,6 +329,10 @@ export default function AdminPanel({ onSchemaCleaned }) {
       setLoading(false);
     }
   }, [buildDeleteScope]);
+
+  useEffect(() => {
+    setDeletePreview(null);
+  }, [deleteLabel, deletePrefix, deleteProperty, deleteValue, deleteBatchSize]);
 
   const statusText = useMemo(() => {
     if (loading) return 'Refreshing';
@@ -339,8 +381,11 @@ export default function AdminPanel({ onSchemaCleaned }) {
         </div>
 
         <section style={cardStyle}>
-          <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 7 }}>
-            Controlled Cleanup
+          <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 3 }}>
+            Targeted Graph Cleanup
+          </div>
+          <div style={{ fontSize: 11, color: colors.muted, lineHeight: 1.4, marginBottom: 8 }}>
+            Preview and delete a scoped set of Neo4j nodes. This does not delete uploaded ontology files or registry metadata.
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 6, marginBottom: 8 }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 10, fontWeight: 800, color: colors.muted }}>
@@ -400,15 +445,6 @@ export default function AdminPanel({ onSchemaCleaned }) {
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <button
               type="button"
-              onClick={clearCache}
-              disabled={loading}
-              style={buttonStyle}
-            >
-              <RotateCcw size={10} />
-              Clear Cache
-            </button>
-            <button
-              type="button"
               onClick={previewDeleteData}
               disabled={loading || (!deleteLabel.trim() && !deletePrefix.trim())}
               style={buttonStyle}
@@ -419,24 +455,49 @@ export default function AdminPanel({ onSchemaCleaned }) {
             <button
               type="button"
               onClick={deleteDataByLabel}
-              disabled={loading || (!deleteLabel.trim() && !deletePrefix.trim())}
+              disabled={loading || (!deleteLabel.trim() && !deletePrefix.trim()) || !deletePreview}
               style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}
             >
               <Trash2 size={10} />
               Delete Scoped Nodes
             </button>
+          </div>
+        </section>
+
+        <section style={cardStyle}>
+          <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 3 }}>
+            Cache and Ontology Metadata Maintenance
+          </div>
+          <div style={{ fontSize: 11, color: colors.muted, lineHeight: 1.4, marginBottom: 8 }}>
+            These actions are operational maintenance. Cache cleanup is non-destructive. Old XSD cleanup targets stale ontology registry entries and their matching schema nodes only.
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button type="button" onClick={clearCache} disabled={loading} style={buttonStyle}>
+              <RotateCcw size={10} />
+              Clear Cache
+            </button>
             <button type="button" onClick={deleteOldXsdSchemas} disabled={loading} style={buttonStyle}>
               <Trash2 size={10} />
               Delete Old XSD Schemas
             </button>
-            <button
-              type="button"
-              onClick={cleanSchema}
-              disabled={loading}
-              style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}
-            >
+          </div>
+        </section>
+
+        <section style={{ ...cardStyle, borderColor: '#ffb4a8', background: colors.dangerBg }}>
+          <div style={{ fontSize: 11, fontWeight: 850, color: colors.danger, marginBottom: 3 }}>
+            Destructive Reset Actions
+          </div>
+          <div style={{ fontSize: 11, color: colors.danger, lineHeight: 1.4, marginBottom: 8 }}>
+            Use Graph Reset to clear Neo4j data while keeping uploaded ontology metadata. Use Full Schema Cleanup only when you intentionally want graph data, indexes/constraints, and ontology registry metadata cleared together.
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button type="button" onClick={resetGraphDatabase} disabled={loading} style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}>
               <Trash2 size={10} />
-              Clean Neo4j Schema
+              Reset Graph Only
+            </button>
+            <button type="button" onClick={cleanSchema} disabled={loading} style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}>
+              <Trash2 size={10} />
+              Full Schema Cleanup
             </button>
           </div>
         </section>

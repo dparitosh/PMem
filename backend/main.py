@@ -4,7 +4,7 @@ import asyncio
 import time
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Path, Request, APIRouter, Query
+from fastapi import FastAPI, HTTPException, Path, Request, APIRouter, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response
 import logging as _logging
@@ -704,8 +704,8 @@ class TimeoutMiddleware:
             '/api/import': 300,      # Legacy route
             '/api/v1/ontology/upload': 300,  # 5 minutes for ontology uploads
             '/api/ontology/upload': 300,     # Legacy route
-            '/chat': 300,            # 5 minutes for chat responses
-            '/chat-stream': 300,     # 5 minutes for streaming responses
+            '/chat': int(os.getenv('CHAT_REQUEST_TIMEOUT_SECONDS', '900')),  # 15 min default for chat responses
+            '/chat-stream': int(os.getenv('CHAT_STREAM_TIMEOUT_SECONDS', '900')),  # 15 min default for streaming responses
             '/graphvis': 300,        # 5 minutes for graph visualization
             '/graphfilter': 300,     # 5 minutes for filtering
         }
@@ -783,10 +783,63 @@ NEO4J_DRIVER_TIMEOUT = 60  # Connection timeout
 
 # Chat/session timing controls
 # Extended timeouts for Ollama model inference and streaming responses
-CHAT_REQUEST_TIMEOUT_SECONDS = int(os.getenv("CHAT_REQUEST_TIMEOUT_SECONDS", "300"))  # 5 min
-CHAT_STREAM_TIMEOUT_SECONDS = int(os.getenv("CHAT_STREAM_TIMEOUT_SECONDS", "300"))  # 5 min
+CHAT_REQUEST_TIMEOUT_SECONDS = int(os.getenv("CHAT_REQUEST_TIMEOUT_SECONDS", "900"))  # 15 min
+CHAT_STREAM_TIMEOUT_SECONDS = int(os.getenv("CHAT_STREAM_TIMEOUT_SECONDS", "900"))  # 15 min
 SESSION_LOCK_TIMEOUT_SECONDS = int(os.getenv("SESSION_LOCK_TIMEOUT_SECONDS", "15"))  # Allow slower systems
 SESSION_LOCK_TTL_SECONDS = int(os.getenv("SESSION_LOCK_TTL_SECONDS", "1800"))
+CHAT_JOB_TTL_SECONDS = int(os.getenv("CHAT_JOB_TTL_SECONDS", "3600"))
+CHAT_JOB_MAX_COUNT = int(os.getenv("CHAT_JOB_MAX_COUNT", "200"))
+
+_CHAT_JOBS: dict[str, dict] = {}
+_CHAT_JOBS_LOCK = asyncio.Lock()
+
+
+async def _cleanup_chat_jobs() -> None:
+    now = time.time()
+    async with _CHAT_JOBS_LOCK:
+        expired = [
+            job_id
+            for job_id, job in _CHAT_JOBS.items()
+            if (now - float(job.get("updated_at") or job.get("created_at") or now)) > CHAT_JOB_TTL_SECONDS
+        ]
+        for job_id in expired:
+            _CHAT_JOBS.pop(job_id, None)
+        if len(_CHAT_JOBS) > CHAT_JOB_MAX_COUNT:
+            overflow = len(_CHAT_JOBS) - CHAT_JOB_MAX_COUNT
+            oldest = sorted(_CHAT_JOBS.items(), key=lambda item: item[1].get("updated_at") or item[1].get("created_at") or 0)[:overflow]
+            for job_id, _ in oldest:
+                _CHAT_JOBS.pop(job_id, None)
+
+
+async def _update_chat_job(job_id: str, **updates) -> None:
+    async with _CHAT_JOBS_LOCK:
+        job = _CHAT_JOBS.get(job_id)
+        if not job:
+            return
+        job.update(updates)
+        job["updated_at"] = time.time()
+
+
+async def _execute_chat_job(job_id: str, session_id: str, message: str, graph_context=None) -> None:
+    await _update_chat_job(job_id, status="running", started_at=time.time())
+    try:
+        async with _session_lock(session_id):
+            result = await _run_with_timeout(
+                generate_response,
+                CHAT_REQUEST_TIMEOUT_SECONDS,
+                session_id,
+                message,
+                graph_context,
+            )
+        await _update_chat_job(job_id, status="completed", completed_at=time.time(), response=result)
+    except asyncio.TimeoutError:
+        logger.warning("Chat job timed out for session %s job %s", session_id, job_id)
+        await _update_chat_job(job_id, status="timeout", completed_at=time.time(), error="Chat request timed out. Please retry with a narrower question.")
+    except HTTPException as exc:
+        await _update_chat_job(job_id, status="failed", completed_at=time.time(), error=str(exc.detail))
+    except Exception as exc:
+        logger.error("Chat job failed for session %s job %s: %s", session_id, job_id, exc, exc_info=True)
+        await _update_chat_job(job_id, status="failed", completed_at=time.time(), error="Failed to process chat request. Please try again later.")
 
 _SESSION_LOCKS: dict[str, asyncio.Lock] = {}
 _SESSION_LOCK_LAST_USED: dict[str, float] = {}
@@ -1042,6 +1095,58 @@ def schema():
         )
 
 
+@app.post("/chat/validate")
+async def chat_validate(request: ChatRequest):
+    """Validate external chat request payloads without invoking the LLM."""
+    return {
+        "status": "ok",
+        "session_id": request.session_id,
+        "message_length": len(request.message),
+        "graph_context_present": bool(request.graph_context),
+        "execute_endpoint": "/chat",
+        "stream_endpoint": "/chat-stream",
+    }
+
+
+@app.post("/chat/jobs")
+async def chat_job_submit(request: ChatRequest, background_tasks: BackgroundTasks):
+    """Submit an asynchronous chat job for external apps that cannot wait on long LLM calls."""
+    if generate_response is None:
+        raise HTTPException(status_code=503, detail="Chat service is unavailable. Please check backend configuration.")
+    await _cleanup_chat_jobs()
+    now = time.time()
+    job_id = f"chatjob-{uuid4()}"
+    async with _CHAT_JOBS_LOCK:
+        _CHAT_JOBS[job_id] = {
+            "job_id": job_id,
+            "status": "queued",
+            "session_id": request.session_id,
+            "message_length": len(request.message),
+            "created_at": now,
+            "updated_at": now,
+            "poll_endpoint": f"/chat/jobs/{job_id}",
+        }
+    background_tasks.add_task(_execute_chat_job, job_id, request.session_id, request.message, request.graph_context)
+    return JSONResponse(status_code=202, content={
+        "status": "accepted",
+        "job_id": job_id,
+        "session_id": request.session_id,
+        "poll_endpoint": f"/chat/jobs/{job_id}",
+        "message": "Chat job accepted. Poll the job endpoint for completion.",
+    })
+
+
+@app.get("/chat/jobs/{job_id}")
+async def chat_job_status(job_id: str):
+    """Return async chat job status and response when complete."""
+    await _cleanup_chat_jobs()
+    async with _CHAT_JOBS_LOCK:
+        job = dict(_CHAT_JOBS.get(job_id) or {})
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Chat job not found or expired: {job_id}")
+    return job
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     if generate_response is None:
@@ -1091,16 +1196,23 @@ async def chat_stream(request: ChatRequest):
 
 
 @app.get("/chat/health")
+@app.get("/chat/status")
 async def chat_health():
     return {
         "status": "ok" if generate_response is not None else "unavailable",
         "chat_post_available": generate_response is not None,
         "chat_stream_available": generate_response_stream is not None,
+        "session_id_required": False,
+        "session_id_behavior": "If omitted or blank, the backend creates a session id and returns it in the response.",
         "methods": {
             "ask": "POST /chat",
             "stream": "POST /chat-stream",
+            "submit_job": "POST /chat/jobs",
+            "poll_job": "GET /chat/jobs/{job_id}",
             "sample_queries": "GET /chat/sample-queries",
             "health": "GET /chat/health",
+            "status": "GET /chat/status",
+            "validate": "POST /chat/validate",
             "capabilities": "GET /chat/capabilities",
         },
     }
@@ -1112,11 +1224,27 @@ async def chat_capabilities():
         "name": "knowledge-companion",
         "integration_pattern": "POST for question execution, GET for discovery/health/sample prompts",
         "endpoints": {
+            "validate": {
+                "method": "POST",
+                "path": "/chat/validate",
+                "description": "Validates Teamcenter/AWC or external request body without invoking the model.",
+                "body": {
+                    "session_id": "string optional; backend generates one if omitted",
+                    "message": "string",
+                    "graph_context": "object optional"
+                }
+            },
+            "async_job": {
+                "method": "POST",
+                "path": "/chat/jobs",
+                "description": "Submits a long-running chat request and returns a job id for polling.",
+                "poll": "GET /chat/jobs/{job_id}"
+            },
             "ask": {
                 "method": "POST",
                 "path": "/chat",
                 "body": {
-                    "session_id": "string",
+                    "session_id": "string optional; backend generates one if omitted",
                     "message": "string",
                     "graph_context": "optional object",
                 },
@@ -1125,7 +1253,7 @@ async def chat_capabilities():
                 "method": "POST",
                 "path": "/chat-stream",
                 "body": {
-                    "session_id": "string",
+                    "session_id": "string optional; backend generates one if omitted",
                     "message": "string",
                     "graph_context": "optional object",
                 },
@@ -1175,34 +1303,34 @@ async def get_sample_queries():
         parts       = _fetch("""
             MATCH (n)
             WHERE n.name IS NOT NULL
-              AND (n:ProvidedPart OR n:Part OR n:Product OR n:ProductRevision OR toLower(coalesce(n.element_type, '')) CONTAINS 'part')
+              AND (any(lbl IN labels(n) WHERE lbl IN ['ProvidedPart', 'Part', 'Product', 'ProductRevision']) OR toLower(coalesce(n.element_type, '')) CONTAINS 'part')
             RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 5
         """)
         operations  = _fetch("""
             MATCH (n)
             WHERE n.name IS NOT NULL
-              AND (n:GeneralOperation OR n:HeaderOperation OR n:LoadingOperation OR n:Process OR toLower(coalesce(n.element_type, '')) CONTAINS 'operation')
+              AND (any(lbl IN labels(n) WHERE lbl IN ['GeneralOperation', 'HeaderOperation', 'LoadingOperation', 'Process']) OR toLower(coalesce(n.element_type, '')) CONTAINS 'operation')
             RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 3
         """)
         assemblies  = _fetch("""
             MATCH (n)
             WHERE n.name IS NOT NULL
-              AND (n:ManufacturingAssembly OR n:Assembly OR toLower(coalesce(n.element_type, '')) CONTAINS 'assembly')
+              AND (any(lbl IN labels(n) WHERE lbl IN ['ManufacturingAssembly', 'Assembly']) OR toLower(coalesce(n.element_type, '')) CONTAINS 'assembly')
             RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 2
         """)
         requirements = _fetch("""
             MATCH (n)
             WHERE n.name IS NOT NULL
-              AND (n:Requirement OR n:RequirementRevision OR toLower(coalesce(n.name, '')) CONTAINS 'requirement' OR toLower(coalesce(n.element_type, '')) CONTAINS 'requirement')
+              AND (any(lbl IN labels(n) WHERE lbl IN ['Requirement', 'RequirementRevision']) OR toLower(coalesce(n.name, '')) CONTAINS 'requirement' OR toLower(coalesce(n.element_type, '')) CONTAINS 'requirement')
             RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 5
         """)
-        mbse_cls    = _fetch("MATCH (n:Class:MbseNode) WHERE n.name IS NOT NULL AND size(n.name) > 3 RETURN n.name AS name ORDER BY n.name LIMIT 3")
-        use_cases   = _fetch("MATCH (n:UseCase:MbseNode) WHERE n.name IS NOT NULL AND size(n.name) > 3 RETURN n.name AS name LIMIT 2")
-        packages    = _fetch("MATCH (n:Package:MbseNode) WHERE n.name IS NOT NULL AND NOT n.name STARTS WITH 'Basic' RETURN n.name AS name LIMIT 2")
+        mbse_cls    = _fetch("MATCH (n) WHERE n.name IS NOT NULL AND size(n.name) > 3 AND any(lbl IN labels(n) WHERE lbl IN ['Class', 'MbseNode']) RETURN n.name AS name ORDER BY n.name LIMIT 3")
+        use_cases   = _fetch("MATCH (n) WHERE n.name IS NOT NULL AND size(n.name) > 3 AND any(lbl IN labels(n) WHERE lbl IN ['UseCase', 'MbseNode']) RETURN n.name AS name LIMIT 2")
+        packages    = _fetch("MATCH (n) WHERE n.name IS NOT NULL AND NOT n.name STARTS WITH 'Basic' AND any(lbl IN labels(n) WHERE lbl IN ['Package', 'MbseNode']) RETURN n.name AS name LIMIT 2")
         generic_entities = _fetch("""
             MATCH (n)
             WHERE n.name IS NOT NULL
-              AND NOT (n:DatasheetChunk OR n:GraphChunk OR n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty)
+              AND NOT any(lbl IN labels(n) WHERE lbl IN ['DatasheetChunk', 'GraphChunk', 'OntologyClass', 'ObjectProperty', 'DatatypeProperty'])
             RETURN DISTINCT n.name AS name ORDER BY n.name LIMIT 8
         """)
         ontology_rows = (registry.get("ontologies", []) if isinstance(registry, dict) else [])[:3]
@@ -2040,7 +2168,12 @@ async def get_instance_graph():
 
 @app.post("/graphfilter")
 def filter_graph_nodes(request: TextSearchRequest):
-    """Search graph nodes by text and return local relationships in graphvis shape."""
+    """Search graph nodes by text and return local relationships in graphvis shape.
+
+    Search is intentionally instance/business-object first. Ontology schema terms are
+    retained as fallback matches, but they should not hide data-bearing nodes for user
+    searches such as REQ-* or part names.
+    """
     input_val = _normalize_search_term(request.search)
     ontology_prefix = (request.ontology_prefix or "").strip()
     if not input_val:
@@ -2053,8 +2186,7 @@ def filter_graph_nodes(request: TextSearchRequest):
             AND (
               toLower(elementId(n)) CONTAINS toLower($input)
               OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($input))
-              OR any(key IN keys(n) WHERE toLower(key) CONTAINS toLower($input))
-              OR toLower(coalesce(n.name, n.title, n.code, n.label, '')) CONTAINS toLower($input)
+              OR any(key IN keys(n) WHERE toLower(toString(n[key])) CONTAINS toLower($input))
             )
             AND (
               $ontology_prefix = ''
@@ -2067,13 +2199,14 @@ def filter_graph_nodes(request: TextSearchRequest):
               }
             )
           RETURN n
-          LIMIT 60
+          LIMIT 120
         UNION
           MATCH (a)-[matched_rel]-(b)
           WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
             AND (
               toLower(type(matched_rel)) CONTAINS toLower($input)
               OR any(key IN keys(matched_rel) WHERE toLower(key) CONTAINS toLower($input))
+              OR any(key IN keys(matched_rel) WHERE toLower(toString(matched_rel[key])) CONTAINS toLower($input))
             )
             AND (
               $ontology_prefix = ''
@@ -2093,13 +2226,14 @@ def filter_graph_nodes(request: TextSearchRequest):
               }
             )
           RETURN a AS n
-          LIMIT 60
+          LIMIT 80
         UNION
           MATCH (a)-[matched_rel]-(b)
           WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
             AND (
               toLower(type(matched_rel)) CONTAINS toLower($input)
               OR any(key IN keys(matched_rel) WHERE toLower(key) CONTAINS toLower($input))
+              OR any(key IN keys(matched_rel) WHERE toLower(toString(matched_rel[key])) CONTAINS toLower($input))
             )
             AND (
               $ontology_prefix = ''
@@ -2119,14 +2253,42 @@ def filter_graph_nodes(request: TextSearchRequest):
               }
             )
           RETURN b AS n
-          LIMIT 60
+          LIMIT 80
         }
-        WITH collect(DISTINCT n)[..90] AS matchedNodes
-        UNWIND matchedNodes AS n
+        WITH DISTINCT n,
+          toLower(toString(coalesce(
+            n['name'], n['title'], n['code'], n['label'],
+            n['identifier'], n['requirement_id'], n['part_number'], n['id'], ''
+          ))) AS displayText
+        WITH n, displayText,
+          CASE
+            WHEN any(lbl IN labels(n) WHERE lbl IN ['OntologyClass','Class','ObjectProperty','DatatypeProperty','OntologyProperty']) THEN 900
+            WHEN any(lbl IN labels(n) WHERE lbl IN ['DatasheetChunk','GraphChunk']) THEN 950
+            WHEN any(lbl IN labels(n) WHERE lbl IN ['AttributeContext','MetadataWrapper','RelationshipCarrier','GeneralRelation']) THEN 850
+            WHEN any(lbl IN labels(n) WHERE lbl IN ['Part','Requirement','Function','LogicalElement','PhysicalElement','Process','Product','Document']) THEN 0
+            WHEN any(lbl IN labels(n) WHERE lbl IN ['Individual','ProductInstance']) AND NOT displayText STARTS WITH 'id' THEN 20
+            WHEN any(lbl IN labels(n) WHERE lbl IN ['Individual','ProductInstance']) THEN 250
+            ELSE 100
+          END AS schemaPenalty,
+          CASE
+            WHEN displayText = toLower($input) THEN 0
+            WHEN any(lbl IN labels(n) WHERE toLower(lbl) = toLower($input)) THEN 5
+            WHEN displayText STARTS WITH toLower($input) THEN 10
+            WHEN displayText STARTS WITH 'id' THEN 120
+            WHEN any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($input)) THEN 80
+            ELSE 50
+          END AS matchRank
+        ORDER BY schemaPenalty ASC, matchRank ASC, displayText ASC, elementId(n) ASC
+        WITH collect({node: n, schemaPenalty: schemaPenalty, matchRank: matchRank})[..90] AS rankedMatches
+        WITH rankedMatches, [item IN rankedMatches | item.node] AS matchedNodes
+        UNWIND range(0, size(rankedMatches) - 1) AS matchedIndex
+        WITH rankedMatches[matchedIndex].node AS n, matchedIndex, matchedNodes
         OPTIONAL MATCH (n)-[r]-(m)
         WHERE r IS NULL
            OR m IN matchedNodes
            OR toLower(type(r)) CONTAINS toLower($input)
+        WITH n, r, m, matchedIndex
+        ORDER BY matchedIndex ASC
         RETURN
           {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
           CASE WHEN r IS NOT NULL THEN {
@@ -2371,7 +2533,6 @@ WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
     OR toLower(coalesce(n.title, '')) CONTAINS toLower(searchName)
     OR toLower(coalesce(n.code, '')) CONTAINS toLower(searchName)
     OR toLower(coalesce(n.label, '')) CONTAINS toLower(searchName)
-    OR any(key IN keys(n) WHERE toLower(key) CONTAINS toLower(searchName))
     OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower(searchName))
   )
 WITH collect(DISTINCT n) AS matchedNodes
@@ -3081,6 +3242,7 @@ def get_reports(body: dict):
         report_type = str((body or {}).get("type") or (body or {}).get("report_type") or "overview").strip().lower()
         page = max(1, int((body or {}).get("page") or 1))
         page_size = max(1, min(int((body or {}).get("page_size") or (body or {}).get("pageSize") or 25), 500))
+        include_documents = bool((body or {}).get("include_documents") or (body or {}).get("includeDocuments"))
         skip = (page - 1) * page_size
 
         if report_type in {"ontology", "ontologies", "governance"}:
@@ -3110,6 +3272,10 @@ def get_reports(body: dict):
                   AND from_name <> '' AND to_name <> ''
                   AND NOT toLower(from_name) STARTS WITH 'id'
                   AND NOT toLower(to_name) STARTS WITH 'id'
+                  AND ($include_documents OR coalesce(a.element_type, '') <> 'Document')
+                  AND ($include_documents OR coalesce(b.element_type, '') <> 'Document')
+                  AND ($include_documents OR coalesce(a.document_type, '') <> 'DataSet')
+                  AND ($include_documents OR coalesce(b.document_type, '') <> 'DataSet')
                   AND NOT any(lbl IN labels(a) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
                   AND NOT any(lbl IN labels(b) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
                 RETURN type(r) AS relationship_type,
@@ -3121,7 +3287,7 @@ def get_reports(body: dict):
                 ORDER BY relationship_type, from_name, to_name
                 SKIP $skip LIMIT $limit
                 """,
-                params={"skip": skip, "limit": page_size},
+                params={"skip": skip, "limit": page_size, "include_documents": include_documents},
             ) or []
             total_rows = graph.query(
                 """
@@ -3137,7 +3303,7 @@ def get_reports(body: dict):
                   AND NOT any(lbl IN labels(b) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
                 RETURN count(r) AS total
                 """
-            ) or []
+            , params={"include_documents": include_documents}) or []
             total = int(total_rows[0].get("total") or 0) if total_rows else len(rows)
             return {"status": "success", "type": report_type, "page": page, "page_size": page_size, "total": total, "results": rows}
 
@@ -3148,6 +3314,8 @@ def get_reports(body: dict):
             WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
               AND display_name <> ''
               AND NOT toLower(display_name) STARTS WITH 'id'
+              AND ($include_documents OR coalesce(n.element_type, '') <> 'Document')
+              AND ($include_documents OR coalesce(n.document_type, '') <> 'DataSet')
               AND NOT any(lbl IN labels(n) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
             RETURN elementId(n) AS elementId,
                    labels(n) AS labels,
@@ -3155,7 +3323,7 @@ def get_reports(body: dict):
             ORDER BY display_name
             SKIP $skip LIMIT $limit
             """,
-            params={"skip": skip, "limit": page_size},
+            params={"skip": skip, "limit": page_size, "include_documents": include_documents},
         ) or []
         total_rows = graph.query(
             """
@@ -3164,9 +3332,12 @@ def get_reports(body: dict):
             WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
               AND display_name <> ''
               AND NOT toLower(display_name) STARTS WITH 'id'
+              AND ($include_documents OR coalesce(n.element_type, '') <> 'Document')
+              AND ($include_documents OR coalesce(n.document_type, '') <> 'DataSet')
               AND NOT any(lbl IN labels(n) WHERE lbl IN ['GeneralRelation', 'RelationshipCarrier', 'AttributeContext', 'MetadataWrapper'])
             RETURN count(n) AS total
-            """
+            """,
+            params={"include_documents": include_documents},
         ) or []
         total = int(total_rows[0].get("total") or 0) if total_rows else len(rows)
         normalized = []
