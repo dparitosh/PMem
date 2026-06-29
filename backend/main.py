@@ -2509,15 +2509,24 @@ def comparative_search(request: ComparativeSearchRequest):
 
 
 class MultiNameSearchRequest(BaseModel):
-    names: list[str]
+    names: list[str] | None = None
+    search: str | list[str] | None = None
 
 
 @app.post("/graphfilter-multi")
 def filter_graph_nodes_multi(request: MultiNameSearchRequest):
-    """Fetch a set of named nodes and any relationships between them.
-    Used by the 'View in Graph' feature to load recommendation result nodes."""
+    """Fetch named/search result nodes and any relationships between them.
+    Accepts the legacy {names: [...]} payload and tolerant {search: ...} payloads for external callers."""
+    raw_terms: list[str] = []
+    if request.names:
+        raw_terms.extend(str(name) for name in request.names)
+    if isinstance(request.search, list):
+        raw_terms.extend(str(name) for name in request.search)
+    elif isinstance(request.search, str):
+        raw_terms.extend(part.strip() for part in re.split(r"[,;\n]+", request.search) if part.strip())
+
     # Cap at 50 names to avoid overloading Neo4j
-    names = [_normalize_search_term(n) for n in request.names if n and n.strip()][:50]
+    names = [_normalize_search_term(n) for n in raw_terms if n and str(n).strip()][:50]
     names = [n for n in names if n]
     if not names:
         return {"results": []}

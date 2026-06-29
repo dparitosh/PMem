@@ -575,3 +575,10 @@ Validation:
 - Live API smoke after backend restart: `REQ-*` returns `Requirement` nodes first, `Bearing` returns `Part` nodes first, and `Part` returns `Part` nodes first instead of `ProductInstance id*` or relationship/view carrier nodes.
 - Remaining validation: browser-level Graph Explorer canvas behavior still needs UI smoke on the active customer dataset because the local browser bridge has previously been blocked by Windows sandbox ACLs.
 
+### 2026-06-29 API compatibility and OSLC smoke update
+
+- `/graphfilter-multi` now accepts `{names: [...]}`, `{search: [...]}`, and `{search: "REQ-*, Part"}` payloads. This removes a 422 failure mode for external clients and custom UI integrations while preserving the existing frontend contract.
+- Live API smoke: `/graphfilter-multi` returned 200 for all three payload shapes with equivalent result counts.
+- OSLC smoke after backend restart: `/oslc/catalog`, `/oslc/providers/depo`, `/oslc/shapes`, `/oslc/shapes/resources`, `/oslc/query/resources?oslc.searchTerms=REQ&oslc.pageSize=3`, `/oslc/trs`, `/oslc/trs/base`, and `/oslc/trs/changelog` returned 200.
+- Current OSLC status remains read/query/shape/TRS interoperability, not full write/update OSLC compliance.
+
