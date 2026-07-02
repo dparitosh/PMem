@@ -14,6 +14,12 @@ export const graphApi = {
       signal,
     });
   },
+  getArchitectureGraph(prefix = 'archimate', limit = 1000, signal) {
+    return apiClient.get(buildUrl(replaceParams(API.graph.graphArchitectureView, { prefix })), {
+      params: { limit },
+      signal,
+    });
+  },
   getContextualSubgraph(params = {}, signal) {
     return apiClient.get(buildUrl(API.graph.contextualSubgraph), {
       params,

@@ -211,6 +211,8 @@ export const ontologyAPI = {
     apiClient.get(buildUrl(replaceParams(API.ontology.taxonomy, { ontology: ontologyId }))),
   getReasoning: (ontologyId) =>
     apiClient.get(buildUrl(replaceParams(API.ontology.reason, { ontology: ontologyId }))),
+  previewInference: (ontologyId, payload = {}) =>
+    apiClient.post(buildUrl(replaceParams(API.ontology.inferencePreview, { ontology: ontologyId })), payload),
   getMappings: (ontologyId, mappingType) => 
     apiClient.get(buildUrl(replaceParams(API.ontology.mappings, { 
       ontology: ontologyId, 

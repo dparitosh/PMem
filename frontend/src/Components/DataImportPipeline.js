@@ -49,7 +49,7 @@ const C = {
 
 const IMPORT_JOBS_STORAGE_KEY = 'depo.import.jobs.v2';
 const IMPORT_ONTOLOGIES_CACHE_KEY = 'depo.import.ontologies.v1';
-const PRIMARY_WORKFLOW_IDS = new Set(['instance.import', 'ontology.create', 'instance.link']);
+const PRIMARY_WORKFLOW_IDS = new Set(['instance.import', 'ontology.create', 'architecture.archimate', 'document.unstructured', 'instance.link']);
 const RESUMABLE_JOB_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const ONTOLOGY_SOURCE_TYPES = new Set(['ontology', 'xsd', 'xmi', 'express']);
 const ONTOLOGY_METADATA_EXTENSIONS = new Set(['.xsd', '.xmi', '.mdxml', '.owl', '.rdf', '.ttl', '.exp']);
@@ -127,6 +127,9 @@ function getWorkflowNote({
   }
   if (selectedWorkflow === 'ontology.create') {
     return 'Use this workflow only for ontology or schema registration. XSD, OWL, RDF, TTL, XMI, MDXML, and EXPRESS files belong here; instance files belong in Import instance graph.';
+  }
+  if (selectedWorkflow === 'architecture.archimate') {
+    return 'Upload ArchiMate Model Exchange XML to create a process-reference architecture graph with typed relationships.';
   }
   if (selectedWorkflow === 'ontology.merge') {
     return 'Select a source ontology and a different target ontology, then review the merge plan.';
@@ -454,13 +457,13 @@ export default function DataImportPipeline() {
     setError(null);
   };
 
-  const queueInstanceImports = (selectedInstanceFiles) => {
+  const queueInstanceImports = (selectedInstanceFiles, workflowId = 'instance.import') => {
     const filesWithIds = selectedInstanceFiles.map(file => ({
       fileId: file.name + '_' + Math.random().toString(36).substr(2, 9),
       name: file.name,
       size: file.size,
       fileObj: file,
-      workflowId: 'instance.import',
+      workflowId,
       createdAt: new Date().toLocaleTimeString()
     }));
 
@@ -487,23 +490,40 @@ export default function DataImportPipeline() {
     }
 
     const ontologyFiles = newFiles.filter((file) => isOntologySourceFile(file.name));
-    const instanceFiles = newFiles.filter((file) => !isOntologySourceFile(file.name));
+    const documentFiles = newFiles.filter((file) => inferFileTypeFromExtension(file.name) === 'document');
+    const isArchimateWorkflowFile = (file) => (
+      inferFileTypeFromExtension(file.name) === 'archimate'
+      || (selectedWorkflow === 'architecture.archimate' && getFileExtensionFromName(file.name) === '.xml')
+    );
+    const archimateFiles = newFiles.filter(isArchimateWorkflowFile);
+    const instanceFiles = newFiles.filter((file) => (
+      !isOntologySourceFile(file.name)
+      && !isArchimateWorkflowFile(file)
+      && inferFileTypeFromExtension(file.name) !== 'document'
+    ));
 
-    const routeToOntologyWorkflow = selectedWorkflow === 'instance.import' && ontologyFiles.length > 0 && instanceFiles.length === 0;
-    const routeToInstanceWorkflow = selectedWorkflow === 'ontology.create' && instanceFiles.length > 0 && ontologyFiles.length === 0;
+    const routeToOntologyWorkflow = selectedWorkflow === 'instance.import' && ontologyFiles.length > 0 && instanceFiles.length === 0 && archimateFiles.length === 0 && documentFiles.length === 0;
+    const routeToArchitectureWorkflow = selectedWorkflow === 'instance.import' && archimateFiles.length > 0 && instanceFiles.length === 0 && ontologyFiles.length === 0 && documentFiles.length === 0;
+    const routeToDocumentWorkflow = selectedWorkflow === 'instance.import' && documentFiles.length > 0 && instanceFiles.length === 0 && ontologyFiles.length === 0 && archimateFiles.length === 0;
+    const routeToInstanceWorkflow = ['ontology.create', 'architecture.archimate', 'document.unstructured'].includes(selectedWorkflow) && instanceFiles.length > 0 && ontologyFiles.length === 0 && archimateFiles.length === 0 && documentFiles.length === 0;
     const effectiveWorkflow = routeToOntologyWorkflow
       ? 'ontology.create'
-      : routeToInstanceWorkflow
-        ? 'instance.import'
-        : selectedWorkflow;
+      : routeToArchitectureWorkflow
+        ? 'architecture.archimate'
+        : routeToDocumentWorkflow
+          ? 'document.unstructured'
+          : routeToInstanceWorkflow
+            ? 'instance.import'
+            : selectedWorkflow;
 
     if (effectiveWorkflow !== selectedWorkflow) {
       setSelectedWorkflow(effectiveWorkflow);
     }
 
     if (effectiveWorkflow === 'ontology.create') {
-      if (instanceFiles.length > 0) {
-        setError(`Create ontology only accepts ontology or schema sources. Move these files to Import instance graph: ${instanceFiles.map((file) => file.name).join(', ')}`);
+      const wrongFiles = [...instanceFiles, ...archimateFiles, ...documentFiles];
+      if (wrongFiles.length > 0) {
+        setError(`Create ontology only accepts ontology or schema sources. Move these files to the appropriate import workflow: ${wrongFiles.map((file) => file.name).join(', ')}`);
         return;
       }
 
@@ -516,12 +536,39 @@ export default function DataImportPipeline() {
       return;
     }
 
-    if (effectiveWorkflow === 'instance.import' && ontologyFiles.length > 0) {
-      setError(`Import instance graph only accepts source data files. Move these files to Create ontology: ${ontologyFiles.map((file) => file.name).join(', ')}`);
+    if (effectiveWorkflow === 'architecture.archimate') {
+      if (ontologyFiles.length > 0 || instanceFiles.length > 0 || documentFiles.length > 0) {
+        setError(`Import ArchiMate process model only accepts ArchiMate Model Exchange files. Remove: ${[...ontologyFiles, ...instanceFiles, ...documentFiles].map((file) => file.name).join(', ')}`);
+        return;
+      }
+      if (archimateFiles.length === 0) {
+        setError('Select an ArchiMate Model Exchange file to continue.');
+        return;
+      }
+      queueInstanceImports(archimateFiles, 'architecture.archimate');
       return;
     }
 
-    queueInstanceImports(instanceFiles);
+    if (effectiveWorkflow === 'document.unstructured') {
+      if (ontologyFiles.length > 0 || instanceFiles.length > 0 || archimateFiles.length > 0) {
+        setError(`Unstructured document pipeline only accepts PDF, Word, or PowerPoint files. Remove: ${[...ontologyFiles, ...instanceFiles, ...archimateFiles].map((file) => file.name).join(', ')}`);
+        return;
+      }
+      if (documentFiles.length === 0) {
+        setError('Select a PDF, Word, or PowerPoint file to continue.');
+        return;
+      }
+      queueInstanceImports(documentFiles, 'document.unstructured');
+      return;
+    }
+
+    if (effectiveWorkflow === 'instance.import' && (ontologyFiles.length > 0 || archimateFiles.length > 0 || documentFiles.length > 0)) {
+      const wrongFiles = [...ontologyFiles, ...archimateFiles, ...documentFiles];
+      setError(`Import instance graph only accepts structured source data files. Move these files to the appropriate workflow: ${wrongFiles.map((file) => file.name).join(', ')}`);
+      return;
+    }
+
+    queueInstanceImports(instanceFiles, 'instance.import');
   };
 
   // Handle metadata form submission for ontology files
@@ -1063,6 +1110,9 @@ export default function DataImportPipeline() {
       }
       if (selectedWorkflow === 'document.unstructured') {
         return inferFileTypeFromExtension(f.name) === 'document';
+      }
+      if (selectedWorkflow === 'architecture.archimate') {
+        return inferFileTypeFromExtension(f.name) === 'archimate' || getFileExtensionFromName(f.name) === '.xml';
       }
       if (selectedWorkflow === 'ontology.create') {
         return !f.pendingMetadata;

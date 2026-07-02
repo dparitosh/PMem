@@ -44,7 +44,21 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
         "prerequisite": "Choose one or more documents",
         "writes_to_neo4j": True,
         "retains_artifacts": True,
-    },    {
+    },
+    {
+        "id": "architecture.archimate",
+        "label": "Import ArchiMate process model",
+        "category": "Architecture",
+        "execution_surface": "upload",
+        "inputs": "ArchiMate Model Exchange XML",
+        "outputs": "Architecture/process graph, typed relationships, process-reference context",
+        "status": "existing_import_pipeline",
+        "execution": "File upload",
+        "prerequisite": "Choose an ArchiMate Model Exchange XML file",
+        "writes_to_neo4j": True,
+        "retains_artifacts": True,
+    },
+    {
         "id": "instance.link",
         "label": "Link instances to ontology",
         "category": "Mapping",

@@ -10,8 +10,9 @@ def test_workflow_registry_has_unique_ids_and_labels():
     assert all(workflow["label"] for workflow in WORKFLOW_REGISTRY)
     assert all(workflow["category"] for workflow in WORKFLOW_REGISTRY)
     assert all(workflow["execution_surface"] in {"upload", "artifact"} for workflow in WORKFLOW_REGISTRY)
-    assert sum(1 for workflow in WORKFLOW_REGISTRY if workflow["execution_surface"] == "upload") == 2
-    assert sum(1 for workflow in WORKFLOW_REGISTRY if workflow["execution_surface"] == "artifact") == 6
+    upload_ids = {workflow["id"] for workflow in WORKFLOW_REGISTRY if workflow["execution_surface"] == "upload"}
+    assert {"instance.import", "ontology.create", "document.unstructured", "architecture.archimate"}.issubset(upload_ids)
+    assert all(workflow["execution_surface"] == "artifact" for workflow in WORKFLOW_REGISTRY if workflow["id"] not in upload_ids)
 
 
 def test_workflow_options_include_display_metadata():

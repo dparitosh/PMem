@@ -119,6 +119,12 @@ def _plmxml_row_has_payload(row: Dict[str, Any], tag: str = '') -> bool:
 
 def _detect_xml_family(file_content: bytes) -> str:
     """Detect specialized XML families before falling back to generic XML."""
+    try:
+        from .archimate_service import looks_like_archimate_xml
+        if looks_like_archimate_xml(file_content):
+            return 'archimate'
+    except Exception:
+        pass
     head = (file_content or b'')[:8192].lower()
     if (
         b'3ds.com/xsd/3dxml' in head
@@ -156,6 +162,7 @@ class FileType(Enum):
     XMI = 'xmi'
     XSD = 'xsd'
     THREEDXML = '3dxml'
+    ARCHIMATE = 'archimate'
     ONTOLOGY = 'ontology'
 
 
@@ -200,6 +207,7 @@ class FileFormatDetector:
         '.mdxml': FileType.XMI,
         '.xsd': FileType.XSD,
         '.3dxml': FileType.THREEDXML,
+        '.archimate': FileType.ARCHIMATE,
         '.owl': FileType.ONTOLOGY,
         '.rdf': FileType.ONTOLOGY,
         '.ttl': FileType.ONTOLOGY,
@@ -871,8 +879,12 @@ class FileParser:
                 return FileParser._parse_step(file_content)
             elif file_type == FileType.THREEDXML:
                 return FileParser._parse_threedxml(file_content)
+            elif file_type == FileType.ARCHIMATE:
+                return FileParser._parse_archimate(file_content)
             elif file_type == FileType.XML:
                 xml_family = _detect_xml_family(file_content)
+                if xml_family == 'archimate':
+                    return FileParser._parse_archimate(file_content)
                 if xml_family == '3dxml':
                     return FileParser._parse_threedxml(file_content)
                 if xml_family == 'plmxml':
@@ -889,6 +901,24 @@ class FileParser:
             logging.error(f"Error parsing {file_type.value}: {str(e)}")
             return [], {'error': str(e), 'file_type': file_type.value}
     
+    @staticmethod
+    def _parse_archimate(file_content: bytes) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """Parse ArchiMate Model Exchange XML into architecture/process rows."""
+        try:
+            from .archimate_service import parse_archimate_model_exchange
+
+            rows, stats = parse_archimate_model_exchange(file_content)
+            logging.info(
+                "[OK] ArchiMate parsed: %s elements, %s relationships, %s views",
+                stats.get("element_count", len(rows)),
+                stats.get("relationship_count", 0),
+                stats.get("view_count", 0),
+            )
+            return rows, stats
+        except Exception as exc:
+            logging.error("ArchiMate parse error: %s", exc)
+            return [], {"error": str(exc), "file_format": "ArchiMate"}
+
     @staticmethod
     def _coerce_value(val: Any) -> Any:
         """Coerce a string scalar to int/float/bool where unambiguous; leaves non-strings unchanged."""
@@ -2450,6 +2480,8 @@ class UnifiedDataImportService:
         file_type = FileFormatDetector.detect(filename)
         if not file_type:
             raise ValueError(f"Unsupported file type. Supported: {', '.join(FileFormatDetector.get_supported_formats())}")
+        if file_type == FileType.XML and _detect_xml_family(file_content) == 'archimate':
+            file_type = FileType.ARCHIMATE
 
         # Create task
         task_id = str(uuid.uuid4())
@@ -2488,7 +2520,11 @@ class UnifiedDataImportService:
             'started_at': datetime.now().isoformat(),
             'completed_at': None,
             'result': None,
-            'workflow_id': 'ontology.create' if file_type in {FileType.EXPRESS, FileType.XSD, FileType.ONTOLOGY} else 'instance.import',
+            'workflow_id': (
+                'ontology.create' if file_type in {FileType.EXPRESS, FileType.XSD, FileType.ONTOLOGY}
+                else 'architecture.archimate' if file_type == FileType.ARCHIMATE
+                else 'instance.import'
+            ),
             'artifact_manifest': None,
             'parse_options': parse_options,
             # Keep raw bytes only where downstream OWL generation may need them.

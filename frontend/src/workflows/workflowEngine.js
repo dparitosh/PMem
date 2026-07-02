@@ -5,6 +5,7 @@ import {
   FileCode2,
   GitMerge,
   FileText,
+  Network,
   Link2,
   ShieldCheck,
   Tags,
@@ -44,6 +45,7 @@ export const supportedFormats = [
   { ext: '.ttl', name: 'Turtle' },
   { ext: '.plmxml', name: 'PLMXML' },
   { ext: '.3dxml', name: '3DXML (3DEXPERIENCE)' },
+  { ext: '.archimate', name: 'ArchiMate' },
   { ext: '.step', name: 'STEP' },
   { ext: '.stp', name: 'STEP' },
   { ext: '.stpx', name: 'STEP XML' },
@@ -107,6 +109,22 @@ export const workflowCatalog = [
     prerequisite: 'Choose one or more documents',
     icon: FileText,
     stages: ['Upload documents', 'Extract content', 'Chunk and embed', 'Index for GraphRAG'],
+    writes_to_neo4j: true,
+    retains_artifacts: true,
+  },
+  {
+    id: 'architecture.archimate',
+    label: 'Import ArchiMate process model',
+    title: 'Import ArchiMate process model',
+    category: 'Architecture',
+    description: 'Parse ArchiMate Model Exchange XML into a typed process, application, data, and capability graph for process-reference analysis.',
+    inputs: 'ArchiMate Model Exchange XML',
+    outputs: ['Architecture/process graph', 'Typed ArchiMate relationships', 'Process-reference context'],
+    status: 'available',
+    execution: 'File upload',
+    prerequisite: 'Choose an ArchiMate Model Exchange XML file',
+    icon: Network,
+    stages: ['Upload model', 'Parse elements and relationships', 'Validate references', 'Load process graph'],
     writes_to_neo4j: true,
     retains_artifacts: true,
   },
@@ -254,7 +272,10 @@ export const getWorkflowDisplayName = (workflowId) => {
 };
 
 export const isImportWorkflow = (workflowId) =>
-  workflowId === 'instance.import' || workflowId === 'ontology.create' || workflowId === 'document.unstructured';
+  workflowId === 'instance.import'
+  || workflowId === 'ontology.create'
+  || workflowId === 'document.unstructured'
+  || workflowId === 'architecture.archimate';
 
 export const getFileExtension = (fileName) =>
   `.${String(fileName || '').split('.').pop().toLowerCase()}`;
@@ -266,6 +287,7 @@ export const inferFileTypeFromExtension = (fileName) => {
   if (['.xls', '.xlsx'].includes(ext)) return 'excel';
   if (['.json'].includes(ext)) return 'json';
   if (['.3dxml'].includes(ext)) return '3dxml';
+  if (['.archimate'].includes(ext)) return 'archimate';
   if (['.xml'].includes(ext)) return 'xml';
   if (['.owl', '.rdf', '.ttl'].includes(ext)) return 'ontology';
   if (['.plmxml'].includes(ext)) return 'plmxml';
@@ -280,6 +302,7 @@ export const recommendWorkflowForFile = (fileName) => {
   const fileType = inferFileTypeFromExtension(fileName);
   if (['ontology', 'xsd', 'xmi', 'express'].includes(fileType)) return 'ontology.create';
   if (fileType === 'document') return 'document.unstructured';
+  if (fileType === 'archimate') return 'architecture.archimate';
   return 'instance.import';
 };
 

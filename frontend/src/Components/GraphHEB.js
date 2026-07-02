@@ -1607,24 +1607,9 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
     setSearchResultData(searchCatalog);
     setContextualRootNodeId(bestMatchId);
 
-    if (searchResultMode === 'broader' && dedupedMatches.length > 1) {
-      setHighlightedNodeIds(new Set(matchIds));
-      commitGraphSlice(searchCatalog, {
-        updateFilteredData: true,
-        updateGraphData: false,
-        updateFullDataset: false,
-        updateSearchResultData: true,
-        nextActiveSearchId: bestMatchId,
-        resetCenteredSearch: true,
-        syncResults: true,
-        forceSearchResults: true,
-      });
-      setSearchLoading(false);
-      return;
-    }
-
+    setHighlightedNodeIds(new Set(matchIds));
     await loadContextualRootGraph(bestMatchId, { preserveSearch: true });
-  }, [commitGraphSlice, findPreferredContextualRootId, loadContextualRootGraph, searchResultMode, selectRichContextualRootId]);
+  }, [findPreferredContextualRootId, loadContextualRootGraph, selectRichContextualRootId]);
 
   const resolveContextualEntryNodeId = useCallback((queryOverride = '') => {
     const queryTerm = normalizeSearchTerm(queryOverride || debouncedSearchQueryRef.current || searchInput || searchQuery);
@@ -3641,6 +3626,40 @@ const getPrimaryNodeLabel = useCallback((d) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData]);
 
+  const fetchArchitectureGraph = useCallback(async (prefix = 'archimate') => {
+    setOntologyLoading(true);
+    setOntologyGraphMessage('');
+    try {
+      const response = await graphApi.getArchitectureGraph(prefix, DEFAULT_ONTOLOGY_VIEW_LIMIT);
+      const dataSet = normalizeGraphDataset(response.data);
+      if (dataSet.nodes.length > 0) {
+        setOntologyGraphMessage('');
+        commitGraphSlice(dataSet, {
+          updateGraphData: true,
+          updateFullDataset: true,
+          updateSearchResultData: true,
+          syncResults: !searchModeRef.current,
+        });
+        logger.render(`[ARCHIMATE] Loaded ${prefix}: ${dataSet.nodes.length} nodes, ${dataSet.links.length} links`);
+      } else {
+        setOntologyGraphMessage(response.data?.message || 'No ArchiMate process model graph is loaded yet. Import an ArchiMate Model Exchange XML file first.');
+        commitGraphSlice({ nodes: [], links: [] }, {
+          updateGraphData: true,
+          updateFullDataset: true,
+          updateSearchResultData: true,
+          clearActiveSearchId: true,
+          syncResults: !searchModeRef.current,
+        });
+      }
+    } catch (err) {
+      logger.error('[ARCHIMATE] Fetch error:', err);
+      setOntologyGraphMessage(err?.response?.data?.detail || err?.message || 'Architecture process graph is unavailable.');
+    } finally {
+      setOntologyLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commitGraphSlice]);
+
   // Ontology options are now loaded from centralized OntologyContext
   // This eliminates duplicate polling and API calls across components
 
@@ -3727,8 +3746,12 @@ const getPrimaryNodeLabel = useCallback((d) => {
         if (!searchModeRef.current) setTimeout(() => syncSharedSearchResults(initialData.nodes), 0);
       } else {
         // Force refresh since selectedOntology effect does not run on graphViewMode changes.
-        const part = selected === 'step' ? selectedStepPart : 'ALL';
-        fetchOntologyGraph(selected, part);
+        if (selected === 'archimate') {
+          fetchArchitectureGraph('archimate');
+        } else {
+          const part = selected === 'step' ? selectedStepPart : 'ALL';
+          fetchOntologyGraph(selected, part);
+        }
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3759,6 +3782,13 @@ const getPrimaryNodeLabel = useCallback((d) => {
     // Clear search state when switching ontology
     resetGraphSelectionState({ resetOntology: false, resetStepPart: false });
 
+    if (selectedOntology === 'archimate') {
+      setStepParts([]);
+      setSelectedStepPart('ALL');
+      fetchArchitectureGraph('archimate');
+      return;
+    }
+
     if (selectedOntology === 'step') {
       // Fetch STEP parts list for secondary filter
       setStepPartsLoading(true);
@@ -3785,7 +3815,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     }
 
     fetchOntologyGraph(selectedOntology, 'ALL');
-  }, [selectedOntology, fetchOntologyGraph, resetGraphSelectionState]);
+  }, [selectedOntology, fetchOntologyGraph, fetchArchitectureGraph, resetGraphSelectionState]);
 
   // When STEP part sub-filter changes, fetch that specific part's graph
   useEffect(() => {
@@ -5271,7 +5301,7 @@ const boundaryForce = (width, height) => {
           });
         }}
         onOpenOntologyGraph={() => {
-          const nextOntology = lastSpecificOntologyRef.current !== 'ALL'
+          const nextOntology = lastSpecificOntologyRef.current !== 'ALL' && lastSpecificOntologyRef.current !== 'archimate'
             ? lastSpecificOntologyRef.current
             : preferredOntologyValue;
           setGraphViewMode('ontology');
@@ -5283,6 +5313,15 @@ const boundaryForce = (width, height) => {
             setSelectedOntology(nextOntology);
             selectedOntologyRef.current = nextOntology;
           }
+        }}
+        onOpenArchitectureGraph={() => {
+          setOntologyGraphMessage('');
+          setGraphViewMode('ontology');
+          graphViewModeRef.current = 'ontology';
+          setSelectedOntology('archimate');
+          selectedOntologyRef.current = 'archimate';
+          lastSpecificOntologyRef.current = 'archimate';
+          fetchArchitectureGraph('archimate');
         }}
         onOpenContextualGraph={() => {
           setOntologyGraphMessage('');

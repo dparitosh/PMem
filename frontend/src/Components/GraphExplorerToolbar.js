@@ -21,6 +21,7 @@ const SEARCH_MODES = [
 const VIEW_MODES = [
   { id: 'full', label: 'Full Graph', Icon: Globe },
   { id: 'ontology', label: 'Ontology Schema', Icon: Workflow },
+  { id: 'architecture', label: 'Architecture Process', Icon: Network },
   { id: 'individual', label: 'Contextual Instances', Icon: Network },
 ];
 
@@ -36,6 +37,7 @@ function GraphExplorerToolbar({
   onSearchResultModeChange,
   onOpenFullGraph,
   onOpenOntologyGraph,
+  onOpenArchitectureGraph,
   onOpenContextualGraph,
   ontologyLoading,
   ontologyError,
@@ -58,7 +60,8 @@ function GraphExplorerToolbar({
 
   const viewModeState = {
     full: graphViewMode === 'ontology' && selectedOntology === 'ALL',
-    ontology: graphViewMode === 'ontology' && selectedOntology !== 'ALL',
+    ontology: graphViewMode === 'ontology' && selectedOntology !== 'ALL' && selectedOntology !== 'archimate',
+    architecture: graphViewMode === 'ontology' && selectedOntology === 'archimate',
     individual: graphViewMode === 'individual',
   };
   const trimmedSearch = String(searchInput || '').trim();
@@ -92,6 +95,7 @@ function GraphExplorerToolbar({
             aria-label={mode.label}
             onClick={() => {
               if (mode.id === 'full') return onOpenFullGraph?.();
+              if (mode.id === 'architecture') return onOpenArchitectureGraph?.();
               if (mode.id === 'individual') return onOpenContextualGraph?.();
               return onOpenOntologyGraph?.();
             }}
@@ -267,7 +271,8 @@ function GraphExplorerToolbar({
               title={ontologyError ? ontologyError : 'Select an ontology'}
             >
               <option value="ALL" style={{ color: '#333', fontWeight: 600 }}>Overview Graph (all loaded data)</option>
-              {ontologyOptions.filter((option) => option.value !== 'ALL').map((option, index) => (
+              <option value="archimate" style={{ color: '#333', fontWeight: 600 }}>[archimate] ArchiMate process model</option>
+              {ontologyOptions.filter((option) => option.value !== 'ALL' && option.value !== 'archimate').map((option, index) => (
                 <option key={option.value || `ontology-opt-${index}`} value={option.value} style={{ color: '#333' }}>
                   {option.prefix ? `[${option.prefix}] ` : ''}{option.label}{option.type ? ` · ${option.type}` : ''}{option.graph_available === false ? ' · registered only' : Number(option.relationship_count || 0) === 0 ? ' · classes only' : ''}
                 </option>

@@ -1569,6 +1569,20 @@ async def get_graph_view(limit: int = 1000):
         raise _graph_service_unavailable("/api/v1/graph/view", exc)
 
 
+@app.get("/api/v1/graph/view/architecture/{prefix}")
+async def get_architecture_process_view(prefix: str = "archimate", limit: int = 1000):
+    """Return connected architecture/process model graph view, including ArchiMate imports."""
+    try:
+        from backend.Services.graph_view_service import GraphViewService
+    except Exception:
+        from Services.graph_view_service import GraphViewService
+
+    try:
+        return GraphViewService.get_architecture_process_view(prefix=prefix, limit=limit)
+    except RuntimeError as exc:
+        raise _graph_service_unavailable(f"/api/v1/graph/view/architecture/{prefix}", exc)
+
+
 @app.get("/api/v1/graph/view/ontology/{prefix}")
 async def get_virtual_ontology_view(prefix: str, limit: int = 1000):
     """Return a generated ontology-centric graph view without mutating base data."""
@@ -1924,20 +1938,142 @@ async def get_uploaded_ontology_taxonomy(ontology_id: str):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        safe_error("/api/v1/ontology/{ontology_id}/taxonomy", e)
+        logger.exception("Ontology taxonomy degraded for %s: %s", ontology_id, e)
+        return {
+            "status": "degraded",
+            "ontology_id": ontology_id,
+            "prefix": ontology_id,
+            "source_filename": "",
+            "extraction_source": "error",
+            "nodes": [],
+            "edges": [],
+            "reasoning_summary": {},
+            "summary": {"terms": 0, "taxonomy_links": 0, "triple_count": 0},
+            "diagnostics": [{"severity": "error", "message": str(e)}],
+        }
 
 
 @app.get("/api/v1/ontology/{ontology_id}/reason")
 async def get_uploaded_ontology_reasoning(ontology_id: str):
-    """Return Owlready2-backed classes, properties, individuals, and diagnostics."""
+    """Return cached Owlready2-backed classes, properties, individuals, and diagnostics."""
     try:
-        from backend.Services.ontology_reasoning_service import OntologyReasoningService
+        from backend.Services.ontology_taxonomy_service import OntologyTaxonomyService
 
-        return OntologyReasoningService.get_reasoning(ontology_id)
+        return OntologyTaxonomyService.get_reasoning(ontology_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        safe_error("/api/v1/ontology/{ontology_id}/reason", e)
+        logger.exception("Ontology reasoning degraded for %s: %s", ontology_id, e)
+        return {
+            "status": "degraded",
+            "engine": "owlready2",
+            "available": False,
+            "ontology_id": ontology_id,
+            "prefix": ontology_id,
+            "classes": [],
+            "object_properties": [],
+            "datatype_properties": [],
+            "annotation_properties": [],
+            "individuals": [],
+            "subclass_edges": [],
+            "diagnostics": [{"severity": "error", "message": str(e)}],
+            "summary": {},
+        }
+
+
+@app.post("/api/v1/ontology/{ontology_id}/inference/preview")
+async def preview_uploaded_ontology_inference(ontology_id: str, body: dict | None = None):
+    """Preview selectable ontology inferences without mutating Neo4j."""
+    try:
+        from backend.Services.ontology_reasoning_service import OntologyReasoningService
+
+        return OntologyReasoningService.preview_inferences(ontology_id, body or {})
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        safe_error("/api/v1/ontology/{ontology_id}/inference/preview", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/ontology/{ontology_id}/data-dictionary")
+def get_registered_ontology_data_dictionary(ontology_id: str):
+    """Return a generic ontology data dictionary for any registered ontology id or prefix."""
+    try:
+        from backend.Services.ontology_reasoning_service import OntologyReasoningService
+    except ImportError:
+        from Services.ontology_reasoning_service import OntologyReasoningService
+    try:
+        reasoning = OntologyReasoningService.get_reasoning(ontology_id)
+
+        def entry(row, kind):
+            label = str(row.get("label") or row.get("name") or row.get("term_id") or row.get("iri") or "").strip()
+            if not label:
+                return None
+            return label, {
+                "label": label,
+                "iri": row.get("iri") or row.get("uri") or row.get("term_id") or label,
+                "definition": row.get("definition") or row.get("comment") or "",
+                "kind": kind,
+                "domain": row.get("domain") or [],
+                "range": row.get("range") or [],
+                "source": "owlready2_reasoning",
+            }
+
+        entities = {}
+        properties = {}
+        relationships = {}
+        for row in reasoning.get("classes") or []:
+            item = entry(row, "Class")
+            if item:
+                entities[item[0]] = item[1]
+        for row in reasoning.get("datatype_properties") or []:
+            item = entry(row, "DatatypeProperty")
+            if item:
+                properties[item[0]] = item[1]
+        for row in reasoning.get("object_properties") or []:
+            item = entry(row, "ObjectProperty")
+            if item:
+                relationships[item[0]] = {**item[1], "type": "objectProperty", "connections": []}
+        for row in reasoning.get("annotation_properties") or []:
+            item = entry(row, "AnnotationProperty")
+            if item:
+                properties.setdefault(item[0], item[1])
+
+        return {
+            "status": "success",
+            "ontology_id": reasoning.get("ontology_id") or ontology_id,
+            "prefix": reasoning.get("prefix") or ontology_id,
+            "total_terms": len(entities) + len(properties) + len(relationships),
+            "data": {
+                "entities": entities,
+                "properties": properties,
+                "relationships": relationships,
+            },
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        safe_error("/api/v1/ontology/{ontology_id}/data-dictionary", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/ontology/{ontology_id}/mappings/{mapping_type}")
+def get_registered_ontology_mapping_edges(ontology_id: str, mapping_type: str):
+    """Return mapping edges for a registered ontology; empty is valid for OWL-only ontologies."""
+    try:
+        from backend.Services.ontology_reasoning_service import OntologyReasoningService
+        resolved = OntologyReasoningService.resolve_ontology_id(ontology_id) or ontology_id
+        return {
+            "status": "success",
+            "ontology_id": resolved,
+            "mapping_type": mapping_type,
+            "mappings": {},
+            "mapping_edges": [],
+            "message": "No curated mapping edges are stored for this ontology yet. Use Semantic Bridge to create mappings.",
+        }
+    except Exception as e:
+        safe_error("/api/v1/ontology/{ontology_id}/mappings/{mapping_type}", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/ontology/registered")

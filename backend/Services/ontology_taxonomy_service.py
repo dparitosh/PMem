@@ -80,6 +80,54 @@ class OntologyTaxonomyService:
         return OwlreadyOntologyRuntime.inspect_ontology(Path(file_path_str), prefix)
 
     @staticmethod
+    @lru_cache(maxsize=32)
+    def _cached_taxonomy_payload(
+        file_path_str: str,
+        mtime: float,
+        size: int,
+        source_file_path_str: str,
+        source_mtime: float,
+        source_size: int,
+        prefix: str,
+        ontology_id: str,
+        ontology_name: str,
+        source_filename: str,
+    ) -> Dict[str, Any]:
+        file_path = Path(file_path_str)
+        source_file_path = Path(source_file_path_str)
+        meta = {
+            "ontology_id": ontology_id,
+            "ontology_name": ontology_name,
+            "prefix": prefix,
+            "ontology_prefix": prefix,
+            "original_filename": source_filename,
+            "stored_filename": source_filename,
+        }
+
+        parsed = OntologyTaxonomyService._parse_rdf(meta, file_path)
+        if not parsed:
+            parsed = OntologyTaxonomyService._xml_terms(source_file_path, prefix)
+        if not parsed.get("nodes"):
+            parsed = OntologyTaxonomyService._text_terms(meta, source_file_path)
+
+        reasoning_summary = OntologyTaxonomyService._cached_reasoning(file_path_str, mtime, size, prefix).get("summary", {})
+        return {
+            "ontology_id": ontology_id,
+            "ontology_name": ontology_name,
+            "prefix": prefix,
+            "source_filename": source_filename,
+            "extraction_source": parsed.get("source"),
+            "nodes": parsed.get("nodes", []),
+            "edges": parsed.get("edges", []),
+            "reasoning_summary": reasoning_summary,
+            "summary": {
+                "terms": len(parsed.get("nodes", [])),
+                "taxonomy_links": len(parsed.get("edges", [])),
+                "triple_count": parsed.get("triple_count", 0),
+            },
+        }
+
+    @staticmethod
     def _semantic_context(ontology_identifier: str) -> Dict[str, Any]:
         meta = OntologyTaxonomyService._resolve_metadata(ontology_identifier)
         source_file_path = Path(meta.get("file_path", ""))
@@ -302,30 +350,24 @@ class OntologyTaxonomyService:
         meta = context["meta"]
         file_path = context["file_path"]
         source_file_path = context.get("source_file_path") or file_path
+        file_key = cls._cache_key_for_path(file_path)
+        source_key = cls._cache_key_for_path(source_file_path)
+        prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
 
-        parsed = cls._parse_rdf(meta, file_path)
-        if not parsed:
-            parsed = cls._xml_terms(source_file_path, context["prefix"])
-        if not parsed.get("nodes"):
-            parsed = cls._text_terms(meta, source_file_path)
-
-        return {
-            "ontology_id": meta.get("ontology_id"),
-            "ontology_name": meta.get("ontology_name"),
-            "prefix": meta.get("prefix") or meta.get("ontology_prefix"),
-            "source_filename": meta.get("original_filename") or meta.get("stored_filename"),
-            "extraction_source": parsed.get("source"),
-            "nodes": parsed.get("nodes", []),
-            "edges": parsed.get("edges", []),
-            "reasoning_summary": cls.get_reasoning(ontology_identifier).get("summary", {}),
-            "summary": {
-                "terms": len(parsed.get("nodes", [])),
-                "taxonomy_links": len(parsed.get("edges", [])),
-                "triple_count": parsed.get("triple_count", 0),
-            },
-        }
+        return cls._cached_taxonomy_payload(
+            file_key[0], file_key[1], file_key[2],
+            source_key[0], source_key[1], source_key[2],
+            prefix,
+            str(meta.get("ontology_id") or ""),
+            str(meta.get("ontology_name") or ""),
+            str(meta.get("original_filename") or meta.get("stored_filename") or ""),
+        )
 
     @classmethod
     def get_reasoning(cls, ontology_identifier: str) -> Dict[str, Any]:
-        """Return Owlready2-backed ontology semantics for the registered ontology."""
-        return OntologyReasoningService.inspect_context(cls._semantic_context(ontology_identifier))
+        """Return cached Owlready2-backed ontology semantics for the registered ontology."""
+        context = cls._semantic_context(ontology_identifier)
+        file_path = context["file_path"]
+        prefix = str(context.get("prefix") or "").strip()
+        file_key = cls._cache_key_for_path(file_path)
+        return cls._cached_reasoning(file_key[0], file_key[1], file_key[2], prefix)

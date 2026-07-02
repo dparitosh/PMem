@@ -12,7 +12,7 @@ import {
 export const navigationItems = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'import', label: 'Import', icon: UploadCloud },
-  { id: 'ontology', label: 'Ontology Studio', icon: Network },
+  { id: 'ontology', label: 'Ontology Junction', icon: Network },
   { id: 'graph', label: 'Graph Explorer', icon: GitFork },
   { id: 'whereused', label: 'Where Used', icon: Boxes },
   { id: 'quality', label: 'Recommendations', icon: Sparkles },

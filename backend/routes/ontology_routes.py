@@ -140,6 +140,87 @@ _INTERNAL_PROPS = {"ontology_prefix", "ontology_id", "ontology_name", "source_on
                    "prefix", "source_format", "source_file"}
 
 
+def _owlready_data_dictionary(prefix: str) -> Optional[Dict[str, Any]]:
+    """Build dictionary from uploaded OWL semantics when Neo4j projection is empty."""
+    try:
+        from ..Services.ontology_reasoning_service import OntologyReasoningService
+
+        reasoning = OntologyReasoningService.get_reasoning(prefix)
+    except Exception as exc:
+        logger.debug("Owlready2 dictionary fallback unavailable for %s: %s", prefix, exc)
+        return None
+
+    entities: Dict[str, Any] = {}
+    all_props: Dict[str, Any] = {}
+    relationships: Dict[str, Any] = {}
+
+    for row in reasoning.get("classes") or []:
+        label = str(row.get("label") or row.get("local_name") or row.get("iri") or "").strip()
+        if not label:
+            continue
+        entities[label] = {
+            "type": label,
+            "concept_type": "Class",
+            "namespace": reasoning.get("ontology_iri") or prefix,
+            "ontology_prefix": reasoning.get("prefix") or prefix,
+            "source": "owlready2",
+            "iri": row.get("iri"),
+            "definition": row.get("definition") or "",
+            "properties": [],
+        }
+
+    for row in (reasoning.get("datatype_properties") or []) + (reasoning.get("annotation_properties") or []):
+        label = str(row.get("label") or row.get("local_name") or row.get("iri") or "").strip()
+        if not label:
+            continue
+        domains = [item.get("label") or item.get("local_name") or item.get("iri") for item in (row.get("domain") or [])]
+        domains = [item for item in domains if item]
+        all_props[label] = {
+            "name": label,
+            "classes": domains,
+            "iri": row.get("iri"),
+            "range": row.get("range") or [],
+            "source": "owlready2",
+        }
+        for domain in domains:
+            if domain in entities and label not in entities[domain]["properties"]:
+                entities[domain]["properties"].append(label)
+
+    for row in reasoning.get("object_properties") or []:
+        label = str(row.get("label") or row.get("local_name") or row.get("iri") or "").strip()
+        if not label:
+            continue
+        domains = [item.get("label") or item.get("local_name") or item.get("iri") for item in (row.get("domain") or [])]
+        ranges = [item.get("label") or item.get("local_name") or item.get("iri") for item in (row.get("range") or [])]
+        connections = [
+            {"from": domain, "to": range_value}
+            for domain in domains if domain
+            for range_value in ranges if range_value
+        ]
+        relationships[label] = {
+            "type": label,
+            "iri": row.get("iri"),
+            "source": "owlready2",
+            "connections": connections,
+        }
+
+    if not entities and not all_props and not relationships:
+        return None
+    return {
+        "status": "success",
+        "ontology": reasoning.get("prefix") or prefix,
+        "data": {
+            "entities": entities,
+            "relationships": relationships,
+            "properties": all_props,
+        },
+        "entity_count": len(entities),
+        "relationship_count": len(relationships),
+        "property_count": len(all_props),
+        "source": "owlready2_reasoning",
+    }
+
+
 @router.get("/{prefix}/data-dictionary")
 async def get_generic_data_dictionary(
     prefix: str,
@@ -407,7 +488,10 @@ async def get_generic_data_dictionary(
                     if lbl not in all_props[p]["classes"]:
                         all_props[p]["classes"].append(lbl)
 
-        if not entities and not all_props:
+        if not entities and not all_props and not relationships:
+            owlready_payload = _owlready_data_dictionary(normalized_prefix)
+            if owlready_payload:
+                return owlready_payload
             raise HTTPException(
                 status_code=404,
                 detail=f"No data found in Neo4j for ontology prefix '{normalized_prefix}'. "

@@ -7,6 +7,8 @@ degrading cleanly when it is not available.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -349,37 +351,60 @@ class OwlreadyOntologyRuntime:
             )
             return term_id
 
-        for cls in ontology.classes():
-            if not isinstance(cls, ThingClass):
-                continue
-            child_id = add_node(cls, "owlready2")
-            if not child_id:
-                continue
-            for parent in getattr(cls, "is_a", []):
-                if isinstance(parent, ThingClass) and not _is_builtin_class(parent):
-                    parent_id = add_node(parent, "owlready2")
-                    if parent_id:
-                        edges.append(
-                            {
-                                "source_term": child_id,
-                                "source_label": _first_text(getattr(cls, "label", [])) or _fragment(cls),
-                                "target_term": parent_id,
-                                "target_label": _first_text(getattr(parent, "label", [])) or _fragment(parent),
-                                "mapping_type": "subClassOf",
-                            }
-                        )
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                classes = list(ontology.classes())
+        except (OSError, RecursionError):
+            return None
+
+        for cls in classes:
+            try:
+                if not isinstance(cls, ThingClass):
+                    continue
+                child_id = add_node(cls, "owlready2")
+                if not child_id:
+                    continue
+                for parent in getattr(cls, "is_a", []):
+                    if isinstance(parent, ThingClass) and not _is_builtin_class(parent):
+                        parent_id = add_node(parent, "owlready2")
+                        if parent_id:
+                            edges.append(
+                                {
+                                    "source_term": child_id,
+                                    "source_label": _first_text(getattr(cls, "label", [])) or _fragment(cls),
+                                    "target_term": parent_id,
+                                    "target_label": _first_text(getattr(parent, "label", [])) or _fragment(parent),
+                                    "mapping_type": "subClassOf",
+                                }
+                            )
+            except (OSError, RecursionError):
+                return None
 
         # Surface properties as taxonomy nodes too so the dictionary view doesn't
         # collapse for ontologies that are property-heavy.
-        for prop in ontology.properties():
-            source = "owlready2-object-property" if isinstance(prop, ObjectPropertyClass) else "owlready2-datatype-property"
-            add_node(prop, source)
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                properties = list(ontology.properties())
+        except (OSError, RecursionError):
+            properties = []
+        for prop in properties:
+            try:
+                source = "owlready2-object-property" if isinstance(prop, ObjectPropertyClass) else "owlready2-datatype-property"
+                add_node(prop, source)
+            except (OSError, RecursionError):
+                continue
+
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                triple_count = len(list(world.as_rdflib_graph())) if hasattr(world, "as_rdflib_graph") else None
+        except Exception:
+            triple_count = None
 
         return {
             "source": "owlready2",
             "nodes": nodes,
             "edges": edges,
-            "triple_count": len(list(world.as_rdflib_graph())) if hasattr(world, "as_rdflib_graph") else None,
+            "triple_count": triple_count,
         }
 
     @staticmethod
@@ -415,76 +440,119 @@ class OwlreadyOntologyRuntime:
         class_iris: set[str] = set()
         child_iris: set[str] = set()
         parent_iris: set[str] = set()
+        diagnostics: List[Dict[str, Any]] = []
 
-        for cls in ontology.classes():
-            if not isinstance(cls, ThingClass):
-                continue
-            ref = _entity_ref(cls)
-            class_iris.add(ref["iri"])
-            parents = [
-                parent for parent in getattr(cls, "is_a", [])
-                if isinstance(parent, ThingClass) and not _is_builtin_class(parent)
-            ]
-            classes.append({
-                **ref,
-                "ontology_prefix": prefix,
-                "parents": _entity_refs(parents),
-                "definition": _first_text(getattr(cls, "comment", [])),
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                ontology_classes = list(ontology.classes())
+        except (OSError, RecursionError) as exc:
+            ontology_classes = []
+            diagnostics.append({
+                "severity": "warning",
+                "category": "owlready2",
+                "message": f"Class enumeration was skipped because Owlready2 hit a cyclic ontology construct: {exc}",
             })
-            for parent in parents:
-                parent_ref = _entity_ref(parent)
-                child_iris.add(ref["iri"])
-                parent_iris.add(parent_ref["iri"])
-                subclass_edges.append({
-                    "source": ref["iri"],
-                    "source_label": ref["label"],
-                    "target": parent_ref["iri"],
-                    "target_label": parent_ref["label"],
-                    "type": "subClassOf",
+
+        for cls in ontology_classes:
+            try:
+                if not isinstance(cls, ThingClass):
+                    continue
+                ref = _entity_ref(cls)
+                class_iris.add(ref["iri"])
+                parents = [
+                    parent for parent in getattr(cls, "is_a", [])
+                    if isinstance(parent, ThingClass) and not _is_builtin_class(parent)
+                ]
+                classes.append({
+                    **ref,
+                    "ontology_prefix": prefix,
+                    "parents": _entity_refs(parents),
+                    "definition": _first_text(getattr(cls, "comment", [])),
                 })
+                for parent in parents:
+                    parent_ref = _entity_ref(parent)
+                    child_iris.add(ref["iri"])
+                    parent_iris.add(parent_ref["iri"])
+                    subclass_edges.append({
+                        "source": ref["iri"],
+                        "source_label": ref["label"],
+                        "target": parent_ref["iri"],
+                        "target_label": parent_ref["label"],
+                        "type": "subClassOf",
+                    })
+            except (OSError, RecursionError):
+                continue
 
         object_properties: List[Dict[str, Any]] = []
         datatype_properties: List[Dict[str, Any]] = []
         annotation_properties: List[Dict[str, Any]] = []
         missing_domain_range: List[Dict[str, str]] = []
 
-        for prop in ontology.properties():
-            ref = _entity_ref(prop)
-            domains = _entity_refs(getattr(prop, "domain", []))
-            ranges = _entity_refs(getattr(prop, "range", []))
-            row = {
-                **ref,
-                "ontology_prefix": prefix,
-                "domain": domains,
-                "range": ranges,
-                "definition": _first_text(getattr(prop, "comment", [])),
-            }
-            if not domains or not ranges:
-                missing_domain_range.append({
-                    "iri": ref["iri"],
-                    "label": ref["label"],
-                    "issue": "missing_domain_or_range",
-                })
-            if isinstance(prop, ObjectPropertyClass):
-                object_properties.append(row)
-            elif isinstance(prop, DataPropertyClass):
-                datatype_properties.append(row)
-            else:
-                annotation_properties.append(row)
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                ontology_properties = list(ontology.properties())
+        except (OSError, RecursionError) as exc:
+            ontology_properties = []
+            diagnostics.append({
+                "severity": "warning",
+                "category": "owlready2",
+                "message": f"Property enumeration was skipped because Owlready2 hit a cyclic ontology construct: {exc}",
+            })
+
+        for prop in ontology_properties:
+            try:
+                ref = _entity_ref(prop)
+                domains = _entity_refs(getattr(prop, "domain", []))
+                ranges = _entity_refs(getattr(prop, "range", []))
+                row = {
+                    **ref,
+                    "ontology_prefix": prefix,
+                    "domain": domains,
+                    "range": ranges,
+                    "definition": _first_text(getattr(prop, "comment", [])),
+                }
+                if not domains or not ranges:
+                    missing_domain_range.append({
+                        "iri": ref["iri"],
+                        "label": ref["label"],
+                        "issue": "missing_domain_or_range",
+                    })
+                if isinstance(prop, ObjectPropertyClass):
+                    object_properties.append(row)
+                elif isinstance(prop, DataPropertyClass):
+                    datatype_properties.append(row)
+                else:
+                    annotation_properties.append(row)
+            except (OSError, RecursionError):
+                continue
 
         individuals: List[Dict[str, Any]] = []
-        for individual in ontology.individuals():
-            ref = _entity_ref(individual)
-            type_refs = _entity_refs(
-                cls for cls in getattr(individual, "is_a", [])
-                if isinstance(cls, ThingClass)
-            )
-            individuals.append({
-                **ref,
-                "ontology_prefix": prefix,
-                "types": type_refs,
-                "definition": _first_text(getattr(individual, "comment", [])),
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                ontology_individuals = list(ontology.individuals())
+        except (OSError, RecursionError) as exc:
+            ontology_individuals = []
+            diagnostics.append({
+                "severity": "warning",
+                "category": "owlready2",
+                "message": f"Individual enumeration was skipped because Owlready2 hit a cyclic ontology construct: {exc}",
             })
+
+        for individual in ontology_individuals:
+            try:
+                ref = _entity_ref(individual)
+                type_refs = _entity_refs(
+                    cls for cls in getattr(individual, "is_a", [])
+                    if isinstance(cls, ThingClass)
+                )
+                individuals.append({
+                    **ref,
+                    "ontology_prefix": prefix,
+                    "types": type_refs,
+                    "definition": _first_text(getattr(individual, "comment", [])),
+                })
+            except (OSError, RecursionError):
+                continue
 
         orphan_classes = [
             cls for cls in classes
@@ -498,7 +566,6 @@ class OwlreadyOntologyRuntime:
             if label and len(iris) > 1:
                 duplicate_labels.append({"label": label, "iris": iris})
 
-        diagnostics: List[Dict[str, Any]] = []
         if missing_domain_range:
             diagnostics.append({
                 "severity": "warning",
@@ -524,7 +591,11 @@ class OwlreadyOntologyRuntime:
                 "items": duplicate_labels[:50],
             })
 
-        triple_count = len(list(world.as_rdflib_graph())) if hasattr(world, "as_rdflib_graph") else 0
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                triple_count = len(list(world.as_rdflib_graph())) if hasattr(world, "as_rdflib_graph") else 0
+        except Exception:
+            triple_count = 0
         if not classes and not object_properties and not datatype_properties and not annotation_properties and triple_count:
             fallback = _rdflib_semantic_fallback(file_path, prefix)
             if fallback.get("summary", {}).get("classes") or fallback.get("summary", {}).get("object_properties") or fallback.get("summary", {}).get("datatype_properties"):

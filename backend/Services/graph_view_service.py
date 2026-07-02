@@ -1236,6 +1236,44 @@ RETURN count(res) AS count
         return graph
 
     @classmethod
+    def get_architecture_process_view(cls, prefix: str = "archimate", limit: int = 1000) -> Dict[str, Any]:
+        """Return connected architecture/process model nodes for an imported ArchiMate graph."""
+        prefix = str(prefix or "archimate").strip() or "archimate"
+        rows = cls._run(
+            """
+            MATCH (n)-[r]->(m)
+            WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR m:DatasheetChunk OR m:GraphChunk)
+              AND NOT any(label IN labels(n) WHERE label IN $schema_node_labels)
+              AND NOT any(label IN labels(m) WHERE label IN $schema_node_labels)
+              AND NOT any(label IN labels(n) WHERE label IN $relationship_node_labels)
+              AND NOT any(label IN labels(m) WHERE label IN $relationship_node_labels)
+              AND (
+                coalesce(n.ontology_prefix, n.prefix, n.source_format, '') = $prefix
+                OR coalesce(m.ontology_prefix, m.prefix, m.source_format, '') = $prefix
+              )
+            RETURN
+              {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
+              {elementId: elementId(r), type: type(r), properties: properties(r), start: elementId(startNode(r)), end: elementId(endNode(r))} AS r,
+              {elementId: elementId(m), labels: labels(m), properties: properties(m)} AS m
+            ORDER BY
+              coalesce(n.model_name, '') ASC,
+              coalesce(n.name, n.label, labels(n)[0], elementId(n)) ASC,
+              type(r) ASC,
+              coalesce(m.name, m.label, labels(m)[0], elementId(m)) ASC
+            LIMIT $limit
+            """,
+            {
+                "prefix": prefix,
+                "limit": max(1, min(int(limit), 5000)),
+                "schema_node_labels": cls.SCHEMA_NODE_LABELS,
+                "relationship_node_labels": cls.RELATIONSHIP_NODE_LABELS,
+            },
+        )
+        graph = cls._filter_graph_nodes(cls.rows_to_graph(rows))
+        graph["view"] = {"type": "architecture-process", "prefix": prefix}
+        return graph
+
+    @classmethod
     def get_virtual_ontology_view(cls, prefix: str, limit: int = 1000) -> Dict[str, Any]:
         prefix = cls._resolve_ontology_prefix(prefix)
         rows = cls._ontology_view_rows(prefix, limit)
@@ -1636,24 +1674,107 @@ RETURN count(res) AS count
             query = query.replace("__TARGET_PROJECTION__", target_projection.replace("$node_var", "target_node"))
         else:
             query = """
-            MATCH (seed)
-            WHERE elementId(seed) = $node_id
-              AND NOT (seed:DatasheetChunk OR seed:GraphChunk)
-            OPTIONAL MATCH (seed)-[r]-(adjacent)
-            WHERE adjacent IS NULL OR (
-              NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
-              AND (
-                any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
-                OR coalesce(adjacent.semantic_role, '') = 'entity'
+            CALL {
+              MATCH (seed)
+              WHERE elementId(seed) = $node_id
+                AND NOT (seed:DatasheetChunk OR seed:GraphChunk)
+              OPTIONAL MATCH (seed)-[direct_rel]-(adjacent)
+              WHERE adjacent IS NULL OR (
+                NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
+                AND NOT any(label IN labels(adjacent) WHERE label IN $relationship_node_labels)
+                AND (
+                  any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
+                  OR coalesce(adjacent.semantic_role, '') = 'entity'
+                )
               )
-            )
+              RETURN seed AS source_node,
+                CASE WHEN direct_rel IS NOT NULL THEN {
+                  elementId: elementId(direct_rel), type: type(direct_rel), properties: properties(direct_rel),
+                  start: elementId(startNode(direct_rel)), end: elementId(endNode(direct_rel))
+                } ELSE NULL END AS rel,
+                adjacent AS target_node
+              UNION
+              MATCH (seed)
+              WHERE elementId(seed) = $node_id
+                AND NOT (seed:DatasheetChunk OR seed:GraphChunk)
+              MATCH (seed)--(bridge)--(adjacent)
+              WHERE NOT (bridge:DatasheetChunk OR bridge:GraphChunk OR adjacent:DatasheetChunk OR adjacent:GraphChunk)
+                AND any(label IN labels(bridge) WHERE label IN $relationship_node_labels)
+                AND NOT any(label IN labels(adjacent) WHERE label IN $relationship_node_labels)
+                AND (
+                  any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
+                  OR coalesce(adjacent.semantic_role, '') = 'entity'
+                )
+              RETURN seed AS source_node,
+                {
+                  elementId: 'bridge:' + elementId(bridge) + ':' + elementId(seed) + ':' + elementId(adjacent),
+                  type: coalesce(properties(bridge)['element_type'], properties(bridge)['relationship_type'], properties(bridge)['name'], labels(bridge)[0], 'RELATED'),
+                  properties: properties(bridge),
+                  start: elementId(seed),
+                  end: elementId(adjacent)
+                } AS rel,
+                adjacent AS target_node
+              UNION
+              MATCH (seed)
+              WHERE elementId(seed) = $node_id
+                AND NOT (seed:DatasheetChunk OR seed:GraphChunk)
+              MATCH path = (seed)-[*2..4]-(adjacent)
+              WHERE NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
+                AND NOT any(label IN labels(adjacent) WHERE label IN $relationship_node_labels)
+                AND NOT any(label IN labels(adjacent) WHERE label IN $schema_node_labels)
+                AND (
+                  any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
+                  OR coalesce(adjacent.semantic_role, '') = 'entity'
+                )
+                AND NOT coalesce(
+                  adjacent.name,
+                  adjacent.title,
+                  adjacent.label,
+                  properties(adjacent)['display_name'],
+                  properties(adjacent)['displayName'],
+                  adjacent.id,
+                  properties(adjacent)['uid'],
+                  ''
+                ) =~ '(?i)^id\\d+$'
+                AND all(node IN nodes(path) WHERE NOT (node:DatasheetChunk OR node:GraphChunk))
+                AND any(node IN nodes(path)[1..-1] WHERE
+                  any(label IN labels(node) WHERE label IN $relationship_node_labels)
+                  OR coalesce(
+                    node.name,
+                    node.title,
+                    node.label,
+                    properties(node)['display_name'],
+                    properties(node)['displayName'],
+                    node.id,
+                    properties(node)['uid'],
+                    ''
+                  ) =~ '(?i)^id\\d+$'
+                )
+              WITH seed, adjacent, path
+              ORDER BY length(path) ASC, elementId(adjacent) ASC
+              WITH seed, adjacent, collect(path)[0] AS path
+              WITH seed, adjacent, relationships(path) AS rels, nodes(path) AS path_nodes
+              RETURN seed AS source_node,
+                {
+                  elementId: 'path:' + elementId(seed) + ':' + elementId(adjacent) + ':' + reduce(signature = '', rel IN rels | signature + ':' + type(rel)),
+                  type: coalesce(type(rels[size(rels) - 1]), 'RELATED'),
+                  properties: {
+                    path_types: [rel IN rels | type(rel)],
+                    via_count: size(path_nodes) - 2,
+                    relationship_type: coalesce(type(rels[size(rels) - 1]), 'RELATED')
+                  },
+                  start: elementId(seed),
+                  end: elementId(adjacent)
+                } AS rel,
+                adjacent AS target_node
+            }
             RETURN
               {
-                elementId: elementId(seed),
-                labels: labels(seed),
-                properties: properties(seed),
+                elementId: elementId(source_node),
+                labels: labels(source_node),
+                properties: properties(source_node),
                 can_traverse: EXISTS {
-                  MATCH (seed)-[]-(candidate)
+                  MATCH (source_node)-[]-(candidate)
                   WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
                     AND (
                       any(label IN labels(candidate) WHERE label IN $instance_node_labels)
@@ -1661,17 +1782,14 @@ RETURN count(res) AS count
                     )
                 }
               } AS n,
-              CASE WHEN r IS NOT NULL THEN {
-                elementId: elementId(r), type: type(r), properties: properties(r),
-                start: elementId(startNode(r)), end: elementId(endNode(r))
-              } ELSE NULL END AS r,
-              CASE WHEN adjacent IS NOT NULL THEN {
-                elementId: elementId(adjacent),
-                labels: labels(adjacent),
-                properties: properties(adjacent),
+              rel AS r,
+              CASE WHEN target_node IS NOT NULL THEN {
+                elementId: elementId(target_node),
+                labels: labels(target_node),
+                properties: properties(target_node),
                 can_traverse: CASE
-                  WHEN any(label IN labels(adjacent) WHERE label IN $instance_node_labels) OR coalesce(adjacent.semantic_role, '') = 'entity' THEN EXISTS {
-                    MATCH (adjacent)-[]-(candidate)
+                  WHEN any(label IN labels(target_node) WHERE label IN $instance_node_labels) OR coalesce(target_node.semantic_role, '') = 'entity' THEN EXISTS {
+                    MATCH (target_node)-[]-(candidate)
                     WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
                       AND (
                         any(label IN labels(candidate) WHERE label IN $instance_node_labels)
@@ -1691,6 +1809,7 @@ RETURN count(res) AS count
                 "depth": traversal_depth,
                 "schema_node_labels": cls.SCHEMA_NODE_LABELS,
                 "instance_node_labels": cls.INSTANCE_NODE_LABELS,
+                "relationship_node_labels": cls.RELATIONSHIP_NODE_LABELS,
             },
         )
         graph = cls.rows_to_graph(rows)

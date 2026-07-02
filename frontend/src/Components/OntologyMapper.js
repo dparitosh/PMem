@@ -227,11 +227,18 @@ function DataDictionaryTable({ nodes, filter, prefixFilter, onPrefixFilterChange
               <tr><td colSpan={4} style={{ ...TD(), textAlign: 'center', color: C.textMuted, padding: '32px' }}>No terms match the filter.</td></tr>
             )}
             {visible.map((n, i) => {
-              const selected = selectedRow === n.term_id;
+              const rowKey = [
+                n.uri || n.iri || '',
+                n.source || '',
+                n.kind || n.concept_type || '',
+                n.term_id || '',
+                i,
+              ].join('::');
+              const selected = selectedRow === rowKey;
               return (
-                <React.Fragment key={n.term_id}>
+                <React.Fragment key={rowKey}>
                   <tr
-                    onClick={() => setSelectedRow(selected ? null : n.term_id)}
+                    onClick={() => setSelectedRow(selected ? null : rowKey)}
                     style={{ background: selected ? C.primaryLight : i % 2 === 0 ? C.surface : C.bg, cursor: 'pointer' }}
                     onMouseEnter={e => { if (!selected) e.currentTarget.style.background = C.primaryLight; }}
                     onMouseLeave={e => { if (!selected) e.currentTarget.style.background = i % 2 === 0 ? C.surface : C.bg; }}
@@ -707,7 +714,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
             )}
             {reasoning?.engine === 'owlready2' && (
               <span style={{ fontSize: '10px', fontWeight: 700, color: C.primary, background: C.primaryLight, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
-                Owlready2 semantics
+                Reasoned ontology
               </span>
             )}
           </div>
@@ -949,14 +956,8 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
 
   const selectedTerm = useMemo(() => {
     if (selectedTermId && nodeById.has(selectedTermId)) return nodeById.get(selectedTermId);
-    const connectedIds = new Set();
-    taxonomyEdges.forEach((edge) => {
-      if (edge?.source_term) connectedIds.add(edge.source_term);
-      if (edge?.target_term) connectedIds.add(edge.target_term);
-    });
-    const connectedVisible = visibleNodes.find((node) => connectedIds.has(node.term_id));
-    return connectedVisible || visibleNodes[0] || null;
-  }, [nodeById, selectedTermId, taxonomyEdges, visibleNodes]);
+    return null;
+  }, [nodeById, selectedTermId]);
 
   const edgeRows = useMemo(() => taxonomyEdges.map((edge, index) => {
     const source = nodeById.get(edge.source_term);
@@ -1211,8 +1212,82 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
         </div>
       </section>
 
-      <div className="owl-browser-layout" style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 0.95fr) minmax(520px, 1.9fr) minmax(300px, 1fr)', gap: 12, minHeight: 620, alignItems: 'start' }}>
-        <section style={{ minWidth: 0, border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'hidden' }}>
+      <section style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'hidden' }}>
+        <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary }}>Inspector</div>
+            <div style={{ fontSize: 11, color: C.textSec }}>Selected ontology term details</div>
+          </div>
+          {selectedTerm?.ontology_prefix && (
+            <span style={{ alignSelf: 'center', background: C.primaryLight, color: C.primary, border: `1px solid ${C.border}`, borderRadius: 999, padding: '2px 8px', fontSize: 11, fontWeight: 800, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {selectedTerm.ontology_prefix}
+            </span>
+          )}
+        </div>
+        {selectedTerm ? (
+          <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'minmax(220px, 1.1fr) repeat(2, minmax(110px, 0.4fr)) minmax(260px, 1.5fr)', gap: 10, alignItems: 'stretch' }}>
+            <section style={{ display: 'grid', gap: 5, minWidth: 0 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: C.primary, wordBreak: 'break-word' }}>
+                {selectedTerm.label || String(selectedTerm.term_id).split(':').pop()}
+              </div>
+              <code style={{ display: 'block', fontSize: 11, color: C.textSec, wordBreak: 'break-all' }}>{selectedTerm.term_id}</code>
+            </section>
+            <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Parents</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: C.textPrimary }}>{hierarchy.parentByChild.get(selectedTerm.term_id)?.length || 0}</div>
+            </div>
+            <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Children</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: C.textPrimary }}>{hierarchy.childrenByParent.get(selectedTerm.term_id)?.length || 0}</div>
+            </div>
+            <section style={{ display: 'grid', gap: 6, minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Related Axioms</div>
+              <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+                {selectedAxioms.length === 0 ? (
+                  <div style={{ fontSize: 12, color: C.textMuted, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8, whiteSpace: 'nowrap' }}>
+                    No axioms found for selected term.
+                  </div>
+                ) : selectedAxioms.slice(0, 12).map((edge) => (
+                  <div key={edge.id} style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: 8, background: C.bg, minWidth: 220, maxWidth: 320 }}>
+                    <RelBadge type={edge.axiom} />
+                    <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 5, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${edge.source} -> ${edge.target}`}>
+                      {edge.source} -> {edge.target}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+            {(selectedTerm.definition || selectedTerm.comment || selectedPropertyRow) && (
+              <section style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: selectedPropertyRow ? 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)' : '1fr', gap: 8 }}>
+                {(selectedTerm.definition || selectedTerm.comment) && (
+                  <div style={{ fontSize: 12, color: C.textPrimary, lineHeight: 1.5, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 10 }}>
+                    {selectedTerm.definition || selectedTerm.comment}
+                  </div>
+                )}
+                {selectedPropertyRow && (
+                  <>
+                    <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Kind</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.textPrimary, marginTop: 4 }}>{selectedPropertyRow.kind}</div>
+                    </div>
+                    <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Domain / Range</div>
+                      <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>{selectedPropertyRow.domain} -> {selectedPropertyRow.range}</div>
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
+          </div>
+        ) : (
+          <div style={{ padding: 14, color: C.textMuted, fontSize: 12 }}>
+            Select a class, property, or axiom row to inspect details.
+          </div>
+        )}
+      </section>
+
+      <div className="owl-browser-layout" style={{ display: 'flex', gap: 12, minHeight: 620, alignItems: 'stretch', overflowX: 'auto', paddingBottom: 2 }}>
+        <section style={{ flex: '1 1 38%', minWidth: 340, maxWidth: '70%', resize: 'horizontal', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'auto' }}>
           <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary }}>Hierarchy</div>
           </div>
@@ -1230,7 +1305,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
           </div>
         </section>
 
-        <section style={{ minWidth: 0, border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'hidden', display: 'grid', gridTemplateRows: 'auto 1fr' }}>
+        <section style={{ flex: '2 1 58%', minWidth: 520, resize: 'horizontal', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'auto', display: 'grid', gridTemplateRows: 'auto 1fr' }}>
           <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, display: 'grid', gap: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'start', flexWrap: 'wrap' }}>
               <div>
@@ -1277,94 +1352,6 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
             />
           </div>
         </section>
-
-        <aside style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, minWidth: 0, overflow: 'hidden', maxHeight: 696, display: 'grid', gridTemplateRows: 'auto 1fr' }}>
-          <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary }}>Inspector</div>
-              <div style={{ fontSize: 11, color: C.textSec, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {reasoning?.engine === 'owlready2' ? 'Owlready2 semantics' : 'Ontology metadata'}
-              </div>
-            </div>
-            {selectedTerm?.ontology_prefix && (
-              <span style={{ alignSelf: 'start', background: C.primaryLight, color: C.primary, border: `1px solid ${C.border}`, borderRadius: 999, padding: '2px 8px', fontSize: 11, fontWeight: 800, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {selectedTerm.ontology_prefix}
-              </span>
-            )}
-          </div>
-          {selectedTerm ? (
-            <div style={{ padding: 12, display: 'grid', gap: 12, overflow: 'auto' }}>
-              <section style={{ display: 'grid', gap: 6 }}>
-                <div style={{ fontSize: 18, fontWeight: 800, color: C.primary, wordBreak: 'break-word' }}>
-                  {selectedTerm.label || String(selectedTerm.term_id).split(':').pop()}
-                </div>
-                <code style={{ display: 'block', fontSize: 11, color: C.textSec, wordBreak: 'break-all' }}>{selectedTerm.term_id}</code>
-              </section>
-
-              <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Parents</div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: C.textPrimary }}>{hierarchy.parentByChild.get(selectedTerm.term_id)?.length || 0}</div>
-                </div>
-                <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Children</div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: C.textPrimary }}>{hierarchy.childrenByParent.get(selectedTerm.term_id)?.length || 0}</div>
-                </div>
-              </section>
-
-              {(selectedTerm.definition || selectedTerm.comment) && (
-                <section style={{ display: 'grid', gap: 6 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Description</div>
-                  <div style={{ fontSize: 12, color: C.textPrimary, lineHeight: 1.5, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 10 }}>
-                    {selectedTerm.definition || selectedTerm.comment}
-                  </div>
-                </section>
-              )}
-
-              {selectedPropertyRow && (
-                <section style={{ display: 'grid', gap: 8 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Property Semantics</div>
-                  <div style={{ display: 'grid', gap: 8 }}>
-                    <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Kind</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: C.textPrimary, marginTop: 4 }}>{selectedPropertyRow.kind}</div>
-                    </div>
-                    <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Domain</div>
-                      <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>{selectedPropertyRow.domain}</div>
-                    </div>
-                    <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Range</div>
-                      <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>{selectedPropertyRow.range}</div>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              <section style={{ display: 'grid', gap: 6 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: C.textSec, textTransform: 'uppercase' }}>Related Axioms</div>
-                <div style={{ display: 'grid', gap: 6, maxHeight: 280, overflow: 'auto' }}>
-                  {selectedAxioms.length === 0 ? (
-                    <div style={{ fontSize: 12, color: C.textMuted, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 10 }}>
-                      No axioms found for selected term.
-                    </div>
-                  ) : selectedAxioms.slice(0, 30).map((edge) => (
-                    <div key={edge.id} style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: 8, background: C.bg }}>
-                      <RelBadge type={edge.axiom} />
-                      <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 5, lineHeight: 1.4, wordBreak: 'break-word' }}>
-                        {edge.source} -> {edge.target}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-          ) : (
-            <div style={{ padding: 24, color: C.textMuted, fontSize: 12 }}>
-              Select a class, property, or axiom row to inspect details.
-            </div>
-          )}
-        </aside>
       </div>
     </div>
   );
@@ -1566,7 +1553,20 @@ export default function OntologyMapper() {
   const [vocabEdges, setVocabEdges] = useState([]);
   const [taxonomy, setTaxonomy] = useState(null);
   const [reasoning, setReasoning] = useState(null);
+  const [inferenceRules, setInferenceRules] = useState({
+    transitive_subclass: true,
+    domain_range_typing: true,
+    equivalence: true,
+    disjointness: true,
+    individual_type_closure: true,
+  });
+  const [inferenceLimit, setInferenceLimit] = useState(250);
+  const [inferenceResult, setInferenceResult] = useState(null);
+  const [inferenceBusy, setInferenceBusy] = useState(false);
+  const [inferenceError, setInferenceError] = useState(null);
   const [targetOntologyDictionary, setTargetOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
+  const [semanticDetailsLoading, setSemanticDetailsLoading] = useState(false);
+  const [semanticDetailsError, setSemanticDetailsError] = useState(null);
   const [dictionarySourceMode, setDictionarySourceMode] = useState('primary');
   const [targetDictionarySourceMode, setTargetDictionarySourceMode] = useState('primary');
   const [stats, setStats] = useState(null);
@@ -1580,7 +1580,7 @@ export default function OntologyMapper() {
   const [prefixFilter, setPrefixFilter] = useState(null);
   const [mappingOptions, setMappingOptions] = useState([]);
   const [mappingOptionsError, setMappingOptionsError] = useState(null);
-  const [, setOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
+  const [ontologyDictionary, setOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
   const [mapBusy, setMapBusy] = useState(false);
   const [mapMessage, setMapMessage] = useState(null);
   const [importTasks, setImportTasks] = useState([]);
@@ -1779,7 +1779,12 @@ export default function OntologyMapper() {
     try {
       setMappingOptionsError(null);
       const options = buildOntologyOptions(contextOntologies || []);
-      setMappingOptions(options);
+      setMappingOptions((prev) => (
+        JSON.stringify(prev.map(({ value, prefix, type, uploaded_at }) => ({ value, prefix, type, uploaded_at }))) ===
+        JSON.stringify(options.map(({ value, prefix, type, uploaded_at }) => ({ value, prefix, type, uploaded_at })))
+          ? prev
+          : options
+      ));
 
       if (options.length === 0) {
         setMappingOptionsError('No ontologies available. Please upload an ontology first.');
@@ -1795,11 +1800,14 @@ export default function OntologyMapper() {
       }
 
       const selectedOntologyKey = selectedOption.prefix || selectedOption.ontologyKey || selectedOption.value || '';
-      if (selectedOption.value !== selectedMapping || selectedOntologyApi !== selectedOntologyKey) {
-        applyOntologySelection(selectedOption.value);
+      if (selectedOption.value !== selectedMapping) {
+        setSelectedMapping(selectedOption.value);
+      }
+      if (selectedOntologyApi !== selectedOntologyKey) {
+        setSelectedOntologyApi(selectedOntologyKey);
       }
 
-      if (!selectedMappingType) {
+      if (!selectedMappingType && selectedOption.type) {
         setSelectedMappingType(selectedOption.type);
       }
 
@@ -1809,7 +1817,7 @@ export default function OntologyMapper() {
       setLoading(false);
       console.warn('Failed to process ontologies:', e);
     }
-  }, [applyOntologySelection, contextOntologies, buildOntologyOptions, resolveSelectedOntologyOption, selectedMapping, selectedMappingType, selectedOntologyApi]);
+  }, [contextOntologies, buildOntologyOptions, resolveSelectedOntologyOption, selectedMapping, selectedMappingType, selectedOntologyApi]);
 
   useEffect(() => {
     if (!selectedMappingType) {
@@ -1899,20 +1907,23 @@ export default function OntologyMapper() {
       try {
         // Use selectedOntologyApi (the currently selected uploaded ontology prefix).
         // The backend now supports any prefix via generic /{prefix}/data-dictionary routes.
-        const [dictRes, mapRes, taxonomyRes, reasoningRes] = await Promise.allSettled([
+        const [dictRes, mapRes] = await Promise.allSettled([
           API_METHODS.ontology.getDataDictionary(selectedOntologyApi),
           API_METHODS.ontology.getMappings(selectedOntologyApi, selectedMappingType),
-          API_METHODS.ontology.getTaxonomy(selectedOntologyApi),
-          API_METHODS.ontology.getReasoning(selectedOntologyApi),
         ]);
 
-        const taxonomyData = taxonomyRes.status === 'fulfilled' ? taxonomyRes.value.data : null;
-        const reasoningData = reasoningRes.status === 'fulfilled' ? reasoningRes.value.data : null;
         const dictDataRaw = (dictRes.status === 'fulfilled' ? dictRes.value.data.data : null) || {};
-        const usingFallbackDictionary = Object.keys(dictDataRaw.entities || {}).length === 0 && Boolean(taxonomyData);
-        const dictData = Object.keys(dictDataRaw.entities || {}).length > 0
-          ? dictDataRaw
-          : (taxonomyData ? buildFallbackDictionaryFromTaxonomy(taxonomyData, selectedOntologyApi) : dictDataRaw);
+        const hasPrimaryDictionary = Object.keys(dictDataRaw.entities || {}).length > 0;
+        let taxonomyData = null;
+        let usingFallbackDictionary = false;
+        let dictData = dictDataRaw;
+
+        if (!hasPrimaryDictionary) {
+          const taxonomyRes = await API_METHODS.ontology.getTaxonomy(selectedOntologyApi).catch(() => null);
+          taxonomyData = taxonomyRes?.data || null;
+          usingFallbackDictionary = Boolean(taxonomyData?.nodes?.length);
+          dictData = usingFallbackDictionary ? buildFallbackDictionaryFromTaxonomy(taxonomyData, selectedOntologyApi) : dictDataRaw;
+        }
         const entities = dictData.entities || {};
         const mapPayload = (mapRes.status === 'fulfilled' ? mapRes.value.data : null) || {};
         const mappings = mapPayload.mappings || {};
@@ -1942,9 +1953,7 @@ export default function OntologyMapper() {
           })),
         ];
 
-        const nodes = taxonomyData?.nodes?.length
-          ? taxonomyData.nodes
-          : synthesizedDictionaryNodes;
+        const nodes = synthesizedDictionaryNodes;
 
         const edges = mappingEdges && mappingEdges.length > 0
           ? mappingEdges.map((edge) => ({
@@ -1984,16 +1993,17 @@ export default function OntologyMapper() {
         setMappingEdges(edges);
         setVocabEdges(vocabFromDict);
         setTaxonomy(taxonomyData);
-        setReasoning(reasoningData);
+        setReasoning(null);
+        setSemanticDetailsError(null);
         setStats({
           total_terms: taxonomyData
             ? taxonomyData?.summary?.terms ?? nodes.length
             : nodes.length,
           total_vocabulary_mappings: vocabFromDict.length,
-          owlready_classes: reasoningData?.summary?.classes ?? taxonomyData?.reasoning_summary?.classes ?? 0,
-          owlready_object_properties: reasoningData?.summary?.object_properties ?? taxonomyData?.reasoning_summary?.object_properties ?? 0,
-          owlready_datatype_properties: reasoningData?.summary?.datatype_properties ?? taxonomyData?.reasoning_summary?.datatype_properties ?? 0,
-          owlready_individuals: reasoningData?.summary?.individuals ?? taxonomyData?.reasoning_summary?.individuals ?? 0,
+          owlready_classes: taxonomyData?.reasoning_summary?.classes ?? 0,
+          owlready_object_properties: taxonomyData?.reasoning_summary?.object_properties ?? 0,
+          owlready_datatype_properties: taxonomyData?.reasoning_summary?.datatype_properties ?? 0,
+          owlready_individuals: taxonomyData?.reasoning_summary?.individuals ?? 0,
         });
       } catch (e) {
         if (cancelled) return;
@@ -2013,47 +2023,88 @@ export default function OntologyMapper() {
   }, [selectedMapping, selectedMappingType, selectedOntologyApi]);
 
   useEffect(() => {
+    if (!selectedOntologyApi) {
+      setTargetOntologyDictionary({ entities: {}, relationships: {}, properties: {} });
+      setTargetDictionarySourceMode('primary');
+      return;
+    }
+
+    const hasPrimaryDictionary = Object.keys(ontologyDictionary.entities || {}).length > 0;
+    if (hasPrimaryDictionary) {
+      setTargetOntologyDictionary(ontologyDictionary);
+      setTargetDictionarySourceMode('primary');
+      return;
+    }
+
+    if (taxonomy?.nodes?.length) {
+      setTargetOntologyDictionary(buildFallbackDictionaryFromTaxonomy(taxonomy, selectedOntologyApi));
+      setTargetDictionarySourceMode('taxonomy-fallback');
+      return;
+    }
+
+    setTargetOntologyDictionary({ entities: {}, relationships: {}, properties: {} });
+    setTargetDictionarySourceMode('primary');
+  }, [ontologyDictionary, selectedOntologyApi, taxonomy]);
+
+  useEffect(() => {
+    if (!selectedOntologyApi || !['taxonomy', 'alignment'].includes(activeView)) return;
+    if (taxonomy?.nodes?.length && reasoning) return;
+
     let cancelled = false;
-    const loadSingleDictionary = async () => {
-      if (!selectedOntologyApi) {
-        setTargetOntologyDictionary({ entities: {}, relationships: {}, properties: {} });
-        setTargetDictionarySourceMode('primary');
-        return;
-      }
+    const loadSemanticDetails = async () => {
+      setSemanticDetailsLoading(true);
+      setSemanticDetailsError(null);
       try {
-        const res = await API_METHODS.ontology.getDataDictionary(selectedOntologyApi);
-        const dictData = res?.data?.data || {};
-        if (Object.keys(dictData.entities || {}).length > 0) {
-          if (!cancelled) {
-            setTargetOntologyDictionary(dictData);
-            setTargetDictionarySourceMode('primary');
-          }
-          return;
+        const requests = [];
+        const keys = [];
+        if (!taxonomy?.nodes?.length) {
+          keys.push('taxonomy');
+          requests.push(API_METHODS.ontology.getTaxonomy(selectedOntologyApi));
         }
-        throw new Error('Empty data dictionary');
-      } catch {
-        try {
-          const taxonomyRes = await API_METHODS.ontology.getTaxonomy(selectedOntologyApi);
-          if (!cancelled) {
-            const dict = buildFallbackDictionaryFromTaxonomy(taxonomyRes?.data, selectedOntologyApi);
-            setTargetOntologyDictionary(dict);
-            setTargetDictionarySourceMode('taxonomy-fallback');
-          }
-          return;
-        } catch {
-          if (!cancelled) {
-            const emptyDict = { entities: {}, relationships: {}, properties: {}, _error: true };
-            setTargetOntologyDictionary(emptyDict);
-            setTargetDictionarySourceMode('error');
-          }
+        if (!reasoning) {
+          keys.push('reasoning');
+          requests.push(API_METHODS.ontology.getReasoning(selectedOntologyApi));
         }
+        const responses = await Promise.allSettled(requests);
+        if (cancelled) return;
+        responses.forEach((res, index) => {
+          if (res.status !== 'fulfilled') return;
+          if (keys[index] === 'taxonomy') setTaxonomy(res.value?.data || null);
+          if (keys[index] === 'reasoning') setReasoning(res.value?.data || null);
+        });
+        const failed = responses.find((res) => res.status === 'rejected');
+        if (failed) {
+          setSemanticDetailsError(failed.reason?.response?.data?.detail || failed.reason?.message || 'Some ontology details could not be loaded.');
+        }
+      } finally {
+        if (!cancelled) setSemanticDetailsLoading(false);
       }
     };
 
-    loadSingleDictionary();
+    loadSemanticDetails();
     return () => {
       cancelled = true;
     };
+  }, [activeView, reasoning, selectedOntologyApi, taxonomy]);
+
+  useEffect(() => {
+    setStats((prev) => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        total_terms: taxonomy?.summary?.terms ?? prev.total_terms,
+        owlready_classes: reasoning?.summary?.classes ?? taxonomy?.reasoning_summary?.classes ?? prev.owlready_classes ?? 0,
+        owlready_object_properties: reasoning?.summary?.object_properties ?? taxonomy?.reasoning_summary?.object_properties ?? prev.owlready_object_properties ?? 0,
+        owlready_datatype_properties: reasoning?.summary?.datatype_properties ?? taxonomy?.reasoning_summary?.datatype_properties ?? prev.owlready_datatype_properties ?? 0,
+        owlready_individuals: reasoning?.summary?.individuals ?? taxonomy?.reasoning_summary?.individuals ?? prev.owlready_individuals ?? 0,
+      };
+      return JSON.stringify(next) === JSON.stringify(prev) ? prev : next;
+    });
+  }, [reasoning, taxonomy]);
+
+  useEffect(() => {
+    setInferenceResult(null);
+    setInferenceError(null);
   }, [selectedOntologyApi]);
 
   useEffect(() => {
@@ -2400,9 +2451,34 @@ export default function OntologyMapper() {
     setMapMessage({ kind: 'success', text: 'Mapping removed from the table.' });
   };
 
+  const runInferencePreview = async () => {
+    if (!selectedOntologyApi) {
+      setInferenceError('Select an active ontology before running inference preview.');
+      return;
+    }
+    setInferenceBusy(true);
+    setInferenceError(null);
+    try {
+      const response = await API_METHODS.ontology.previewInference(selectedOntologyApi, {
+        rules: inferenceRules,
+        limit: Number(inferenceLimit) || 250,
+      });
+      setInferenceResult(response.data || null);
+    } catch (err) {
+      setInferenceError(err?.response?.data?.detail || err?.message || 'Inference preview failed.');
+    } finally {
+      setInferenceBusy(false);
+    }
+  };
+
+  const toggleInferenceRule = (ruleId) => {
+    setInferenceRules((prev) => ({ ...prev, [ruleId]: !prev[ruleId] }));
+  };
+
   const VIEWS = [
     { id: 'dictionary', label: 'Data Dictionary' },
     { id: 'taxonomy', label: 'Taxonomy / OWL' },
+    { id: 'inference', label: 'Inference Workbench' },
     { id: 'vocabulary', label: 'Mapping Vocabulary' },
     { id: 'alignment', label: 'Semantic Bridge' },
   ];
@@ -2411,9 +2487,9 @@ export default function OntologyMapper() {
     <div style={{ background: C.bg, minHeight: '100%', padding: 0, boxSizing: 'border-box' }}>
       {/* Header */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        flexWrap: 'wrap', gap: '8px', marginBottom: '8px',
-        background: C.surface, border: `1px solid ${C.border}`, borderRadius: '6px', padding: '8px 10px',
+        display: 'grid', gridTemplateColumns: 'minmax(260px, 1fr) minmax(320px, 460px)', alignItems: 'center',
+        gap: '12px', marginBottom: '8px',
+        background: C.surface, border: `1px solid ${C.border}`, borderRadius: '6px', padding: '10px 12px',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{
@@ -2429,11 +2505,11 @@ export default function OntologyMapper() {
             <Network size={16} strokeWidth={2.4} />
           </div>
           <div>
-            <div style={{ fontWeight: 800, fontSize: '12px', color: C.textPrimary }}>Ontology junction</div>
-            <div style={{ fontSize: '10px', color: C.textSec }}>Active ontology, OWL structure, vocabulary, taxonomy, and semantic bridge review.</div>
+            <div style={{ fontWeight: 800, fontSize: '13px', color: C.textPrimary }}>Ontology Junction</div>
+            <div style={{ fontSize: '11px', color: C.textSec }}>Browse OWL terms, taxonomy, vocabulary, and semantic bridge mappings.</div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', flexDirection: 'column', alignItems: 'flex-start' }}>
+        <div style={{ display: 'grid', gap: '6px', justifySelf: 'end', width: '100%', maxWidth: 460 }}>
           {mappingOptionsError && (
             <div style={{ color: C.red, fontSize: '12px', padding: '8px 12px', background: '#FFE5E5', border: `1px solid ${C.red}`, borderRadius: '6px' }}>
               ⚠️ {mappingOptionsError}
@@ -2527,7 +2603,7 @@ export default function OntologyMapper() {
               />
               <input
                 type="text" value={filter}
-                placeholder={activeView === 'taxonomy' ? 'Find taxonomy term' : activeView === 'vocabulary' ? 'Filter mappings' : 'Filter terms'}
+                placeholder={activeView === 'taxonomy' ? 'Find taxonomy term' : activeView === 'inference' ? 'Filter inferred statements' : activeView === 'vocabulary' ? 'Filter mappings' : 'Filter terms'}
                 onChange={e => setFilter(e.target.value)}
                 style={{ border: 'none', outline: 'none', fontSize: '13px', lineHeight: '1.4', flex: 1, background: 'transparent', color: C.textPrimary, minHeight: '20px' }}
               />
@@ -2547,18 +2623,18 @@ export default function OntologyMapper() {
               Prefix {selectedOntologyOption?.prefix || selectedOntologyApi || 'n/a'}
             </div>
             <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${dictionarySourceMode === 'taxonomy-fallback' ? '#F7C948' : C.border}`, background: dictionarySourceMode === 'taxonomy-fallback' ? '#FFF8E1' : C.bg, fontSize: '11px', fontWeight: 700, color: dictionarySourceMode === 'taxonomy-fallback' ? '#8A5A00' : C.textSec }}>
-              {dictionarySourceMode === 'taxonomy-fallback' ? 'Taxonomy fallback view' : 'Primary ontology dictionary'}
+              {dictionarySourceMode === 'taxonomy-fallback' ? 'OWL/taxonomy-derived terms' : 'Primary ontology dictionary'}
             </div>
-            {selectedOntologyOption?.type && (
+            {activeView === 'alignment' && selectedMappingType && (
               <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '11px', fontWeight: 700, color: C.textSec }}>
-                Source format {selectedOntologyOption.type}
+                Instance source profile {String(selectedMappingType).toUpperCase()}
               </div>
             )}
           </div>
 
           {activeView !== 'alignment' && dictionarySourceMode === 'taxonomy-fallback' && (
             <div style={{ marginBottom: '8px', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${C.borderDark}`, background: '#FFF8E1', color: C.textPrimary, fontSize: '11px', lineHeight: 1.45 }}>
-              Showing taxonomy-derived fallback terms because the primary ontology dictionary is empty for the active ontology. Use this view for inspection, not as proof of full ontology expressivity.
+              Showing OWL/taxonomy terms for this ontology. Generate a dictionary projection when you need curated business definitions and relationship mappings.
             </div>
           )}
 
@@ -2580,14 +2656,113 @@ export default function OntologyMapper() {
             <DataDictionaryTable nodes={data.nodes} filter={filter} prefixFilter={prefixFilter} onPrefixFilterChange={setPrefixFilter} />
           )}
           {activeView === 'taxonomy' && (
-            taxonomy?.view_mode === 'classic' ? (
-              <TaxonomyView nodes={data.nodes} edges={vocabEdges} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
-            ) : (
-              <ProtegeOntologyBrowser nodes={data.nodes} edges={vocabEdges} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
-            )
+            <>
+              {(semanticDetailsLoading || semanticDetailsError) && (
+                <div style={{ marginBottom: '8px', padding: '7px 10px', borderRadius: '6px', border: `1px solid ${semanticDetailsError ? '#F29B9B' : C.border}`, background: semanticDetailsError ? '#FFF5F5' : C.surface, color: semanticDetailsError ? C.red : C.textSec, fontSize: '11px', fontWeight: 700 }}>
+                  {semanticDetailsLoading ? 'Loading OWL taxonomy details...' : semanticDetailsError}
+                </div>
+              )}
+              {taxonomy?.view_mode === 'classic' ? (
+                <TaxonomyView nodes={data.nodes} edges={vocabEdges} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
+              ) : (
+                <ProtegeOntologyBrowser nodes={data.nodes} edges={vocabEdges} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
+              )}
+            </>
           )}
           {activeView === 'vocabulary' && (
             <VocabularyTable edges={vocabEdges} filter={filter} />
+          )}
+          {activeView === 'inference' && (
+            <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '14px', minHeight: '360px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 800, color: C.textPrimary }}>Ontology inference preview</div>
+                  <div style={{ fontSize: '12px', color: C.textSec, marginTop: '3px' }}>Choose reasoning patterns, preview inferred statements, then decide what belongs in Semantic Bridge or graph materialization.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={runInferencePreview}
+                  disabled={inferenceBusy || !selectedOntologyApi}
+                  style={{ padding: '8px 14px', borderRadius: '6px', border: 'none', background: inferenceBusy || !selectedOntologyApi ? C.textMuted : C.primary, color: '#fff', fontSize: '12px', fontWeight: 800, cursor: inferenceBusy || !selectedOntologyApi ? 'not-allowed' : 'pointer' }}
+                >
+                  {inferenceBusy ? 'Previewing' : 'Run preview'}
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 360px) 1fr', gap: '12px', alignItems: 'start' }}>
+                <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px', background: C.bg }}>
+                  <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>Inference rules</div>
+                  {[
+                    ['transitive_subclass', 'Transitive subclass hierarchy', 'Find indirect superclass paths for taxonomy and classification.'],
+                    ['domain_range_typing', 'Domain/range typing', 'Use property domain and range to explain expected source and target classes.'],
+                    ['equivalence', 'Equivalent terms', 'Preview same-as, equivalent class/property, and exact-match mappings.'],
+                    ['disjointness', 'Disjointness checks', 'Surface disjoint classes that should not classify the same individual.'],
+                    ['individual_type_closure', 'Individual type closure', 'Infer broader individual types from declared class hierarchy.'],
+                  ].map(([id, label, help]) => (
+                    <label key={id} style={{ display: 'grid', gridTemplateColumns: '18px 1fr', gap: '8px', padding: '8px 0', borderBottom: `1px solid ${C.border}` }}>
+                      <input type="checkbox" checked={Boolean(inferenceRules[id])} onChange={() => toggleInferenceRule(id)} />
+                      <span>
+                        <span style={{ display: 'block', fontSize: '12px', fontWeight: 800, color: C.textPrimary }}>{label}</span>
+                        <span style={{ display: 'block', fontSize: '11px', color: C.textSec, lineHeight: 1.4 }}>{help}</span>
+                      </span>
+                    </label>
+                  ))}
+                  <label style={{ display: 'block', marginTop: '10px', fontSize: '11px', fontWeight: 800, color: C.textSec }}>Preview limit</label>
+                  <input
+                    type="number"
+                    min="25"
+                    max="1000"
+                    value={inferenceLimit}
+                    onChange={(e) => setInferenceLimit(e.target.value)}
+                    style={{ width: '100%', marginTop: '5px', padding: '7px 9px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', fontSize: '12px' }}
+                  />
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  {inferenceError && (
+                    <div style={{ marginBottom: '10px', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${C.red}`, background: '#FFF5F5', color: C.red, fontSize: '12px', fontWeight: 700 }}>{inferenceError}</div>
+                  )}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                    {[
+                      ['Candidates', inferenceResult?.summary?.inferred_candidates ?? 0],
+                      ['Classes', inferenceResult?.summary?.classes ?? reasoning?.summary?.classes ?? 0],
+                      ['Properties', (inferenceResult?.summary?.object_properties ?? reasoning?.summary?.object_properties ?? 0) + (inferenceResult?.summary?.datatype_properties ?? reasoning?.summary?.datatype_properties ?? 0)],
+                      ['Individuals', inferenceResult?.summary?.individuals ?? reasoning?.summary?.individuals ?? 0],
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '11px', fontWeight: 800, color: C.textPrimary }}>{label}: {value}</div>
+                    ))}
+                  </div>
+                  {(inferenceResult?.warnings || []).map((warning, idx) => (
+                    <div key={idx} style={{ marginBottom: '8px', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F7C948', background: '#FFF8E1', color: '#8A5A00', fontSize: '12px', fontWeight: 700 }}>{warning}</div>
+                  ))}
+                  <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden', background: C.surface }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr 130px 1fr 90px', gap: 0, background: C.primary, color: '#fff', fontSize: '11px', fontWeight: 800 }}>
+                      {['Rule', 'Subject', 'Predicate', 'Object', 'Confidence'].map((header) => <div key={header} style={{ padding: '9px 10px' }}>{header}</div>)}
+                    </div>
+                    {(inferenceResult?.inferences || [])
+                      .filter((row) => {
+                        const q = String(filter || '').toLowerCase();
+                        if (!q) return true;
+                        return [row.rule, row.subject_label, row.predicate, row.object_label, row.evidence].some((value) => String(value || '').toLowerCase().includes(q));
+                      })
+                      .slice(0, Number(inferenceLimit) || 250)
+                      .map((row, idx) => (
+                        <div key={`${row.rule}-${row.subject}-${row.object}-${idx}`} style={{ display: 'grid', gridTemplateColumns: '150px 1fr 130px 1fr 90px', borderTop: `1px solid ${C.border}`, fontSize: '12px', color: C.textPrimary }}>
+                          <div style={{ padding: '9px 10px', fontWeight: 800 }}>{String(row.rule || '').replaceAll('_', ' ')}</div>
+                          <div style={{ padding: '9px 10px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.subject}>{row.subject_label || row.subject}</div>
+                          <div style={{ padding: '9px 10px', color: C.textSec, fontWeight: 700 }}>{row.predicate}</div>
+                          <div style={{ padding: '9px 10px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.object}>{row.object_label || row.object}</div>
+                          <div style={{ padding: '9px 10px', fontWeight: 800 }}>{Math.round((Number(row.confidence) || 0) * 100)}%</div>
+                          {row.evidence && <div style={{ gridColumn: '1 / -1', padding: '0 10px 9px 10px', color: C.textSec, fontSize: '11px' }}>{row.evidence}</div>}
+                        </div>
+                      ))}
+                    {!inferenceResult && (
+                      <div style={{ padding: '28px', textAlign: 'center', color: C.textSec, fontSize: '13px' }}>Run preview to inspect inferred ontology statements.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
           {activeView === 'alignment' && (
             <ErrorBoundary>

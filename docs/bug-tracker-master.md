@@ -582,3 +582,22 @@ Validation:
 - OSLC smoke after backend restart: `/oslc/catalog`, `/oslc/providers/depo`, `/oslc/shapes`, `/oslc/shapes/resources`, `/oslc/query/resources?oslc.searchTerms=REQ&oslc.pageSize=3`, `/oslc/trs`, `/oslc/trs/base`, and `/oslc/trs/changelog` returned 200.
 - Current OSLC status remains read/query/shape/TRS interoperability, not full write/update OSLC compliance.
 
+### 2026-07-02 Ontology Junction performance update
+
+- Ontology Junction initial load no longer blocks on taxonomy and reasoning calls for every active ontology selection. Dictionary and mapping vocabulary load first; taxonomy/reasoning are lazy-loaded when the Taxonomy/OWL or Semantic Bridge surfaces need them.
+- Removed duplicate target-dictionary API calls for the active ontology; Semantic Bridge now reuses the already loaded active dictionary or its taxonomy-derived fallback.
+- Taxonomy and reasoning extraction are now cached by ontology file path, mtime, size, and prefix. AP242 smoke after restart: cold taxonomy ~21.7s, repeat taxonomy ~143ms, cached reasoning ~356-412ms in the local environment.
+- Data Dictionary wording was simplified: `Taxonomy fallback view` is now `OWL/taxonomy-derived terms`, and the misleading `Source format plmxml` chip is hidden outside Semantic Bridge context.
+
+### 2026-07-02 Ontology Junction UI wording cleanup
+
+- Renamed the side navigation/page label from `Ontology Studio` to `Ontology Junction` for consistency with the actual semantic workbench surface.
+- Compressed the Ontology Junction header layout so active ontology controls no longer create a large empty first-viewport band.
+- Replaced technical fallback wording with customer-facing language: `Showing OWL/taxonomy terms for this ontology. Generate a dictionary projection when you need curated business definitions and relationship mappings.`
+
+### 2026-07-02 Taxonomy/OWL layout fix
+
+- OWL Browser inspector was moved from the rigid right-side column to a horizontal panel above the hierarchy and semantic tables.
+- The hierarchy and semantic table panels now use a flexible/resizable two-panel layout instead of a fixed three-column grid.
+- Removed the customer-facing `Owlready2 semantics` implementation label; classic taxonomy now shows `Reasoned ontology`, and the main inspector uses `Selected ontology term details`.
+
