@@ -191,6 +191,41 @@ END-ISO-10303-21;
     assert doc.geometric_tolerances[0].toleranced_feature_refs
 
 
+def test_step_parser_attaches_plus_minus_tolerance_to_dimension(tmp_path):
+    """AP242 plus/minus tolerances are dimensional bounds, not geometric tolerances."""
+    from backend.Services.step_parser import parse_step_with_pmi
+
+    step = """ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING'));
+ENDSEC;
+DATA;
+#1 = PRODUCT('P-100','Pump Housing','Demo housing',());
+#2 = SHAPE_ASPECT('hole diameter','',#1,.T.);
+#3 = DIMENSIONAL_SIZE(#2,'diameter');
+#4 = LENGTH_MEASURE_WITH_UNIT(LENGTH_MEASURE(-0.2),#9);
+#5 = LENGTH_MEASURE_WITH_UNIT(LENGTH_MEASURE(0.05),#9);
+#6 = TOLERANCE_VALUE(#4,#5);
+#7 = PLUS_MINUS_TOLERANCE(#6,#3);
+#8 = SHAPE_DIMENSION_REPRESENTATION('',(#10),#11);
+#9 = SI_UNIT(.MILLI.,.METRE.);
+#10 = LENGTH_MEASURE_WITH_UNIT(LENGTH_MEASURE(35.0),#9);
+#11 = GEOMETRIC_REPRESENTATION_CONTEXT(3);
+ENDSEC;
+END-ISO-10303-21;
+"""
+
+    step_path = tmp_path / "plus_minus_dimension.stp"
+    step_path.write_text(step, encoding="utf-8")
+
+    doc = parse_step_with_pmi(step_path)
+    dimensional_size = next(dim for dim in doc.dimensions if dim.dimension_type == "DIMENSIONAL_SIZE")
+
+    assert len(doc.geometric_tolerances) == 0
+    assert dimensional_size.lower_tolerance == -0.2
+    assert dimensional_size.upper_tolerance == 0.05
+
+
 def test_step_parser_does_not_count_product_definition_rows_as_products(tmp_path):
     """Product/version/view STEP rows should not all inflate the product semantic bucket."""
     from backend.Services.step_parser import parse_step_with_pmi

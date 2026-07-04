@@ -519,7 +519,9 @@ def _classify_cad_entity(entity: StepP21Entity) -> Optional[str]:
 
 
 def _first_number(raw_args: str) -> Optional[float]:
-    match = re.search(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[Ee][-+]?\d+)?", raw_args or "")
+    cleaned = re.sub(r"'(?:[^']|'')*'", " ", raw_args or "")
+    cleaned = re.sub(r"#\d+", " ", cleaned)
+    match = re.search(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[Ee][-+]?\d+)?", cleaned)
     if not match:
         return None
     try:
@@ -528,13 +530,86 @@ def _first_number(raw_args: str) -> Optional[float]:
         return None
 
 
+def _measure_number(
+    entity: StepP21Entity,
+    entity_map: Dict[int, StepP21Entity],
+    visited: Optional[set[int]] = None,
+) -> Optional[float]:
+    """Return a real AP242 measure, avoiding quoted labels and STEP reference ids."""
+    visited = visited or set()
+    if entity.step_id in visited:
+        return None
+    visited.add(entity.step_id)
+
+    direct = _first_number(entity.raw_args)
+    if direct is not None and (
+        "MEASURE" in entity.entity_type
+        or "VALUE" in entity.entity_type
+        or entity.entity_type in {"REAL", "INTEGER", "NUMBER"}
+    ):
+        return direct
+
+    for ref_id in entity.ref_ids:
+        ref = entity_map.get(ref_id)
+        if not ref:
+            continue
+        if (
+            "MEASURE" in ref.entity_type
+            or "VALUE" in ref.entity_type
+            or ref.entity_type in {"REAL", "INTEGER", "NUMBER"}
+        ):
+            resolved = _measure_number(ref, entity_map, visited)
+            if resolved is not None:
+                return resolved
+    return direct
+
+
+def _tolerance_bounds(entity: StepP21Entity, entity_map: Dict[int, StepP21Entity]) -> tuple[Optional[float], Optional[float]]:
+    """Resolve AP242 TOLERANCE_VALUE lower/upper bounds from referenced measures."""
+    if entity.entity_type != "TOLERANCE_VALUE":
+        return None, None
+    values: List[float] = []
+    for ref_id in entity.ref_ids:
+        ref = entity_map.get(ref_id)
+        if not ref:
+            continue
+        value = _measure_number(ref, entity_map)
+        if value is not None:
+            values.append(value)
+    if not values:
+        return None, None
+    if len(values) == 1:
+        return values[0], values[0]
+    return values[0], values[1]
+
+
+def _apply_dimension_tolerances(dimensions: List[StepDimension], entity_map: Dict[int, StepP21Entity]) -> None:
+    """Attach PLUS_MINUS_TOLERANCE/TOLERANCE_VALUE bounds to the referenced dimension."""
+    dimensions_by_id = {dim.id: dim for dim in dimensions}
+    for entity in entity_map.values():
+        if entity.entity_type != "PLUS_MINUS_TOLERANCE":
+            continue
+        tolerance_ref = next((ref_id for ref_id in entity.ref_ids if entity_map.get(ref_id, None) and entity_map[ref_id].entity_type == "TOLERANCE_VALUE"), None)
+        dimension_ref = next((ref_id for ref_id in entity.ref_ids if ref_id in dimensions_by_id), None)
+        if tolerance_ref is None or dimension_ref is None:
+            continue
+        lower, upper = _tolerance_bounds(entity_map[tolerance_ref], entity_map)
+        dim = dimensions_by_id[dimension_ref]
+        if lower is not None:
+            dim.lower_tolerance = lower
+        if upper is not None:
+            dim.upper_tolerance = upper
+
+
 def _classify_pmi_entity(entity: StepP21Entity) -> Optional[str]:
     for et in _entity_type_candidates(entity):
-        if "GEOMETRIC_TOLERANCE" in et or et.endswith("_TOLERANCE"):
+        if et == "PLUS_MINUS_TOLERANCE" or et == "TOLERANCE_VALUE":
+            return "dimension_tolerance"
+        if "GEOMETRIC_TOLERANCE" in et or (et.endswith("_TOLERANCE") and et != "PLUS_MINUS_TOLERANCE"):
             return "geometric_tolerance"
         if "DATUM" in et:
             return "datum"
-        if "DIMENSION" in et or et in {"DIMENSIONAL_SIZE", "DIMENSIONAL_LOCATION"}:
+        if "DIMENSION" in et or et in {"DIMENSIONAL_SIZE", "DIMENSIONAL_LOCATION", "ANGULAR_LOCATION"}:
             return "dimension"
         if "ANNOTATION" in et or "DRAUGHTING" in et:
             return "annotation"
@@ -602,7 +677,7 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
         label = strings[0] if strings else ""
         name = strings[1] if len(strings) > 1 else label
         description = strings[2] if len(strings) > 2 else ""
-        number = _first_number(entity.raw_args)
+        number = _measure_number(entity, entity_map)
 
         if pmi_group == "geometric_tolerance":
             geometric_tolerances.append(StepGeometricTolerance(
@@ -630,6 +705,8 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
                 nominal_value=number,
                 feature_refs=list(entity.ref_ids),
             ))
+        elif pmi_group == "dimension_tolerance":
+            continue
         elif pmi_group == "annotation":
             annotations.append(StepAnnotation(
                 id=entity.step_id,
@@ -645,6 +722,8 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
                 roughness_average=number,
                 feature_refs=list(entity.ref_ids),
             ))
+
+    _apply_dimension_tolerances(dimensions, entity_map)
 
     return StepPMIDocument(
         metadata=metadata,

@@ -446,6 +446,8 @@ def _generate_step_rdf_ttl(
         (_PMI.datumLabel, "datum label", _PMI.Datum, XSD.string),
         (_PMI.dimensionType, "dimension type", _PMI.Dimension, XSD.string),
         (_PMI.nominalValue, "nominal value", _PMI.Dimension, XSD.double),
+        (_PMI.lowerTolerance, "lower tolerance", _PMI.Dimension, XSD.double),
+        (_PMI.upperTolerance, "upper tolerance", _PMI.Dimension, XSD.double),
         (_PMI.annotationType, "annotation type", _PMI.Annotation, XSD.string),
         (_PMI.textContent, "text content", _PMI.Annotation, XSD.string),
     ]:
@@ -538,6 +540,8 @@ def _add_pmi_instances(graph: Graph, pmi_doc: StepPMIDocument, instance_ns: Name
         graph.add((subject, _PROV.wasDerivedFrom, source))
         _literal_if_value(graph, subject, _PMI.dimensionType, dim.dimension_type)
         _literal_if_value(graph, subject, _PMI.nominalValue, dim.nominal_value, XSD.double)
+        _literal_if_value(graph, subject, _PMI.lowerTolerance, dim.lower_tolerance, XSD.double)
+        _literal_if_value(graph, subject, _PMI.upperTolerance, dim.upper_tolerance, XSD.double)
         _literal_if_value(graph, subject, _PMI.unit, dim.unit or "mm")
         _literal_if_value(graph, subject, RDFS.comment, dim.description)
         _add_ref_links(graph, subject, dim.feature_refs, entity_map, instance_ns, _PMI.measuredFeature)
