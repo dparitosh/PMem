@@ -191,6 +191,7 @@ try:
     from .routes.oslc_routes import router as oslc_router
     from .routes.threedxml_routes import router as threedxml_router
     from .routes.admin_routes import router as admin_router
+    from .routes.sysml_v2_routes import router as sysml_v2_router
     try:
         from .Services.documents_api import router as documents_router
     except Exception:
@@ -211,6 +212,7 @@ except ImportError:
     from backend.routes.oslc_routes import router as oslc_router
     from backend.routes.threedxml_routes import router as threedxml_router
     from backend.routes.admin_routes import router as admin_router
+    from backend.routes.sysml_v2_routes import router as sysml_v2_router
     try:
         from backend.Services.documents_api import router as documents_router
         from backend.Services.oslc_trs_service import OSLCTRSService
@@ -699,15 +701,19 @@ class TimeoutMiddleware:
     def __init__(self, app):
         self.app = app
         # Endpoint-specific timeout mappings
+        import_timeout = int(os.getenv('IMPORT_REQUEST_TIMEOUT_SECONDS', os.getenv('REQUEST_IMPORT_TIMEOUT_SECONDS', '3600')))
+        ontology_timeout = int(os.getenv('ONTOLOGY_REQUEST_TIMEOUT_SECONDS', str(import_timeout)))
+        graph_timeout = int(os.getenv('GRAPH_REQUEST_TIMEOUT_SECONDS', '300'))
         self.endpoint_timeouts = {
-            '/api/v1/import': 300,  # 5 minutes for import operations
-            '/api/import': 300,      # Legacy route
-            '/api/v1/ontology/upload': 300,  # 5 minutes for ontology uploads
-            '/api/ontology/upload': 300,     # Legacy route
+            '/api/v1/import': import_timeout,
+            '/api/import': import_timeout,      # Legacy route
+            '/data-import': import_timeout,     # Legacy route
+            '/api/v1/ontology/upload': ontology_timeout,
+            '/api/ontology/upload': ontology_timeout,     # Legacy route
             '/chat': int(os.getenv('CHAT_REQUEST_TIMEOUT_SECONDS', '900')),  # 15 min default for chat responses
             '/chat-stream': int(os.getenv('CHAT_STREAM_TIMEOUT_SECONDS', '900')),  # 15 min default for streaming responses
-            '/graphvis': 300,        # 5 minutes for graph visualization
-            '/graphfilter': 300,     # 5 minutes for filtering
+            '/graphvis': graph_timeout,
+            '/graphfilter': graph_timeout,
         }
         self.default_timeout = 60  # Keep unmatched endpoints fast-failing by default
     
@@ -1034,6 +1040,7 @@ app.include_router(ontology_router, prefix="/api/v1", tags=["v1-ontology"])
 app.include_router(oslc_router)
 app.include_router(threedxml_router, prefix="/api/v1", tags=["v1-3dxml"])
 app.include_router(admin_router, prefix="/api/v1", tags=["v1-admin"])
+app.include_router(sysml_v2_router, prefix="/api/v1", tags=["v1-sysml-v2"])
 if documents_router is not None:
     app.include_router(documents_router, prefix="/api/v1", tags=["v1-documents"])
 else:

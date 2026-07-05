@@ -186,16 +186,13 @@ class OntologyUploadManager:
         try:
             cls.initialize()
 
+            user_prefix = str(prefix or "").strip()
             if file_type == "xsd" and file_content:
                 try:
                     root = ET.fromstring(file_content)
                     xsd_namespace = str(root.attrib.get("targetNamespace") or "").strip()
                     if xsd_namespace:
                         source_namespace = source_namespace or xsd_namespace
-                        ns_token = xsd_namespace.rstrip("#/").rsplit("/", 1)[-1].rsplit("#", 1)[-1]
-                        ns_prefix = re.sub(r"[^a-zA-Z0-9_]+", "_", ns_token).strip("_").lower()
-                        if ns_prefix:
-                            prefix = ns_prefix[:32]
                 except Exception as ns_exc:
                     logger.debug("Could not derive XSD targetNamespace for %s: %s", filename, ns_exc)
 
@@ -237,12 +234,11 @@ class OntologyUploadManager:
             )
             generated_meta = semantic_artifacts.get("owl_generation_metadata") or {}
             if file_type == "xsd" and generated_meta:
-                generated_prefix = str(generated_meta.get("ontology_prefix") or generated_meta.get("prefix") or "").strip()
                 generated_namespace = str(generated_meta.get("target_namespace") or generated_meta.get("base_uri") or "").strip()
-                if generated_prefix:
-                    prefix = generated_prefix
                 if generated_namespace:
                     source_namespace = generated_namespace.rstrip("#/") if generated_namespace.endswith(("#", "/")) else generated_namespace
+            if user_prefix:
+                prefix = user_prefix
 
             # Create metadata with version info
             metadata = {

@@ -1,246 +1,201 @@
-# OSLC Gap Audit
+# OSLC Release Audit And Teamcenter Linked Data Registration
 
-Date: 2026-06-27
-
-## Scope
-
-This audit compares the current `D:\Depo_Onto_Engine` application against the older DEPO_RR OSLC capability set and identifies what is still pending for standards-based interoperability.
+Date: 2026-07-04
 
 ## Executive Summary
 
-The current application is strong in:
-- Neo4j-backed graph APIs
-- ontology upload, taxonomy, reasoning, and merge workflows
-- Semantic Bridge and workflow artifacts
-- Owlready2 / RDFLib / SHACL processing
+DEPO now exposes an OSLC-aligned, read-only interoperability layer for external engineering tools. It is suitable for discovery, query, taxonomy, data dictionary, resource shape, export-link discovery, and lightweight TRS change tracking.
 
-The current application is weak or incomplete in:
-- OSLC service provider exposure
-- OSLC Query 3.0 support
-- TRS 3.0 change tracking
-- OSLC resource shape exposure
-- external OSLC client interoperability
+This is not a full OSLC certification claim. The current implementation is an OSLC service-provider facade over the existing Neo4j, Owlready2, RDFLib, SHACL, ontology registry, and workflow artifact services.
 
-This means the app is suitable as an internal semantic graph platform, but not yet a complete OSLC-compliant integration surface.
+## Implemented Service Provider Capabilities
 
-## Current Repo Findings
+Backend modules:
 
-### Present in current repo
-
-1. General FastAPI API surface in [backend/main.py](D:/Depo_Onto_Engine/backend/main.py)
-   - graph view
-   - ontology
-   - taxonomy
-   - reasoning
-   - import
-   - workflows
-   - chat
-   - recommendations
-
-2. Ontology router in [backend/routes/ontology_routes.py](D:/Depo_Onto_Engine/backend/routes/ontology_routes.py)
-   - generic data dictionary
-   - generic mappings
-   - AP239/AP242 handlers
-   - live Neo4j-driven schema and mapping views
-
-3. OSLC vocabulary emission inside [backend/Services/owl_xsd_engine.py](D:/Depo_Onto_Engine/backend/Services/owl_xsd_engine.py)
-   - binds `oslc` namespace
-   - emits OSLC property descriptors during XSD-to-OWL generation
-
-### Not present as active runtime capability
-
-1. No `/oslc/*` endpoint family in current FastAPI app.
-2. No active Service Provider Catalog or Service Provider documents.
-3. No active OSLC Query 3.0 endpoint with:
-   - `oslc.where`
-   - `oslc.select`
-   - `oslc.orderBy`
-   - `oslc.searchTerms`
-   - OSLC paging
-4. No active TRS 3.0 endpoint set:
-   - tracked resource set
-   - base
-   - changelog
-   - change events
-5. No resource shape publication endpoint for clients.
-6. No event publication from import, merge, semantic bridge, or admin mutations into a TRS change log.
-7. No clear OSLC client integration contract for Teamcenter / ALM / MBSE tools.
-
-## Older DEPO_RR capability identified
-
-### 1. TRS 3.0 service
-
-Old source:
-- `D:\Download\DEPO_RR\requirements\src\services\oslc_service.py`
-
-What it provided:
-- tracked resource set descriptor
-- base and changelog resources
-- change event publishing
-- optional Neo4j persistence for change history
-- configuration guardrails for `OSLC_ENABLED` and `OSLC_BASE_URL`
-
-Status in current repo:
-- missing
-
-### 2. OSLC Query 3.0 parser/service
-
-Old source:
-- `D:\Download\DEPO_RR\requirements\src\services\oslc_query_service.py`
-
-What it provided:
-- parse `oslc.where`
-- parse `oslc.select`
-- parse `oslc.orderBy`
-- parse `oslc.searchTerms`
-- parse paging parameters
-- translate query intent toward Neo4j-backed execution
-
-Status in current repo:
-- missing
-
-## Pending OSLC backlog
-
-### Priority 1: Read-only OSLC interoperability
-
-Implement a minimal read-only OSLC surface:
-- `/oslc/catalog`
-- `/oslc/providers/{provider_id}`
-- `/oslc/query/{resource_type}`
-- `/oslc/shapes/{shape_id}`
-
-Purpose:
-- allow external clients to discover DEPO resources
-- allow standards-based query over graph-backed semantic resources
-
-### Priority 2: OSLC Query 3.0 over existing graph APIs
-
-Create a dedicated service that maps OSLC parameters to safe Neo4j-backed filtering:
-- `oslc.where`
-- `oslc.select`
-- `oslc.orderBy`
-- `oslc.searchTerms`
-- page size / page number
-
-Best integration point:
-- build on current generic ontology and graph query services rather than duplicating traversal logic
-
-### Priority 3: TRS 3.0 change feed
-
-Add change publication for:
-- ontology upload
-- ontology merge
-- semantic bridge approvals / mappings
-- import commit
-- admin destructive operations
-
-Best integration point:
-- emit events from current mutation surfaces in:
-  - [backend/Services/unified_import_router.py](D:/Depo_Onto_Engine/backend/Services/unified_import_router.py)
-  - [backend/Services/semantic_workflow_service.py](D:/Depo_Onto_Engine/backend/Services/semantic_workflow_service.py)
-  - [backend/routes/admin_routes.py](D:/Depo_Onto_Engine/backend/routes/admin_routes.py)
-
-### Priority 4: Resource shapes from ontology / SHACL
-
-Map current ontology + SHACL assets into OSLC-facing resource shape documents.
-
-Best integration point:
-- reuse current SHACL and ontology services instead of inventing a separate schema model
-
-## Recommended target architecture
-
-### Backend modules to add
-
-Suggested files:
 - `backend/routes/oslc_routes.py`
 - `backend/Services/oslc_service.py`
 - `backend/Services/oslc_query_service.py`
 - `backend/Services/oslc_trs_service.py`
-- `backend/Services/oslc_shape_service.py`
 
-### Data sources to reuse
+Runtime endpoints:
 
-Reuse existing sources:
-- Neo4j graph data
-- ontology registry metadata
-- workflow artifacts
-- Owlready2 / RDFLib exports
-- SHACL validation metadata
+- `GET /oslc/catalog`
+- `GET /oslc/providers/{provider_id}`
+- `GET /oslc/shapes`
+- `GET /oslc/shapes/resources`
+- `GET /oslc/shapes/{ontology_id}`
+- `GET /oslc/query/{resource_type}`
+- `GET /oslc/resources/{element_id}`
+- `GET /oslc/dictionaries/{prefix}`
+- `GET /oslc/taxonomies`
+- `GET /oslc/taxonomies/{ontology_id}`
+- `GET /oslc/trs`
+- `GET /oslc/trs/base`
+- `GET /oslc/trs/changelog`
 
-### Config to add
+The service provider document advertises:
 
-Suggested environment variables:
-- `OSLC_ENABLED=false`
-- `OSLC_BASE_URL=`
-- `OSLC_PROVIDER_ID=depo`
-- `OSLC_PROVIDER_TITLE=DEPO Semantic Platform`
-- `OSLC_TRS_ENABLED=true`
-- `OSLC_MAX_PAGE_SIZE=200`
+- query capability for graph-backed resources
+- resource shape links
+- ontology dictionary resources
+- taxonomy resources
+- OSLC-facing export links for ontology artifacts where available
 
-## Package assessment
+## AP242 And OSLC AM Domain Scope
 
-No major new package family is required.
+The provider now advertises two explicit domain scopes:
 
-Existing stack is sufficient:
-- `fastapi`
-- `rdflib`
-- `neo4j`
-- `requests`
-- current ontology / SHACL stack
+- `ap242`: AP242-aligned product and manufacturing information, including product structure, PMI, requirements traceability, process, and manufacturing context where available in the loaded ontology/graph.
+- `oslc_am`: OSLC Architecture Management, used by engineering and MBSE tools for architecture/model elements and traceability discovery.
 
-Optional only:
-- none required for the first OSLC recovery phase
+In OSLC terminology, `AM` means Architecture Management. Additive Manufacturing content can still be represented through AP242/manufacturing ontology terms, but it is not the meaning of the OSLC `am` namespace.
 
-## Current implementation status
+The TRS descriptor also advertises these domains so Teamcenter Linked Data Service Framework can treat the feed as AP242/AM-scoped linked data rather than a generic graph feed.
 
-A first recovery slice is now implemented in the current repo:
-- read-only `/oslc/catalog`
-- read-only `/oslc/providers/{provider_id}`
-- read-only `/oslc/shapes`
-- read-only `/oslc/shapes/resources`
-- ontology-aware `/oslc/shapes/{ontology_id}` using Owlready2 semantics with taxonomy fallback and SHACL file detection
-- read-only `/oslc/query/{resource_type}`
-- read-only `/oslc/resources/{element_id}`
-- read-only `/oslc/dictionaries/{prefix}` backed directly by the official Neo4j driver
-- read-only `/oslc/taxonomies`
-- read-only `/oslc/taxonomies/{ontology_id}` reusing the Owlready2-first taxonomy service
-- minimal `/oslc/trs`
-- minimal `/oslc/trs/base`
-- minimal `/oslc/trs/changelog`
-- best-effort TRS event publication from import commit, ontology merge, semantic bridge link, and admin destructive operations
+## Teamcenter Linked Data Service Framework Registration
 
-Smoke-validated in-process on 2026-06-27:
+Register DEPO as an external OSLC service provider using the Service Provider Catalog URL:
+
+```text
+http://<depo-host>:8000/oslc/catalog
+```
+
+For the current default local provider:
+
+```text
+http://<depo-host>:8000/oslc/providers/depo
+```
+
+Required environment settings before customer registration:
+
+```env
+OSLC_ENABLED=true
+OSLC_TRS_ENABLED=true
+OSLC_BASE_URL=http://<depo-host>:8000
+OSLC_PROVIDER_ID=depo
+OSLC_PROVIDER_TITLE=DEPO Semantic Platform
+OSLC_MAX_PAGE_SIZE=200
+ALLOWED_ORIGINS=http://<teamcenter-awc-host>,http://<depo-ui-host>:3000
+```
+
+Use an externally reachable host/IP in `OSLC_BASE_URL`. Do not leave it as `localhost` when Teamcenter or Active Workspace runs on another machine.
+
+## Teamcenter Integration Contract
+
+Teamcenter or Active Workspace can use DEPO in two ways:
+
+1. OSLC / linked-data discovery:
+   - discover provider through `/oslc/catalog`
+   - inspect provider through `/oslc/providers/depo`
+   - inspect shapes through `/oslc/shapes`
+   - query resources through `/oslc/query/resources`
+   - retrieve a resource through `/oslc/resources/{element_id}`
+
+2. Application APIs for AI workflows:
+   - use `/recommendations/change-impact` for deterministic impact analysis
+   - use `/chat/jobs` plus `GET /chat/jobs/{job_id}` for long-running GraphRAG or Ollama-backed answers
+   - use `/chat` only for short synchronous assistant calls
+
+## Example OSLC Query Calls
+
+Search resources:
+
+```http
+GET /oslc/query/resources?oslc.searchTerms=REQ&oslc.pageSize=20
+```
+
+Filter resources:
+
+```http
+GET /oslc/query/resources?oslc.where=ontology_prefix="plmxml"&oslc.pageSize=50
+```
+
+Select fields:
+
+```http
+GET /oslc/query/resources?oslc.select=name,label,ontology_prefix,element_type
+```
+
+Read dictionary:
+
+```http
+GET /oslc/dictionaries/plmxml
+```
+
+Read taxonomy:
+
+```http
+GET /oslc/taxonomies/{ontology_id}
+```
+
+## Current Compliance Status
+
+Implemented:
+
+- Service Provider Catalog
+- Service Provider document
+- conservative OSLC query subset
+- resource shape publication
+- ontology-aware shapes from Owlready2/taxonomy/SHACL context
+- resource lookup by Neo4j element ID
+- dictionaries and taxonomies as linked-data-facing resources
+- TRS descriptor, base, and changelog
+- best-effort TRS event publication from import commit, ontology merge, Semantic Bridge link, and admin destructive operations
+
+- AP242 and OSLC AM domain metadata are advertised in the service provider and TRS descriptor for Teamcenter Linked Data Service Framework discovery.
+
+Partial:
+
+- OSLC Query 3.0 supports a conservative subset only: simple `and` filters, select, orderBy, searchTerms, and paging.
+- TRS is file-backed and lightweight, not a full enterprise TRS persistence implementation.
+- Shapes are JSON OSLC-style payloads, not complete RDF content-negotiated shape documents.
+
+Not yet implemented:
+
+- delegated creation and selection dialogs
+- creation factories
+- update/write OSLC resources
+- ETag and conditional update semantics for OSLC resources
+- OAuth/consumer-key profile for OSLC clients
+- full RDF/XML/Turtle/JSON-LD content negotiation for every OSLC endpoint
+- full OSLC certification coverage
+
+## Release Recommendation
+
+For customer release, describe the capability as:
+
+```text
+DEPO provides an OSLC-aligned read-only service provider for linked-data discovery, query, resource shapes, taxonomies, dictionaries, ontology export discovery, and TRS-style change visibility.
+```
+
+Do not describe it as:
+
+```text
+Fully OSLC certified.
+```
+
+## Validation Performed
+
+In-process smoke validation on 2026-07-04 returned HTTP 200 for:
+
 - `/oslc/catalog`
 - `/oslc/providers/depo`
 - `/oslc/shapes`
-- `/oslc/shapes/resources`
-- `/oslc/shapes/{ontology_id}`
-- `/oslc/query/resources?oslc.searchTerms=REQ&pageSize=3`
-- `/oslc/dictionaries/plmxml`
-- `/oslc/taxonomies`
-- `/oslc/taxonomies/{ontology_id}`
-- `/oslc/trs`, `/oslc/trs/base`, `/oslc/trs/changelog`
+- `/oslc/trs`
+- `/api/v1/ontology/registered`
 
-This is intentionally a minimal interoperability surface. It does not yet provide full TRS 3.0 persistence semantics, OSLC resource shapes from SHACL, or a full OSLC Query 3.0 expression engine.
+Related focused tests passed:
 
-## Release impact
+- `backend/tests/test_semantic_workflow_service.py`
+- `backend/tests/test_ontology_runtime_regressions.py`
+- `backend/tests/test_owl_shacl_smoke.py`
 
-### If customer only needs DEPO UI and internal APIs
-Current OSLC gap is acceptable as a known limitation.
+## Remaining Hardening
 
-### If customer needs standards-based interoperability
-Current OSLC gap is release-relevant and should be called out explicitly.
+Recommended next hardening before claiming deeper OSLC coverage:
 
-## Implementation order
-
-1. Add read-only OSLC discovery and query endpoints.
-2. Reuse existing graph/ontology services for response data.
-3. Add TRS event publication to mutation workflows.
-4. Add resource shape exposure from ontology/SHACL assets.
-5. Add external integration notes and test fixtures.
-
-## Conclusion
-
-Pending OSLC work is significant but well-bounded.
-
-The app does not need a new stack. It needs a focused interoperability layer built on top of the current graph, ontology, and workflow services.
+1. Add RDF content negotiation for catalog, provider, shapes, and resources.
+2. Add Teamcenter LDS registration screenshots or customer-specific setup notes.
+3. Add an automated OSLC smoke script that checks catalog, provider, shapes, query, resource lookup, and TRS against the deployed host URL.
+4. Add auth guidance for reverse proxy, API gateway, or Teamcenter trusted network deployment.
+5. Add contract tests for `oslc.where`, `oslc.select`, `oslc.orderBy`, paging, and searchTerms.

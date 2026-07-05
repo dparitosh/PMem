@@ -92,6 +92,20 @@ class OSLCService:
             "uri": f"{cfg.base_url}/oslc/providers/{cfg.provider_id}",
             "type": "oslc:ServiceProvider",
             "title": cfg.provider_title,
+            "domains": [
+                {
+                    "id": "ap242",
+                    "title": "AP242 Product and Manufacturing Information",
+                    "namespace": "http://depo-onto.local/ap242#",
+                    "description": "STEP AP242-aligned product structure, PMI, requirements traceability, process, and manufacturing context resources.",
+                },
+                {
+                    "id": "oslc_am",
+                    "title": "OSLC Architecture Management",
+                    "namespace": "http://open-services.net/ns/am#",
+                    "description": "Architecture/model element and traceability discovery profile for Teamcenter Linked Data and MBSE integrations.",
+                },
+            ],
             "queryCapabilities": [
                 {
                     "resourceType": cls.DEFAULT_RESOURCE_TYPE,
@@ -105,6 +119,7 @@ class OSLCService:
                         "oslc.pageSize",
                         "oslc.pageNum",
                     ],
+                    "domains": ["ap242", "oslc_am"],
                 }
             ],
             "resourceShapes": [
@@ -118,6 +133,21 @@ class OSLCService:
                 }
             ],
             "domainResources": {
+                "ap242": {
+                    "title": "AP242 Semantic Resources",
+                    "dictionary": f"{cfg.base_url}/oslc/dictionaries/ap242",
+                    "queryBase": query_base,
+                    "shape": f"{cfg.base_url}/oslc/shapes/ap242",
+                    "trs": f"{cfg.base_url}/oslc/trs",
+                    "description": "AP242-aligned linked data for product, PMI, requirements, process, and manufacturing traceability.",
+                },
+                "oslc_am": {
+                    "title": "OSLC AM Architecture Resources",
+                    "queryBase": query_base,
+                    "shape": f"{cfg.base_url}/oslc/shapes/resources",
+                    "trs": f"{cfg.base_url}/oslc/trs",
+                    "description": "Architecture/model element discovery profile for Teamcenter LDS and MBSE integrations.",
+                },
                 "dictionaries": {
                     "title": "Ontology Data Dictionaries",
                     "uriTemplate": f"{cfg.base_url}/oslc/dictionaries/{{prefix}}",

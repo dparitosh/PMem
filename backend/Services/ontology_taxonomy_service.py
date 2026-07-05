@@ -367,7 +367,15 @@ class OntologyTaxonomyService:
     def get_reasoning(cls, ontology_identifier: str) -> Dict[str, Any]:
         """Return cached Owlready2-backed ontology semantics for the registered ontology."""
         context = cls._semantic_context(ontology_identifier)
+        meta = context["meta"]
         file_path = context["file_path"]
         prefix = str(context.get("prefix") or "").strip()
         file_key = cls._cache_key_for_path(file_path)
-        return cls._cached_reasoning(file_key[0], file_key[1], file_key[2], prefix)
+        result = dict(cls._cached_reasoning(file_key[0], file_key[1], file_key[2], prefix))
+        result.update({
+            "ontology_id": meta.get("ontology_id"),
+            "ontology_name": meta.get("ontology_name"),
+            "prefix": prefix,
+            "source_filename": meta.get("original_filename") or meta.get("stored_filename"),
+        })
+        return result

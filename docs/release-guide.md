@@ -100,6 +100,12 @@ Backend requires:
 - Neo4j database name
 - LLM / embedding configuration if chat and document ingestion are required
 - `ALLOWED_ORIGINS` must include the actual frontend URL used by the customer, for example `http://<vm-ip>:3000`
+- Large XMI/import settings should be reviewed for customer data size:
+  - `IMPORT_REQUEST_TIMEOUT_SECONDS=3600`
+  - `NEO4J_IMPORT_QUERY_TIMEOUT=900`
+  - `IMPORT_COMMIT_QUERY_TIMEOUT=900`
+  - `IMPORT_WRITE_BATCH_SIZE=250`
+  - `IMPORT_LINK_BATCH_SIZE=150`
 
 Frontend requires:
 - backend base URL when accessed by LAN IP / VM IP / DNS
@@ -111,6 +117,23 @@ Optional but recommended:
 - `ONTOLOGY_AGENTIC_DEPO_API_BASE_URL`
 - `ONTOLOGY_AGENTIC_DEPO_API_TIMEOUT_SECONDS`
 - `ONTOLOGY_AGENTIC_DEPO_API_TOKEN` when applicable
+
+### Optional SysML v2 API connector
+
+DEPO currently supports SysML/XMI-style file ingestion through the import pipeline. SysML v2 REST readiness endpoints are available, but live repository sync/import is not part of the supported runtime surface yet.
+
+If a customer has a SysML v2 API server, add it as an optional connector rather than replacing the XMI parser:
+
+- `SYSML_V2_API_ENABLED=false`
+- `SYSML_V2_API_BASE_URL=`
+- `SYSML_V2_API_TOKEN=`
+- `SYSML_V2_PROJECT_ID=`
+- `SYSML_V2_BRANCH_ID=`
+- `SYSML_V2_COMMIT_ID=`
+- `SYSML_V2_PAGE_SIZE=500`
+- `SYSML_V2_REQUEST_TIMEOUT_SECONDS=120`
+
+See `docs/sysml-v2-api-client-audit.md` before committing to this integration in a customer scope.
 
 ## 5. Release Checklist
 
@@ -138,6 +161,8 @@ Optional but recommended:
 ### Main application
 - Graph visualization depends on Neo4j connectivity and data quality.
 - Document upload is now mounted in the backend and degrades honestly, but it will report unavailable if the embedding runtime is not present.
+- SysML v2 API readiness endpoints are available under `/api/v1/sysml-v2/*`; repository sync remains a planned optional connector. Current supported SysML-style ingestion remains file/import based.
+- KerML has been reviewed as a SysML v2 semantic foundation, but `.kerml` parsing/import is not currently a supported runtime feature.
 
 ### Standalone ontology service
 - Works offline for local ontology review/export.

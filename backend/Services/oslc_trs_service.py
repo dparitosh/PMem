@@ -85,6 +85,18 @@ class OSLCTRSService:
             'type': 'trs:TrackedResourceSet',
             'base': f'{cls.base_url()}/oslc/trs/base',
             'changeLog': f'{cls.base_url()}/oslc/trs/changelog',
+            'domains': [
+                {
+                    'id': 'ap242',
+                    'title': 'AP242 Product and Manufacturing Information',
+                    'namespace': 'http://depo-onto.local/ap242#',
+                },
+                {
+                    'id': 'oslc_am',
+                    'title': 'OSLC Architecture Management',
+                    'namespace': 'http://open-services.net/ns/am#',
+                },
+            ],
         }
 
     @classmethod

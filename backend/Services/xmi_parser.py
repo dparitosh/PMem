@@ -153,20 +153,19 @@ class XMIParser:
                     seen_ids.add(xmi_id)
                     nodes.append(node)
 
-        # Pass 2: elements by local tag name (elements without xmi:type)
-        tag_names = " or ".join(
-            f"local-name()='{t}'" for t in ["Class", "Package", "Component", "Model"] + self._SYSML_NODE_TYPE_FILTERS
-        )
-        try:
-            for element in root.xpath(f".//*[{tag_names}]"):
-                xmi_id = self._attr(element, "id")
-                if xmi_id and xmi_id not in seen_ids:
-                    node = self._element_to_node(element)
-                    if node:
-                        seen_ids.add(xmi_id)
-                        nodes.append(node)
-        except Exception as exc:
-            logger.debug(f"XMI tag-name extraction pass skipped: {exc}")
+        # Pass 2: elements by local tag name (elements without xmi:type).
+        # Use root.iter() rather than broad XPath; this is materially faster on large XMI.
+        accepted_tags = set(["Class", "Package", "Component", "Model"] + self._SYSML_NODE_TYPE_FILTERS)
+        for element in root.iter():
+            tag = self._local_name(element)
+            if tag not in accepted_tags:
+                continue
+            xmi_id = self._attr(element, "id")
+            if xmi_id and xmi_id not in seen_ids:
+                node = self._element_to_node(element)
+                if node:
+                    seen_ids.add(xmi_id)
+                    nodes.append(node)
 
         # Pass 3: extract ownedComment bodies and attach to annotated elements
         self._attach_owned_comments(root, nodes, seen_ids)
@@ -253,6 +252,46 @@ class XMIParser:
 
 
 
+    def _local_name(self, element) -> str:
+        tag = getattr(element, "tag", "")
+        if not isinstance(tag, str):
+            return ""
+        return tag.split("}", 1)[-1] if "}" in tag else tag
+
+    def _children_by_local_name(self, element, child_name: str):
+        if element is None:
+            return []
+        return [child for child in element if self._local_name(child) == child_name]
+
+    def _has_attr_local(self, element, attr_name: str) -> bool:
+        for key, value in getattr(element, "attrib", {}).items():
+            local_name = key.split("}", 1)[-1] if "}" in key else key
+            if local_name == attr_name and value:
+                return True
+        return False
+
+    def _has_xmi_type_token(self, element, token: str) -> bool:
+        return token.lower() in (self._xmi_type(element) or "").lower()
+
+    def _has_reference_attribute(self, element) -> bool:
+        for key, value in getattr(element, "attrib", {}).items():
+            if not value:
+                continue
+            local_name = key.split("}", 1)[-1] if "}" in key else key
+            if local_name == "idref" or self._is_reference_attribute(local_name):
+                return True
+        return False
+
+    def _has_stereotype_attribute(self, element) -> bool:
+        for key, value in getattr(element, "attrib", {}).items():
+            if not value:
+                continue
+            local_name = key.split("}", 1)[-1] if "}" in key else key
+            lowered = local_name.lower()
+            if "stereotype" in lowered or "appliedstereotype" in lowered:
+                return True
+        return False
+
     def _attach_owned_comments(
         self,
         root,
@@ -263,7 +302,7 @@ class XMIParser:
         id_to_node: Dict[str, Dict[str, Any]] = {
             n["properties"]["id"]: n for n in nodes if n["properties"].get("id")
         }
-        for comment in root.xpath(".//*[local-name()='ownedComment']"):
+        for comment in (el for el in root.iter() if self._local_name(el) == "ownedComment"):
             body = comment.get("body", "").strip()
             if not body:
                 # body may be a child text node in some exports
@@ -277,7 +316,7 @@ class XMIParser:
             if not body:
                 continue
             # Find which elements are annotated by this comment
-            for ann_elem in comment.xpath("./*[local-name()='annotatedElement']"):
+            for ann_elem in self._children_by_local_name(comment, "annotatedElement"):
                 target_id = self._normalize_ref(
                     self._attr(ann_elem, "idref") or ann_elem.get("href", "")
                 )
@@ -499,10 +538,8 @@ class XMIParser:
         relationships = []
         seen = set()
 
-        # Find elements with references to other elements
-        for element in root.xpath(
-            ".//*[@*[local-name()='idref'] or @*[contains(local-name(), 'ref')]]"
-        ):
+        # Find elements with references to other elements. Avoid broad XPath on large XMI.
+        for element in (el for el in root.iter() if self._has_reference_attribute(el)):
             rels = self._element_to_relationships(element, id_to_label=id_to_label)
             for rel in rels:
                 key = (
@@ -527,36 +564,109 @@ class XMIParser:
 
         return relationships
 
+    def _scan_semantic_elements(self, root) -> Dict[str, Any]:
+        """Index XMI elements needed by semantic relationship extraction in one pass."""
+        sysml_ns_uris = {
+            "http://www.omg.org/spec/SysML/20181001/SysML",
+            "http://www.omg.org/spec/SysML/20150301/SysML",
+            "http://www.omg.org/spec/SysML/20240201/SysML",
+            "http://www.eclipse.org/papyrus/sysml/2.0",
+        }
+        scan: Dict[str, Any] = {
+            "id_index": {},
+            "classes": [],
+            "properties": [],
+            "associations": [],
+            "dependencies": [],
+            "abstractions": [],
+            "interface_realizations": [],
+            "stereotype_attr_elements": [],
+            "sysml_elements": [],
+            "dep_map": {},
+            "prop_type_by_id": {},
+        }
+
+        for el in root.iter():
+            el_id = self._attr(el, "id")
+            if el_id and el_id not in scan["id_index"]:
+                scan["id_index"][el_id] = el
+
+            if self._has_xmi_type_token(el, "Class"):
+                scan["classes"].append(el)
+            if self._has_xmi_type_token(el, "Property"):
+                scan["properties"].append(el)
+                if el_id:
+                    target_id = self._normalize_ref(el.get("type", "")) or self._first_child_ref(el, "type")
+                    if target_id:
+                        scan["prop_type_by_id"][el_id] = target_id
+            if self._has_xmi_type_token(el, "Association"):
+                scan["associations"].append(el)
+            if self._has_xmi_type_token(el, "Dependency"):
+                scan["dependencies"].append(el)
+            if self._has_xmi_type_token(el, "Abstraction"):
+                scan["abstractions"].append(el)
+            if self._has_xmi_type_token(el, "InterfaceRealization"):
+                scan["interface_realizations"].append(el)
+            if self._has_stereotype_attribute(el):
+                scan["stereotype_attr_elements"].append(el)
+
+            if el_id and (self._has_xmi_type_token(el, "Dependency") or self._has_xmi_type_token(el, "Abstraction")):
+                clients = self._extract_named_refs(el, "client")
+                suppliers = self._extract_named_refs(el, "supplier")
+                if clients and suppliers:
+                    scan["dep_map"][el_id] = (clients, suppliers)
+
+            if isinstance(getattr(el, "tag", None), str) and "}" in el.tag:
+                ns, _tag_local = el.tag[1:].split("}", 1)
+                if ns in sysml_ns_uris:
+                    scan["sysml_elements"].append(el)
+
+        logger.debug(
+            "XMI semantic scan: ids=%s classes=%s properties=%s associations=%s dependencies=%s abstractions=%s sysml=%s",
+            len(scan["id_index"]),
+            len(scan["classes"]),
+            len(scan["properties"]),
+            len(scan["associations"]),
+            len(scan["dependencies"]),
+            len(scan["abstractions"]),
+            len(scan["sysml_elements"]),
+        )
+        return scan
+
     def _extract_semantic_relationships(
         self,
         root,
         id_to_label: Optional[Dict[str, str]] = None,
     ) -> List[Dict[str, Any]]:
-        """Extract richer UML/SysML semantics from common XMI patterns."""
+        """Extract richer UML/SysML semantics from common XMI patterns.
+
+        Large MagicDraw/Cameo exports can contain hundreds of thousands of XML
+        elements. Keep this routine to one root traversal and process indexed
+        buckets afterwards; repeated root.iter() sweeps were a major CPU cost.
+        """
         rels: List[Dict[str, Any]] = []
-        id_index: Dict[str, Any] = {}
-        for el in root.iter():
-            el_id = self._attr(el, "id")
-            if el_id and el_id not in id_index:
-                id_index[el_id] = el
+        scan = self._scan_semantic_elements(root)
+        id_index = scan["id_index"]
+        prop_type_by_id = scan["prop_type_by_id"]
 
         # Generalization: class -> superclass
-        for cls in root.xpath(".//*[@*[local-name()='type' and contains(., 'Class')]]"):
+        for cls in scan["classes"]:
             source_id = self._attr(cls, "id")
             if not source_id:
                 continue
-            for gen in cls.xpath("./*[local-name()='generalization']"):
+            for gen in self._children_by_local_name(cls, "generalization"):
                 target_id = self._resolve_generalization_target(gen, id_index)
                 if target_id:
                     rels.append(self._make_relationship(source_id, "GENERALIZATION", target_id, id_to_label=id_to_label))
 
         # Property-based structural relation: owner class -> property type
-        for prop in root.xpath(".//*[@*[local-name()='type' and contains(., 'Property')]]"):
+        for prop in scan["properties"]:
             owner = prop.getparent()
             source_id = self._attr(owner, "id") if owner is not None else None
-            target_id = self._normalize_ref(prop.get("type", ""))
+            prop_id = self._attr(prop, "id")
+            target_id = prop_type_by_id.get(prop_id, "") if prop_id else ""
             if not target_id:
-                target_id = self._first_child_ref(prop, "type")
+                target_id = self._normalize_ref(prop.get("type", "")) or self._first_child_ref(prop, "type")
             if not source_id or not target_id:
                 continue
 
@@ -570,18 +680,12 @@ class XMIParser:
             rels.append(self._make_relationship(source_id, rel_type, target_id, id_to_label=id_to_label))
 
         # Association endpoint relation: connect resolved end types for UML associations.
-        prop_type_by_id = self._build_property_type_index(root)
-        for assoc in root.xpath(".//*[@*[local-name()='type' and contains(., 'Association')]]"):
+        for assoc in scan["associations"]:
             end_prop_ids = self._extract_named_refs(assoc, "memberEnd")
             if len(end_prop_ids) < 2:
                 continue
 
-            end_types: List[str] = []
-            for prop_id in end_prop_ids:
-                target_type = prop_type_by_id.get(prop_id, "")
-                if target_type:
-                    end_types.append(target_type)
-
+            end_types = [prop_type_by_id[prop_id] for prop_id in end_prop_ids if prop_type_by_id.get(prop_id)]
             if len(end_types) < 2:
                 continue
 
@@ -594,7 +698,7 @@ class XMIParser:
                         rels.append(self._make_relationship(left, "ASSOCIATION", right, id_to_label=id_to_label))
 
         # Dependency: client -> supplier
-        for dep in root.xpath(".//*[@*[local-name()='type' and contains(., 'Dependency')]]"):
+        for dep in scan["dependencies"]:
             clients = self._extract_named_refs(dep, "client")
             suppliers = self._extract_named_refs(dep, "supplier")
             for c in clients:
@@ -602,7 +706,7 @@ class XMIParser:
                     rels.append(self._make_relationship(c, "DEPENDENCY", s, id_to_label=id_to_label))
 
         # Allocation-like abstraction mapping in many SysML tools.
-        for abs_elem in root.xpath(".//*[@*[local-name()='type' and contains(., 'Abstraction')]]"):
+        for abs_elem in scan["abstractions"]:
             clients = self._extract_named_refs(abs_elem, "client")
             suppliers = self._extract_named_refs(abs_elem, "supplier")
             for c in clients:
@@ -610,7 +714,7 @@ class XMIParser:
                     rels.append(self._make_relationship(c, "ALLOCATION", s, id_to_label=id_to_label))
 
         # Interface realization: classifier -> interface contract
-        for ir in root.xpath(".//*[@*[local-name()='type' and contains(., 'InterfaceRealization')]]"):
+        for ir in scan["interface_realizations"]:
             source_id = self._normalize_ref(self._attr(ir, "implementingClassifier") or ir.get("client"))
             if not source_id:
                 source_refs = self._extract_named_refs(ir, "client")
@@ -623,7 +727,7 @@ class XMIParser:
                 rels.append(self._make_relationship(source_id, "INTERFACE_REALIZATION", target_id, id_to_label=id_to_label))
 
         # Stereotype application patterns: element -> stereotype
-        for elem in root.xpath(".//*[@*[contains(local-name(), 'stereotype') or contains(local-name(), 'appliedStereotype')]]"):
+        for elem in scan["stereotype_attr_elements"]:
             source_id = self._attr(elem, "id")
             if not source_id:
                 continue
@@ -635,7 +739,14 @@ class XMIParser:
                     rels.append(self._make_relationship(source_id, "STEREOTYPE", target_id, id_to_label=id_to_label))
 
         # SysML stereotyped dependency relationships: satisfy, verify, trace, refine, deriveReqt, copy.
-        rels.extend(self._extract_sysml_dep_stereotypes(root, id_to_label=id_to_label))
+        rels.extend(
+            self._extract_sysml_dep_stereotypes(
+                root,
+                id_to_label=id_to_label,
+                dep_map=scan["dep_map"],
+                sysml_elements=scan["sysml_elements"],
+            )
+        )
 
         return rels
 
@@ -643,30 +754,39 @@ class XMIParser:
         self,
         root,
         id_to_label: Optional[Dict[str, str]] = None,
+        dep_map: Optional[Dict[str, tuple]] = None,
+        sysml_elements: Optional[List[Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Extract SysML dependency-stereotype relationships."""
         rels: List[Dict[str, Any]] = []
-        sysml_ns_uris = [
+        sysml_ns_uris = {
             "http://www.omg.org/spec/SysML/20181001/SysML",
             "http://www.omg.org/spec/SysML/20150301/SysML",
             # SysML 2.0 variants (P15 fix)
             "http://www.omg.org/spec/SysML/20240201/SysML",
             "http://www.eclipse.org/papyrus/sysml/2.0",
-        ]
-        # Build a lookup of dependency/abstraction ids → (client_ids, supplier_ids)
-        dep_map: Dict[str, tuple] = {}
-        for dep in root.xpath(
-            ".//*[@*[local-name()='type' and (contains(., 'Dependency') or contains(., 'Abstraction'))]]"
-        ):
-            dep_id = self._attr(dep, "id")
-            if not dep_id:
-                continue
-            clients = self._extract_named_refs(dep, "client")
-            suppliers = self._extract_named_refs(dep, "supplier")
-            if clients and suppliers:
-                dep_map[dep_id] = (clients, suppliers)
+        }
+        # Build a lookup of dependency/abstraction ids -> (client_ids, supplier_ids)
+        if dep_map is None:
+            dep_map = {}
+            for dep in (el for el in root.iter() if self._has_xmi_type_token(el, "Dependency") or self._has_xmi_type_token(el, "Abstraction")):
+                dep_id = self._attr(dep, "id")
+                if not dep_id:
+                    continue
+                clients = self._extract_named_refs(dep, "client")
+                suppliers = self._extract_named_refs(dep, "supplier")
+                if clients and suppliers:
+                    dep_map[dep_id] = (clients, suppliers)
 
-        for element in root.iter():
+        if sysml_elements is None:
+            sysml_elements = []
+            for element in root.iter():
+                if isinstance(getattr(element, "tag", None), str) and "}" in element.tag:
+                    ns, _tag_local = element.tag[1:].split("}", 1)
+                    if ns in sysml_ns_uris:
+                        sysml_elements.append(element)
+
+        for element in sysml_elements:
             ns = ""
             tag_local = element.tag
             if "}" in element.tag:
@@ -853,7 +973,7 @@ class XMIParser:
 
     def _first_child_ref(self, element, child_name: str) -> str:
         """Read first referenced id from a child element like <type xmi:idref='...'>."""
-        for child in element.xpath(f"./*[local-name()='{child_name}']"):
+        for child in self._children_by_local_name(element, child_name):
             ref = self._normalize_ref(self._attr(child, "idref") or child.get("href", ""))
             if ref:
                 return ref
@@ -863,7 +983,7 @@ class XMIParser:
         """Extract refs from both attributes and child elements by field name."""
         refs: List[str] = []
         refs.extend(self._split_refs(self._attr(element, field_name) or element.get(field_name, "")))
-        for child in element.xpath(f"./*[local-name()='{field_name}']"):
+        for child in self._children_by_local_name(element, field_name):
             child_ref = self._normalize_ref(self._attr(child, "idref") or child.get("href", ""))
             if child_ref:
                 refs.append(child_ref)
@@ -876,7 +996,7 @@ class XMIParser:
         if target:
             return target
 
-        for gchild in gen_element.xpath("./*[local-name()='general']"):
+        for gchild in self._children_by_local_name(gen_element, "general"):
             target = self._normalize_ref(self._attr(gchild, "idref") or gchild.get("href", ""))
             if target:
                 return target
@@ -888,7 +1008,7 @@ class XMIParser:
                 target = self._normalize_ref(self._attr(ref_def, "general") or ref_def.get("general", ""))
                 if target:
                     return target
-                for gchild in ref_def.xpath("./*[local-name()='general']"):
+                for gchild in self._children_by_local_name(ref_def, "general"):
                     target = self._normalize_ref(self._attr(gchild, "idref") or gchild.get("href", ""))
                     if target:
                         return target
@@ -898,7 +1018,7 @@ class XMIParser:
     def _build_property_type_index(self, root) -> Dict[str, str]:
         """Map UML Property IDs to their referenced type IDs (direct or child-node form)."""
         prop_type_by_id: Dict[str, str] = {}
-        for prop in root.xpath(".//*[@*[local-name()='type' and contains(., 'Property')]]"):
+        for prop in (el for el in root.iter() if self._has_xmi_type_token(el, "Property")):
             prop_id = self._attr(prop, "id")
             if not prop_id:
                 continue
