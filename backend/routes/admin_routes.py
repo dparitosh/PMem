@@ -12,7 +12,10 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
-from ..Services.oslc_trs_service import OSLCTRSService
+try:
+    from ..Services.oslc_trs_service import OSLCTRSService
+except ImportError:
+    from Services.oslc_trs_service import OSLCTRSService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin"])

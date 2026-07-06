@@ -281,17 +281,6 @@ export const importAPI = {
     apiClient.get(buildUrl(replaceParams(API.import.owl, { task_id: taskId }))),
   exportOWL: (taskId, format = 'ttl') =>
     apiClient.get(buildUrl(replaceParams(API.import.owlExport, { task_id: taskId })), { params: { format }, responseType: 'blob' }),
-  convertSchema: (schemaData) => 
-    apiClient.post(buildUrl(API.import.convertSchema), schemaData),
-  parseSchema: (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return apiClient.post(buildUrl(API.import.parseSchema), formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-  },
-  processStages: (stageData) => 
-    apiClient.post(buildUrl(API.import.processStages), stageData),
   getFormats: () => apiClient.get(buildUrl(API.import.formats)),
   queryOllama: (query) => 
     apiClient.post(buildUrl(API.import.ollamaQuery), { query }),

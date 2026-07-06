@@ -267,6 +267,8 @@ class GraphViewService:
             "uservalue",
         }
 
+        if semantic_role == "entity":
+            return False
         if labels.intersection({label.lower() for label in GraphViewService.RELATIONSHIP_NODE_LABELS}):
             return True
         if semantic_role in {"metadata", "structural", "relationship"}:

@@ -74,7 +74,7 @@ def test_get_traversal_slice_reports_direct_depth(monkeypatch):
 
     graph = GraphViewService.get_traversal_slice(node_id="seed-1", limit=20)
 
-    assert graph["view"] == {"type": "traversal-slice", "node_id": "seed-1", "depth": 1}
+    assert graph["view"] == {"type": "traversal-slice", "node_id": "seed-1", "depth": 1, "root_node_id": "seed-1"}
     assert graph["counts"]["nodes"] == 1
 
 
@@ -93,7 +93,7 @@ def test_get_traversal_slice_query_uses_top_level_can_traverse(monkeypatch):
     cypher = captured["cypher"]
     params = captured["params"]
 
-    assert "properties: properties(seed)," in cypher
+    assert "properties: properties(source_node)," in cypher
     assert "can_traverse:" in cypher
     assert "properties(seed) + {" not in cypher
     assert params["node_id"] == "seed-1"

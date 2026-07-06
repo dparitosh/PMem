@@ -7,10 +7,21 @@ from ontology_agentic.runtime.registry import AgentRegistry
 from ontology_agentic.tools.depo_api_tools import (
     depo_execute_semantic_workflow,
     depo_export_import_owl,
+    depo_graph_search,
+    depo_graph_search_many,
     depo_healthcheck,
     depo_list_registered_ontologies,
+    depo_oslc_catalog,
+    depo_oslc_dictionary,
+    depo_oslc_provider,
+    depo_oslc_query_resources,
+    depo_oslc_resource,
+    depo_oslc_shapes,
+    depo_oslc_taxonomies,
+    depo_oslc_trs,
     depo_merge_ontologies,
 )
+from ontology_agentic.tools.cad_step_tools import export_step_to_ttl, inspect_step_file
 from ontology_agentic.tools.ontology_tools import (
     export_ontology,
     inspect_ontology_artifact,
@@ -46,8 +57,12 @@ class OntologyWorkflowEngine:
             "ontology_review": self._workflow_ontology_review,
             "ontology_alignment": self._workflow_ontology_alignment,
             "ontology_export": self._workflow_ontology_export,
+            "step_inspect": self._workflow_step_inspect,
+            "step_export": self._workflow_step_export,
             "depo_healthcheck": self._workflow_depo_healthcheck,
             "depo_registered_ontologies": self._workflow_depo_registered_ontologies,
+            "depo_graph_search": self._workflow_depo_graph_search,
+            "depo_oslc": self._workflow_depo_oslc,
             "depo_semantic_workflow": self._workflow_depo_semantic_workflow,
             "depo_ontology_merge": self._workflow_depo_ontology_merge,
             "depo_import_export": self._workflow_depo_import_export,
@@ -94,6 +109,50 @@ class OntologyWorkflowEngine:
             "status": "completed",
         }
 
+    def _workflow_step_inspect(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        step_path = inputs.get("step_path") or inputs.get("file_path")
+        if not step_path:
+            raise ValueError("step_path is required")
+        result = inspect_step_file(
+            path_value=step_path,
+            include_entity_sample=bool(inputs.get("include_entity_sample", True)),
+            sample_size=int(inputs.get("sample_size", 20)),
+        )
+        return {
+            "workflow_id": "step_inspect",
+            "status": "completed",
+            "steps": [
+                {
+                    "agent": "ontology_intake_agent",
+                    "status": "completed",
+                    "output": result,
+                }
+            ],
+        }
+
+    def _workflow_step_export(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        step_path = inputs.get("step_path") or inputs.get("file_path")
+        if not step_path:
+            raise ValueError("step_path is required")
+        result = export_step_to_ttl(
+            path_value=step_path,
+            output_path=inputs.get("output_path"),
+            base_uri=str(inputs.get("base_uri") or "http://depo-onto.local/step#"),
+            namespace_prefix=str(inputs.get("namespace_prefix") or "step"),
+            include_pmi=bool(inputs.get("include_pmi", True)),
+        )
+        return {
+            "workflow_id": "step_export",
+            "status": "completed" if result.get("success") else "failed",
+            "steps": [
+                {
+                    "agent": "ontology_export_agent",
+                    "status": "completed" if result.get("success") else "failed",
+                    "output": result,
+                }
+            ],
+        }
+
     def _workflow_depo_healthcheck(self, inputs: dict[str, Any]) -> dict[str, Any]:
         return {
             "workflow_id": "depo_healthcheck",
@@ -117,6 +176,101 @@ class OntologyWorkflowEngine:
                     "agent": "ontology_orchestrator_agent",
                     "status": "completed",
                     "output": payload,
+                }
+            ],
+        }
+
+    def _workflow_depo_graph_search(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        names = inputs.get("names")
+        search = inputs.get("search")
+        ontology_prefix = str(inputs.get("ontology_prefix") or "").strip()
+        use_multi = bool(inputs.get("many") or names or isinstance(search, list))
+
+        if use_multi:
+            result = depo_graph_search_many(
+                names=names if isinstance(names, list) else None,
+                search=search,
+                base_url=inputs.get("depo_api_base_url"),
+            )
+            mode = "multi"
+        else:
+            query = str(search or "").strip()
+            if not query:
+                raise ValueError("search or names are required")
+            result = depo_graph_search(
+                search=query,
+                ontology_prefix=ontology_prefix,
+                base_url=inputs.get("depo_api_base_url"),
+            )
+            mode = "single"
+
+        return {
+            "workflow_id": "depo_graph_search",
+            "status": "completed",
+            "mode": mode,
+            "steps": [
+                {
+                    "agent": "ontology_orchestrator_agent",
+                    "status": "completed",
+                    "output": result,
+                }
+            ],
+        }
+
+    def _workflow_depo_oslc(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        action = str(inputs.get("action") or "catalog").strip().lower().replace("-", "_")
+        base_url = inputs.get("depo_api_base_url")
+
+        if action == "catalog":
+            result = depo_oslc_catalog(base_url=base_url)
+        elif action == "provider":
+            result = depo_oslc_provider(provider_id=str(inputs.get("provider_id") or "depo"), base_url=base_url)
+        elif action == "shapes":
+            result = depo_oslc_shapes(shape_id=str(inputs.get("shape_id") or ""), base_url=base_url)
+        elif action == "query":
+            query_params = inputs.get("query_params") or {}
+            if not isinstance(query_params, dict):
+                raise ValueError("query_params must be an object")
+            result = depo_oslc_query_resources(
+                resource_type=str(inputs.get("resource_type") or "resources"),
+                query_params=query_params,
+                base_url=base_url,
+            )
+        elif action == "resource":
+            result = depo_oslc_resource(
+                element_id=str(inputs.get("element_id") or ""),
+                include_links=bool(inputs.get("include_links", True)),
+                base_url=base_url,
+            )
+        elif action == "dictionary":
+            result = depo_oslc_dictionary(
+                prefix=str(inputs.get("prefix") or ""),
+                instance_limit=inputs.get("instance_limit"),
+                relationship_limit=inputs.get("relationship_limit"),
+                fallback_limit=inputs.get("fallback_limit"),
+                base_url=base_url,
+            )
+        elif action in {"taxonomy", "taxonomies"}:
+            result = depo_oslc_taxonomies(ontology_id=str(inputs.get("ontology_id") or ""), base_url=base_url)
+        elif action == "trs":
+            result = depo_oslc_trs(
+                section=str(inputs.get("section") or "descriptor"),
+                after=inputs.get("after"),
+                limit=inputs.get("limit"),
+                base_url=base_url,
+            )
+        else:
+            raise ValueError("Unsupported OSLC action. Use catalog, provider, shapes, query, resource, dictionary, taxonomies, or trs.")
+
+        return {
+            "workflow_id": "depo_oslc",
+            "status": "completed",
+            "action": action,
+            "steps": [
+                {
+                    "agent": "ontology_orchestrator_agent",
+                    "status": "completed",
+                    "output": result,
                 }
             ],
         }

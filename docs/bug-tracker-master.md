@@ -659,3 +659,11 @@ Validation:
 - Confirmed legacy tree layout code remains in `GraphHEB.js` but is currently hidden by `layoutType='force-directed'`; recommended dedicated removal patch.
 - Attempted `npm run test:unit -- --silent` and `npm run build`; both timed out in this constrained session and need a longer frontend validation run before release signoff.
 
+### 2026-07-05 Frontend release-risk fixes
+
+- Removed hidden/dead indented tree layout code from `frontend/src/Components/GraphHEB.js`, including fixed tree layout state, tree renderer, tree-only update effects, tree-row highlight logic, and unused tooltip drag remnants.
+- Removed unused stale frontend import schema-stage endpoints/wrappers: `convert-schema`, `parse-schema`, `process-stages-4-7`, and `map-ontology`.
+- Fixed Import metadata modal ambiguity by not rendering the import workspace behind the active ontology metadata modal; this removes duplicate filename exposure and makes the modal workflow clearer.
+- Validation passed: `npm run build`, `GraphHEB.test.js`, `graphUtils.test.js`, `DataImportPipeline.routing.test.js`, and `git diff --check` for touched frontend files.
+- Remaining frontend work: `DataImportPipeline.test.js` still times out and needs test lifecycle/mock cleanup; larger componentization of Graph Explorer, Ontology Junction, and Import remains pending.
+

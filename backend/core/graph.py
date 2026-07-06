@@ -3,6 +3,7 @@ import time
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
+from neo4j import Query
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ except ImportError:
 
 # ✅ Import centralized database configuration
 try:
-    from .db_config import get_config
+    from .db_config import get_config, get_driver
     CENTRALIZED_CONFIG_AVAILABLE = True
     logger.info("Using centralized Neo4j configuration from db_config.py")
 except ImportError:
@@ -147,47 +148,59 @@ graph = GraphProxy()
 # 🔒 SECURITY: Query timeout wrapper
 def query_with_timeout(query_text: str, params: dict = None, timeout: int = None):
     """
-    Execute a Cypher query with timeout protection.
-    
+    Execute a Cypher query with server-side timeout protection when the
+    centralized Neo4j driver is available.
+
     Args:
         query_text: Cypher query string
         params: Query parameters
         timeout: Timeout in seconds (defaults to NEO4J_QUERY_TIMEOUT)
-    
+
     Returns:
-        Query results
-    
+        Query results as a list of dictionaries
+
     Raises:
         TimeoutError: If query exceeds timeout
         Exception: Any Neo4j or other errors
     """
     if timeout is None:
         timeout = NEO4J_QUERY_TIMEOUT
-    
+
+    start_time = time.time()
+    query_params = params or {}
+
     try:
-        # For synchronous queries, we use a simple approach:
-        # Let the query run but log if it takes too long
-        start_time = time.time()
-        
-        if params:
-            result = graph.query(query_text, params=params)
+        if CENTRALIZED_CONFIG_AVAILABLE:
+            config = get_config()
+            driver = get_driver()
+            cypher = Query(query_text, timeout=float(timeout))
+            with driver.session(database=config.database) as session:
+                result = session.run(cypher, query_params)
+                rows = result.data()
         else:
-            result = graph.query(query_text)
-        
+            if query_params:
+                rows = graph.query(query_text, params=query_params)
+            else:
+                rows = graph.query(query_text)
+
         elapsed = time.time() - start_time
         if elapsed > timeout:
             logger.warning(
                 f"Query exceeded timeout threshold: {elapsed:.2f}s > {timeout}s. "
                 f"Query: {query_text[:100]}..."
             )
-        
-        return result
-        
+
+        return rows
+
     except TimeoutError:
         logger.error(f"Query timeout after {timeout}s: {query_text[:100]}...", exc_info=True)
         raise
     except Exception as e:
-        logger.error(f"Query execution error: {type(e).__name__}: {str(e)}", exc_info=True)
+        elapsed = time.time() - start_time
+        logger.error(
+            f"Query execution error after {elapsed:.2f}s: {type(e).__name__}: {str(e)}",
+            exc_info=True,
+        )
         raise
 
 # ── Schema cache ──────────────────────────────────────────────────────────

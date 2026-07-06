@@ -240,6 +240,29 @@ def _normalize_search_term(value: str) -> str:
     return re.sub(r"^[^a-z0-9]+|[^a-z0-9]+$", "", normalized)
 
 
+GRAPH_SEARCH_PROPERTY_KEYS = [
+    "name",
+    "title",
+    "code",
+    "label",
+    "identifier",
+    "requirement_id",
+    "part_number",
+    "catalogue_id",
+    "item_id",
+    "uid",
+    "id",
+]
+
+GRAPH_SEARCH_RELATIONSHIP_PROPERTY_KEYS = [
+    "name",
+    "label",
+    "type",
+    "semantic_role",
+    "target_source_id",
+]
+
+
 class WorkflowExecuteRequest(BaseModel):
     workflow_id: str
     payload: dict = {}
@@ -2322,6 +2345,7 @@ def filter_graph_nodes(request: TextSearchRequest):
     if not input_val:
         return {"results": []}
 
+    wildcard_prefix_search = "*" in str(request.search or "")
     query = """
         CALL {
           MATCH (n)
@@ -2329,7 +2353,12 @@ def filter_graph_nodes(request: TextSearchRequest):
             AND (
               toLower(elementId(n)) CONTAINS toLower($input)
               OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower($input))
-              OR any(key IN keys(n) WHERE toLower(toString(n[key])) CONTAINS toLower($input))
+              OR any(field IN $search_fields WHERE
+                CASE
+                  WHEN $wildcard_prefix_search THEN toLower(toString(coalesce(n[field], ''))) STARTS WITH toLower($input)
+                  ELSE toLower(toString(coalesce(n[field], ''))) CONTAINS toLower($input)
+                END
+              )
             )
             AND (
               $ontology_prefix = ''
@@ -2348,8 +2377,9 @@ def filter_graph_nodes(request: TextSearchRequest):
           WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
             AND (
               toLower(type(matched_rel)) CONTAINS toLower($input)
-              OR any(key IN keys(matched_rel) WHERE toLower(key) CONTAINS toLower($input))
-              OR any(key IN keys(matched_rel) WHERE toLower(toString(matched_rel[key])) CONTAINS toLower($input))
+              OR any(field IN $relationship_search_fields WHERE
+                toLower(toString(coalesce(matched_rel[field], ''))) CONTAINS toLower($input)
+              )
             )
             AND (
               $ontology_prefix = ''
@@ -2375,8 +2405,9 @@ def filter_graph_nodes(request: TextSearchRequest):
           WHERE NOT (a:DatasheetChunk OR a:GraphChunk OR b:DatasheetChunk OR b:GraphChunk)
             AND (
               toLower(type(matched_rel)) CONTAINS toLower($input)
-              OR any(key IN keys(matched_rel) WHERE toLower(key) CONTAINS toLower($input))
-              OR any(key IN keys(matched_rel) WHERE toLower(toString(matched_rel[key])) CONTAINS toLower($input))
+              OR any(field IN $relationship_search_fields WHERE
+                toLower(toString(coalesce(matched_rel[field], ''))) CONTAINS toLower($input)
+              )
             )
             AND (
               $ontology_prefix = ''
@@ -2401,7 +2432,7 @@ def filter_graph_nodes(request: TextSearchRequest):
         WITH DISTINCT n,
           toLower(toString(coalesce(
             n['name'], n['title'], n['code'], n['label'],
-            n['identifier'], n['requirement_id'], n['part_number'], n['id'], ''
+            n['identifier'], n['requirement_id'], n['part_number'], n['catalogue_id'], n['item_id'], n['uid'], n['id'], ''
           ))) AS displayText
         WITH n, displayText,
           CASE
@@ -2446,7 +2477,13 @@ def filter_graph_nodes(request: TextSearchRequest):
           } ELSE null END AS m
     """
     try:
-        results = graph.query(query, params={"input": input_val, "ontology_prefix": ontology_prefix})
+        results = graph.query(query, params={
+            "input": input_val,
+            "ontology_prefix": ontology_prefix,
+            "search_fields": GRAPH_SEARCH_PROPERTY_KEYS,
+            "relationship_search_fields": GRAPH_SEARCH_RELATIONSHIP_PROPERTY_KEYS,
+            "wildcard_prefix_search": wildcard_prefix_search,
+        })
         return {"results": results}
     except Exception as e:
         safe_error("/graphfilter", e)
@@ -2674,20 +2711,22 @@ def filter_graph_nodes_multi(request: MultiNameSearchRequest):
     if not names:
         return {"results": []}
 
+    wildcard_prefix_search = any("*" in str(term or "") for term in raw_terms)
     query = """
 UNWIND $names AS searchName
 MATCH (n)
 WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
   AND (
     toLower(elementId(n)) CONTAINS toLower(searchName)
-    OR
-    toLower(coalesce(n.name, '')) CONTAINS toLower(searchName)
-    OR toLower(coalesce(n.title, '')) CONTAINS toLower(searchName)
-    OR toLower(coalesce(n.code, '')) CONTAINS toLower(searchName)
-    OR toLower(coalesce(n.label, '')) CONTAINS toLower(searchName)
     OR any(lbl IN labels(n) WHERE toLower(lbl) CONTAINS toLower(searchName))
+    OR any(field IN $search_fields WHERE
+      CASE
+        WHEN $wildcard_prefix_search THEN toLower(toString(coalesce(n[field], ''))) STARTS WITH toLower(searchName)
+        ELSE toLower(toString(coalesce(n[field], ''))) CONTAINS toLower(searchName)
+      END
+    )
   )
-WITH collect(DISTINCT n) AS matchedNodes
+WITH collect(DISTINCT n)[..250] AS matchedNodes
 UNWIND matchedNodes AS n
 OPTIONAL MATCH (n)-[r]-(m)
 WHERE m IN matchedNodes
@@ -2702,7 +2741,11 @@ RETURN
   } ELSE null END AS m
 """
     try:
-        results = graph.query(query, params={"names": names})
+        results = graph.query(query, params={
+            "names": names,
+            "search_fields": GRAPH_SEARCH_PROPERTY_KEYS,
+            "wildcard_prefix_search": wildcard_prefix_search,
+        })
         return {"results": results}
     except Exception as e:
         safe_error("/graphfilter-multi", e)

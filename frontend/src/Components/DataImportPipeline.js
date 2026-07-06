@@ -232,6 +232,36 @@ export default function DataImportPipeline() {
   const didRestoreJobsRef = useRef(false);
   const resumedPersistedJobsRef = useRef(false);
   const activePollersRef = useRef(new Set());
+  const pollerTimersRef = useRef(new Map());
+  const isMountedRef = useRef(true);
+
+  const clearPoller = useCallback((pollerKey) => {
+    const timerId = pollerTimersRef.current.get(pollerKey);
+    if (timerId) {
+      clearTimeout(timerId);
+      pollerTimersRef.current.delete(pollerKey);
+    }
+    activePollersRef.current.delete(pollerKey);
+  }, []);
+
+  const schedulePoller = useCallback((pollerKey, callback, delayMs) => {
+    const existingTimer = pollerTimersRef.current.get(pollerKey);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+    const timerId = setTimeout(() => {
+      pollerTimersRef.current.delete(pollerKey);
+      callback();
+    }, delayMs);
+    pollerTimersRef.current.set(pollerKey, timerId);
+  }, []);
+
+  useEffect(() => () => {
+    isMountedRef.current = false;
+    pollerTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+    pollerTimersRef.current.clear();
+    activePollersRef.current.clear();
+  }, []);
   const [ontologyCatalogState, setOntologyCatalogState] = useState({
     loading: availableOntologies.length === 0,
     stale: false,
@@ -898,7 +928,7 @@ export default function DataImportPipeline() {
     setShowMetadataForm(true);
   }, [files, isMetadataLoading, pendingMetadataQueue, showMetadataForm]);
 
-  const pollPipelineProgress = async (taskId, fileId) => {
+  const pollPipelineProgress = useCallback(async (taskId, fileId) => {
     const pollerKey = `${taskId}:${fileId}`;
     if (activePollersRef.current.has(pollerKey)) {
       return;
@@ -909,8 +939,16 @@ export default function DataImportPipeline() {
 
     const poll = async () => {
       try {
+        if (!activePollersRef.current.has(pollerKey) || !isMountedRef.current) {
+          clearPoller(pollerKey);
+          return;
+        }
         const statusUrl = buildUrl(replaceParams(API.import.status, { task_id: taskId }));
         const res = await apiClient.get(statusUrl);
+        if (!activePollersRef.current.has(pollerKey) || !isMountedRef.current) {
+          clearPoller(pollerKey);
+          return;
+        }
         const data = res.data;
 
         // Task creation is async in backend; treat not_found as transient instead of hard failure.
@@ -929,7 +967,7 @@ export default function DataImportPipeline() {
                 lastUpdatedAt: new Date().toISOString()
               }
             }));
-            setTimeout(poll, 2000);
+            schedulePoller(pollerKey, poll, 2000);
           }
           return;
         }
@@ -1014,7 +1052,7 @@ export default function DataImportPipeline() {
         }
 
         if (data.status === 'completed' || data.status === 'failed') {
-          activePollersRef.current.delete(pollerKey);
+          clearPoller(pollerKey);
           return;
         }
 
@@ -1024,9 +1062,9 @@ export default function DataImportPipeline() {
             data.current_stage === 'ingest' || data.commit_phase
               ? 1500
               : 2500;
-          setTimeout(poll, nextDelay);
+          schedulePoller(pollerKey, poll, nextDelay);
         } else {
-          activePollersRef.current.delete(pollerKey);
+          clearPoller(pollerKey);
         }
       } catch (err) {
         if (attempts < maxAttempts) {
@@ -1040,10 +1078,10 @@ export default function DataImportPipeline() {
               lastUpdatedAt: new Date().toISOString(),
             }
           }));
-          setTimeout(poll, 3000);
+          schedulePoller(pollerKey, poll, 3000);
           return;
         }
-        activePollersRef.current.delete(pollerKey);
+        clearPoller(pollerKey);
         setPipelineStatus(prev => ({
           ...prev,
           [fileId]: { ...prev[fileId], stage: 'error', message: err.message, error: true }
@@ -1052,7 +1090,7 @@ export default function DataImportPipeline() {
     };
 
     poll();
-  };
+  }, [clearPoller, schedulePoller]);
 
   useEffect(() => {
     if (!didRestoreJobsRef.current || resumedPersistedJobsRef.current) return;
@@ -1092,7 +1130,7 @@ export default function DataImportPipeline() {
     resumableJobs.forEach((file) => {
       pollPipelineProgress(file.taskId, file.fileId);
     });
-  }, [files, pipelineStatus, startedFiles]);
+  }, [files, pipelineStatus, pollPipelineProgress, startedFiles]);
 
   const startAllImports = async () => {
     const workflow = workflowOptions.find(w => w.id === selectedWorkflow) || resolveWorkflow(selectedWorkflow);
@@ -1363,7 +1401,7 @@ export default function DataImportPipeline() {
   const removeFile = (fileId) => {
     const fileStatus = pipelineStatus[fileId];
     if (fileStatus?.taskId) {
-      activePollersRef.current.delete(`${fileStatus.taskId}:${fileId}`);
+      clearPoller(`${fileStatus.taskId}:${fileId}`);
     }
 
     setPendingMetadataQueue(prev => prev.filter(id => id !== fileId));
@@ -1726,6 +1764,8 @@ export default function DataImportPipeline() {
         />
       )}
 
+      {!showMetadataForm && (
+      <div>
       {/* Compact workflow selector */}
       <div style={{
         background: C.surface,
@@ -3275,6 +3315,9 @@ export default function DataImportPipeline() {
       </div>
 
       {/* Preview Modal */}
+      </div>
+      )}
+
       {confirmingImport && previewData && (
         <div style={{
           position: 'fixed',

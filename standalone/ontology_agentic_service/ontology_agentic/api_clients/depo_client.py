@@ -33,6 +33,111 @@ class DepoApiClient:
     def list_registered_ontologies(self) -> dict[str, Any]:
         return self._request_json("GET", "/api/v1/ontology/registered")
 
+    def graph_search(self, search: str, ontology_prefix: str = "") -> dict[str, Any]:
+        query = str(search or "").strip()
+        if not query:
+            raise DepoApiError("search is required")
+        return self._request_json(
+            "POST",
+            "/graphfilter",
+            data={"search": query, "ontology_prefix": str(ontology_prefix or "").strip()},
+        )
+
+    def graph_search_many(
+        self,
+        names: list[str] | None = None,
+        search: str | list[str] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        normalized_names = [str(name).strip() for name in (names or []) if str(name or "").strip()]
+        if normalized_names:
+            payload["names"] = normalized_names
+        elif isinstance(search, list):
+            normalized_search = [str(item).strip() for item in search if str(item or "").strip()]
+            if normalized_search:
+                payload["search"] = normalized_search
+        else:
+            query = str(search or "").strip()
+            if query:
+                payload["search"] = query
+
+        if not payload:
+            raise DepoApiError("search or names are required")
+        return self._request_json("POST", "/graphfilter-multi", data=payload)
+
+    def oslc_catalog(self) -> dict[str, Any]:
+        return self._request_json("GET", "/oslc/catalog")
+
+    def oslc_provider(self, provider_id: str = "depo") -> dict[str, Any]:
+        normalized_provider_id = str(provider_id or "depo").strip() or "depo"
+        return self._request_json("GET", f"/oslc/providers/{parse.quote(normalized_provider_id)}")
+
+    def oslc_shapes(self, shape_id: str = "") -> dict[str, Any]:
+        normalized_shape_id = str(shape_id or "").strip()
+        if normalized_shape_id:
+            return self._request_json("GET", f"/oslc/shapes/{parse.quote(normalized_shape_id)}")
+        return self._request_json("GET", "/oslc/shapes")
+
+    def oslc_query_resources(
+        self,
+        resource_type: str = "resources",
+        query_params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        normalized_type = str(resource_type or "resources").strip() or "resources"
+        query = self._query_string(query_params or {})
+        suffix = f"?{query}" if query else ""
+        return self._request_json("GET", f"/oslc/query/{parse.quote(normalized_type)}{suffix}")
+
+    def oslc_resource(self, element_id: str, include_links: bool = True) -> dict[str, Any]:
+        normalized_element_id = str(element_id or "").strip()
+        if not normalized_element_id:
+            raise DepoApiError("element_id is required")
+        query = parse.urlencode({"include_links": str(bool(include_links)).lower()})
+        return self._request_json("GET", f"/oslc/resources/{parse.quote(normalized_element_id)}?{query}")
+
+    def oslc_dictionary(
+        self,
+        prefix: str,
+        instance_limit: int | None = None,
+        relationship_limit: int | None = None,
+        fallback_limit: int | None = None,
+    ) -> dict[str, Any]:
+        normalized_prefix = str(prefix or "").strip()
+        if not normalized_prefix:
+            raise DepoApiError("prefix is required")
+        params = {
+            key: value
+            for key, value in {
+                "instance_limit": instance_limit,
+                "relationship_limit": relationship_limit,
+                "fallback_limit": fallback_limit,
+            }.items()
+            if value is not None
+        }
+        query = self._query_string(params)
+        suffix = f"?{query}" if query else ""
+        return self._request_json("GET", f"/oslc/dictionaries/{parse.quote(normalized_prefix)}{suffix}")
+
+    def oslc_taxonomies(self, ontology_id: str = "") -> dict[str, Any]:
+        normalized_ontology_id = str(ontology_id or "").strip()
+        if normalized_ontology_id:
+            return self._request_json("GET", f"/oslc/taxonomies/{parse.quote(normalized_ontology_id)}")
+        return self._request_json("GET", "/oslc/taxonomies")
+
+    def oslc_trs(self, section: str = "descriptor", after: int | None = None, limit: int | None = None) -> dict[str, Any]:
+        normalized_section = str(section or "descriptor").strip().lower()
+        if normalized_section in {"descriptor", "trs"}:
+            return self._request_json("GET", "/oslc/trs")
+        if normalized_section == "base":
+            query = self._query_string({"limit": limit} if limit is not None else {})
+            suffix = f"?{query}" if query else ""
+            return self._request_json("GET", f"/oslc/trs/base{suffix}")
+        if normalized_section in {"changelog", "change_log"}:
+            query = self._query_string({"after": after, "limit": limit})
+            suffix = f"?{query}" if query else ""
+            return self._request_json("GET", f"/oslc/trs/changelog{suffix}")
+        raise DepoApiError("section must be descriptor, base, or changelog")
+
     def execute_workflow(self, workflow_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
         workflow_name = str(workflow_id or "").strip()
         if not workflow_name:
@@ -130,6 +235,11 @@ class DepoApiClient:
         if path.startswith("http://") or path.startswith("https://"):
             return path
         return f"{self.base_url}/{path.lstrip('/')}"
+
+    @staticmethod
+    def _query_string(params: dict[str, Any]) -> str:
+        cleaned = {key: value for key, value in params.items() if value is not None and str(value) != ""}
+        return parse.urlencode(cleaned)
 
     @staticmethod
     def _extract_filename(content_disposition: str) -> str:

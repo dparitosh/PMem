@@ -40,18 +40,16 @@ Status: Mostly aligned.
 
 ## Critical Findings
 
-### UI-01 Graph Explorer Still Contains Legacy Tree Layout Code
+### UI-01 Graph Explorer Legacy Tree Layout Code
 
-`GraphHEB.js` still contains the indented tree layout renderer and tree-expanded state. The UI no longer exposes tree layout and `layoutType` is hardcoded to `force-directed`, so this is currently dead/legacy code.
+Status: Fixed in the 2026-07-05 release-risk pass.
 
-Impact:
-- Larger bundle and slower validation.
-- More D3 branches to reason about.
-- Increased risk of stale effects and accidental regressions.
+`GraphHEB.js` no longer contains the indented tree layout renderer, tree-expanded state, hidden `indented-tree` branch, or tree-row highlight branch. The graph explorer now keeps the force-directed/contextual graph path only.
 
-Recommended closure:
-- Remove `renderIndentedTree`, `createHierarchicalData`, `treeExpandedNodes`, and tree-only highlight/update branches in a dedicated graph cleanup patch.
-- Keep force-directed/contextual graph only.
+Validation:
+- `npm run build` compiled successfully.
+- `GraphHEB.test.js` passed.
+- `graphUtils.test.js` passed.
 
 ### UI-02 GraphHEB Remains Too Large For Reliable Release Fixing
 
@@ -70,26 +68,27 @@ Recommended closure:
 - Split into `useGraphData`, `useGraphSearch`, `useGraphExpansion`, `useD3GraphRenderer`, `GraphTooltip`, and `GraphExplorerToolbar`.
 - Keep React as graph state source of truth.
 
-### UI-03 Automated Frontend Checks Timed Out
+### UI-03 Automated Frontend Checks
 
-`npm run test:unit -- --silent` timed out after ~124 seconds.
-`npm run build` timed out after ~184 seconds.
+Status: Partially fixed.
 
-This does not prove failure, but it is not release-clean either.
+`npm run build` now compiles successfully after Graph Explorer cleanup. Focused Graph Explorer and graph utility tests pass. `DataImportPipeline.routing.test.js` also passes after hiding the import workspace while the ontology metadata modal is active.
 
-Recommended closure:
-- Run build/test outside the constrained session with larger timeout.
-- Split slow tests by component.
-- Add smoke tests for Import, Ontology Junction, Graph Explorer, Where Used, Recommendations, Reports, Admin.
-
-### UI-04 Config Still Contains Planned/Stale Endpoint Mappings
-
-`frontend/src/config.js` still includes endpoints that may not all be live or currently exposed in UI, especially older import/document/report mappings.
+Remaining issue:
+- The broader `DataImportPipeline.test.js` still times out in this session and needs test lifecycle cleanup, likely around async polling/mocks.
 
 Recommended closure:
-- Compare frontend endpoint map to backend OpenAPI.
-- Mark each endpoint as `live`, `planned`, or `legacy`.
-- Hide planned wrappers from components until backend route is live.
+- Harden `DataImportPipeline.test.js` mocks/timers.
+- Add page-level smoke tests for Import, Ontology Junction, Graph Explorer, Where Used, Recommendations, Reports, Admin.
+
+### UI-04 Config Planned/Stale Endpoint Mappings
+
+Status: Improved.
+
+Removed unused stale import schema-stage mappings/wrappers for `convert-schema`, `parse-schema`, `process-stages-4-7`, and `map-ontology` from the frontend release surface. Live import upload/status/preview/pre-commit/commit/cancel/artifact routes remain untouched.
+
+Remaining issue:
+- A full frontend-to-OpenAPI route classification should still be generated for all optional document/report/admin routes.
 
 ### UI-05 Ontology Junction Naming Is Partially Updated
 
@@ -195,9 +194,9 @@ Risks:
 
 ## Recommended Fix Order
 
-1. Remove dead tree layout code from `GraphHEB.js`.
-2. Split Graph Explorer search/context/expand logic into hooks.
-3. Compare frontend API config to backend OpenAPI and mark stale/planned routes.
+1. Remove dead tree layout code from `GraphHEB.js`. Status: Fixed.
+2. Split Graph Explorer search/context/expand logic into hooks. Status: Pending larger componentization.
+3. Compare frontend API config to backend OpenAPI and mark stale/planned routes. Status: Partially fixed for stale import schema-stage routes.
 4. Split Ontology Junction tabs into separate components.
 5. Split Import workflow into smaller components and hooks.
 6. Add page-level smoke tests.
@@ -208,10 +207,11 @@ Risks:
 - Static component inventory completed.
 - Navigation audit completed.
 - API config spot-check completed.
-- Legacy tree layout code confirmed present and currently hidden by hardcoded `layoutType='force-directed'`.
-- Automated frontend checks attempted but timed out in this session:
-  - `npm run test:unit -- --silent`
-  - `npm run build`
+- Legacy tree layout code removed from `GraphHEB.js`.
+- `npm run build` compiled successfully.
+- `GraphHEB.test.js` and `graphUtils.test.js` passed.
+- `DataImportPipeline.routing.test.js` passed.
+- `DataImportPipeline.test.js` still timed out and remains a test-hardening item.
 
 ## Release Position
 

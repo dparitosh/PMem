@@ -363,6 +363,20 @@ def test_batched_delete_rejects_unsafe_identifiers():
         )
 
 
+def test_relationship_delete_rejects_unsafe_type_identifiers():
+    """Relationship delete must validate interpolated relationship types too."""
+    from Services.neo4j_schema_cleaner import Neo4jSchemaCleaner
+
+    cleaner = Neo4jSchemaCleaner.__new__(Neo4jSchemaCleaner)
+    cleaner.driver = MagicMock()
+    cleaner.database = "neo4j"
+
+    success, message = cleaner.delete_relationships_by_type("RELTYPE`) DELETE r //")
+
+    assert success is False
+    assert "Invalid Neo4j relationship type" in message
+
+
 def test_batched_delete_by_prefix_uses_coalesced_prefix_filter():
     """Prefix deletes should remove ontology/import families in transaction chunks."""
     from Services.neo4j_schema_cleaner import Neo4jSchemaCleaner

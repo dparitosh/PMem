@@ -479,11 +479,12 @@ class Neo4jSchemaCleaner:
             }
     
     def delete_relationships_by_type(self, rel_type: str) -> Tuple[bool, str]:
-        """Delete all relationships of a specific type"""
+        """Delete all relationships of a specific type."""
         if not self.driver:
             return False, "No database connection"
         
         try:
+            rel_type = _safe_identifier(rel_type, "relationship type")
             with self.driver.session(database=self.database) as session:
                 result = session.run(f"MATCH ()-[r:{rel_type}]-() DELETE r RETURN count(r) as count")
                 record = result.single()
@@ -495,15 +496,22 @@ class Neo4jSchemaCleaner:
             return False, str(e)
     
     def create_indexes(self) -> Tuple[bool, str]:
-        """Create standard indexes for AP239 ontology"""
+        """Create baseline operational indexes used by the current app schema."""
         if not self.driver:
             return False, "No database connection"
         
-        # Neo4j 5.x compatible index syntax
         indexes_to_create = [
             "CREATE INDEX idx_entity_id IF NOT EXISTS FOR (n:Entity) ON (n.id)",
             "CREATE INDEX idx_entity_type IF NOT EXISTS FOR (n:Entity) ON (n.type)",
             "CREATE INDEX idx_entity_name IF NOT EXISTS FOR (n:Entity) ON (n.name)",
+            "CREATE INDEX idx_individual_import_id_id IF NOT EXISTS FOR (n:Individual) ON (n.import_id, n.id)",
+            "CREATE INDEX idx_individual_import_row_key IF NOT EXISTS FOR (n:Individual) ON (n.import_row_key)",
+            "CREATE TEXT INDEX idx_individual_name_text IF NOT EXISTS FOR (n:Individual) ON (n.name)",
+            "CREATE INDEX idx_ontologyclass_uri IF NOT EXISTS FOR (n:OntologyClass) ON (n.uri)",
+            "CREATE INDEX idx_ontologyclass_prefix_name IF NOT EXISTS FOR (n:OntologyClass) ON (n.prefix, n.name)",
+            "CREATE INDEX idx_ontologyclass_ontology_prefix_name IF NOT EXISTS FOR (n:OntologyClass) ON (n.ontology_prefix, n.name)",
+            "CREATE TEXT INDEX idx_ontologyclass_name_text IF NOT EXISTS FOR (n:OntologyClass) ON (n.name)",
+            "CREATE INDEX idx_ontologyproperty_prefix IF NOT EXISTS FOR (n:OntologyProperty) ON (n.prefix)",
         ]
         
         try:
