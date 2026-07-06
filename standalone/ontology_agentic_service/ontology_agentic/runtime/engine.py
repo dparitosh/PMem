@@ -22,6 +22,12 @@ from ontology_agentic.tools.depo_api_tools import (
     depo_merge_ontologies,
 )
 from ontology_agentic.tools.cad_step_tools import export_step_to_ttl, inspect_step_file
+from ontology_agentic.tools.reqif_tools import export_reqif_to_ttl, inspect_reqif_file
+from ontology_agentic.tools.requirement_normalization_tools import (
+    export_requirements_alignment_ttl,
+    normalize_requirement_records,
+    requirement_alignment_profile,
+)
 from ontology_agentic.tools.ontology_tools import (
     export_ontology,
     inspect_ontology_artifact,
@@ -59,6 +65,11 @@ class OntologyWorkflowEngine:
             "ontology_export": self._workflow_ontology_export,
             "step_inspect": self._workflow_step_inspect,
             "step_export": self._workflow_step_export,
+            "reqif_inspect": self._workflow_reqif_inspect,
+            "reqif_export": self._workflow_reqif_export,
+            "requirements_normalize": self._workflow_requirements_normalize,
+            "requirements_alignment_export": self._workflow_requirements_alignment_export,
+            "requirements_alignment_profile": self._workflow_requirements_alignment_profile,
             "depo_healthcheck": self._workflow_depo_healthcheck,
             "depo_registered_ontologies": self._workflow_depo_registered_ontologies,
             "depo_graph_search": self._workflow_depo_graph_search,
@@ -149,6 +160,103 @@ class OntologyWorkflowEngine:
                     "agent": "ontology_export_agent",
                     "status": "completed" if result.get("success") else "failed",
                     "output": result,
+                }
+            ],
+        }
+
+    def _workflow_reqif_inspect(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        reqif_path = inputs.get("reqif_path") or inputs.get("file_path")
+        if not reqif_path:
+            raise ValueError("reqif_path is required")
+        result = inspect_reqif_file(path_value=reqif_path, sample_size=int(inputs.get("sample_size", 20)))
+        return {
+            "workflow_id": "reqif_inspect",
+            "status": "completed",
+            "steps": [
+                {
+                    "agent": "ontology_intake_agent",
+                    "status": "completed",
+                    "output": result,
+                }
+            ],
+        }
+
+    def _workflow_reqif_export(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        reqif_path = inputs.get("reqif_path") or inputs.get("file_path")
+        if not reqif_path:
+            raise ValueError("reqif_path is required")
+        result = export_reqif_to_ttl(
+            path_value=reqif_path,
+            output_path=inputs.get("output_path"),
+            base_uri=str(inputs.get("base_uri") or "http://depo-onto.local/reqif/"),
+            sample_size=int(inputs.get("sample_size", 10000)),
+        )
+        return {
+            "workflow_id": "reqif_export",
+            "status": "completed",
+            "steps": [
+                {
+                    "agent": "ontology_export_agent",
+                    "status": "completed",
+                    "output": result,
+                }
+            ],
+        }
+
+    def _workflow_requirements_normalize(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        records = inputs.get("records") or []
+        if not isinstance(records, list):
+            raise ValueError("records must be a list")
+        result = normalize_requirement_records(
+            records=records,
+            source_name=str(inputs.get("source_name") or ""),
+            source_type=str(inputs.get("source_type") or "unstructured"),
+        )
+        return {
+            "workflow_id": "requirements_normalize",
+            "status": "completed",
+            "steps": [
+                {
+                    "agent": "semantic_bridge_planner_agent",
+                    "status": "completed",
+                    "output": result,
+                }
+            ],
+        }
+
+    def _workflow_requirements_alignment_export(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        payload = inputs.get("payload") or {}
+        output_path = inputs.get("output_path")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        if not output_path:
+            raise ValueError("output_path is required")
+        result = export_requirements_alignment_ttl(
+            payload=payload,
+            output_path=output_path,
+            base_uri=str(inputs.get("base_uri") or "http://depo-onto.local/requirements/"),
+        )
+        return {
+            "workflow_id": "requirements_alignment_export",
+            "status": "completed",
+            "steps": [
+                {
+                    "agent": "ontology_export_agent",
+                    "status": "completed",
+                    "output": result,
+                }
+            ],
+        }
+
+    def _workflow_requirements_alignment_profile(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "workflow_id": "requirements_alignment_profile",
+            "status": "completed",
+            "steps": [
+                {
+                    "agent": "semantic_bridge_planner_agent",
+                    "status": "completed",
+                    "output": requirement_alignment_profile(),
                 }
             ],
         }

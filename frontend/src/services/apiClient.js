@@ -364,6 +364,12 @@ export const adminAPI = {
     apiClient.post(buildUrl(API.admin.resetDatabase), null, { params: { recreate_indexes: recreateIndexes } }),
 };
 
+
+// ========== REQUIREMENTS ENDPOINTS ==========
+export const requirementsAPI = {
+  list: (params = {}) => apiClient.get(buildUrl(API.requirements.list), { params }),
+};
+
 // ========== RECOMMENDATION ENDPOINTS ==========
 export const recommendationsAPI = {
   changeImpact: (changeName, scope = {}) =>
@@ -400,6 +406,7 @@ export const API_METHODS = {
   document: documentAPI,
   admin: adminAPI,
   recommendations: recommendationsAPI,
+  requirements: requirementsAPI,
 };
 
 /**

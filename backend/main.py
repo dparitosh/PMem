@@ -1655,6 +1655,161 @@ async def get_contextual_subgraph(
         raise _graph_service_unavailable("/api/v1/graph/contextual-subgraph", exc)
 
 
+def _requirement_source_bucket(source_value: str, labels: list[str] | None = None) -> str:
+    text = str(source_value or "").lower()
+    label_text = " ".join(labels or []).lower()
+    combined = f"{text} {label_text}"
+    if "reqif" in combined:
+        return "ReqIF"
+    if "plmxml" in combined:
+        return "PLMXML"
+    if "xmi" in combined or "sysml" in combined or "mbse" in combined or "mdxml" in combined:
+        return "MBSE"
+    if "oslc" in combined:
+        return "OSLC"
+    if "alm" in combined or "teamcenter" in combined or "polarion" in combined or "doors" in combined:
+        return "ALM"
+    if "document" in combined or "unstructured" in combined or "pdf" in combined or "doc" in combined or "html" in combined:
+        return "Unstructured"
+    return "Graph"
+
+
+@app.get("/api/v1/requirements")
+async def get_normalized_requirements(
+    source: str = "all",
+    search: str = "",
+    limit: int = Query(default=500, ge=1, le=5000),
+):
+    """Return normalized requirement-like records from the live context graph.
+
+    This endpoint intentionally stays source-neutral: PLMXML, ReqIF, MBSE/XMI,
+    OSLC, ALM, and unstructured ingestion can all project requirement-like nodes
+    into the same table and GraphRAG context without forcing the UI to know each
+    parser's internal schema.
+    """
+    try:
+        from backend.core.graph import query_with_timeout
+    except Exception:
+        from core.graph import query_with_timeout
+
+    source_norm = str(source or "all").strip().lower()
+    search_norm = _normalize_search_term(search)
+    cypher = """
+    MATCH (n)
+    WITH n, labels(n) AS node_labels, properties(n) AS p
+    WITH n, node_labels, p,
+         toLower(coalesce(
+           toString(p['source_format']),
+           toString(p['file_format']),
+           toString(p['source_system']),
+           toString(p['source']),
+           toString(p['ontology_prefix']),
+           ''
+         )) AS source_hint,
+         coalesce(
+           toString(p['requirement_id']),
+           toString(p['requirement_ref']),
+           toString(p['identifier']),
+           toString(p['code']),
+           toString(p['id']),
+           toString(p['uid']),
+           elementId(n)
+         ) AS requirement_id,
+         coalesce(
+           toString(p['title']),
+           toString(p['name']),
+           toString(p['label']),
+           toString(p['requirement_id']),
+           toString(p['id']),
+           elementId(n)
+         ) AS title,
+         coalesce(
+           toString(p['description']),
+           toString(p['text']),
+           toString(p['body']),
+           toString(p['value']),
+           toString(p['statement']),
+           ''
+         ) AS requirement_text,
+         coalesce(
+           toString(p['semantic_role']),
+           toString(p['element_type']),
+           toString(p['entity_type']),
+           ''
+         ) AS semantic_role
+    WITH n, node_labels, p, source_hint, requirement_id, title, requirement_text, semantic_role,
+         toLower(requirement_id + ' ' + title + ' ' + requirement_text + ' ' + semantic_role + ' ' + source_hint + ' ' + reduce(acc = '', lbl IN node_labels | acc + ' ' + lbl)) AS haystack
+    WHERE
+      any(lbl IN node_labels WHERE lbl IN ['Requirement', 'RequirementRevision', 'RequirementRelation'])
+      OR haystack CONTAINS 'requirement'
+      OR source_hint IN ['reqif', 'plmxml', 'xmi', 'mdxml', 'sysml', 'mbse', 'oslc', 'alm', 'teamcenter', 'unstructured', 'document']
+    WITH n, node_labels, p, source_hint, requirement_id, title, requirement_text, semantic_role, haystack
+    WHERE $search = '' OR haystack CONTAINS $search
+    OPTIONAL MATCH (n)-[r]-(m)
+    WITH n, node_labels, p, source_hint, requirement_id, title, requirement_text, semantic_role,
+         collect(DISTINCT {type: type(r), other: coalesce(m.name, m.title, m.label, m.id, elementId(m))})[0..8] AS context_links,
+         count(DISTINCT r) AS relationship_count
+    RETURN
+      elementId(n) AS element_id,
+      node_labels AS labels,
+      requirement_id,
+      title,
+      requirement_text,
+      semantic_role,
+      source_hint,
+      coalesce(toString(p['source_file']), toString(p['filename']), toString(p['source_path']), '') AS source_file,
+      coalesce(toString(p['ontology_prefix']), toString(p['prefix']), '') AS ontology_prefix,
+      coalesce(toString(p['ontology_class']), toString(p['class_name']), toString(p['element_type']), '') AS ontology_class,
+      coalesce(toString(p['status']), toString(p['lifecycle_status']), '') AS status,
+      coalesce(toString(p['owner']), toString(p['author']), '') AS owner,
+      relationship_count,
+      context_links
+    ORDER BY requirement_id, title
+    LIMIT toInteger($limit)
+    """
+    try:
+        rows = query_with_timeout(cypher, {"search": search_norm, "limit": limit}, timeout=60) or []
+    except Exception as exc:
+        raise _graph_service_unavailable("/api/v1/requirements", exc)
+
+    requirements = []
+    source_counts: dict[str, int] = {}
+    for row in rows:
+        source_bucket = _requirement_source_bucket(row.get("source_hint"), row.get("labels") or [])
+        if source_norm not in {"", "all"} and source_bucket.lower() != source_norm:
+            continue
+        item = {
+            "id": row.get("requirement_id") or row.get("element_id"),
+            "requirement_id": row.get("requirement_id") or row.get("element_id"),
+            "title": row.get("title") or row.get("requirement_id") or row.get("element_id"),
+            "text": row.get("requirement_text") or "",
+            "source": source_bucket,
+            "source_hint": row.get("source_hint") or "",
+            "source_file": row.get("source_file") or "",
+            "ontology_prefix": row.get("ontology_prefix") or "",
+            "ontology_class": row.get("ontology_class") or "",
+            "semantic_role": row.get("semantic_role") or "",
+            "status": row.get("status") or "",
+            "owner": row.get("owner") or "",
+            "labels": row.get("labels") or [],
+            "element_id": row.get("element_id"),
+            "relationship_count": int(row.get("relationship_count") or 0),
+            "context_links": row.get("context_links") or [],
+        }
+        requirements.append(item)
+        source_counts[source_bucket] = source_counts.get(source_bucket, 0) + 1
+
+    return {
+        "status": "success",
+        "requirements": requirements,
+        "count": len(requirements),
+        "source_counts": source_counts,
+        "sources": ["ReqIF", "PLMXML", "MBSE", "OSLC", "ALM", "Unstructured", "Graph"],
+        "search": search,
+        "source": source,
+    }
+
+
 @app.get("/graphvis/by-ontology/{prefix}")
 async def get_graph_by_ontology(prefix: str):
     """Get graph filtered by ontology prefix - shows OntologyClass and Instance nodes."""

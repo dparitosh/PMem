@@ -47,6 +47,7 @@ def test_openapi_is_available() -> None:
         "/docs",
         "/api/v1/ontology/registered",
         "/api/v1/import/formats",
+        "/api/v1/requirements",
     ],
 )
 def test_read_endpoints_respond(path: str) -> None:

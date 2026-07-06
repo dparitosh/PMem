@@ -219,6 +219,14 @@ const RECOMMENDATION_ENDPOINTS = {
   health: process.env.REACT_APP_API_RECOMMENDATIONS_HEALTH || '/recommendations/health',
 };
 
+
+/**
+ * Normalized Requirements Endpoints
+ */
+const REQUIREMENTS_ENDPOINTS = {
+  list: process.env.REACT_APP_API_REQUIREMENTS_LIST || '/api/v1/requirements',
+};
+
 /**
  * Ontology Mapper Endpoints
  */
@@ -286,6 +294,7 @@ export const API = {
   document: DOCUMENT_ENDPOINTS,
   admin: ADMIN_ENDPOINTS,
   recommendations: RECOMMENDATION_ENDPOINTS,
+  requirements: REQUIREMENTS_ENDPOINTS,
   ontologyMapper: ONTOLOGY_MAPPER_ENDPOINTS,
   integration: INTEGRATION_ENDPOINTS,
   ui: UI_CONFIG,

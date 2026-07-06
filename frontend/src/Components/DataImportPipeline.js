@@ -153,9 +153,9 @@ function getWorkflowNote({
   }
   if (
     selectedWorkflow === 'instance.import'
-    && ['json', 'xml', 'plmxml', '3dxml'].includes(mappingFileTypeContext)
+    && ['json', 'xml', 'plmxml', 'reqif', '3dxml'].includes(mappingFileTypeContext)
   ) {
-    return 'JSON, XML, PLMXML, and 3DXML import as source data first.';
+    return 'JSON, XML, PLMXML, ReqIF, and 3DXML import as source data first.';
   }
   if (selectedWorkflow === 'instance.import' && ['ontology', 'xsd', 'xmi', 'express'].includes(mappingFileTypeContext)) {
     return 'Use Create ontology for OWL, RDF, TTL, XSD, XMI, MDXML, or EXPRESS files.';

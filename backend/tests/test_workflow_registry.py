@@ -12,6 +12,7 @@ def test_workflow_registry_has_unique_ids_and_labels():
     assert all(workflow["execution_surface"] in {"upload", "artifact"} for workflow in WORKFLOW_REGISTRY)
     upload_ids = {workflow["id"] for workflow in WORKFLOW_REGISTRY if workflow["execution_surface"] == "upload"}
     assert {"instance.import", "ontology.create", "document.unstructured", "architecture.archimate"}.issubset(upload_ids)
+    assert "ReqIF" in get_workflow_by_id("instance.import")["inputs"]
     assert all(workflow["execution_surface"] == "artifact" for workflow in WORKFLOW_REGISTRY if workflow["id"] not in upload_ids)
 
 

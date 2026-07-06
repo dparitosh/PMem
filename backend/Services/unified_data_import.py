@@ -164,6 +164,7 @@ class FileType(Enum):
     THREEDXML = '3dxml'
     ARCHIMATE = 'archimate'
     ONTOLOGY = 'ontology'
+    REQIF = 'reqif'
 
 
 class ImportStatus(Enum):
@@ -211,6 +212,8 @@ class FileFormatDetector:
         '.owl': FileType.ONTOLOGY,
         '.rdf': FileType.ONTOLOGY,
         '.ttl': FileType.ONTOLOGY,
+        '.reqif': FileType.REQIF,
+        '.reqifz': FileType.REQIF,
     }
     
     @classmethod
@@ -893,6 +896,8 @@ class FileParser:
                         metadata_exclusion_tags=parse_options.get('metadata_exclusion_tags'),
                     )
                 return FileParser._parse_xml(file_content)
+            elif file_type == FileType.REQIF:
+                return FileParser._parse_reqif(file_content)
             elif file_type == FileType.JSON:
                 return FileParser._parse_json(file_content)
             else:
@@ -901,6 +906,126 @@ class FileParser:
             logging.error(f"Error parsing {file_type.value}: {str(e)}")
             return [], {'error': str(e), 'file_type': file_type.value}
     
+    @staticmethod
+    def _parse_reqif(file_content: bytes) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """Parse ReqIF 1.2 XML into requirement, specification, and relation preview rows.
+
+        ReqIFZ archives are recognized at file-detection level, but archive extraction
+        belongs in the upload layer where the original filename/path is available.
+        This parser intentionally stays dependency-light for API preview and smoke use.
+        """
+        try:
+            import xml.etree.ElementTree as ET
+            from io import BytesIO
+            import zipfile
+
+            data = file_content or b''
+            if data[:2] == b'PK':
+                with zipfile.ZipFile(BytesIO(data)) as archive:
+                    members = [name for name in archive.namelist() if name.lower().endswith(('.reqif', '.xml'))]
+                    if not members:
+                        return [], {'error': 'REQIFZ archive does not contain a .reqif or .xml member', 'file_format': 'ReqIF'}
+                    data = archive.read(sorted(members)[0])
+
+            def local(tag: str) -> str:
+                raw = str(tag or '')
+                return raw.rsplit('}', 1)[-1] if '}' in raw else raw.split(':')[-1]
+
+            def attr(elem, name: str) -> str:
+                return str(elem.attrib.get(name, '') or '').strip()
+
+            def first_child_text(elem, child_name: str) -> str:
+                for child in list(elem):
+                    if local(child.tag) == child_name:
+                        return ''.join(child.itertext()).strip()
+                return ''
+
+            def first_ref(elem, container_name: str) -> str:
+                for child in elem.iter():
+                    if local(child.tag) == container_name:
+                        for ref in child.iter():
+                            if local(ref.tag).endswith('-REF') and ref.text:
+                                return ref.text.strip()
+                return ''
+
+            rows: List[Dict[str, Any]] = []
+            counts = {
+                'requirements': 0,
+                'specifications': 0,
+                'relations': 0,
+                'attribute_values': 0,
+                'attribute_definitions': 0,
+            }
+            root_name = ''
+            namespace_uri = ''
+            context = ET.iterparse(BytesIO(data), events=('start', 'end'))
+            for event, elem in context:
+                if event == 'start' and not root_name:
+                    root_name = local(elem.tag)
+                    raw_tag = str(elem.tag or '')
+                    namespace_uri = raw_tag[1:].split('}', 1)[0] if raw_tag.startswith('{') and '}' in raw_tag else ''
+                    continue
+                if event != 'end':
+                    continue
+                name = local(elem.tag)
+                if name.startswith('ATTRIBUTE-VALUE'):
+                    counts['attribute_values'] += 1
+                elif name.startswith('ATTRIBUTE-DEFINITION'):
+                    counts['attribute_definitions'] += 1
+                elif name == 'SPEC-OBJECT':
+                    counts['requirements'] += 1
+                    identifier = attr(elem, 'IDENTIFIER') or f"REQIF-{counts['requirements']}"
+                    rows.append({
+                        'id': identifier,
+                        'name': attr(elem, 'LONG-NAME') or identifier,
+                        'title': attr(elem, 'LONG-NAME') or identifier,
+                        'description': first_child_text(elem, 'DESC')[:1000],
+                        'entity_type': 'Requirement',
+                        'source_format': 'reqif',
+                        'semantic_role': 'requirement',
+                        'type_ref': first_ref(elem, 'TYPE'),
+                    })
+                elif name == 'SPECIFICATION':
+                    counts['specifications'] += 1
+                    identifier = attr(elem, 'IDENTIFIER') or f"SPEC-{counts['specifications']}"
+                    rows.append({
+                        'id': identifier,
+                        'name': attr(elem, 'LONG-NAME') or identifier,
+                        'title': attr(elem, 'LONG-NAME') or identifier,
+                        'description': first_child_text(elem, 'DESC')[:1000],
+                        'entity_type': 'Specification',
+                        'source_format': 'reqif',
+                        'semantic_role': 'requirement_specification',
+                        'type_ref': first_ref(elem, 'TYPE'),
+                    })
+                elif name == 'SPEC-RELATION':
+                    counts['relations'] += 1
+                    identifier = attr(elem, 'IDENTIFIER') or f"REL-{counts['relations']}"
+                    rows.append({
+                        'id': identifier,
+                        'name': attr(elem, 'LONG-NAME') or identifier,
+                        'title': attr(elem, 'LONG-NAME') or identifier,
+                        'entity_type': 'RequirementRelation',
+                        'source_format': 'reqif',
+                        'semantic_role': 'requirement_trace_relation',
+                        'source_ref': first_ref(elem, 'SOURCE'),
+                        'target_ref': first_ref(elem, 'TARGET'),
+                        'type_ref': first_ref(elem, 'TYPE'),
+                    })
+                elem.clear()
+
+            return rows, {
+                'format': 'ReqIF',
+                'file_format': 'ReqIF',
+                'target_reqif_version': '1.2',
+                'namespace_uri': namespace_uri,
+                'root_element': root_name,
+                'row_count': len(rows),
+                **counts,
+            }
+        except Exception as exc:
+            return [], {'error': str(exc), 'file_format': 'ReqIF'}
+
     @staticmethod
     def _parse_archimate(file_content: bytes) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Parse ArchiMate Model Exchange XML into architecture/process rows."""
@@ -2492,6 +2617,7 @@ class UnifiedDataImportService:
             FileType.EXPRESS,
             FileType.XMI,
             FileType.XSD,
+            FileType.REQIF,
         }
         # Normalize mapping and seed task-level ontology metadata so downstream
         # stages (preview/commit) and Neo4j writes can rely on a stable prefix/name.

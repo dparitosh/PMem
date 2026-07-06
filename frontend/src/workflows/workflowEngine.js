@@ -44,6 +44,8 @@ export const supportedFormats = [
   { ext: '.rdf', name: 'RDF' },
   { ext: '.ttl', name: 'Turtle' },
   { ext: '.plmxml', name: 'PLMXML' },
+  { ext: '.reqif', name: 'ReqIF' },
+  { ext: '.reqifz', name: 'ReqIFZ' },
   { ext: '.3dxml', name: '3DXML (3DEXPERIENCE)' },
   { ext: '.archimate', name: 'ArchiMate' },
   { ext: '.step', name: 'STEP' },
@@ -70,7 +72,7 @@ export const workflowCatalog = [
     title: 'Import instance graph',
     category: 'Import',
     description: 'Parse product, tabular, or exchange files into inspectable instance entities, attributes, relationships, and metadata.',
-    inputs: 'STEP, STPX, CSV, Excel, JSON, XML, PLMXML, 3DXML',
+    inputs: 'STEP, STPX, CSV, Excel, JSON, XML, PLMXML, ReqIF, 3DXML',
     outputs: ['Instance graph', 'Preview rows', 'Entity, attribute, relationship, and metadata counts'],
     status: 'available',
     execution: 'File upload',
@@ -287,6 +289,7 @@ export const inferFileTypeFromExtension = (fileName) => {
   if (['.xls', '.xlsx'].includes(ext)) return 'excel';
   if (['.json'].includes(ext)) return 'json';
   if (['.3dxml'].includes(ext)) return '3dxml';
+  if (['.reqif', '.reqifz'].includes(ext)) return 'reqif';
   if (['.archimate'].includes(ext)) return 'archimate';
   if (['.xml'].includes(ext)) return 'xml';
   if (['.owl', '.rdf', '.ttl'].includes(ext)) return 'ontology';

@@ -12,6 +12,7 @@ It provides:
 - optional `Owlready2` / `RDFLib` based ontology inspection and export
 - a DEPO API adapter for registered ontologies, OSLC discovery/query/TRS, graph/context search, workflow execution, ontology merge, and export retrieval
 - optional STEP/AP242 inspection and TTL export tools when the main backend modules are available
+- ReqIF inspection and Turtle export for requirements interchange
 - a small FastAPI service for separate deployment
 
 ## Folder Layout
@@ -47,8 +48,10 @@ The service exposes ontology-oriented agent workflows for:
 8. DEPO graph/context search
 9. DEPO OSLC catalog/provider/query/TRS discovery
 10. STEP/AP242 file inspection and TTL export
-11. DEPO ontology merge
-12. DEPO import-generated OWL export download
+11. ReqIF requirements inspection and RDF/Turtle export
+12. requirement normalization and AP242/MBSE/PLM alignment export
+13. DEPO ontology merge
+14. DEPO import-generated OWL export download
 
 ## What It Does Not Do
 
@@ -95,6 +98,17 @@ STEP/AP242 tools:
 - `inspect_step_file`
 - `export_step_to_ttl`
 
+ReqIF tools:
+
+- `inspect_reqif_file`
+- `export_reqif_to_ttl`
+
+Requirement normalization tools:
+
+- `normalize_requirement_records`
+- `requirement_alignment_profile`
+- `export_requirements_alignment_ttl`
+
 DEPO backend tools:
 
 - `depo_healthcheck`
@@ -126,6 +140,11 @@ Workflow IDs available through `POST /api/v1/workflows/run`:
 - `ontology_export`
 - `step_inspect`
 - `step_export`
+- `reqif_inspect`
+- `reqif_export`
+- `requirements_normalize`
+- `requirements_alignment_profile`
+- `requirements_alignment_export`
 - `depo_healthcheck`
 - `depo_registered_ontologies`
 - `depo_graph_search`
@@ -175,6 +194,87 @@ Export STEP/STPX to Turtle using the AP242-aware backend converter:
 ```
 
 Note: STEP files contain low-level geometry, topology, placement, and reference entities. Keep raw STEP entity-reference graphs separate from business-object contextual graphs so customer users see meaningful parts, requirements, functions, PMI, and process traceability first.
+
+## ReqIF Workflow Examples
+
+ReqIF support targets ReqIF 1.2 using the OMG machine-readable schema family: `ReqIF/20110402/driver.xsd`, `ReqIF/20110401/reqif.xsd`, and `ReqIF/20101201/reqif.cmof`. It parses the ReqIF XML structure to extract `SPEC-OBJECT`, `SPECIFICATION`, `SPEC-RELATION`, attribute definitions, and attribute values. Export maps requirements to a lightweight RDF model aligned with OSLC RM concepts so they can later be loaded into Neo4j, linked to AP242/PLMXML/SysML entities, and queried by GraphRAG.
+
+Inspect a ReqIF or ReqIFZ file:
+
+```json
+{
+  "workflow_id": "reqif_inspect",
+  "inputs": {
+    "reqif_path": "D:/path/to/requirements.reqif",
+    "sample_size": 50
+  }
+}
+```
+
+Export ReqIF requirements and relations to Turtle:
+
+```json
+{
+  "workflow_id": "reqif_export",
+  "inputs": {
+    "reqif_path": "D:/path/to/requirements.reqif",
+    "output_path": "D:/path/to/requirements.ttl",
+    "base_uri": "http://depo-onto.local/reqif/project-a/"
+  }
+}
+```
+
+Recommended full application enhancement after this standalone parser: add ReqIF as an Import workflow type, load exported RDF into Neo4j with requirement nodes and `SATISFIES`/`DERIVES`/`REFINES` relations, expose it through OSLC RM, and include it in change-impact GraphRAG queries.
+
+## Requirement Normalization And Cross-Domain Alignment
+
+Requirements from ReqIF, Word, Excel, HTML, or extracted document rows should be normalized before they are loaded into Neo4j or linked in Semantic Bridge. The canonical requirement model aligns as follows:
+
+- ReqIF: `SPEC-OBJECT`, `SPECIFICATION`, `SPEC-RELATION`, attribute definitions, and values.
+- OSLC RM: external linked-data representation as `oslc_rm:Requirement`.
+- MBSE/SysML: `Requirement`, `satisfy`, `derive/refine`, `verify`, and allocation to functions/blocks.
+- AP242: product, part, PMI, geometric constraint, and manufacturing context that requirements constrain.
+- PLM: part revisions, EBOM/MBOM/SBOM/BOP, process plans, changes, and verification artifacts.
+
+Normalize extracted requirement records:
+
+```json
+{
+  "workflow_id": "requirements_normalize",
+  "inputs": {
+    "source_name": "customer-requirements.xlsx",
+    "source_type": "excel",
+    "records": [
+      {
+        "Requirement ID": "REQ-006",
+        "Title": "Bearing life expectancy",
+        "Text": "Bearing shall meet 20000 hour life under rated load.",
+        "Part ID": "SKF_6306-2Z",
+        "Function": "Support rotor shaft",
+        "Process": "Bearing installation",
+        "Verifies": "TEST-006"
+      }
+    ]
+  }
+}
+```
+
+Export normalized requirements and cross-domain links to Turtle:
+
+```json
+{
+  "workflow_id": "requirements_alignment_export",
+  "inputs": {
+    "output_path": "D:/path/to/requirements-alignment.ttl",
+    "payload": {
+      "requirements": [],
+      "relationships": []
+    }
+  }
+}
+```
+
+This is the bridge that lets change-impact queries traverse requirement -> MBSE function/block -> AP242 part/PMI -> PLM BOM/process/change data.
 
 ## DEPO API Workflow Examples
 

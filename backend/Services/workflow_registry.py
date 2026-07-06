@@ -11,7 +11,7 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
         "label": "Import instance graph",
         "category": "Import",
         "execution_surface": "upload",
-        "inputs": "STEP, STPX, CSV, Excel, JSON, XML, PLMXML, 3DXML",
+        "inputs": "STEP, STPX, CSV, Excel, JSON, XML, PLMXML, ReqIF, 3DXML",
         "outputs": "Instance graph, preview rows, entity and relationship counts",
         "status": "existing_import_pipeline",
         "execution": "File upload",

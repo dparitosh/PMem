@@ -241,3 +241,81 @@ def test_step_workflow_requires_path() -> None:
         assert "step_path" in str(exc)
     else:
         assert False
+
+def test_reqif_inspect_workflow(monkeypatch) -> None:
+    engine = OntologyWorkflowEngine()
+    calls = {}
+
+    def fake_inspect(path_value, sample_size=20):
+        calls["path_value"] = path_value
+        calls["sample_size"] = sample_size
+        return {"counts": {"spec_objects": 2, "spec_relations": 1}, "status": "parsed"}
+
+    monkeypatch.setattr(engine_module, "inspect_reqif_file", fake_inspect)
+
+    result = engine.run_workflow("reqif_inspect", {"reqif_path": "D:/requirements.reqif", "sample_size": 5})
+
+    assert result["status"] == "completed"
+    assert calls == {"path_value": "D:/requirements.reqif", "sample_size": 5}
+    assert result["steps"][0]["output"]["counts"]["spec_objects"] == 2
+
+
+def test_reqif_export_workflow(monkeypatch) -> None:
+    engine = OntologyWorkflowEngine()
+    calls = {}
+
+    def fake_export(path_value, output_path=None, base_uri="", sample_size=10000):
+        calls["path_value"] = path_value
+        calls["output_path"] = output_path
+        calls["base_uri"] = base_uri
+        calls["sample_size"] = sample_size
+        return {"output_path": "D:/requirements.ttl", "status": "exported"}
+
+    monkeypatch.setattr(engine_module, "export_reqif_to_ttl", fake_export)
+
+    result = engine.run_workflow(
+        "reqif_export",
+        {"reqif_path": "D:/requirements.reqif", "output_path": "D:/requirements.ttl", "sample_size": 10},
+    )
+
+    assert result["status"] == "completed"
+    assert calls["path_value"] == "D:/requirements.reqif"
+    assert calls["output_path"] == "D:/requirements.ttl"
+    assert calls["sample_size"] == 10
+    assert result["steps"][0]["output"]["status"] == "exported"
+
+
+def test_reqif_workflow_requires_path() -> None:
+    engine = OntologyWorkflowEngine()
+    try:
+        engine.run_workflow("reqif_inspect", {})
+    except ValueError as exc:
+        assert "reqif_path" in str(exc)
+    else:
+        assert False
+
+def test_requirements_normalize_workflow() -> None:
+    engine = OntologyWorkflowEngine()
+    result = engine.run_workflow(
+        "requirements_normalize",
+        {
+            "source_name": "requirements.xlsx",
+            "source_type": "excel",
+            "records": [
+                {"Requirement ID": "REQ-010", "Text": "System shall support traceability.", "Part ID": "P-100"}
+            ],
+        },
+    )
+
+    assert result["status"] == "completed"
+    output = result["steps"][0]["output"]
+    assert output["requirements"][0]["id"] == "REQ-010"
+    assert output["relationships"][0]["type"] == "relatedPart"
+
+
+def test_requirements_alignment_profile_workflow() -> None:
+    engine = OntologyWorkflowEngine()
+    result = engine.run_workflow("requirements_alignment_profile", {})
+    assert result["status"] == "completed"
+    profile = result["steps"][0]["output"]
+    assert "oslc_rm:Requirement" in profile["canonical_requirement"]["same_as_or_subclass_of"]
