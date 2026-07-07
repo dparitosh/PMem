@@ -238,6 +238,25 @@ const ONTOLOGY_MAPPER_ENDPOINTS = {
   stats: process.env.REACT_APP_API_ONTOLOGY_MAPPER_STATS || '/ontology-mapper/{mapping_type}/stats',
 };
 
+
+/**
+ * Ontology Modeling Workbench Endpoints
+ */
+const MODELING_ENDPOINTS = {
+  metamodel: process.env.REACT_APP_API_MODELING_METAMODEL || '/api/v1/modeling/metamodel',
+  indexes: process.env.REACT_APP_API_MODELING_INDEXES || '/api/v1/modeling/indexes',
+  graph: process.env.REACT_APP_API_MODELING_GRAPH || '/api/v1/modeling/graph',
+  tree: process.env.REACT_APP_API_MODELING_TREE || '/api/v1/modeling/tree',
+  search: process.env.REACT_APP_API_MODELING_SEARCH || '/api/v1/modeling/search',
+  context: process.env.REACT_APP_API_MODELING_CONTEXT || '/api/v1/modeling/context/{element_id}',
+  nodes: process.env.REACT_APP_API_MODELING_NODES || '/api/v1/modeling/nodes',
+  node: process.env.REACT_APP_API_MODELING_NODE || '/api/v1/modeling/nodes/{element_id}',
+  links: process.env.REACT_APP_API_MODELING_LINKS || '/api/v1/modeling/links',
+  link: process.env.REACT_APP_API_MODELING_LINK || '/api/v1/modeling/links/{element_id}',
+  validation: process.env.REACT_APP_API_MODELING_VALIDATION || '/api/v1/modeling/validation',
+  seed: process.env.REACT_APP_API_MODELING_SEED || '/api/v1/modeling/seed',
+};
+
 /**
  * Integration/Webhook Endpoints
  */
@@ -296,6 +315,7 @@ export const API = {
   recommendations: RECOMMENDATION_ENDPOINTS,
   requirements: REQUIREMENTS_ENDPOINTS,
   ontologyMapper: ONTOLOGY_MAPPER_ENDPOINTS,
+  modeling: MODELING_ENDPOINTS,
   integration: INTEGRATION_ENDPOINTS,
   ui: UI_CONFIG,
 };

@@ -43,6 +43,11 @@ export default function AppShell({
 
       <header className="depo-topbar">
         <div className="depo-topbar__title">
+          <nav className="depo-breadcrumb" aria-label="Breadcrumb">
+            <button type="button" onClick={onHome}>Home</button>
+            <span aria-hidden="true">/</span>
+            <span>{pageLabel(activePage)}</span>
+          </nav>
           <h1>{pageLabel(activePage)}</h1>
         </div>
         <div className="depo-topbar__actions">

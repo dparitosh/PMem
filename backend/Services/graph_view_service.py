@@ -1237,32 +1237,98 @@ RETURN count(res) AS count
         graph["view"] = {"type": "overview", "scope": "business-instances"}
         return graph
 
+    @staticmethod
+    def _list_property(value: Any) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(item) for item in value if str(item or "").strip()]
+        text = str(value or "").strip()
+        if not text:
+            return []
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                import json
+                parsed = json.loads(text)
+                if isinstance(parsed, list):
+                    return [str(item) for item in parsed if str(item or "").strip()]
+            except Exception:
+                pass
+        return [part.strip() for part in re.split(r"[,;|]", text) if part.strip()]
+
+    @classmethod
+    def _architecture_representations(cls, graph: Dict[str, Any]) -> List[Dict[str, Any]]:
+        by_view: Dict[str, Dict[str, Any]] = {}
+        for node in graph.get("nodes") or []:
+            props = node.get("properties") or {}
+            for view_id in cls._list_property(props.get("archimate_view_ids") or props.get("view_ids") or props.get("primary_view_id")):
+                entry = by_view.setdefault(view_id, {
+                    "id": view_id,
+                    "name": str(props.get("primary_view_name") or view_id),
+                    "type": "ArchiMate View",
+                    "nodeIds": [],
+                    "relationshipIds": [],
+                })
+                if node.get("elementId") and node["elementId"] not in entry["nodeIds"]:
+                    entry["nodeIds"].append(node["elementId"])
+        for rel in graph.get("relationships") or []:
+            props = rel.get("properties") or {}
+            for view_id in cls._list_property(props.get("archimate_view_ids") or props.get("view_ids") or props.get("primary_view_id")):
+                entry = by_view.setdefault(view_id, {
+                    "id": view_id,
+                    "name": str(props.get("primary_view_name") or view_id),
+                    "type": "ArchiMate View",
+                    "nodeIds": [],
+                    "relationshipIds": [],
+                })
+                if rel.get("elementId") and rel["elementId"] not in entry["relationshipIds"]:
+                    entry["relationshipIds"].append(rel["elementId"])
+                for endpoint in (rel.get("start"), rel.get("end")):
+                    if endpoint and endpoint not in entry["nodeIds"]:
+                        entry["nodeIds"].append(endpoint)
+        return sorted(
+            by_view.values(),
+            key=lambda item: (-len(item.get("nodeIds") or []), str(item.get("name") or item.get("id") or "")),
+        )
     @classmethod
     def get_architecture_process_view(cls, prefix: str = "archimate", limit: int = 1000) -> Dict[str, Any]:
         """Return connected architecture/process model nodes for an imported ArchiMate graph."""
         prefix = str(prefix or "archimate").strip() or "archimate"
         rows = cls._run(
             """
-            MATCH (n)-[r]->(m)
-            WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR m:DatasheetChunk OR m:GraphChunk)
-              AND NOT any(label IN labels(n) WHERE label IN $schema_node_labels)
-              AND NOT any(label IN labels(m) WHERE label IN $schema_node_labels)
-              AND NOT any(label IN labels(n) WHERE label IN $relationship_node_labels)
-              AND NOT any(label IN labels(m) WHERE label IN $relationship_node_labels)
-              AND (
-                coalesce(n.ontology_prefix, n.prefix, n.source_format, '') = $prefix
-                OR coalesce(m.ontology_prefix, m.prefix, m.source_format, '') = $prefix
-              )
+            CALL () {
+              MATCH (n)-[r]->(m)
+              WITH n, r, m, properties(n) AS np, properties(m) AS mp
+              WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR m:DatasheetChunk OR m:GraphChunk)
+                AND NOT any(label IN labels(n) WHERE label IN $schema_node_labels)
+                AND NOT any(label IN labels(m) WHERE label IN $schema_node_labels)
+                AND NOT any(label IN labels(n) WHERE label IN $relationship_node_labels)
+                AND NOT any(label IN labels(m) WHERE label IN $relationship_node_labels)
+                AND coalesce(np['ontology_prefix'], np['prefix'], np['source_format'], '') = $prefix
+                AND coalesce(mp['ontology_prefix'], mp['prefix'], mp['source_format'], '') = $prefix
+              RETURN n, r, m, np, mp
+              ORDER BY
+                coalesce(np['model_name'], '') ASC,
+                coalesce(np['name'], np['label'], labels(n)[0], elementId(n)) ASC,
+                type(r) ASC,
+                coalesce(mp['name'], mp['label'], labels(m)[0], elementId(m)) ASC
+              LIMIT $limit
+              UNION
+              MATCH (n)
+              WITH n, properties(n) AS np
+              WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
+                AND NOT any(label IN labels(n) WHERE label IN $schema_node_labels)
+                AND NOT any(label IN labels(n) WHERE label IN $relationship_node_labels)
+                AND coalesce(np['ontology_prefix'], np['prefix'], np['source_format'], '') = $prefix
+                AND NOT (n)--()
+              RETURN n, null AS r, null AS m, np, {} AS mp
+              ORDER BY coalesce(np['name'], np['label'], labels(n)[0], elementId(n)) ASC
+              LIMIT $limit
+            }
             RETURN
               {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
-              {elementId: elementId(r), type: type(r), properties: properties(r), start: elementId(startNode(r)), end: elementId(endNode(r))} AS r,
-              {elementId: elementId(m), labels: labels(m), properties: properties(m)} AS m
-            ORDER BY
-              coalesce(n.model_name, '') ASC,
-              coalesce(n.name, n.label, labels(n)[0], elementId(n)) ASC,
-              type(r) ASC,
-              coalesce(m.name, m.label, labels(m)[0], elementId(m)) ASC
-            LIMIT $limit
+              CASE WHEN r IS NULL THEN null ELSE {elementId: elementId(r), type: type(r), properties: properties(r), start: elementId(startNode(r)), end: elementId(endNode(r))} END AS r,
+              CASE WHEN m IS NULL THEN null ELSE {elementId: elementId(m), labels: labels(m), properties: properties(m)} END AS m
             """,
             {
                 "prefix": prefix,
@@ -1272,7 +1338,8 @@ RETURN count(res) AS count
             },
         )
         graph = cls._filter_graph_nodes(cls.rows_to_graph(rows))
-        graph["view"] = {"type": "architecture-process", "prefix": prefix}
+        graph["representations"] = cls._architecture_representations(graph)
+        graph["view"] = {"type": "architecture-process", "prefix": prefix, "representation_count": len(graph["representations"])}
         return graph
 
     @classmethod

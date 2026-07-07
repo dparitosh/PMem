@@ -126,6 +126,8 @@ def _detect_xml_family(file_content: bytes) -> str:
     except Exception:
         pass
     head = (file_content or b'')[:8192].lower()
+    if b'<req-if' in head or b'reqif.xsd' in head or b'www.omg.org/spec/reqif' in head:
+        return 'reqif'
     if (
         b'3ds.com/xsd/3dxml' in head
         or b'vpmrepreference' in head
@@ -888,6 +890,8 @@ class FileParser:
                 xml_family = _detect_xml_family(file_content)
                 if xml_family == 'archimate':
                     return FileParser._parse_archimate(file_content)
+                if xml_family == 'reqif':
+                    return FileParser._parse_reqif(file_content)
                 if xml_family == '3dxml':
                     return FileParser._parse_threedxml(file_content)
                 if xml_family == 'plmxml':
@@ -910,9 +914,9 @@ class FileParser:
     def _parse_reqif(file_content: bytes) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Parse ReqIF 1.2 XML into requirement, specification, and relation preview rows.
 
-        ReqIFZ archives are recognized at file-detection level, but archive extraction
-        belongs in the upload layer where the original filename/path is available.
-        This parser intentionally stays dependency-light for API preview and smoke use.
+        ReqIF is XML, but it is not a generic XML instance graph. The parser keeps
+        child elements available until each ReqIF business object is processed so
+        refs, values, and type metadata are not lost during streaming.
         """
         try:
             import xml.etree.ElementTree as ET
@@ -934,11 +938,21 @@ class FileParser:
             def attr(elem, name: str) -> str:
                 return str(elem.attrib.get(name, '') or '').strip()
 
-            def first_child_text(elem, child_name: str) -> str:
+            def text_value(elem) -> str:
+                return ''.join(elem.itertext()).strip()
+
+            def direct_child(elem, child_name: str):
                 for child in list(elem):
                     if local(child.tag) == child_name:
-                        return ''.join(child.itertext()).strip()
-                return ''
+                        return child
+                return None
+
+            def child_text_or_attr(elem, child_name: str) -> str:
+                value = attr(elem, child_name)
+                if value:
+                    return value
+                child = direct_child(elem, child_name)
+                return text_value(child) if child is not None else ''
 
             def first_ref(elem, container_name: str) -> str:
                 for child in elem.iter():
@@ -948,6 +962,63 @@ class FileParser:
                                 return ref.text.strip()
                 return ''
 
+            def collect_attribute_values(elem) -> List[Dict[str, str]]:
+                values: List[Dict[str, str]] = []
+                values_container = direct_child(elem, 'VALUES')
+                if values_container is None:
+                    return values
+                for value_elem in list(values_container):
+                    value_type = local(value_elem.tag)
+                    if not value_type.startswith('ATTRIBUTE-VALUE'):
+                        continue
+                    definition = first_ref(value_elem, 'DEFINITION')
+                    value = attr(value_elem, 'THE-VALUE')
+                    if not value:
+                        the_value = direct_child(value_elem, 'THE-VALUE')
+                        value = text_value(the_value) if the_value is not None else ''
+                    if not value and value_type == 'ATTRIBUTE-VALUE-ENUMERATION':
+                        enum_refs = [text_value(ref) for ref in value_elem.iter() if local(ref.tag) == 'ENUM-VALUE-REF' and text_value(ref)]
+                        value = ', '.join(enum_refs)
+                    if not value:
+                        value = text_value(value_elem)
+                    values.append({
+                        'definition': definition,
+                        'value': value[:1000],
+                        'value_type': value_type,
+                    })
+                return values
+
+            def make_unique_id(identifier: str, fallback: str) -> tuple[str, str, bool]:
+                raw = identifier or fallback
+                seen = seen_ids.get(raw, 0) + 1
+                seen_ids[raw] = seen
+                if seen == 1:
+                    return raw, raw, False
+                return f"{raw}#{seen}", raw, True
+
+            def attribute_value(attributes: List[Dict[str, str]], *needles: str) -> str:
+                lowered = [needle.lower() for needle in needles if needle]
+                for item in attributes:
+                    definition = str(item.get('definition') or '').lower()
+                    value = str(item.get('value') or '').strip()
+                    if value and any(needle in definition for needle in lowered):
+                        return value
+                return ''
+
+            def semantic_title(elem, identifier: str, attributes: List[Dict[str, str]]) -> str:
+                return (
+                    attr(elem, 'LONG-NAME')
+                    or attribute_value(attributes, 'object_name', 'name')
+                    or identifier
+                )
+
+            def semantic_description(elem, attributes: List[Dict[str, str]]) -> str:
+                return (
+                    child_text_or_attr(elem, 'DESC')
+                    or attribute_value(attributes, 'xhtml', 'object_desc', 'description', 'text')
+                    or ''
+                )[:1000]
+
             rows: List[Dict[str, Any]] = []
             counts = {
                 'requirements': 0,
@@ -955,7 +1026,9 @@ class FileParser:
                 'relations': 0,
                 'attribute_values': 0,
                 'attribute_definitions': 0,
+                'duplicate_ids': 0,
             }
+            seen_ids: Dict[str, int] = {}
             root_name = ''
             namespace_uri = ''
             context = ET.iterparse(BytesIO(data), events=('start', 'end'))
@@ -967,6 +1040,7 @@ class FileParser:
                     continue
                 if event != 'end':
                     continue
+
                 name = local(elem.tag)
                 if name.startswith('ATTRIBUTE-VALUE'):
                     counts['attribute_values'] += 1
@@ -974,45 +1048,102 @@ class FileParser:
                     counts['attribute_definitions'] += 1
                 elif name == 'SPEC-OBJECT':
                     counts['requirements'] += 1
-                    identifier = attr(elem, 'IDENTIFIER') or f"REQIF-{counts['requirements']}"
+                    identifier, original_id, duplicate = make_unique_id(attr(elem, 'IDENTIFIER'), f"REQIF-{counts['requirements']}")
+                    if duplicate:
+                        counts['duplicate_ids'] += 1
+                    attributes = collect_attribute_values(elem)
+                    title = semantic_title(elem, identifier, attributes)
+                    description = semantic_description(elem, attributes)
                     rows.append({
+                        'row_type': 'requirement',
                         'id': identifier,
-                        'name': attr(elem, 'LONG-NAME') or identifier,
-                        'title': attr(elem, 'LONG-NAME') or identifier,
-                        'description': first_child_text(elem, 'DESC')[:1000],
+                        'original_id': original_id,
+                        'name': title,
+                        'title': title,
+                        'description': description,
+                        'text': description,
                         'entity_type': 'Requirement',
                         'source_format': 'reqif',
                         'semantic_role': 'requirement',
                         'type_ref': first_ref(elem, 'TYPE'),
+                        'attributes': attributes,
+                        'attribute_count': len(attributes),
+                        'last_change': attr(elem, 'LAST-CHANGE'),
                     })
+                    elem.clear()
                 elif name == 'SPECIFICATION':
                     counts['specifications'] += 1
-                    identifier = attr(elem, 'IDENTIFIER') or f"SPEC-{counts['specifications']}"
+                    identifier, original_id, duplicate = make_unique_id(attr(elem, 'IDENTIFIER'), f"SPEC-{counts['specifications']}")
+                    if duplicate:
+                        counts['duplicate_ids'] += 1
+                    attributes = collect_attribute_values(elem)
+                    object_refs = [text_value(ref) for ref in elem.iter() if local(ref.tag) == 'SPEC-OBJECT-REF' and text_value(ref)]
+                    title = semantic_title(elem, identifier, attributes)
+                    description = semantic_description(elem, attributes)
                     rows.append({
+                        'row_type': 'specification',
                         'id': identifier,
-                        'name': attr(elem, 'LONG-NAME') or identifier,
-                        'title': attr(elem, 'LONG-NAME') or identifier,
-                        'description': first_child_text(elem, 'DESC')[:1000],
+                        'original_id': original_id,
+                        'name': title,
+                        'title': title,
+                        'description': description,
                         'entity_type': 'Specification',
                         'source_format': 'reqif',
                         'semantic_role': 'requirement_specification',
                         'type_ref': first_ref(elem, 'TYPE'),
+                        'attributes': attributes,
+                        'attribute_count': len(attributes),
+                        'object_refs': object_refs,
+                        'object_ref_count': len(object_refs),
+                        'last_change': attr(elem, 'LAST-CHANGE'),
                     })
+                    elem.clear()
                 elif name == 'SPEC-RELATION':
                     counts['relations'] += 1
-                    identifier = attr(elem, 'IDENTIFIER') or f"REL-{counts['relations']}"
+                    identifier, original_id, duplicate = make_unique_id(attr(elem, 'IDENTIFIER'), f"REL-{counts['relations']}")
+                    if duplicate:
+                        counts['duplicate_ids'] += 1
+                    attributes = collect_attribute_values(elem)
+                    title = semantic_title(elem, identifier, attributes)
+                    description = semantic_description(elem, attributes)
                     rows.append({
+                        'row_type': 'relation',
                         'id': identifier,
-                        'name': attr(elem, 'LONG-NAME') or identifier,
-                        'title': attr(elem, 'LONG-NAME') or identifier,
+                        'original_id': original_id,
+                        'name': title,
+                        'title': title,
+                        'description': description,
                         'entity_type': 'RequirementRelation',
                         'source_format': 'reqif',
                         'semantic_role': 'requirement_trace_relation',
                         'source_ref': first_ref(elem, 'SOURCE'),
                         'target_ref': first_ref(elem, 'TARGET'),
                         'type_ref': first_ref(elem, 'TYPE'),
+                        'attributes': attributes,
+                        'attribute_count': len(attributes),
+                        'last_change': attr(elem, 'LAST-CHANGE'),
                     })
-                elem.clear()
+                    elem.clear()
+
+            requirement_original_ids = {
+                row.get('original_id')
+                for row in rows
+                if row.get('row_type') == 'requirement' and row.get('original_id')
+            }
+            unresolved_relation_refs = 0
+            unresolved_spec_object_refs = 0
+            for row in rows:
+                if row.get('row_type') == 'relation':
+                    for ref_key in ('source_ref', 'target_ref'):
+                        ref = row.get(ref_key)
+                        if ref and ref not in requirement_original_ids:
+                            unresolved_relation_refs += 1
+                    row['source_resolved'] = bool(row.get('source_ref') in requirement_original_ids)
+                    row['target_resolved'] = bool(row.get('target_ref') in requirement_original_ids)
+                elif row.get('row_type') == 'specification':
+                    unresolved = [ref for ref in row.get('object_refs') or [] if ref not in requirement_original_ids]
+                    row['unresolved_object_refs'] = unresolved
+                    unresolved_spec_object_refs += len(unresolved)
 
             return rows, {
                 'format': 'ReqIF',
@@ -1021,6 +1152,8 @@ class FileParser:
                 'namespace_uri': namespace_uri,
                 'root_element': root_name,
                 'row_count': len(rows),
+                'unresolved_relation_refs': unresolved_relation_refs,
+                'unresolved_spec_object_refs': unresolved_spec_object_refs,
                 **counts,
             }
         except Exception as exc:
@@ -2605,8 +2738,12 @@ class UnifiedDataImportService:
         file_type = FileFormatDetector.detect(filename)
         if not file_type:
             raise ValueError(f"Unsupported file type. Supported: {', '.join(FileFormatDetector.get_supported_formats())}")
-        if file_type == FileType.XML and _detect_xml_family(file_content) == 'archimate':
-            file_type = FileType.ARCHIMATE
+        if file_type == FileType.XML:
+            xml_family = _detect_xml_family(file_content)
+            if xml_family == 'archimate':
+                file_type = FileType.ARCHIMATE
+            elif xml_family == 'reqif':
+                file_type = FileType.REQIF
 
         # Create task
         task_id = str(uuid.uuid4())

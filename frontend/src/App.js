@@ -5,7 +5,7 @@ import ErrorBoundary from './Components/ErrorBoundary';
 import LandingPage from './Components/LandingPage';
 import { SchemaProvider } from './SchemaContext';
 import { OntologyProvider } from './contexts/OntologyContext';
-import { Suspense, lazy, useCallback, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import AppShell from './app/AppShell';
 import { normalizePage } from './app/navigation';
@@ -14,10 +14,21 @@ const Chatbot = lazy(() => import('./Components/Chatbot'));
 const ImportPage = lazy(() => import('./pages/ImportPage'));
 const OntologyStudioPage = lazy(() => import('./pages/OntologyStudioPage'));
 const GraphExplorerPage = lazy(() => import('./pages/GraphExplorerPage'));
+const ModelWorkbenchPage = lazy(() => import('./pages/ModelWorkbenchPage'));
 const QualityPage = lazy(() => import('./pages/QualityPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const WhereUsedPage = lazy(() => import('./pages/WhereUsedPage'));
+const RequirementsPage = lazy(() => import('./pages/RequirementsPage'));
+
+
+const NAV_STORAGE_KEY = 'depo.activePage';
+
+function getInitialActivePage() {
+  if (typeof window === 'undefined') return 'graph';
+  const stored = window.localStorage.getItem(NAV_STORAGE_KEY);
+  return normalizePage(stored || 'graph');
+}
 
 function PageFallback() {
   return (
@@ -36,13 +47,19 @@ function PageFallback() {
 }
 
 function App() {
-  const [page, setPage] = useState('home');
-  const [activePage, setActivePage] = useState('graph');
+  const initialActivePage = getInitialActivePage();
+  const [page, setPage] = useState(initialActivePage === 'home' ? 'home' : 'app');
+  const [activePage, setActivePage] = useState(initialActivePage === 'home' ? 'graph' : initialActivePage);
   const [data, setData] = useState();
   const [searchResults, setSearchResults] = useState(null);
   const [chatResults, setChatResults] = useState(null);
   const [showChat, setShowChat] = useState(false);
   const [visibleRelationships, setVisibleRelationships] = useState(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(NAV_STORAGE_KEY, page === 'home' ? 'home' : activePage);
+  }, [page, activePage]);
 
   const toggleChat = useCallback(() => {
     setShowChat((prev) => !prev);
@@ -53,10 +70,12 @@ function App() {
     const nextPage = normalizePage(target);
     if (nextPage === 'home') {
       setPage('home');
+      if (typeof window !== 'undefined') window.localStorage.setItem(NAV_STORAGE_KEY, 'home');
       return;
     }
     setPage('app');
     setActivePage(nextPage);
+    if (typeof window !== 'undefined') window.localStorage.setItem(NAV_STORAGE_KEY, nextPage);
     setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
   }, []);
 
@@ -95,6 +114,10 @@ function App() {
         return <AdminPage onSchemaCleaned={handleSchemaCleaned} />;
       case 'whereused':
         return <WhereUsedPage {...graphProps} data={data} />;
+      case 'requirements':
+        return <RequirementsPage onNavigate={handleNavigate} />;
+      case 'modeling':
+        return <ModelWorkbenchPage onNavigate={handleNavigate} />;
       case 'graph':
       default:
         return <GraphExplorerPage {...graphProps} />;

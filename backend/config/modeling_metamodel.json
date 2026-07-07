@@ -1,0 +1,92 @@
+{
+  "name": "Ontology Modeling Metamodel",
+  "version": "1.0",
+  "profiles": [
+    "OWL",
+    "UAF",
+    "SysML",
+    "ArchiMate",
+    "PLM"
+  ],
+  "element_types": [
+    "Capability",
+    "Document",
+    "Function",
+    "Interface",
+    "OperationalActivity",
+    "Package",
+    "Part",
+    "Performer",
+    "Product",
+    "Project",
+    "Requirement",
+    "Resource"
+  ],
+  "relationship_types": [
+    "ALLOCATED_TO",
+    "COMPOSED_OF",
+    "CONTAINS",
+    "DEPENDS_ON",
+    "IMPLEMENTS",
+    "INTERFACES_WITH",
+    "PERFORMS",
+    "REALIZES",
+    "REFERENCES",
+    "SATISFIES",
+    "TRACE_TO",
+    "VERIFIES"
+  ],
+  "required_properties": {
+    "Capability": [
+      "name"
+    ],
+    "OperationalActivity": [
+      "name"
+    ],
+    "Resource": [
+      "name"
+    ],
+    "Performer": [
+      "name"
+    ],
+    "Requirement": [
+      "name",
+      "text"
+    ],
+    "Function": [
+      "name"
+    ],
+    "Interface": [
+      "name"
+    ],
+    "Product": [
+      "name"
+    ],
+    "Part": [
+      "name"
+    ],
+    "Document": [
+      "name"
+    ],
+    "Package": [
+      "name"
+    ],
+    "Project": [
+      "name"
+    ]
+  },
+  "colors": {
+    "Capability": "#42c6ff",
+    "OperationalActivity": "#e9b949",
+    "Resource": "#8b5cf6",
+    "Performer": "#22c55e",
+    "Requirement": "#f97316",
+    "Function": "#14b8a6",
+    "Interface": "#f43f5e",
+    "Product": "#60a5fa",
+    "Part": "#a3e635",
+    "Document": "#cbd5e1",
+    "Package": "#94a3b8",
+    "Project": "#d8b4fe"
+  }
+}

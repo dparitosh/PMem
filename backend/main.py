@@ -1,3 +1,4 @@
+from typing import Any, Dict
 import os
 import sys
 import asyncio
@@ -1609,8 +1610,16 @@ async def get_architecture_process_view(prefix: str = "archimate", limit: int = 
 
     try:
         return GraphViewService.get_architecture_process_view(prefix=prefix, limit=limit)
-    except RuntimeError as exc:
-        raise _graph_service_unavailable(f"/api/v1/graph/view/architecture/{prefix}", exc)
+    except Exception as exc:
+        logger.warning("/api/v1/graph/view/architecture/%s unavailable: %s", prefix, exc)
+        return {
+            "status": "unavailable",
+            "message": str(exc),
+            "nodes": [],
+            "relationships": [],
+            "counts": {"nodes": 0, "relationships": 0},
+            "view": {"type": "architecture-process", "prefix": prefix},
+        }
 
 
 @app.get("/api/v1/graph/view/ontology/{prefix}")
@@ -1738,11 +1747,21 @@ async def get_normalized_requirements(
            ''
          ) AS semantic_role
     WITH n, node_labels, p, source_hint, requirement_id, title, requirement_text, semantic_role,
+         toLower(coalesce(toString(p['row_type']), '')) AS row_type,
+         toLower(coalesce(toString(p['type_ref']), '')) AS type_ref,
+         toLower(coalesce(toString(p['original_id']), '')) AS original_id,
          toLower(requirement_id + ' ' + title + ' ' + requirement_text + ' ' + semantic_role + ' ' + source_hint + ' ' + reduce(acc = '', lbl IN node_labels | acc + ' ' + lbl)) AS haystack
     WHERE
-      any(lbl IN node_labels WHERE lbl IN ['Requirement', 'RequirementRevision', 'RequirementRelation'])
-      OR haystack CONTAINS 'requirement'
-      OR source_hint IN ['reqif', 'plmxml', 'xmi', 'mdxml', 'sysml', 'mbse', 'oslc', 'alm', 'teamcenter', 'unstructured', 'document']
+      NOT any(lbl IN node_labels WHERE lbl IN ['OntologyClass', 'OntologyProperty', 'OntologyDatatypeProperty', 'OntologyObjectProperty', 'OntologyAnnotationProperty'])
+      AND NOT (toLower(requirement_id) =~ '^id[0-9]+$' AND NOT (haystack CONTAINS 'requirement' OR row_type IN ['requirement', 'requirementrelation', 'relation', 'specification']))
+      AND (
+        any(lbl IN node_labels WHERE lbl IN ['Requirement', 'RequirementRevision', 'RequirementRelation'])
+        OR semantic_role IN ['Requirement', 'RequirementRevision', 'RequirementRelation', 'requirement', 'requirementrevision', 'requirementrelation']
+        OR row_type IN ['requirement', 'requirementrelation', 'relation', 'specification']
+        OR type_ref CONTAINS 'requirement'
+        OR original_id STARTS WITH 'req-'
+        OR toLower(requirement_id) STARTS WITH 'req-'
+      )
     WITH n, node_labels, p, source_hint, requirement_id, title, requirement_text, semantic_role, haystack
     WHERE $search = '' OR haystack CONTAINS $search
     OPTIONAL MATCH (n)-[r]-(m)
@@ -1772,16 +1791,16 @@ async def get_normalized_requirements(
     except Exception as exc:
         raise _graph_service_unavailable("/api/v1/requirements", exc)
 
-    requirements = []
-    source_counts: dict[str, int] = {}
+    requirements_by_key: dict[str, dict] = {}
     for row in rows:
         source_bucket = _requirement_source_bucket(row.get("source_hint"), row.get("labels") or [])
         if source_norm not in {"", "all"} and source_bucket.lower() != source_norm:
             continue
+        requirement_id = row.get("requirement_id") or row.get("element_id")
         item = {
-            "id": row.get("requirement_id") or row.get("element_id"),
-            "requirement_id": row.get("requirement_id") or row.get("element_id"),
-            "title": row.get("title") or row.get("requirement_id") or row.get("element_id"),
+            "id": requirement_id,
+            "requirement_id": requirement_id,
+            "title": row.get("title") or requirement_id or row.get("element_id"),
             "text": row.get("requirement_text") or "",
             "source": source_bucket,
             "source_hint": row.get("source_hint") or "",
@@ -1794,10 +1813,36 @@ async def get_normalized_requirements(
             "labels": row.get("labels") or [],
             "element_id": row.get("element_id"),
             "relationship_count": int(row.get("relationship_count") or 0),
-            "context_links": row.get("context_links") or [],
+            "context_links": [link for link in (row.get("context_links") or []) if link.get("type") and link.get("other")],
         }
-        requirements.append(item)
-        source_counts[source_bucket] = source_counts.get(source_bucket, 0) + 1
+        dedupe_key = f"{source_bucket.lower()}::{str(requirement_id or item['title']).lower()}"
+        existing = requirements_by_key.get(dedupe_key)
+        if not existing:
+            requirements_by_key[dedupe_key] = item
+            continue
+
+        merged_labels = list(dict.fromkeys((existing.get("labels") or []) + (item.get("labels") or [])))
+        merged_links = list({
+            (str(link.get("type")), str(link.get("other"))): link
+            for link in ((existing.get("context_links") or []) + (item.get("context_links") or []))
+            if link.get("type") and link.get("other")
+        }.values())[:12]
+        prefer_item = (
+            "Requirement" in (item.get("labels") or [])
+            and "Requirement" not in (existing.get("labels") or [])
+        )
+        base = item if prefer_item else existing
+        base["labels"] = merged_labels
+        base["context_links"] = merged_links
+        base["relationship_count"] = max(int(existing.get("relationship_count") or 0), int(item.get("relationship_count") or 0), len(merged_links))
+        if not base.get("text"):
+            base["text"] = item.get("text") or existing.get("text") or ""
+        requirements_by_key[dedupe_key] = base
+
+    requirements = list(requirements_by_key.values())
+    source_counts: dict[str, int] = {}
+    for item in requirements:
+        source_counts[item["source"]] = source_counts.get(item["source"], 0) + 1
 
     return {
         "status": "success",
@@ -4926,6 +4971,87 @@ async def handle_neo4j_webhook(request: Request):
         logger.error(f"Webhook processing error: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(500, "Error processing webhook")
 
+
+
+# ======================== ONTOLOGY MODELING WORKBENCH ENDPOINTS ========================
+
+def _modeling_service():
+    try:
+        from backend.Services import modeling_service
+    except Exception:
+        from Services import modeling_service
+    return modeling_service
+
+
+@app.get("/api/v1/modeling/metamodel")
+async def modeling_metamodel():
+    return _modeling_service().metamodel()
+
+
+@app.post("/api/v1/modeling/indexes")
+async def modeling_indexes():
+    return _modeling_service().ensure_indexes()
+
+
+@app.get("/api/v1/modeling/graph")
+async def modeling_graph(project: str = "Digital Engineering Model", search: str = "", limit: int = Query(default=500, ge=1, le=2000)):
+    return _modeling_service().list_graph(project=project, search=search, limit=limit)
+
+
+@app.get("/api/v1/modeling/tree")
+async def modeling_tree(project: str = "Digital Engineering Model"):
+    return _modeling_service().tree(project=project)
+
+
+@app.get("/api/v1/modeling/search")
+async def modeling_search(q: str, project: str = "Digital Engineering Model", limit: int = Query(default=50, ge=1, le=200)):
+    return _modeling_service().search(query=q, project=project, limit=limit)
+
+
+@app.get("/api/v1/modeling/context/{element_id}")
+async def modeling_context(element_id: str, depth: int = Query(default=1, ge=1, le=2), limit: int = Query(default=300, ge=1, le=1000)):
+    return _modeling_service().context(element_id=element_id, depth=depth, limit=limit)
+
+
+@app.post("/api/v1/modeling/nodes")
+async def modeling_create_node(payload: Dict[str, Any]):
+    return _modeling_service().create_node(payload)
+
+
+@app.put("/api/v1/modeling/nodes/{element_id}")
+async def modeling_update_node(element_id: str, payload: Dict[str, Any]):
+    return _modeling_service().update_node(element_id, payload)
+
+
+@app.delete("/api/v1/modeling/nodes/{element_id}")
+async def modeling_delete_node(element_id: str):
+    return _modeling_service().delete_node(element_id)
+
+
+@app.post("/api/v1/modeling/links")
+async def modeling_create_link(payload: Dict[str, Any]):
+    return _modeling_service().create_link(payload)
+
+
+@app.put("/api/v1/modeling/links/{element_id}")
+async def modeling_update_link(element_id: str, payload: Dict[str, Any]):
+    return _modeling_service().update_link(element_id, payload)
+
+
+@app.delete("/api/v1/modeling/links/{element_id}")
+async def modeling_delete_link(element_id: str):
+    return _modeling_service().delete_link(element_id)
+
+
+@app.get("/api/v1/modeling/validation")
+async def modeling_validation(project: str = "Digital Engineering Model"):
+    return _modeling_service().validate(project=project)
+
+
+@app.post("/api/v1/modeling/seed")
+async def modeling_seed(payload: Dict[str, Any] | None = None):
+    payload = payload or {}
+    return _modeling_service().seed_sample(project=payload.get("project") or "Digital Engineering Model")
 
 if __name__ == "__main__":
     import uvicorn

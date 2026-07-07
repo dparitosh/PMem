@@ -20,6 +20,7 @@ from defusedxml import ElementTree as ET
 ARCHIMATE_PREFIX = "archimate"
 ARCHIMATE_NAMESPACE_HINTS = (
     "archimate",
+    "archimatetool.com/archimate",
     "opengroup.org/xsd/archimate",
     "opengroup.org//xsd/archimate",
     "archimate/3",
@@ -83,7 +84,7 @@ def _attr(element: Any, *names: str) -> str:
 
 def _collect_model_metadata(root: Any) -> Dict[str, str]:
     return {
-        "model_name": _first_child_text(root, "name"),
+        "model_name": _first_child_text(root, "name") or _attr(root, "name"),
         "model_documentation": _first_child_text(root, "documentation"),
         "model_identifier": _attr(root, "identifier", "id"),
     }
@@ -111,8 +112,8 @@ def _collect_properties(element: Any, property_definitions: Dict[str, Dict[str, 
     for prop in element.iter():
         if _local_name(prop.tag).lower() != "property":
             continue
-        prop_ref = _ref_id(_attr(prop, "propertyDefinitionRef", "propertyDefinition", "identifierRef", "ref"))
-        value = _first_child_text(prop, "value") or "".join(prop.itertext()).strip()
+        prop_ref = _ref_id(_attr(prop, "propertyDefinitionRef", "propertyDefinition", "identifierRef", "ref", "key"))
+        value = _first_child_text(prop, "value") or _attr(prop, "value") or "".join(prop.itertext()).strip()
         if not prop_ref or not value:
             continue
         definition = property_definitions.get(prop_ref) or {}
@@ -122,11 +123,29 @@ def _collect_properties(element: Any, property_definitions: Dict[str, Dict[str, 
     return properties
 
 
+def _is_archimate_relationship_type(value: str) -> bool:
+    type_name = str(value or "").split(":", 1)[-1].lower()
+    return type_name.endswith("relationship") or type_name in {
+        "access", "aggregation", "assignment", "association", "composition",
+        "flow", "influence", "realization", "serving", "specialization",
+        "triggering", "junction",
+    }
+
+
+def _is_archimate_view_type(value: str) -> bool:
+    type_name = str(value or "").split(":", 1)[-1].lower()
+    return type_name in {"archimatediagrammodel", "diagrammodel", "view"}
+
+
 def looks_like_archimate_xml(file_content: bytes) -> bool:
     head = (file_content or b"")[:16384].decode("utf-8", errors="ignore").lower()
     normalized_head = head.replace("opengroup.org//xsd", "opengroup.org/xsd")
     return any(hint in normalized_head for hint in ARCHIMATE_NAMESPACE_HINTS) and (
-        "<model" in head or "<elements" in head or "<relationships" in head
+        "<model" in head
+        or "<archimate:model" in head
+        or "<elements" in head
+        or "<relationships" in head
+        or "archimatetool.com/archimate" in head
     )
 
 
@@ -155,13 +174,38 @@ def parse_archimate_model_exchange(file_content: bytes) -> Tuple[List[Dict[str, 
     model_metadata = _collect_model_metadata(root)
     property_definitions = _collect_property_definitions(root)
 
+    raw_relationship_elements: List[Any] = []
     for element in root.iter():
-        if _local_name(element.tag).lower() != "element":
+        local_tag = _local_name(element.tag).lower()
+        if local_tag not in {"element", "relationship"}:
             continue
         archimate_id = _ref_id(_attr(element, "identifier", "id"))
         if not archimate_id:
             continue
-        element_type_raw = _attr(element, "xsi:type", "type") or "ArchimateElement"
+        element_type_raw = _attr(element, "xsi:type", "type") or ("Relationship" if local_tag == "relationship" else "ArchimateElement")
+
+        if local_tag == "relationship" or _is_archimate_relationship_type(element_type_raw):
+            raw_relationship_elements.append(element)
+            continue
+
+        if _is_archimate_view_type(element_type_raw):
+            views.append({
+                "id": archimate_id,
+                "name": _first_child_text(element, "name") or _attr(element, "name") or archimate_id,
+                "type": element_type_raw.split(":", 1)[-1],
+            })
+            for child in element.iter():
+                child_tag = _local_name(child.tag).lower()
+                if child_tag in {"child", "node"}:
+                    ref = _ref_id(_attr(child, "archimateElement", "elementRef", "element", "ref"))
+                    if ref:
+                        view_refs.append({"view_id": archimate_id, "kind": "element", "ref": ref})
+                if child_tag in {"sourceconnection", "connection"}:
+                    ref = _ref_id(_attr(child, "archimateRelationship", "relationshipRef", "relationship", "ref"))
+                    if ref:
+                        view_refs.append({"view_id": archimate_id, "kind": "relationship", "ref": ref})
+            continue
+
         element_type = _clean_label(element_type_raw)
         name = _first_child_text(element, "name") or _attr(element, "name") or archimate_id
         documentation = _first_child_text(element, "documentation")
@@ -179,16 +223,14 @@ def parse_archimate_model_exchange(file_content: bytes) -> Tuple[List[Dict[str, 
             "ontology_prefix": ARCHIMATE_PREFIX,
             "source_ontology": namespace or "ArchiMate Model Exchange",
             "model_identifier": model_metadata.get("model_identifier", ""),
-            "model_name": model_metadata.get("model_name", ""),
+            "model_name": model_metadata.get("model_name", "") or _attr(root, "name"),
             **_collect_properties(element, property_definitions),
         }
         rows.append(row)
         element_index[archimate_id] = row
         element_type_counts[element_type] += 1
 
-    for relationship in root.iter():
-        if _local_name(relationship.tag).lower() != "relationship":
-            continue
+    for relationship in raw_relationship_elements:
         rel_id = _ref_id(_attr(relationship, "identifier", "id"))
         source_id = _ref_id(_attr(relationship, "source"))
         target_id = _ref_id(_attr(relationship, "target"))
@@ -241,6 +283,37 @@ def parse_archimate_model_exchange(file_content: bytes) -> Tuple[List[Dict[str, 
                 if ref:
                     view_refs.append({"view_id": view_id, "kind": "relationship", "ref": ref})
 
+
+    view_lookup = {view.get("id"): view for view in views if view.get("id")}
+    element_views: Dict[str, List[str]] = {}
+    relationship_views: Dict[str, List[str]] = {}
+    for view_ref in view_refs:
+        ref = view_ref.get("ref")
+        view_id = view_ref.get("view_id")
+        if not ref or not view_id:
+            continue
+        if view_ref.get("kind") == "relationship":
+            relationship_views.setdefault(ref, []).append(view_id)
+        else:
+            element_views.setdefault(ref, []).append(view_id)
+
+    for row in rows:
+        view_ids = sorted(set(element_views.get(str(row.get("archimate_id") or row.get("id") or ""), [])))
+        if view_ids:
+            row["archimate_view_ids"] = view_ids
+            row["primary_view_id"] = view_ids[0]
+            row["primary_view_name"] = (view_lookup.get(view_ids[0]) or {}).get("name", "")
+            row["diagram_role"] = "view-element"
+
+    for rel in relationships:
+        props = rel.get("properties") or {}
+        rel_id = str(props.get("archimate_id") or props.get("id") or "")
+        view_ids = sorted(set(relationship_views.get(rel_id, [])))
+        if view_ids:
+            props["archimate_view_ids"] = view_ids
+            props["primary_view_id"] = view_ids[0]
+            props["primary_view_name"] = (view_lookup.get(view_ids[0]) or {}).get("name", "")
+            props["diagram_role"] = "view-relationship"
     stats = {
         "file_format": "ArchiMate",
         "source_format": ARCHIMATE_PREFIX,

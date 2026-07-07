@@ -370,6 +370,25 @@ export const requirementsAPI = {
   list: (params = {}) => apiClient.get(buildUrl(API.requirements.list), { params }),
 };
 
+
+// ========== MODELING WORKBENCH ENDPOINTS ==========
+export const modelingAPI = {
+  metamodel: () => apiClient.get(buildUrl(API.modeling.metamodel)),
+  ensureIndexes: () => apiClient.post(buildUrl(API.modeling.indexes)),
+  graph: (params = {}) => apiClient.get(buildUrl(API.modeling.graph), { params }),
+  tree: (params = {}) => apiClient.get(buildUrl(API.modeling.tree), { params }),
+  search: (params = {}) => apiClient.get(buildUrl(API.modeling.search), { params }),
+  context: (elementId, params = {}) => apiClient.get(buildUrl(replaceParams(API.modeling.context, { element_id: elementId })), { params }),
+  createNode: (payload) => apiClient.post(buildUrl(API.modeling.nodes), payload),
+  updateNode: (elementId, payload) => apiClient.put(buildUrl(replaceParams(API.modeling.node, { element_id: elementId })), payload),
+  deleteNode: (elementId) => apiClient.delete(buildUrl(replaceParams(API.modeling.node, { element_id: elementId }))),
+  createLink: (payload) => apiClient.post(buildUrl(API.modeling.links), payload),
+  updateLink: (elementId, payload) => apiClient.put(buildUrl(replaceParams(API.modeling.link, { element_id: elementId })), payload),
+  deleteLink: (elementId) => apiClient.delete(buildUrl(replaceParams(API.modeling.link, { element_id: elementId }))),
+  validation: (params = {}) => apiClient.get(buildUrl(API.modeling.validation), { params }),
+  seed: (payload = {}) => apiClient.post(buildUrl(API.modeling.seed), payload),
+};
+
 // ========== RECOMMENDATION ENDPOINTS ==========
 export const recommendationsAPI = {
   changeImpact: (changeName, scope = {}) =>
@@ -407,6 +426,7 @@ export const API_METHODS = {
   admin: adminAPI,
   recommendations: recommendationsAPI,
   requirements: requirementsAPI,
+  modeling: modelingAPI,
 };
 
 /**

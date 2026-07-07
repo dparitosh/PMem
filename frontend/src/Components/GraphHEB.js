@@ -583,7 +583,15 @@ const getNodeCollisionRadius = (node, showLabels) => {
 
 export const normalizeGraphDataset = (payload, options) => normalizeGraphDatasetShared(payload, options);
 
-const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTab, setVisibleRelationships, chatResults }) => {
+const GraphHEB = ({
+  setData = () => {},
+  setSearchResults = () => {},
+  showChat,
+  toggleChat,
+  setActiveTab = () => {},
+  setVisibleRelationships = () => {},
+  chatResults,
+}) => {
   const svgRef = useRef();
   const tooltipRef = useRef();
 
@@ -1023,6 +1031,7 @@ const GraphHEB = ({ setData, setSearchResults, showChat, toggleChat, setActiveTa
   const expandedNodesRef = useRef(new Set());
   const nodeExpansionsRef = useRef(new Map());
   const contextualSearchRequestIdRef = useRef(0);
+
   // ── Graph View Mode: 'ontology' = Ontology Graph Visualization, 'individual' = Contextual Individual Graph View
   const [graphViewMode, setGraphViewMode] = useState('ontology');
   const graphViewModeRef = useRef('ontology');
@@ -2280,7 +2289,6 @@ const getPrimaryNodeLabel = useCallback((d) => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commitGraphSlice]);
-
   // Ontology options are now loaded from centralized OntologyContext
   // This eliminates duplicate polling and API calls across components
 

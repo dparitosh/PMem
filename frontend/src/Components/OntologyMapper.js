@@ -116,102 +116,7 @@ function exportCSV(rows, headers, filename) {
   document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-function downloadJson(payload, filename) {
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function reqifLocalName(node) {
-  return String(node?.localName || node?.nodeName || '').split(':').pop();
-}
-
-function reqifAttr(node, name) {
-  return String(node?.getAttribute?.(name) || '').trim();
-}
-
-function reqifFirstRef(node, containerName) {
-  const containers = Array.from(node?.getElementsByTagName('*') || []).filter((child) => reqifLocalName(child) === containerName);
-  for (const container of containers) {
-    const ref = Array.from(container.getElementsByTagName('*')).find((child) => reqifLocalName(child).endsWith('-REF') && String(child.textContent || '').trim());
-    if (ref) return String(ref.textContent || '').trim();
-  }
-  return '';
-}
-
-function reqifAttributeValues(node) {
-  return Array.from(node?.getElementsByTagName('*') || [])
-    .filter((child) => reqifLocalName(child).startsWith('ATTRIBUTE-VALUE'))
-    .slice(0, 20)
-    .map((child) => ({
-      definition: reqifFirstRef(child, 'DEFINITION'),
-      value: reqifAttr(child, 'THE-VALUE') || String(child.textContent || '').trim().slice(0, 500),
-      type: reqifLocalName(child),
-    }))
-    .filter((item) => item.definition || item.value);
-}
-
-function parseReqifXml(xmlText, fileName = '') {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlText, 'application/xml');
-  const parserError = doc.getElementsByTagName('parsererror')[0];
-  if (parserError) {
-    throw new Error(String(parserError.textContent || 'Invalid ReqIF XML').slice(0, 300));
-  }
-
-  const all = Array.from(doc.getElementsByTagName('*'));
-  const byName = (name) => all.filter((node) => reqifLocalName(node) === name);
-  const startsWith = (prefix) => all.filter((node) => reqifLocalName(node).startsWith(prefix));
-  const requirements = byName('SPEC-OBJECT').map((node, index) => ({
-    id: reqifAttr(node, 'IDENTIFIER') || `REQIF-${index + 1}`,
-    title: reqifAttr(node, 'LONG-NAME') || reqifAttr(node, 'IDENTIFIER') || `Requirement ${index + 1}`,
-    description: String(Array.from(node.children || []).find((child) => reqifLocalName(child) === 'DESC')?.textContent || '').trim(),
-    typeRef: reqifFirstRef(node, 'TYPE'),
-    attributes: reqifAttributeValues(node),
-  }));
-  const relations = byName('SPEC-RELATION').map((node, index) => ({
-    id: reqifAttr(node, 'IDENTIFIER') || `REL-${index + 1}`,
-    title: reqifAttr(node, 'LONG-NAME') || reqifAttr(node, 'IDENTIFIER') || `Relation ${index + 1}`,
-    source: reqifFirstRef(node, 'SOURCE'),
-    target: reqifFirstRef(node, 'TARGET'),
-    typeRef: reqifFirstRef(node, 'TYPE'),
-  }));
-  const specifications = byName('SPECIFICATION').map((node, index) => ({
-    id: reqifAttr(node, 'IDENTIFIER') || `SPEC-${index + 1}`,
-    title: reqifAttr(node, 'LONG-NAME') || reqifAttr(node, 'IDENTIFIER') || `Specification ${index + 1}`,
-    typeRef: reqifFirstRef(node, 'TYPE'),
-  }));
-
-  return {
-    fileName,
-    targetReqifVersion: '1.2',
-    namespaceUri: doc.documentElement?.namespaceURI || '',
-    schemaProfile: 'OMG ReqIF 1.2 machine-readable schema family',
-    counts: {
-      requirements: requirements.length,
-      specifications: specifications.length,
-      relations: relations.length,
-      attributeValues: startsWith('ATTRIBUTE-VALUE').length,
-      attributeDefinitions: startsWith('ATTRIBUTE-DEFINITION').length,
-      requirementTypes: byName('SPEC-OBJECT-TYPE').length,
-      relationTypes: byName('SPEC-RELATION-TYPE').length,
-    },
-    requirements,
-    relations,
-    specifications,
-  };
-}
-
-function RequirementsWorkbench({ filter }) {
-  const [summary, setSummary] = useState(null);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+export function RequirementsWorkbench({ filter = "", onNavigate }) {
   const [graphRequirements, setGraphRequirements] = useState([]);
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphError, setGraphError] = useState('');
@@ -236,19 +141,6 @@ function RequirementsWorkbench({ filter }) {
     loadGraphRequirements();
   }, [loadGraphRequirements]);
 
-  const reqifFileRequirements = useMemo(() => (summary?.requirements || []).map((row) => ({
-    id: row.id,
-    title: row.title,
-    description: row.description,
-    typeRef: row.typeRef,
-    source: 'ReqIF file',
-    sourceFile: summary?.fileName || '',
-    status: '',
-    ontologyClass: 'Requirement',
-    relationshipCount: 0,
-    contextText: (row.attributes || []).map((a) => `${a.definition}: ${a.value}`).join(' | '),
-  })), [summary]);
-
   const graphRequirementRows = useMemo(() => (graphRequirements || []).map((row) => ({
     id: row.requirement_id || row.id || row.element_id,
     title: row.title || row.requirement_id || row.id,
@@ -263,42 +155,20 @@ function RequirementsWorkbench({ filter }) {
   })), [graphRequirements]);
 
   const visibleRequirements = useMemo(() => {
-    const rows = [...graphRequirementRows, ...reqifFileRequirements];
+    const rows = graphRequirementRows;
     if (!q) return rows;
     return rows.filter((row) => [row.id, row.title, row.description, row.typeRef, row.source, row.sourceFile, row.ontologyClass, row.contextText].some((value) => String(value || '').toLowerCase().includes(q)));
-  }, [graphRequirementRows, reqifFileRequirements, q]);
+  }, [graphRequirementRows, q]);
 
-  const visibleRelations = useMemo(() => {
-    const rows = summary?.relations || [];
-    if (!q) return rows;
-    return rows.filter((row) => [row.id, row.title, row.source, row.target, row.typeRef].some((value) => String(value || '').toLowerCase().includes(q)));
-  }, [summary, q]);
-
-  const handleFile = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setBusy(true);
-    setError('');
-    setSummary(null);
-    try {
-      if (file.name.toLowerCase().endsWith('.reqifz')) {
-        throw new Error('REQIFZ is a zipped package. Use backend/standalone ReqIF service for REQIFZ, or upload the extracted .reqif file here.');
-      }
-      const fileText = await file.text();
-      setSummary(parseReqifXml(fileText, file.name));
-    } catch (err) {
-      setError(err?.message || 'Unable to parse ReqIF file.');
-    } finally {
-      setBusy(false);
-      event.target.value = '';
-    }
+  const openImport = () => {
+    if (typeof onNavigate === 'function') onNavigate('import');
   };
 
   const exportRows = () => {
     exportCSV(
       visibleRequirements.map((row) => ({
         ID: row.id,
-        Source: row.source || 'ReqIF file',
+        Source: row.source || 'Graph',
         Title: row.title,
         Description: row.description,
         Type: row.typeRef || row.ontologyClass || '',
@@ -321,32 +191,27 @@ function RequirementsWorkbench({ filter }) {
             {['all', 'ReqIF', 'PLMXML', 'MBSE', 'OSLC', 'ALM', 'Unstructured', 'Graph'].map((source) => <option key={source} value={source}>{source === 'all' ? 'All graph sources' : source}</option>)}
           </select>
           <button type="button" onClick={loadGraphRequirements} disabled={graphLoading} style={{ padding: '7px 12px', borderRadius: '6px', border: `1px solid ${C.borderDark}`, background: C.surface, color: C.primaryDark, fontSize: '12px', fontWeight: 800, cursor: graphLoading ? 'wait' : 'pointer' }}>{graphLoading ? 'Loading graph' : 'Refresh graph'}</button>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '6px', border: `1px solid ${C.primary}`, background: C.primary, color: '#fff', fontSize: '12px', fontWeight: 800, cursor: busy ? 'wait' : 'pointer' }}>
-            <Upload size={13} /> {busy ? 'Reading' : 'Open ReqIF'}
-            <input type="file" accept=".reqif,.xml,.reqifz" onChange={handleFile} style={{ display: 'none' }} disabled={busy} />
-          </label>
+          <button type="button" onClick={openImport} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '6px', border: `1px solid ${C.primary}`, background: C.primary, color: '#fff', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+            <Upload size={13} /> Open Import
+          </button>
           <button type="button" onClick={exportRows} disabled={visibleRequirements.length === 0} style={{ padding: '7px 12px', borderRadius: '6px', border: `1px solid ${C.borderDark}`, background: visibleRequirements.length ? C.surface : C.bg, color: visibleRequirements.length ? C.primaryDark : C.textMuted, fontSize: '12px', fontWeight: 800, cursor: visibleRequirements.length ? 'pointer' : 'not-allowed' }}><Download size={13} /> CSV</button>
-          <button type="button" onClick={() => downloadJson(summary, 'reqif_summary.json')} disabled={!summary} style={{ padding: '7px 12px', borderRadius: '6px', border: `1px solid ${C.borderDark}`, background: summary ? C.surface : C.bg, color: summary ? C.primaryDark : C.textMuted, fontSize: '12px', fontWeight: 800, cursor: summary ? 'pointer' : 'not-allowed' }}>JSON</button>
         </div>
       </div>
 
-      {error && <div style={{ marginBottom: '12px', padding: '9px 12px', borderRadius: '6px', border: `1px solid ${C.red}`, background: '#FFF5F5', color: C.red, fontSize: '12px', fontWeight: 700 }}>{error}</div>}
       {graphError && <div style={{ marginBottom: '12px', padding: '9px 12px', borderRadius: '6px', border: `1px solid #F7C948`, background: '#FFF8E1', color: '#7A4E00', fontSize: '12px', fontWeight: 700 }}>{graphError}</div>}
 
       <div style={{ display: 'grid', gap: '12px' }}>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {[
               ['Graph requirements', graphRequirementRows.length],
-              ['ReqIF file requirements', reqifFileRequirements.length],
               ['Visible', visibleRequirements.length],
-              ['ReqIF relations', summary?.counts?.relations || 0],
-              ['ReqIF', summary?.targetReqifVersion || '1.2'],
+              ['Source', 'Import pipeline'],
             ].map(([label, value]) => (
               <div key={label} style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.bg, fontSize: '11px', fontWeight: 800, color: C.textPrimary }}>{label}: {value}</div>
             ))}
           </div>
           <div style={{ padding: '8px 10px', borderRadius: '6px', background: '#EEF7FF', border: `1px solid ${C.border}`, fontSize: '11px', color: C.textPrimary }}>
-            Sources: Neo4j context graph plus optional ReqIF file. {summary ? `File ${summary.fileName || 'n/a'} · Namespace ${summary.namespaceUri || 'none'} · Profile ${summary.schemaProfile}` : 'Open a ReqIF file to add local file requirements to this view.'}
+            Source: Neo4j graph loaded through the Import pipeline. Use Import for ReqIF/PLMXML/MBSE/OSLC/ALM/unstructured ingestion, then review normalized requirements here.
           </div>
           <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'auto', maxHeight: '360px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '860px' }}>
@@ -374,29 +239,6 @@ function RequirementsWorkbench({ filter }) {
                     </td>
                     <td style={TD({ fontFamily: 'monospace', fontSize: '11px', color: C.textSec })}>{row.ontologyClass || row.typeRef || 'n/a'}</td>
                     <td style={TD({ textAlign: 'center', fontWeight: 800 })}>{row.relationshipCount || 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'auto', maxHeight: '220px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '760px' }}>
-              <thead>
-                <tr>
-                  <th style={TH({ width: '150px' })}>Relation ID</th>
-                  <th style={TH({ minWidth: '180px' })}>Source</th>
-                  <th style={TH({ minWidth: '180px' })}>Target</th>
-                  <th style={TH({ minWidth: '180px' })}>Type</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRelations.length === 0 && <tr><td colSpan={4} style={TD({ textAlign: 'center', padding: '20px', color: C.textMuted })}>No relations found.</td></tr>}
-                {visibleRelations.map((row, idx) => (
-                  <tr key={`${row.id}-${idx}`} style={{ background: idx % 2 === 0 ? C.surface : C.bg }}>
-                    <td style={TD({ fontFamily: 'monospace', fontWeight: 800, color: C.primary })}>{row.id}</td>
-                    <td style={TD({ fontFamily: 'monospace' })}>{row.source || 'n/a'}</td>
-                    <td style={TD({ fontFamily: 'monospace' })}>{row.target || 'n/a'}</td>
-                    <td style={TD({ fontFamily: 'monospace', fontSize: '11px', color: C.textSec })}>{row.typeRef || row.title || 'n/a'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -2770,7 +2612,6 @@ export default function OntologyMapper() {
     { id: 'dictionary', label: 'Data Dictionary' },
     { id: 'taxonomy', label: 'Taxonomy / OWL' },
     { id: 'inference', label: 'Inference Workbench' },
-    { id: 'reqif', label: 'Requirements' },
     { id: 'vocabulary', label: 'Mapping Vocabulary' },
     { id: 'alignment', label: 'Semantic Bridge' },
   ];
@@ -2895,7 +2736,7 @@ export default function OntologyMapper() {
               />
               <input
                 type="text" value={filter}
-                placeholder={activeView === 'taxonomy' ? 'Find taxonomy term' : activeView === 'inference' ? 'Filter inferred statements' : activeView === 'reqif' ? 'Filter requirements' : activeView === 'vocabulary' ? 'Filter mappings' : 'Filter terms'}
+                placeholder={activeView === 'taxonomy' ? 'Find taxonomy term' : activeView === 'inference' ? 'Filter inferred statements' : activeView === 'vocabulary' ? 'Filter mappings' : 'Filter terms'}
                 onChange={e => setFilter(e.target.value)}
                 style={{ border: 'none', outline: 'none', fontSize: '13px', lineHeight: '1.4', flex: 1, background: 'transparent', color: C.textPrimary, minHeight: '20px' }}
               />
@@ -2963,9 +2804,6 @@ export default function OntologyMapper() {
           )}
           {activeView === 'vocabulary' && (
             <VocabularyTable edges={vocabEdges} filter={filter} />
-          )}
-          {activeView === 'reqif' && (
-            <RequirementsWorkbench filter={filter} />
           )}
           {activeView === 'inference' && (
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '14px', minHeight: '360px' }}>
