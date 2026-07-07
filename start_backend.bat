@@ -49,7 +49,7 @@ echo.
 
 if not exist "backend\.dt_venv\Scripts\python.exe" (
     echo [ERROR] Virtual environment Python not found at backend\.dt_venv
-    echo [INFO] Run: cd backend ^&^& .\setup.bat
+    echo [INFO] Run: .\setup.bat --backend
     exit /b 1
 )
 

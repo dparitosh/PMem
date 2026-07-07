@@ -32,7 +32,13 @@ class OSLCTRSService:
 
     @classmethod
     def base_url(cls) -> str:
-        return str(os.getenv('OSLC_BASE_URL', 'http://localhost:8000')).strip().rstrip('/') or 'http://localhost:8000'
+        configured = str(os.getenv('OSLC_BASE_URL', '')).strip().rstrip('/')
+        if configured:
+            return configured
+        host = str(os.getenv('APP_HOST', '')).strip() or 'localhost'
+        port = str(os.getenv('APP_PORT', os.getenv('BACKEND_PORT', '8000'))).strip() or '8000'
+        scheme = str(os.getenv('APP_SCHEME', 'http')).strip() or 'http'
+        return f'{scheme}://{host}:{port}'
 
     @classmethod
     def _storage_path(cls) -> Path:

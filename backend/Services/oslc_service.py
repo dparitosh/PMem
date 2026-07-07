@@ -38,6 +38,13 @@ def _safe_path_token(value: str, default: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", token)
 
 
+def _default_base_url() -> str:
+    host = str(os.getenv("APP_HOST", "")).strip() or "localhost"
+    port = str(os.getenv("APP_PORT", os.getenv("BACKEND_PORT", "8000"))).strip() or "8000"
+    scheme = str(os.getenv("APP_SCHEME", "http")).strip() or "http"
+    return f"{scheme}://{host}:{port}"
+
+
 class OSLCService:
     """Read-only OSLC facade over the current semantic graph."""
 
@@ -58,7 +65,7 @@ class OSLCService:
         provider_title = str(os.getenv("OSLC_PROVIDER_TITLE", "DEPO Semantic Platform")).strip() or "DEPO Semantic Platform"
         base_url = str(os.getenv("OSLC_BASE_URL", "")).strip().rstrip("/")
         if not base_url:
-            base_url = "http://localhost:8000"
+            base_url = _default_base_url()
         max_page_size = int(str(os.getenv("OSLC_MAX_PAGE_SIZE", "200")).strip() or "200")
         return OSLCRuntimeConfig(
             base_url=base_url,

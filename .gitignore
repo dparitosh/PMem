@@ -80,3 +80,10 @@ dist/
 .cache/
 .npm/
 *.cache
+
+# Reference/vendor clones not packaged with DEPO runtime
+external/
+
+# Local audit/runtime artifacts
+audit-shots/
+_restore_ingest/

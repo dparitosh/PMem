@@ -1,8 +1,6 @@
 r"""
 Data Import Pipeline Service - Enhanced Integration with import_master Parsers
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-INTEGRATED FROM: C:\Users\895428\Depo\import_master\src\
-
 This service now uses production-ready parsers for:
   ✓ PLMXML (via plmxml_parser_v2.py)
   ✓ STEP/PART21 (via step_parser.py) - with full instance extraction

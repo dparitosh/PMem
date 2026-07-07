@@ -642,15 +642,16 @@ if __name__ == "__main__":
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    # Example: Extract SPLM schema
-    SPLM_PATH = r"C:\Users\895428\Depo\SPLM_Folder\Schema - Shared"
-    OUTPUT_PATH = r"c:\Users\895428\DEPO_RR\Depo_onto\outputs\3dexperience_ontology.json"
+    source_path = os.getenv("SPLM_SCHEMA_BASE")
+    if not source_path:
+        raise SystemExit("Set SPLM_SCHEMA_BASE to the SPLM schema folder before running this diagnostic.")
+    output_path = os.getenv("ONTOLOGY_EXTRACT_OUTPUT", str(Path.cwd() / "outputs" / "3dexperience_ontology.json"))
     
     try:
         result = asyncio.run(extract_ontology(
-            SPLM_PATH,
+            source_path,
             OntologyFormat.SPLM_SCHEMA,
-            OUTPUT_PATH
+            output_path
         ))
         
         print(f"\nExtraction Summary:")
@@ -659,6 +660,6 @@ if __name__ == "__main__":
         print(f"  Relationships: {result['metadata']['stats']['relationships']}")
         print(f"  Attributes: {result['metadata']['stats']['unique_attributes']}")
         print(f"  Entity Types: {result['metadata']['stats']['entity_types']}")
-        print(f"  Output: {OUTPUT_PATH}")
+        print(f"  Output: {output_path}")
     except Exception as e:
         logger.error(f"Extraction failed: {e}", exc_info=True)

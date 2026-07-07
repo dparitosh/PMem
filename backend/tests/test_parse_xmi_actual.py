@@ -1,13 +1,18 @@
+import os
+from pathlib import Path
+
+import pytest
+
 from backend.Services.unified_data_import import FileParser, FileType
 
-if __name__ == "__main__":
-    # Use an actual XMI/MDXML file for proof
-    file_path = r"C:\Users\895428\Depo\SPLM_Folder\XMI\SugarPlantMBSE.xmi"
-    with open(file_path, "rb") as f:
-        file_content = f.read()
-    rows, stats = FileParser.parse(file_content, FileType.XMI)
-    print("Parsed Rows:")
-    for row in rows:
-        print(row)
-    print("\nStats:")
-    print(stats)
+
+def test_parse_actual_xmi_when_fixture_is_configured():
+    fixture = os.getenv("ACTUAL_XMI_FIXTURE")
+    if not fixture:
+        pytest.skip("Set ACTUAL_XMI_FIXTURE to run this customer-file parser smoke test.")
+    file_path = Path(fixture)
+    if not file_path.exists():
+        pytest.skip(f"Configured ACTUAL_XMI_FIXTURE does not exist: {file_path}")
+    rows, stats = FileParser.parse(file_path.read_bytes(), FileType.XMI)
+    assert isinstance(rows, list)
+    assert isinstance(stats, dict)

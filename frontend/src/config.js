@@ -255,6 +255,9 @@ const MODELING_ENDPOINTS = {
   link: process.env.REACT_APP_API_MODELING_LINK || '/api/v1/modeling/links/{element_id}',
   validation: process.env.REACT_APP_API_MODELING_VALIDATION || '/api/v1/modeling/validation',
   seed: process.env.REACT_APP_API_MODELING_SEED || '/api/v1/modeling/seed',
+  agentProposals: process.env.REACT_APP_API_MODELING_AGENT_PROPOSALS || '/api/v1/modeling/agent/proposals',
+  agentProposalApprove: process.env.REACT_APP_API_MODELING_AGENT_PROPOSAL_APPROVE || '/api/v1/modeling/agent/proposals/{proposal_id}/approve',
+  agentProposalReject: process.env.REACT_APP_API_MODELING_AGENT_PROPOSAL_REJECT || '/api/v1/modeling/agent/proposals/{proposal_id}/reject',
 };
 
 /**

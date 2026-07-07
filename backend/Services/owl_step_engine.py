@@ -590,8 +590,6 @@ def _integrate_domain_models(base_uri: str, prefix: str, schema: Optional[str]) 
         configured_domain_path.parent if configured_domain_path.name.lower() in {"bom.xsd", "bom.exp", "domainmodel.xsd", "domainmodel.exp"} else None,
         repo_root,
         repo_root / "data",
-        repo_root / "Depo_onto",
-        repo_root / "Depo_onto" / "data",
     ]:
         if candidate_root is None:
             continue
@@ -608,7 +606,6 @@ def _integrate_domain_models(base_uri: str, prefix: str, schema: Optional[str]) 
             root / "DomainModel.xsd",
             root / "data" / "business_object_models" / "managed_model_based_3d_engineering" / "bom.xsd",
             root / "business_object_models" / "managed_model_based_3d_engineering" / "bom.xsd",
-            root / "Depo_onto" / "data" / "business_object_models" / "managed_model_based_3d_engineering" / "bom.xsd",
             root / "managed_model_based_3d_engineering_domain" / "Domain_model" / "DomainModel.xsd",
             root / "managed_model_based_3d_engineering_domain" / "Domain_model" / "bom.xsd",
         ])
@@ -617,7 +614,6 @@ def _integrate_domain_models(base_uri: str, prefix: str, schema: Optional[str]) 
             root / "DomainModel.exp",
             root / "data" / "business_object_models" / "managed_model_based_3d_engineering" / "bom.exp",
             root / "business_object_models" / "managed_model_based_3d_engineering" / "bom.exp",
-            root / "Depo_onto" / "data" / "business_object_models" / "managed_model_based_3d_engineering" / "bom.exp",
             root / "managed_model_based_3d_engineering_domain" / "Domain_model" / "DomainModel.exp",
             root / "managed_model_based_3d_engineering_domain" / "Domain_model" / "bom.exp",
         ])

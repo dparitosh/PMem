@@ -1,6 +1,6 @@
-# Sirius Web Integration
+# Sirius Web Reference Notes
 
-DEPO treats modeling as an integration with the actual Eclipse Sirius Web application, not as a custom Graph Explorer page.
+These notes are reference-only. The active DEPO Modeling page uses the internal React Flow based modeling framework. The `external/sirius-web` clone is not required for the DEPO runtime and should not be packaged for customer release unless a separate Sirius Web deployment is explicitly requested.
 
 ## Local Source Folder
 
@@ -100,7 +100,7 @@ If customer policy blocks direct internet dependency download, mirror these depe
 - npm packages from GitHub Packages and npm registry
 - Java, Maven, Node, npm installers
 
-## Configure DEPO Frontend
+## Optional Separate Sirius Deployment
 
 The DEPO Modeling page reads:
 

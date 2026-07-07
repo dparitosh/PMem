@@ -74,15 +74,15 @@ These files are not in `backend/Services` and should be classified as API entry,
 | `backend/tests/*.py` | Tests and DB diagnostics | Keep under tests, but destructive scripts such as `clean_neo4j_schema.py` and `delete_electronicassembly_componentinstance.py` should remain wrappers around FastAPI/admin tools or clearly marked test-only. |
 | `backend/Services/tests/*.py` | Service tests | Move to `backend/tests/services/` eventually for a single test tree. |
 | `backend/tools/test_db_config_import.py`, `backend/tools/test_driver_connect.py` | Local diagnostics | Keep as tools if useful, but not part of app service. |
-| `backend/test_ontology_pipeline.py` | Root-level test | Move under `backend/tests/` to avoid mixing tests with app entry files. |
+| `backend/test_ontology_pipeline.py` | Removed root-level test | Removed from active API tree. |
 | `backend/test_data/*` and `backend/tests/cat_test_results/*` | Test artifacts | Keep out of service packaging unless needed for fixtures. |
 
 ### Candidate Cleanup / Archive
 
 | File | Why it is not an API service | Recommendation |
 | --- | --- | --- |
-| `backend/analyze_splm_structure.py` | Standalone analysis script, not imported by routes | Move to `backend/tools/` or archive after verifying no active workflow depends on it. |
-| `backend/debug_excel.py`, `backend/debug_excel2.py` | Debug scripts | Move to `backend/tools/diagnostics/` or delete after confirming no needed logic. |
+| `backend/analyze_splm_structure.py` | Removed standalone analysis script | Removed from active API tree. |
+| `backend/debug_excel.py`, `backend/debug_excel2.py` | Removed debug scripts | Removed from active API tree. |
 | `backend/package-lock.json` | Node lockfile in Python backend | Remove if no backend Node project exists. |
 | `backend/spinner_datatype.csv` | Data asset | Keep only if an active route/parser reads it; otherwise move to `backend/Data/` with a clear owner. |
 | `backend/SPLM_CODE_REVIEW.md`, `backend/SPLM_EXTRACTION_FIXED_SUMMARY.md`, Neo4j docs | Documentation | Move to top-level `docs/` for consistency. |

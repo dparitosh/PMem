@@ -10,8 +10,10 @@ This audit separates API entrypoints from standalone scripts and diagnostics. It
 - top-level `scripts/*.py` are standalone conversion, loading, migration, or cleanup utilities. They are not API endpoints.
 - `backend/scripts/*.py` are supported backend fallback CLI tools.
 - `tools/diagnostics/*.py` are supported diagnostics.
-- `tools/legacy_root_scripts/*.py` are legacy/debug scripts and should not be presented as customer-facing APIs.
-- `backend/debug_excel*.py`, `backend/analyze_splm_structure.py`, and `backend/test_ontology_pipeline.py` are local diagnostics/test utilities, not API modules.
+- `tools/import/*.py` are supported import support utilities.
+- `tools/tests/*.py` are developer/test helpers, not APIs.
+- `tools/legacy_root_scripts/` has been removed from the active tree; historical debug scripts should stay out of customer releases.
+- Removed root-level backend diagnostics/tests (`debug_excel*.py`, `analyze_splm_structure.py`, `test_ontology_pipeline.py`) from the active API tree.
 
 ## API Entrypoints
 
@@ -56,19 +58,20 @@ These are standalone scripts. They are not APIs and are not imported as active F
 | `main.py` | Import shim | Keep | Compatibility import for tests/tools. |
 | `backend/main.py` | API app | Keep | Primary backend service. |
 | `backend/data_ingestion.py` | API router | Keep | Mounted router. |
-| `backend/analyze_splm_structure.py` | Standalone diagnostic | Move/archive candidate | Local SPLM analysis helper; not an API. |
-| `backend/debug_excel.py` | Standalone diagnostic | Move/archive candidate | Local Excel debug helper; not an API. |
-| `backend/debug_excel2.py` | Standalone diagnostic | Move/archive candidate | Local Excel debug helper; not an API. |
-| `backend/test_ontology_pipeline.py` | Standalone test | Move to tests candidate | Should live under `backend/tests/` if still needed. |
+| `backend/analyze_splm_structure.py` | Removed diagnostic | Removed | Local SPLM analysis helper was not an API. |
+| `backend/debug_excel.py` | Removed diagnostic | Removed | Local Excel debug helper was not an API. |
+| `backend/debug_excel2.py` | Removed diagnostic | Removed | Local Excel debug helper was not an API. |
+| `backend/test_ontology_pipeline.py` | Removed root-level test | Removed | Root-level test file was not an API entrypoint. |
 
 ## `tools/` Utility Classification
 
 | Area | Type | Release classification | Notes |
 | --- | --- | --- | --- |
-| `tools/*.py` | Mixed HTTP clients, parser runners, upload/commit helpers | Developer utility | Useful for local troubleshooting; not API. Keep documented or move under `tools/diagnostics` / `tools/import`. |
+| `tools/import/*.py` | Import support utilities | Keep | Upload, poll, commit, parse, and snapshot helpers for support workflows. |
+| `tools/tests/*.py` | Developer/test helpers | Keep out of customer runtime docs | Manual SHACL/API probes; not API entrypoints. |
 | `tools/diagnostics/*.py` | Diagnostics | Keep | Safe customer-support diagnostics when documented. |
 | `tools/admin/*.py` | Admin/destructive tools | Keep with warning | Should require explicit approval and clear docs. |
-| `tools/legacy_root_scripts/*.py` | Legacy diagnostics/tests | Archive candidate | Not release/customer workflow. Keep only if needed for historical debugging. |
+| `tools/legacy_root_scripts/` | Removed legacy diagnostics/tests | Removed from active tree | Historical debug scripts are not part of customer workflow. |
 
 ## Packaging Recommendation
 
@@ -79,6 +82,7 @@ For customer release, expose these as official surfaces only:
 3. `backend/scripts/import_file.py` for backend import fallback.
 4. `backend/scripts/run_semantic_workflow.py` for Semantic Bridge / ontology fallback.
 5. `tools/diagnostics/*` for support diagnostics.
-6. `tools/admin/cleanup_neo4j.py` only as an admin/destructive tool.
+6. `tools/import/*` for import support workflows.
+7. `tools/admin/cleanup_neo4j.py` only as an admin/destructive tool.
 
-Move or clearly mark the rest as developer-only or legacy. Do not describe top-level `scripts/*.py` as APIs.
+Keep `tools/tests/*` developer-only. Do not describe top-level `scripts/*.py` as APIs.

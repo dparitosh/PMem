@@ -15,8 +15,8 @@ import time
 CAT_TEST_DIR = Path(__file__).parent / "cat_test_results"
 CAT_TEST_DIR.mkdir(exist_ok=True)
 
-CUSTOMER_AP239_XSD = r"C:\Users\895428\Depo\SPLM_Folder\AP239\Domain_model.xsd"
-CUSTOMER_AP239_XMI = r"C:\Users\895428\Depo\SPLM_Folder\AP239\Domain_model_4439_XMI\STEPlib\Application_protocols\AP239\Domain_model\Domain_model.xmi"
+CUSTOMER_AP239_XSD = os.getenv("CUSTOMER_AP239_XSD", "")
+CUSTOMER_AP239_XMI = os.getenv("CUSTOMER_AP239_XMI", "")
 BASE_URL = "http://localhost:8000/api/v1"
 
 

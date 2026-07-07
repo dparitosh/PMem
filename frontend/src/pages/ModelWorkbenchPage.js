@@ -1,7 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Boxes, GitFork, Layers, RefreshCcw, Search } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import graphApi from '../services/graphApi';
+import ReactFlowDiagramCanvas from '../Components/DiagramCanvas';
+import { createDiagramModel } from '../diagram/engine/diagramEngine';
 import './ModelWorkbenchPage.css';
 
 const VIEW_OPTIONS = [
@@ -109,17 +111,6 @@ function matchesQuery(node, query) {
   return searchable.includes(q);
 }
 
-function applyNodePositions(diagram, positions) {
-  const nodeMap = new Map();
-  const nodes = diagram.nodes.map((node) => {
-    const override = positions[node.id];
-    const positioned = override ? { ...node, x: override.x, y: override.y } : node;
-    nodeMap.set(positioned.id, positioned);
-    return positioned;
-  });
-  return { ...diagram, nodes, nodeMap };
-}
-
 function buildDiagram(nodes, links) {
   const maxNodes = 140;
   const shownNodes = nodes.slice(0, maxNodes);
@@ -176,10 +167,6 @@ export default function ModelWorkbenchPage({ onNavigate }) {
   const [selectedId, setSelectedId] = useState('');
   const [treeScope, setTreeScope] = useState(null);
   const [activeRepresentationId, setActiveRepresentationId] = useState('');
-  const [canvasTransform, setCanvasTransform] = useState({ x: 0, y: 0, k: 1 });
-  const [nodePositions, setNodePositions] = useState({});
-  const svgRef = useRef(null);
-  const interactionRef = useRef(null);
   const [status, setStatus] = useState({ loading: false, error: '' });
 
   const loadView = useCallback(async () => {
@@ -193,16 +180,12 @@ export default function ModelWorkbenchPage({ onNavigate }) {
       setSelectedId((current) => (current && normalized.nodes.some((node) => node.id === current) ? current : ''));
       setTreeScope(null);
       setActiveRepresentationId(normalized.representations?.[0]?.id || '');
-      setNodePositions({});
-      setCanvasTransform({ x: 0, y: 0, k: 1 });
       setStatus({ loading: false, error: '' });
     } catch (err) {
       setDataset({ nodes: [], links: [], message: '' });
       setSelectedId('');
       setTreeScope(null);
       setActiveRepresentationId('');
-      setNodePositions({});
-      setCanvasTransform({ x: 0, y: 0, k: 1 });
       setStatus({ loading: false, error: err?.response?.data?.detail || err?.message || 'Unable to load model viewer data.' });
     }
   }, [activeView]);
@@ -221,7 +204,6 @@ export default function ModelWorkbenchPage({ onNavigate }) {
     });
     return dataset.nodes.filter((node) => ids.has(node.id));
   }, [dataset.nodes, dataset.links, matchedNodes, query]);
-  const matchedIds = useMemo(() => new Set(matchedNodes.map((node) => node.id)), [matchedNodes]);
   const activeRepresentation = useMemo(() => (dataset.representations || []).find((item) => item.id === activeRepresentationId) || null, [dataset.representations, activeRepresentationId]);
   const representationBaseNodes = useMemo(() => {
     if (!activeRepresentation) return visibleNodes;
@@ -251,7 +233,11 @@ export default function ModelWorkbenchPage({ onNavigate }) {
   }, [dataset.nodes, dataset.links, selectedNode, scopedNodes]);
   const representationIds = useMemo(() => new Set(representationNodes.map((node) => node.id)), [representationNodes]);
   const representationLinks = useMemo(() => dataset.links.filter((link) => representationIds.has(link.source) && representationIds.has(link.target)), [dataset.links, representationIds]);
-  const diagram = useMemo(() => applyNodePositions(buildDiagram(representationNodes, representationLinks), nodePositions), [representationNodes, representationLinks, nodePositions]);
+  const engineDiagram = useMemo(() => createDiagramModel({ nodes: representationNodes, links: representationLinks }, activeView === 'architecture' ? 'archimate' : 'uaf'), [activeView, representationNodes, representationLinks]);
+  const [reactFlowGraph, setReactFlowGraph] = useState(null);
+  useEffect(() => { setReactFlowGraph(engineDiagram.graph); }, [engineDiagram]);
+  const activeCanvasGraph = reactFlowGraph || engineDiagram.graph;
+  const diagram = useMemo(() => buildDiagram(representationNodes, representationLinks), [representationNodes, representationLinks]);
   const modelInfo = useMemo(() => {
     const first = dataset.nodes[0]?.properties || {};
     const typeCounts = new Map();
@@ -304,75 +290,9 @@ export default function ModelWorkbenchPage({ onNavigate }) {
     return issues.slice(0, 8);
   }, [dataset]);
 
-  useEffect(() => {
-    setNodePositions({});
-    setCanvasTransform({ x: 0, y: 0, k: 1 });
-  }, [activeView, activeRepresentationId]);
-
-  const svgPoint = useCallback((event) => {
-    const svg = svgRef.current;
-    if (!svg) return { x: 0, y: 0, rawX: 0, rawY: 0 };
-    const rect = svg.getBoundingClientRect();
-    const rawX = ((event.clientX - rect.left) / Math.max(1, rect.width)) * diagram.width;
-    const rawY = ((event.clientY - rect.top) / Math.max(1, rect.height)) * diagram.height;
-    return {
-      x: (rawX - canvasTransform.x) / canvasTransform.k,
-      y: (rawY - canvasTransform.y) / canvasTransform.k,
-      rawX,
-      rawY,
-    };
-  }, [canvasTransform, diagram.height, diagram.width]);
-
-  const handleCanvasWheel = useCallback((event) => {
-    event.preventDefault();
-    const point = svgPoint(event);
-    const nextScale = Math.max(0.35, Math.min(2.8, canvasTransform.k * (event.deltaY < 0 ? 1.12 : 0.88)));
-    setCanvasTransform({
-      k: nextScale,
-      x: point.rawX - point.x * nextScale,
-      y: point.rawY - point.y * nextScale,
-    });
-  }, [canvasTransform.k, svgPoint]);
-
-  const handleCanvasPointerDown = useCallback((event) => {
-    if (event.button !== 0) return;
-    const point = svgPoint(event);
-    interactionRef.current = { type: 'pan', rawX: point.rawX, rawY: point.rawY, startX: canvasTransform.x, startY: canvasTransform.y };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }, [canvasTransform.x, canvasTransform.y, svgPoint]);
-
-  const handleNodePointerDown = useCallback((event, node) => {
-    if (event.button !== 0) return;
-    event.stopPropagation();
-    const point = svgPoint(event);
-    interactionRef.current = { type: 'node', id: node.id, offsetX: point.x - node.x, offsetY: point.y - node.y };
-    setTreeScope(null);
-    setSelectedId(node.id);
-    event.currentTarget.ownerSVGElement?.setPointerCapture?.(event.pointerId);
-  }, [svgPoint]);
-
-  const handleCanvasPointerMove = useCallback((event) => {
-    const interaction = interactionRef.current;
-    if (!interaction) return;
-    const point = svgPoint(event);
-    if (interaction.type === 'pan') {
-      setCanvasTransform((current) => ({ ...current, x: interaction.startX + point.rawX - interaction.rawX, y: interaction.startY + point.rawY - interaction.rawY }));
-      return;
-    }
-    if (interaction.type === 'node') {
-      setNodePositions((current) => ({ ...current, [interaction.id]: { x: point.x - interaction.offsetX, y: point.y - interaction.offsetY } }));
-    }
-  }, [svgPoint]);
-
-  const stopCanvasInteraction = useCallback((event) => {
-    interactionRef.current = null;
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-  }, []);
-
   const resetCanvasView = useCallback(() => {
-    setCanvasTransform({ x: 0, y: 0, k: 1 });
-    setNodePositions({});
-  }, []);
+    setReactFlowGraph(engineDiagram.graph);
+  }, [engineDiagram.graph]);
 
   return (
     <div className="model-viewer-page">
@@ -423,35 +343,8 @@ export default function ModelWorkbenchPage({ onNavigate }) {
             {modelInfo.types.map(([type, count]) => <em key={type}>{type}: {count}</em>)}
           </div>
           {diagram.truncated && <div className="model-viewer-note compact">Showing first 140 contextual elements for readable diagram performance. Use search to narrow scope.</div>}
-          <div className="semantic-canvas-wrap">
-            <svg ref={svgRef} className="semantic-canvas" viewBox={`0 0 ${diagram.width} ${diagram.height}`} role="img" aria-label="Semantic model diagram" onWheel={handleCanvasWheel} onPointerDown={handleCanvasPointerDown} onPointerMove={handleCanvasPointerMove} onPointerUp={stopCanvasInteraction} onPointerLeave={stopCanvasInteraction}>
-              <defs>
-                <marker id="model-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" /></marker>
-              </defs>
-              <rect x="0" y="0" width={diagram.width} height={diagram.height} className="diagram-background" />
-              <g className="diagram-content" transform={`translate(${canvasTransform.x} ${canvasTransform.y}) scale(${canvasTransform.k})`}>
-              <g className="diagram-grid">
-                {Array.from({ length: Math.ceil(diagram.width / 40) }).map((_, index) => <line key={`vx-${index}`} x1={index * 40} y1="0" x2={index * 40} y2={diagram.height} />)}
-                {Array.from({ length: Math.ceil(diagram.height / 40) }).map((_, index) => <line key={`hy-${index}`} x1="0" y1={index * 40} x2={diagram.width} y2={index * 40} />)}
-              </g>
-              {diagram.nodes.length === 0 && <g><rect x="28" y="32" width="420" height="88" rx="8" fill="#ffffff" stroke="#d9e2ec" /><text x="52" y="74" className="empty-diagram-title">No diagram elements available</text><text x="52" y="98" className="empty-diagram-text">Import ArchiMate/MBSE data or clear the search filter.</text></g>}
-              {diagram.links.map((link) => {
-                const source = diagram.nodeMap.get(link.source);
-                const target = diagram.nodeMap.get(link.target);
-                if (!source || !target) return null;
-                const x1 = source.x + source.width;
-                const y1 = source.y + source.height / 2;
-                const x2 = target.x;
-                const y2 = target.y + target.height / 2;
-                const midX = (x1 + x2) / 2;
-                return <g key={link.id}><path d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`} className="diagram-edge" markerEnd="url(#model-arrow)" /><text x={midX - 36} y={(y1 + y2) / 2 - 5} className="edge-label">{link.type}</text></g>;
-              })}
-              {diagram.nodes.map((node) => {
-                const isSelected = selectedNode?.id === node.id;
-                return <g key={node.id} className={`diagram-node ${isSelected ? 'selected' : ''} ${query.trim() && matchedIds.has(node.id) ? 'matched' : ''}`} onPointerDown={(event) => handleNodePointerDown(event, node)} onClick={() => { setTreeScope(null); setSelectedId(node.id); }} tabIndex="0" role="button"><rect x={node.x} y={node.y} width={node.width} height={node.height} rx="7" fill="#ffffff" stroke={TYPE_COLORS[node.type] || '#64748b'} /><circle cx={node.x + 14} cy={node.y + 17} r="5" fill={TYPE_COLORS[node.type] || '#64748b'} /><text x={node.x + 26} y={node.y + 21} className="node-label">{node.label.slice(0, 24)}</text></g>;
-              })}
-              </g>
-            </svg>
+          <div className="semantic-canvas-wrap react-flow-wrap">
+            {(activeCanvasGraph.nodes || []).length === 0 ? <div className="empty-state">No diagram elements available. Import ArchiMate/MBSE data or clear the search filter.</div> : <ReactFlowDiagramCanvas graph={activeCanvasGraph} selectedId={selectedNode?.id} onSelect={(item) => { if (item?.id) setSelectedId(item.id); }} onGraphChange={setReactFlowGraph} />}
           </div>
         </section>
 
@@ -459,23 +352,4 @@ export default function ModelWorkbenchPage({ onNavigate }) {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

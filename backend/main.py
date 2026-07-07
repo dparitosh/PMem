@@ -1931,14 +1931,14 @@ async def get_graph_by_ontology(prefix: str):
                 return False
 
             # Pick a sample XMI from the repo.
-            workspace_root = Path(__file__).resolve().parents[2]
+            workspace_root = Path(__file__).resolve().parents[1]
 
             sample_path: Path | None = None
             ontology_name = prefix_token.upper()
             description = "Bootstrapped from workspace sample file"
 
             if prefix_token == "sysml":
-                candidates = list((workspace_root / "Depo_onto" / "backend" / "uploads").glob("**/SugarPlantMBSE.xmi"))
+                candidates = list((workspace_root / "backend" / "uploads").glob("**/SugarPlantMBSE.xmi"))
                 if candidates:
                     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
                     sample_path = candidates[0]
@@ -1947,7 +1947,6 @@ async def get_graph_by_ontology(prefix: str):
             if prefix_token == "ap239" and sample_path is None:
                 ap239_candidates = [
                     workspace_root
-                    / "Depo_onto"
                     / "data"
                     / "domain_models"
                     / "product_life_cycle_support"
@@ -1957,7 +1956,6 @@ async def get_graph_by_ontology(prefix: str):
                     / "AP239"
                     / "AP239.xmi",
                     workspace_root
-                    / "Depo_onto"
                     / "data"
                     / "domain_models"
                     / "product_life_cycle_support"
@@ -4975,6 +4973,14 @@ async def handle_neo4j_webhook(request: Request):
 
 # ======================== ONTOLOGY MODELING WORKBENCH ENDPOINTS ========================
 
+
+def _agentic_modeling_service():
+    try:
+        from backend.Services import agentic_modeling_service
+    except Exception:
+        from Services import agentic_modeling_service
+    return agentic_modeling_service
+
 def _modeling_service():
     try:
         from backend.Services import modeling_service
@@ -5048,6 +5054,27 @@ async def modeling_validation(project: str = "Digital Engineering Model"):
     return _modeling_service().validate(project=project)
 
 
+
+@app.post("/api/v1/modeling/agent/proposals")
+async def modeling_agent_create_proposal(payload: Dict[str, Any]):
+    return _agentic_modeling_service().create_proposal(payload)
+
+
+@app.get("/api/v1/modeling/agent/proposals")
+async def modeling_agent_list_proposals(project: str = "Digital Engineering Model", limit: int = Query(default=50, ge=1, le=200)):
+    return _agentic_modeling_service().list_proposals(project=project, limit=limit)
+
+
+@app.post("/api/v1/modeling/agent/proposals/{proposal_id}/approve")
+async def modeling_agent_approve_proposal(proposal_id: str, payload: Dict[str, Any] | None = None):
+    payload = payload or {}
+    return _agentic_modeling_service().approve_proposal(proposal_id, approved_by=payload.get("approved_by") or "user", comment=payload.get("comment") or "")
+
+
+@app.post("/api/v1/modeling/agent/proposals/{proposal_id}/reject")
+async def modeling_agent_reject_proposal(proposal_id: str, payload: Dict[str, Any] | None = None):
+    payload = payload or {}
+    return _agentic_modeling_service().reject_proposal(proposal_id, rejected_by=payload.get("rejected_by") or "user", comment=payload.get("comment") or "")
 @app.post("/api/v1/modeling/seed")
 async def modeling_seed(payload: Dict[str, Any] | None = None):
     payload = payload or {}

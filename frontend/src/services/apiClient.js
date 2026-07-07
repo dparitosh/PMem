@@ -387,6 +387,10 @@ export const modelingAPI = {
   deleteLink: (elementId) => apiClient.delete(buildUrl(replaceParams(API.modeling.link, { element_id: elementId }))),
   validation: (params = {}) => apiClient.get(buildUrl(API.modeling.validation), { params }),
   seed: (payload = {}) => apiClient.post(buildUrl(API.modeling.seed), payload),
+  createAgentProposal: (payload) => apiClient.post(buildUrl(API.modeling.agentProposals), payload),
+  listAgentProposals: (params = {}) => apiClient.get(buildUrl(API.modeling.agentProposals), { params }),
+  approveAgentProposal: (proposalId, payload = {}) => apiClient.post(buildUrl(replaceParams(API.modeling.agentProposalApprove, { proposal_id: proposalId })), payload),
+  rejectAgentProposal: (proposalId, payload = {}) => apiClient.post(buildUrl(replaceParams(API.modeling.agentProposalReject, { proposal_id: proposalId })), payload),
 };
 
 // ========== RECOMMENDATION ENDPOINTS ==========
