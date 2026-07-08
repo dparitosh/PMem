@@ -1258,22 +1258,67 @@ RETURN count(res) AS count
 
     @classmethod
     def _architecture_representations(cls, graph: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Build selectable ArchiMate diagram/view representations.
+
+        Preferred source is explicit View nodes plus VIEW_CONTAINS edges. Older
+        imports may only carry primary_view_id metadata on elements/relations,
+        so that metadata is kept as a fallback.
+        """
         by_view: Dict[str, Dict[str, Any]] = {}
+        element_to_archimate_id: Dict[str, str] = {}
+        archimate_to_element: Dict[str, str] = {}
+        relationship_to_archimate_id: Dict[str, str] = {}
+        archimate_rel_to_element: Dict[str, str] = {}
+
         for node in graph.get("nodes") or []:
+            element_id = str(node.get("elementId") or "")
             props = node.get("properties") or {}
-            for view_id in cls._list_property(props.get("archimate_view_ids") or props.get("view_ids") or props.get("primary_view_id")):
-                entry = by_view.setdefault(view_id, {
-                    "id": view_id,
-                    "name": str(props.get("primary_view_name") or view_id),
-                    "type": "ArchiMate View",
-                    "nodeIds": [],
-                    "relationshipIds": [],
-                })
-                if node.get("elementId") and node["elementId"] not in entry["nodeIds"]:
-                    entry["nodeIds"].append(node["elementId"])
+            archimate_id = str(props.get("archimate_id") or props.get("id") or "")
+            if element_id and archimate_id:
+                element_to_archimate_id[element_id] = archimate_id
+                archimate_to_element.setdefault(archimate_id, element_id)
+            node_type = str(props.get("element_type") or props.get("archimate_type") or "")
+            labels = {str(label or "") for label in (node.get("labels") or [])}
+            if node_type == "View" or "View" in labels:
+                view_id = archimate_id or element_id
+                if view_id:
+                    by_view.setdefault(view_id, {
+                        "id": view_id,
+                        "name": str(props.get("name") or props.get("label") or view_id),
+                        "type": "ArchiMate View",
+                        "nodeIds": [],
+                        "relationshipIds": [],
+                    })
+
         for rel in graph.get("relationships") or []:
+            rel_element_id = str(rel.get("elementId") or "")
             props = rel.get("properties") or {}
-            for view_id in cls._list_property(props.get("archimate_view_ids") or props.get("view_ids") or props.get("primary_view_id")):
+            archimate_id = str(props.get("archimate_id") or props.get("id") or "")
+            if rel_element_id and archimate_id:
+                relationship_to_archimate_id[rel_element_id] = archimate_id
+                archimate_rel_to_element.setdefault(archimate_id, rel_element_id)
+
+        for rel in graph.get("relationships") or []:
+            rel_type = str(rel.get("type") or "")
+            props = rel.get("properties") or {}
+            if rel_type == "VIEW_CONTAINS":
+                view_element = str(rel.get("start") or "")
+                target_element = str(rel.get("end") or "")
+                view_id = element_to_archimate_id.get(view_element, view_element)
+                if not view_id or not target_element:
+                    continue
+                entry = by_view.setdefault(view_id, {
+                    "id": view_id,
+                    "name": view_id,
+                    "type": "ArchiMate View",
+                    "nodeIds": [],
+                    "relationshipIds": [],
+                })
+                if target_element not in entry["nodeIds"]:
+                    entry["nodeIds"].append(target_element)
+                continue
+
+            for view_id in cls._list_property(props.get("archimate_view_ids") or props.get("primary_view_id")):
                 entry = by_view.setdefault(view_id, {
                     "id": view_id,
                     "name": str(props.get("primary_view_name") or view_id),
@@ -1281,15 +1326,40 @@ RETURN count(res) AS count
                     "nodeIds": [],
                     "relationshipIds": [],
                 })
-                if rel.get("elementId") and rel["elementId"] not in entry["relationshipIds"]:
-                    entry["relationshipIds"].append(rel["elementId"])
+                rel_id = str(rel.get("elementId") or "")
+                if rel_id and rel_id not in entry["relationshipIds"]:
+                    entry["relationshipIds"].append(rel_id)
                 for endpoint in (rel.get("start"), rel.get("end")):
                     if endpoint and endpoint not in entry["nodeIds"]:
                         entry["nodeIds"].append(endpoint)
+
+        for node in graph.get("nodes") or []:
+            props = node.get("properties") or {}
+            for view_id in cls._list_property(props.get("archimate_view_ids") or props.get("primary_view_id")):
+                entry = by_view.setdefault(view_id, {
+                    "id": view_id,
+                    "name": str(props.get("primary_view_name") or view_id),
+                    "type": "ArchiMate View",
+                    "nodeIds": [],
+                    "relationshipIds": [],
+                })
+                node_id = str(node.get("elementId") or "")
+                if node_id and node_id not in entry["nodeIds"]:
+                    entry["nodeIds"].append(node_id)
+
+        for entry in by_view.values():
+            node_set = set(entry.get("nodeIds") or [])
+            for rel in graph.get("relationships") or []:
+                rel_id = str(rel.get("elementId") or "")
+                if rel.get("start") in node_set and rel.get("end") in node_set and str(rel.get("type") or "") != "VIEW_CONTAINS":
+                    if rel_id and rel_id not in entry["relationshipIds"]:
+                        entry["relationshipIds"].append(rel_id)
+
         return sorted(
             by_view.values(),
             key=lambda item: (-len(item.get("nodeIds") or []), str(item.get("name") or item.get("id") or "")),
         )
+
     @classmethod
     def get_architecture_process_view(cls, prefix: str = "archimate", limit: int = 1000) -> Dict[str, Any]:
         """Return connected architecture/process model nodes for an imported ArchiMate graph."""

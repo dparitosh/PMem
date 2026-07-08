@@ -123,6 +123,42 @@ def _collect_properties(element: Any, property_definitions: Dict[str, Dict[str, 
     return properties
 
 
+
+def _folder_name(element: Any, fallback: str) -> str:
+    return _first_child_text(element, "name") or _attr(element, "name") or fallback
+
+
+def _folder_id(element: Any, index: int, parent_id: str = "") -> str:
+    explicit = _ref_id(_attr(element, "identifier", "id"))
+    if explicit:
+        return explicit
+    name = re.sub(r"[^A-Za-z0-9._-]+", "-", _folder_name(element, f"Folder {index}")).strip("-") or f"folder-{index}"
+    prefix = parent_id or "root"
+    return f"folder:{prefix}:{index}:{name}"
+
+
+def _view_row(view: Dict[str, Any], namespace: str, model_metadata: Dict[str, str]) -> Dict[str, Any]:
+    view_id = str(view.get("id") or "").strip()
+    view_name = str(view.get("name") or view_id or "View").strip()
+    view_type = str(view.get("type") or "View").split(":", 1)[-1]
+    return {
+        "import_row_key": f"archimate:view:{view_id}",
+        "id": view_id,
+        "archimate_id": view_id,
+        "element_type": "View",
+        "archimate_type": view_type,
+        "name": view_name,
+        "label": view_name,
+        "description": "",
+        "semantic_role": "view",
+        "diagram_role": "view",
+        "source_format": ARCHIMATE_PREFIX,
+        "ontology_prefix": ARCHIMATE_PREFIX,
+        "source_ontology": namespace or "ArchiMate Model Exchange",
+        "model_identifier": model_metadata.get("model_identifier", ""),
+        "model_name": model_metadata.get("model_name", ""),
+    }
+
 def _is_archimate_relationship_type(value: str) -> bool:
     type_name = str(value or "").split(":", 1)[-1].lower()
     return type_name.endswith("relationship") or type_name in {
@@ -155,6 +191,9 @@ def parse_archimate_model_exchange(file_content: bytes) -> Tuple[List[Dict[str, 
     relationships: List[Dict[str, Any]] = []
     views: List[Dict[str, Any]] = []
     view_refs: List[Dict[str, Any]] = []
+    folder_relationships: List[Dict[str, Any]] = []
+    folder_type_counts: Counter[str] = Counter()
+    view_row_ids: set[str] = set()
     element_index: Dict[str, Dict[str, Any]] = {}
     relationship_type_counts: Counter[str] = Counter()
     element_type_counts: Counter[str] = Counter()
@@ -174,6 +213,87 @@ def parse_archimate_model_exchange(file_content: bytes) -> Tuple[List[Dict[str, 
     model_metadata = _collect_model_metadata(root)
     property_definitions = _collect_property_definitions(root)
 
+    def add_folder_tree(folder: Any, parent_folder_id: str = "", folder_index: List[int] | None = None) -> None:
+        if folder_index is None:
+            folder_index = [0]
+        folder_index[0] += 1
+        folder_id = _folder_id(folder, folder_index[0], parent_folder_id)
+        folder_name = _folder_name(folder, f"Folder {folder_index[0]}")
+        folder_type = _attr(folder, "type", "xsi:type") or "Folder"
+        row = {
+            "import_row_key": f"archimate:folder:{folder_id}",
+            "id": folder_id,
+            "archimate_id": folder_id,
+            "element_type": "Package",
+            "archimate_type": "Folder",
+            "name": folder_name,
+            "label": folder_name,
+            "description": _first_child_text(folder, "documentation"),
+            "semantic_role": "folder",
+            "folder_type": folder_type,
+            "parent_folder_id": parent_folder_id,
+            "source_format": ARCHIMATE_PREFIX,
+            "ontology_prefix": ARCHIMATE_PREFIX,
+            "source_ontology": namespace or "ArchiMate Model Exchange",
+            "model_identifier": model_metadata.get("model_identifier", ""),
+            "model_name": model_metadata.get("model_name", "") or _attr(root, "name"),
+        }
+        if folder_id not in element_index:
+            rows.append(row)
+            element_index[folder_id] = row
+            element_type_counts["Package"] += 1
+            folder_type_counts[str(folder_type or "Folder")] += 1
+        if parent_folder_id:
+            folder_relationships.append({
+                "type": "CONTAINS",
+                "from_props": {"id": parent_folder_id},
+                "to_props": {"id": folder_id},
+                "properties": {
+                    "id": f"{parent_folder_id}->{folder_id}:CONTAINS",
+                    "name": "Contains",
+                    "label": "Contains",
+                    "archimate_type": "FolderContainment",
+                    "source_format": ARCHIMATE_PREFIX,
+                    "ontology_prefix": ARCHIMATE_PREFIX,
+                },
+            })
+        for child in list(folder):
+            child_tag = _local_name(child.tag).lower()
+            if child_tag == "folder":
+                add_folder_tree(child, folder_id, folder_index)
+                continue
+            child_id = _ref_id(_attr(child, "identifier", "id"))
+            child_type = _attr(child, "xsi:type", "type")
+            if child_id and not _is_archimate_relationship_type(child_type):
+                folder_relationships.append({
+                    "type": "CONTAINS",
+                    "from_props": {"id": folder_id},
+                    "to_props": {"id": child_id},
+                    "properties": {
+                        "id": f"{folder_id}->{child_id}:CONTAINS",
+                        "name": "Contains",
+                        "label": "Contains",
+                        "archimate_type": "FolderContainment",
+                        "source_format": ARCHIMATE_PREFIX,
+                        "ontology_prefix": ARCHIMATE_PREFIX,
+                    },
+                })
+
+    folder_counter = [0]
+    captured_folders: set[int] = set()
+    def capture_top_folder(folder: Any) -> None:
+        object_id = id(folder)
+        if object_id in captured_folders:
+            return
+        captured_folders.add(object_id)
+        for child in folder.iter():
+            if child is not folder and _local_name(child.tag).lower() == "folder":
+                captured_folders.add(id(child))
+        add_folder_tree(folder, "", folder_counter)
+
+    for folder in root.iter():
+        if _local_name(folder.tag).lower() == "folder" and id(folder) not in captured_folders:
+            capture_top_folder(folder)
     raw_relationship_elements: List[Any] = []
     for element in root.iter():
         local_tag = _local_name(element.tag).lower()
@@ -284,6 +404,40 @@ def parse_archimate_model_exchange(file_content: bytes) -> Tuple[List[Dict[str, 
                     view_refs.append({"view_id": view_id, "kind": "relationship", "ref": ref})
 
 
+    view_relationships: List[Dict[str, Any]] = []
+    for view in views:
+        view_id = str(view.get("id") or "").strip()
+        if not view_id or view_id in view_row_ids:
+            continue
+        view_row_ids.add(view_id)
+        if view_id not in element_index:
+            row = _view_row(view, namespace, model_metadata)
+            rows.append(row)
+            element_index[view_id] = row
+            element_type_counts["View"] += 1
+
+    for view_ref in view_refs:
+        if view_ref.get("kind") != "element":
+            continue
+        view_id = str(view_ref.get("view_id") or "").strip()
+        ref = str(view_ref.get("ref") or "").strip()
+        if view_id and ref and view_id in element_index and ref in element_index:
+            view_relationships.append({
+                "type": "VIEW_CONTAINS",
+                "from_props": {"id": view_id},
+                "to_props": {"id": ref},
+                "properties": {
+                    "id": f"{view_id}->{ref}:VIEW_CONTAINS",
+                    "name": "View Contains",
+                    "label": "View Contains",
+                    "archimate_type": "ViewMembership",
+                    "source_format": ARCHIMATE_PREFIX,
+                    "ontology_prefix": ARCHIMATE_PREFIX,
+                },
+            })
+
+    relationships.extend(folder_relationships)
+    relationships.extend(view_relationships)
     view_lookup = {view.get("id"): view for view in views if view.get("id")}
     element_views: Dict[str, List[str]] = {}
     relationship_views: Dict[str, List[str]] = {}
@@ -326,6 +480,10 @@ def parse_archimate_model_exchange(file_content: bytes) -> Tuple[List[Dict[str, 
         "relationship_count": len(relationships),
         "unresolved_relationship_count": len(unresolved_relationships),
         "view_count": len(views),
+        "folder_count": sum(folder_type_counts.values()),
+        "folder_types": dict(folder_type_counts),
+        "folder_containment_count": len(folder_relationships),
+        "view_containment_count": len(view_relationships),
         "view_reference_count": len(view_refs),
         "property_definition_count": len(property_definitions),
         "element_types": dict(element_type_counts),

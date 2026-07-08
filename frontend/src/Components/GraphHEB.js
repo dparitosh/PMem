@@ -160,13 +160,13 @@ const LINK_COLOR = '#6B7C93';        // TCS-inspired muted steel link
 const LINK_OPACITY = 0.72;
 const LINK_STROKE_WIDTH = 1.35;
 const NODE_RADIUS = 14;
-const LINK_DISTANCE = 100;
-const CHARGE_STRENGTH = -150;        // ✅ Reduced from -300 to prevent node separation
+const LINK_DISTANCE = 118;
+const CHARGE_STRENGTH = -230;        // Balanced spread for dense contextual graphs
 const ALPHA_TARGET_DRAG = 0.3;
 const ALPHA_TARGET_END = 0;
 
 // NEW CONSTANTS FOR CENTERING AND VIEWPORT
-const CENTER_FORCE_STRENGTH = 0.05;
+const CENTER_FORCE_STRENGTH = 0.035;
 const VIEWPORT_PADDING = 50;
 
 // NEW CONSTANTS FOR EXPAND/COLLAPSE
@@ -575,13 +575,57 @@ const getLinkEndpointId = (endpoint) => {
 };
 
 const getNodeCollisionRadius = (node, showLabels) => {
-  const base = NODE_RADIUS + 10;
+  const base = NODE_RADIUS + 14;
   if (!showLabels) return base;
-  const displayLength = Math.min(resolveNodeName(node).length, 22);
-  return base + Math.max(10, Math.round(displayLength * 2.1));
+  const displayLength = Math.min(resolveNodeName(node).length, 28);
+  return base + Math.max(16, Math.round(displayLength * 3.0));
+};
+
+const shouldRenderNodeLabels = (nodeCount, linkCount, graphSearchActive) => {
+  if (graphSearchActive) return nodeCount <= 90;
+  if (nodeCount <= 80 && linkCount <= 140) return true;
+  return nodeCount <= 45;
+};
+
+const shouldRenderRelationshipLabels = (nodeCount, linkCount, graphSearchActive) => {
+  if (graphSearchActive) return linkCount <= 45 && nodeCount <= 55;
+  return linkCount <= 35 && nodeCount <= 50;
+};
+
+const getAdaptiveLinkDistance = (relationshipType, nodeCount, linkCount) => {
+  const base = relationshipType === 'SUBCLASS_OF'
+    ? 170
+    : (relationshipType === 'DOMAIN' || relationshipType === 'RANGE' ? 150 : LINK_DISTANCE);
+  if (nodeCount > 140 || linkCount > 260) return Math.max(96, base - 18);
+  if (nodeCount > 70 || linkCount > 140) return base + 18;
+  return base + 28;
+};
+
+const getAdaptiveChargeStrength = (nodeCount) => {
+  if (nodeCount > 180) return -115;
+  if (nodeCount > 90) return -165;
+  if (nodeCount > 40) return CHARGE_STRENGTH;
+  return -280;
 };
 
 export const normalizeGraphDataset = (payload, options) => normalizeGraphDatasetShared(payload, options);
+
+const sanitizeContextualGraph = (graphData, rootNodeId) => {
+  const neighborhood = getOneHopNeighborhood(graphData, rootNodeId);
+  const rootId = String(rootNodeId || '').trim();
+  const nodes = (neighborhood.nodes || []).filter((node) => {
+    if (!node?.elementId) return false;
+    if (node.elementId === rootId) return true;
+    return !isMetadataWrapperNode(node) && !isRelationshipCarrierNode(node) && !isSchemaTerminalNode(node);
+  });
+  const nodeIds = new Set(nodes.map((node) => node.elementId));
+  const links = (neighborhood.links || []).filter((link) => {
+    const sourceId = getLinkEndpointId(link.source);
+    const targetId = getLinkEndpointId(link.target);
+    return nodeIds.has(sourceId) && nodeIds.has(targetId);
+  });
+  return deduplicateNodesAndLinks(nodes, links);
+};
 
 const GraphHEB = ({
   setData = () => {},
@@ -1397,10 +1441,10 @@ const GraphHEB = ({
       const semanticRequirementRoot = isRequirementContextNode(selectedNode);
       const traversalDepth = 1;
       const response = await graphApi.getTraversal(nodeId, traversalDepth);
-      const traversalData = normalizeGraphDataset(response.data, { collapseHiddenBridges: semanticRequirementRoot });
+      const traversalData = normalizeGraphDataset(response.data, { collapseHiddenBridges: true });
       const rootedData = semanticRequirementRoot
-        ? traversalData
-        : getOneHopNeighborhood(traversalData, nodeId);
+        ? sanitizeContextualGraph(traversalData, nodeId)
+        : sanitizeContextualGraph(traversalData, nodeId);
 
       clearExpansionState();
       setContextualRootNodeId(nodeId);
@@ -2516,20 +2560,21 @@ const getPrimaryNodeLabel = useCallback((d) => {
     try {
       const response = await graphApi.getTraversal(nodeId, 1);
       const traversalData = normalizeGraphDataset(response.data, {
-        collapseHiddenBridges: graphViewModeRef.current === 'individual',
+        collapseHiddenBridges: true,
       });
 
       if (traversalData.nodes.length > 0) {
-        const mergedData = mergeGraphData(currentData, traversalData);
+        const expansionSlice = graphViewModeRef.current === 'individual' ? sanitizeContextualGraph(traversalData, nodeId) : traversalData;
+        const mergedData = mergeGraphData(currentData, expansionSlice);
 
-        traversalData.nodes.forEach((node) => {
+        expansionSlice.nodes.forEach((node) => {
           if (!currentData.nodes.some((existing) => existing.elementId === node.elementId)) {
             addedNodeIds.add(node.elementId);
           }
         });
 
         const existingLinkSignatures = new Set((currentData.links || []).map((existing) => buildLinkSignature(existing)).filter(Boolean));
-        traversalData.links.forEach((link) => {
+        expansionSlice.links.forEach((link) => {
           const signature = buildLinkSignature(link);
           if (signature && !existingLinkSignatures.has(signature)) {
             addedLinkRefs.add(signature);
@@ -2824,7 +2869,7 @@ const boundaryForce = (width, height) => {
         : (activeDisplayData.nodes.length > 0 ? activeDisplayData :
             (graphData.nodes && graphData.nodes.length > 0) ? graphData :
             { nodes: [], links: [] }));
-    const showNodeLabels = true;
+    const nodeCount = renderData.nodes.length;
 
     if (!hasData) {
       if (gRef.current) {
@@ -2900,6 +2945,8 @@ const boundaryForce = (width, height) => {
       return renderNodeIds.has(sourceId) && renderNodeIds.has(targetId);
     });
     const processedLinks = processLinksForOffset([...safeRenderLinks]);
+    const linkCount = processedLinks.length;
+    const showNodeLabels = shouldRenderNodeLabels(nodeCount, linkCount, graphSearchActive);
 
     logger.render('[LINK PROCESSING]', {
       inputLinks: renderData.links.length,
@@ -2913,15 +2960,16 @@ const boundaryForce = (width, height) => {
       simulationRef.current = d3.forceSimulation(renderData.nodes)
         .force('link', d3.forceLink(processedLinks).id(d => d.elementId).distance((d) => {
           const relationshipType = typeof d === 'object' ? d.type : '';
-          return relationshipType === 'SUBCLASS_OF' ? 145 : (relationshipType === 'DOMAIN' || relationshipType === 'RANGE' ? 130 : LINK_DISTANCE);
+          return getAdaptiveLinkDistance(relationshipType, nodeCount, linkCount);
         }))
-        .force('charge', d3.forceManyBody().strength(CHARGE_STRENGTH))
+        .force('charge', d3.forceManyBody().strength(getAdaptiveChargeStrength(nodeCount)))
         .force('center', d3.forceCenter(width / 2, height / 2).strength(CENTER_FORCE_STRENGTH))
+        .force('x', d3.forceX(width / 2).strength(0.028))
+        .force('y', d3.forceY(height / 2).strength(0.022))
         .force('collide', d3.forceCollide().radius((d) => getNodeCollisionRadius(d, showNodeLabels)).iterations(renderData.nodes.length > 300 ? 1 : 2))
         .force('boundary', boundaryForce(width, height));
 
       // Performance optimization: reduce iterations for large graphs
-      const nodeCount = renderData.nodes.length;
       if (nodeCount > 100) {
         simulationRef.current.alphaDecay(0.05); // Faster stabilization for large graphs
       }
@@ -2949,6 +2997,9 @@ const boundaryForce = (width, height) => {
         simulationRef.current.nodes(renderData.nodes);
         simulationRef.current.force('link').links(processedLinks);
         simulationRef.current.force('center', d3.forceCenter(width / 2, height / 2).strength(CENTER_FORCE_STRENGTH));
+        simulationRef.current.force('x', d3.forceX(width / 2).strength(0.028));
+        simulationRef.current.force('y', d3.forceY(height / 2).strength(0.022));
+        simulationRef.current.force('charge', d3.forceManyBody().strength(getAdaptiveChargeStrength(nodeCount)));
         simulationRef.current.force('collide', d3.forceCollide().radius((d) => getNodeCollisionRadius(d, showNodeLabels)).iterations(renderData.nodes.length > 300 ? 1 : 2));
         simulationRef.current.force('boundary', boundaryForce(width, height));
 
@@ -3108,7 +3159,7 @@ const boundaryForce = (width, height) => {
         exit => exit.remove()
       );
 
-    const shouldShowRelationshipLabels = simulationLinks.length <= 180;
+    const shouldShowRelationshipLabels = shouldRenderRelationshipLabels(nodeCount, simulationLinks.length, graphSearchActive, graphViewMode);
     const linkLabel = shouldShowRelationshipLabels
       ? gRef.current.selectAll('.link-label')
         .data(simulationLinks.filter((d) => d?.type), (d) => d.elementId)
@@ -4167,3 +4218,8 @@ if (!document.head.querySelector('style[data-spinner]')) {
 }
 
 export default React.memo(GraphHEB);
+
+
+
+
+

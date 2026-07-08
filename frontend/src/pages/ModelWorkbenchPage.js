@@ -1,34 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Boxes, GitFork, Layers, RefreshCcw, Search } from 'lucide-react';
+import { AlertTriangle, Boxes, Network, GitFork, Layers, RefreshCcw, ZoomIn, ZoomOut, ScanSearch } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import graphApi from '../services/graphApi';
-import ReactFlowDiagramCanvas from '../Components/DiagramCanvas';
+import ReactFlowDiagramCanvas from '../Components/DiagramCanvas/ReactFlowDiagramCanvas';
 import { createDiagramModel } from '../diagram/engine/diagramEngine';
 import './ModelWorkbenchPage.css';
 
 const VIEW_OPTIONS = [
-  { id: 'architecture', label: 'ArchiMate', description: 'Layered architecture/process model diagram.' },
+  { id: 'architecture', label: 'ArchiMate', description: 'Imported architecture/process model diagrams.' },
   { id: 'mbse', label: 'MBSE / SysML / UML', description: 'Requirement, function, interface, part, and behavior diagram view.' },
 ];
-
-const LAYERS = [
-  { id: 'motivation', label: 'Motivation / Requirements', color: '#b45309' },
-  { id: 'strategy', label: 'Strategy / Capability', color: '#7c3aed' },
-  { id: 'business', label: 'Business / Operational', color: '#0f766e' },
-  { id: 'application', label: 'Application / Functional', color: '#005a9c' },
-  { id: 'technology', label: 'Technology / Physical', color: '#166534' },
-  { id: 'implementation', label: 'Implementation / Product', color: '#334155' },
-  { id: 'other', label: 'Other', color: '#64748b' },
-];
-
-const TYPE_COLORS = {
-  Requirement: '#b45309', Constraint: '#b45309', Goal: '#b45309', Principle: '#b45309', Driver: '#b45309', Assessment: '#b45309',
-  Capability: '#7c3aed', CourseOfAction: '#7c3aed', Resource: '#7c3aed', ValueStream: '#7c3aed',
-  BusinessActor: '#0f766e', BusinessRole: '#0f766e', BusinessProcess: '#0f766e', BusinessFunction: '#0f766e', BusinessObject: '#0f766e', OperationalActivity: '#0f766e', Performer: '#0f766e',
-  ApplicationComponent: '#005a9c', ApplicationService: '#005a9c', DataObject: '#005a9c', Function: '#005a9c', UseCase: '#005a9c', Activity: '#005a9c', Interface: '#be123c',
-  Node: '#166534', Device: '#166534', SystemSoftware: '#166534', TechnologyService: '#166534', Artifact: '#166534', Part: '#166534', Component: '#166534', Block: '#166534',
-  Product: '#334155', WorkPackage: '#334155', Deliverable: '#334155', Document: '#6b7280', Package: '#64748b',
-};
 
 function endpointId(value) {
   if (!value) return '';
@@ -44,7 +25,7 @@ function cleanLabel(value, fallback = 'Unnamed') {
 function normalizeNode(raw) {
   const properties = raw?.properties && typeof raw.properties === 'object' ? raw.properties : {};
   const labels = Array.isArray(raw?.labels) ? raw.labels : [];
-  const id = raw?.id || raw?.elementId || raw?.uid || raw?.identifier || properties.id || properties.uid || properties.identifier || properties.name;
+  const id = raw?.elementId || raw?.id || raw?.uid || raw?.identifier || properties.id || properties.uid || properties.identifier || properties.name;
   if (!id) return null;
   const type = raw?.type || raw?.subType || raw?.element_type || raw?.elementType || properties.type || properties.element_type || properties.elementType || labels[0] || 'Element';
   const label = cleanLabel(raw?.label || raw?.name || raw?.title || properties.label || properties.name || properties.title || properties.uid || id, String(id));
@@ -85,203 +66,331 @@ function normalizeDataset(payload) {
     message: data.message || payload?.message || '',
     representations: (data.representations || data.views || []).map((item) => ({
       id: String(item.id || item.identifier || item.name || ''),
-      name: String(item.name || item.label || item.id || 'Representation'),
-      type: String(item.type || 'Representation'),
+      name: String(item.name || item.label || item.id || 'Diagram'),
+      type: String(item.type || 'Diagram'),
       nodeIds: Array.isArray(item.nodeIds) ? item.nodeIds.map(String) : [],
       relationshipIds: Array.isArray(item.relationshipIds) ? item.relationshipIds.map(String) : [],
     })).filter((item) => item.id),
   };
 }
 
-function layerForType(type = '') {
-  const value = String(type).toLowerCase();
-  if (/(requirement|constraint|goal|principle|driver|assessment|stakeholder)/.test(value)) return 'motivation';
-  if (/(capability|courseofaction|resource|valuestream|strategy)/.test(value)) return 'strategy';
-  if (/(business|operational|actor|role|performer|process)/.test(value)) return 'business';
-  if (/(application|function|usecase|activity|interface|dataobject|logical)/.test(value)) return 'application';
-  if (/(technology|device|node|software|artifact|part|block|component|physical)/.test(value)) return 'technology';
-  if (/(product|workpackage|deliverable|document|implementation|migration)/.test(value)) return 'implementation';
-  return 'other';
-}
-
 function matchesQuery(node, query) {
-  if (!query) return true;
-  const q = query.toLowerCase().replace('*', '');
+  const q = String(query || '').trim().toLowerCase().replace(/\*/g, '');
+  if (!q) return true;
   const searchable = [node.label, node.type, node.id, ...Object.values(node.properties || {}).map((v) => String(v || ''))].join(' ').toLowerCase();
   return searchable.includes(q);
 }
 
-function buildDiagram(nodes, links) {
-  const maxNodes = 140;
-  const shownNodes = nodes.slice(0, maxNodes);
-  const visible = new Set(shownNodes.map((node) => node.id));
-  const shownLinks = links.filter((link) => visible.has(link.source) && visible.has(link.target)).slice(0, 260);
-  const degree = new Map(shownNodes.map((node) => [node.id, 0]));
-  shownLinks.forEach((link) => {
-    degree.set(link.source, (degree.get(link.source) || 0) + 1);
-    degree.set(link.target, (degree.get(link.target) || 0) + 1);
-  });
+function isContainerType(type = '') {
+  return /package|folder|view|diagram/i.test(String(type));
+}
 
-  const orderedNodes = [...shownNodes].sort((a, b) => {
-    const degreeDiff = (degree.get(b.id) || 0) - (degree.get(a.id) || 0);
-    if (degreeDiff !== 0) return degreeDiff;
-    const layerDiff = LAYERS.findIndex((layer) => layer.id === layerForType(a.type)) - LAYERS.findIndex((layer) => layer.id === layerForType(b.type));
-    if (layerDiff !== 0) return layerDiff;
-    return a.label.localeCompare(b.label);
-  });
+function relationIsContainment(type = '') {
+  return /CONTAINS|VIEW_CONTAINS|COMPOSITION|AGGREGATION/i.test(String(type));
+}
 
-  const nodeWidth = 190;
-  const nodeHeight = 62;
-  const columnGap = 78;
-  const rowGap = 52;
-  const columns = Math.max(3, Math.min(5, Math.ceil(Math.sqrt(Math.max(orderedNodes.length, 1)))));
-  const positioned = new Map();
-  orderedNodes.forEach((node, index) => {
-    const row = Math.floor(index / columns);
-    const column = index % columns;
-    const layerOffset = (LAYERS.findIndex((layer) => layer.id === layerForType(node.type)) % 3) * 18;
-    positioned.set(node.id, {
-      ...node,
-      x: 76 + column * (nodeWidth + columnGap) + (row % 2) * 34,
-      y: 82 + row * (nodeHeight + rowGap) + layerOffset,
-      width: nodeWidth,
-      height: nodeHeight,
-      layer: layerForType(node.type),
+function buildDescendantSet(rootId, links) {
+  const descendants = new Set([rootId]);
+  const queue = [rootId];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    links.forEach((link) => {
+      if (relationIsContainment(link.type) && link.source === current && !descendants.has(link.target)) {
+        descendants.add(link.target);
+        queue.push(link.target);
+      }
     });
+  }
+  return descendants;
+}
+
+function buildDecompositionSet(rootId, links) {
+  const ids = buildDescendantSet(rootId, links);
+  links.forEach((link) => {
+    if (ids.has(link.source) || ids.has(link.target) || link.source === rootId || link.target === rootId) {
+      ids.add(link.source);
+      ids.add(link.target);
+    }
   });
-  const rows = Math.max(1, Math.ceil(orderedNodes.length / columns));
-  return {
-    nodes: Array.from(positioned.values()),
-    links: shownLinks,
-    nodeMap: positioned,
-    width: Math.max(980, 150 + columns * (nodeWidth + columnGap)),
-    height: Math.max(620, 170 + rows * (nodeHeight + rowGap)),
-    truncated: nodes.length > maxNodes,
+  return ids;
+}
+
+function isDecomposableElement(node) {
+  return /(process|function|activity|capability|service|value|course|product|component|part|package|folder|view)/i.test(String(node?.type || node?.label || ''));
+}
+
+function representationNodeIds(representation, links) {
+  const ids = new Set((representation?.nodeIds || []).map(String));
+  const viewId = String(representation?.id || '');
+  if (viewId) {
+    links.forEach((link) => {
+      if (link.source === viewId && /VIEW_CONTAINS|CONTAINS/i.test(link.type)) ids.add(link.target);
+    });
+  }
+  return ids;
+}
+
+function getModelName(dataset, activeView) {
+  const first = dataset.nodes[0]?.properties || {};
+  return first.model_name || first.source_filename || (activeView === 'architecture' ? 'ArchiMate model' : 'MBSE model');
+}
+
+function scopedNodeIds(children = []) {
+  const ids = new Set();
+  children.forEach((child) => {
+    (child.nodeIds || [child.nodeId]).filter(Boolean).forEach((id) => ids.add(id));
+  });
+  return Array.from(ids);
+}
+
+function makeTreeNode(node, children = []) {
+  const nodeIds = new Set([node.id]);
+  scopedNodeIds(children).forEach((id) => nodeIds.add(id));
+  return { id: node.id, label: node.label, type: node.type, nodeId: node.id, nodeIds: Array.from(nodeIds), children };
+}
+
+function makeTreeGroup(id, label, type, children = []) {
+  return { id, label, type, nodeIds: scopedNodeIds(children), children };
+}
+
+function buildModelTree(dataset, activeView) {
+  const nodeMap = new Map(dataset.nodes.map((node) => [node.id, node]));
+  const childIds = new Set();
+  const packageChildren = new Map();
+  dataset.links.forEach((link) => {
+    if (!relationIsContainment(link.type)) return;
+    const source = nodeMap.get(link.source);
+    const target = nodeMap.get(link.target);
+    if (!source || !target || !isContainerType(source.type)) return;
+    if (!packageChildren.has(source.id)) packageChildren.set(source.id, []);
+    packageChildren.get(source.id).push(target.id);
+    childIds.add(target.id);
+  });
+
+  const renderPackage = (nodeId, visited = new Set()) => {
+    if (visited.has(nodeId)) return null;
+    const node = nodeMap.get(nodeId);
+    if (!node) return null;
+    const nextVisited = new Set([...visited, nodeId]);
+    const children = (packageChildren.get(nodeId) || [])
+      .map((childId) => renderPackage(childId, nextVisited) || makeTreeNode(nodeMap.get(childId), []))
+      .filter(Boolean)
+      .sort((a, b) => a.label.localeCompare(b.label));
+    return makeTreeNode(node, children);
   };
+
+  const packageRoots = dataset.nodes
+    .filter((node) => isContainerType(node.type) && !childIds.has(node.id))
+    .map((node) => renderPackage(node.id))
+    .filter(Boolean)
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const decompositionChildren = new Map();
+  const decompositionChildIds = new Set();
+  dataset.links.forEach((link) => {
+    if (!/COMPOSITION|AGGREGATION/i.test(link.type)) return;
+    const source = nodeMap.get(link.source);
+    const target = nodeMap.get(link.target);
+    if (!source || !target) return;
+    if (!decompositionChildren.has(source.id)) decompositionChildren.set(source.id, []);
+    decompositionChildren.get(source.id).push(target.id);
+    decompositionChildIds.add(target.id);
+  });
+
+  const renderDecomposition = (nodeId, visited = new Set()) => {
+    if (visited.has(nodeId)) return null;
+    const node = nodeMap.get(nodeId);
+    if (!node) return null;
+    const nextVisited = new Set([...visited, nodeId]);
+    const children = (decompositionChildren.get(nodeId) || [])
+      .map((childId) => renderDecomposition(childId, nextVisited) || makeTreeNode(nodeMap.get(childId), []))
+      .filter(Boolean)
+      .sort((a, b) => a.label.localeCompare(b.label));
+    return makeTreeNode(node, children);
+  };
+
+  const decompositionRoots = dataset.nodes
+    .filter((node) => decompositionChildren.has(node.id) && !decompositionChildIds.has(node.id))
+    .map((node) => renderDecomposition(node.id))
+    .filter(Boolean)
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const representationNodes = (dataset.representations || []).map((view) => ({
+    id: `view:${view.id}`,
+    label: view.name,
+    type: view.type || 'Diagram',
+    representationId: view.id,
+    children: [],
+    nodeIds: Array.from(representationNodeIds(view, dataset.links)),
+  }));
+
+  const elementGroups = [];
+  if (packageRoots.length === 0) {
+    const grouped = new Map();
+    dataset.nodes.filter((node) => !isContainerType(node.type)).forEach((node) => {
+      const key = node.type || 'Element';
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(node);
+    });
+    grouped.forEach((items, type) => {
+      elementGroups.push({
+        id: `type:${type}`,
+        label: type,
+        type: 'Element Group',
+        nodeIds: items.map((node) => node.id),
+        children: items
+          .sort((a, b) => a.label.localeCompare(b.label))
+          .slice(0, 300)
+          .map((node) => makeTreeNode(node, [])),
+      });
+    });
+    elementGroups.sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  const rootChildren = [
+    ...(representationNodes.length ? [makeTreeGroup('root:views', 'Views', 'Folder', representationNodes)] : []),
+    ...(packageRoots.length ? [makeTreeGroup('root:packages', 'Model', 'Folder', packageRoots)] : []),
+    ...(decompositionRoots.length ? [makeTreeGroup('root:decomposition', 'Decomposition', 'Folder', decompositionRoots)] : []),
+    ...(elementGroups.length ? [makeTreeGroup('root:elements', 'Elements', 'Folder', elementGroups)] : []),
+  ];
+  return [makeTreeGroup('root:model', getModelName(dataset, activeView), activeView === 'architecture' ? 'ArchiMate Model' : 'Model', rootChildren)];
+}
+
+function treeContainsSelection(item, selectedId) {
+  if (!item || !selectedId) return false;
+  if (item.id === selectedId || item.nodeId === selectedId || item.representationId === selectedId) return true;
+  return Array.isArray(item.children) && item.children.some((child) => treeContainsSelection(child, selectedId));
+}
+
+function TreeBranch({ item, selectedId, onSelect, depth = 0 }) {
+  const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+  const shouldAutoOpen = hasChildren && treeContainsSelection(item, selectedId);
+  const [open, setOpen] = useState(depth < 2 || shouldAutoOpen);
+
+  useEffect(() => {
+    if (shouldAutoOpen) setOpen(true);
+  }, [shouldAutoOpen]);
+  return (
+    <div className="archi-tree-row-wrap">
+      <button
+        type="button"
+        className={`archi-tree-row ${selectedId === item.id || selectedId === item.nodeId || selectedId === item.representationId ? 'selected' : ''}`}
+        style={{ paddingLeft: `${10 + depth * 16}px` }}
+        onClick={() => {
+          if (hasChildren) setOpen((current) => !current);
+          onSelect?.(item);
+        }}
+      >
+        <span className="archi-tree-caret">{hasChildren ? (open ? 'v' : '>') : ''}</span>
+        <span className="archi-tree-icon">{hasChildren || isContainerType(item.type) ? '[]' : '-'}</span>
+        <span className="archi-tree-label"><strong>{item.label}</strong><small>{item.type}</small></span>
+      </button>
+      {open && hasChildren && <div>{item.children.map((child) => <TreeBranch key={child.id} item={child} selectedId={selectedId} onSelect={onSelect} depth={depth + 1} />)}</div>}
+    </div>
+  );
 }
 
 export default function ModelWorkbenchPage({ onNavigate }) {
   const [activeView, setActiveView] = useState('architecture');
   const [query, setQuery] = useState('');
-  const [dataset, setDataset] = useState({ nodes: [], links: [], message: '' });
+  const [dataset, setDataset] = useState({ nodes: [], links: [], message: '', representations: [] });
   const [selectedId, setSelectedId] = useState('');
-  const [treeScope, setTreeScope] = useState(null);
+  const [activeTreeItem, setActiveTreeItem] = useState(null);
   const [activeRepresentationId, setActiveRepresentationId] = useState('');
+  const [decompositionRootId, setDecompositionRootId] = useState('');
   const [status, setStatus] = useState({ loading: false, error: '' });
+  const [reactFlowGraph, setReactFlowGraph] = useState(null);
+  const [viewportCommand, setViewportCommand] = useState('');
 
   const loadView = useCallback(async () => {
     setStatus({ loading: true, error: '' });
     try {
       const response = activeView === 'architecture'
-        ? await graphApi.getArchitectureGraph('archimate', 1600)
+        ? await graphApi.getArchitectureGraph('archimate', 1800)
         : await API_METHODS.modeling.graph({ limit: 1600 });
       const normalized = normalizeDataset(response?.data);
       setDataset(normalized);
-      setSelectedId((current) => (current && normalized.nodes.some((node) => node.id === current) ? current : ''));
-      setTreeScope(null);
+      setSelectedId('');
+      setActiveTreeItem(null);
       setActiveRepresentationId(normalized.representations?.[0]?.id || '');
+      setDecompositionRootId('');
+      setReactFlowGraph(null);
       setStatus({ loading: false, error: '' });
     } catch (err) {
-      setDataset({ nodes: [], links: [], message: '' });
+      setDataset({ nodes: [], links: [], message: '', representations: [] });
       setSelectedId('');
-      setTreeScope(null);
+      setActiveTreeItem(null);
       setActiveRepresentationId('');
+      setDecompositionRootId('');
+      setReactFlowGraph(null);
       setStatus({ loading: false, error: err?.response?.data?.detail || err?.message || 'Unable to load model viewer data.' });
     }
   }, [activeView]);
 
   useEffect(() => { loadView(); }, [loadView]);
 
+  const modelTree = useMemo(() => buildModelTree(dataset, activeView), [dataset, activeView]);
   const matchedNodes = useMemo(() => dataset.nodes.filter((node) => matchesQuery(node, query)), [dataset.nodes, query]);
-  const visibleNodes = useMemo(() => {
-    if (!query.trim()) return dataset.nodes;
-    const ids = new Set(matchedNodes.map((node) => node.id));
-    dataset.links.forEach((link) => {
-      if (ids.has(link.source) || ids.has(link.target)) {
-        ids.add(link.source);
-        ids.add(link.target);
-      }
-    });
-    return dataset.nodes.filter((node) => ids.has(node.id));
-  }, [dataset.nodes, dataset.links, matchedNodes, query]);
   const activeRepresentation = useMemo(() => (dataset.representations || []).find((item) => item.id === activeRepresentationId) || null, [dataset.representations, activeRepresentationId]);
-  const representationBaseNodes = useMemo(() => {
-    if (!activeRepresentation) return visibleNodes;
-    const ids = new Set(activeRepresentation.nodeIds || []);
-    return visibleNodes.filter((node) => ids.has(node.id));
-  }, [activeRepresentation, visibleNodes]);
-  const selectedNode = useMemo(() => dataset.nodes.find((node) => node.id === selectedId) || null, [dataset.nodes, selectedId]);
-  const scopedNodes = useMemo(() => {
-    if (!treeScope) return representationBaseNodes;
-    return representationBaseNodes.filter((node) => {
-      const nodeLayer = layerForType(node.type);
-      if (treeScope.kind === 'layer') return nodeLayer === treeScope.layer;
-      if (treeScope.kind === 'type') return nodeLayer === treeScope.layer && node.type === treeScope.type;
-      return true;
-    });
-  }, [treeScope, representationBaseNodes]);
-  const representationNodes = useMemo(() => {
-    if (!selectedNode) return scopedNodes;
-    const ids = new Set([selectedNode.id]);
-    dataset.links.forEach((link) => {
-      if (link.source === selectedNode.id || link.target === selectedNode.id) {
-        ids.add(link.source);
-        ids.add(link.target);
-      }
-    });
-    return dataset.nodes.filter((node) => ids.has(node.id));
-  }, [dataset.nodes, dataset.links, selectedNode, scopedNodes]);
-  const representationIds = useMemo(() => new Set(representationNodes.map((node) => node.id)), [representationNodes]);
-  const representationLinks = useMemo(() => dataset.links.filter((link) => representationIds.has(link.source) && representationIds.has(link.target)), [dataset.links, representationIds]);
-  const engineDiagram = useMemo(() => createDiagramModel({ nodes: representationNodes, links: representationLinks }, activeView === 'architecture' ? 'archimate' : 'uaf'), [activeView, representationNodes, representationLinks]);
-  const [reactFlowGraph, setReactFlowGraph] = useState(null);
+
+  const selectedElement = useMemo(() => dataset.nodes.find((node) => node.id === selectedId) || null, [dataset.nodes, selectedId]);
+
+  const visibleNodes = useMemo(() => {
+    const ids = new Set();
+    if (query.trim()) {
+      matchedNodes.forEach((node) => ids.add(node.id));
+      dataset.links.forEach((link) => {
+        if (ids.has(link.source) || ids.has(link.target)) {
+          ids.add(link.source);
+          ids.add(link.target);
+        }
+      });
+    } else if (decompositionRootId) {
+      buildDecompositionSet(decompositionRootId, dataset.links).forEach((id) => ids.add(id));
+    } else if (activeTreeItem?.nodeIds?.length) {
+      activeTreeItem.nodeIds.forEach((id) => ids.add(id));
+    } else if (activeTreeItem?.representationId && activeRepresentation) {
+      representationNodeIds(activeRepresentation, dataset.links).forEach((id) => ids.add(id));
+    } else if (activeTreeItem?.nodeId) {
+      buildDescendantSet(activeTreeItem.nodeId, dataset.links).forEach((id) => ids.add(id));
+      dataset.links.forEach((link) => {
+        if (ids.has(link.source) || ids.has(link.target)) {
+          ids.add(link.source);
+          ids.add(link.target);
+        }
+      });
+    } else if (activeRepresentation) {
+      representationNodeIds(activeRepresentation, dataset.links).forEach((id) => ids.add(id));
+    }
+    if (ids.size === 0) dataset.nodes.filter((node) => !isContainerType(node.type)).slice(0, 160).forEach((node) => ids.add(node.id));
+    return dataset.nodes.filter((node) => ids.has(node.id) && !(/^id\d+$/i.test(node.label) && !query.trim()));
+  }, [activeRepresentation, activeTreeItem, dataset.links, dataset.nodes, decompositionRootId, matchedNodes, query]);
+
+  const visibleIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
+  const visibleLinks = useMemo(() => dataset.links.filter((link) => visibleIds.has(link.source) && visibleIds.has(link.target) && !/VIEW_CONTAINS/i.test(link.type)), [dataset.links, visibleIds]);
+  const selectedRelationships = useMemo(() => {
+    if (!selectedElement) return [];
+    return visibleLinks
+      .filter((link) => link.source === selectedElement.id || link.target === selectedElement.id)
+      .slice(0, 12)
+      .map((link) => ({
+        id: link.id,
+        type: link.type,
+        direction: link.source === selectedElement.id ? 'outgoing' : 'incoming',
+        otherId: link.source === selectedElement.id ? link.target : link.source,
+      }));
+  }, [selectedElement, visibleLinks]);
+  const selectedRelationshipTargets = useMemo(() => {
+    const byId = new Map(dataset.nodes.map((node) => [node.id, node]));
+    return selectedRelationships.map((link) => ({
+      ...link,
+      otherNode: byId.get(link.otherId) || null,
+    }));
+  }, [dataset.nodes, selectedRelationships]);
+  const engineDiagram = useMemo(() => createDiagramModel({ nodes: visibleNodes, links: visibleLinks }, activeView === 'architecture' ? 'archimate' : 'uaf'), [activeView, visibleNodes, visibleLinks]);
+
   useEffect(() => { setReactFlowGraph(engineDiagram.graph); }, [engineDiagram]);
+
   const activeCanvasGraph = reactFlowGraph || engineDiagram.graph;
-  const diagram = useMemo(() => buildDiagram(representationNodes, representationLinks), [representationNodes, representationLinks]);
-  const modelInfo = useMemo(() => {
-    const first = dataset.nodes[0]?.properties || {};
-    const typeCounts = new Map();
-    dataset.nodes.forEach((node) => typeCounts.set(node.type, (typeCounts.get(node.type) || 0) + 1));
-    return {
-      name: first.model_name || first.source_filename || 'Imported model',
-      source: first.source_filename || first.source_ontology || activeView,
-      types: Array.from(typeCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 4),
-    };
-  }, [dataset.nodes, activeView]);
-  const representationTitle = useMemo(() => {
-    if (selectedNode) return selectedNode.label;
-    if (treeScope?.kind === 'type') return treeScope.type;
-    if (treeScope?.kind === 'layer') return LAYERS.find((layer) => layer.id === treeScope.layer)?.label || 'Scoped model view';
-    if (activeRepresentation) return activeRepresentation.name;
-    return modelInfo.name;
-  }, [activeRepresentation, modelInfo.name, selectedNode, treeScope]);
-  const representationSubtitle = useMemo(() => {
-    if (selectedNode) return `${selectedNode.type} one-hop representation`;
-    if (treeScope?.kind === 'type') return 'Type-level representation';
-    if (treeScope?.kind === 'layer') return 'Layer-level representation';
-    if (activeRepresentation) return activeRepresentation.type || 'Imported representation';
-    return modelInfo.source;
-  }, [activeRepresentation, modelInfo.source, selectedNode, treeScope]);
-  const treeGroups = useMemo(() => LAYERS.map((layer) => {
-    const nodes = visibleNodes.filter((node) => layerForType(node.type) === layer.id);
-    const typeMap = new Map();
-    nodes.forEach((node) => {
-      const key = node.type || 'Element';
-      if (!typeMap.has(key)) typeMap.set(key, []);
-      typeMap.get(key).push(node);
-    });
-    return {
-      ...layer,
-      count: nodes.length,
-      types: Array.from(typeMap.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([type, items]) => ({
-          type,
-          count: items.length,
-          nodes: items.slice(0, 18),
-        })),
-    };
-  }).filter((group) => group.count > 0), [visibleNodes]);
   const validation = useMemo(() => {
     const issues = [];
     const ids = new Set(dataset.nodes.map((node) => node.id));
@@ -290,16 +399,39 @@ export default function ModelWorkbenchPage({ onNavigate }) {
     return issues.slice(0, 8);
   }, [dataset]);
 
-  const resetCanvasView = useCallback(() => {
-    setReactFlowGraph(engineDiagram.graph);
-  }, [engineDiagram.graph]);
+  const handleTreeSelect = useCallback((item) => {
+    setActiveTreeItem(item);
+    setSelectedId(item?.nodeId || '');
+    setDecompositionRootId('');
+    if (item?.representationId) {
+      setActiveRepresentationId(item.representationId);
+      return;
+    }
+    if (item?.type && /ArchiMate Model|Model|Folder|Element Group/i.test(item.type) && !item?.nodeId) {
+      return;
+    }
+    setActiveRepresentationId('');
+  }, []);
+
+  const handleCanvasDoubleClick = useCallback((item) => {
+    if (!item?.id) return;
+    setSelectedId(item.id);
+    if (!isDecomposableElement(item)) return;
+    setQuery('');
+    setActiveRepresentationId('');
+    setDecompositionRootId(item.id);
+    setActiveTreeItem({ id: `decomposition:${item.id}`, label: item.label || item.id, type: `${item.type || 'Element'} decomposition`, nodeId: item.id });
+  }, []);
 
   return (
     <div className="model-viewer-page">
-      <header className="model-viewer-header">
-        <div>
-          <h1><Layers size={24} /> Modeling Viewer</h1>
-          <p>Read-only semantic diagram viewer for ArchiMate, MBSE, SysML, and UML-derived model data.</p>
+      <header className="model-viewer-header compact-header">
+        <div className="model-viewer-header-main">
+          <h1><Layers size={22} /> Modeling Viewer</h1>
+          <p>Semantic ArchiMate / MBSE diagram viewer with model tree, drag, pan, and zoom.</p>
+          <div className="model-viewer-tabs compact-header-tabs" role="tablist" aria-label="Model viewer modes">
+            {VIEW_OPTIONS.map((view) => <button key={view.id} type="button" className={activeView === view.id ? 'active' : ''} onClick={() => { setActiveView(view.id); setQuery(''); setSelectedId(''); setActiveTreeItem(null); setActiveRepresentationId(''); }}>{view.label}</button>)}
+          </div>
         </div>
         <div className="model-viewer-actions">
           <button type="button" onClick={loadView} disabled={status.loading}><RefreshCcw size={15} /> Refresh</button>
@@ -307,49 +439,99 @@ export default function ModelWorkbenchPage({ onNavigate }) {
         </div>
       </header>
 
-      <section className="model-viewer-toolbar">
-        <div className="model-viewer-tabs" role="tablist" aria-label="Model viewer modes">
-          {VIEW_OPTIONS.map((view) => <button key={view.id} type="button" className={activeView === view.id ? 'active' : ''} onClick={() => { setActiveView(view.id); setQuery(''); setSelectedId(''); setTreeScope(null); setActiveRepresentationId(''); }}>{view.label}</button>)}
-        </div>
-        <label className="model-viewer-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter label, type, property, id" /></label>
-        {(dataset.representations || []).length > 0 && <label className="model-viewer-representation"><span>Diagram</span><select value={activeRepresentationId} onChange={(event) => { setActiveRepresentationId(event.target.value); setSelectedId(''); setTreeScope(null); }}><option value="">All model</option>{dataset.representations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
-      </section>
 
-      <section className="model-viewer-summary compact">
-        <div><strong>{dataset.nodes.length}</strong><span>Elements</span></div>
-        <div><strong>{dataset.links.length}</strong><span>Relationships</span></div>
-        <div><strong>{query.trim() ? matchedNodes.length : visibleNodes.length}</strong><span>{query.trim() ? 'Matches' : 'Visible'}</span></div>
+      <section className="model-viewer-inspector-bar">
+        <div><strong>{getModelName(dataset, activeView)}</strong><span>{decompositionRootId ? `Decomposition: ${selectedElement?.label || decompositionRootId}` : activeTreeItem?.label || activeRepresentation?.name || 'Overview'}</span></div>
+        <div><strong>{visibleNodes.length}</strong><span>Visible elements</span></div>
+        <div><strong>{visibleLinks.length}</strong><span>Visible relationships</span></div>
+        <div><strong>{query.trim() ? matchedNodes.length : dataset.nodes.length}</strong><span>{query.trim() ? 'Matches' : 'Model elements'}</span></div>
         <div><strong>{validation.length}</strong><span>Checks</span></div>
+        {selectedElement && <div className="selected-inline"><strong>{selectedElement.label}</strong><span>{selectedElement.type}</span></div>}
       </section>
 
       {status.error && <div className="model-viewer-error"><AlertTriangle size={16} /> {status.error}</div>}
       {!status.error && dataset.message && <div className="model-viewer-note">{dataset.message}</div>}
 
-
-      <main className="model-viewer-layout tree-diagram">
-        <section className="model-viewer-panel model-viewer-elements">
+      <main className="model-viewer-layout tree-diagram semantic-viewer-layout">
+        <section className="model-viewer-panel model-viewer-elements archi-model-tree-panel">
           <div className="panel-title"><Boxes size={16} /> Model Tree</div>
-          <div className="model-tree">
-            {treeGroups.map((group) => <section key={group.id} className="tree-group"><button type="button" className={`tree-group-header ${treeScope?.kind === 'layer' && treeScope.layer === group.id ? 'selected' : ''}`} style={{ color: group.color }} onClick={() => { setSelectedId(''); setTreeScope({ kind: 'layer', layer: group.id }); }}><span>{group.label}</span><small>{group.count}</small></button>{group.types.map((typeGroup) => <div key={`${group.id}-${typeGroup.type}`} className="tree-type"><button type="button" className={`tree-type-header ${treeScope?.kind === 'type' && treeScope.layer === group.id && treeScope.type === typeGroup.type ? 'selected' : ''}`} onClick={() => { setSelectedId(''); setTreeScope({ kind: 'type', layer: group.id, type: typeGroup.type }); }}><span className="tree-caret">▾</span><span>{typeGroup.type}</span><small>{typeGroup.count}</small></button>{typeGroup.nodes.map((node) => <button key={node.id} type="button" className={selectedNode?.id === node.id ? 'selected' : ''} onClick={() => { setTreeScope(null); setSelectedId(node.id); }}><span className="tree-branch" /><span className="type-dot" style={{ background: TYPE_COLORS[node.type] || group.color }} /><span><strong>{node.label}</strong></span></button>)}</div>)}</section>)}
-            {visibleNodes.length === 0 && <div className="empty-state">No matching model elements.</div>}
+          <div className="archi-model-tree">
+            {modelTree.map((item) => <TreeBranch key={item.id} item={item} selectedId={activeTreeItem?.id || selectedId || activeRepresentationId} onSelect={handleTreeSelect} />)}
+            {dataset.nodes.length === 0 && <div className="empty-state">No model loaded.</div>}
           </div>
         </section>
 
-        <section className="model-viewer-panel model-diagram-panel">
-          <div className="panel-title"><Layers size={16} /> Main Representation <span className="diagram-count">{`${diagram.nodes.length} nodes / ${diagram.links.length} links`}</span>{(selectedNode || treeScope) && <button type="button" className="clear-selection" onClick={() => { setSelectedId(''); setTreeScope(null); }}>Show overview</button>}<button type="button" className="clear-selection" onClick={resetCanvasView}>Reset canvas</button></div>
-          <div className="model-data-strip">
-            <strong>{representationTitle}</strong>
-            <span>{representationSubtitle}</span>
-            {modelInfo.types.map(([type, count]) => <em key={type}>{type}: {count}</em>)}
-          </div>
-          {diagram.truncated && <div className="model-viewer-note compact">Showing first 140 contextual elements for readable diagram performance. Use search to narrow scope.</div>}
+        <section className="model-viewer-panel model-diagram-panel semantic-diagram-panel">
+          <div className="panel-title model-diagram-header"><span className="model-diagram-title"><Network size={16} /> Diagram Canvas <span className="diagram-count">{`${visibleNodes.length} elements / ${visibleLinks.length} relationships`}</span></span><span className="model-diagram-controls"><button type="button" className="canvas-control-button" onClick={() => setViewportCommand(`zoom-out:${Date.now()}`)} aria-label="Zoom out"><ZoomOut size={14} /></button><button type="button" className="canvas-control-button" onClick={() => setViewportCommand(`zoom-in:${Date.now()}`)} aria-label="Zoom in"><ZoomIn size={14} /></button><button type="button" className="canvas-control-button" onClick={() => setViewportCommand(`fit:${Date.now()}`)} aria-label="Fit diagram"><ScanSearch size={14} /></button></span></div>
           <div className="semantic-canvas-wrap react-flow-wrap">
-            {(activeCanvasGraph.nodes || []).length === 0 ? <div className="empty-state">No diagram elements available. Import ArchiMate/MBSE data or clear the search filter.</div> : <ReactFlowDiagramCanvas graph={activeCanvasGraph} selectedId={selectedNode?.id} onSelect={(item) => { if (item?.id) setSelectedId(item.id); }} onGraphChange={setReactFlowGraph} />}
+            {(activeCanvasGraph.nodes || []).length === 0 ? <div className="empty-state">No diagram elements available. Select a view/folder or clear the search filter.</div> : <ReactFlowDiagramCanvas graph={activeCanvasGraph} diagramKind={activeView === 'architecture' ? 'archimate' : 'uaf'} selectedId={selectedElement?.id} viewportCommand={viewportCommand} onSelect={(item) => { if (item?.id) setSelectedId(item.id); }} onGraphChange={setReactFlowGraph} onNodeDoubleClick={handleCanvasDoubleClick} />}
           </div>
         </section>
 
+        <aside className="model-viewer-panel model-viewer-inspector-panel">
+          <div className="panel-title"><AlertTriangle size={16} /> Inspector</div>
+          {selectedElement ? (
+            <>
+              <div className="selected-card">
+                <span className="type-dot large" style={{ background: '#005a9c' }} />
+                <div>
+                  <strong>{selectedElement.label}</strong>
+                  <small>{selectedElement.type}</small>
+                </div>
+              </div>
+              <div className="context-list">
+                <strong>Context</strong>
+                <span>{`ID: ${selectedElement.id}`}</span>
+                <span>{`${selectedRelationshipTargets.length} connected relationships`}</span>
+                {decompositionRootId === selectedElement.id && <span>Active decomposition root</span>}
+              </div>
+              <div className="property-list">
+                {Object.entries(selectedElement.properties || {}).slice(0, 24).map(([key, value]) => (
+                  <div key={key}>
+                    <span>{key}</span>
+                    <strong>{String(value ?? '') || '-'}</strong>
+                  </div>
+                ))}
+                {Object.keys(selectedElement.properties || {}).length === 0 && <div><span>Properties</span><strong>-</strong></div>}
+              </div>
+              <div className="validation-list">
+                <strong>Relationships</strong>
+                {selectedRelationshipTargets.length > 0 ? selectedRelationshipTargets.map((link) => (
+                  <span key={link.id}>
+                    {`${link.direction === 'outgoing' ? '->' : '<-'} ${link.type} ${link.otherNode?.label || link.otherId}`}
+                  </span>
+                )) : <span>No visible relationships in current canvas scope.</span>}
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">Select a model tree item or diagram element to inspect its properties and connected relationships.</div>
+          )}
+          <div className="validation-list">
+            <strong>Validation</strong>
+            {validation.length > 0 ? validation.map((issue) => <span key={issue}>{issue}</span>) : <span className="valid">No viewer-level issues found.</span>}
+          </div>
+        </aside>
       </main>
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

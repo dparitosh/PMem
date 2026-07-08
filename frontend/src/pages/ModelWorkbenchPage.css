@@ -908,3 +908,485 @@
   font-size: 10px;
   font-weight: 800;
 }
+
+/* Sirius/Archi-style semantic modeling viewer refinements */
+.model-viewer-page .compact-header {
+  padding: 12px 14px;
+}
+
+.model-viewer-page .compact-header h1 {
+  font-size: 24px;
+}
+
+.compact-toolbar {
+  gap: 10px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.model-viewer-representation {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #52606d;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.model-viewer-representation select {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #1f2933;
+  font-weight: 800;
+  min-width: 210px;
+}
+
+.model-viewer-reset {
+  min-height: 40px;
+  border: 1px solid #153e6f;
+  background: #153e6f;
+  color: #fff;
+  border-radius: 8px;
+  padding: 0 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.model-viewer-inspector-bar {
+  background: #ffffff;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  padding: 8px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(4, minmax(120px, 0.7fr)) minmax(200px, 1fr);
+  gap: 8px;
+  align-items: stretch;
+}
+
+.model-viewer-inspector-bar div {
+  min-width: 0;
+  border: 1px solid #e5edf5;
+  border-radius: 7px;
+  background: #f8fafc;
+  padding: 7px 9px;
+  display: grid;
+  gap: 2px;
+}
+
+.model-viewer-inspector-bar strong,
+.model-viewer-inspector-bar span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-viewer-inspector-bar strong {
+  color: #153e6f;
+  font-size: 13px;
+}
+
+.model-viewer-inspector-bar span {
+  color: #66788a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.semantic-viewer-layout {
+  grid-template-columns: 340px minmax(0, 1fr);
+  min-height: 720px;
+}
+
+.archi-model-tree-panel {
+  min-height: 720px;
+}
+
+.archi-model-tree {
+  overflow: auto;
+  padding: 8px;
+  background: #fbfdff;
+}
+
+.archi-tree-row {
+  width: 100%;
+  min-height: 36px;
+  border: 0;
+  border-bottom: 1px solid #eef2f7;
+  background: transparent;
+  color: #1f2933;
+  display: grid;
+  grid-template-columns: 18px 26px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.archi-tree-row:hover,
+.archi-tree-row.selected {
+  background: #eaf4ff;
+  color: #005a9c;
+}
+
+.archi-tree-caret,
+.archi-tree-icon {
+  color: #66788a;
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.archi-tree-label {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.archi-tree-label strong,
+.archi-tree-label small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archi-tree-label strong {
+  font-size: 12px;
+}
+
+.archi-tree-label small {
+  color: #66788a;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.semantic-diagram-panel {
+  min-height: 720px;
+}
+
+.react-flow-wrap,
+.react-flow-diagram-canvas {
+  min-height: 675px;
+  height: 100%;
+}
+
+.react-flow-diagram-canvas .react-flow__renderer,
+.react-flow-diagram-canvas .react-flow__pane {
+  cursor: grab;
+}
+
+.react-flow-diagram-canvas .react-flow__pane:active {
+  cursor: grabbing;
+}
+
+.semantic-rf-node {
+  width: 214px;
+  min-height: 72px;
+  position: relative;
+  border: 1.8px solid var(--node-accent, #64748b);
+  background: #ffffff;
+  color: #1f2933;
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+}
+
+.semantic-rf-node.is-selected {
+  outline: 3px solid rgba(0, 90, 156, 0.22);
+  box-shadow: 0 12px 28px rgba(0, 90, 156, 0.2);
+}
+
+.semantic-rf-node--folder {
+  border-radius: 4px;
+}
+
+.semantic-rf-node--folder::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: -1px;
+  width: 74px;
+  height: 13px;
+  border: 1.8px solid var(--node-accent, #64748b);
+  border-bottom: 0;
+  border-radius: 5px 5px 0 0;
+  background: #f8fafc;
+}
+
+.semantic-rf-node--view,
+.semantic-rf-node--motivation,
+.semantic-rf-node--document {
+  border-radius: 3px;
+}
+
+.semantic-rf-node--actor {
+  border-radius: 999px;
+}
+
+.semantic-rf-node--process {
+  border-radius: 12px;
+}
+
+.semantic-rf-node--component {
+  border-radius: 5px;
+}
+
+.semantic-rf-node--component::after {
+  content: '';
+  position: absolute;
+  right: 8px;
+  top: 12px;
+  width: 16px;
+  height: 30px;
+  border-left: 4px double var(--node-accent, #64748b);
+  opacity: 0.55;
+}
+
+.semantic-rf-node__stripe {
+  height: 6px;
+  background: var(--node-accent, #64748b);
+}
+
+.semantic-rf-node__content {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px 12px 11px;
+  align-items: center;
+}
+
+.semantic-rf-node__icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--node-accent, #64748b) 14%, white);
+  color: var(--node-accent, #64748b);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.semantic-rf-node__text {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.semantic-rf-node__text strong,
+.semantic-rf-node__text small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.semantic-rf-node__text strong {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.semantic-rf-node__text small {
+  color: #66788a;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.semantic-rf-handle {
+  width: 8px;
+  height: 8px;
+  border: 1px solid #ffffff;
+  background: var(--node-accent, #64748b);
+}
+
+.react-flow__edge-textbg {
+  fill: rgba(255, 255, 255, 0.88);
+}
+
+.react-flow__edge-text {
+  fill: #334155;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+@media (max-width: 1200px) {
+  .semantic-viewer-layout {
+    grid-template-columns: 300px minmax(0, 1fr);
+  }
+
+  .model-viewer-inspector-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .semantic-viewer-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .archi-model-tree-panel,
+  .semantic-diagram-panel {
+    min-height: 420px;
+  }
+}
+
+/* Keep modeling relationships visually stable: no blinking/animation on edge paths. */
+.react-flow-diagram-canvas .react-flow__edge,
+.react-flow-diagram-canvas .react-flow__edge-path,
+.react-flow-diagram-canvas .react-flow__edge-text,
+.react-flow-diagram-canvas .react-flow__edge-textbg {
+  animation: none !important;
+  transition: none !important;
+}
+
+.react-flow-diagram-canvas .react-flow__edge.animated .react-flow__edge-path {
+  stroke-dasharray: none !important;
+  animation: none !important;
+}
+
+.model-viewer-layout.tree-diagram.semantic-viewer-layout {
+  grid-template-columns: 300px minmax(0, 1fr) 340px;
+}
+
+.model-viewer-inspector-panel {
+  min-width: 0;
+}
+
+.model-viewer-inspector-panel .validation-list {
+  margin-top: 10px;
+}
+
+.semantic-canvas-wrap.react-flow-wrap {
+  overflow: hidden;
+}
+
+.semantic-canvas {
+  min-width: 100%;
+}
+
+@media (max-width: 1280px) {
+  .model-viewer-layout.tree-diagram.semantic-viewer-layout {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+
+  .model-viewer-inspector-panel {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .model-viewer-layout.tree-diagram.semantic-viewer-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.compact-toolbar {
+  gap: 8px;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 10px;
+}
+
+.compact-toolbar .model-viewer-tabs,
+.compact-toolbar .model-viewer-search,
+.compact-toolbar .model-viewer-representation,
+.compact-toolbar .model-viewer-reset {
+  flex: 0 0 auto;
+}
+
+.compact-toolbar .model-viewer-tabs button,
+.compact-toolbar .model-viewer-reset,
+.compact-toolbar .model-viewer-representation select,
+.compact-toolbar .model-viewer-search input,
+.compact-toolbar .model-viewer-representation span {
+  font-size: 11px;
+}
+
+.compact-toolbar .model-viewer-tabs button,
+.compact-toolbar .model-viewer-reset {
+  min-height: 32px;
+  padding: 6px 9px;
+}
+
+.compact-toolbar .model-viewer-search {
+  min-height: 34px;
+  padding: 0 8px;
+}
+
+.compact-toolbar .model-viewer-search svg {
+  width: 14px;
+  height: 14px;
+}
+
+.compact-toolbar .model-viewer-representation {
+  min-height: 34px;
+  min-width: 200px;
+  padding: 4px 8px;
+}
+
+.model-diagram-header {
+  justify-content: space-between;
+}
+
+.model-diagram-title,
+.model-diagram-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-diagram-controls {
+  margin-left: auto;
+}
+
+.canvas-control-button {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #153e6f;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.canvas-control-button:hover {
+  background: #153e6f;
+  border-color: #153e6f;
+  color: #ffffff;
+}
+
+.model-viewer-header-main {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.compact-header-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.archi-model-tree-panel {
+  overflow: hidden;
+}
+
+.archi-model-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}

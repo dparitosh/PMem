@@ -78,3 +78,12 @@ Graph Explorer and Knowledge Companion can then answer process-reference questio
 ## Design Boundary
 
 ArchiMate import creates a graph projection of architecture/process models. OWL/RDF semantics remain handled by the ontology layer using Owlready2/RDFLib, and mappings between ArchiMate elements and ontology concepts should be reviewed through Semantic Bridge.
+
+### Folder and View Preservation
+
+ArchiMate imports preserve the model organization layer instead of flattening the file:
+
+- Archi/ArchiMate folders become `Package` nodes with their original folder names.
+- Diagram/view definitions become `View` nodes with their original view names.
+- Folder-to-folder, folder-to-element, and view-to-element membership is written as `CONTAINS` / `VIEW_CONTAINS` relationships.
+- Architecture graph views can therefore show named folders such as `Business`, `Application`, `Views`, and process-group folders from the source file.
