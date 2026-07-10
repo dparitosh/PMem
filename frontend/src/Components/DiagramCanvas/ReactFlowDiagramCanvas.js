@@ -169,6 +169,20 @@ export default function ReactFlowDiagramCanvas({
   }, [structureSignature, rfNodes.length]);
 
   useEffect(() => {
+    if (!flowInstanceRef.current || !selectedId) return undefined;
+    const selectedNode = rfNodesRef.current.find((node) => node.id === selectedId);
+    if (!selectedNode) return undefined;
+    const timer = window.setTimeout(() => {
+      flowInstanceRef.current?.setCenter(
+        (selectedNode.position?.x || 0) + ((selectedNode.width || 220) / 2),
+        (selectedNode.position?.y || 0) + ((selectedNode.height || 84) / 2),
+        { zoom: 1.05, duration: 240 }
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [selectedId, structureSignature]);
+
+  useEffect(() => {
     if (!viewportCommand || !flowInstanceRef.current || viewportCommand === lastViewportCommandRef.current) return;
     lastViewportCommandRef.current = viewportCommand;
     const command = String(viewportCommand).split(':')[0];

@@ -16,12 +16,14 @@ import {
   removeExpandedSubgraph,
   validateConnectivity,
   buildLinkSignature,
+  getLinkEndpointId,
 } from '../utils/graphUtils';
 import { buildUrl, replaceParams, API } from '../config';
 import { apiClient } from '../services/apiClient';
 import { graphApi } from '../services/graphApi';
 import { buildTooltipHeader } from './tooltipBuilder';
 import GraphExplorerToolbar from './GraphExplorerToolbar';
+import useMountedRef from '../hooks/useMountedRef';
 
 // Security: HTML-escape utility for tooltip interpolation
 const escapeHtml = (str) => {
@@ -566,14 +568,6 @@ const getRelationshipDisplayName = (relationship) => {
   return RELATIONSHIP_DISPLAY_NAMES[normalized] || RELATIONSHIP_DISPLAY_NAMES[rawType] || rawType || 'Relationship';
 };
 
-const getLinkEndpointId = (endpoint) => {
-  if (!endpoint) return null;
-  if (typeof endpoint === 'object') {
-    return endpoint.elementId || endpoint.id || endpoint.identity || endpoint._id || null;
-  }
-  return endpoint;
-};
-
 const getNodeCollisionRadius = (node, showLabels) => {
   const base = NODE_RADIUS + 14;
   if (!showLabels) return base;
@@ -581,10 +575,29 @@ const getNodeCollisionRadius = (node, showLabels) => {
   return base + Math.max(16, Math.round(displayLength * 3.0));
 };
 
-const shouldRenderNodeLabels = (nodeCount, linkCount, graphSearchActive) => {
-  if (graphSearchActive) return nodeCount <= 90;
-  if (nodeCount <= 80 && linkCount <= 140) return true;
-  return nodeCount <= 45;
+export const shouldRenderNodeLabels = (nodeCount, linkCount, graphSearchActive, graphViewMode = 'ontology') => {
+  if (['ontology', 'individual'].includes(graphViewMode)) return true;
+  if (graphSearchActive) return true;
+  return nodeCount > 0 || linkCount > 0;
+};
+
+export const getNodeLabelStyle = (nodeCount, graphViewMode = 'ontology') => {
+  if (graphViewMode === 'individual') {
+    return { fontSize: 11, maxLength: 42 };
+  }
+  if (nodeCount > 350) {
+    return { fontSize: 8, maxLength: 22 };
+  }
+  if (nodeCount > 150) {
+    return { fontSize: 9, maxLength: 28 };
+  }
+  return { fontSize: 10, maxLength: 36 };
+};
+
+export const truncateGraphLabel = (value, maxLength = 36) => {
+  const label = String(value || '').trim();
+  if (label.length <= maxLength) return label;
+  return `${label.slice(0, Math.max(1, maxLength - 1))}…`;
 };
 
 const shouldRenderRelationshipLabels = (nodeCount, linkCount, graphSearchActive) => {
@@ -648,6 +661,7 @@ const GraphHEB = ({
   const lastCenteredSearchRef = useRef('');
   const previousSearchQueryRef = useRef('');
   const userInteractedWithGraphRef = useRef(false);
+  const isComponentMountedRef = useMountedRef();
 
   // Helper: build close button HTML for tooltips
   const tooltipCloseBtn = `<button class="dt-tooltip-close" style="position:absolute;top:6px;right:8px;background:none;border:none;color:white;font-size:16px;cursor:pointer;line-height:1;padding:0 2px;opacity:0.85;">&times;</button>`;
@@ -826,6 +840,7 @@ const GraphHEB = ({
       setSearchLoading(true);
       try {
         const response = await apiClient.post(API.graph.graphfilterMulti, { names });
+        if (!isComponentMountedRef.current) return;
         const results = response.data?.results || [];
 
         const nodesMap = new Map();
@@ -865,6 +880,7 @@ const GraphHEB = ({
         nodes.forEach(n => (n.labels || []).forEach(l => labelSet.add(l)));
 
         startTransition(() => {
+          if (!isComponentMountedRef.current) return;
           setSearchResultData({ nodes, links });
           if (!graphSearchActiveRef.current) {
             setFilteredData({ nodes, links });
@@ -874,7 +890,9 @@ const GraphHEB = ({
       } catch (err) {
         logger.error('[dt-load-result-nodes] Error:', err.message);
       } finally {
-        setSearchLoading(false);
+        if (isComponentMountedRef.current) {
+          setSearchLoading(false);
+        }
       }
     };
 
@@ -1024,10 +1042,13 @@ const GraphHEB = ({
     if (resetExpansion) {
       const clearedExpanded = new Set();
       const clearedExpansions = new Map();
+      const clearedLoading = new Set();
       setExpandedNodes(clearedExpanded);
       setNodeExpansions(clearedExpansions);
+      setLoadingNodes(clearedLoading);
       expandedNodesRef.current = clearedExpanded;
       nodeExpansionsRef.current = clearedExpansions;
+      loadingNodesRef.current = clearedLoading;
     }
     if (resetOntology) {
       setSelectedOntology('ALL');
@@ -1069,6 +1090,7 @@ const GraphHEB = ({
   const filteredDataRef = useRef(filteredData);
   const searchResultDataRef = useRef(searchResultData);
   const highlightedNodeIdsRef = useRef(highlightedNodeIds);
+  const loadingNodesRef = useRef(loadingNodes);
   const activeSearchResultIdRef = useRef(null);
   const contextualRootNodeIdRef = useRef(null);
   const searchModeRef = useRef(false);
@@ -1306,11 +1328,13 @@ const GraphHEB = ({
   const clearExpansionState = useCallback(() => {
     const clearedExpanded = new Set();
     const clearedExpansions = new Map();
+    const clearedLoading = new Set();
     setExpandedNodes(clearedExpanded);
     setNodeExpansions(clearedExpansions);
-    setLoadingNodes(new Set());
+    setLoadingNodes(clearedLoading);
     expandedNodesRef.current = clearedExpanded;
     nodeExpansionsRef.current = clearedExpansions;
+    loadingNodesRef.current = clearedLoading;
   }, []);
 
   const syncContextualHighlights = useCallback((query, nodesOverride = null) => {
@@ -1605,6 +1629,9 @@ const GraphHEB = ({
   useEffect(() => {
     highlightedNodeIdsRef.current = highlightedNodeIds;
   }, [highlightedNodeIds]);
+  useEffect(() => {
+    loadingNodesRef.current = loadingNodes;
+  }, [loadingNodes]);
   useEffect(() => {
     expandedNodesRef.current = expandedNodes;
   }, [expandedNodes]);
@@ -2537,7 +2564,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
   // Function to expand a node using graphtraverse API - 1-2 hop expansion
   const expandNode = async (nodeId) => {
-    if (expandedNodesRef.current.has(nodeId)) {
+    if (expandedNodesRef.current.has(nodeId) || loadingNodesRef.current.has(nodeId)) {
       return;
     }
 
@@ -2551,7 +2578,10 @@ const getPrimaryNodeLabel = useCallback((d) => {
       return;
     }
 
-    setLoadingNodes(prev => new Set([...prev, nodeId]));
+    const nextLoadingNodes = new Set(loadingNodesRef.current);
+    nextLoadingNodes.add(nodeId);
+    loadingNodesRef.current = nextLoadingNodes;
+    setLoadingNodes(nextLoadingNodes);
 
     // Track nodes that will be added by this expansion
     const addedNodeIds = new Set();
@@ -2637,6 +2667,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       setLoadingNodes(prev => {
         const newSet = new Set(prev);
         newSet.delete(nodeId);
+        loadingNodesRef.current = newSet;
         return newSet;
       });
     }
@@ -2815,7 +2846,7 @@ const boundaryForce = (width, height) => {
     const height = svgElement.clientHeight || 600;
 
     // Click on empty SVG background dismisses any open tooltip
-    svg.on('click', function(event) {
+    svg.on('click.graph-background', function(event) {
       // Only if the click target is the SVG itself (not a node/link)
       if (event.target === svgRef.current) {
         hideAllTooltips();
@@ -2946,7 +2977,8 @@ const boundaryForce = (width, height) => {
     });
     const processedLinks = processLinksForOffset([...safeRenderLinks]);
     const linkCount = processedLinks.length;
-    const showNodeLabels = shouldRenderNodeLabels(nodeCount, linkCount, graphSearchActive);
+    const showNodeLabels = shouldRenderNodeLabels(nodeCount, linkCount, graphSearchActive, graphViewMode);
+    const nodeLabelStyle = getNodeLabelStyle(nodeCount, graphViewMode);
 
     logger.render('[LINK PROCESSING]', {
       inputLinks: renderData.links.length,
@@ -3270,8 +3302,8 @@ const boundaryForce = (width, height) => {
           // Node label text (using unified logic)
           group.append('text')
             .attr('class', 'node-label')
-            .text(d => showNodeLabels ? getPrimaryNodeLabel(d) : '')
-            .attr('font-size', 10)
+            .text(d => showNodeLabels ? truncateGraphLabel(getPrimaryNodeLabel(d), nodeLabelStyle.maxLength) : '')
+            .attr('font-size', nodeLabelStyle.fontSize)
             .attr('font-weight', 'bold')
             .attr('dx', NODE_RADIUS + 5)
             .attr('dy', 3)
@@ -3621,7 +3653,8 @@ const boundaryForce = (width, height) => {
           });
 
           update.select('.node-label')
-            .text(d => showNodeLabels ? getPrimaryNodeLabel(d) : '')
+            .text(d => showNodeLabels ? truncateGraphLabel(getPrimaryNodeLabel(d), nodeLabelStyle.maxLength) : '')
+            .attr('font-size', nodeLabelStyle.fontSize)
             .attr('font-weight', 'bold')
             .attr('fill', '#000')
             .style('display', showNodeLabels ? null : 'none');
@@ -3785,7 +3818,9 @@ const boundaryForce = (width, height) => {
       if (gRef.current) {
         gRef.current.selectAll('*').on('.drag', null);
       }
-      d3.select(svgElement).on('.zoom', null);
+      d3.select(svgElement)
+        .on('.zoom', null)
+        .on('click.graph-background', null);
     };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps

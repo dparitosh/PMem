@@ -54,18 +54,19 @@ npm start
 
 ## Backend Dependency
 
-The frontend expects the backend API to be available, normally at:
-- `http://localhost:8000`
-
-For LAN / VM / IP-based use, configure the backend URL before startup.
+The frontend expects the backend API to be available. By default the launcher
+points it at `http://127.0.0.1:8000`, but remote or LAN deployments should use
+the checked-in `service-boundaries.env` file or pass an explicit backend URL.
 
 Example:
 
 ```bat
 set APP_HOST=192.168.1.50
-.\start_backend.bat
-.\start_frontend.bat
+.\start_services.bat
 ```
+
+For one-file runtime control, copy `service-boundaries.env.example` to
+`service-boundaries.env` and edit the service host/port values there.
 
 ## Customer Release Note
 

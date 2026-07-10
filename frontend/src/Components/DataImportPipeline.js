@@ -28,6 +28,8 @@ import {
   supportedFormats,
   workflowCatalog,
 } from '../workflows/workflowEngine';
+import useMountedRef from '../hooks/useMountedRef';
+import usePollerRegistry from '../hooks/usePollerRegistry';
 
 // Design tokens (matching OntologyMapper & GraphHEB)
 const C = {
@@ -231,37 +233,8 @@ export default function DataImportPipeline() {
   const [metadataFormPrefill, setMetadataFormPrefill] = useState(null);
   const didRestoreJobsRef = useRef(false);
   const resumedPersistedJobsRef = useRef(false);
-  const activePollersRef = useRef(new Set());
-  const pollerTimersRef = useRef(new Map());
-  const isMountedRef = useRef(true);
-
-  const clearPoller = useCallback((pollerKey) => {
-    const timerId = pollerTimersRef.current.get(pollerKey);
-    if (timerId) {
-      clearTimeout(timerId);
-      pollerTimersRef.current.delete(pollerKey);
-    }
-    activePollersRef.current.delete(pollerKey);
-  }, []);
-
-  const schedulePoller = useCallback((pollerKey, callback, delayMs) => {
-    const existingTimer = pollerTimersRef.current.get(pollerKey);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-    }
-    const timerId = setTimeout(() => {
-      pollerTimersRef.current.delete(pollerKey);
-      callback();
-    }, delayMs);
-    pollerTimersRef.current.set(pollerKey, timerId);
-  }, []);
-
-  useEffect(() => () => {
-    isMountedRef.current = false;
-    pollerTimersRef.current.forEach((timerId) => clearTimeout(timerId));
-    pollerTimersRef.current.clear();
-    activePollersRef.current.clear();
-  }, []);
+  const isMountedRef = useMountedRef();
+  const { activePollersRef, clearPoller, schedulePoller } = usePollerRegistry(isMountedRef);
   const [ontologyCatalogState, setOntologyCatalogState] = useState({
     loading: availableOntologies.length === 0,
     stale: false,
@@ -581,11 +554,11 @@ export default function DataImportPipeline() {
 
     if (effectiveWorkflow === 'document.unstructured') {
       if (ontologyFiles.length > 0 || instanceFiles.length > 0 || archimateFiles.length > 0) {
-        setError(`Unstructured document pipeline only accepts PDF, Word, or PowerPoint files. Remove: ${[...ontologyFiles, ...instanceFiles, ...archimateFiles].map((file) => file.name).join(', ')}`);
+        setError(`Unstructured document pipeline only accepts PDF, Word, PowerPoint, Text, Markdown, or HTML files. Remove: ${[...ontologyFiles, ...instanceFiles, ...archimateFiles].map((file) => file.name).join(', ')}`);
         return;
       }
       if (documentFiles.length === 0) {
-        setError('Select a PDF, Word, or PowerPoint file to continue.');
+        setError('Select a PDF, Word, PowerPoint, Text, Markdown, or HTML file to continue.');
         return;
       }
       queueInstanceImports(documentFiles, 'document.unstructured');
@@ -793,18 +766,26 @@ export default function DataImportPipeline() {
       const safeIndexBase = String(file?.name || 'document').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48) || 'document';
       const response = await API_METHODS.document.upload([file.fileObj], { index_name: safeIndexBase + '_index' });
       const result = response.data || response;
+      const summary = result?.summary || {};
+      const processedDocuments = result?.processed_documents ?? result?.documents_processed ?? summary.successfully_processed ?? 0;
+      const failedDocuments = result?.failed_documents ?? summary.failed_processing ?? 0;
+      const totalDocuments = result?.total_documents ?? summary.total_files ?? 1;
+      const totalChunks = result?.chunks_created ?? result?.total_chunks ?? (result?.results || []).reduce((sum, item) => sum + Number(item?.chunks_created || 0), 0);
+      const resultStatus = failedDocuments > 0 || result?.status === 'partial'
+        ? 'failed'
+        : 'completed';
       setPipelineStatus(prev => ({
         ...prev,
         [fileId]: {
           ...(prev[fileId] || {}),
           stage: 'verify',
           backendStage: 'indexed',
-          progress: 100,
-          status: result?.status === 'success' || result?.success !== false ? 'completed' : 'completed',
+          progress: resultStatus === 'failed' ? 0 : 100,
+          status: resultStatus,
           message: result?.message || 'Document indexed for GraphRAG search.',
           stats: {
-            entities_found: result?.processed_documents ?? result?.documents_processed ?? result?.total_documents ?? 1,
-            relationships_found: result?.chunks_created ?? result?.total_chunks ?? 0,
+            entities_found: processedDocuments || totalDocuments,
+            relationships_found: totalChunks,
           },
           result,
           completedAt: new Date().toLocaleTimeString(),
@@ -1036,6 +1017,9 @@ export default function DataImportPipeline() {
           try {
             const previewUrl = buildUrl(replaceParams(API.import.preview, { task_id: taskId }));
             const previewRes = await apiClient.get(previewUrl);
+            if (!activePollersRef.current.has(pollerKey) || !isMountedRef.current) {
+              return;
+            }
             if (previewRes.data) {
               // F2 FIX: spread preview endpoint fields directly onto previewData so the
               // modal can read row_count / columns / sample_rows / auto_schema at the top level.
@@ -1090,7 +1074,7 @@ export default function DataImportPipeline() {
     };
 
     poll();
-  }, [clearPoller, schedulePoller]);
+  }, [activePollersRef, clearPoller, isMountedRef, schedulePoller]);
 
   useEffect(() => {
     if (!didRestoreJobsRef.current || resumedPersistedJobsRef.current) return;

@@ -11,15 +11,25 @@ setlocal enabledelayedexpansion
 
 cd /d "%~dp0"
 
-set "PORT=3000"
+if exist "service-boundaries.env" (
+    for /f "usebackq tokens=1,* delims==" %%A in ("service-boundaries.env") do (
+        set "LINE=%%A"
+        if not "!LINE!"=="" if /I not "!LINE:~0,1!"=="#" set "%%A=%%B"
+    )
+)
+
+set "PORT=%FRONTEND_PORT%"
+if "%PORT%"=="" set "PORT=3000"
 set "LAN_HOST=%APP_HOST%"
 if "%LAN_HOST%"=="" (
     for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' -and $_.PrefixOrigin -ne 'WellKnown' } | Select-Object -First 1 -ExpandProperty IPAddress)"`) do set "LAN_HOST=%%I"
 )
 if "%LAN_HOST%"=="" set "LAN_HOST=localhost"
 
-set "BACKEND_URL=http://%LAN_HOST%:8000"
-set "HOST=0.0.0.0"
+set "BACKEND_URL=%REACT_APP_BACKEND_URL%"
+if "%BACKEND_URL%"=="" set "BACKEND_URL=http://%LAN_HOST%:8000"
+set "HOST=%FRONTEND_HOST%"
+if "%HOST%"=="" set "HOST=0.0.0.0"
 set "DISPLAY_HOST=%LAN_HOST%"
 
 if not "%~1"=="" set "PORT=%~1"
@@ -78,6 +88,8 @@ if not exist "frontend\node_modules\react-scripts\bin\react-scripts.js" (
 cd /d "%~dp0frontend"
 set "PORT=%PORT%"
 set "HOST=%HOST%"
+set "FRONTEND_HOST=%HOST%"
+set "FRONTEND_PORT=%PORT%"
 set "REACT_APP_BACKEND_URL=%BACKEND_URL%"
 set "BROWSER=none"
 set "FAST_REFRESH=true"

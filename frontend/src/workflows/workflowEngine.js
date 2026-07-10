@@ -63,6 +63,8 @@ export const supportedFormats = [
   { ext: '.docx', name: 'Word' },
   { ext: '.ppt', name: 'PowerPoint' },
   { ext: '.pptx', name: 'PowerPoint' },
+  { ext: '.txt', name: 'Text' },
+  { ext: '.md', name: 'Markdown' },
 ];
 
 export const workflowCatalog = [
@@ -103,8 +105,8 @@ export const workflowCatalog = [
     label: 'Unstructured document pipeline',
     title: 'Unstructured document pipeline',
     category: 'AI Ingestion',
-    description: 'Extract text, chunks, embeddings, and graph-search context from PDFs, Word documents, and PowerPoint decks.',
-    inputs: 'PDF, Word, PowerPoint',
+    description: 'Extract text, chunks, embeddings, and graph-search context from PDFs, Word documents, PowerPoint decks, text, Markdown, and HTML.',
+    inputs: 'PDF, Word, PowerPoint, Text, Markdown, HTML',
     outputs: ['Document chunks', 'Embedding index', 'GraphRAG retrieval context'],
     status: 'available',
     execution: 'Document upload',
@@ -297,7 +299,7 @@ export const inferFileTypeFromExtension = (fileName) => {
   if (['.xmi', '.mdxml'].includes(ext)) return 'xmi';
   if (['.xsd'].includes(ext)) return 'xsd';
   if (['.exp'].includes(ext)) return 'express';
-  if (['.pdf', '.doc', '.docx', '.ppt', '.pptx'].includes(ext)) return 'document';
+  if (['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.txt', '.md', '.html', '.htm'].includes(ext)) return 'document';
   return '';
 };
 

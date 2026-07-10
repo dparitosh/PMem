@@ -1006,10 +1006,16 @@
 
 .archi-model-tree-panel {
   min-height: 720px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .archi-model-tree {
-  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 8px;
   background: #fbfdff;
 }

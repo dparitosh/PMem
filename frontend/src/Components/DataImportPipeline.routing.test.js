@@ -1,6 +1,6 @@
 import React from 'react';
+import { act } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import DataImportPipeline from './DataImportPipeline';
 
 const mockOntologyContextValue = {
@@ -40,6 +40,16 @@ jest.mock('../contexts/OntologyContext', () => ({
 const mockListRegistered = jest.fn();
 const mockWorkflowOptions = jest.fn();
 const mockOntologyUpload = jest.fn();
+const flushAsyncEffects = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+const renderPipeline = async () => {
+  let result;
+  await act(async () => {
+    result = render(<DataImportPipeline />);
+    await flushAsyncEffects();
+  });
+  return result;
+};
 
 jest.mock('../services/apiClient', () => ({
   API_METHODS: {
@@ -64,6 +74,23 @@ jest.mock('../services/apiClient', () => ({
 }));
 
 describe('DataImportPipeline workflow routing', () => {
+  let consoleErrorSpy;
+
+  beforeAll(() => {
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation((...args) => {
+      const message = String(args[0] || '');
+      if (message.includes('ReactDOMTestUtils.act` is deprecated')) {
+        return;
+      }
+      // eslint-disable-next-line no-console
+      console.warn(...args);
+    });
+  });
+
+  afterAll(() => {
+    consoleErrorSpy?.mockRestore();
+  });
+
   beforeEach(() => {
     mockListRegistered.mockResolvedValue({ data: { ontologies: [] } });
     mockWorkflowOptions.mockResolvedValue({ data: { workflows: [] } });
@@ -72,12 +99,15 @@ describe('DataImportPipeline workflow routing', () => {
   });
 
   it('auto-routes XSD files from instance import into ontology registration and shows the filename', async () => {
-    render(<DataImportPipeline />);
+    await renderPipeline();
 
     const input = document.querySelector('input[type="file"]');
     const file = new File(['schema'], 'bom.xsd', { type: 'application/xml' });
 
-    fireEvent.change(input, { target: { files: [file] } });
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } });
+      await flushAsyncEffects();
+    });
 
     await waitFor(() => {
       expect(screen.getByText(/Ontology Metadata/i)).toBeInTheDocument();
@@ -88,14 +118,19 @@ describe('DataImportPipeline workflow routing', () => {
   });
 
   it('auto-routes CSV files from ontology workflow back into instance import and shows the filename', async () => {
-    render(<DataImportPipeline />);
+    await renderPipeline();
 
-    fireEvent.click(screen.getByRole('button', { name: /Create ontology/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Create ontology/i }));
+    });
 
     const input = document.querySelector('input[type="file"]');
     const file = new File(['a,b\n1,2'], 'parts.csv', { type: 'text/csv' });
 
-    fireEvent.change(input, { target: { files: [file] } });
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } });
+      await flushAsyncEffects();
+    });
 
     await waitFor(() => {
       expect(screen.getAllByText('parts.csv').length).toBeGreaterThan(0);
@@ -115,21 +150,27 @@ describe('DataImportPipeline workflow routing', () => {
       },
     });
 
-    render(<DataImportPipeline />);
+    await renderPipeline();
 
     const input = document.querySelector('input[type="file"]');
     const file = new File(['schema'], 'bom.xsd', { type: 'application/xml' });
 
-    fireEvent.change(input, { target: { files: [file] } });
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } });
+      await flushAsyncEffects();
+    });
 
     await waitFor(() => {
       expect(screen.getByText(/Ontology Metadata/i)).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'BOM Ontology' } });
-    fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'bom' } });
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shacl' } });
-    fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'BOM Ontology' } });
+      fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'bom' } });
+      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shacl' } });
+      fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
+      await flushAsyncEffects();
+    });
 
     await waitFor(() => {
       expect(screen.queryByText(/Ontology Metadata/i)).not.toBeInTheDocument();
@@ -138,7 +179,10 @@ describe('DataImportPipeline workflow routing', () => {
     expect(mockOntologyUpload).not.toHaveBeenCalled();
     expect(screen.getByText(/Metadata saved for 'BOM Ontology'. Click Start to register ontology./i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
+      await flushAsyncEffects();
+    });
 
     await waitFor(() => {
       expect(mockOntologyUpload).toHaveBeenCalledTimes(1);
@@ -155,32 +199,41 @@ describe('DataImportPipeline workflow routing', () => {
   });
 
   it('queues multiple ontology files and advances the metadata popup file-by-file', async () => {
-    render(<DataImportPipeline />);
+    await renderPipeline();
 
     const input = document.querySelector('input[type="file"]');
     const fileOne = new File(['schema-one'], 'bom.xsd', { type: 'application/xml' });
     const fileTwo = new File(['schema-two'], 'assembly.xsd', { type: 'application/xml' });
 
-    fireEvent.change(input, { target: { files: [fileOne, fileTwo] } });
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [fileOne, fileTwo] } });
+      await flushAsyncEffects();
+    });
 
     await waitFor(() => {
       expect(screen.getByText(/File:/i)).toBeInTheDocument();
       expect(screen.getByText('bom.xsd')).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'BOM Ontology' } });
-    fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'bom' } });
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shacl' } });
-    fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'BOM Ontology' } });
+      fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'bom' } });
+      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shacl' } });
+      fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
+      await flushAsyncEffects();
+    });
 
     await waitFor(() => {
       expect(screen.getByText('assembly.xsd')).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Assembly Ontology' } });
-    fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'assembly' } });
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shacl' } });
-    fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Assembly Ontology' } });
+      fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'assembly' } });
+      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shacl' } });
+      fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
+      await flushAsyncEffects();
+    });
 
     await waitFor(() => {
       expect(screen.queryByText(/Ontology Metadata/i)).not.toBeInTheDocument();

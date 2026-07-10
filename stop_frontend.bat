@@ -1,6 +1,18 @@
 @echo off
 setlocal enabledelayedexpansion
 
+cd /d "%~dp0"
+
+if exist "service-boundaries.env" (
+    for /f "usebackq tokens=1,* delims==" %%A in ("service-boundaries.env") do (
+        set "LINE=%%A"
+        if not "!LINE!"=="" if /I not "!LINE:~0,1!"=="#" set "%%A=%%B"
+    )
+)
+
+set "PORT=%FRONTEND_PORT%"
+if "%PORT%"=="" set "PORT=3000"
+
 :: ────────────────────────────────────────────────────────────────────────────
 :: Frontend Service Stop Script
 :: ────────────────────────────────────────────────────────────────────────────
@@ -9,7 +21,7 @@ setlocal enabledelayedexpansion
 :: Usage:    .\stop_frontend.bat
 ::
 :: This script:
-::   - Finds and terminates Node.js process running on port 3000
+::   - Finds and terminates Node.js process running on the configured frontend port
 ::   - Gracefully shuts down the frontend service
 :: ────────────────────────────────────────────────────────────────────────────
 
@@ -27,13 +39,14 @@ if not errorlevel 1 (
     goto end
 )
 
-:: If no named window, try to kill Node processes on port 3000
-echo [INFO] Looking for Node.js processes on port 3000...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3000"') do (
-    set "PID=%%a"
-    taskkill /PID !PID! /F >nul 2>&1
+:: If no named window, try to kill Node processes on the configured port
+echo [INFO] Looking for Node.js processes on port %PORT%...
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "(Get-NetTCPConnection -LocalPort %PORT% -State Listen -ErrorAction SilentlyContinue ^| Select-Object -ExpandProperty OwningProcess -Unique) -join ' '"`) do set "LISTENER_PIDS=%%P"
+
+for %%P in (%LISTENER_PIDS%) do (
+    taskkill /PID %%P /T /F >nul 2>&1
     if not errorlevel 1 (
-        echo [OK] Frontend stopped (PID: !PID!)
+        echo [OK] Frontend stopped (PID: %%P)
         echo.
         goto end
     )

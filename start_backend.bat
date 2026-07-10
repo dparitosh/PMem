@@ -11,7 +11,15 @@ setlocal enabledelayedexpansion
 
 cd /d "%~dp0"
 
-set "PORT=8000"
+if exist "service-boundaries.env" (
+    for /f "usebackq tokens=1,* delims==" %%A in ("service-boundaries.env") do (
+        set "LINE=%%A"
+        if not "!LINE!"=="" if /I not "!LINE:~0,1!"=="#" set "%%A=%%B"
+    )
+)
+
+set "PORT=%BACKEND_PORT%"
+if "%PORT%"=="" set "PORT=8000"
 set "BIND_HOST=%BACKEND_HOST%"
 if "%BIND_HOST%"=="" set "BIND_HOST=0.0.0.0"
 set "LAN_HOST=%APP_HOST%"
@@ -22,9 +30,8 @@ if "%LAN_HOST%"=="" set "LAN_HOST=localhost"
 set "DISPLAY_HOST=%LAN_HOST%"
 set "RELOAD_FLAG="
 
-if not "%~1"=="" set "PORT=%~1"
+if not "%~1"=="" if /I not "%~1"=="--reload" set "PORT=%~1"
 if /I "%~1"=="--reload" (
-    set "PORT=8000"
     set "RELOAD_FLAG=--reload --reload-dir backend --reload-exclude=backend/logs/* --reload-exclude=ontology_uploads/* --reload-exclude=uploads/* --reload-exclude=logs/* --reload-exclude=data/*"
 )
 if /I "%~2"=="--reload" (
@@ -73,6 +80,9 @@ if not "%EXISTING_BACKEND_PID%"=="" (
 if "%ALLOWED_ORIGINS%"=="" set "ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://%LAN_HOST%:3000"
 
 set "PYTHONPATH=%CD%"
+set "BACKEND_HOST=%BIND_HOST%"
+set "BACKEND_PORT=%PORT%"
+set "APP_HOST=%LAN_HOST%"
 call backend\.dt_venv\Scripts\python.exe -m uvicorn backend.main:app --host %BIND_HOST% --port %PORT% %RELOAD_FLAG%
 if errorlevel 1 (
     echo [ERROR] Backend server failed to start.

@@ -37,7 +37,7 @@ WORKFLOW_REGISTRY: List[Dict[str, Any]] = [
         "label": "Unstructured document pipeline",
         "category": "AI Ingestion",
         "execution_surface": "upload",
-        "inputs": "PDF, Word, PowerPoint",
+        "inputs": "PDF, Word, PowerPoint, Text, Markdown, HTML",
         "outputs": "Document chunks, embedding index, GraphRAG retrieval context",
         "status": "existing_upload_pipeline",
         "execution": "Document upload",

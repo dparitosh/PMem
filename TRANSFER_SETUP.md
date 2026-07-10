@@ -58,10 +58,14 @@ npm run build
 From the project root, use the checked-in launchers. They bind services for remote access and print the URL to use.
 
 ```bat
-:: Terminal 1 - Backend
-.\start_backend.bat
+:: Normal operator flow
+.\start_services.bat
+```
 
-:: Terminal 2 - Frontend
+For service-level debugging, start the services separately:
+
+```bat
+.\start_backend.bat
 .\start_frontend.bat
 ```
 
@@ -70,13 +74,11 @@ For a cloud VM, set `APP_HOST` to the public DNS name, public IP, or load-balanc
 ```bat
 :: Public cloud VM IP
 set APP_HOST=203.0.113.25
-.\start_backend.bat
-.\start_frontend.bat
+.\start_services.bat
 
 :: DNS name behind a load balancer/reverse proxy
 set APP_HOST=depo-demo.customer.com
-.\start_backend.bat
-.\start_frontend.bat
+.\start_services.bat
 ```
 
 The backend binds to `0.0.0.0` by default. The frontend binds to `0.0.0.0` and sets `REACT_APP_BACKEND_URL` to `http://%APP_HOST%:8000` unless you pass an explicit backend URL.
@@ -93,6 +95,35 @@ http://203.0.113.25:3000
 ```
 
 If you manually open `http://localhost:3000`, the browser address bar will still show localhost. That only works on the VM itself, not from a customer machine.
+
+### Service Boundary Model
+
+Treat the app as three independently addressable runtimes:
+
+- **Backend API**: FastAPI on `:8000`
+- **Frontend UI**: React dev server on `:3000`
+- **Neo4j / Ollama**: external infrastructure services that the backend reaches by URI
+
+That means:
+
+- the frontend should only know the backend through `REACT_APP_BACKEND_URL`
+- the backend should only allow browser origins listed in `ALLOWED_ORIGINS`
+- each launcher should export the concrete host/port for the current machine or VM
+
+This is the closest non-Docker deployment model and is the recommended way to run the project on a customer workstation or cloud VM.
+
+### One-file runtime config
+
+If you want a single control point for the stack, copy [`service-boundaries.env.example`](D:/Depo_Onto_Engine/service-boundaries.env.example) to `service-boundaries.env` and adjust:
+
+- backend host/port
+- frontend host/port
+- `APP_HOST`
+- `REACT_APP_BACKEND_URL`
+- `ALLOWED_ORIGINS`
+- Neo4j and Ollama endpoints
+
+The stack launcher and both service launchers read `service-boundaries.env` first when it exists.
 ---
 
 ## Important Files to Check

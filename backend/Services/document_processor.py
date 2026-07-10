@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -26,6 +27,8 @@ SUPPORTED_FORMATS = {
     "pdf": [".pdf"],
     "word": [".docx", ".doc"],
     "powerpoint": [".pptx", ".ppt"],
+    "text": [".txt", ".md"],
+    "html": [".html", ".htm"],
 }
 
 CHUNK_SIZE = 1400
@@ -56,6 +59,8 @@ def get_format_description() -> dict[str, str]:
         "pdf": "Portable Document Format text extraction and DatasheetChunk indexing",
         "word": "Microsoft Word text extraction and DatasheetChunk indexing",
         "powerpoint": "Microsoft PowerPoint slide text extraction and DatasheetChunk indexing",
+        "text": "Plain text or Markdown extraction and DatasheetChunk indexing",
+        "html": "HTML text extraction and DatasheetChunk indexing",
     }
 
 
@@ -134,6 +139,17 @@ def _extract_pptx_text(file_path: Path) -> str:
     return "\n\n".join(slides).strip()
 
 
+def _extract_plain_text(file_path: Path) -> str:
+    return file_path.read_text(encoding="utf-8", errors="ignore").strip()
+
+
+def _extract_html_text(file_path: Path) -> str:
+    raw = file_path.read_text(encoding="utf-8", errors="ignore")
+    without_scripts = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", raw)
+    without_tags = re.sub(r"(?s)<[^>]+>", " ", without_scripts)
+    return re.sub(r"\s+", " ", without_tags).strip()
+
+
 def extract_text_from_file(file_path: str | Path) -> dict[str, Any]:
     path = Path(file_path).resolve()
     if not path.exists():
@@ -145,6 +161,10 @@ def extract_text_from_file(file_path: str | Path) -> dict[str, Any]:
         text = _extract_docx_text(path)
     elif file_type == "powerpoint":
         text = _extract_pptx_text(path)
+    elif file_type == "text":
+        text = _extract_plain_text(path)
+    elif file_type == "html":
+        text = _extract_html_text(path)
     else:  # pragma: no cover
         raise ValueError(f"Unsupported document format: {path.suffix}")
 

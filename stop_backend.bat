@@ -1,7 +1,17 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set "PORT=8000"
+cd /d "%~dp0"
+
+if exist "service-boundaries.env" (
+    for /f "usebackq tokens=1,* delims==" %%A in ("service-boundaries.env") do (
+        set "LINE=%%A"
+        if not "!LINE!"=="" if /I not "!LINE:~0,1!"=="#" set "%%A=%%B"
+    )
+)
+
+set "PORT=%BACKEND_PORT%"
+if "%PORT%"=="" set "PORT=8000"
 set "STOPPED_PIDS="
 
 :: ────────────────────────────────────────────────────────────────────────────

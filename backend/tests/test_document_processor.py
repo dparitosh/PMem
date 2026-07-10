@@ -14,6 +14,27 @@ def test_chunk_document_returns_non_empty_chunks():
     assert all(chunk.strip() for chunk in chunks)
 
 
+def test_extract_text_file(tmp_path):
+    sample = tmp_path / 'requirements.txt'
+    sample.write_text('REQ-001 Bearing life shall be validated.', encoding='utf-8')
+
+    extracted = processor.extract_text_from_file(sample)
+
+    assert extracted['file_type'] == 'text'
+    assert 'Bearing life' in extracted['text']
+
+
+def test_extract_html_file_strips_markup(tmp_path):
+    sample = tmp_path / 'requirements.html'
+    sample.write_text('<html><body><h1>REQ-002</h1><script>ignore()</script><p>Cooling flow requirement.</p></body></html>', encoding='utf-8')
+
+    extracted = processor.extract_text_from_file(sample)
+
+    assert extracted['file_type'] == 'html'
+    assert 'Cooling flow requirement' in extracted['text']
+    assert 'ignore()' not in extracted['text']
+
+
 def test_process_documents_batch_with_monkeypatched_backend(monkeypatch, tmp_path):
     sample = tmp_path / 'sample.pdf'
     sample.write_text('placeholder', encoding='utf-8')

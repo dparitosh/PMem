@@ -115,12 +115,46 @@ function buildDecompositionSet(rootId, links) {
   return ids;
 }
 
+function buildOneHopContextSet(rootId, links) {
+  const ids = new Set([rootId]);
+  links.forEach((link) => {
+    if (link.source === rootId) ids.add(link.target);
+    if (link.target === rootId) ids.add(link.source);
+  });
+  return ids;
+}
+
+function buildContainmentAncestorSet(seedIds, links) {
+  const initialIds = Array.isArray(seedIds)
+    ? seedIds
+    : seedIds
+      ? [seedIds]
+      : [];
+  const ids = new Set(initialIds.map(String).filter(Boolean));
+  const queue = Array.from(ids);
+  while (queue.length > 0) {
+    const current = queue.shift();
+    links.forEach((link) => {
+      if (relationIsContainment(link.type) && link.target === current && !ids.has(link.source)) {
+        ids.add(link.source);
+        queue.push(link.source);
+      }
+    });
+  }
+  return ids;
+}
+
 function isDecomposableElement(node) {
   return /(process|function|activity|capability|service|value|course|product|component|part|package|folder|view)/i.test(String(node?.type || node?.label || ''));
 }
 
 function representationNodeIds(representation, links) {
-  const ids = new Set((representation?.nodeIds || []).map(String));
+  const initialIds = Array.isArray(representation?.nodeIds)
+    ? representation.nodeIds
+    : representation?.nodeIds
+      ? [representation.nodeIds]
+      : [];
+  const ids = new Set(initialIds.map(String));
   const viewId = String(representation?.id || '');
   if (viewId) {
     links.forEach((link) => {
@@ -338,23 +372,18 @@ export default function ModelWorkbenchPage({ onNavigate }) {
     const ids = new Set();
     if (query.trim()) {
       matchedNodes.forEach((node) => ids.add(node.id));
-      dataset.links.forEach((link) => {
-        if (ids.has(link.source) || ids.has(link.target)) {
-          ids.add(link.source);
-          ids.add(link.target);
-        }
-      });
     } else if (decompositionRootId) {
       buildDecompositionSet(decompositionRootId, dataset.links).forEach((id) => ids.add(id));
+    } else if (activeTreeItem?.representationId && activeRepresentation) {
+      buildContainmentAncestorSet(representationNodeIds(activeRepresentation, dataset.links), dataset.links).forEach((id) => ids.add(id));
+    } else if (activeTreeItem?.nodeId && !isContainerType(activeTreeItem.type)) {
+      buildOneHopContextSet(activeTreeItem.nodeId, dataset.links).forEach((id) => ids.add(id));
     } else if (activeTreeItem?.nodeIds?.length) {
       activeTreeItem.nodeIds.forEach((id) => ids.add(id));
-    } else if (activeTreeItem?.representationId && activeRepresentation) {
-      representationNodeIds(activeRepresentation, dataset.links).forEach((id) => ids.add(id));
     } else if (activeTreeItem?.nodeId) {
-      buildDescendantSet(activeTreeItem.nodeId, dataset.links).forEach((id) => ids.add(id));
+      buildDecompositionSet(activeTreeItem.nodeId, dataset.links).forEach((id) => ids.add(id));
       dataset.links.forEach((link) => {
-        if (ids.has(link.source) || ids.has(link.target)) {
-          ids.add(link.source);
+        if (relationIsContainment(link.type) && ids.has(link.source)) {
           ids.add(link.target);
         }
       });
@@ -403,6 +432,7 @@ export default function ModelWorkbenchPage({ onNavigate }) {
     setActiveTreeItem(item);
     setSelectedId(item?.nodeId || '');
     setDecompositionRootId('');
+    setQuery('');
     if (item?.representationId) {
       setActiveRepresentationId(item.representationId);
       return;
