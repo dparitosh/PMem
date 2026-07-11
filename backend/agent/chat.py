@@ -21,6 +21,14 @@ from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
 from core.llm import llm, LLM_AVAILABLE
 
+try:
+    from Services.agent_memory_service import AgentMemoryService
+except Exception:
+    try:
+        from backend.Services.agent_memory_service import AgentMemoryService
+    except Exception:
+        AgentMemoryService = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -284,6 +292,30 @@ def _format_graph_context(graph_context) -> str:
                 end = link.get("end") or link.get("target") or link.get("to") or ""
                 lines.append(f"- {start} -[{rel_type}]-> {end}")
 
+    return "\n".join(lines)
+
+
+def _format_agent_memory_context(session_id: str) -> str:
+    """Format recent durable memory as a compact prompt block."""
+    if AgentMemoryService is None:
+        return ""
+    try:
+        memory = AgentMemoryService.recent_context(session_id, limit=6)
+    except Exception as exc:
+        logger.info("Agent memory context skipped for %s: %s", session_id, exc)
+        return ""
+    if not memory.get("enabled"):
+        return ""
+    messages = memory.get("messages") or []
+    if not messages:
+        return ""
+    lines = ["== RECENT AGENT MEMORY =="]
+    for row in reversed(messages[-6:]):
+        role = str(row.get("role") or "memory").strip()
+        text = str(row.get("text") or "").strip().replace("\n", " ")
+        if text:
+            lines.append(f"- {role}: {text[:700]}")
+    lines.append("Use this only for continuity. Prefer live graph/tool results for current facts.")
     return "\n".join(lines)
 
 # Define tools using the @tool decorator
@@ -625,6 +657,7 @@ tools = [
 async def call_model(state: AgentState):
     messages = list(state["messages"])
     graph_context_text = _format_graph_context(state.get("graph_context"))
+    agent_memory_text = _format_agent_memory_context(str(state.get("session_id") or ""))
 
     # ── Short-circuit: if the last message is a ToolMessage from one of our
     # recommendation tools, return its content directly as the final answer
@@ -710,7 +743,11 @@ Graph-first rule: Always call the appropriate tool before answering. Never fabri
 """
 
     # Prepend system message only if not already present
-    context_messages = [SystemMessage(content=graph_context_text)] if graph_context_text else []
+    context_messages = []
+    if graph_context_text:
+        context_messages.append(SystemMessage(content=graph_context_text))
+    if agent_memory_text:
+        context_messages.append(SystemMessage(content=agent_memory_text))
     if not messages or not isinstance(messages[0], SystemMessage):
         messages = [SystemMessage(content=system_prompt), *context_messages] + messages
     elif context_messages:

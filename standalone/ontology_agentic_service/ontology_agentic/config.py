@@ -33,6 +33,13 @@ class Settings:
     depo_api_base_url: str
     depo_api_timeout_seconds: float
     depo_api_token: str
+    depo_namespace_base: str
+    default_step_base_uri: str
+    default_reqif_base_uri: str
+    default_requirements_base_uri: str
+    default_namespace_prefix: str
+    default_oslc_provider_id: str
+    cors_origins: list[str]
 
 
 def load_settings() -> Settings:
@@ -42,6 +49,7 @@ def load_settings() -> Settings:
     output_dir = Path(os.getenv("ONTOLOGY_AGENTIC_OUTPUT_DIR", str(base_dir / "output"))).resolve()
     agent_specs_dir = Path(os.getenv("ONTOLOGY_AGENTIC_AGENT_SPECS_DIR", str(base_dir / "ontology_agentic" / "agents" / "specs"))).resolve()
 
+    depo_namespace_base = os.getenv("ONTOLOGY_AGENTIC_DEPO_NAMESPACE_BASE", "http://depo-onto.local/").rstrip("/") + "/"
     settings = Settings(
         host=os.getenv("ONTOLOGY_AGENTIC_HOST", "0.0.0.0"),
         port=int(os.getenv("ONTOLOGY_AGENTIC_PORT", "8012")),
@@ -52,6 +60,13 @@ def load_settings() -> Settings:
         depo_api_base_url=os.getenv("ONTOLOGY_AGENTIC_DEPO_API_BASE_URL", "http://localhost:8000").rstrip("/"),
         depo_api_timeout_seconds=float(os.getenv("ONTOLOGY_AGENTIC_DEPO_API_TIMEOUT_SECONDS", "120")),
         depo_api_token=os.getenv("ONTOLOGY_AGENTIC_DEPO_API_TOKEN", "").strip(),
+        depo_namespace_base=depo_namespace_base,
+        default_step_base_uri=os.getenv("ONTOLOGY_AGENTIC_DEFAULT_STEP_BASE_URI", "").strip() or f"{depo_namespace_base}step#",
+        default_reqif_base_uri=os.getenv("ONTOLOGY_AGENTIC_DEFAULT_REQIF_BASE_URI", "").strip() or f"{depo_namespace_base}reqif/",
+        default_requirements_base_uri=os.getenv("ONTOLOGY_AGENTIC_DEFAULT_REQUIREMENTS_BASE_URI", "").strip() or f"{depo_namespace_base}requirements/",
+        default_namespace_prefix=os.getenv("ONTOLOGY_AGENTIC_DEFAULT_NAMESPACE_PREFIX", "step").strip() or "step",
+        default_oslc_provider_id=os.getenv("ONTOLOGY_AGENTIC_DEFAULT_OSLC_PROVIDER_ID", "depo").strip() or "depo",
+        cors_origins=[item.strip() for item in os.getenv("ONTOLOGY_AGENTIC_CORS_ORIGINS", "").split(",") if item.strip()],
     )
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     settings.output_dir.mkdir(parents=True, exist_ok=True)

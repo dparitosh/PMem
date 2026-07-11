@@ -62,3 +62,14 @@ They now degrade honestly when the processor or embedding runtime is unavailable
 - `GET /api/v1/ontology/registered`
 - `GET /chat/health`
 - `GET /api/v1/documents/health`
+
+## Optional Agent Memory
+
+Graph-native chat and Semantic Bridge memory can be enabled with
+`AGENT_MEMORY_ENABLED=true`. See
+[docs/AGENT_MEMORY_AUGMENTATION.md](D:/Depo_Onto_Engine/docs/AGENT_MEMORY_AUGMENTATION.md).
+
+Useful checks:
+
+- `GET /api/v1/agent-memory/status`
+- `GET /api/v1/agent-memory/sessions/{session_id}/context`

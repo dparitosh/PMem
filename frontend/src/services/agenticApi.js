@@ -1,0 +1,36 @@
+import axios from 'axios';
+import { config, API, replaceParams } from '../config';
+
+const agenticClient = axios.create({
+  baseURL: config.agenticServiceUrl || undefined,
+  timeout: config.requestTimeout || 300000,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+function requireConfiguredService() {
+  if (!config.agenticServiceUrl) {
+    throw new Error('Ontology agentic service is not configured. Set REACT_APP_AGENTIC_SERVICE_URL.');
+  }
+}
+
+function agenticUrl(endpoint) {
+  requireConfiguredService();
+  return `${config.agenticServiceUrl}${endpoint}`;
+}
+
+export const agenticAPI = {
+  isConfigured: () => Boolean(config.agenticServiceUrl),
+  health: () => agenticClient.get(agenticUrl(API.agentic.health)),
+  listAgents: () => agenticClient.get(agenticUrl(API.agentic.agents)),
+  runAgent: (agentName, inputs = {}) => agenticClient.post(
+    agenticUrl(replaceParams(API.agentic.runAgent, { agent_name: encodeURIComponent(agentName) })),
+    { inputs },
+  ),
+  runWorkflow: (workflowId, inputs = {}) => agenticClient.post(
+    agenticUrl(API.agentic.runWorkflow),
+    { workflow_id: workflowId, inputs },
+  ),
+};
+
+export { agenticClient };
+export default agenticAPI;

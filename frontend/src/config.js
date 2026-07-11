@@ -5,6 +5,7 @@
  */
 
 const configuredBackendUrl = process.env.REACT_APP_BACKEND_URL;
+const configuredAgenticServiceUrl = process.env.REACT_APP_AGENTIC_SERVICE_URL;
 
 const resolveBackendUrl = () => {
   const fallbackHost = typeof window !== 'undefined' && window.location?.hostname
@@ -32,6 +33,7 @@ const resolveBackendUrl = () => {
 // Base configuration
 const baseConfig = {
   backendUrl: resolveBackendUrl(),
+  agenticServiceUrl: (configuredAgenticServiceUrl || '').replace(/\/$/, ''),
   apiVersion: process.env.REACT_APP_API_VERSION || 'v1',
   environment: process.env.REACT_APP_ENV || 'development',
   debug: process.env.REACT_APP_DEBUG === 'true',
@@ -122,6 +124,13 @@ const ONTOLOGY_ENDPOINTS = {
   taxonomy: process.env.REACT_APP_API_ONTOLOGY_TAXONOMY || '/api/v1/ontology/{ontology}/taxonomy',
   reason: process.env.REACT_APP_API_ONTOLOGY_REASON || '/api/v1/ontology/{ontology}/reason',
   inferencePreview: process.env.REACT_APP_API_ONTOLOGY_INFERENCE_PREVIEW || '/api/v1/ontology/{ontology}/inference/preview',
+  skosValidate: process.env.REACT_APP_API_ONTOLOGY_SKOS_VALIDATE || '/api/v1/ontology/semantic/skos/validate',
+  skosSearch: process.env.REACT_APP_API_ONTOLOGY_SKOS_SEARCH || '/api/v1/ontology/semantic/skos/search',
+  skosTraverse: process.env.REACT_APP_API_ONTOLOGY_SKOS_TRAVERSE || '/api/v1/ontology/semantic/skos/traverse',
+  skosStoragePlan: process.env.REACT_APP_API_ONTOLOGY_SKOS_STORAGE_PLAN || '/api/v1/ontology/semantic/skos/storage-plan',
+  ruleValidate: process.env.REACT_APP_API_ONTOLOGY_RULE_VALIDATE || '/api/v1/ontology/semantic/rules/validate',
+  ruleExecutePreview: process.env.REACT_APP_API_ONTOLOGY_RULE_EXECUTE_PREVIEW || '/api/v1/ontology/semantic/rules/execute-preview',
+  ruleMaterializationPlan: process.env.REACT_APP_API_ONTOLOGY_RULE_MATERIALIZATION_PLAN || '/api/v1/ontology/semantic/rules/materialization-plan',
   dataDictionary: process.env.REACT_APP_API_ONTOLOGY_DATA_DICTIONARY || '/api/v1/ontology/{ontology}/data-dictionary',
   prefixDataDictionary: process.env.REACT_APP_API_ONTOLOGY_PREFIX_DATA_DICTIONARY || '/api/v1/ontology/{prefix}/data-dictionary',
   mappings: process.env.REACT_APP_API_ONTOLOGY_MAPPINGS || '/api/v1/ontology/{ontology}/mappings/{type}',
@@ -268,6 +277,14 @@ const INTEGRATION_ENDPOINTS = {
   neo4jWebhookV1: process.env.REACT_APP_API_WEBHOOKS_NEO4J_V1 || '/api/v1/webhooks/neo4j',
 };
 
+/** Optional ontology-agentic service endpoints. */
+const AGENTIC_ENDPOINTS = {
+  health: process.env.REACT_APP_AGENTIC_HEALTH || '/health',
+  agents: process.env.REACT_APP_AGENTIC_AGENTS || '/api/v1/agents',
+  runAgent: process.env.REACT_APP_AGENTIC_RUN_AGENT || '/api/v1/agents/{agent_name}/run',
+  runWorkflow: process.env.REACT_APP_AGENTIC_RUN_WORKFLOW || '/api/v1/workflows/run',
+};
+
 /**
  * UI Configuration
  */
@@ -320,6 +337,7 @@ export const API = {
   ontologyMapper: ONTOLOGY_MAPPER_ENDPOINTS,
   modeling: MODELING_ENDPOINTS,
   integration: INTEGRATION_ENDPOINTS,
+  agentic: AGENTIC_ENDPOINTS,
   ui: UI_CONFIG,
 };
 
@@ -329,6 +347,7 @@ if (baseConfig.debug) {
   console.info('[CONFIG] API Configuration Loaded:', {
     environment: baseConfig.environment,
     backendUrl: baseConfig.backendUrl,
+    agenticServiceUrl: baseConfig.agenticServiceUrl || '(not configured)',
     apiVersion: baseConfig.apiVersion,
     debug: baseConfig.debug,
     endpoints: {

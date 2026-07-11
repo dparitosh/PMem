@@ -107,79 +107,109 @@ def _graph_service_unavailable(endpoint: str, exc: Exception) -> HTTPException:
         },
     )
 
-# Ensure Neo4j vector + keyword indexes exist BEFORE any module tries to
-# connect to them (e.g. chains/vector.py imported via agent.chat).
-ensure_indexes_standalone = None
+_index_preparer = None
+_index_preparer_load_error = None
+
+
+def _load_index_preparer():
+    """Load graph embedding dependencies only when the index task is enabled."""
+    global _index_preparer, _index_preparer_load_error
+    if _index_preparer is not None:
+        return _index_preparer
+    try:
+        from .Services.graph_embeddings import ensure_indexes_standalone
+    except Exception as import_error:
+        try:
+            from Services.graph_embeddings import ensure_indexes_standalone
+        except Exception as full_error:
+            _index_preparer_load_error = full_error
+            logger.warning("Index pre-creation module unavailable: %s", import_error)
+            return None
+    _index_preparer = ensure_indexes_standalone
+    return _index_preparer
+
 try:
-    from .Services.graph_embeddings import ensure_indexes_standalone
+    from .Services.agent_memory_service import AgentMemoryService
 except Exception:
     try:
-        from Services.graph_embeddings import ensure_indexes_standalone
-    except Exception as _exc:
-        logger.warning("Index pre-creation skipped: %s", _exc)
+        from Services.agent_memory_service import AgentMemoryService
+    except Exception as _agent_memory_exc:
+        logger.warning("Agent memory service unavailable: %s", _agent_memory_exc)
+        AgentMemoryService = None
 
-try:
-    if ensure_indexes_standalone is not None:
-        ensure_indexes_standalone()
-except Exception as _exc:
-    logger.warning("Index pre-creation skipped: %s", _exc)
+_chat_generate_response = None
+_chat_generate_response_stream = None
+_chat_load_error = None
 
-try:
-    from .agent.chat import generate_response, generate_response_stream #generate_response_with_cypher
-except Exception as _exc:
+
+def _load_chat_generators():
+    """Load the optional GraphRAG stack on first chat use, not API startup."""
+    global _chat_generate_response, _chat_generate_response_stream, _chat_load_error
+    if _chat_generate_response is not None and _chat_generate_response_stream is not None:
+        return _chat_generate_response, _chat_generate_response_stream
     try:
-        from agent.chat import generate_response, generate_response_stream #generate_response_with_cypher
-    except Exception as _full_exc:
-        logger.warning("Agent chat module not available: %s", _exc)
-        logger.info("Using fallback chat implementation with Ollama")
-        
-        # Fallback: Simple Ollama-based chat without the complex agent
-        from Services.ollama_service import get_ollama_service
-        
-        def _format_graph_context_for_fallback(graph_context) -> str:
-            if not graph_context:
-                return ""
-            try:
-                return "Current graph context:\n" + json.dumps(graph_context, indent=2, default=str)[:3500]
-            except Exception:
-                return f"Current graph context: {str(graph_context)[:3500]}"
+        from .agent.chat import generate_response as response_fn, generate_response_stream as stream_fn
+    except Exception as import_error:
+        try:
+            from agent.chat import generate_response as response_fn, generate_response_stream as stream_fn
+        except Exception as full_error:
+            _chat_load_error = full_error
+            logger.warning("Agent chat module not available; using lazy Ollama fallback: %s", import_error)
 
-        async def _fallback_generate_response(session_id: str, message: str, graph_context=None) -> str:
-            """Fallback chat implementation using Ollama directly"""
-            try:
-                service = get_ollama_service()
-                prompt = message
-                context_text = _format_graph_context_for_fallback(graph_context)
-                if context_text:
-                    prompt = f"{context_text}\n\nUser question: {message}"
-                response = service.query(prompt)
-                return response or "I couldn't generate a response. Please try again."
-            except Exception as e:
-                logger.error(f"Fallback chat error: {type(e).__name__}: {e}", exc_info=True)
-                return "I encountered an error processing your request. Please try again later."
-        
-        async def _fallback_generate_response_stream(session_id: str, message: str, graph_context=None):
-            """Fallback streaming chat implementation using Ollama directly"""
-            try:
-                service = get_ollama_service()
-                prompt = message
-                context_text = _format_graph_context_for_fallback(graph_context)
-                if context_text:
-                    prompt = f"{context_text}\n\nUser question: {message}"
-                response = service.query(prompt)
-                if response:
-                    # Stream the response in chunks
-                    chunk_size = 6
-                    for i in range(0, len(response), chunk_size):
-                        yield f"data: {json.dumps({'token': response[i:i + chunk_size]})}\n\n"
-                yield f"data: {json.dumps({'done': True})}\n\n"
-            except Exception as e:
-                logger.error(f"Fallback stream error: {type(e).__name__}: {e}", exc_info=True)
-                yield f"data: {json.dumps({'error': 'Error processing your request'})}\n\n"
-                yield f"data: {json.dumps({'done': True})}\n\n"
-        
-        generate_response = _fallback_generate_response
-        generate_response_stream = _fallback_generate_response_stream
+            def _format_graph_context_for_fallback(graph_context) -> str:
+                if not graph_context:
+                    return ""
+                try:
+                    return "Current graph context:\n" + json.dumps(graph_context, indent=2, default=str)[:3500]
+                except Exception:
+                    return f"Current graph context: {str(graph_context)[:3500]}"
+
+            async def response_fn(session_id: str, message: str, graph_context=None) -> str:
+                from Services.ollama_service import get_ollama_service
+                try:
+                    prompt = message
+                    context_text = _format_graph_context_for_fallback(graph_context)
+                    if context_text:
+                        prompt = f"{context_text}\n\nUser question: {message}"
+                    response = get_ollama_service().query(prompt)
+                    return response or "I couldn't generate a response. Please try again."
+                except Exception as exc:
+                    logger.error("Fallback chat error: %s: %s", type(exc).__name__, exc, exc_info=True)
+                    return "I encountered an error processing your request. Please try again later."
+
+            def stream_fn(session_id: str, message: str, graph_context=None):
+                async def _stream():
+                    from Services.ollama_service import get_ollama_service
+                    try:
+                        prompt = message
+                        context_text = _format_graph_context_for_fallback(graph_context)
+                        if context_text:
+                            prompt = f"{context_text}\n\nUser question: {message}"
+                        response = get_ollama_service().query(prompt)
+                        if response:
+                            for index in range(0, len(response), 6):
+                                yield f"data: {json.dumps({'token': response[index:index + 6]})}\n\n"
+                        yield f"data: {json.dumps({'done': True})}\n\n"
+                    except Exception as exc:
+                        logger.error("Fallback stream error: %s: %s", type(exc).__name__, exc, exc_info=True)
+                        yield f"data: {json.dumps({'error': 'Error processing your request'})}\n\n"
+                        yield f"data: {json.dumps({'done': True})}\n\n"
+                return _stream()
+
+        _chat_load_error = _chat_load_error or import_error
+    _chat_generate_response = response_fn
+    _chat_generate_response_stream = stream_fn
+    return _chat_generate_response, _chat_generate_response_stream
+
+
+async def generate_response(session_id: str, message: str, graph_context=None):
+    response_fn, _ = _load_chat_generators()
+    return await response_fn(session_id, message, graph_context)
+
+
+def generate_response_stream(session_id: str, message: str, graph_context=None):
+    _, stream_fn = _load_chat_generators()
+    return stream_fn(session_id, message, graph_context)
 
 try:
     from .core.graph import graph, get_graph_schema, cleanup_graph_connection
@@ -276,13 +306,53 @@ class WorkflowExecuteRequest(BaseModel):
 #    database = "mbse-sysml"
 #)
 
+def _startup_flag(name: str, default: bool = True) -> bool:
+    """Read a boolean startup setting without making deployments brittle."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+async def _prepare_neo4j_indexes(app: FastAPI) -> None:
+    """Prepare optional indexes without blocking Uvicorn from accepting requests."""
+    preparer = _load_index_preparer()
+    if preparer is None:
+        app.state.neo4j_index_status = "unavailable"
+        return
+
+    app.state.neo4j_index_status = "running"
+    try:
+        await asyncio.to_thread(preparer)
+    except Exception as exc:
+        app.state.neo4j_index_status = "failed"
+        logger.warning("Neo4j index preflight failed after startup: %s", exc)
+    else:
+        app.state.neo4j_index_status = "ready"
+        logger.info("Neo4j index preflight completed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Application startup complete — yield to allow request handling
+    # Bind the API first. Index creation can involve a database connection and
+    # must not delay health checks, OpenAPI, or the first UI request.
+    index_task = None
+    app.state.neo4j_index_status = "disabled"
+    if _startup_flag("PREPARE_NEO4J_INDEXES_ON_STARTUP", default=True):
+        index_task = asyncio.create_task(_prepare_neo4j_indexes(app))
+        app.state.neo4j_index_task = index_task
     try:
         yield
     finally:
         logger.info("Application shutting down...")
+        if index_task is not None and not index_task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(index_task), timeout=5)
+            except asyncio.TimeoutError:
+                logger.warning("Neo4j index preflight did not finish before shutdown")
+                index_task.cancel()
+            except Exception as exc:
+                logger.debug("Neo4j index preflight ended during shutdown: %s", exc)
         try:
             cleanup_graph_connection()
         except Exception as e:
@@ -861,6 +931,25 @@ async def _execute_chat_job(job_id: str, session_id: str, message: str, graph_co
                 message,
                 graph_context,
             )
+        if AgentMemoryService is not None:
+            try:
+                AgentMemoryService.record_chat_turn(
+                    session_id=session_id,
+                    user_message=message,
+                    assistant_response=result,
+                    graph_context=graph_context,
+                    status="completed",
+                )
+                AgentMemoryService.record_reasoning_trace(
+                    session_id=session_id,
+                    task="async_chat_job",
+                    tool_name="knowledge_companion",
+                    input_payload={"job_id": job_id, "message": message, "graph_context_present": bool(graph_context)},
+                    result_summary={"response_length": len(str(result or "")), "status": "completed"},
+                    success=True,
+                )
+            except Exception as memory_exc:
+                logger.warning("Agent memory chat job record skipped: %s", memory_exc)
         await _update_chat_job(job_id, status="completed", completed_at=time.time(), response=result)
     except asyncio.TimeoutError:
         logger.warning("Chat job timed out for session %s job %s", session_id, job_id)
@@ -1192,6 +1281,25 @@ async def chat(request: ChatRequest):
                 request.message,
                 request.graph_context,
             )
+        if AgentMemoryService is not None:
+            try:
+                AgentMemoryService.record_chat_turn(
+                    session_id=request.session_id,
+                    user_message=request.message,
+                    assistant_response=result,
+                    graph_context=request.graph_context,
+                    status="completed",
+                )
+                AgentMemoryService.record_reasoning_trace(
+                    session_id=request.session_id,
+                    task="chat",
+                    tool_name="knowledge_companion",
+                    input_payload={"message": request.message, "graph_context_present": bool(request.graph_context)},
+                    result_summary={"response_length": len(str(result or "")), "status": "completed"},
+                    success=True,
+                )
+            except Exception as memory_exc:
+                logger.warning("Agent memory chat record skipped: %s", memory_exc)
         return ChatResponse(session_id=request.session_id, response=result)
     except HTTPException:
         raise
@@ -1247,6 +1355,26 @@ async def chat_health():
             "capabilities": "GET /chat/capabilities",
         },
     }
+
+
+@app.get("/api/v1/agent-memory/status")
+async def agent_memory_status():
+    """Return graph-native agent memory availability and operating mode."""
+    if AgentMemoryService is None:
+        return {
+            "enabled": False,
+            "status": "unavailable",
+            "message": "Agent memory service could not be imported.",
+        }
+    return {"status": "ok", **AgentMemoryService.status()}
+
+
+@app.get("/api/v1/agent-memory/sessions/{session_id}/context")
+async def agent_memory_session_context(session_id: str, limit: int = Query(6, ge=1, le=20)):
+    """Return compact recent memory for a chat session."""
+    if AgentMemoryService is None:
+        raise HTTPException(status_code=503, detail="Agent memory service unavailable")
+    return AgentMemoryService.recent_context(session_id, limit=limit)
 
 
 @app.get("/chat/capabilities")

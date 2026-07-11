@@ -148,7 +148,7 @@ function getWorkflowNote({
     return 'EXPRESS creates ontology structure.';
   }
   if (mappingFileTypeContext === 'step') {
-    return 'STEP imports instance data with AP242 context.';
+    return 'STEP imports structural CAD instance data first. After commit, run Link instances to ontology with AP242 MBD/3D selected to create semantic INSTANCE_OF links.';
   }
   if (selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'csv' || mappingFileTypeContext === 'excel')) {
     return 'CSV and Excel import as source data first.';
@@ -1564,6 +1564,21 @@ export default function DataImportPipeline() {
     [files, startedFiles, pendingFileForMetadata]
   );
   const recommendedWorkflowId = contextFile ? recommendWorkflowForFile(contextFile.name) : selectedWorkflow;
+  const isStepContext = mappingFileTypeContext === 'step' || files.some((file) => inferFileTypeFromExtension(file.name) === 'step');
+  const ap242OntologyOption = useMemo(
+    () => availableOntologies.find((ontology) => {
+      const values = [
+        ontology.optionValue,
+        ontology.id,
+        ontology.prefix,
+        ontology.name,
+        ontology.ontology_id,
+        ontology.ontology_name,
+      ].map((value) => String(value || '').toLowerCase());
+      return values.some((value) => value.includes('step_ap242_mbd3d') || value.includes('ap242'));
+    }) || null,
+    [availableOntologies],
+  );
   const canRunSelectedWorkflow = fallbackWorkflow.status === 'available';
   const pendingFileCount = useMemo(
     () => files.reduce((count, f) => count + (startedFiles.has(f.fileId) ? 0 : 1), 0),
@@ -2149,6 +2164,25 @@ export default function DataImportPipeline() {
                 />
                 Apply approved links to Neo4j
               </label>
+            )}
+            {selectedWorkflow === 'instance.link' && (
+              <div style={{
+                flexBasis: '100%',
+                border: `1px solid ${C.border}`,
+                borderRadius: '4px',
+                background: C.bg,
+                padding: '6px 8px',
+                color: C.textSec,
+                fontSize: '10px',
+                lineHeight: 1.45,
+              }}>
+                <strong style={{ color: C.textPrimary }}>Bridge sequence:</strong> select the completed import artifact, choose the target ontology, run preview, review candidates, then apply approved links. For CAD STEP/STP/STPX, use <strong style={{ color: C.primary }}>{ap242OntologyOption?.name || 'step_ap242_mbd3d / AP242 MBD/3D'}</strong>; this creates semantic mapping relationships and class links for matched instances.
+                {!ap242OntologyOption && (
+                  <span style={{ display: 'block', color: C.orange, fontWeight: 700, marginTop: '3px' }}>
+                    AP242 ontology is not registered yet. Upload AP242 MBD/3D ontology in Create ontology before applying STEP links.
+                  </span>
+                )}
+              </div>
             )}
             <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               <button
@@ -2744,6 +2778,25 @@ export default function DataImportPipeline() {
             Files load first as source-faithful instance data. Ontology selection and semantic linking now happen in
             <span style={{ color: C.primary, fontWeight: '700' }}> Link instances to ontology</span>.
           </div>
+          {isStepContext && (
+            <div style={{
+              marginTop: '6px',
+              padding: '6px 8px',
+              border: `1px solid ${ap242OntologyOption ? C.border : C.orange}`,
+              borderRadius: '4px',
+              background: ap242OntologyOption ? C.bg : '#FFF8E1',
+              color: C.textPrimary,
+              fontSize: '10px',
+              lineHeight: 1.45,
+            }}>
+              <strong>STEP/AP242 guidance:</strong> 1. Start this import and commit the CAD graph. 2. Switch workflow to <strong>Link instances to ontology</strong>. 3. Select the completed STEP import as source instance. 4. Select <strong>{ap242OntologyOption?.name || 'step_ap242_mbd3d / AP242 MBD/3D'}</strong>. 5. Keep <strong>Apply approved links to Neo4j</strong> enabled and run the bridge.
+              {!ap242OntologyOption && (
+                <span style={{ display: 'block', color: C.orange, fontWeight: 700, marginTop: '3px' }}>
+                  AP242 ontology is not visible in the catalog yet. Upload/register it before semantic linking.
+                </span>
+              )}
+            </div>
+          )}
           {ontologyCatalogState.message && (
             <div style={{
               fontSize: '9px',

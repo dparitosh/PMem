@@ -41,6 +41,78 @@ export const normalizeRelationshipType = (value = '') => {
   return aliases[normalized] || normalized;
 };
 
+const CAD_SEMANTIC_ROLES = new Set([
+  'product',
+  'shape',
+  'feature',
+  'representation',
+  'topology',
+  'geometry',
+  'dimension_tolerance',
+  'geometric_tolerance',
+  'datum',
+  'dimension',
+  'annotation',
+  'surface_finish',
+]);
+
+const STEP_INSTANCE_LABELS = new Set([
+  'product',
+  'product_definition',
+  'product_definition_formation',
+  'product_definition_shape',
+  'shape_representation',
+  'shape_aspect',
+  'shape_aspect_relationship',
+  'shape_definition_representation',
+  'feature_component_definition',
+  'instanced_feature',
+  'feature_pattern',
+  'advanced_brep_shape_representation',
+  'part',
+  'partversion',
+  'part_version',
+  'partview',
+  'part_view',
+  'view',
+  'views',
+  'geometric_model',
+  'occurrence',
+  'view_occurrence_relationship',
+  'placement',
+  'cartesian_transformation',
+  'rotation_matrix',
+  'translation_vector',
+  'geometric_tolerance',
+  'plus_minus_tolerance',
+  'tolerance_value',
+  'datum_feature',
+  'datum_target',
+  'datum_reference',
+  'dimensional_size',
+  'dimensional_location',
+  'angular_location',
+  'annotation_text_occurrence',
+  'draughting_callout',
+  'presentation_style_assignment',
+  'text_literal',
+  'leader_curve',
+  'styled_item',
+  'surface_texture_representation',
+]);
+
+export const isCadBusinessObjectNode = (node) => {
+  if (!node) return false;
+  const labels = Array.isArray(node?.labels)
+    ? node.labels.map((label) => String(label || '').toLowerCase())
+    : [];
+  const props = node?.properties && typeof node.properties === 'object' ? node.properties : {};
+  const semanticRole = String(props.semantic_role || '').trim().toLowerCase();
+  return Boolean(props.is_cad_business_object)
+    || CAD_SEMANTIC_ROLES.has(semanticRole)
+    || labels.some((label) => STEP_INSTANCE_LABELS.has(label));
+};
+
 export const isMetadataWrapperNode = (node) => {
   if (!node) return false;
   const labels = Array.isArray(node?.labels)
@@ -79,6 +151,10 @@ export const isMetadataWrapperNode = (node) => {
     props.title ||
     props.code
   );
+
+  if (isCadBusinessObjectNode(node)) {
+    return false;
+  }
 
   if (/^id[\w:-]*$/i.test(displayName) || /^id\d+$/i.test(displayName)) {
     if (labels.some((label) => technicalInstanceLabels.includes(label)) && !hasBusinessIdentity) {

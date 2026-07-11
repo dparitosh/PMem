@@ -20,6 +20,11 @@ from .unified_data_import import UnifiedDataImportService
 from .workflow_artifact_service import WorkflowArtifactService
 from .oslc_trs_service import OSLCTRSService
 
+try:
+    from .agent_memory_service import AgentMemoryService
+except Exception:
+    AgentMemoryService = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -543,6 +548,15 @@ class SemanticWorkflowService:
                 })
         candidates: List[Dict[str, Any]] = []
         metadata_signals = cls._collect_manifest_signals(import_task or {})
+        memory_facts_by_source: Dict[str, List[Dict[str, Any]]] = {}
+        if AgentMemoryService is not None:
+            try:
+                for fact in AgentMemoryService.semantic_bridge_facts(ontology_prefix, limit=1500):
+                    source_key = cls._normalized_key(fact.get("source"))
+                    if source_key:
+                        memory_facts_by_source.setdefault(source_key, []).append(fact)
+            except Exception as exc:
+                logger.info("Agent memory mapping reuse skipped: %s", exc)
 
         for row in rows:
             row_key = row.get("import_row_key") or row.get("id")
@@ -551,7 +565,8 @@ class SemanticWorkflowService:
 
             source_type = cls._classify_source_row(row)
             scored_matches: Dict[str, Dict[str, Any]] = {}
-            for signal in [*cls._collect_row_signals(row), *metadata_signals]:
+            row_signals = [*cls._collect_row_signals(row), *metadata_signals]
+            for signal in row_signals:
                 matches = term_lookup.get(signal["normalized"], [])
                 for match in matches:
                     target_type = match.get("target_ontology_type") or "Class"
@@ -594,6 +609,49 @@ class SemanticWorkflowService:
                         }),
                     }
 
+            for signal in row_signals:
+                for fact in memory_facts_by_source.get(signal["normalized"], []):
+                    target_key = cls._normalized_key(fact.get("target"))
+                    if not target_key:
+                        continue
+                    for match in term_lookup.get(target_key, []):
+                        target_type = str(match.get("target_ontology_type") or "Class").strip()
+                        fact_target_type = str(fact.get("target_type") or target_type).strip()
+                        if fact_target_type and fact_target_type != target_type:
+                            continue
+                        graph_element_id = match.get("graph_element_id") or (match.get("element_id") if match.get("graph_linkable") else "")
+                        if not graph_element_id:
+                            continue
+                        validation = cls._validate_candidate_pair(source_type, target_type, match, row)
+                        if not validation["is_valid"]:
+                            continue
+                        score = min(0.98, max(float(fact.get("confidence") or 0.0), cls.AUTO_APPLY_CONFIDENCE))
+                        match_key = graph_element_id or match.get("target_ontology_iri") or match.get("iri") or match.get("element_id")
+                        existing = scored_matches.get(match_key)
+                        if existing and existing["confidence"] >= score:
+                            continue
+                        scored_matches[match_key] = {
+                            "import_id": import_task_id,
+                            "import_row_key": row_key,
+                            "source_term": cls._candidate_display_value(row),
+                            "source_type": source_type,
+                            "ontology_term": match.get("class_name") or match.get("term_name") or fact.get("target"),
+                            "ontology_class_element_id": graph_element_id,
+                            "target_ontology_iri": match.get("target_ontology_iri") or match.get("iri") or match.get("uri"),
+                            "target_ontology_type": target_type,
+                            "graph_linkable": True,
+                            "mapping_type": fact.get("mapping_type") or "memoryReuse",
+                            "validation_status": validation["status"],
+                            "validation_errors": validation["errors"],
+                            "validation_warnings": validation["warnings"],
+                            "confidence": round(score, 4),
+                            "mapping": ontology_prefix,
+                            "match_source": "agent_memory",
+                            "signal_type": "memory",
+                            "generic_match": False,
+                            "evidence": sorted({"agent-memory-approved-mapping", signal["source_field"]}),
+                        }
+
             if not scored_matches:
                 continue
 
@@ -624,6 +682,138 @@ class SemanticWorkflowService:
                 item["selected_for_apply"] = eligible_for_auto_apply
                 candidates.append(item)
 
+        return candidates
+
+    @classmethod
+    def _row_key_for_approved_mapping(cls, mapping: Dict[str, Any], rows_by_key: Dict[str, Dict[str, Any]]) -> str:
+        """Resolve a user-approved UI mapping to an import row key."""
+        for key in ("import_row_key", "source_term", "sourceField", "source_field", "source_instance_id"):
+            value = str(mapping.get(key) or "").strip()
+            if value and value in rows_by_key:
+                return value
+
+        source_label = str(mapping.get("source_label") or mapping.get("sourceLabel") or mapping.get("source_term") or "").strip()
+        if not source_label:
+            return ""
+        for row_key, row in rows_by_key.items():
+            if source_label in {str(row.get("name") or "").strip(), cls._candidate_display_value(row), str(row.get("id") or "").strip()}:
+                return row_key
+        return ""
+
+    @classmethod
+    def _target_for_approved_mapping(cls, mapping: Dict[str, Any], term_lookup: Dict[str, List[Dict[str, Any]]]) -> Optional[Dict[str, Any]]:
+        """Resolve a user-approved target label/IRI/element id to an ontology term."""
+        target_values = [
+            mapping.get("target_term"),
+            mapping.get("targetTerm"),
+            mapping.get("target_label"),
+            mapping.get("targetLabel"),
+            mapping.get("targetOntologyIRI"),
+            mapping.get("target_ontology_iri"),
+            mapping.get("ontology_class_element_id"),
+        ]
+        requested_type = str(mapping.get("target_ontology_type") or mapping.get("targetOntologyType") or "").strip()
+        for raw_value in target_values:
+            normalized = cls._normalized_key(raw_value)
+            if not normalized:
+                continue
+            for match in term_lookup.get(normalized, []):
+                target_type = str(match.get("target_ontology_type") or "Class").strip()
+                if requested_type and requested_type != target_type:
+                    continue
+                return match
+
+        raw_text_values = {str(value or "").strip() for value in target_values if str(value or "").strip()}
+        for matches in term_lookup.values():
+            for match in matches:
+                target_type = str(match.get("target_ontology_type") or "Class").strip()
+                if requested_type and requested_type != target_type:
+                    continue
+                identifiers = {
+                    str(match.get("element_id") or "").strip(),
+                    str(match.get("graph_element_id") or "").strip(),
+                    str(match.get("iri") or match.get("uri") or match.get("target_ontology_iri") or "").strip(),
+                    str(match.get("class_name") or match.get("term_name") or "").strip(),
+                }
+                if identifiers & raw_text_values:
+                    return match
+        return None
+
+    @classmethod
+    def _approved_mappings_to_candidates(
+        cls,
+        approved_mappings: List[Dict[str, Any]],
+        rows: List[Dict[str, Any]],
+        ontology_prefix: str,
+        import_task_id: str,
+    ) -> List[Dict[str, Any]]:
+        """Convert user-approved Semantic Bridge rows into applyable candidates."""
+        if not approved_mappings:
+            return []
+
+        rows_by_key = {
+            str(row.get("import_row_key") or row.get("id") or "").strip(): row
+            for row in rows
+            if str(row.get("import_row_key") or row.get("id") or "").strip()
+        }
+        class_lookup = UnifiedDataImportService._load_ontology_class_lookup(ontology_prefix)
+        term_lookup = cls._load_ontology_term_lookup(ontology_prefix)
+        for key, values in class_lookup.items():
+            existing_values = term_lookup.setdefault(key, [])
+            existing_ids = {str(item.get("element_id") or item.get("iri") or item.get("class_name") or "") for item in existing_values}
+            for value in values:
+                value_id = str(value.get("element_id") or value.get("iri") or value.get("class_name") or "")
+                if value_id and value_id in existing_ids:
+                    continue
+                existing_values.append({
+                    **value,
+                    "target_ontology_type": value.get("target_ontology_type") or "Class",
+                    "graph_linkable": True,
+                    "graph_element_id": value.get("element_id"),
+                    "target_ontology_iri": value.get("iri") or value.get("uri"),
+                })
+
+        candidates: List[Dict[str, Any]] = []
+        for mapping in approved_mappings:
+            if not (mapping.get("selected_for_apply") or mapping.get("approvedByUser") or mapping.get("approved")):
+                continue
+            row_key = cls._row_key_for_approved_mapping(mapping, rows_by_key)
+            row = rows_by_key.get(row_key)
+            target = cls._target_for_approved_mapping(mapping, term_lookup)
+            if not row or not target:
+                continue
+            target_type = str(target.get("target_ontology_type") or mapping.get("target_ontology_type") or mapping.get("targetOntologyType") or "Class").strip()
+            graph_element_id = target.get("graph_element_id") or (target.get("element_id") if target.get("graph_linkable") else "")
+            target_iri = target.get("target_ontology_iri") or target.get("iri") or target.get("uri") or mapping.get("target_ontology_iri") or mapping.get("targetOntologyIRI")
+            if not graph_element_id:
+                continue
+            source_type = str(mapping.get("source_type") or mapping.get("sourceType") or cls._classify_source_row(row)).strip()
+            candidates.append({
+                "import_id": import_task_id,
+                "import_row_key": row_key,
+                "source_term": mapping.get("source_label") or mapping.get("source_term") or cls._candidate_display_value(row),
+                "source_type": source_type,
+                "ontology_term": target.get("class_name") or target.get("term_name") or mapping.get("target_label") or mapping.get("target_term"),
+                "ontology_class_element_id": graph_element_id,
+                "target_ontology_iri": target_iri,
+                "target_ontology_type": target_type,
+                "graph_linkable": True,
+                "mapping_type": mapping.get("mapping_type") or mapping.get("mappingType") or "userApproved",
+                "validation_status": "approved",
+                "validation_errors": [],
+                "validation_warnings": [],
+                "confidence": min(1.0, max(0.0, float(mapping.get("confidence") or mapping.get("confidenceScore") or 1.0))),
+                "mapping": ontology_prefix,
+                "match_source": "user_approved",
+                "signal_type": mapping.get("signal_type") or "user",
+                "generic_match": False,
+                "evidence": sorted(set([*(mapping.get("evidence") or []), "user-approved bridge"])),
+                "rank": 1,
+                "ambiguous": False,
+                "selected_for_apply": True,
+                "approvedByUser": True,
+                "user_comment": mapping.get("userComment") or mapping.get("user_comment") or "",
+            })
         return candidates
 
     @classmethod
@@ -932,6 +1122,29 @@ class SemanticWorkflowService:
         rows = import_task.get("parsed_rows") or []
         ontology_scope = meta.get("prefix") or meta.get("ontology_prefix") or ontology_id
         candidates = cls._build_link_candidates(rows, ontology_scope, import_task_id, import_task=import_task)
+        user_candidates = cls._approved_mappings_to_candidates(
+            payload.get("approved_mappings") or payload.get("approvedMappings") or [],
+            rows,
+            ontology_scope,
+            import_task_id,
+        )
+        candidate_keys = {
+            (
+                str(candidate.get("import_row_key") or ""),
+                str(candidate.get("ontology_class_element_id") or candidate.get("target_ontology_iri") or ""),
+                str(candidate.get("target_ontology_type") or ""),
+            )
+            for candidate in candidates
+        }
+        for candidate in user_candidates:
+            key = (
+                str(candidate.get("import_row_key") or ""),
+                str(candidate.get("ontology_class_element_id") or candidate.get("target_ontology_iri") or ""),
+                str(candidate.get("target_ontology_type") or ""),
+            )
+            if key not in candidate_keys:
+                candidates.append(candidate)
+                candidate_keys.add(key)
         approved_candidates = [candidate for candidate in candidates if candidate.get("selected_for_apply")]
         applied_links = cls._apply_instance_links(approved_candidates) if apply_links else 0
         report = {
@@ -948,6 +1161,7 @@ class SemanticWorkflowService:
                 "ambiguous_candidates": sum(1 for candidate in candidates if candidate.get("ambiguous")),
                 "validation_warning_candidates": sum(1 for candidate in candidates if candidate.get("validation_status") == "warning"),
                 "auto_approved_candidates": sum(1 for candidate in candidates if candidate.get("validation_status") == "auto_approved"),
+                "user_approved_candidates": sum(1 for candidate in candidates if candidate.get("approvedByUser")),
                 "generic_matches_filtered": sum(1 for candidate in candidates if candidate.get("generic_match") and not candidate.get("selected_for_apply")),
                 "metadata_signals_used": sum(1 for candidate in candidates for source in candidate.get("evidence", []) if str(source).startswith("manifest.") or str(source).startswith("preview.")),
                 "source_kinds": {
@@ -964,6 +1178,28 @@ class SemanticWorkflowService:
         }
         WorkflowArtifactService.write_json(task_id, "reports", "link_candidates.json", report, "link_candidates")
         cls._write_bridge_mapping_exports(task_id, report)
+        if AgentMemoryService is not None:
+            try:
+                AgentMemoryService.record_semantic_bridge_mappings(
+                    ontology_id=ontology_id,
+                    import_task_id=import_task_id,
+                    mappings=approved_candidates,
+                    task_id=task_id,
+                )
+                AgentMemoryService.record_reasoning_trace(
+                    session_id=str(payload.get("session_id") or f"workflow:{task_id}"),
+                    task="semantic_bridge_instance_link",
+                    tool_name="instance.link",
+                    input_payload={
+                        "ontology_id": ontology_id,
+                        "import_task_id": import_task_id,
+                        "apply_links": apply_links,
+                    },
+                    result_summary=report.get("summary") or {},
+                    success=True,
+                )
+            except Exception as exc:
+                logger.warning("Agent memory semantic bridge record skipped: %s", exc)
         try:
             OSLCTRSService.publish_event(
                 f"{OSLCTRSService.base_url()}/api/v1/ontology/{ontology_id}",

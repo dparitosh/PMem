@@ -20,7 +20,6 @@ if exist "service-boundaries.env" (
 echo.
 
 start "DT-Backend" cmd /k call "%~dp0start_backend.bat"
-timeout /t 3 /nobreak >nul
 start "DT-Frontend" cmd /k call "%~dp0start_frontend.bat"
 
 echo [OK] Backend and frontend startup windows opened.

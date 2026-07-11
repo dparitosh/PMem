@@ -1697,6 +1697,9 @@ export default function OntologyMapper() {
   const [inferenceResult, setInferenceResult] = useState(null);
   const [inferenceBusy, setInferenceBusy] = useState(false);
   const [inferenceError, setInferenceError] = useState(null);
+  const [swrlExpression, setSwrlExpression] = useState('satisfies(?requirement, ?function) ^ allocatedTo(?function, ?part) -> impactedBy(?requirement, ?part)');
+  const [swrlValidation, setSwrlValidation] = useState(null);
+  const [swrlBusy, setSwrlBusy] = useState(false);
   const [targetOntologyDictionary, setTargetOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
   const [semanticDetailsLoading, setSemanticDetailsLoading] = useState(false);
   const [semanticDetailsError, setSemanticDetailsError] = useState(null);
@@ -2324,6 +2327,25 @@ export default function OntologyMapper() {
         ontology_id: selectedOntologyApi,
         import_artifact_manifest: manifest,
         apply_links: true,
+        approved_mappings: visibleMappingEdges
+          .filter((edge) => edge?.selected_for_apply || edge?.approvedByUser || edge?.validation_status === 'approved')
+          .map((edge) => ({
+            source_instance_id: edge.source_instance_id,
+            source_instance_label: edge.source_instance_label,
+            source_term: edge.source_term,
+            source_label: edge.source_label,
+            source_type: edge.source_type,
+            target_term: edge.target_term,
+            target_label: edge.target_label,
+            target_ontology_type: edge.target_ontology_type,
+            mapping_type: edge.mapping_type,
+            confidence: edge.confidence,
+            evidence: edge.evidence || [],
+            signal_type: edge.signal_type,
+            selected_for_apply: true,
+            approvedByUser: true,
+            userComment: edge.userComment || '',
+          })),
       });
       const d = res.data || {};
       const candidates = Array.isArray(d.result?.candidates) ? d.result.candidates : [];
@@ -2608,6 +2630,27 @@ export default function OntologyMapper() {
     setInferenceRules((prev) => ({ ...prev, [ruleId]: !prev[ruleId] }));
   };
 
+  const validateSwrlExpression = async () => {
+    setSwrlBusy(true);
+    setInferenceError(null);
+    try {
+      const response = await API_METHODS.ontology.validateRule({
+        rule: {
+          rule_id: 'ui-rule-preview',
+          name: 'UI rule preview',
+          expression: swrlExpression,
+          use_case: 'change_impact',
+        },
+      });
+      setSwrlValidation(response.data?.validation || null);
+    } catch (err) {
+      setSwrlValidation(null);
+      setInferenceError(err?.response?.data?.detail || err?.message || 'SWRL rule validation failed.');
+    } finally {
+      setSwrlBusy(false);
+    }
+  };
+
   const VIEWS = [
     { id: 'dictionary', label: 'Data Dictionary' },
     { id: 'taxonomy', label: 'Taxonomy / OWL' },
@@ -2840,6 +2883,36 @@ export default function OntologyMapper() {
                       </span>
                     </label>
                   ))}
+                  <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: `1px solid ${C.border}` }}>
+                    <div style={{ fontSize: '11px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>SWRL-style rule editor</div>
+                    <textarea
+                      value={swrlExpression}
+                      onChange={(e) => {
+                        setSwrlExpression(e.target.value);
+                        setSwrlValidation(null);
+                      }}
+                      rows={4}
+                      spellCheck={false}
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '8px 9px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', fontSize: '11px', lineHeight: 1.45, fontFamily: 'monospace', resize: 'vertical' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={validateSwrlExpression}
+                      disabled={swrlBusy || !swrlExpression.trim()}
+                      style={{ marginTop: '8px', padding: '7px 10px', borderRadius: '6px', border: 'none', background: swrlBusy || !swrlExpression.trim() ? C.textMuted : C.primary, color: '#fff', fontSize: '11px', fontWeight: 800, cursor: swrlBusy || !swrlExpression.trim() ? 'not-allowed' : 'pointer' }}
+                    >
+                      {swrlBusy ? 'Validating' : 'Validate rule'}
+                    </button>
+                    {swrlValidation && (
+                      <div style={{ marginTop: '8px', border: `1px solid ${swrlValidation.valid ? C.green : C.red}`, background: swrlValidation.valid ? '#F0FFF4' : '#FFF5F5', color: swrlValidation.valid ? C.green : C.red, borderRadius: '6px', padding: '8px', fontSize: '11px', lineHeight: 1.4 }}>
+                        <div style={{ fontWeight: 800 }}>{swrlValidation.valid ? 'Rule supported' : 'Rule needs correction'}</div>
+                        <div style={{ color: C.textPrimary, marginTop: '4px' }}>{swrlValidation.preview}</div>
+                        {(swrlValidation.issues || []).slice(0, 4).map((issue, idx) => (
+                          <div key={`${issue.code}-${idx}`} style={{ marginTop: '4px' }}>{issue.code}: {issue.message}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <label style={{ display: 'block', marginTop: '10px', fontSize: '11px', fontWeight: 800, color: C.textSec }}>Preview limit</label>
                   <input
                     type="number"

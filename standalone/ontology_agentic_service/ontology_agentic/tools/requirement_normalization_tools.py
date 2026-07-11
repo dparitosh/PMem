@@ -7,12 +7,14 @@ import re
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import DCTERMS, RDF, RDFS, SKOS, XSD
 
+from ontology_agentic.config import settings
+
 OSLC_RM = Namespace("http://open-services.net/ns/rm#")
 REQIF = Namespace("http://www.omg.org/spec/ReqIF/20110401/reqif.xsd#")
 SYSML = Namespace("http://www.omg.org/spec/SysML/20181001/SysML#")
 AP242 = Namespace("http://www.step-nc.org/ap242#")
-PLM = Namespace("http://depo-onto.local/plm#")
-DEPO_REQ = Namespace("http://depo-onto.local/requirements#")
+PLM = Namespace(f"{settings.depo_namespace_base}plm#")
+DEPO_REQ = Namespace(f"{settings.depo_namespace_base}requirements#")
 
 _ID_RE = re.compile(r"\b([A-Z]{2,10}[-_ ]?\d{1,8}(?:[-_.][A-Z0-9]+)*)\b", re.IGNORECASE)
 _RELATION_KEYS = {
@@ -171,7 +173,8 @@ def requirement_alignment_profile() -> dict[str, Any]:
     }
 
 
-def export_requirements_alignment_ttl(payload: dict[str, Any], output_path: str | Path, base_uri: str = "http://depo-onto.local/requirements/") -> dict[str, Any]:
+def export_requirements_alignment_ttl(payload: dict[str, Any], output_path: str | Path, base_uri: str | None = None) -> dict[str, Any]:
+    base_uri = base_uri or settings.default_requirements_base_uri
     requirements = payload.get("requirements", [])
     relationships = payload.get("relationships", [])
     if not isinstance(requirements, list):

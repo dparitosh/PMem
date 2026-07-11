@@ -24,6 +24,14 @@ import { graphApi } from '../services/graphApi';
 import { buildTooltipHeader } from './tooltipBuilder';
 import GraphExplorerToolbar from './GraphExplorerToolbar';
 import useMountedRef from '../hooks/useMountedRef';
+import {
+  buildNodeHighlightTerms,
+  getNodeLabelStyle,
+  getRelationshipLabelStyle,
+  shouldRenderNodeLabels,
+  shouldRenderRelationshipLabels,
+  truncateGraphLabel,
+} from '../utils/graphDisplayPolicy';
 
 // Security: HTML-escape utility for tooltip interpolation
 const escapeHtml = (str) => {
@@ -529,6 +537,17 @@ const getRelationshipVisual = (relationshipType) => {
   return RELATIONSHIP_THEME[key] || RELATIONSHIP_THEME.generic;
 };
 
+const getVisibleRelationshipStrokeWidth = (relationshipType, nodeCount, linkCount) => {
+  const baseWidth = Number(getRelationshipVisual(relationshipType).width || LINK_STROKE_WIDTH);
+  if (nodeCount > 120 || linkCount > 160) return Math.max(baseWidth, 1.75);
+  return Math.max(baseWidth, 1.45);
+};
+
+const getVisibleRelationshipOpacity = (nodeCount, linkCount) => {
+  if (nodeCount > 120 || linkCount > 160) return 0.86;
+  return Math.max(LINK_OPACITY, 0.78);
+};
+
 const RELATIONSHIP_DISPLAY_NAMES = {
   MASTER_REFERENCE: 'Master Reference',
   MASTERREF: 'Master Reference',
@@ -573,36 +592,6 @@ const getNodeCollisionRadius = (node, showLabels) => {
   if (!showLabels) return base;
   const displayLength = Math.min(resolveNodeName(node).length, 28);
   return base + Math.max(16, Math.round(displayLength * 3.0));
-};
-
-export const shouldRenderNodeLabels = (nodeCount, linkCount, graphSearchActive, graphViewMode = 'ontology') => {
-  if (['ontology', 'individual'].includes(graphViewMode)) return true;
-  if (graphSearchActive) return true;
-  return nodeCount > 0 || linkCount > 0;
-};
-
-export const getNodeLabelStyle = (nodeCount, graphViewMode = 'ontology') => {
-  if (graphViewMode === 'individual') {
-    return { fontSize: 11, maxLength: 42 };
-  }
-  if (nodeCount > 350) {
-    return { fontSize: 8, maxLength: 22 };
-  }
-  if (nodeCount > 150) {
-    return { fontSize: 9, maxLength: 28 };
-  }
-  return { fontSize: 10, maxLength: 36 };
-};
-
-export const truncateGraphLabel = (value, maxLength = 36) => {
-  const label = String(value || '').trim();
-  if (label.length <= maxLength) return label;
-  return `${label.slice(0, Math.max(1, maxLength - 1))}…`;
-};
-
-const shouldRenderRelationshipLabels = (nodeCount, linkCount, graphSearchActive) => {
-  if (graphSearchActive) return linkCount <= 45 && nodeCount <= 55;
-  return linkCount <= 35 && nodeCount <= 50;
 };
 
 const getAdaptiveLinkDistance = (relationshipType, nodeCount, linkCount) => {
@@ -3023,8 +3012,20 @@ const boundaryForce = (width, height) => {
       const currentNodeIds = currentNodes.map(n => n.elementId).sort().join(',');
       const newNodeIds = renderData.nodes.map(n => n.elementId).sort().join(',');
       const nodesChanged = currentNodeIds !== newNodeIds;
+      const currentSimulationLinks = simulationRef.current.force('link')?.links?.() || [];
+      const currentLinkIds = currentSimulationLinks
+        .map((link) => link?.elementId || buildLinkSignature(link))
+        .filter(Boolean)
+        .sort()
+        .join(',');
+      const newLinkIds = processedLinks
+        .map((link) => link?.elementId || buildLinkSignature(link))
+        .filter(Boolean)
+        .sort()
+        .join(',');
+      const linksChanged = currentLinkIds !== newLinkIds;
 
-      if (nodesChanged || layoutChanged) {
+      if (nodesChanged || linksChanged || layoutChanged) {
         // Update simulation data
         simulationRef.current.nodes(renderData.nodes);
         simulationRef.current.force('link').links(processedLinks);
@@ -3038,7 +3039,7 @@ const boundaryForce = (width, height) => {
         // Use lower alpha for smoother transitions, higher for layout changes
         const alpha = layoutChanged ? 0.5 : 0.3;
         simulationRef.current.alpha(alpha).restart();
-        logger.render(`D3 Simulation updated with alpha ${alpha} (nodes changed: ${nodesChanged}, layout changed: ${layoutChanged})`);
+        logger.render(`D3 Simulation updated with alpha ${alpha} (nodes changed: ${nodesChanged}, links changed: ${linksChanged}, layout changed: ${layoutChanged})`);
       } else {
         logger.render('Skipping simulation update - no data changes detected');
       }
@@ -3048,7 +3049,10 @@ const boundaryForce = (width, height) => {
     const nodeById = new Map((renderData.nodes || []).map((node) => [node.elementId, node]));
     const resolveLinkNode = (endpoint) => {
       if (!endpoint) return null;
-      if (typeof endpoint === 'object') return endpoint;
+      if (typeof endpoint === 'object') {
+        const endpointId = getLinkEndpointId(endpoint);
+        return nodeById.get(endpointId) || endpoint;
+      }
       return nodeById.get(endpoint) || null;
     };
     const renderLinkPath = (selection) => {
@@ -3090,8 +3094,8 @@ const boundaryForce = (width, height) => {
           const group = enter.append('path')
             .attr('class', 'link')
             .attr('stroke', d => getRelationshipVisual(d.type).color)
-            .attr('stroke-opacity', LINK_OPACITY)
-            .attr('stroke-width', d => getRelationshipVisual(d.type).width)
+            .attr('stroke-opacity', getVisibleRelationshipOpacity(nodeCount, linkCount))
+            .attr('stroke-width', d => getVisibleRelationshipStrokeWidth(d.type, nodeCount, linkCount))
             .attr('stroke-dasharray', d => getRelationshipVisual(d.type).dasharray)
             .attr('fill', 'none')  // Important for path elements
             .attr('marker-end', d => `url(#${getRelationshipVisual(d.type).markerId})`)
@@ -3191,6 +3195,7 @@ const boundaryForce = (width, height) => {
         exit => exit.remove()
       );
 
+    const relationshipLabelStyle = getRelationshipLabelStyle(simulationLinks.length, graphViewMode);
     const shouldShowRelationshipLabels = shouldRenderRelationshipLabels(nodeCount, simulationLinks.length, graphSearchActive, graphViewMode);
     const linkLabel = shouldShowRelationshipLabels
       ? gRef.current.selectAll('.link-label')
@@ -3198,7 +3203,7 @@ const boundaryForce = (width, height) => {
         .join(
           (enter) => enter.append('text')
             .attr('class', 'link-label')
-            .attr('font-size', 9)
+            .attr('font-size', relationshipLabelStyle.fontSize)
             .attr('font-weight', 600)
             .attr('text-anchor', 'middle')
             .attr('fill', '#516070')
@@ -3207,8 +3212,10 @@ const boundaryForce = (width, height) => {
             .attr('stroke-width', 3)
             .attr('stroke-linejoin', 'round')
             .style('pointer-events', 'none')
-            .text((d) => getRelationshipDisplayName(d)),
-          (update) => update.text((d) => getRelationshipDisplayName(d)),
+            .text((d) => truncateGraphLabel(getRelationshipDisplayName(d), relationshipLabelStyle.maxLength)),
+          (update) => update
+            .attr('font-size', relationshipLabelStyle.fontSize)
+            .text((d) => truncateGraphLabel(getRelationshipDisplayName(d), relationshipLabelStyle.maxLength)),
           (exit) => exit.remove()
         )
       : gRef.current.selectAll('.link-label').remove();
@@ -3689,8 +3696,8 @@ const boundaryForce = (width, height) => {
 
     link
       .attr('stroke', d => getRelationshipVisual(d.type).color)
-      .attr('stroke-opacity', LINK_OPACITY)
-      .attr('stroke-width', d => getRelationshipVisual(d.type).width)
+      .attr('stroke-opacity', getVisibleRelationshipOpacity(nodeCount, linkCount))
+      .attr('stroke-width', d => getVisibleRelationshipStrokeWidth(d.type, nodeCount, linkCount))
       .attr('stroke-dasharray', d => getRelationshipVisual(d.type).dasharray)
       .attr('marker-end', d => `url(#${getRelationshipVisual(d.type).markerId})`);
 
@@ -3836,8 +3843,7 @@ const boundaryForce = (width, height) => {
     // Force-directed layout: add/remove glow rings on .node-group circles
     svg.selectAll('.node-group').each(function(d) {
       const group = d3.select(this);
-      const nm = (d?.name || d?.properties?.name || '').toLowerCase();
-      const isHighlighted = hasHighlights && highlightedNodeNames.has(nm);
+      const isHighlighted = hasHighlights && buildNodeHighlightTerms(d).some((term) => highlightedNodeNames.has(term));
 
       // Remove any existing highlight ring
       group.selectAll('.view-in-graph-ring').remove();

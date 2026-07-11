@@ -148,8 +148,8 @@ class OntologyWorkflowEngine:
         result = export_step_to_ttl(
             path_value=step_path,
             output_path=inputs.get("output_path"),
-            base_uri=str(inputs.get("base_uri") or "http://depo-onto.local/step#"),
-            namespace_prefix=str(inputs.get("namespace_prefix") or "step"),
+            base_uri=str(inputs.get("base_uri") or settings.default_step_base_uri),
+            namespace_prefix=str(inputs.get("namespace_prefix") or settings.default_namespace_prefix),
             include_pmi=bool(inputs.get("include_pmi", True)),
         )
         return {
@@ -188,7 +188,7 @@ class OntologyWorkflowEngine:
         result = export_reqif_to_ttl(
             path_value=reqif_path,
             output_path=inputs.get("output_path"),
-            base_uri=str(inputs.get("base_uri") or "http://depo-onto.local/reqif/"),
+            base_uri=str(inputs.get("base_uri") or settings.default_reqif_base_uri),
             sample_size=int(inputs.get("sample_size", 10000)),
         )
         return {
@@ -234,7 +234,7 @@ class OntologyWorkflowEngine:
         result = export_requirements_alignment_ttl(
             payload=payload,
             output_path=output_path,
-            base_uri=str(inputs.get("base_uri") or "http://depo-onto.local/requirements/"),
+            base_uri=str(inputs.get("base_uri") or settings.default_requirements_base_uri),
         )
         return {
             "workflow_id": "requirements_alignment_export",
@@ -332,7 +332,7 @@ class OntologyWorkflowEngine:
         if action == "catalog":
             result = depo_oslc_catalog(base_url=base_url)
         elif action == "provider":
-            result = depo_oslc_provider(provider_id=str(inputs.get("provider_id") or "depo"), base_url=base_url)
+            result = depo_oslc_provider(provider_id=str(inputs.get("provider_id") or settings.default_oslc_provider_id), base_url=base_url)
         elif action == "shapes":
             result = depo_oslc_shapes(shape_id=str(inputs.get("shape_id") or ""), base_url=base_url)
         elif action == "query":

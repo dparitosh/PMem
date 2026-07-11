@@ -193,6 +193,28 @@ class StepAnnotation:
     name: str = ""
     presentation_refs: List[int] = field(default_factory=list)
     leader_refs: List[int] = field(default_factory=list)
+    feature_refs: List[int] = field(default_factory=list)
+    view_refs: List[int] = field(default_factory=list)
+
+
+@dataclass
+class StepGraphicPresentation:
+    id: int
+    presentation_type: str = ""
+    annotation_refs: List[int] = field(default_factory=list)
+    geometry_refs: List[int] = field(default_factory=list)
+    view_refs: List[int] = field(default_factory=list)
+    style_refs: List[int] = field(default_factory=list)
+
+
+@dataclass
+class StepSavedView:
+    id: int
+    view_type: str = ""
+    name: str = ""
+    annotation_refs: List[int] = field(default_factory=list)
+    geometry_refs: List[int] = field(default_factory=list)
+    presentation_refs: List[int] = field(default_factory=list)
 
 
 @dataclass
@@ -225,6 +247,8 @@ class StepPMIDocument:
     datums: List[StepDatum] = field(default_factory=list)
     dimensions: List[StepDimension] = field(default_factory=list)
     annotations: List[StepAnnotation] = field(default_factory=list)
+    graphic_presentations: List[StepGraphicPresentation] = field(default_factory=list)
+    saved_views: List[StepSavedView] = field(default_factory=list)
     surface_finishes: List[StepSurfaceFinish] = field(default_factory=list)
     cad_products: List[StepCadEntity] = field(default_factory=list)
     cad_representations: List[StepCadEntity] = field(default_factory=list)
@@ -507,13 +531,35 @@ def iter_part21_entities(file_path: Path) -> Iterator[StepP21Entity]:
 
 def _classify_cad_entity(entity: StepP21Entity) -> Optional[str]:
     for et in _entity_type_candidates(entity):
-        if et in {"PRODUCT", "PRODUCT_RELATED_PRODUCT_CATEGORY", "PRODUCT_CATEGORY"}:
+        if (
+            "TOLERANCE" in et
+            or "DATUM" in et
+            or "DIMENSION" in et
+            or "ANNOTATION" in et
+            or "DRAUGHTING" in et
+            or "SURFACE_FINISH" in et
+            or "SURFACE_TEXTURE" in et
+            or "ROUGHNESS" in et
+        ):
+            continue
+        if et in {
+            "PRODUCT",
+            "PRODUCT_RELATED_PRODUCT_CATEGORY",
+            "PRODUCT_CATEGORY",
+            # AP242 Part28 / BO model tokens
+            "PART",
+            "PART_VERSION",
+        }:
             return "product"
-        if "REPRESENTATION" in et:
+        if et in {"PART_VIEW", "VIEW", "VIEWS", "GEOMETRIC_MODEL"} or "REPRESENTATION" in et:
             return "representation"
-        if any(token in et for token in ("EDGE", "FACE", "SHELL", "TOPO")):
+        if et in {"SHAPE_ASPECT", "SHAPE_ASPECT_RELATIONSHIP"} or "FEATURE" in et:
+            return "feature"
+        if "SHAPE" in et:
+            return "shape"
+        if et in {"OCCURRENCE", "VIEW_OCCURRENCE_RELATIONSHIP"} or any(token in et for token in ("EDGE", "FACE", "SHELL", "TOPO")):
             return "topology"
-        if any(token in et for token in ("POINT", "CURVE", "SURFACE", "GEOMETRIC")):
+        if et in {"PLACEMENT", "CARTESIAN_TRANSFORMATION", "ROTATION_MATRIX", "TRANSLATION_VECTOR"} or any(token in et for token in ("POINT", "CURVE", "SURFACE", "GEOMETRIC")):
             return "geometry"
     return None
 
@@ -601,6 +647,50 @@ def _apply_dimension_tolerances(dimensions: List[StepDimension], entity_map: Dic
             dim.upper_tolerance = upper
 
 
+def _refs_matching(entity: StepP21Entity, entity_map: Dict[int, StepP21Entity], markers: tuple[str, ...]) -> List[int]:
+    """Return references whose resolved STEP type matches semantic markers."""
+    matches: List[int] = []
+    for ref_id in entity.ref_ids:
+        ref = entity_map.get(ref_id)
+        ref_types = _entity_type_candidates(ref) if ref else []
+        if any(any(marker in ref_type for marker in markers) for ref_type in ref_types):
+            matches.append(ref_id)
+    return sorted(set(matches))
+
+
+def _typed_pmi_refs(entity: StepP21Entity, entity_map: Dict[int, StepP21Entity]) -> Dict[str, List[int]]:
+    """Classify broad STEP references without pretending to fully infer EXPRESS positions."""
+    datum_refs = _refs_matching(entity, entity_map, ("DATUM",))
+    leader_refs = _refs_matching(entity, entity_map, ("LEADER",))
+    feature_refs = _refs_matching(entity, entity_map, (
+        "SHAPE_ASPECT", "FEATURE", "FACE", "EDGE", "VERTEX", "SURFACE", "CURVE", "POINT", "GEOMETRY",
+        "PRODUCT_DEFINITION", "PRODUCT", "REPRESENTATION_ITEM",
+    ))
+    return {
+        "datum": datum_refs,
+        "feature": [ref_id for ref_id in feature_refs if ref_id not in datum_refs and ref_id not in leader_refs],
+        "presentation": _refs_matching(entity, entity_map, (
+            "ANNOTATION", "DRAUGHTING", "PRESENTATION", "STYLED_ITEM", "TEXT_LITERAL", "GEOMETRIC_CURVE_SET",
+        )),
+        "leader": leader_refs,
+        "view": _refs_matching(entity, entity_map, (
+            "VIEW", "ANNOTATION_PLANE", "REPRESENTATION_CONTEXT", "CAMERA", "PRESENTATION_REPRESENTATION",
+        )),
+        "style": _refs_matching(entity, entity_map, ("STYLE", "PRESENTATION_LAYER", "PRESENTATION_STYLE")),
+    }
+
+
+def _is_graphic_presentation_entity(entity: StepP21Entity) -> bool:
+    return any(marker in entity_type for entity_type in _entity_type_candidates(entity) for marker in (
+        "ANNOTATION_OCCURRENCE", "DRAUGHTING_CALLOUT", "LEADER", "ANNOTATION_PLANE",
+        "PRESENTATION_REPRESENTATION", "PRESENTATION_LAYER", "PRESENTATION_STYLE",
+    ))
+
+
+def _is_saved_view_entity(entity: StepP21Entity) -> bool:
+    return any(entity_type in {"VIEW", "PRESENTATION_VIEW", "ANNOTATION_PLANE"} for entity_type in _entity_type_candidates(entity))
+
+
 def _classify_pmi_entity(entity: StepP21Entity) -> Optional[str]:
     for et in _entity_type_candidates(entity):
         if et == "PLUS_MINUS_TOLERANCE" or et == "TOLERANCE_VALUE":
@@ -611,19 +701,45 @@ def _classify_pmi_entity(entity: StepP21Entity) -> Optional[str]:
             return "datum"
         if "DIMENSION" in et or et in {"DIMENSIONAL_SIZE", "DIMENSIONAL_LOCATION", "ANGULAR_LOCATION"}:
             return "dimension"
-        if "ANNOTATION" in et or "DRAUGHTING" in et:
+        if (
+            "ANNOTATION" in et
+            or "DRAUGHTING" in et
+            or "CALLOUT" in et
+            or "TEXT_LITERAL" in et
+            or "LEADER" in et
+            or "STYLED_ITEM" in et
+            or et in {"PRESENTATION_STYLE_ASSIGNMENT", "PRESENTATION_LAYER_ASSIGNMENT"}
+        ):
             return "annotation"
         if "SURFACE_FINISH" in et or "SURFACE_TEXTURE" in et or "ROUGHNESS" in et:
             return "surface_finish"
     return None
 
 
+def classify_step_semantic_role(entity: StepP21Entity) -> Optional[str]:
+    """Return the import-facing AP242 semantic role for STEP/STPX entities."""
+    return _classify_pmi_entity(entity) or _classify_cad_entity(entity)
+
+
 def _cad_name_fields(entity: StepP21Entity) -> tuple[str, str, str]:
     strings = extract_step_strings(entity.raw_args)
-    external_id = strings[0] if strings else ""
-    name = strings[1] if len(strings) > 1 else external_id
+    attrs = getattr(entity, "attributes", {}) or {}
+    source_identifier = getattr(entity, "source_identifier", "") or ""
+    external_id = strings[0] if strings else (source_identifier or attrs.get("id") or attrs.get("uid") or "")
+    name = strings[1] if len(strings) > 1 else (
+        attrs.get("name")
+        or attrs.get("Name")
+        or attrs.get("label")
+        or attrs.get("title")
+        or external_id
+    )
     description = strings[2] if len(strings) > 2 else ""
     return external_id, name, description
+
+
+def step_entity_display_fields(entity: StepP21Entity) -> tuple[str, str, str]:
+    """Return stable external id, display name, and description for import rows."""
+    return _cad_name_fields(entity)
 
 
 def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
@@ -647,6 +763,8 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
     datums: List[StepDatum] = []
     dimensions: List[StepDimension] = []
     annotations: List[StepAnnotation] = []
+    graphic_presentations: List[StepGraphicPresentation] = []
+    saved_views: List[StepSavedView] = []
     surface_finishes: List[StepSurfaceFinish] = []
 
     for entity in entities:
@@ -670,6 +788,27 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
             elif group == "geometry":
                 cad_geometry.append(cad)
 
+        typed_refs = _typed_pmi_refs(entity, entity_map)
+        if _is_graphic_presentation_entity(entity):
+            graphic_presentations.append(StepGraphicPresentation(
+                id=entity.step_id,
+                presentation_type=entity.entity_type,
+                annotation_refs=typed_refs["presentation"],
+                geometry_refs=typed_refs["feature"],
+                view_refs=typed_refs["view"],
+                style_refs=typed_refs["style"],
+            ))
+        if _is_saved_view_entity(entity):
+            strings_for_view = extract_step_strings(entity.raw_args)
+            saved_views.append(StepSavedView(
+                id=entity.step_id,
+                view_type=entity.entity_type,
+                name=strings_for_view[1] if len(strings_for_view) > 1 else (strings_for_view[0] if strings_for_view else ""),
+                annotation_refs=typed_refs["presentation"],
+                geometry_refs=typed_refs["feature"],
+                presentation_refs=typed_refs["presentation"] + typed_refs["style"],
+            ))
+
         pmi_group = _classify_pmi_entity(entity)
         if not pmi_group:
             continue
@@ -686,14 +825,15 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
                 name=name,
                 description=description,
                 magnitude=number,
-                toleranced_feature_refs=list(entity.ref_ids),
+                datum_system_refs=typed_refs["datum"],
+                toleranced_feature_refs=typed_refs["feature"],
             ))
         elif pmi_group == "datum":
             datums.append(StepDatum(
                 id=entity.step_id,
                 label=label,
                 datum_type=entity.entity_type,
-                feature_refs=list(entity.ref_ids),
+                feature_refs=typed_refs["feature"],
                 name=name,
             ))
         elif pmi_group == "dimension":
@@ -703,7 +843,7 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
                 name=name,
                 description=description,
                 nominal_value=number,
-                feature_refs=list(entity.ref_ids),
+                feature_refs=typed_refs["feature"],
             ))
         elif pmi_group == "dimension_tolerance":
             continue
@@ -713,14 +853,17 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
                 annotation_type=entity.entity_type,
                 text=description or name or label,
                 name=name,
-                presentation_refs=list(entity.ref_ids),
+                presentation_refs=typed_refs["presentation"],
+                leader_refs=typed_refs["leader"],
+                feature_refs=typed_refs["feature"],
+                view_refs=typed_refs["view"],
             ))
         elif pmi_group == "surface_finish":
             surface_finishes.append(StepSurfaceFinish(
                 id=entity.step_id,
                 finish_type=entity.entity_type,
                 roughness_average=number,
-                feature_refs=list(entity.ref_ids),
+                feature_refs=typed_refs["feature"],
             ))
 
     _apply_dimension_tolerances(dimensions, entity_map)
@@ -733,6 +876,8 @@ def parse_step_with_pmi(file_path: Path) -> StepPMIDocument:
         datums=datums,
         dimensions=dimensions,
         annotations=annotations,
+        graphic_presentations=graphic_presentations,
+        saved_views=saved_views,
         surface_finishes=surface_finishes,
         cad_products=cad_products,
         cad_representations=cad_representations,
@@ -749,6 +894,8 @@ def get_pmi_summary(doc: StepPMIDocument) -> Dict[str, int | bool]:
         "datums": len(doc.datums),
         "dimensions": len(doc.dimensions),
         "annotations": len(doc.annotations),
+        "graphic_presentations": len(doc.graphic_presentations),
+        "saved_views": len(doc.saved_views),
         "cad_products": len(doc.cad_products),
         "cad_representations": len(doc.cad_representations),
         "cad_topology": len(doc.cad_topology),

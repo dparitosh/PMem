@@ -1,5 +1,12 @@
 import { normalizeGraphDataset } from '../utils/graphUtils';
-import { getNodeLabelStyle, shouldRenderNodeLabels, truncateGraphLabel } from './GraphHEB';
+import {
+  buildNodeHighlightTerms,
+  getNodeLabelStyle,
+  getRelationshipLabelStyle,
+  shouldRenderNodeLabels,
+  shouldRenderRelationshipLabels,
+  truncateGraphLabel,
+} from '../utils/graphDisplayPolicy';
 
 test('normalizeGraphDataset preserves top-level can_traverse from graph responses', () => {
   const payload = {
@@ -60,4 +67,32 @@ test('dense graph labels are compact but not blank', () => {
   expect(style.fontSize).toBeLessThanOrEqual(9);
   expect(label).toMatch(/…$/);
   expect(label.length).toBeGreaterThan(0);
+});
+
+test('relationship labels are visible in focused graph modes and compact in dense graphs', () => {
+  expect(shouldRenderRelationshipLabels(900, 1200, true, 'ontology')).toBe(false);
+  expect(shouldRenderRelationshipLabels(900, 1200, false, 'individual')).toBe(true);
+  expect(shouldRenderRelationshipLabels(80, 120, false, 'ontology')).toBe(false);
+  expect(shouldRenderRelationshipLabels(40, 50, false, 'ontology')).toBe(true);
+  expect(shouldRenderRelationshipLabels(40, 100, true, 'ontology')).toBe(true);
+
+  const style = getRelationshipLabelStyle(220, 'ontology');
+  expect(style.fontSize).toBeLessThanOrEqual(8);
+  expect(truncateGraphLabel('Very Long Relationship Name', style.maxLength)).toMatch(/…$/);
+});
+
+test('highlight matching includes visible business labels beyond name', () => {
+  const terms = buildNodeHighlightTerms({
+    properties: {
+      title: 'Bearing Life Requirement',
+      code: 'REQ-006',
+      part_number: 'SKF_6306-2Z',
+    },
+  });
+
+  expect(terms).toEqual(expect.arrayContaining([
+    'bearing life requirement',
+    'req-006',
+    'skf_6306-2z',
+  ]));
 });

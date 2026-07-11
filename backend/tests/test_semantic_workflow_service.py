@@ -189,6 +189,50 @@ def test_build_link_candidates_uses_instance_metadata_signals(monkeypatch):
     assert any(str(source).startswith("manifest.") for source in candidates[0].get("evidence", []))
 
 
+def test_build_link_candidates_reuses_agent_memory_mapping(monkeypatch):
+    rows = [{"import_row_key": "row-1", "entity_type": "Requirement", "name": "REQ-001"}]
+
+    class FakeAgentMemoryService:
+        @staticmethod
+        def semantic_bridge_facts(_ontology_id, limit=1500):
+            return [{
+                "source": "Requirement",
+                "source_type": "Entity",
+                "target": "RequirementClass",
+                "target_type": "Class",
+                "confidence": 0.9,
+                "mapping_type": "exactMatch",
+            }]
+
+    monkeypatch.setattr("backend.Services.semantic_workflow_service.AgentMemoryService", FakeAgentMemoryService)
+    monkeypatch.setattr(
+        "backend.Services.semantic_workflow_service.UnifiedDataImportService._load_ontology_class_lookup",
+        lambda _prefix: {
+            "REQUIREMENTCLASS": [
+                {
+                    "element_id": "class-from-memory",
+                    "class_name": "RequirementClass",
+                    "prefix": "mbse",
+                    "normalized": "REQUIREMENTCLASS",
+                    "tokens": ["requirement", "class"],
+                    "is_generic": False,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        "backend.Services.semantic_workflow_service.SemanticWorkflowService._load_ontology_term_lookup",
+        lambda _prefix: {},
+    )
+
+    candidates = SemanticWorkflowService._build_link_candidates(rows, "mbse", "import-1")
+
+    assert len(candidates) == 1
+    assert candidates[0]["ontology_class_element_id"] == "class-from-memory"
+    assert candidates[0]["match_source"] == "agent_memory"
+    assert candidates[0]["selected_for_apply"] is True
+
+
 def test_build_link_candidates_classifies_relationship_rows_to_object_properties(monkeypatch):
     rows = [
         {
@@ -402,3 +446,165 @@ def test_instance_link_prefers_graph_linkable_class_target(monkeypatch):
     assert auto_candidates
     assert auto_candidates[0]["ontology_class_element_id"] == "neo4j-class-1"
     assert auto_candidates[0]["graph_linkable"] is True
+
+
+def test_user_approved_bridge_mapping_becomes_applyable_candidate(monkeypatch):
+    rows = [{"import_row_key": "row-1", "entity_type": "Requirement", "name": "REQ-001"}]
+
+    monkeypatch.setattr(
+        "backend.Services.semantic_workflow_service.UnifiedDataImportService._load_ontology_class_lookup",
+        lambda _prefix: {
+            "REQUIREMENT": [
+                {
+                    "element_id": "neo4j-class-1",
+                    "class_name": "Requirement",
+                    "prefix": "mbse",
+                    "normalized": "REQUIREMENT",
+                    "tokens": ["requirement"],
+                    "is_generic": False,
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        "backend.Services.semantic_workflow_service.SemanticWorkflowService._load_ontology_term_lookup",
+        lambda _prefix: {},
+    )
+
+    candidates = SemanticWorkflowService._approved_mappings_to_candidates(
+        [{
+            "source_term": "row-1",
+            "source_type": "Entity",
+            "target_term": "Requirement",
+            "target_ontology_type": "Class",
+            "approvedByUser": True,
+            "confidence": 0.91,
+        }],
+        rows,
+        "mbse",
+        "import-1",
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0]["import_row_key"] == "row-1"
+    assert candidates[0]["ontology_class_element_id"] == "neo4j-class-1"
+    assert candidates[0]["selected_for_apply"] is True
+    assert candidates[0]["approvedByUser"] is True
+
+
+def test_instance_link_applies_user_approved_mappings(monkeypatch):
+    monkeypatch.setattr(SemanticWorkflowService, "_resolve_ontology_id", lambda ontology_id: "ont-1")
+    monkeypatch.setattr(
+        SemanticWorkflowService,
+        "_ontology_metadata",
+        lambda ontology_id: {"ontology_id": ontology_id, "prefix": "mbse", "original_filename": "mbse.owl"},
+    )
+    monkeypatch.setattr(
+        SemanticWorkflowService,
+        "_load_import_task",
+        lambda manifest: {"task_id": "import-1", "parsed_rows": [{"import_row_key": "row-1", "entity_type": "Requirement", "name": "REQ-001"}]},
+    )
+    monkeypatch.setattr(SemanticWorkflowService, "_build_link_candidates", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        SemanticWorkflowService,
+        "_approved_mappings_to_candidates",
+        lambda *args, **kwargs: [{
+            "import_id": "import-1",
+            "import_row_key": "row-1",
+            "source_term": "REQ-001",
+            "source_type": "Entity",
+            "ontology_term": "Requirement",
+            "ontology_class_element_id": "neo4j-class-1",
+            "target_ontology_type": "Class",
+            "graph_linkable": True,
+            "mapping_type": "userApproved",
+            "validation_status": "approved",
+            "confidence": 1.0,
+            "mapping": "mbse",
+            "evidence": ["user-approved bridge"],
+            "selected_for_apply": True,
+            "approvedByUser": True,
+        }],
+    )
+    monkeypatch.setattr(SemanticWorkflowService, "_apply_instance_links", lambda candidates: len(candidates))
+    monkeypatch.setattr(SemanticWorkflowService, "_new_task", lambda workflow_id, source_filename="": "link-task")
+    monkeypatch.setattr("backend.Services.semantic_workflow_service.WorkflowArtifactService.write_json", lambda *args, **kwargs: None)
+    monkeypatch.setattr("backend.Services.semantic_workflow_service.WorkflowArtifactService.get_manifest", lambda task_id: {"task_id": task_id})
+    monkeypatch.setattr("backend.Services.semantic_workflow_service.SemanticWorkflowService._write_bridge_mapping_exports", lambda *args, **kwargs: None)
+
+    result = SemanticWorkflowService.link_instances({
+        "ontology_id": "mbse",
+        "import_artifact_manifest": {"task_id": "import-1"},
+        "apply_links": True,
+        "approved_mappings": [{"source_term": "row-1", "target_term": "Requirement", "approvedByUser": True}],
+    })
+
+    assert result["result"]["summary"]["user_approved_candidates"] == 1
+    assert result["result"]["summary"]["applied_links"] == 1
+
+
+def test_instance_link_records_agent_memory_when_available(monkeypatch):
+    recorded = {"mappings": None, "trace": None}
+
+    class FakeAgentMemoryService:
+        @staticmethod
+        def record_semantic_bridge_mappings(**kwargs):
+            recorded["mappings"] = kwargs
+
+        @staticmethod
+        def record_reasoning_trace(**kwargs):
+            recorded["trace"] = kwargs
+
+    monkeypatch.setattr("backend.Services.semantic_workflow_service.AgentMemoryService", FakeAgentMemoryService)
+    monkeypatch.setattr(SemanticWorkflowService, "_resolve_ontology_id", lambda ontology_id: "ont-1")
+    monkeypatch.setattr(
+        SemanticWorkflowService,
+        "_ontology_metadata",
+        lambda ontology_id: {"ontology_id": ontology_id, "prefix": "mbse", "original_filename": "mbse.owl"},
+    )
+    monkeypatch.setattr(
+        SemanticWorkflowService,
+        "_load_import_task",
+        lambda manifest: {"task_id": "import-1", "parsed_rows": [{"import_row_key": "row-1", "entity_type": "Requirement", "name": "REQ-001"}]},
+    )
+    monkeypatch.setattr(SemanticWorkflowService, "_build_link_candidates", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        SemanticWorkflowService,
+        "_approved_mappings_to_candidates",
+        lambda *args, **kwargs: [{
+            "import_id": "import-1",
+            "import_row_key": "row-1",
+            "source_term": "REQ-001",
+            "source_type": "Entity",
+            "ontology_term": "Requirement",
+            "ontology_class_element_id": "neo4j-class-1",
+            "target_ontology_type": "Class",
+            "graph_linkable": True,
+            "mapping_type": "userApproved",
+            "validation_status": "approved",
+            "confidence": 1.0,
+            "mapping": "mbse",
+            "evidence": ["user-approved bridge"],
+            "selected_for_apply": True,
+            "approvedByUser": True,
+        }],
+    )
+    monkeypatch.setattr(SemanticWorkflowService, "_apply_instance_links", lambda candidates: len(candidates))
+    monkeypatch.setattr(SemanticWorkflowService, "_new_task", lambda workflow_id, source_filename="": "link-task")
+    monkeypatch.setattr("backend.Services.semantic_workflow_service.WorkflowArtifactService.write_json", lambda *args, **kwargs: None)
+    monkeypatch.setattr("backend.Services.semantic_workflow_service.WorkflowArtifactService.get_manifest", lambda task_id: {"task_id": task_id})
+    monkeypatch.setattr("backend.Services.semantic_workflow_service.SemanticWorkflowService._write_bridge_mapping_exports", lambda *args, **kwargs: None)
+
+    SemanticWorkflowService.link_instances({
+        "ontology_id": "mbse",
+        "import_artifact_manifest": {"task_id": "import-1"},
+        "apply_links": True,
+        "session_id": "chat-1",
+        "approved_mappings": [{"source_term": "row-1", "target_term": "Requirement", "approvedByUser": True}],
+    })
+
+    assert recorded["mappings"]["ontology_id"] == "ont-1"
+    assert recorded["mappings"]["import_task_id"] == "import-1"
+    assert len(list(recorded["mappings"]["mappings"])) == 1
+    assert recorded["trace"]["session_id"] == "chat-1"
+    assert recorded["trace"]["tool_name"] == "instance.link"

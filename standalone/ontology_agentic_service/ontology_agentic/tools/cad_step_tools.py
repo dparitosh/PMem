@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ontology_agentic.config import settings
+
 SUPPORTED_STEP_EXTENSIONS = {".stp", ".step", ".stpx"}
 
 
@@ -87,8 +89,8 @@ def inspect_step_file(path_value: str | Path, include_entity_sample: bool = True
 def export_step_to_ttl(
     path_value: str | Path,
     output_path: str | Path | None = None,
-    base_uri: str = "http://depo-onto.local/step#",
-    namespace_prefix: str = "step",
+    base_uri: str | None = None,
+    namespace_prefix: str | None = None,
     include_pmi: bool = True,
 ) -> dict[str, Any]:
     path = _ensure_step_path(path_value)
@@ -97,8 +99,8 @@ def export_step_to_ttl(
     result = owl_step_engine.convert_step_to_ttl(
         file_path=path,
         output_path=resolved_output,
-        base_uri=base_uri,
-        namespace_prefix=namespace_prefix,
+        base_uri=base_uri or settings.default_step_base_uri,
+        namespace_prefix=namespace_prefix or settings.default_namespace_prefix,
         include_pmi=include_pmi,
     )
     return result

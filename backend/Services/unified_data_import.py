@@ -817,7 +817,7 @@ class FileFormatDetector:
                 f"idx_{safe_label}_{merge_key}".replace('-', '_'),
             )
 
-        for text_prop in ('name', 'part_number', 'title'):
+        for text_prop in ('name', 'part_number', 'title', 'external_id', 'label', 'identifier'):
             if text_prop in props and text_prop != merge_key:
                 cls._append_index(
                     indexes,
@@ -828,7 +828,16 @@ class FileFormatDetector:
                     f"idx_{safe_label}_{text_prop}_text".replace('-', '_'),
                 )
 
-        for range_prop in ('ontology_prefix', 'source_ontology', 'part_ref', 'parent_ref'):
+        for range_prop in (
+            'ontology_prefix',
+            'source_ontology',
+            'part_ref',
+            'parent_ref',
+            'entity_type',
+            'semantic_role',
+            'is_cad_business_object',
+            'source_identifier',
+        ):
             if range_prop in props and range_prop != merge_key:
                 cls._append_index(
                     indexes,
@@ -1920,7 +1929,7 @@ class FileParser:
         from pathlib import Path as _Path
         try:
             from .step_parser import iter_part21_entities, parse_step_metadata, \
-                extract_step_strings, _AP242_NAMED_ENTITIES
+                _AP242_NAMED_ENTITIES, classify_step_semantic_role, step_entity_display_fields
 
             # G-A: detect STPX (Part 28 XML) content to use correct temp file suffix.
             # detect_step_format() relies on the suffix, so write to .stpx when content is XML.
@@ -1938,6 +1947,7 @@ class FileParser:
 
                 rows: List[Dict[str, Any]] = []
                 type_counts: Dict[str, int] = {}
+                semantic_role_counts: Dict[str, int] = {}
                 ref_map: Dict[int, List[int]] = {}  # step_id -> [ref_step_ids]
 
                 for entity in iter_part21_entities(tmp_path):
@@ -1952,6 +1962,11 @@ class FileParser:
                         'args': args_preview,
                         'ref_ids': list(entity.ref_ids),
                     }
+                    semantic_role = classify_step_semantic_role(entity)
+                    if semantic_role:
+                        row['semantic_role'] = semantic_role
+                        row['is_cad_business_object'] = True
+                        semantic_role_counts[semantic_role] = semantic_role_counts.get(semantic_role, 0) + 1
                     if getattr(entity, 'compound_entity_types', None):
                         row['compound_entity_types'] = list(entity.compound_entity_types)
                     if entity.source_identifier:
@@ -1976,17 +1991,33 @@ class FileParser:
                                 continue
                             target_key = f'xml_{safe_key}' if safe_key in reserved_keys else safe_key
                             row[target_key] = attr_value
-                    # G-B: extract name/description for AP242 semantic entity types.
-                    # Canonical pattern from requirements/src/engines/ap242_bom_mapper.py.
-                    if entity.entity_type in _AP242_NAMED_ENTITIES:
-                        strings = extract_step_strings(entity.raw_args)
-                        row['external_id'] = strings[0] if strings else ''
-                        row['name'] = strings[1] if len(strings) > 1 else ''
-                        row['description'] = strings[2] if len(strings) > 2 else ''
+                    # G-B: extract name/description for AP242 semantic entity types and
+                    # Part28 BO model rows so graph/search surfaces business objects.
+                    if entity.entity_type in _AP242_NAMED_ENTITIES or semantic_role:
+                        external_id, name, description = step_entity_display_fields(entity)
+                        if external_id:
+                            row['external_id'] = external_id
+                        if name:
+                            row['name'] = name
+                        if description:
+                            row['description'] = description
                     rows.append(row)
                     type_counts[entity.entity_type] = type_counts.get(entity.entity_type, 0) + 1
                     if entity.ref_ids:
                         ref_map[entity.step_id] = entity.ref_ids
+
+                rows_by_id = {str(row.get('id') or ''): row for row in rows}
+                for row in rows:
+                    parent_row = rows_by_id.get(str(row.get('parent_step_id') or ''))
+                    text_value = str(row.get('text_value') or '').strip()
+                    if not parent_row or not text_value:
+                        continue
+                    entity_type = str(row.get('entity_type') or '').upper()
+                    if entity_type == 'NAME' and parent_row.get('is_cad_business_object'):
+                        if not parent_row.get('name') or parent_row.get('name') == parent_row.get('external_id'):
+                            parent_row['name'] = text_value
+                    elif entity_type == 'IDENTIFIER' and parent_row.get('is_cad_business_object'):
+                        parent_row.setdefault('external_id', text_value)
 
                 id_seen: Dict[str, int] = {}
                 source_identifier_seen: Dict[str, int] = {}
@@ -2019,6 +2050,10 @@ class FileParser:
                     'column_count': len(all_columns) if rows else 4,
                     'columns': all_columns if rows else ['import_row_key', 'id', 'entity_type', 'args'],
                     'entity_types': type_counts,
+                    'semantic_role_counts': semantic_role_counts,
+                    'cad_business_object_count': sum(
+                        1 for row in rows if row.get('is_cad_business_object')
+                    ),
                     'duplicate_source_id_count': duplicate_id_count,
                     'duplicate_source_identifier_count': duplicate_source_identifier_count,
                     'unresolved_reference_count': unresolved_reference_total,

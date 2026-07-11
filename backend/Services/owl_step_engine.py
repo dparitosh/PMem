@@ -405,6 +405,8 @@ def _generate_step_rdf_ttl(
     _declare_class(graph, _PMI.Dimension, "Dimension", _STEP.Entity)
     _declare_class(graph, _PMI.Annotation, "Annotation", _STEP.Entity)
     _declare_class(graph, _PMI.SurfaceFinish, "Surface Finish", _STEP.Entity)
+    _declare_class(graph, _PMI.GraphicPresentation, "Graphic Presentation", _STEP.Entity)
+    _declare_class(graph, _PMI.SavedView, "Saved View", _STEP.Entity)
 
     _declare_object_property(
         graph,
@@ -436,6 +438,11 @@ def _generate_step_rdf_ttl(
         (_PMI.measuredFeature, "measured feature", _STEP.Entity),
         (_PMI.presentationReference, "presentation reference", _STEP.Entity),
         (_PMI.leaderReference, "leader reference", _STEP.Entity),
+        (_PMI.featureReference, "feature reference", _STEP.Entity),
+        (_PMI.viewReference, "view reference", _STEP.Entity),
+        (_PMI.styleReference, "style reference", _STEP.Entity),
+        (_PMI.graphicPresentation, "graphic presentation", _STEP.Entity),
+        (_PMI.savedView, "saved view", _STEP.Entity),
     ]:
         _declare_object_property(graph, prop, label, OWL.Thing, range_class)
 
@@ -558,6 +565,31 @@ def _add_pmi_instances(graph: Graph, pmi_doc: StepPMIDocument, instance_ns: Name
         _literal_if_value(graph, subject, _PMI.textContent, ann.text)
         _add_ref_links(graph, subject, ann.presentation_refs, entity_map, instance_ns, _PMI.presentationReference)
         _add_ref_links(graph, subject, ann.leader_refs, entity_map, instance_ns, _PMI.leaderReference)
+        _add_ref_links(graph, subject, ann.feature_refs, entity_map, instance_ns, _PMI.featureReference)
+        _add_ref_links(graph, subject, ann.view_refs, entity_map, instance_ns, _PMI.viewReference)
+
+    for presentation in pmi_doc.graphic_presentations:
+        subject = _pmi_subject("graphic_presentation", presentation.id)
+        source = _entity_uri(instance_ns, presentation.id)
+        graph.add((subject, RDF.type, OWL.NamedIndividual))
+        graph.add((subject, RDF.type, _PMI.GraphicPresentation))
+        graph.add((subject, RDFS.label, Literal(presentation.presentation_type or f"Graphic Presentation #{presentation.id}")))
+        graph.add((subject, _STEP.representsStepEntity, source))
+        _add_ref_links(graph, subject, presentation.annotation_refs, entity_map, instance_ns, _PMI.presentationReference)
+        _add_ref_links(graph, subject, presentation.geometry_refs, entity_map, instance_ns, _PMI.featureReference)
+        _add_ref_links(graph, subject, presentation.view_refs, entity_map, instance_ns, _PMI.viewReference)
+        _add_ref_links(graph, subject, presentation.style_refs, entity_map, instance_ns, _PMI.styleReference)
+
+    for view in pmi_doc.saved_views:
+        subject = _pmi_subject("saved_view", view.id)
+        source = _entity_uri(instance_ns, view.id)
+        graph.add((subject, RDF.type, OWL.NamedIndividual))
+        graph.add((subject, RDF.type, _PMI.SavedView))
+        graph.add((subject, RDFS.label, Literal(view.name or view.view_type or f"Saved View #{view.id}")))
+        graph.add((subject, _STEP.representsStepEntity, source))
+        _add_ref_links(graph, subject, view.annotation_refs, entity_map, instance_ns, _PMI.presentationReference)
+        _add_ref_links(graph, subject, view.geometry_refs, entity_map, instance_ns, _PMI.featureReference)
+        _add_ref_links(graph, subject, view.presentation_refs, entity_map, instance_ns, _PMI.graphicPresentation)
 
 
 def _integrate_domain_models(base_uri: str, prefix: str, schema: Optional[str]) -> str:

@@ -23,6 +23,17 @@ from ..Services.multi_domain_pipeline_controller import (
     IndustryDomain,
     DomainPipelineConfig,
 )
+from ..Services.semantic_taxonomy_service import (
+    SemanticTaxonomyService,
+    SkosNeo4jRepository,
+    normalize_skos_payload,
+)
+from ..Services.swrl_reasoning_service import (
+    ApplicationRuleExecutor,
+    InferenceNeo4jRepository,
+    SemanticFact,
+    SwrlRuleService,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ontology", tags=["Ontology & Multi-Domain"])
@@ -40,6 +51,24 @@ class DomainPipelineRequest(BaseModel):
     relationships: List[Dict[str, Any]]
     domain: str
     task_id: Optional[str] = None
+
+
+class SkosPayloadRequest(BaseModel):
+    """SKOS concept scheme and concept payload."""
+    scheme: Dict[str, Any]
+    concepts: List[Dict[str, Any]]
+    query: Optional[str] = None
+    root_id: Optional[str] = None
+    direction: Optional[str] = "narrower"
+    depth: Optional[int] = 3
+    limit: Optional[int] = 25
+
+
+class SwrlRuleRequest(BaseModel):
+    """SWRL-style rule request with optional facts for application execution."""
+    rule: Dict[str, Any]
+    facts: Optional[List[Dict[str, Any]]] = None
+    execution_id: Optional[str] = None
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -134,6 +163,155 @@ async def get_ap242_mappings(source_format: str):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # GENERIC ONTOLOGY ENDPOINTS (any uploaded ontology prefix)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@router.post("/semantic/skos/validate")
+async def validate_skos_taxonomy(request: SkosPayloadRequest):
+    """Validate SKOS labels, hierarchy references, and cycle safety."""
+    try:
+        scheme, concepts = normalize_skos_payload(request.dict())
+        validation = SemanticTaxonomyService.validate(concepts)
+        return {
+            "status": "success",
+            "scheme": {
+                "scheme_id": scheme.scheme_id,
+                "pref_label": scheme.pref_label,
+                "definition": scheme.definition,
+                "version": scheme.version,
+            },
+            "validation": validation,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("SKOS validation failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/semantic/skos/search")
+async def search_skos_taxonomy(request: SkosPayloadRequest):
+    """Search concepts by preferred labels, synonyms, definitions, hierarchy, and mappings."""
+    try:
+        _, concepts = normalize_skos_payload(request.dict())
+        results = SemanticTaxonomyService.search(concepts, request.query or "", request.limit or 25)
+        return {"status": "success", "query": request.query or "", "results": results, "count": len(results)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("SKOS search failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/semantic/skos/traverse")
+async def traverse_skos_taxonomy(request: SkosPayloadRequest):
+    """Return a connected broader/narrower concept slice from a selected root concept."""
+    try:
+        _, concepts = normalize_skos_payload(request.dict())
+        if not request.root_id:
+            raise HTTPException(status_code=400, detail="root_id is required")
+        result = SemanticTaxonomyService.traverse(
+            concepts,
+            request.root_id,
+            request.direction or "narrower",
+            request.depth or 3,
+        )
+        return {"status": "success", "result": result}
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("SKOS traversal failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/semantic/skos/storage-plan")
+async def skos_storage_plan(request: SkosPayloadRequest):
+    """Return parameterized Cypher for storing SKOS concepts in Neo4j."""
+    try:
+        scheme, concepts = normalize_skos_payload(request.dict())
+        validation = SemanticTaxonomyService.validate(concepts)
+        return {
+            "status": "success",
+            "validation": validation,
+            "plan": SkosNeo4jRepository.storage_plan(scheme, concepts),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("SKOS storage plan failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/semantic/rules/validate")
+async def validate_swrl_rule(request: SwrlRuleRequest):
+    """Validate a SWRL-style rule without executing or mutating Neo4j."""
+    try:
+        rule = SwrlRuleService.parse_rule(request.rule)
+        return {"status": "success", "validation": SwrlRuleService.validate(rule)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("SWRL rule validation failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/semantic/rules/execute-preview")
+async def execute_swrl_rule_preview(request: SwrlRuleRequest):
+    """Execute supported SWRL-style rules in application memory only."""
+    try:
+        rule = SwrlRuleService.parse_rule(request.rule)
+        facts = [
+            SemanticFact(
+                subject=str(item.get("subject") or ""),
+                predicate=str(item.get("predicate") or ""),
+                object=str(item.get("object") or ""),
+                fact_id=str(item.get("fact_id") or item.get("id") or ""),
+                asserted=bool(item.get("asserted", True)),
+                properties=item.get("properties") or {},
+            )
+            for item in (request.facts or [])
+            if item.get("subject") and item.get("predicate") and item.get("object")
+        ]
+        execution_id = request.execution_id or f"preview-{rule.rule_id}-{rule.version}"
+        return ApplicationRuleExecutor.execute(rule, facts, execution_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("SWRL rule execution preview failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/semantic/rules/materialization-plan")
+async def swrl_materialization_plan(request: SwrlRuleRequest):
+    """Return parameterized Cypher for approved inferred facts with provenance."""
+    try:
+        rule = SwrlRuleService.parse_rule(request.rule)
+        facts = [
+            SemanticFact(
+                subject=str(item.get("subject") or ""),
+                predicate=str(item.get("predicate") or ""),
+                object=str(item.get("object") or ""),
+                fact_id=str(item.get("fact_id") or item.get("id") or ""),
+                asserted=bool(item.get("asserted", True)),
+                properties=item.get("properties") or {},
+            )
+            for item in (request.facts or [])
+            if item.get("subject") and item.get("predicate") and item.get("object")
+        ]
+        execution_id = request.execution_id or f"exec-{rule.rule_id}-{rule.version}"
+        result = ApplicationRuleExecutor.execute(rule, facts, execution_id)
+        if result.get("status") != "success":
+            return result
+        return {
+            **result,
+            "plan": InferenceNeo4jRepository.materialization_plan(rule, result.get("inferred_facts") or [], execution_id),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("SWRL materialization plan failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
 
 _INTERNAL_PROPS = {"ontology_prefix", "ontology_id", "ontology_name", "source_ontology",
                    "version", "created_at", "updated_at", "id", "elementId",

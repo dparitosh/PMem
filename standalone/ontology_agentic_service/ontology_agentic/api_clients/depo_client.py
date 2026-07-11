@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 from urllib import error, parse, request
 
+from ontology_agentic.config import settings
+
 
 class DepoApiError(RuntimeError):
     """Raised when the DEPO backend API cannot satisfy a request."""
@@ -68,8 +70,8 @@ class DepoApiClient:
     def oslc_catalog(self) -> dict[str, Any]:
         return self._request_json("GET", "/oslc/catalog")
 
-    def oslc_provider(self, provider_id: str = "depo") -> dict[str, Any]:
-        normalized_provider_id = str(provider_id or "depo").strip() or "depo"
+    def oslc_provider(self, provider_id: str | None = None) -> dict[str, Any]:
+        normalized_provider_id = str(provider_id or settings.default_oslc_provider_id).strip() or settings.default_oslc_provider_id
         return self._request_json("GET", f"/oslc/providers/{parse.quote(normalized_provider_id)}")
 
     def oslc_shapes(self, shape_id: str = "") -> dict[str, Any]:

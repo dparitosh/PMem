@@ -7,6 +7,7 @@
 import axios from 'axios';
 import { config, API, buildUrl, replaceParams } from '../config';
 import logger from '../utils/logger';
+import agenticAPI from './agenticApi';
 
 /**
  * Create axios instance with base configuration
@@ -213,6 +214,13 @@ export const ontologyAPI = {
     apiClient.get(buildUrl(replaceParams(API.ontology.reason, { ontology: ontologyId }))),
   previewInference: (ontologyId, payload = {}) =>
     apiClient.post(buildUrl(replaceParams(API.ontology.inferencePreview, { ontology: ontologyId })), payload),
+  validateSkos: (payload) => apiClient.post(buildUrl(API.ontology.skosValidate), payload),
+  searchSkos: (payload) => apiClient.post(buildUrl(API.ontology.skosSearch), payload),
+  traverseSkos: (payload) => apiClient.post(buildUrl(API.ontology.skosTraverse), payload),
+  skosStoragePlan: (payload) => apiClient.post(buildUrl(API.ontology.skosStoragePlan), payload),
+  validateRule: (payload) => apiClient.post(buildUrl(API.ontology.ruleValidate), payload),
+  executeRulePreview: (payload) => apiClient.post(buildUrl(API.ontology.ruleExecutePreview), payload),
+  ruleMaterializationPlan: (payload) => apiClient.post(buildUrl(API.ontology.ruleMaterializationPlan), payload),
   getMappings: (ontologyId, mappingType) => 
     apiClient.get(buildUrl(replaceParams(API.ontology.mappings, { 
       ontology: ontologyId, 
@@ -431,6 +439,7 @@ export const API_METHODS = {
   recommendations: recommendationsAPI,
   requirements: requirementsAPI,
   modeling: modelingAPI,
+  agentic: agenticAPI,
 };
 
 /**

@@ -10,6 +10,8 @@ import zipfile
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import DCTERMS, RDF, RDFS, XSD
 
+from ontology_agentic.config import settings
+
 SUPPORTED_REQIF_EXTENSIONS = {".reqif", ".xml", ".reqifz"}
 TARGET_REQIF_VERSION = "1.2"
 REQIF_SCHEMA_NAMESPACE = "http://www.omg.org/spec/ReqIF/20110401/reqif.xsd"
@@ -18,7 +20,7 @@ REQIF_XSD = "https://www.omg.org/spec/ReqIF/20110401/reqif.xsd"
 REQIF_CMOF = "https://www.omg.org/spec/ReqIF/20101201/reqif.cmof"
 REQIF_NS = Namespace(f"{REQIF_SCHEMA_NAMESPACE}#")
 OSLC_RM = Namespace("http://open-services.net/ns/rm#")
-DEPO_REQ = Namespace("http://depo-onto.local/reqif#")
+DEPO_REQ = Namespace(f"{settings.depo_namespace_base}reqif#")
 
 
 def _local_name(tag: str) -> str:
@@ -185,10 +187,11 @@ def inspect_reqif_file(path_value: str | Path, sample_size: int = 20) -> dict[st
 def export_reqif_to_ttl(
     path_value: str | Path,
     output_path: str | Path | None = None,
-    base_uri: str = "http://depo-onto.local/reqif/",
+    base_uri: str | None = None,
     sample_size: int = 10000,
 ) -> dict[str, Any]:
     path = _ensure_reqif_path(path_value)
+    base_uri = base_uri or settings.default_reqif_base_uri
     summary = _parse_reqif(path, sample_size=max(0, int(sample_size)))
     output = Path(output_path) if output_path else path.with_suffix(".reqif.ttl")
     output.parent.mkdir(parents=True, exist_ok=True)

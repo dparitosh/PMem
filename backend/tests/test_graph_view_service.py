@@ -53,6 +53,46 @@ def test_individual_filter_accepts_plmxml_domain_instance_labels():
     assert [rel["elementId"] for rel in filtered["relationships"]] == ["r1"]
 
 
+def test_individual_filter_retains_stpx_cad_business_objects_with_id_names():
+    graph = {
+        "nodes": [
+            {
+                "elementId": "part-1",
+                "labels": ["PART"],
+                "properties": {
+                    "name": "id116",
+                    "external_id": "id116",
+                    "semantic_role": "product",
+                    "is_cad_business_object": True,
+                },
+            },
+            {
+                "elementId": "meta-1",
+                "labels": ["NAME"],
+                "properties": {"name": "id117"},
+            },
+            {
+                "elementId": "view-1",
+                "labels": ["PART_VIEW"],
+                "properties": {
+                    "name": "id118",
+                    "semantic_role": "representation",
+                    "is_cad_business_object": True,
+                },
+            },
+        ],
+        "relationships": [
+            {"elementId": "r1", "type": "REFERENCES", "start": "part-1", "end": "view-1", "properties": {}},
+            {"elementId": "r2", "type": "PARENT_OF", "start": "part-1", "end": "meta-1", "properties": {}},
+        ],
+    }
+
+    filtered = GraphViewService._filter_graph_nodes(graph, only_individual_nodes=True)
+
+    assert [node["elementId"] for node in filtered["nodes"]] == ["part-1", "view-1"]
+    assert [rel["elementId"] for rel in filtered["relationships"]] == ["r1"]
+
+
 def test_get_traversal_slice_reports_direct_depth(monkeypatch):
     monkeypatch.setattr(
         GraphViewService,
@@ -98,6 +138,7 @@ def test_get_traversal_slice_query_uses_top_level_can_traverse(monkeypatch):
     assert "properties(seed) + {" not in cypher
     assert params["node_id"] == "seed-1"
     assert "Product" in params["instance_node_labels"]
+    assert "product" in params["semantic_instance_roles"]
 
 
 def test_get_traversal_slice_depth_two_uses_two_hop_union(monkeypatch):
@@ -213,3 +254,27 @@ def test_contextual_subgraph_expand_neighbors_accepts_instance_neighbors_only(mo
     assert "adjacent:Individual" not in cypher
     assert "instance_node_labels" in cypher
     assert "schema_node_labels" not in cypher
+
+
+def test_contextual_subgraph_query_projects_bridge_relationships_without_relationship_functions(monkeypatch):
+    captured = {}
+
+    def fake_run(cypher, params):
+        captured["cypher"] = cypher
+        captured["params"] = params
+        return []
+
+    monkeypatch.setattr(GraphViewService, "_run", staticmethod(fake_run))
+
+    GraphViewService.get_contextual_subgraph(
+        search="part",
+        limit=25,
+        search_mode="broader",
+        expand_neighbors=True,
+    )
+
+    cypher = captured["cypher"]
+    assert "NULL AS r,\n          bridge_adjacent AS adjacent" in cypher
+    assert "AS r_payload" in cypher
+    assert "WHEN r_payload IS NOT NULL THEN r_payload" in cypher
+    assert "WITH seed, r, adjacent, r_payload" in cypher
