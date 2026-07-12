@@ -81,6 +81,7 @@ function isTerminalPipelineStatus(status = {}) {
   return Boolean(
     status.error ||
     status.status === 'failed' ||
+    status.status === 'ready_for_commit' ||
     status.committed ||
     status.status === 'completed' ||
     status.commitPhase === 'complete' ||
@@ -993,6 +994,13 @@ export default function DataImportPipeline() {
             completedAtIso: data.status === 'completed' ? new Date().toISOString() : (prev[fileId]?.completedAtIso || null),
             lastUpdatedAt: new Date().toISOString(),
             commitPhase: data.commit_phase || null,
+            // A previous commit attempt may have failed in this browser state.
+            // The backend's ready_for_commit state is authoritative: the preview
+            // is valid and a new commit may be started, so do not retain the old
+            // retry banner after polling resumes or the task is restored.
+            commitError: data.status === 'ready_for_commit' || data.status === 'completed'
+              ? null
+              : (data.commit_phase === 'error' ? (data.error || 'Commit failed') : null),
             batchProgress: data.batch_progress || null,
             commitMetrics: data.commit_metrics || null,
             shaclConforms,
@@ -1035,7 +1043,9 @@ export default function DataImportPipeline() {
           } catch (_) { /* preview is optional — continue without it */ }
         }
 
-        if (data.status === 'completed' || data.status === 'failed') {
+        // Preview is a stable user decision point. Stop polling until the
+        // user explicitly starts the Neo4j commit, which starts a new poller.
+        if (data.status === 'ready_for_commit' || data.status === 'completed' || data.status === 'failed') {
           clearPoller(pollerKey);
           return;
         }
