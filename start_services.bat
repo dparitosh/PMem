@@ -21,8 +21,9 @@ echo.
 
 start "DT-Backend" cmd /k call "%~dp0start_backend.bat"
 start "DT-Frontend" cmd /k call "%~dp0start_frontend.bat"
+start "DT-Agentic" cmd /k call "%~dp0start_agentic.bat"
 
-echo [OK] Backend and frontend startup windows opened.
-echo [INFO] Use stop_services.bat to stop both services.
+echo [OK] Backend, frontend, and agentic adapter startup windows opened.
+echo [INFO] Use stop_services.bat to stop all services.
 echo.
 endlocal

@@ -173,6 +173,7 @@ class ImportStatus(Enum):
     """Status of import task"""
     PENDING = 'pending'
     PROCESSING = 'processing'
+    READY_FOR_COMMIT = 'ready_for_commit'
     COMPLETED = 'completed'
     FAILED = 'failed'
     CANCELLED = 'cancelled'
@@ -2745,6 +2746,7 @@ class UnifiedDataImportService:
             (tid, t) for tid, t in import_tasks.items()
             if t.get('status') in (
                 ImportStatus.COMPLETED.value,
+                ImportStatus.READY_FOR_COMMIT.value,
                 ImportStatus.FAILED.value,
                 ImportStatus.CANCELLED.value,
             )
@@ -2817,6 +2819,7 @@ class UnifiedDataImportService:
             'stats': seeded_stats,
             'started_at': datetime.now().isoformat(),
             'completed_at': None,
+            'preview_completed_at': None,
             'result': None,
             'workflow_id': (
                 'ontology.create' if file_type in {FileType.EXPRESS, FileType.XSD, FileType.ONTOLOGY}
@@ -3016,6 +3019,9 @@ class UnifiedDataImportService:
                     "ontology_ttl",
                     task_info.get('schema_metadata') or {},
                 )
+            # Parsing is complete, but Neo4j has not been changed yet.
+            task_info['status'] = ImportStatus.READY_FOR_COMMIT.value
+            task_info['preview_completed_at'] = datetime.now().isoformat()
             cls._persist_task(task_id)
             
             logger.info(f"Task {task_id} ready for preview: {len(rows)} rows")
@@ -3066,6 +3072,7 @@ class UnifiedDataImportService:
             'artifact_manifest': artifact_manifest,
             'started_at': task['started_at'],
             'completed_at': task.get('completed_at'),
+            'preview_completed_at': task.get('preview_completed_at'),
         }
 
     @classmethod
@@ -3736,7 +3743,10 @@ class UnifiedDataImportService:
 
         task = import_tasks[task_id]
 
-        if task['status'] != ImportStatus.PROCESSING.value:
+        if task['status'] not in (
+            ImportStatus.PROCESSING.value,
+            ImportStatus.READY_FOR_COMMIT.value,
+        ):
             raise ValueError(f"Task not in processing state: {task['status']}")
 
         if not task.get('parsed_rows'):
@@ -3783,10 +3793,10 @@ class UnifiedDataImportService:
                 )
                 logger.info(f"Task {task_id}: Neo4j commit finished in background: {result}")
             except Exception as e:
-                # Revert to PROCESSING/preview so the user can retry.
+                # Revert to an explicit preview-ready state so the user can retry.
                 task.pop('file_content', None)
                 task['committing'] = False
-                task['status'] = ImportStatus.PROCESSING.value
+                task['status'] = ImportStatus.READY_FOR_COMMIT.value
                 task['current_stage'] = ImportStage.PREVIEW.value
                 task['progress'] = 75
                 task['commit_phase'] = 'error'
@@ -3811,7 +3821,10 @@ class UnifiedDataImportService:
         """Cancel import task"""
         if task_id in import_tasks:
             task = import_tasks[task_id]
-            if task['status'] == ImportStatus.PROCESSING.value:
+            if task['status'] in (
+                ImportStatus.PROCESSING.value,
+                ImportStatus.READY_FOR_COMMIT.value,
+            ):
                 task['status'] = ImportStatus.CANCELLED.value
                 task['completed_at'] = datetime.now().isoformat()
                 cls._persist_task(task_id)

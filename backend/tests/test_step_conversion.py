@@ -471,6 +471,11 @@ def test_xsd_to_owl_generates_rich_semantics():
     assert "rdfs:subClassOf" in ttl
     assert "owl:minCardinality" in ttl
     assert "owl:maxCardinality" in ttl
+    from rdflib import Graph, Namespace, RDFS
+    generated = Graph()
+    generated.parse(data=ttl, format="turtle")
+    demo = Namespace("http://example.com/demo#")
+    assert (demo.MachinedPart, RDFS.subClassOf, demo.Part) in generated
     assert metadata.get("owlready2", {}).get("engine") == "owlready2"
 
 

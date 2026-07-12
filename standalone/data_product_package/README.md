@@ -28,6 +28,10 @@ python -m data_product_package --spec .\examples\ap242_product.json --output .\o
 
 The specification is intentionally file based so it can later be populated by the existing API without coupling this package to it.
 
+For an application integration, use `data_product_package.integration.build_from_app_outputs`.
+Pass explicit exported artifact paths, ontology registry records, import-task
+lineage, and product metadata. The adapter performs no API or Neo4j calls.
+
 ## Specification shape
 
 ```json

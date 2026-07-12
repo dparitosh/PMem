@@ -372,6 +372,15 @@ export const adminAPI = {
     apiClient.post(buildUrl(API.admin.resetDatabase), null, { params: { recreate_indexes: recreateIndexes } }),
 };
 
+export const metadataRegistryAPI = {
+  list: (params = {}) => apiClient.get(buildUrl(API.metadataRegistry.assets), { params }),
+  get: (assetId) => apiClient.get(buildUrl(replaceParams(API.metadataRegistry.asset, { asset_id: assetId }))),
+  create: (payload) => apiClient.post(buildUrl(API.metadataRegistry.assets), payload),
+  update: (assetId, payload) => apiClient.patch(buildUrl(replaceParams(API.metadataRegistry.asset, { asset_id: assetId })), payload),
+  transition: (assetId, payload) => apiClient.post(buildUrl(replaceParams(API.metadataRegistry.transition, { asset_id: assetId })), payload),
+  history: (assetId, params = {}) => apiClient.get(buildUrl(replaceParams(API.metadataRegistry.history, { asset_id: assetId })), { params }),
+};
+
 
 // ========== REQUIREMENTS ENDPOINTS ==========
 export const requirementsAPI = {
@@ -436,6 +445,7 @@ export const API_METHODS = {
   ingestion: ingestionAPI,
   document: documentAPI,
   admin: adminAPI,
+  metadataRegistry: metadataRegistryAPI,
   recommendations: recommendationsAPI,
   requirements: requirementsAPI,
   modeling: modelingAPI,

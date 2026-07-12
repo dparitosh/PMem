@@ -1,6 +1,9 @@
-# Ontology Agentic Service
+# Ontology Agentic Component Kit
 
-Standalone modular service for ontology-focused agent workflows.
+Standalone modular tools and agent specifications for ontology-focused
+low-code/no-code workflows. The FastAPI app is an optional local adapter for
+testing and integration; the reusable unit is the Python tool function plus
+its YAML agent specification, not this HTTP process.
 
 This package is intentionally isolated from the main DEPO application, but it can now orchestrate DEPO backend APIs through a thin adapter layer instead of duplicating semantic workflow logic.
 
@@ -13,7 +16,7 @@ It provides:
 - a DEPO API adapter for registered ontologies, OSLC discovery/query/TRS, graph/context search, workflow execution, ontology merge, and export retrieval
 - optional STEP/AP242 inspection and TTL export tools when the main backend modules are available
 - ReqIF inspection and Turtle export for requirements interchange
-- a small FastAPI service for separate deployment
+- an optional FastAPI adapter for local discovery and smoke testing
 
 ## Folder Layout
 
@@ -75,10 +78,16 @@ The API will be available at:
 - `http://localhost:8012/docs`
 - `http://localhost:8012/openapi.json`
 
+For a low-code/no-code orchestrator, consume `GET /api/v1/tools` from the
+optional adapter or load the Python tool catalog directly. Each tool record
+declares its category, callable signature, side-effect level, and whether
+human approval is required.
+
 ## Main Endpoints
 
 - `GET /health`
 - `GET /api/v1/agents`
+- `GET /api/v1/tools`
 - `POST /api/v1/agents/{agent_name}/run`
 - `POST /api/v1/workflows/run`
 

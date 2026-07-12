@@ -30,6 +30,7 @@ from ontology_agentic.tools.ontology_tools import (
     plan_instance_alignment,
     review_ontology_structure,
 )
+from ontology_agentic.tools.openapi_tools import inspect_openapi_document
 
 __all__ = [
     "depo_execute_semantic_workflow",
@@ -58,4 +59,5 @@ __all__ = [
     "export_requirements_alignment_ttl",
     "plan_instance_alignment",
     "review_ontology_structure",
+    "inspect_openapi_document",
 ]

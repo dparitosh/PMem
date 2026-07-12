@@ -79,7 +79,8 @@ if not "%EXISTING_BACKEND_PID%"=="" (
 
 if "%ALLOWED_ORIGINS%"=="" set "ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://%LAN_HOST%:3000"
 
-set "PYTHONPATH=%CD%"
+:: Support both package imports (backend.*) and legacy backend-local imports (core.*).
+set "PYTHONPATH=%CD%;%CD%\backend"
 set "BACKEND_HOST=%BIND_HOST%"
 set "BACKEND_PORT=%PORT%"
 set "APP_HOST=%LAN_HOST%"

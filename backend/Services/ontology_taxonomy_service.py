@@ -56,7 +56,9 @@ def _label(graph: Graph, uri: URIRef) -> str:
 
 
 def _definition(graph: Graph, uri: URIRef) -> str:
-    for predicate in (RDFS.comment, SKOS.definition, SKOS.scopeNote):
+    # Do not surface provenance/scope notes as functional definitions. A blank
+    # value is intentional when the source ontology has no business definition.
+    for predicate in (SKOS.definition, RDFS.comment):
         for value in graph.objects(uri, predicate):
             text = str(value).strip()
             if text:

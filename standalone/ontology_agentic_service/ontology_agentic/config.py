@@ -22,6 +22,14 @@ def _as_bool(value: str | None, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _cors_origins() -> list[str]:
+    """Use local development origins by default; production must override them."""
+    configured = os.getenv("ONTOLOGY_AGENTIC_CORS_ORIGINS")
+    if configured is None:
+        return ["http://localhost:3000", "http://127.0.0.1:3000"]
+    return [item.strip() for item in configured.split(",") if item.strip()]
+
+
 @dataclass(slots=True)
 class Settings:
     host: str
@@ -66,7 +74,7 @@ def load_settings() -> Settings:
         default_requirements_base_uri=os.getenv("ONTOLOGY_AGENTIC_DEFAULT_REQUIREMENTS_BASE_URI", "").strip() or f"{depo_namespace_base}requirements/",
         default_namespace_prefix=os.getenv("ONTOLOGY_AGENTIC_DEFAULT_NAMESPACE_PREFIX", "step").strip() or "step",
         default_oslc_provider_id=os.getenv("ONTOLOGY_AGENTIC_DEFAULT_OSLC_PROVIDER_ID", "depo").strip() or "depo",
-        cors_origins=[item.strip() for item in os.getenv("ONTOLOGY_AGENTIC_CORS_ORIGINS", "").split(",") if item.strip()],
+        cors_origins=_cors_origins(),
     )
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     settings.output_dir.mkdir(parents=True, exist_ok=True)

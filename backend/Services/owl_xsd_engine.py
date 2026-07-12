@@ -593,18 +593,53 @@ def _extract_inline_simple_base(element) -> str:
 
 
 def _ensure_class_stub(g: Graph, cfg: OntologyConfig, type_local: str, source_tag: str) -> URIRef:
-    """Ensure a referenced type exists as an owl:Class in the generated graph."""
+    """Ensure a referenced type exists without inventing a business definition.
+
+    A referenced type may be declared in another XSD file or may be absent from
+    the uploaded schema. Its provenance belongs in dcterms:description/source;
+    rdfs:comment and skos:definition are reserved for functional semantics.
+    """
     class_uri = cfg.class_uri(type_local)
     if (class_uri, RDF.type, OWL.Class) not in g:
         g.add((class_uri, RDF.type, OWL.Class))
         g.add((class_uri, RDFS.label, Literal(type_local)))
         g.add((class_uri, RDFS.comment, Literal(
-            f"Auto-generated class stub for referenced type '{type_local}'."
+            f"{type_local} is a referenced schema type used as a parent class or property range."
+        )))
+        g.add((class_uri, SKOS.definition, Literal(
+            f"Referenced schema type {type_local}; detailed functional semantics were not supplied by the source schema."
+        )))
+        g.add((class_uri, DCTERMS.description, Literal(
+            f"Referenced XSD type '{type_local}'; no functional definition was supplied by the source schema."
         )))
         if cfg.categories:
             g.add((class_uri, DCTERMS.subject, cfg.ns[cfg.category_for(type_local)]))
         g.add((class_uri, DC.source, Literal(source_tag)))
     return class_uri
+
+
+def _schema_definition(type_name: str, ct_element, cfg: OntologyConfig) -> str:
+    """Create a transparent structural definition when XSD has no annotation."""
+    fields = []
+    for element in ct_element.iter(f"{XSD_PRE}element"):
+        name = element.get("name") or _local(element.get("ref", ""))
+        if name and name not in fields:
+            fields.append(name)
+    for attribute in ct_element.iter(f"{XSD_PRE}attribute"):
+        name = attribute.get("name") or _local(attribute.get("ref", ""))
+        if name and name not in fields:
+            fields.append(name)
+    standard = cfg.source_standard or cfg.prefix or "source schema"
+    if standard.startswith(("http://", "https://")):
+        standard = cfg.prefix or "source schema"
+    definition = f"{type_name} represents a structured type in the {standard} model."
+    if fields:
+        definition += f" It defines the following schema fields: {', '.join(fields[:24])}."
+        if len(fields) > 24:
+            definition += f" Additional fields: {len(fields) - 24}."
+    else:
+        definition += " No child fields were declared in the source schema."
+    return definition
 
 
 def _ensure_owl_thing_metadata(g: Graph, source_tag: str) -> None:
@@ -636,6 +671,11 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         return
     seen_classes.add(class_uri)
 
+    # A forward reference may have created a provisional class description.
+    # Replace only those descriptive triples when the full complexType arrives.
+    for predicate in (RDFS.comment, SKOS.definition, DCTERMS.description):
+        g.remove((class_uri, predicate, None))
+
     cat = cfg.category_for(type_name)
     source_tag = f"{cfg.source_standard or cfg.prefix} / {file_stem}"
 
@@ -649,13 +689,29 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         g.add((class_uri, RDFS.comment,    Literal(annotation_text)))
         g.add((class_uri, SKOS.definition, Literal(annotation_text)))
     else:
-        g.add((class_uri, RDFS.comment,  Literal(
-            f"Class from {file_stem}. Source complexType '{type_name}'."
+        generated_definition = _schema_definition(type_name, ct_element, cfg)
+        g.add((class_uri, RDFS.comment, Literal(generated_definition)))
+        g.add((class_uri, SKOS.definition, Literal(generated_definition)))
+        g.add((class_uri, DCTERMS.description, Literal(
+            f"Generated structural definition from complexType '{type_name}' in {file_stem}."
         )))
 
     if cfg.categories:
         g.add((class_uri, DCTERMS.subject, cfg.ns[cat]))
     g.add((class_uri, DC.source, Literal(source_tag)))
+
+    # Preserve XSD inheritance as OWL class hierarchy.  Restrictions below
+    # describe property/cardinality constraints; they are not replacements
+    # for the semantic parent class declared by complexContent extension.
+    complex_content = ct_element.find(f"{XSD_PRE}complexContent")
+    if complex_content is not None:
+        base_element = complex_content.find(f"{XSD_PRE}extension")
+        if base_element is None:
+            base_element = complex_content.find(f"{XSD_PRE}restriction")
+        base_local = _local(base_element.get("base", "")) if base_element is not None else ""
+        if base_local and base_local not in XSD_TYPE_MAP:
+            parent_uri = _ensure_class_stub(g, cfg, base_local, source_tag)
+            g.add((class_uri, RDFS.subClassOf, parent_uri))
 
     # simpleContent → enumeration or datatype alias
     simple_content = ct_element.find(f"{XSD_PRE}simpleContent")
@@ -972,8 +1028,11 @@ def process_xsd_file(g: Graph, xsd_path: Path,
             g.add((inst_uri, RDFS.comment,    Literal(elem_annotation)))
             g.add((inst_uri, SKOS.definition, Literal(elem_annotation)))
         else:
-            g.add((inst_uri, RDFS.comment,     Literal(
-                f"Top-level element '{el_name}' (type: {el_type_local}). Source: {file_stem}"
+            generated_definition = f"{el_name} is a top-level schema element typed as {el_type_local or 'an unresolved schema type'}."
+            g.add((inst_uri, RDFS.comment, Literal(generated_definition)))
+            g.add((inst_uri, SKOS.definition, Literal(generated_definition)))
+            g.add((inst_uri, DCTERMS.description, Literal(
+                f"Generated structural definition from top-level element '{el_name}' in {file_stem}."
             )))
 
         if cfg.categories:
@@ -1033,7 +1092,7 @@ def build_bridge_pairs(g: Graph, cfg: OntologyConfig) -> None:
         if (src_uri, RDF.type, OWL.Class) not in g:
             g.add((src_uri, RDF.type,    OWL.Class))
             g.add((src_uri, RDFS.label,  Literal(src_type)))
-            g.add((src_uri, RDFS.comment, Literal(
+            g.add((src_uri, DCTERMS.description, Literal(
                 f"Class from the source schema; domain of mapsTo_{_safe_uri_name(bridge_name)}."
             )))
             if fallback_cat:

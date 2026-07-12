@@ -22,6 +22,11 @@ export const agenticAPI = {
   isConfigured: () => Boolean(config.agenticServiceUrl),
   health: () => agenticClient.get(agenticUrl(API.agentic.health)),
   listAgents: () => agenticClient.get(agenticUrl(API.agentic.agents)),
+  listTools: () => agenticClient.get(agenticUrl(API.agentic.tools)),
+  importOpenApi: (document, sourceName = '') => agenticClient.post(
+    agenticUrl(API.agentic.openApiImport),
+    { document, source_name: sourceName },
+  ),
   runAgent: (agentName, inputs = {}) => agenticClient.post(
     agenticUrl(replaceParams(API.agentic.runAgent, { agent_name: encodeURIComponent(agentName) })),
     { inputs },

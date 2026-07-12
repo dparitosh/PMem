@@ -223,6 +223,7 @@ try:
     from .routes.threedxml_routes import router as threedxml_router
     from .routes.admin_routes import router as admin_router
     from .routes.sysml_v2_routes import router as sysml_v2_router
+    from .routes.metadata_registry_routes import router as metadata_registry_router
     try:
         from .Services.documents_api import router as documents_router
     except Exception:
@@ -244,6 +245,7 @@ except ImportError:
     from backend.routes.threedxml_routes import router as threedxml_router
     from backend.routes.admin_routes import router as admin_router
     from backend.routes.sysml_v2_routes import router as sysml_v2_router
+    from backend.routes.metadata_registry_routes import router as metadata_registry_router
     try:
         from backend.Services.documents_api import router as documents_router
         from backend.Services.oslc_trs_service import OSLCTRSService
@@ -1154,6 +1156,7 @@ app.include_router(oslc_router)
 app.include_router(threedxml_router, prefix="/api/v1", tags=["v1-3dxml"])
 app.include_router(admin_router, prefix="/api/v1", tags=["v1-admin"])
 app.include_router(sysml_v2_router, prefix="/api/v1", tags=["v1-sysml-v2"])
+app.include_router(metadata_registry_router, prefix="/api/v1", tags=["v1-metadata-registry"])
 if documents_router is not None:
     app.include_router(documents_router, prefix="/api/v1", tags=["v1-documents"])
 else:
@@ -3873,6 +3876,30 @@ def get_reports(body: dict):
         return {"status": "success", "type": report_type, "page": page, "page_size": page_size, "total": total, "results": normalized}
     except Exception as e:
         safe_error("/reports", e)
+
+
+@app.get("/api/v1/reports/xsd-relational")
+def get_xsd_relational_report(ontology_id: str = Query(..., min_length=1, max_length=200)):
+    """Return a read-only relational projection of a registered XSD."""
+    try:
+        try:
+            from Services.ontology_upload_manager import OntologyUploadManager
+            from Services.xsd_relational_report import build_xsd_relational_report
+        except ImportError:
+            from backend.Services.ontology_upload_manager import OntologyUploadManager
+            from backend.Services.xsd_relational_report import build_xsd_relational_report
+        result = OntologyUploadManager.get_ontology(ontology_id)
+        if result.get("status") != "success":
+            raise HTTPException(status_code=404, detail=result.get("error") or "Ontology not found")
+        metadata = result.get("metadata") or {}
+        file_path = _Path(metadata.get("file_path") or "")
+        if file_path.suffix.lower() != ".xsd" or not file_path.exists():
+            raise HTTPException(status_code=422, detail="The selected ontology does not have an accessible XSD source file")
+        return {"ontology_id": ontology_id, "prefix": metadata.get("prefix") or "", **build_xsd_relational_report(file_path)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"XSD relational report could not be generated: {exc}")
 
 # ======================== RECOMMENDATION ENDPOINTS ========================
 

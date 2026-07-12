@@ -5,6 +5,8 @@ import uvicorn
 from ontology_agentic.config import settings
 from ontology_agentic.models import AgentRunRequest, WorkflowRunRequest
 from ontology_agentic.runtime.engine import OntologyWorkflowEngine
+from ontology_agentic.tool_catalog import describe_tools, validate_tool_catalog
+from ontology_agentic.tools.openapi_tools import inspect_openapi_document
 
 
 engine = OntologyWorkflowEngine()
@@ -42,6 +44,26 @@ def list_agents() -> dict:
     return {
         "agents": engine.registry.describe_all(),
     }
+
+
+@app.get("/api/v1/tools")
+def list_tools() -> dict:
+    """Expose tool-node contracts for an external low-code orchestrator."""
+    return {
+        "tools": describe_tools(),
+        "invalid_exports": validate_tool_catalog(),
+    }
+
+
+@app.post("/api/v1/openapi/import")
+def import_openapi_document(body: dict) -> dict:
+    """Import and normalize an OpenAPI JSON document for tool/workflow design."""
+    document = body.get("document") if isinstance(body, dict) else None
+    source_name = body.get("source_name", "") if isinstance(body, dict) else ""
+    try:
+        return inspect_openapi_document(document, str(source_name or ""))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/v1/agents/{agent_name}/run")

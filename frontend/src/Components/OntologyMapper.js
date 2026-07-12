@@ -287,134 +287,6 @@ function RelBadge({ type }) {
   );
 }
 
-// ── Data Dictionary table ──────────────────────────────────────────────────────
-function DataDictionaryTable({ nodes, filter, prefixFilter, onPrefixFilterChange }) {
-  const [selectedRow, setSelectedRow] = useState(null);
-  const lc = filter.toLowerCase();
-  
-  // Extract all unique prefixes
-  const uniquePrefixes = useMemo(() => {
-    const prefixes = new Set();
-    nodes.forEach(n => {
-      if (n.ontology_prefix) prefixes.add(n.ontology_prefix);
-    });
-    return Array.from(prefixes).sort();
-  }, [nodes]);
-  
-  // Filter by both text search and prefix
-  const visible = useMemo(() => {
-    let filtered = nodes;
-    
-    // Apply text filter
-    if (lc) {
-      filtered = filtered.filter(n => 
-        n.term_id.toLowerCase().includes(lc) || 
-        (n.label || '').toLowerCase().includes(lc) || 
-        (n.ontology_prefix || '').toLowerCase().includes(lc)
-      );
-    }
-    
-    // Apply prefix filter
-    if (prefixFilter) {
-      filtered = filtered.filter(n => n.ontology_prefix === prefixFilter);
-    }
-    
-    return filtered;
-  }, [nodes, lc, prefixFilter]);
-
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <span style={{ fontSize: '12px', color: C.textSec }}>{visible.length} of {nodes.length} terms</span>
-          {uniquePrefixes.length > 0 && (
-            <select
-              value={prefixFilter || ''}
-              onChange={e => onPrefixFilterChange(e.target.value || null)}
-              style={{ padding: '5px 10px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', cursor: 'pointer', background: C.surface }}
-            >
-              <option key="all" value="">All Prefixes</option>
-              {uniquePrefixes.map(prefix => (
-                <option key={prefix} value={prefix}>{prefix}</option>
-              ))}
-            </select>
-          )}
-        </div>
-        <button
-          onClick={() => exportCSV(visible.map(n => ({ 'Term ID': n.term_id, 'Human-Readable Label': n.label || '', 'Ontology Prefix': n.ontology_prefix || '' })), ['Term ID', 'Human-Readable Label', 'Ontology Prefix'], 'data_dictionary.csv')}
-          style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px', background: C.primary, color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
-        ><Download size={12} /> Export CSV</button>
-      </div>
-      <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'auto', maxHeight: '520px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
-          <thead>
-            <tr>
-              <th style={TH({ width: '40px', textAlign: 'center' })}>#</th>
-              <th style={TH({ minWidth: '220px' })}>Term ID</th>
-              <th style={TH({ minWidth: '200px' })}>Human-Readable Label</th>
-              <th style={TH({ width: '130px' })}>Ontology Prefix</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.length === 0 && (
-              <tr><td colSpan={4} style={{ ...TD(), textAlign: 'center', color: C.textMuted, padding: '32px' }}>No terms match the filter.</td></tr>
-            )}
-            {visible.map((n, i) => {
-              const rowKey = [
-                n.uri || n.iri || '',
-                n.source || '',
-                n.kind || n.concept_type || '',
-                n.term_id || '',
-                i,
-              ].join('::');
-              const selected = selectedRow === rowKey;
-              return (
-                <React.Fragment key={rowKey}>
-                  <tr
-                    onClick={() => setSelectedRow(selected ? null : rowKey)}
-                    style={{ background: selected ? C.primaryLight : i % 2 === 0 ? C.surface : C.bg, cursor: 'pointer' }}
-                    onMouseEnter={e => { if (!selected) e.currentTarget.style.background = C.primaryLight; }}
-                    onMouseLeave={e => { if (!selected) e.currentTarget.style.background = i % 2 === 0 ? C.surface : C.bg; }}
-                  >
-                    <td style={TD({ textAlign: 'center', color: C.textMuted, fontSize: '11px' })}>{i + 1}</td>
-                    <td style={TD({ fontFamily: 'monospace', fontSize: '12px', color: C.primary, fontWeight: 600 })}>{n.term_id}</td>
-                    <td style={TD({ fontWeight: 500 })}>{n.label || <span style={{ color: C.textMuted }}>—</span>}</td>
-                    <td style={TD()}>
-                      {n.ontology_prefix
-                        ? <span style={{ background: C.primaryLight, color: C.primary, padding: '2px 8px', borderRadius: '10px', fontWeight: 700, fontSize: '11px' }}>{n.ontology_prefix}</span>
-                        : <span style={{ color: C.textMuted }}>—</span>}
-                    </td>
-                  </tr>
-                  {selected && (
-                    <tr style={{ background: '#EBF5FF' }}>
-                      <td colSpan={4} style={{ padding: '12px 20px', borderBottom: `1px solid ${C.border}` }}>
-                        <div style={{ fontWeight: 700, fontSize: '12px', color: C.primary, marginBottom: '8px' }}>Full Term URI</div>
-                        <code style={{ fontSize: '12px', color: C.textPrimary, wordBreak: 'break-all' }}>{n.term_id}</code>
-                        {n.definition && (
-                          <>
-                            <div style={{ fontWeight: 700, fontSize: '12px', color: C.primary, marginTop: '10px', marginBottom: '4px' }}>Definition</div>
-                            <span style={{ fontSize: '13px' }}>{n.definition}</span>
-                          </>
-                        )}
-                        {n.synonyms && n.synonyms.length > 0 && (
-                          <>
-                            <div style={{ fontWeight: 700, fontSize: '12px', color: C.primary, marginTop: '10px', marginBottom: '4px' }}>Synonyms</div>
-                            <span style={{ fontSize: '13px' }}>{n.synonyms.join(', ')}</span>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 // ── Vocabulary / Mappings table ────────────────────────────────────────────────
 function VocabularyTable({ edges, filter }) {
   const [selectedRow, setSelectedRow] = useState(null);
@@ -1711,9 +1583,8 @@ export default function OntologyMapper() {
   const [selectedMapping, setSelectedMapping] = useState('');
   const [selectedMappingType, setSelectedMappingType] = useState('');
   const [selectedOntologyApi, setSelectedOntologyApi] = useState('');
-  const [activeView, setActiveView] = useState('dictionary');
+  const [activeView, setActiveView] = useState('taxonomy');
   const [filter, setFilter] = useState('');
-  const [prefixFilter, setPrefixFilter] = useState(null);
   const [mappingOptions, setMappingOptions] = useState([]);
   const [mappingOptionsError, setMappingOptionsError] = useState(null);
   const [ontologyDictionary, setOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
@@ -2029,7 +1900,7 @@ export default function OntologyMapper() {
   }, [selectedImportTaskId]);
 
   useEffect(() => {
-    if (!selectedOntologyApi || !selectedMappingType) {
+    if (!selectedOntologyApi || !selectedMappingType || !['alignment', 'vocabulary'].includes(activeView)) {
       setLoading(false);
       return;
     }
@@ -2156,7 +2027,7 @@ export default function OntologyMapper() {
     return () => {
       cancelled = true;
     };
-  }, [selectedMapping, selectedMappingType, selectedOntologyApi]);
+  }, [activeView, selectedMapping, selectedMappingType, selectedOntologyApi]);
 
   useEffect(() => {
     if (!selectedOntologyApi) {
@@ -2197,7 +2068,7 @@ export default function OntologyMapper() {
           keys.push('taxonomy');
           requests.push(API_METHODS.ontology.getTaxonomy(selectedOntologyApi));
         }
-        if (!reasoning) {
+        if (activeView === 'alignment' && !reasoning) {
           keys.push('reasoning');
           requests.push(API_METHODS.ontology.getReasoning(selectedOntologyApi));
         }
@@ -2205,7 +2076,14 @@ export default function OntologyMapper() {
         if (cancelled) return;
         responses.forEach((res, index) => {
           if (res.status !== 'fulfilled') return;
-          if (keys[index] === 'taxonomy') setTaxonomy(res.value?.data || null);
+          if (keys[index] === 'taxonomy') {
+            const taxonomyPayload = res.value?.data || null;
+            setTaxonomy(taxonomyPayload);
+            if (taxonomyPayload?.nodes) {
+              setData({ nodes: taxonomyPayload.nodes, edges: taxonomyPayload.edges || [] });
+              setMappingEdges(taxonomyPayload.edges || []);
+            }
+          }
           if (keys[index] === 'reasoning') setReasoning(res.value?.data || null);
         });
         const failed = responses.find((res) => res.status === 'rejected');
@@ -2652,12 +2530,32 @@ export default function OntologyMapper() {
   };
 
   const VIEWS = [
-    { id: 'dictionary', label: 'Data Dictionary' },
     { id: 'taxonomy', label: 'Taxonomy / OWL' },
-    { id: 'inference', label: 'Inference Workbench' },
-    { id: 'vocabulary', label: 'Mapping Vocabulary' },
-    { id: 'alignment', label: 'Semantic Bridge' },
+    { id: 'vocabulary', label: '1. Mapping Vocabulary' },
+    { id: 'alignment', label: '2. Semantic Bridge' },
+    { id: 'inference', label: '3. Inference Workbench' },
   ];
+
+  const WORKBENCH_GUIDE = {
+    vocabulary: {
+      title: 'Standardize terms',
+      description: 'Review how source-system words map to the active ontology vocabulary.',
+      action: 'Review mappings and synonyms',
+      outcome: 'A shared language for search, alignment, and reporting.',
+    },
+    alignment: {
+      title: 'Connect data to meaning',
+      description: 'Link imported entities, attributes, relationships, and metadata to ontology concepts.',
+      action: 'Select an instance import and review suggested mappings',
+      outcome: 'Approved, traceable instance-to-ontology mappings.',
+    },
+    inference: {
+      title: 'Test what the ontology implies',
+      description: 'Preview subclass, domain/range, equivalence, and type-closure conclusions before materialization.',
+      action: 'Choose rules and run a preview',
+      outcome: 'Reviewable inferred statements with evidence and confidence.',
+    },
+  };
 
   return (
     <div style={{ background: C.bg, minHeight: '100%', padding: 0, boxSizing: 'border-box' }}>
@@ -2791,6 +2689,38 @@ export default function OntologyMapper() {
             </div>
           </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(180px, 1fr))', gap: '6px', marginBottom: '10px' }}>
+            {['vocabulary', 'alignment', 'inference'].map((id, index) => {
+              const guide = WORKBENCH_GUIDE[id];
+              const active = activeView === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveView(id)}
+                  aria-current={active ? 'step' : undefined}
+                  style={{
+                    textAlign: 'left', padding: '9px 10px', borderRadius: '7px', cursor: 'pointer',
+                    border: `1px solid ${active ? C.primary : C.border}`,
+                    background: active ? C.primaryLight : C.surface,
+                    color: C.textPrimary,
+                  }}
+                >
+                  <span style={{ display: 'block', fontSize: '10px', fontWeight: 800, color: active ? C.primaryDark : C.textMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Step {index + 1}</span>
+                  <span style={{ display: 'block', fontSize: '12px', fontWeight: 800, marginTop: '2px' }}>{guide.title}</span>
+                  <span style={{ display: 'block', fontSize: '10px', lineHeight: 1.35, color: C.textSec, marginTop: '3px' }}>{guide.description}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {WORKBENCH_GUIDE[activeView] && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 0.8fr) minmax(220px, 1fr)', gap: '8px', marginBottom: '10px', padding: '8px 10px', border: `1px solid ${C.border}`, borderRadius: '7px', background: C.bg, fontSize: '11px' }}>
+              <div><strong style={{ color: C.primaryDark }}>Next action:</strong> <span style={{ color: C.textPrimary }}>{WORKBENCH_GUIDE[activeView].action}</span></div>
+              <div><strong style={{ color: C.primaryDark }}>You will produce:</strong> <span style={{ color: C.textPrimary }}>{WORKBENCH_GUIDE[activeView].outcome}</span></div>
+            </div>
+          )}
+
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
             <div style={{ padding: '6px 10px', borderRadius: '999px', border: `1px solid ${C.border}`, background: C.surface, fontSize: '11px', fontWeight: 700, color: C.textPrimary }}>
               {selectedOntologyOption?.label || 'No active ontology selected'}
@@ -2828,9 +2758,6 @@ export default function OntologyMapper() {
             </div>
           )}
 
-          {activeView === 'dictionary' && (
-            <DataDictionaryTable nodes={data.nodes} filter={filter} prefixFilter={prefixFilter} onPrefixFilterChange={setPrefixFilter} />
-          )}
           {activeView === 'taxonomy' && (
             <>
               {(semanticDetailsLoading || semanticDetailsError) && (

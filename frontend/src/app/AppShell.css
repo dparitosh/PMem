@@ -294,6 +294,159 @@
   padding: 12px;
 }
 
+.depo-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 7px 11px;
+  border: 1px solid var(--depo-blue-700, #123b67);
+  border-radius: 7px;
+  background: var(--depo-blue-700, #123b67);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.depo-button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.depo-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.depo-button--secondary {
+  background: var(--depo-surface, #fff);
+  color: var(--depo-blue-700, #123b67);
+}
+
+.depo-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid rgba(139, 160, 184, 0.5);
+  border-radius: 999px;
+  background: #f5f8fb;
+  color: var(--depo-slate-900, #102a43);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.depo-input {
+  box-sizing: border-box;
+  min-height: 32px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid rgba(139, 160, 184, 0.5);
+  border-radius: 7px;
+  background: var(--depo-surface, #fff);
+  color: var(--depo-slate-900, #102a43);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.depo-input:focus {
+  border-color: var(--depo-blue-700, #123b67);
+  box-shadow: 0 0 0 2px rgba(18, 59, 103, 0.12);
+}
+
+.depo-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--depo-slate-500, #52606d);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.depo-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 680px;
+  color: var(--depo-slate-900, #102a43);
+  font-size: 12px;
+}
+
+.depo-table th {
+  padding: 9px 10px;
+  background: #eef4f8;
+  border-bottom: 1px solid rgba(139, 160, 184, 0.28);
+  color: var(--depo-slate-700, #334e68);
+  font-size: 10px;
+  font-weight: 900;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.depo-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(139, 160, 184, 0.16);
+  vertical-align: middle;
+}
+
+.depo-table tbody tr:nth-child(even) {
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.depo-table tbody tr:hover {
+  background: rgba(30, 144, 168, 0.07);
+}
+
+.depo-alert,
+.depo-empty {
+  padding: 10px 12px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.depo-alert--warning {
+  border: 1px solid #f0c36d;
+  background: #fff8e1;
+  color: #8a5a00;
+}
+
+.depo-alert--success {
+  border: 1px solid #9ad9d1;
+  background: #eefaf8;
+  color: #147d72;
+}
+
+.depo-empty {
+  border: 1px dashed rgba(139, 160, 184, 0.45);
+  color: var(--depo-slate-500, #52606d);
+  text-align: center;
+}
+
+.depo-spin {
+  animation: depo-spin 0.9s linear infinite;
+}
+
+@keyframes depo-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 900px) {
+  .depo-page form {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .depo-page form {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
 .depo-kpi-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

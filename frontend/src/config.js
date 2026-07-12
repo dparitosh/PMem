@@ -218,6 +218,13 @@ const ADMIN_ENDPOINTS = {
   resetDatabase: process.env.REACT_APP_API_ADMIN_RESET_DATABASE || '/api/v1/admin/reset-database',
 };
 
+const METADATA_REGISTRY_ENDPOINTS = {
+  assets: process.env.REACT_APP_API_METADATA_REGISTRY_ASSETS || '/api/v1/metadata-registry/assets',
+  asset: process.env.REACT_APP_API_METADATA_REGISTRY_ASSET || '/api/v1/metadata-registry/assets/{asset_id}',
+  transition: process.env.REACT_APP_API_METADATA_REGISTRY_TRANSITION || '/api/v1/metadata-registry/assets/{asset_id}/transition',
+  history: process.env.REACT_APP_API_METADATA_REGISTRY_HISTORY || '/api/v1/metadata-registry/assets/{asset_id}/history',
+};
+
 /**
  * Recommendation Endpoints
  */
@@ -277,10 +284,16 @@ const INTEGRATION_ENDPOINTS = {
   neo4jWebhookV1: process.env.REACT_APP_API_WEBHOOKS_NEO4J_V1 || '/api/v1/webhooks/neo4j',
 };
 
+const REPORT_ENDPOINTS = {
+  xsdRelational: process.env.REACT_APP_API_REPORT_XSD_RELATIONAL || '/api/v1/reports/xsd-relational',
+};
+
 /** Optional ontology-agentic service endpoints. */
 const AGENTIC_ENDPOINTS = {
   health: process.env.REACT_APP_AGENTIC_HEALTH || '/health',
   agents: process.env.REACT_APP_AGENTIC_AGENTS || '/api/v1/agents',
+  tools: process.env.REACT_APP_AGENTIC_TOOLS || '/api/v1/tools',
+  openApiImport: process.env.REACT_APP_AGENTIC_OPENAPI_IMPORT || '/api/v1/openapi/import',
   runAgent: process.env.REACT_APP_AGENTIC_RUN_AGENT || '/api/v1/agents/{agent_name}/run',
   runWorkflow: process.env.REACT_APP_AGENTIC_RUN_WORKFLOW || '/api/v1/workflows/run',
 };
@@ -332,7 +345,9 @@ export const API = {
   ingestion: INGESTION_ENDPOINTS,
   document: DOCUMENT_ENDPOINTS,
   admin: ADMIN_ENDPOINTS,
+  metadataRegistry: METADATA_REGISTRY_ENDPOINTS,
   recommendations: RECOMMENDATION_ENDPOINTS,
+  reports: REPORT_ENDPOINTS,
   requirements: REQUIREMENTS_ENDPOINTS,
   ontologyMapper: ONTOLOGY_MAPPER_ENDPOINTS,
   modeling: MODELING_ENDPOINTS,

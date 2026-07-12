@@ -22,6 +22,8 @@ if errorlevel 1 (
     echo [WARN] Backend stop reported an issue.
 )
 
+call "%~dp0stop_agentic.bat"
+
 echo.
 echo [OK] Stop sequence completed.
 echo.

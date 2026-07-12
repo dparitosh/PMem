@@ -309,6 +309,28 @@ const ReportsTab = ({ searchResults, graphData }) => {
   const [fallbackGraphData, setFallbackGraphData] = useState({ nodes: [], links: [] });
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphError, setGraphError] = useState('');
+  const [selectedXsdOntology, setSelectedXsdOntology] = useState('');
+  const [xsdReport, setXsdReport] = useState(null);
+  const [xsdReportLoading, setXsdReportLoading] = useState(false);
+  const [xsdReportError, setXsdReportError] = useState('');
+
+  useEffect(() => {
+    if (!selectedXsdOntology && ontologies?.length) {
+      setSelectedXsdOntology(ontologies[0].ontology_id || ontologies[0].value || ontologies[0].prefix || '');
+    }
+  }, [ontologies, selectedXsdOntology]);
+
+  useEffect(() => {
+    if (activeReport !== 'xsd-relational' || !selectedXsdOntology) return undefined;
+    let cancelled = false;
+    setXsdReportLoading(true);
+    setXsdReportError('');
+    apiClient.get(buildUrl(API.reports.xsdRelational), { params: { ontology_id: selectedXsdOntology } })
+      .then((response) => { if (!cancelled) setXsdReport(response.data || null); })
+      .catch((error) => { if (!cancelled) setXsdReportError(error?.response?.data?.detail || error.message || 'XSD relational report failed.'); })
+      .finally(() => { if (!cancelled) setXsdReportLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeReport, selectedXsdOntology]);
 
   const effectiveGraphData = useMemo(() => {
     const hasPrimaryGraph = (graphData?.nodes || []).length > 0 || (graphData?.links || []).length > 0;
@@ -674,6 +696,13 @@ const ReportsTab = ({ searchResults, graphData }) => {
                   <span style={{ marginLeft: 6, opacity: 0.8, fontSize: 11 }}>{count}</span>
                 </button>
               ))}
+              <button
+                className="btn btn-sm"
+                onClick={() => { setReportPreset('governance'); setActiveReport('xsd-relational'); }}
+                style={{ color: activeReport === 'xsd-relational' ? '#fff' : '#6b4e00', background: activeReport === 'xsd-relational' ? '#6b4e00' : '#fff8e1', border: '1px solid #c49a00', fontWeight: 700, fontSize: 13, borderRadius: 999, padding: '6px 12px' }}
+              >
+                XSD Relational
+              </button>
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
@@ -774,7 +803,9 @@ const ReportsTab = ({ searchResults, graphData }) => {
             </div>
           )}
 
-          {activeReport === 'relationships' ? (
+          {activeReport === 'xsd-relational' ? (
+            <XsdRelationalReport report={xsdReport} loading={xsdReportLoading} error={xsdReportError} selectedOntology={selectedXsdOntology} ontologies={ontologies} onOntologyChange={setSelectedXsdOntology} />
+          ) : activeReport === 'relationships' ? (
             <>
               <div style={{ fontSize: 12, color: '#52606d', marginBottom: 12 }}>
                 {relationshipScopeLabel}
@@ -1234,5 +1265,41 @@ const ReportsTab = ({ searchResults, graphData }) => {
     </div>
   );
 };
+
+function XsdRelationalReport({ report, loading, error, selectedOntology, ontologies, onOntologyChange }) {
+  const [selectedTable, setSelectedTable] = useState('');
+  const tables = useMemo(() => report?.tables || [], [report]);
+  const activeTable = tables.find((table) => table.name === selectedTable) || tables[0];
+
+  useEffect(() => {
+    if (!selectedTable && tables.length) setSelectedTable(tables[0].name);
+    if (selectedTable && !tables.some((table) => table.name === selectedTable)) setSelectedTable(tables[0]?.name || '');
+  }, [selectedTable, tables]);
+
+  if (loading) return <div style={{ padding: 24, color: '#52606d' }}>Building XSD relational projection...</div>;
+  if (error) return <div style={{ padding: 12, border: '1px solid #f0c36d', background: '#fff8e1', color: '#8a5a00', borderRadius: 7 }}>{error}</div>;
+  if (!report) return <div style={{ padding: 24, color: '#52606d' }}>Select an XSD ontology to inspect its relational projection.</div>;
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select value={selectedOntology} onChange={(event) => onOntologyChange(event.target.value)} style={{ minWidth: 280, padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 6 }} aria-label="Select XSD ontology">
+          {ontologies.map((ontology) => <option key={ontology.ontology_id || ontology.value || ontology.prefix} value={ontology.ontology_id || ontology.value || ontology.prefix}>{ontology.label || ontology.prefix}</option>)}
+        </select>
+        <span style={{ fontSize: 12, color: '#52606d' }}>Source: {report.source_file}</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
+        {Object.entries(report.summary || {}).map(([key, value]) => <div key={key} style={{ padding: 10, border: '1px solid #d9e2ec', borderRadius: 7, background: '#f8fafc' }}><div style={{ fontSize: 10, color: '#52606d', textTransform: 'uppercase', fontWeight: 800 }}>{key.replace(/_/g, ' ')}</div><strong style={{ fontSize: 18, color: '#102a43' }}>{value}</strong></div>)}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, .3fr) minmax(0, .7fr)', gap: 12 }}>
+        <div style={{ border: '1px solid #d9e2ec', borderRadius: 7, overflow: 'auto', maxHeight: 520 }}>
+          {tables.map((table) => <button key={table.name} type="button" onClick={() => setSelectedTable(table.name)} style={{ display: 'block', width: '100%', padding: '9px 10px', textAlign: 'left', border: 0, borderBottom: '1px solid #eef2f6', background: activeTable?.name === table.name ? '#e8f1fc' : '#fff', color: '#102a43', cursor: 'pointer' }}><strong>{table.name}</strong><small style={{ display: 'block', color: '#697586' }}>{table.columns.length} columns · {table.foreign_key_candidates.length} FK candidates</small></button>)}
+        </div>
+        {activeTable ? <div style={{ border: '1px solid #d9e2ec', borderRadius: 7, overflow: 'auto' }}><table className="depo-table"><thead><tr><th>Column</th><th>Type</th><th>Kind</th><th>Occurrence</th><th>Key role</th></tr></thead><tbody>{activeTable.columns.map((column) => <tr key={`${activeTable.name}:${column.name}`}><td><strong>{column.name}</strong></td><td>{column.xsd_type}</td><td>{column.kind}</td><td>{column.min_occurs}..{column.max_occurs}</td><td>{column.is_primary_key_candidate ? 'PK candidate' : column.is_foreign_key_candidate ? `FK → ${column.foreign_key_target}` : '—'}</td></tr>)}</tbody></table></div> : <div style={{ padding: 24, color: '#52606d' }}>No complexType tables found.</div>}
+      </div>
+      <div style={{ fontSize: 11, color: '#52606d' }}>{report.semantics?.primary_key} {report.semantics?.foreign_key}</div>
+    </div>
+  );
+}
 
 export default ReportsTab;

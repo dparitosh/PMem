@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bot } from 'lucide-react';
 import AdminPanel from '../Components/AdminPanel';
 import { API_METHODS } from '../services/apiClient';
+import agenticAPI from '../services/agenticApi';
 import KpiStrip from '../widgets/KpiStrip';
 import RegistryWidget from '../widgets/RegistryWidget';
 import { widgetCardStyle, widgetColors } from '../widgets/widgetStyles';
@@ -66,6 +67,11 @@ export default function AdminPage({ onSchemaCleaned }) {
   const [registry, setRegistry] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [agenticCatalog, setAgenticCatalog] = useState(null);
+  const [agenticLoading, setAgenticLoading] = useState(false);
+  const [agenticError, setAgenticError] = useState('');
+  const [openApiCatalog, setOpenApiCatalog] = useState(null);
+  const [openApiLoading, setOpenApiLoading] = useState(false);
 
   const loadRegistry = useCallback(async () => {
     setLoading(true);
@@ -84,6 +90,54 @@ export default function AdminPage({ onSchemaCleaned }) {
   useEffect(() => {
     loadRegistry();
   }, [loadRegistry]);
+
+  const loadAgenticCatalog = useCallback(async () => {
+    if (!agenticAPI.isConfigured()) {
+      setAgenticCatalog(null);
+      setAgenticError('Agentic component adapter is not configured.');
+      return;
+    }
+    setAgenticLoading(true);
+    setAgenticError('');
+    try {
+      const [agentsResponse, toolsResponse] = await Promise.all([
+        agenticAPI.listAgents(),
+        agenticAPI.listTools(),
+      ]);
+      setAgenticCatalog({
+        agents: agentsResponse.data?.agents || [],
+        tools: toolsResponse.data?.tools || [],
+        invalidExports: toolsResponse.data?.invalid_exports || [],
+      });
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.message || 'Agentic component catalog is unavailable.';
+      setAgenticError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    } finally {
+      setAgenticLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAgenticCatalog();
+  }, [loadAgenticCatalog]);
+
+  const importOpenApi = useCallback(async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setOpenApiLoading(true);
+    setAgenticError('');
+    try {
+      const document = JSON.parse(await file.text());
+      const response = await agenticAPI.importOpenApi(document, file.name);
+      setOpenApiCatalog(response.data);
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.message || 'OpenAPI import failed.';
+      setAgenticError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    } finally {
+      setOpenApiLoading(false);
+    }
+  }, []);
 
   const counts = useMemo(() => ({
     services: registry?.services?.length || 0,
@@ -180,6 +234,58 @@ export default function AdminPage({ onSchemaCleaned }) {
           { label: 'Workflows', value: counts.workflows },
         ]}
       />
+
+      <section className="depo-panel" style={{ marginBottom: 12 }}>
+        <div className="depo-panel__header">
+          <div>
+            <div className="depo-panel__title">Agentic Components</div>
+            <div className="depo-panel__meta">Tool contracts and agent specifications available to a low-code/no-code orchestrator.</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <label className="depo-button depo-button--secondary" style={{ cursor: openApiLoading ? 'wait' : 'pointer' }}>
+              {openApiLoading ? 'Importing OpenAPI...' : 'Import OpenAPI JSON'}
+              <input type="file" accept="application/json,.json" onChange={importOpenApi} disabled={openApiLoading} style={{ display: 'none' }} />
+            </label>
+            <button type="button" className="depo-button depo-button--secondary" onClick={loadAgenticCatalog} disabled={agenticLoading}>
+              {agenticLoading ? 'Loading...' : 'Refresh'}
+            </button>
+          </div>
+        </div>
+        {agenticError && <div className="depo-alert depo-alert--warning">{agenticError}</div>}
+        {agenticCatalog && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 0.7fr) minmax(300px, 1.3fr)', gap: 12 }}>
+            <RegistryWidget
+              title={`Agents (${agenticCatalog.agents.length})`}
+              rows={agenticCatalog.agents}
+              columns={[{ field: 'name', flex: 1.2 }, { field: 'handler_name', flex: 1 }, { field: 'use_case', flex: 1.5 }]}
+              height={250}
+            />
+            <RegistryWidget
+              title={`Tools (${agenticCatalog.tools.length})`}
+              rows={agenticCatalog.tools}
+              columns={[{ field: 'name', flex: 1.5 }, { field: 'category', width: 120 }, { field: 'side_effect', width: 140 }, { field: 'requires_approval', headerName: 'Approval', width: 100 }]}
+              height={250}
+            />
+          </div>
+        )}
+        {openApiCatalog && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+            <span className="depo-badge">
+              {openApiCatalog.title} · {openApiCatalog.summary?.operations || 0} operations · {openApiCatalog.summary?.schemas || 0} schemas
+            </span>
+          </div>
+        )}
+        {openApiCatalog?.operations?.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <RegistryWidget
+              title="Imported OpenAPI operations"
+              rows={openApiCatalog.operations}
+              columns={[{ field: 'method', width: 90 }, { field: 'path', flex: 1.4 }, { field: 'operation_id', flex: 1 }, { field: 'summary', flex: 2 }]}
+              height={240}
+            />
+          </div>
+        )}
+      </section>
 
       <div className="depo-two-column">
         <section className="depo-panel">

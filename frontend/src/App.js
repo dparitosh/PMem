@@ -13,6 +13,7 @@ import { normalizePage } from './app/navigation';
 const Chatbot = lazy(() => import('./Components/Chatbot'));
 const ImportPage = lazy(() => import('./pages/ImportPage'));
 const OntologyStudioPage = lazy(() => import('./pages/OntologyStudioPage'));
+const MetadataRegistryPage = lazy(() => import('./pages/MetadataRegistryPage'));
 const GraphExplorerPage = lazy(() => import('./pages/GraphExplorerPage'));
 const ModelWorkbenchPage = lazy(() => import('./pages/ModelWorkbenchPage'));
 const QualityPage = lazy(() => import('./pages/QualityPage'));
@@ -106,6 +107,8 @@ function App() {
         return <ImportPage />;
       case 'ontology':
         return <OntologyStudioPage />;
+      case 'registry':
+        return <MetadataRegistryPage />;
       case 'quality':
         return <QualityPage setActiveTab={handleNavigate} />;
       case 'reports':
