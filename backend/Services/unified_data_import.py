@@ -697,6 +697,31 @@ class FileFormatDetector:
         """Generate Cypher queries for node creation"""
         if not rows:
             return [], {'created': 0}
+
+        # Neo4j properties may be scalars or lists of scalars, but ReqIF and
+        # other structured parsers legitimately produce nested dictionaries
+        # (for example ATTRIBUTE-VALUE records). Serialize only the values
+        # that Neo4j cannot store directly; keep scalar lists queryable.
+        def _neo4j_property(value: Any) -> Any:
+            if isinstance(value, dict):
+                return json.dumps(value, ensure_ascii=False, default=str)
+            if isinstance(value, (list, tuple, set)):
+                values = list(value)
+                if all(not isinstance(item, (dict, list, tuple, set)) for item in values):
+                    return values
+                return json.dumps(values, ensure_ascii=False, default=str)
+            if isinstance(value, bytes):
+                return value.decode('utf-8', errors='replace')
+            return value
+
+        normalized_rows = [
+            {str(key): _neo4j_property(value) for key, value in row.items()}
+            for row in rows
+        ]
+        # The caller passes the same batch to execute_cypher after generating
+        # this query. Update that list in place so the sanitized values, not
+        # the original nested parser objects, reach the Neo4j driver.
+        rows[:] = normalized_rows
         
         merge_keys = merge_keys or [list(rows[0].keys())[0]]
         
@@ -2180,6 +2205,10 @@ class DataTransformer:
         entity_type_vals = sorted({
             str(row.get('entity_type', '')).replace(' ', '_').replace(':', '_')
             for row in rows if row.get('entity_type')
+            and not (
+                str(row.get('source_format') or '').lower() == 'reqif'
+                and str(row.get('row_type') or '').lower() == 'relation'
+            )
         })
         if entity_type_vals:
             nodes = []
@@ -2756,6 +2785,43 @@ class UnifiedDataImportService:
         overflow = len(import_tasks) - max_tasks
         for tid, _ in terminal[:overflow]:
             import_tasks.pop(tid, None)
+
+    @classmethod
+    def list_tasks(cls) -> List[Dict[str, Any]]:
+        """List persisted unified import tasks after a worker restart.
+
+        The unified importer persists status snapshots so preview, commit,
+        and Semantic Bridge can continue after a browser refresh or backend
+        restart. Listing must read those snapshots as well as the in-memory
+        store; otherwise the UI renders an empty instance selector.
+        """
+        tasks_by_id: Dict[str, Dict[str, Any]] = {}
+        for task in import_tasks.values():
+            if isinstance(task, dict) and task.get('task_id'):
+                tasks_by_id[str(task['task_id'])] = task
+
+        cls.TASK_STORE_DIR.mkdir(parents=True, exist_ok=True)
+        for path in cls.TASK_STORE_DIR.glob('*.json'):
+            if path.name.endswith(('.parsed_rows.json', '.shacl_report.json')):
+                continue
+            try:
+                task = json.loads(path.read_text(encoding='utf-8'))
+                task_id = str(task.get('task_id') or '')
+                if task_id and task_id not in tasks_by_id:
+                    tasks_by_id[task_id] = task
+            except (OSError, ValueError, TypeError) as exc:
+                logger.warning("Skipping unreadable import task snapshot %s: %s", path, exc)
+
+        fields = (
+            'task_id', 'filename', 'file_type', 'current_stage', 'progress',
+            'message', 'status', 'committing', 'error', 'stats',
+            'commit_phase', 'batch_progress', 'commit_metrics',
+            'workflow_id', 'artifact_manifest', 'started_at', 'completed_at',
+            'preview_completed_at',
+        )
+        result = [{key: task.get(key) for key in fields} for task in tasks_by_id.values()]
+        result.sort(key=lambda task: str(task.get('started_at') or ''), reverse=True)
+        return result
 
     @classmethod
     async def start_import(
@@ -3383,8 +3449,73 @@ class UnifiedDataImportService:
                 ),
             )
             result['queries_executed'] += node_result.get('queries_executed', 0)
-            result['nodes_created'] += len(node_rows)
             result['errors'].extend(node_result.get('errors', []))
+            if node_result.get('errors'):
+                result['skipped_node_rows'] += len(node_rows)
+                result['warnings'].append(
+                    f"Neo4j rejected {len(node_rows)} '{label}' rows; see errors for details."
+                )
+            else:
+                result['nodes_created'] += len(node_rows)
+
+        # ── XMI relationship edges ───────────────────────────────────────────
+        # ReqIF relation objects are edge records, not business-object nodes.
+        # Resolve their original identifiers to the unique imported node IDs
+        # and create traceability/containment edges after node writes.
+        reqif_rows = [r for r in rows if str(r.get('source_format') or '').lower() == 'reqif']
+        if reqif_rows:
+            reqif_id_map = {
+                str(r.get('original_id') or r.get('id')): str(r.get('id'))
+                for r in reqif_rows
+                if r.get('id')
+            }
+            reqif_edge_groups: Dict[str, List[Dict[str, Any]]] = {}
+            for row in reqif_rows:
+                row_type = str(row.get('row_type') or '').lower()
+                if row_type == 'relation':
+                    source_id = reqif_id_map.get(str(row.get('source_ref') or ''))
+                    target_id = reqif_id_map.get(str(row.get('target_ref') or ''))
+                    if source_id and target_id:
+                        reqif_edge_groups.setdefault('REQIF_TRACE', []).append({
+                            'from_id': source_id,
+                            'to_id': target_id,
+                            'properties': {
+                                'reqif_relation_id': row.get('id'),
+                                'reqif_type_ref': row.get('type_ref') or '',
+                                'name': row.get('name') or row.get('title') or 'ReqIF trace relation',
+                                'source_format': 'reqif',
+                            },
+                        })
+                elif row_type == 'specification':
+                    specification_id = reqif_id_map.get(str(row.get('original_id') or row.get('id')))
+                    for object_ref in row.get('object_refs') or []:
+                        requirement_id = reqif_id_map.get(str(object_ref))
+                        if specification_id and requirement_id:
+                            reqif_edge_groups.setdefault('REQIF_CONTAINS', []).append({
+                                'from_id': specification_id,
+                                'to_id': requirement_id,
+                                'properties': {'source_format': 'reqif'},
+                            })
+
+            if reqif_edge_groups:
+                _sync_metrics('relationships', 91, 'Creating ReqIF requirement trace links...')
+                for rel_type, rel_rows in reqif_edge_groups.items():
+                    rel_cypher = f"""
+                    UNWIND $rows AS row
+                    MATCH (a {{id: row.from_id, import_id: row.import_id}})
+                    MATCH (b {{id: row.to_id, import_id: row.import_id}})
+                    MERGE (a)-[rel:`{rel_type}`]->(b)
+                    SET rel += coalesce(row.properties, {{}})
+                    RETURN count(*) AS matched_rows
+                    """
+                    scoped = [{**edge, 'import_id': task_id} for edge in rel_rows]
+                    rel_result = Neo4jImporter.execute_cypher(
+                        [rel_cypher],
+                        scoped,
+                        batch_size=max(100, IMPORT_LINK_BATCH_SIZE),
+                    )
+                    result['queries_executed'] += rel_result.get('queries_executed', 0)
+                    result['relationships_created'] += rel_result.get('matched_rows', 0)
 
         # ── XMI relationship edges ───────────────────────────────────────────
         xmi_rels = task.get('_xmi_relationships', [])

@@ -164,11 +164,56 @@ def _load_chat_generators():
                 except Exception:
                     return f"Current graph context: {str(graph_context)[:3500]}"
 
+            def _live_graph_context_for_fallback(message: str, graph_context=None):
+                """Resolve a small Neo4j context when the optional agent stack is absent.
+
+                The browser normally sends a graph snapshot, but external clients do not
+                have that snapshot. Keep this lookup bounded and read-only so the fallback
+                remains GraphRAG-grounded without requiring LangChain integrations.
+                """
+                if isinstance(graph_context, dict):
+                    visible = graph_context.get("visibleGraph") or graph_context.get("visible_graph") or graph_context
+                    if isinstance(visible, dict) and (visible.get("nodes") or visible.get("links") or visible.get("relationships")):
+                        return graph_context
+                try:
+                    try:
+                        from .Services.graph_view_service import GraphViewService
+                    except Exception:
+                        from Services.graph_view_service import GraphViewService
+
+                    text = str(message or "").strip()
+                    candidates = []
+                    for value in re.findall(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{2,}", text):
+                        lowered = value.lower()
+                        if lowered not in {
+                            "what", "which", "where", "when", "why", "how", "show", "find",
+                            "list", "with", "from", "this", "that", "about", "impact", "analysis",
+                            "context", "graph", "please", "does", "have", "give", "and", "the",
+                        } and value not in candidates:
+                            candidates.append(value)
+                    for candidate in candidates[:8]:
+                        payload = GraphViewService.get_contextual_subgraph(
+                            search=candidate,
+                            limit=24,
+                            search_mode="broader",
+                            expand_neighbors=True,
+                        )
+                        if payload and (payload.get("nodes") or payload.get("relationships")):
+                            return {
+                                "source": "backend-neo4j-context",
+                                "query": message,
+                                "contextualGraph": payload,
+                            }
+                except Exception as exc:
+                    logger.warning("Live Neo4j fallback context unavailable: %s", exc)
+                return graph_context
+
             async def response_fn(session_id: str, message: str, graph_context=None) -> str:
                 from Services.ollama_service import get_ollama_service
                 try:
                     prompt = message
-                    context_text = _format_graph_context_for_fallback(graph_context)
+                    live_context = _live_graph_context_for_fallback(message, graph_context)
+                    context_text = _format_graph_context_for_fallback(live_context)
                     if context_text:
                         prompt = f"{context_text}\n\nUser question: {message}"
                     response = get_ollama_service().query(prompt)
@@ -182,7 +227,8 @@ def _load_chat_generators():
                     from Services.ollama_service import get_ollama_service
                     try:
                         prompt = message
-                        context_text = _format_graph_context_for_fallback(graph_context)
+                        live_context = _live_graph_context_for_fallback(message, graph_context)
+                        context_text = _format_graph_context_for_fallback(live_context)
                         if context_text:
                             prompt = f"{context_text}\n\nUser question: {message}"
                         response = get_ollama_service().query(prompt)
@@ -4760,7 +4806,24 @@ def get_workflow_artifact_file(task_id: str, artifact_path: str):
 def list_import_tasks():
     """List all import tasks."""
     try:
-        tasks = DataImportService.list_tasks()
+        # Unified imports are persisted on disk and must remain selectable in
+        # Semantic Bridge after a backend restart. Keep legacy tasks visible
+        # too, while deduplicating task IDs shared by both stores.
+        from backend.Services.unified_data_import import UnifiedDataImportService
+
+        tasks_by_id = {
+            str(task.get('task_id')): task
+            for task in DataImportService.list_tasks()
+            if task.get('task_id')
+        }
+        for task in UnifiedDataImportService.list_tasks():
+            if task.get('task_id'):
+                tasks_by_id[str(task['task_id'])] = task
+        tasks = sorted(
+            tasks_by_id.values(),
+            key=lambda task: str(task.get('started_at') or ''),
+            reverse=True,
+        )
         return {
             "total_tasks": len(tasks),
             "tasks": tasks,

@@ -179,9 +179,16 @@ class SemanticWorkflowService:
     def _write_ontology_graph_exports(cls, task_id: str, source_id: str, target_id: str) -> None:
         """Pre-generate merged ontology export artifacts to avoid request-time serialization timeouts."""
         try:
-            from rdflib import Graph as RDFGraph
+            from rdflib import Graph as RDFGraph, URIRef
             graph = RDFGraph()
             loaded = []
+            # These namespaces belong to the application/runtime, not to an
+            # ontology export. Keep the source files authoritative and prevent
+            # agent/graph/bridge implementation triples leaking into the file.
+            application_markers = (
+                "/agentic", "#agentic", "/agents", "#agents", "/graph", "#graph",
+                "/knowledge", "#knowledge", "/semantic-bridge", "#semantic-bridge",
+            )
             for ontology_id in (source_id, target_id):
                 context = OntologyReasoningService.semantic_context(ontology_id)
                 path = Path(context.get("file_path") or context.get("source_file_path") or "")
@@ -190,7 +197,16 @@ class SemanticWorkflowService:
                 formats = ["turtle", "xml", "n3"] if path.suffix.lower() == ".ttl" else ["xml", "turtle", "n3"]
                 for fmt in formats:
                     try:
-                        graph.parse(str(path), format=fmt)
+                        source_graph = RDFGraph()
+                        source_graph.parse(str(path), format=fmt)
+                        for subject, predicate, obj in source_graph:
+                            uri_values = [value for value in (subject, predicate, obj) if isinstance(value, URIRef)]
+                            if any(
+                                any(marker in str(uri).lower() for marker in application_markers)
+                                for uri in uri_values
+                            ):
+                                continue
+                            graph.add((subject, predicate, obj))
                         loaded.append(path.name)
                         break
                     except Exception:

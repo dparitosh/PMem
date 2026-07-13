@@ -18,4 +18,12 @@ describe('formatChatMarkdown', () => {
     expect(html).not.toContain('<script');
     expect(html).toContain('<strong>Safe</strong>');
   });
+
+  test('keeps Unicode bullet items as separate list entries', () => {
+    const html = formatChatMarkdown('• First finding\n• Second finding\n• Third finding');
+
+    expect(html).toContain('<ul class="chat-list">');
+    expect((html.match(/<li>/g) || []).length).toBe(3);
+    expect(html).toContain('Second finding');
+  });
 });

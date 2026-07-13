@@ -53,7 +53,9 @@ export function formatChatMarkdown(text) {
       return;
     }
     if (/^---+$/.test(line)) { flushParagraph(); flushList(); html += '<hr class="chat-rule" />'; return; }
-    const bullet = line.match(/^[-*]\s+(.+)$/);
+    // Models frequently emit Unicode bullets instead of Markdown's ASCII markers.
+    // Treat them as the same list so each item remains a separate bullet in the UI.
+    const bullet = line.match(/^[-*•◦▪]\s+(.+)$/);
     const numbered = line.match(/^\d+[.)]\s+(.+)$/);
     if (bullet || numbered) {
       flushParagraph();

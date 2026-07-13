@@ -1220,15 +1220,19 @@ export default function DataImportPipeline() {
     }
 
     setWorkflowLoading(true);
-    setWorkflowRun(null);
     setError(null);
     try {
       const response = await API_METHODS.ontology.merge(workflowOntologyId, workflowTargetOntologyId, { dry_run: false });
-      setWorkflowRun({
+      setWorkflowRun((previous) => ({
+        ...(previous || {}),
         workflow_id: 'ontology.merge.commit',
         status: 'completed',
-        result: response.data || response,
-      });
+        result: {
+          ...(previous?.result || {}),
+          ...(response.data || response),
+        },
+      }));
+      await loadOntologyOptions({ forceLive: true });
     } catch (err) {
       const detail = err?.response?.data?.detail || err?.response?.data?.error || err.message;
       setError(String(detail));

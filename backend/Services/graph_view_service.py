@@ -129,6 +129,7 @@ class GraphViewService:
         "SURFACE_TEXTURE_REPRESENTATION",
         "Requirement",
         "RequirementRevision",
+        "Specification",
         "Occurrence",
         "InstanceGraph",
         "ProductInstance",
@@ -151,6 +152,8 @@ class GraphViewService:
         "dimension",
         "annotation",
         "surface_finish",
+        "requirement",
+        "requirement_specification",
     ]
 
     RELATIONSHIP_NODE_LABELS = [
@@ -1246,7 +1249,15 @@ RETURN count(res) AS count
                   OR coalesce(m.is_cad_business_object, false) = true
                   OR coalesce(m.semantic_role, '') IN $semantic_instance_roles
                 )
-              RETURN n, r, m
+              RETURN n,
+                {
+                  elementId: elementId(r),
+                  type: type(r),
+                  properties: properties(r),
+                  start: elementId(startNode(r)),
+                  end: elementId(endNode(r))
+                } AS r,
+                m
               LIMIT $direct_limit
               UNION
               MATCH (n)--(bridge)--(m)
@@ -1278,6 +1289,13 @@ RETURN count(res) AS count
                 } AS r,
                 m
               LIMIT $bridge_limit
+              UNION
+              MATCH (n)
+              WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
+                AND any(label IN labels(n) WHERE label IN ['Requirement', 'RequirementRevision', 'Specification'])
+                AND NOT (n)--()
+              RETURN n, null AS r, null AS m
+              LIMIT $isolated_requirement_limit
             }
             WITH n, r, m
             ORDER BY
@@ -1297,6 +1315,7 @@ RETURN count(res) AS count
                 "limit": max(1, min(int(limit), 5000)),
                 "direct_limit": max(1, min(int(limit), 5000)) // 2,
                 "bridge_limit": max(1, min(int(limit), 5000)),
+                "isolated_requirement_limit": max(1, min(int(limit), 500)),
                 "schema_node_labels": cls.SCHEMA_NODE_LABELS,
                 "instance_node_labels": cls.INSTANCE_NODE_LABELS,
                 "semantic_instance_roles": cls.INSTANCE_SEMANTIC_ROLES,

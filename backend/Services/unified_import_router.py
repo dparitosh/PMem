@@ -406,9 +406,16 @@ async def merge_ontologies(body: dict):
         except ModuleNotFoundError:
             from ..core.graph import graph as _g
 
+        ontology_labels = [
+            "Ontology", "OntologyClass", "OntologyProperty", "OntologyMetadata",
+            "OntologyResource", "OntologyRestriction", "OntologyIndividual",
+        ]
+        ontology_scope = """
+            any(label IN labels(n) WHERE label IN $ontology_labels)
+        """
         count_rows = _g.query(
-            "MATCH (n) WHERE coalesce(n.ontology_prefix, n.prefix) = $from_p RETURN count(n) AS total",
-            {"from_p": from_prefix},
+            f"MATCH (n) WHERE {ontology_scope} AND (coalesce(n.ontology_prefix, n.prefix) = $from_p OR n.ontology_id = $from_id) RETURN count(n) AS total",
+            {"from_p": from_prefix, "from_id": from_id, "ontology_labels": ontology_labels},
         )
         candidate_nodes = count_rows[0]["total"] if count_rows else 0
 
@@ -427,10 +434,11 @@ async def merge_ontologies(body: dict):
 
         # Update ontology_prefix property
         updated = _g.query(
-            "MATCH (n) WHERE coalesce(n.ontology_prefix, n.prefix) = $from_p "
-            "SET n.ontology_prefix = $to_p, n.prefix = $to_p "
+            f"MATCH (n) WHERE {ontology_scope} AND (coalesce(n.ontology_prefix, n.prefix) = $from_p OR n.ontology_id = $from_id) "
+            "SET n.ontology_prefix = $to_p, n.prefix = $to_p, "
+            "n.merged_from_ontology_id = $from_id, n.merged_into_ontology_id = $to_id "
             "RETURN count(n) AS updated",
-            {"from_p": from_prefix, "to_p": to_prefix},
+            {"from_p": from_prefix, "from_id": from_id, "to_id": to_id, "to_p": to_prefix, "ontology_labels": ontology_labels},
         )
         nodes_updated = updated[0]["updated"] if updated else 0
 

@@ -7,6 +7,24 @@
 const configuredBackendUrl = process.env.REACT_APP_BACKEND_URL;
 const configuredAgenticServiceUrl = process.env.REACT_APP_AGENTIC_SERVICE_URL;
 
+const resolveLocalServiceUrl = (configuredUrl, fallbackPort) => {
+  if (!configuredUrl) return '';
+  try {
+    const configured = new URL(configuredUrl);
+    const browserHost = typeof window !== 'undefined' ? window.location?.hostname : '';
+    const isLocalConfigured = configured.hostname === 'localhost' || configured.hostname === '127.0.0.1';
+    const isRemoteBrowser = browserHost && browserHost !== 'localhost' && browserHost !== '127.0.0.1';
+    if (isLocalConfigured && isRemoteBrowser) {
+      configured.hostname = browserHost;
+      if (!configured.port) configured.port = String(fallbackPort);
+      return configured.toString().replace(/\/$/, '');
+    }
+  } catch (_err) {
+    return configuredUrl.replace(/\/$/, '');
+  }
+  return configuredUrl.replace(/\/$/, '');
+};
+
 const resolveBackendUrl = () => {
   const fallbackHost = typeof window !== 'undefined' && window.location?.hostname
     ? window.location.hostname
@@ -33,7 +51,7 @@ const resolveBackendUrl = () => {
 // Base configuration
 const baseConfig = {
   backendUrl: resolveBackendUrl(),
-  agenticServiceUrl: (configuredAgenticServiceUrl || '').replace(/\/$/, ''),
+  agenticServiceUrl: resolveLocalServiceUrl(configuredAgenticServiceUrl, 8012),
   apiVersion: process.env.REACT_APP_API_VERSION || 'v1',
   environment: process.env.REACT_APP_ENV || 'development',
   debug: process.env.REACT_APP_DEBUG === 'true',
