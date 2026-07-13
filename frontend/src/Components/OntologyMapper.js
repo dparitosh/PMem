@@ -2053,6 +2053,20 @@ export default function OntologyMapper() {
     setTargetDictionarySourceMode('primary');
   }, [ontologyDictionary, selectedOntologyApi, taxonomy]);
 
+  // Taxonomy and reasoning are scoped to the active ontology. Clear the
+  // previous ontology's payload before the cancellable loader starts so its
+  // guard cannot mistake stale data for a completed load.
+  useEffect(() => {
+    setTaxonomy(null);
+    setReasoning(null);
+    setData({ nodes: [], edges: [] });
+    setMappingEdges([]);
+    setVocabEdges([]);
+    setFilter('');
+    setSemanticDetailsError(null);
+    setSemanticDetailsLoading(Boolean(selectedOntologyApi));
+  }, [selectedOntologyApi]);
+
   useEffect(() => {
     if (!selectedOntologyApi || !['taxonomy', 'alignment'].includes(activeView)) return;
     if (taxonomy?.nodes?.length && reasoning) return;

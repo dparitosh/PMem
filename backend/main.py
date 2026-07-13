@@ -1670,11 +1670,22 @@ async def check_neo4j_health():
     """Health check endpoint to verify Neo4j connectivity"""
     try:
         loop = asyncio.get_event_loop()
+
+        def _official_driver_probe():
+            try:
+                from backend.core.db_config import get_config, get_driver
+            except Exception:
+                from core.db_config import get_config, get_driver
+            config = get_config()
+            with get_driver().session(database=config.database) as session:
+                record = session.run("RETURN 1 AS ok").single()
+                return record and record.get("ok") == 1
+
         result = await asyncio.wait_for(
-            loop.run_in_executor(None, lambda: graph.query("MATCH (n) RETURN count(n) as cnt LIMIT 1")),
+            loop.run_in_executor(None, _official_driver_probe),
             timeout=5.0
         )
-        is_connected = result and len(result) > 0
+        is_connected = bool(result)
         return {
             "status": "healthy" if is_connected else "degraded",
             "neo4j_connected": is_connected,
