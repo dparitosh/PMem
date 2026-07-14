@@ -8,6 +8,9 @@ const agenticClient = axios.create({
 });
 
 function requireConfiguredService() {
+  if (!config.agenticEnabled) {
+    throw new Error('Ontology agentic service is disabled. Set REACT_APP_AGENTIC_ENABLED=true to enable it.');
+  }
   if (!config.agenticServiceUrl) {
     throw new Error('Ontology agentic service is not configured. Set REACT_APP_AGENTIC_SERVICE_URL.');
   }
@@ -19,7 +22,8 @@ function agenticUrl(endpoint) {
 }
 
 export const agenticAPI = {
-  isConfigured: () => Boolean(config.agenticServiceUrl),
+  isEnabled: () => Boolean(config.agenticEnabled),
+  isConfigured: () => Boolean(config.agenticEnabled && config.agenticServiceUrl),
   health: () => agenticClient.get(agenticUrl(API.agentic.health)),
   listAgents: () => agenticClient.get(agenticUrl(API.agentic.agents)),
   listTools: () => agenticClient.get(agenticUrl(API.agentic.tools)),

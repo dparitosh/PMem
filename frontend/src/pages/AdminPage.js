@@ -64,6 +64,8 @@ const packageColumns = [
 ];
 
 export default function AdminPage({ onSchemaCleaned }) {
+  const agenticEnabled = agenticAPI.isEnabled();
+  const agenticConfigured = agenticAPI.isConfigured();
   const [registry, setRegistry] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -92,9 +94,14 @@ export default function AdminPage({ onSchemaCleaned }) {
   }, [loadRegistry]);
 
   const loadAgenticCatalog = useCallback(async () => {
-    if (!agenticAPI.isConfigured()) {
+    if (!agenticEnabled) {
       setAgenticCatalog(null);
-      setAgenticError('Agentic component adapter is not configured.');
+      setAgenticError('');
+      return;
+    }
+    if (!agenticConfigured) {
+      setAgenticCatalog(null);
+      setAgenticError('Agentic components are enabled, but REACT_APP_AGENTIC_SERVICE_URL is not configured.');
       return;
     }
     setAgenticLoading(true);
@@ -115,7 +122,7 @@ export default function AdminPage({ onSchemaCleaned }) {
     } finally {
       setAgenticLoading(false);
     }
-  }, []);
+  }, [agenticConfigured, agenticEnabled]);
 
   useEffect(() => {
     loadAgenticCatalog();
@@ -125,6 +132,12 @@ export default function AdminPage({ onSchemaCleaned }) {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    if (!agenticConfigured) {
+      setAgenticError(agenticEnabled
+        ? 'Agentic component adapter is not configured.'
+        : 'Agentic components are disabled by configuration.');
+      return;
+    }
     setOpenApiLoading(true);
     setAgenticError('');
     try {
@@ -137,7 +150,7 @@ export default function AdminPage({ onSchemaCleaned }) {
     } finally {
       setOpenApiLoading(false);
     }
-  }, []);
+  }, [agenticConfigured, agenticEnabled]);
 
   const counts = useMemo(() => ({
     services: registry?.services?.length || 0,
@@ -239,14 +252,18 @@ export default function AdminPage({ onSchemaCleaned }) {
         <div className="depo-panel__header">
           <div>
             <div className="depo-panel__title">Agentic Components</div>
-            <div className="depo-panel__meta">Tool contracts and agent specifications available to a low-code/no-code orchestrator.</div>
+            <div className="depo-panel__meta">
+              {agenticEnabled
+                ? 'Tool contracts and agent specifications available to a low-code/no-code orchestrator.'
+                : 'Disabled. Set REACT_APP_AGENTIC_ENABLED=true and restart the frontend to enable this optional service.'}
+            </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <label className="depo-button depo-button--secondary" style={{ cursor: openApiLoading ? 'wait' : 'pointer' }}>
+            <label className="depo-button depo-button--secondary" style={{ cursor: openApiLoading ? 'wait' : 'pointer', opacity: agenticConfigured ? 1 : 0.55 }}>
               {openApiLoading ? 'Importing OpenAPI...' : 'Import OpenAPI JSON'}
-              <input type="file" accept="application/json,.json" onChange={importOpenApi} disabled={openApiLoading} style={{ display: 'none' }} />
+              <input type="file" accept="application/json,.json" onChange={importOpenApi} disabled={openApiLoading || !agenticConfigured} style={{ display: 'none' }} />
             </label>
-            <button type="button" className="depo-button depo-button--secondary" onClick={loadAgenticCatalog} disabled={agenticLoading}>
+            <button type="button" className="depo-button depo-button--secondary" onClick={loadAgenticCatalog} disabled={agenticLoading || !agenticConfigured}>
               {agenticLoading ? 'Loading...' : 'Refresh'}
             </button>
           </div>

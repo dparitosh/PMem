@@ -6,6 +6,7 @@
 
 const configuredBackendUrl = process.env.REACT_APP_BACKEND_URL;
 const configuredAgenticServiceUrl = process.env.REACT_APP_AGENTIC_SERVICE_URL;
+const agenticEnabled = String(process.env.REACT_APP_AGENTIC_ENABLED || '').trim().toLowerCase() === 'true';
 
 const resolveLocalServiceUrl = (configuredUrl, fallbackPort) => {
   if (!configuredUrl) return '';
@@ -51,7 +52,10 @@ const resolveBackendUrl = () => {
 // Base configuration
 const baseConfig = {
   backendUrl: resolveBackendUrl(),
-  agenticServiceUrl: resolveLocalServiceUrl(configuredAgenticServiceUrl, 8012),
+  agenticEnabled,
+  agenticServiceUrl: agenticEnabled
+    ? resolveLocalServiceUrl(configuredAgenticServiceUrl, 8012)
+    : '',
   apiVersion: process.env.REACT_APP_API_VERSION || 'v1',
   environment: process.env.REACT_APP_ENV || 'development',
   debug: process.env.REACT_APP_DEBUG === 'true',
@@ -387,6 +391,7 @@ if (baseConfig.debug) {
   console.info('[CONFIG] API Configuration Loaded:', {
     environment: baseConfig.environment,
     backendUrl: baseConfig.backendUrl,
+    agenticEnabled: baseConfig.agenticEnabled,
     agenticServiceUrl: baseConfig.agenticServiceUrl || '(not configured)',
     apiVersion: baseConfig.apiVersion,
     debug: baseConfig.debug,

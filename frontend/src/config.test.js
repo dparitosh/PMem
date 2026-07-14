@@ -11,3 +11,36 @@ test('preserves nested artifact separators while encoding each path segment', ()
     path: 'reports/July output?.json',
   }, { pathParams: ['path'] })).toBe('/jobs/job%201/reports/July%20output%3F.json');
 });
+
+describe('optional agentic service configuration', () => {
+  const originalEnabled = process.env.REACT_APP_AGENTIC_ENABLED;
+  const originalUrl = process.env.REACT_APP_AGENTIC_SERVICE_URL;
+
+  afterEach(() => {
+    if (originalEnabled === undefined) delete process.env.REACT_APP_AGENTIC_ENABLED;
+    else process.env.REACT_APP_AGENTIC_ENABLED = originalEnabled;
+    if (originalUrl === undefined) delete process.env.REACT_APP_AGENTIC_SERVICE_URL;
+    else process.env.REACT_APP_AGENTIC_SERVICE_URL = originalUrl;
+    jest.resetModules();
+  });
+
+  test('keeps agentic requests disabled even when a service URL is present', () => {
+    process.env.REACT_APP_AGENTIC_ENABLED = 'false';
+    process.env.REACT_APP_AGENTIC_SERVICE_URL = 'http://127.0.0.1:8012';
+    jest.resetModules();
+
+    const { config } = require('./config');
+    expect(config.agenticEnabled).toBe(false);
+    expect(config.agenticServiceUrl).toBe('');
+  });
+
+  test('exposes the configured service URL only when explicitly enabled', () => {
+    process.env.REACT_APP_AGENTIC_ENABLED = 'true';
+    process.env.REACT_APP_AGENTIC_SERVICE_URL = 'http://127.0.0.1:8012';
+    jest.resetModules();
+
+    const { config } = require('./config');
+    expect(config.agenticEnabled).toBe(true);
+    expect(config.agenticServiceUrl).toBe('http://127.0.0.1:8012');
+  });
+});
