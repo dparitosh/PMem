@@ -30,6 +30,15 @@ import {
 } from '../workflows/workflowEngine';
 import useMountedRef from '../hooks/useMountedRef';
 import usePollerRegistry from '../hooks/usePollerRegistry';
+import {
+  getFileExtensionFromName,
+  getWorkflowNote,
+  isOntologySourceFile,
+  isResumablePersistedJob,
+  isTerminalPipelineStatus,
+  requiresOntologyMetadataCapture,
+  serializeFileForPersistence,
+} from '../workflows/importPresentation';
 
 // Design tokens (matching OntologyMapper & GraphHEB)
 const C = {
@@ -52,122 +61,6 @@ const C = {
 const IMPORT_JOBS_STORAGE_KEY = 'depo.import.jobs.v2';
 const IMPORT_ONTOLOGIES_CACHE_KEY = 'depo.import.ontologies.v1';
 const PRIMARY_WORKFLOW_IDS = new Set(['instance.import', 'ontology.create', 'architecture.archimate', 'document.unstructured', 'instance.link']);
-const RESUMABLE_JOB_MAX_AGE_MS = 6 * 60 * 60 * 1000;
-const ONTOLOGY_SOURCE_TYPES = new Set(['ontology', 'xsd', 'xmi', 'express']);
-const ONTOLOGY_METADATA_EXTENSIONS = new Set(['.xsd', '.xmi', '.mdxml', '.owl', '.rdf', '.ttl', '.exp']);
-
-
-function serializeFileForPersistence(file) {
-  if (!file) return null;
-  const { fileObj, ...rest } = file;
-  return {
-    ...rest,
-    fileObj: null,
-    persisted: true,
-  };
-}
-
-function getStatusTimestamp(status = {}, file = null) {
-  return (
-    status.lastUpdatedAt ||
-    status.completedAtIso ||
-    file?.updatedAt ||
-    file?.createdAt ||
-    null
-  );
-}
-
-function isTerminalPipelineStatus(status = {}) {
-  return Boolean(
-    status.error ||
-    status.status === 'failed' ||
-    status.status === 'ready_for_commit' ||
-    status.committed ||
-    status.status === 'completed' ||
-    status.commitPhase === 'complete' ||
-    status.progress === 100
-  );
-}
-
-function isResumablePersistedJob(file, status) {
-  if (!file?.taskId || !status) return false;
-  if (isTerminalPipelineStatus(status)) return false;
-  const stamp = getStatusTimestamp(status, file);
-  if (!stamp) return false;
-  const parsed = Date.parse(stamp);
-  if (Number.isNaN(parsed)) return false;
-  return (Date.now() - parsed) <= RESUMABLE_JOB_MAX_AGE_MS;
-}
-
-function getFileExtensionFromName(fileName = '') {
-  const parts = String(fileName).split('.');
-  return parts.length > 1 ? `.${parts.pop().toLowerCase()}` : '';
-}
-
-function isOntologySourceFile(fileName = '') {
-  return ONTOLOGY_SOURCE_TYPES.has(inferFileTypeFromExtension(fileName));
-}
-
-function requiresOntologyMetadataCapture(fileName = '') {
-  return ONTOLOGY_METADATA_EXTENSIONS.has(getFileExtensionFromName(fileName));
-}
-
-function getWorkflowNote({
-  canRunSelectedWorkflow,
-  fallbackWorkflow,
-  mappingFileTypeContext,
-  selectedWorkflow,
-  selectedImportArtifactEntry,
-}) {
-  if (!canRunSelectedWorkflow) {
-    return `${fallbackWorkflow.title} is not connected yet.`;
-  }
-  if (selectedWorkflow === 'instance.link') {
-    if (!selectedImportArtifactEntry) {
-      return 'Select one completed import artifact first, then choose the ontology you want to align against.';
-    }
-    return 'Review one imported instance artifact against one ontology, then preview or apply semantic mappings.';
-  }
-  if (selectedWorkflow === 'ontology.create') {
-    return 'Use this workflow only for ontology or schema registration. XSD, OWL, RDF, TTL, XMI, MDXML, and EXPRESS files belong here; instance files belong in Import instance graph.';
-  }
-  if (selectedWorkflow === 'architecture.archimate') {
-    return 'Upload ArchiMate Model Exchange XML to create a process-reference architecture graph with typed relationships.';
-  }
-  if (selectedWorkflow === 'ontology.merge') {
-    return 'Select a source ontology and a different target ontology, then review the merge plan.';
-  }
-  if (
-    selectedWorkflow === 'ontology.validate'
-    || selectedWorkflow === 'dictionary.generate'
-    || selectedWorkflow === 'taxonomy.generate'
-    || selectedWorkflow === 'graph.chunk'
-  ) {
-    return 'Select an ontology to generate the artifact.';
-  }
-  if (mappingFileTypeContext === 'express') {
-    return 'EXPRESS creates ontology structure.';
-  }
-  if (mappingFileTypeContext === 'step') {
-    return 'STEP imports structural CAD instance data first. After commit, run Link instances to ontology with AP242 MBD/3D selected to create semantic INSTANCE_OF links.';
-  }
-  if (selectedWorkflow === 'instance.import' && (mappingFileTypeContext === 'csv' || mappingFileTypeContext === 'excel')) {
-    return 'CSV and Excel import as source data first.';
-  }
-  if (
-    selectedWorkflow === 'instance.import'
-    && ['json', 'xml', 'plmxml', 'reqif', '3dxml'].includes(mappingFileTypeContext)
-  ) {
-    return 'JSON, XML, PLMXML, ReqIF, and 3DXML import as source data first.';
-  }
-  if (selectedWorkflow === 'instance.import' && ['ontology', 'xsd', 'xmi', 'express'].includes(mappingFileTypeContext)) {
-    return 'Use Create ontology for OWL, RDF, TTL, XSD, XMI, MDXML, or EXPRESS files.';
-  }
-  if (selectedWorkflow === 'instance.import' && !mappingFileTypeContext) {
-    return 'Select files to continue.';
-  }
-  return 'Ready.';
-}
 
 export default function DataImportPipeline() {
   const [files, setFiles] = useState([]);
@@ -764,15 +657,55 @@ export default function DataImportPipeline() {
         },
       }));
 
-      const safeIndexBase = String(file?.name || 'document').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48) || 'document';
-      const response = await API_METHODS.document.upload([file.fileObj], { index_name: safeIndexBase + '_index' });
-      const result = response.data || response;
+      const submissionResponse = await API_METHODS.document.submitJob([file.fileObj]);
+      const submission = submissionResponse.data || submissionResponse;
+      const taskId = submission?.task_id;
+      if (!taskId) throw new Error('Document service did not return a task ID.');
+      setPipelineStatus(prev => ({
+        ...prev,
+        [fileId]: {
+          ...(prev[fileId] || {}),
+          taskId,
+          stage: submission.stage || 'queued',
+          backendStage: submission.stage || 'queued',
+          progress: Number(submission.progress || 5),
+          status: 'processing',
+          message: 'Document retained; background processing started.',
+          lastUpdatedAt: new Date().toISOString(),
+        },
+      }));
+
+      let job = submission;
+      const deadline = Date.now() + getImportTimeoutMs();
+      while (!['completed', 'partial', 'failed', 'cancelled'].includes(job?.status)) {
+        if (Date.now() >= deadline) throw new Error('Document processing timed out while waiting for job completion.');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const statusResponse = await API_METHODS.document.getJob(taskId);
+        job = statusResponse.data || statusResponse;
+        const jobSnapshot = job;
+        setPipelineStatus(prev => ({
+          ...prev,
+          [fileId]: {
+            ...(prev[fileId] || {}),
+            taskId,
+            stage: jobSnapshot.stage || 'processing',
+            backendStage: jobSnapshot.stage || 'processing',
+            progress: Number(jobSnapshot.progress || 0),
+            status: 'processing',
+            message: jobSnapshot?.stage_detail?.file
+              ? `${jobSnapshot.stage || 'Processing'}: ${jobSnapshot.stage_detail.file}`
+              : `Document job: ${jobSnapshot.stage || 'processing'}`,
+            lastUpdatedAt: new Date().toISOString(),
+          },
+        }));
+      }
+      const result = job?.result || job;
       const summary = result?.summary || {};
       const processedDocuments = result?.processed_documents ?? result?.documents_processed ?? summary.successfully_processed ?? 0;
       const failedDocuments = result?.failed_documents ?? summary.failed_processing ?? 0;
       const totalDocuments = result?.total_documents ?? summary.total_files ?? 1;
       const totalChunks = result?.chunks_created ?? result?.total_chunks ?? (result?.results || []).reduce((sum, item) => sum + Number(item?.chunks_created || 0), 0);
-      const resultStatus = failedDocuments > 0 || result?.status === 'partial'
+      const resultStatus = job?.status === 'cancelled' || job?.status === 'failed' || failedDocuments > 0 || job?.status === 'partial'
         ? 'failed'
         : 'completed';
       setPipelineStatus(prev => ({
@@ -783,7 +716,7 @@ export default function DataImportPipeline() {
           backendStage: 'indexed',
           progress: resultStatus === 'failed' ? 0 : 100,
           status: resultStatus,
-          message: result?.message || 'Document indexed for GraphRAG search.',
+          message: job?.error || result?.message || 'Document retained and indexed for GraphRAG search.',
           stats: {
             entities_found: processedDocuments || totalDocuments,
             relationships_found: totalChunks,
@@ -1412,7 +1345,11 @@ export default function DataImportPipeline() {
     
     // Cancel task if in progress
     if (fileStatus?.taskId && fileStatus?.status === 'processing') {
-      apiClient.post(replaceParams(API.import.cancel, { task_id: fileStatus.taskId }), {})
+      const queuedFile = files.find(item => item.fileId === fileId);
+      const cancelRequest = queuedFile?.workflowId === 'document.unstructured'
+        ? API_METHODS.document.cancelJob(fileStatus.taskId)
+        : apiClient.post(replaceParams(API.import.cancel, { task_id: fileStatus.taskId }), {});
+      cancelRequest
         .catch(err => console.warn('Cancel failed:', err));
     }
 

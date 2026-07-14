@@ -9,6 +9,7 @@ export default function AppShell({
   onHome,
   showChat,
   onToggleChat,
+  serviceStatus = 'checking',
   rightDrawer,
   children,
 }) {
@@ -32,6 +33,7 @@ export default function AppShell({
               className={`depo-rail__button ${active ? 'is-active' : ''}`}
               title={item.label}
               aria-label={item.label}
+              aria-current={active ? 'page' : undefined}
               onClick={() => (item.id === 'home' ? onHome() : onPageChange(item.id))}
             >
               <Icon size={16} />
@@ -51,8 +53,18 @@ export default function AppShell({
           <h1>{pageLabel(activePage)}</h1>
         </div>
         <div className="depo-topbar__actions">
-          <span className="depo-status">Online</span>
-          <button type="button" className="depo-icon-button" title="Toggle chat" onClick={onToggleChat}>
+          <span className={`depo-status depo-status--${serviceStatus}`} role="status" aria-live="polite">
+            {serviceStatus === 'online' ? 'Online' : serviceStatus === 'offline' ? 'Unavailable' : 'Checking'}
+          </span>
+          <button
+            type="button"
+            className="depo-icon-button"
+            title="Toggle chat"
+            aria-label="Toggle chat"
+            aria-expanded={Boolean(showChat)}
+            aria-controls="depo-chat-drawer"
+            onClick={onToggleChat}
+          >
             <MessageSquare size={16} fill={showChat ? '#eef5fb' : 'none'} />
           </button>
         </div>
@@ -60,7 +72,11 @@ export default function AppShell({
 
       <main className="depo-main">
         <div className="depo-content">{children}</div>
-        {showChat && rightDrawer && <aside className="depo-drawer">{rightDrawer}</aside>}
+        {showChat && rightDrawer && (
+          <aside id="depo-chat-drawer" className="depo-drawer" aria-label="Chat assistant">
+            {rightDrawer}
+          </aside>
+        )}
       </main>
     </div>
   );

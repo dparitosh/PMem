@@ -8,6 +8,8 @@ already-approved inferred facts with provenance.
 from __future__ import annotations
 
 import re
+import hashlib
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -242,6 +244,14 @@ class ApplicationRuleExecutor:
                 "validation": validation,
                 "inferred_facts": [],
             }
+        if not rule.enabled:
+            return {
+                "status": "disabled",
+                "rule_id": rule.rule_id,
+                "validation": validation,
+                "inferred_facts": [],
+                "summary": {"source_facts": len(facts), "bindings": 0, "inferred_facts": 0},
+            }
 
         bindings = ApplicationRuleExecutor._match_body(rule.body, facts)
         timestamp = datetime.now(timezone.utc).isoformat()
@@ -376,16 +386,27 @@ class InferenceNeo4jRepository:
     """Parameterized Cypher plans for rules, executions, and inferred facts."""
 
     @staticmethod
-    def materialization_plan(rule: SwrlRule, inferred_facts: Sequence[Mapping[str, Any]], execution_id: str) -> List[Dict[str, Any]]:
+    def materialization_plan(
+        rule: SwrlRule,
+        inferred_facts: Sequence[Mapping[str, Any]],
+        execution_id: str,
+        scope_id: str = "",
+    ) -> List[Dict[str, Any]]:
+        materialization_scope = str(scope_id or execution_id).strip()
         rows = []
         for row in inferred_facts:
             next_row = dict(row)
-            next_row["factKey"] = "|".join([
+            identity = [
+                materialization_scope,
                 str(next_row.get("ruleId") or rule.rule_id),
                 str(next_row.get("subject") or ""),
                 str(next_row.get("predicate") or ""),
                 str(next_row.get("object") or ""),
-            ])
+            ]
+            next_row["factKey"] = hashlib.sha256(
+                json.dumps(identity, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+            next_row["scopeId"] = materialization_scope
             rows.append(next_row)
         fact_keys = [row["factKey"] for row in rows]
         timestamp = datetime.now(timezone.utc).isoformat()
@@ -423,11 +444,11 @@ class InferenceNeo4jRepository:
             {
                 "name": "remove_stale_inferred_facts",
                 "cypher": (
-                    "MATCH ()-[r:INFERRED_FACT {ruleId: $ruleId}]->() "
+                    "MATCH ()-[r:INFERRED_FACT {ruleId: $ruleId, scopeId: $scopeId}]->() "
                     "WHERE coalesce(r.version, '') <> $version OR NOT coalesce(r.factKey, '') IN $factKeys "
                     "DELETE r"
                 ),
-                "params": {"ruleId": rule.rule_id, "version": rule.version, "factKeys": fact_keys},
+                "params": {"ruleId": rule.rule_id, "scopeId": materialization_scope, "version": rule.version, "factKeys": fact_keys},
             },
             {
                 "name": "merge_inferred_facts",
@@ -438,7 +459,7 @@ class InferenceNeo4jRepository:
                     "MERGE (s)-[r:INFERRED_FACT {factKey: row.factKey}]->(o) "
                     "SET r.ruleId = row.ruleId, r.predicate = row.predicate, r.object = row.object, "
                     "r.sourceFacts = row.sourceFacts, r.executionId = row.executionId, "
-                    "r.timestamp = row.timestamp, r.version = row.version, "
+                    "r.timestamp = row.timestamp, r.version = row.version, r.scopeId = row.scopeId, "
                     "r.asserted = false, r.inferred = true"
                 ),
                 "params": {"rows": rows},

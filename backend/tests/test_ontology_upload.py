@@ -279,6 +279,33 @@ class TestOntologyRegistered:
         
         assert len(data['ontologies']) == 2
 
+    def test_get_registered_ontology_returns_public_metadata(self, xsd_file, temp_storage):
+        file_content, filename = xsd_file
+        upload = client.post(
+            '/api/v1/ontology/upload',
+            data={
+                'ontology_name': 'Domain Model',
+                'prefix': 'domain',
+                'generation_type': 'shacl',
+            },
+            files={'file': (filename, file_content, 'application/xml')},
+        )
+        ontology_id = upload.json()['ontology_id']
+
+        response = client.get(f'/api/v1/ontology/{ontology_id}')
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data['metadata']['ontology_id'] == ontology_id
+        assert data['metadata']['ontology_name'] == 'Domain Model'
+        assert 'file_path' not in data['metadata']
+        assert 'storage_path' not in data['metadata']
+
+    def test_get_registered_ontology_returns_404(self, temp_storage):
+        response = client.get('/api/v1/ontology/not-registered')
+
+        assert response.status_code == 404
+
 
 class TestFileStorage:
     """Test file storage and metadata management"""

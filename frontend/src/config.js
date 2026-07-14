@@ -90,7 +90,6 @@ const GRAPH_ENDPOINTS = {
   neo4jHealth: process.env.REACT_APP_API_NEO4J_HEALTH || '/health/neo4j',
   graphfilter: process.env.REACT_APP_API_GRAPHFILTER || '/graphfilter',
   graphfilterMulti: process.env.REACT_APP_API_GRAPHFILTER_MULTI || '/graphfilter-multi',
-  graphtraverse: process.env.REACT_APP_API_GRAPHTRAVERSE || '/graphtraverse',
   graphtraverseNode: process.env.REACT_APP_API_GRAPHTRAVERSE_NODE || '/graphtraverse/{node_id}',
   comparativeSearch: process.env.REACT_APP_API_COMPARATIVE_SEARCH || '/comparative-search',
   schemaGraph: process.env.REACT_APP_API_SCHEMA_GRAPH || '/schema-graph',
@@ -138,7 +137,7 @@ const CHAT_ENDPOINTS = {
 const ONTOLOGY_ENDPOINTS = {
   upload: process.env.REACT_APP_API_ONTOLOGY_UPLOAD || '/api/v1/ontology/upload',
   registered: process.env.REACT_APP_API_ONTOLOGY_REGISTERED || '/api/v1/ontology/registered',
-  get: process.env.REACT_APP_API_ONTOLOGY_GET || '/api/v1/ontology',
+  get: process.env.REACT_APP_API_ONTOLOGY_GET || '/api/v1/ontology/{ontology}',
   taxonomy: process.env.REACT_APP_API_ONTOLOGY_TAXONOMY || '/api/v1/ontology/{ontology}/taxonomy',
   reason: process.env.REACT_APP_API_ONTOLOGY_REASON || '/api/v1/ontology/{ontology}/reason',
   inferencePreview: process.env.REACT_APP_API_ONTOLOGY_INFERENCE_PREVIEW || '/api/v1/ontology/{ontology}/inference/preview',
@@ -220,6 +219,10 @@ const DOCUMENT_ENDPOINTS = {
   formats: process.env.REACT_APP_API_DOCUMENTS_FORMATS || '/api/v1/documents/supported-formats',
   upload: process.env.REACT_APP_API_DOCUMENTS_UPLOAD || '/api/v1/documents/upload',
   uploadSingle: process.env.REACT_APP_API_DOCUMENTS_UPLOAD_SINGLE || '/api/v1/documents/upload-single',
+  jobs: process.env.REACT_APP_API_DOCUMENTS_JOBS || '/api/v1/documents/jobs',
+  job: process.env.REACT_APP_API_DOCUMENTS_JOB || '/api/v1/documents/jobs/{task_id}',
+  cancelJob: process.env.REACT_APP_API_DOCUMENTS_CANCEL_JOB || '/api/v1/documents/jobs/{task_id}/cancel',
+  jobArtifacts: process.env.REACT_APP_API_DOCUMENTS_JOB_ARTIFACTS || '/api/v1/documents/jobs/{task_id}/artifacts',
   health: process.env.REACT_APP_API_DOCUMENTS_HEALTH || '/api/v1/documents/health',
 };
 
@@ -339,11 +342,15 @@ export const buildUrl = (endpoint) => {
  * Utility function to replace path parameters in endpoints
  * Example: replaceParams('/api/v1/ontology/{ontology}', { ontology: 'ap239' })
  */
-export const replaceParams = (endpoint, params) => {
+export const replaceParams = (endpoint, params, options = {}) => {
   let result = endpoint;
   if (params) {
     Object.keys(params).forEach((key) => {
-      result = result.replace(`{${key}}`, params[key]);
+      const value = String(params[key] ?? '');
+      const replacement = options.pathParams?.includes(key)
+        ? value.split('/').map(encodeURIComponent).join('/')
+        : encodeURIComponent(value);
+      result = result.split(`{${key}}`).join(replacement);
     });
   }
   return result;

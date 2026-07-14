@@ -8,6 +8,7 @@ registered-ontology file resolution.
 from __future__ import annotations
 
 from functools import lru_cache
+import copy
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
@@ -47,7 +48,7 @@ class OntologyReasoningService:
         for meta in registry.get("ontologies", []):
             ontology_id = str(meta.get("ontology_id") or "").strip()
             prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or "").strip()
-            if ref in {ontology_id, prefix}:
+            if ref.casefold() in {ontology_id.casefold(), prefix.casefold()}:
                 return ontology_id or ref
         return ref
 
@@ -61,9 +62,9 @@ class OntologyReasoningService:
         meta = result["metadata"]
         source_file_path = Path(meta.get("file_path", ""))
         semantic_file_path = Path(meta.get("owl_file_path") or meta.get("file_path", ""))
-        if not source_file_path.exists():
+        if not str(meta.get("file_path") or "").strip() or not source_file_path.is_file():
             raise ValueError(f"Ontology file is missing: {ontology_identifier}")
-        if not semantic_file_path.exists():
+        if not semantic_file_path.is_file():
             semantic_file_path = source_file_path
 
         prefix = str(
@@ -89,7 +90,7 @@ class OntologyReasoningService:
     def inspect_context(cls, context: Dict[str, Any]) -> Dict[str, Any]:
         meta = context["meta"]
         cache_key = cls._cache_key_for_path(context["file_path"])
-        result = dict(cls._cached_reasoning(cache_key[0], cache_key[1], cache_key[2], context["prefix"]))
+        result = copy.deepcopy(cls._cached_reasoning(cache_key[0], cache_key[1], cache_key[2], context["prefix"]))
         result.update({
             "ontology_id": meta.get("ontology_id"),
             "ontology_name": meta.get("ontology_name"),
@@ -119,7 +120,11 @@ class OntologyReasoningService:
     def preview_inferences(cls, ontology_identifier: str, options: Dict[str, Any] | None = None) -> Dict[str, Any]:
         """Return a non-mutating, user-configurable inference preview."""
         opts = options or {}
+        if not isinstance(opts, dict):
+            raise ValueError("Inference options must be an object")
         rules = opts.get("rules") or {}
+        if not isinstance(rules, dict):
+            raise ValueError("Inference rules must be an object")
         try:
             max_results = int(opts.get("limit") or 250)
         except (TypeError, ValueError):
@@ -150,6 +155,7 @@ class OntologyReasoningService:
                 label_by_key.setdefault(parent, cls._ref_label(edge.get("target_label") or parent))
 
         inferred: List[Dict[str, Any]] = []
+        constraints: List[Dict[str, Any]] = []
         warnings: List[str] = []
         seen: set[tuple[str, str, str, str]] = set()
 
@@ -189,9 +195,9 @@ class OntologyReasoningService:
                 prop_key = cls._ref_key(prop.get("iri") or prop.get("uri") or prop.get("term_id") or prop)
                 prop_label = cls._entry_label(prop) or cls._ref_label(prop_key)
                 for domain in prop.get("domain") or []:
-                    add("domain_typing", prop_key, "rdfs:domain", cls._ref_key(domain), f"Property {prop_label} declares this domain", 0.9)
+                    constraints.append({"property": prop_key, "property_label": prop_label, "kind": "domain", "class": cls._ref_key(domain)})
                 for rng in prop.get("range") or []:
-                    add("range_typing", prop_key, "rdfs:range", cls._ref_key(rng), f"Property {prop_label} declares this range", 0.9)
+                    constraints.append({"property": prop_key, "property_label": prop_label, "kind": "range", "class": cls._ref_key(rng)})
 
         rdf_edges: Dict[str, List[Dict[str, str]]] = {"equivalence": [], "disjointness": []}
         if rules.get("equivalence", True) or rules.get("disjointness", True):
@@ -232,25 +238,37 @@ class OntologyReasoningService:
                 for edge in reasoning.get(key) or []:
                     source = cls._ref_key(edge.get("source") or edge.get("from"))
                     target = cls._ref_key(edge.get("target") or edge.get("to"))
-                    add("equivalence", source, "owl:equivalent/sameAs", target, f"Declared by {key}", 0.95)
+                    add("equivalence_symmetric_closure", target, "owl:equivalent/sameAs", source, f"Symmetric closure of {key}", 0.95)
             for edge in rdf_edges["equivalence"]:
-                add("equivalence", edge["source"], "owl:equivalent/sameAs", edge["target"], "Declared in RDF/OWL graph", 0.95)
+                add("equivalence_symmetric_closure", edge["target"], "owl:equivalent/sameAs", edge["source"], "Symmetric closure of declared RDF/OWL relation", 0.95)
 
         if rules.get("disjointness", True):
-            for edge in reasoning.get("disjoint_edges") or reasoning.get("disjoint_class_edges") or []:
-                source = cls._ref_key(edge.get("source") or edge.get("from"))
-                target = cls._ref_key(edge.get("target") or edge.get("to"))
-                add("disjointness_check", source, "owl:disjointWith", target, "Declared disjointness should be checked against individual typing", 0.95)
-            for edge in rdf_edges["disjointness"]:
-                add("disjointness_check", edge["source"], "owl:disjointWith", edge["target"], "Declared disjointness should be checked against individual typing", 0.95)
+            disjoint_pairs = {
+                tuple(sorted((cls._ref_key(edge.get("source") or edge.get("from")), cls._ref_key(edge.get("target") or edge.get("to")))))
+                for edge in reasoning.get("disjoint_edges") or reasoning.get("disjoint_class_edges") or []
+            }
+            disjoint_pairs.update(tuple(sorted((edge["source"], edge["target"]))) for edge in rdf_edges["disjointness"])
+            for individual in individuals:
+                subject = cls._ref_key(individual.get("iri") or individual.get("uri") or individual.get("term_id") or individual)
+                declared_types = {cls._ref_key(item) for item in individual.get("types") or individual.get("class_refs") or []}
+                for left, right in disjoint_pairs:
+                    if left and right and left in declared_types and right in declared_types:
+                        add("disjointness_violation", subject, "owl:disjointnessViolation", f"{left} | {right}", "Individual is typed by two disjoint classes", 1.0)
 
         if rules.get("individual_type_closure", True):
             for individual in individuals:
                 subject = cls._ref_key(individual.get("iri") or individual.get("uri") or individual.get("term_id") or individual)
                 for type_ref in individual.get("types") or individual.get("class_refs") or []:
                     type_key = cls._ref_key(type_ref)
-                    for parent in parent_by_child.get(type_key, set()):
+                    visited_types: set[str] = set()
+                    frontier = list(parent_by_child.get(type_key, set()))
+                    while frontier:
+                        parent = frontier.pop(0)
+                        if not parent or parent in visited_types:
+                            continue
+                        visited_types.add(parent)
                         add("individual_type_closure", subject, "rdf:type", parent, f"Individual type follows superclass of {cls._ref_label(type_key)}", 0.9)
+                        frontier.extend(parent_by_child.get(parent, set()) - visited_types)
 
         if not inferred:
             warnings.append("No inference candidates were generated for the selected rules and ontology slice.")
@@ -274,9 +292,11 @@ class OntologyReasoningService:
                 "datatype_properties": len(datatype_props),
                 "individuals": len(individuals),
                 "inferred_candidates": len(inferred),
+                "domain_range_constraints": len(constraints),
                 "truncated": len(inferred) >= max_results,
             },
             "inferences": inferred,
+            "constraints": constraints,
             "warnings": warnings,
         }
 

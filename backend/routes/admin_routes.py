@@ -583,8 +583,8 @@ async def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
         
         try:
             OSLCTRSService.publish_event(
-                f"{OSLCTRSService.base_url()}/api/v1/admin/schema-stats",
-                "Deletion",
+                OSLCTRSService.base_resource_uri(),
+                "Modification",
                 title="Neo4j schema cleaned",
                 metadata={"operation": "clean-schema", "metadata_cleared": metadata_cleared},
             )
@@ -674,8 +674,8 @@ async def delete_data_by_label(body: DeleteDataRequest):
         if not body.dry_run:
             try:
                 OSLCTRSService.publish_event(
-                    f"{OSLCTRSService.base_url()}/api/v1/admin/schema-stats",
-                    "Deletion",
+                    OSLCTRSService.base_resource_uri(),
+                    "Modification",
                     title="Neo4j data deleted",
                     metadata={"operation": "delete-data", "label": body.label, "prefix": body.prefix, "property": body.property, "batch_size": body.batch_size},
                 )
@@ -827,8 +827,8 @@ async def reset_database(recreate_indexes: bool = True):
         
         try:
             OSLCTRSService.publish_event(
-                f"{OSLCTRSService.base_url()}/api/v1/admin/schema-stats",
-                "Deletion",
+                OSLCTRSService.base_resource_uri(),
+                "Modification",
                 title="Neo4j database reset",
                 metadata={"operation": "reset-database", "recreate_indexes": recreate_indexes},
             )

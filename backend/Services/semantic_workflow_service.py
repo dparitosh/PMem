@@ -163,6 +163,7 @@ class SemanticWorkflowService:
                     "iri": item.get("element_id") or item.get("iri") or item.get("uri"),
                     "domain": item.get("domain") or [],
                     "range": item.get("range") or [],
+                    "definition": item.get("definition") or item.get("comment") or "",
                     "source": "owlready2",
                 })
             if terms:
@@ -950,7 +951,7 @@ class SemanticWorkflowService:
             "terms": [
                 {
                     "term": t["term"],
-                    "definition": "",
+                    "definition": t.get("definition") or "",
                     "frequency": t["frequency"],
                     "source": meta.get("original_filename"),
                     "status": "needs_review",
@@ -973,21 +974,54 @@ class SemanticWorkflowService:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
         task_id = cls._new_task("taxonomy.generate", meta.get("original_filename", ""))
-        terms = cls._semantic_terms_for_ontology(ontology_id, meta)
-        groups: Dict[str, List[str]] = {}
-        for item in terms:
-            key = item.get("semantic_type") or item["normalized"][0].upper()
-            groups.setdefault(key, []).append(item["term"])
+        from .ontology_taxonomy_service import OntologyTaxonomyService
+
+        extracted = OntologyTaxonomyService.get_taxonomy(ontology_id)
+        nodes = extracted.get("nodes") or []
+        edges = extracted.get("edges") or []
+        by_id = {str(node.get("term_id") or node.get("uri") or ""): node for node in nodes}
+        children_by_parent: Dict[str, List[str]] = {}
+        child_ids: set[str] = set()
+        for edge in edges:
+            child = str(edge.get("source_term") or "")
+            parent = str(edge.get("target_term") or "")
+            if child in by_id and parent in by_id and child != parent:
+                children_by_parent.setdefault(parent, []).append(child)
+                child_ids.add(child)
+
+        def branch(term_id: str, ancestry: set[str]) -> Dict[str, Any]:
+            node = by_id[term_id]
+            if term_id in ancestry:
+                return {"term_id": term_id, "label": node.get("label") or term_id, "cycle": True, "children": []}
+            next_ancestry = {*ancestry, term_id}
+            return {
+                "term_id": term_id,
+                "uri": node.get("uri"),
+                "label": node.get("label") or term_id,
+                "definition": node.get("definition") or "",
+                "children": [
+                    branch(child, next_ancestry)
+                    for child in sorted(set(children_by_parent.get(term_id, [])), key=lambda item: str(by_id[item].get("label") or item).casefold())
+                ],
+            }
+
+        root_ids = [term_id for term_id in by_id if term_id not in child_ids]
+        if not root_ids and by_id:
+            root_ids = sorted(by_id)[:1]
         taxonomy = {
             "workflow_id": "taxonomy.generate",
             "ontology_id": ontology_id,
             "root": meta.get("ontology_name") or meta.get("prefix") or ontology_id,
-            "term_source": terms[0].get("source") if terms else "empty",
+            "term_source": extracted.get("extraction_source") or "empty",
             "generated_at": datetime.now().isoformat(),
-            "children": [
-                {"label": letter, "children": [{"label": term} for term in sorted(set(values))[:50]]}
-                for letter, values in sorted(groups.items())
-            ],
+            "children": [branch(term_id, set()) for term_id in sorted(root_ids, key=lambda item: str(by_id[item].get("label") or item).casefold())],
+            "nodes": nodes,
+            "edges": edges,
+            "summary": {
+                **(extracted.get("summary") or {}),
+                "roots": len(root_ids),
+                "truncated": bool((extracted.get("summary") or {}).get("truncated", False)),
+            },
         }
         WorkflowArtifactService.write_json(task_id, "reports", "taxonomy.json", taxonomy, "taxonomy")
         return {"task_id": task_id, "status": "completed", "result": taxonomy, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
@@ -1105,6 +1139,7 @@ class SemanticWorkflowService:
                 "addition_count": len(additions),
                 "conflict_count": len(conflicts),
                 "subclass_gap_count": len(source_subclasses - target_subclasses),
+                "details_truncated": len(overlaps) > 200 or len(additions) > 300 or len(conflicts) > 200 or len(source_subclasses - target_subclasses) > 100,
                 "source_classes": len(source_classes),
                 "target_classes": len(target_classes),
                 "source_properties": len(source_properties),
@@ -1115,7 +1150,7 @@ class SemanticWorkflowService:
         cls._write_ontology_graph_exports(task_id, source_id, target_id)
         try:
             OSLCTRSService.publish_event(
-                f"{OSLCTRSService.base_url()}/api/v1/ontology/{target_id}",
+                OSLCTRSService.ontology_resource_uri(target_id),
                 "Modification",
                 title=f"Ontology merge into {target_id}",
                 metadata={"workflow_id": "ontology.merge", "task_id": task_id, "source_ontology_id": source_id, "target_ontology_id": target_id},
@@ -1172,6 +1207,8 @@ class SemanticWorkflowService:
             "candidates": sorted(candidates, key=lambda x: -x["confidence"])[:200],
             "summary": {
                 "candidate_count": len(candidates),
+                "retained_candidate_count": min(len(candidates), 200),
+                "candidates_truncated": len(candidates) > 200,
                 "selected_for_apply": len(approved_candidates),
                 "high_confidence_candidates": sum(1 for candidate in candidates if candidate["confidence"] >= cls.AUTO_APPLY_CONFIDENCE),
                 "ambiguous_candidates": sum(1 for candidate in candidates if candidate.get("ambiguous")),
@@ -1189,7 +1226,7 @@ class SemanticWorkflowService:
                     for kind in ("Class", "ObjectProperty", "DatatypeProperty", "AnnotationProperty")
                 },
                 "applied_links": applied_links,
-                "committed": bool(apply_links and applied_links >= 0),
+                "committed": bool(apply_links and applied_links > 0),
             },
         }
         WorkflowArtifactService.write_json(task_id, "reports", "link_candidates.json", report, "link_candidates")
@@ -1218,7 +1255,7 @@ class SemanticWorkflowService:
                 logger.warning("Agent memory semantic bridge record skipped: %s", exc)
         try:
             OSLCTRSService.publish_event(
-                f"{OSLCTRSService.base_url()}/api/v1/ontology/{ontology_id}",
+                OSLCTRSService.ontology_resource_uri(ontology_id),
                 "Modification",
                 title=f"Semantic bridge link update for {ontology_id}",
                 metadata={"workflow_id": "instance.link", "task_id": task_id, "ontology_id": ontology_id, "import_task_id": import_task_id, "applied_links": applied_links},

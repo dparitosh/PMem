@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 from rdflib import Graph
 from rdflib.namespace import RDF, RDFS, SH
@@ -49,6 +50,56 @@ class OSLCService:
     """Read-only OSLC facade over the current semantic graph."""
 
     DEFAULT_RESOURCE_TYPE = "resources"
+    AM_RESOURCE_TYPE = "architecture-resources"
+    RM_REQUIREMENT_TYPE = "requirements"
+    RM_COLLECTION_TYPE = "requirement-collections"
+    SUPPORTED_RESOURCE_TYPES = {
+        DEFAULT_RESOURCE_TYPE,
+        AM_RESOURCE_TYPE,
+        RM_REQUIREMENT_TYPE,
+        RM_COLLECTION_TYPE,
+    }
+    AM_TYPE_URI = "http://open-services.net/ns/am#Resource"
+    RM_REQUIREMENT_URI = "http://open-services.net/ns/rm#Requirement"
+    RM_COLLECTION_URI = "http://open-services.net/ns/rm#RequirementCollection"
+    DOMAIN_SHAPES = {
+        AM_RESOURCE_TYPE: {
+            "title": "OSLC AM Architecture Resource Shape",
+            "domain": "oslc_am",
+            "describes": [AM_TYPE_URI],
+            "properties": [
+                {"name": "dcterms:title", "occurs": "exactly-one", "valueType": "oslc:LiteralValue"},
+                {"name": "dcterms:description", "occurs": "zero-or-one", "valueType": "oslc:LiteralValue"},
+                {"name": "dcterms:identifier", "occurs": "zero-or-one", "valueType": "oslc:LiteralValue"},
+                {"name": "oslc:serviceProvider", "occurs": "exactly-one", "valueType": "oslc:Resource"},
+                {"name": "dcterms:relation", "occurs": "zero-or-many", "valueType": "oslc:Resource"},
+            ],
+        },
+        RM_REQUIREMENT_TYPE: {
+            "title": "OSLC RM Requirement Shape",
+            "domain": "oslc_rm",
+            "describes": [RM_REQUIREMENT_URI],
+            "properties": [
+                {"name": "dcterms:title", "occurs": "exactly-one", "valueType": "oslc:LiteralValue"},
+                {"name": "dcterms:description", "occurs": "zero-or-one", "valueType": "oslc:LiteralValue"},
+                {"name": "dcterms:identifier", "occurs": "zero-or-one", "valueType": "oslc:LiteralValue"},
+                {"name": "oslc:serviceProvider", "occurs": "exactly-one", "valueType": "oslc:Resource"},
+                {"name": "dcterms:relation", "occurs": "zero-or-many", "valueType": "oslc:Resource"},
+            ],
+        },
+        RM_COLLECTION_TYPE: {
+            "title": "OSLC RM Requirement Collection Shape",
+            "domain": "oslc_rm",
+            "describes": [RM_COLLECTION_URI],
+            "properties": [
+                {"name": "dcterms:title", "occurs": "exactly-one", "valueType": "oslc:LiteralValue"},
+                {"name": "dcterms:description", "occurs": "zero-or-one", "valueType": "oslc:LiteralValue"},
+                {"name": "dcterms:identifier", "occurs": "zero-or-one", "valueType": "oslc:LiteralValue"},
+                {"name": "oslc:serviceProvider", "occurs": "exactly-one", "valueType": "oslc:Resource"},
+                {"name": "oslc_rm:uses", "occurs": "zero-or-many", "valueType": "oslc:Resource"},
+            ],
+        },
+    }
     INTERNAL_DICTIONARY_PROPS = {
         "ontology_prefix", "ontology_id", "ontology_name", "source_ontology",
         "version", "created_at", "updated_at", "id", "elementId",
@@ -66,7 +117,11 @@ class OSLCService:
         base_url = str(os.getenv("OSLC_BASE_URL", "")).strip().rstrip("/")
         if not base_url:
             base_url = _default_base_url()
-        max_page_size = int(str(os.getenv("OSLC_MAX_PAGE_SIZE", "200")).strip() or "200")
+        raw_max_page_size = str(os.getenv("OSLC_MAX_PAGE_SIZE", "200")).strip() or "200"
+        try:
+            max_page_size = int(raw_max_page_size)
+        except (TypeError, ValueError):
+            max_page_size = 200
         return OSLCRuntimeConfig(
             base_url=base_url,
             provider_id=provider_id,
@@ -95,6 +150,9 @@ class OSLCService:
     def service_provider(cls) -> Dict[str, Any]:
         cfg = cls.config()
         query_base = f"{cfg.base_url}/oslc/query/{cls.DEFAULT_RESOURCE_TYPE}"
+        am_query_base = f"{cfg.base_url}/oslc/query/{cls.AM_RESOURCE_TYPE}"
+        rm_query_base = f"{cfg.base_url}/oslc/query/{cls.RM_REQUIREMENT_TYPE}"
+        rm_collection_query_base = f"{cfg.base_url}/oslc/query/{cls.RM_COLLECTION_TYPE}"
         return {
             "uri": f"{cfg.base_url}/oslc/providers/{cfg.provider_id}",
             "type": "oslc:ServiceProvider",
@@ -112,6 +170,12 @@ class OSLCService:
                     "namespace": "http://open-services.net/ns/am#",
                     "description": "Architecture/model element and traceability discovery profile for Teamcenter Linked Data and MBSE integrations.",
                 },
+                {
+                    "id": "oslc_rm",
+                    "title": "OSLC Requirements Management",
+                    "namespace": "http://open-services.net/ns/rm#",
+                    "description": "Requirement, requirement collection, and cross-domain traceability discovery profile.",
+                },
             ],
             "queryCapabilities": [
                 {
@@ -126,8 +190,32 @@ class OSLCService:
                         "oslc.pageSize",
                         "oslc.pageNum",
                     ],
-                    "domains": ["ap242", "oslc_am"],
-                }
+                    "domains": ["ap242", "oslc_am", "oslc_rm"],
+                },
+                {
+                    "resourceType": cls.AM_RESOURCE_TYPE,
+                    "resourceTypeUri": cls.AM_TYPE_URI,
+                    "queryBase": am_query_base,
+                    "resourceShape": f"{cfg.base_url}/oslc/shapes/{cls.AM_RESOURCE_TYPE}",
+                    "supportedParameters": ["oslc.where", "oslc.select", "oslc.orderBy", "oslc.searchTerms", "oslc.paging", "oslc.pageSize", "oslc.pageNum"],
+                    "domains": ["oslc_am"],
+                },
+                {
+                    "resourceType": cls.RM_REQUIREMENT_TYPE,
+                    "resourceTypeUri": cls.RM_REQUIREMENT_URI,
+                    "queryBase": rm_query_base,
+                    "resourceShape": f"{cfg.base_url}/oslc/shapes/{cls.RM_REQUIREMENT_TYPE}",
+                    "supportedParameters": ["oslc.where", "oslc.select", "oslc.orderBy", "oslc.searchTerms", "oslc.paging", "oslc.pageSize", "oslc.pageNum"],
+                    "domains": ["oslc_rm"],
+                },
+                {
+                    "resourceType": cls.RM_COLLECTION_TYPE,
+                    "resourceTypeUri": cls.RM_COLLECTION_URI,
+                    "queryBase": rm_collection_query_base,
+                    "resourceShape": f"{cfg.base_url}/oslc/shapes/{cls.RM_COLLECTION_TYPE}",
+                    "supportedParameters": ["oslc.where", "oslc.select", "oslc.orderBy", "oslc.searchTerms", "oslc.paging", "oslc.pageSize", "oslc.pageNum"],
+                    "domains": ["oslc_rm"],
+                },
             ],
             "resourceShapes": [
                 {
@@ -137,7 +225,14 @@ class OSLCService:
                 {
                     "uri": f"{cfg.base_url}/oslc/shapes",
                     "title": "Ontology Resource Shapes",
-                }
+                },
+                *[
+                    {
+                        "uri": f"{cfg.base_url}/oslc/shapes/{shape_id}",
+                        "title": definition["title"],
+                    }
+                    for shape_id, definition in cls.DOMAIN_SHAPES.items()
+                ],
             ],
             "domainResources": {
                 "ap242": {
@@ -150,10 +245,19 @@ class OSLCService:
                 },
                 "oslc_am": {
                     "title": "OSLC AM Architecture Resources",
-                    "queryBase": query_base,
-                    "shape": f"{cfg.base_url}/oslc/shapes/resources",
+                    "queryBase": am_query_base,
+                    "shape": f"{cfg.base_url}/oslc/shapes/{cls.AM_RESOURCE_TYPE}",
                     "trs": f"{cfg.base_url}/oslc/trs",
                     "description": "Architecture/model element discovery profile for Teamcenter LDS and MBSE integrations.",
+                },
+                "oslc_rm": {
+                    "title": "OSLC RM Requirement Resources",
+                    "queryBase": rm_query_base,
+                    "collectionQueryBase": rm_collection_query_base,
+                    "shape": f"{cfg.base_url}/oslc/shapes/{cls.RM_REQUIREMENT_TYPE}",
+                    "collectionShape": f"{cfg.base_url}/oslc/shapes/{cls.RM_COLLECTION_TYPE}",
+                    "trs": f"{cfg.base_url}/oslc/trs",
+                    "description": "Requirement, requirement collection, and lifecycle traceability discovery profile.",
                 },
                 "dictionaries": {
                     "title": "Ontology Data Dictionaries",
@@ -170,16 +274,22 @@ class OSLCService:
 
     @classmethod
     def _fallback_resource_shape(cls) -> Dict[str, Any]:
-        schema = GraphViewService._run(
-            """
-            MATCH (n)
-            WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
-            RETURN labels(n) AS labels, keys(n) AS property_keys
-            LIMIT 250
-            """
-        )
-        labels = sorted({label for row in schema for label in (row.get("labels") or [])})
-        properties = sorted({prop for row in schema for prop in (row.get("property_keys") or []) if prop})
+        labels = sorted({
+            str(row.get("label") or "")
+            for row in GraphViewService._run(
+                "MATCH (n) WHERE NOT (n:DatasheetChunk OR n:GraphChunk) "
+                "UNWIND labels(n) AS label RETURN DISTINCT label ORDER BY label"
+            )
+            if row.get("label")
+        })
+        properties = sorted({
+            str(row.get("propertyKey") or "")
+            for row in GraphViewService._run(
+                "MATCH (n) WHERE NOT (n:DatasheetChunk OR n:GraphChunk) "
+                "UNWIND keys(n) AS propertyKey RETURN DISTINCT propertyKey ORDER BY propertyKey"
+            )
+            if row.get("propertyKey")
+        })
         cfg = cls.config()
         return {
             "uri": f"{cfg.base_url}/oslc/shapes/{cls.DEFAULT_RESOURCE_TYPE}",
@@ -192,7 +302,11 @@ class OSLCService:
 
     @staticmethod
     def _discover_shacl_file(meta: Dict[str, Any], context: Dict[str, Any]) -> Optional[Path]:
-        base_dir = Path(meta.get("file_path") or context.get("source_file_path") or context.get("file_path") or "").resolve().parent
+        raw_base_path = str(meta.get("file_path") or context.get("source_file_path") or context.get("file_path") or "").strip()
+        if not raw_base_path:
+            return None
+        resolved_base = Path(raw_base_path).resolve()
+        base_dir = resolved_base.parent
         prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
         source_file = Path(context.get("source_file_path") or context.get("file_path") or "")
         semantic_file = Path(context.get("file_path") or source_file)
@@ -431,6 +545,16 @@ class OSLCService:
                 "kind": "generic",
             }
         ]
+        members.extend(
+            {
+                "uri": f"{cls.config().base_url}/oslc/shapes/{shape_id}",
+                "shape_id": shape_id,
+                "title": definition["title"],
+                "domain": definition["domain"],
+                "kind": "oslc-domain",
+            }
+            for shape_id, definition in cls.DOMAIN_SHAPES.items()
+        )
         listed = OntologyUploadManager.list_ontologies()
         if listed.get("status") == "success":
             for meta in listed.get("ontologies", []):
@@ -456,6 +580,18 @@ class OSLCService:
         normalized_shape_id = str(shape_id or cls.DEFAULT_RESOURCE_TYPE).strip()
         if normalized_shape_id in {"", cls.DEFAULT_RESOURCE_TYPE}:
             return cls._fallback_resource_shape()
+        if normalized_shape_id in cls.DOMAIN_SHAPES:
+            definition = cls.DOMAIN_SHAPES[normalized_shape_id]
+            return {
+                "uri": f"{cls.config().base_url}/oslc/shapes/{normalized_shape_id}",
+                "type": "oslc:ResourceShape",
+                "shape_id": normalized_shape_id,
+                "title": definition["title"],
+                "domain": definition["domain"],
+                "describes": list(definition["describes"]),
+                "properties": [dict(item) for item in definition["properties"]],
+                "source": "oslc-domain-profile",
+            }
 
         context = OntologyReasoningService.semantic_context(normalized_shape_id)
         reasoning = OntologyReasoningService.inspect_context(context)
@@ -819,15 +955,18 @@ class OSLCService:
 
     @classmethod
     def query_resources(cls, resource_type: str, params: OSLCQueryParameters) -> Dict[str, Any]:
+        normalized_resource_type = str(resource_type or "").strip().lower()
+        if normalized_resource_type not in cls.SUPPORTED_RESOURCE_TYPES:
+            raise ValueError(f"Unsupported OSLC resource type: {resource_type}")
         cfg = cls.config()
-        rows = GraphViewService._run(*cls._build_resource_query(params))
-        total_rows = GraphViewService._run(*cls._build_count_query(params))
+        rows = GraphViewService._run(*cls._build_resource_query(params, normalized_resource_type))
+        total_rows = GraphViewService._run(*cls._build_count_query(params, normalized_resource_type))
         total_count = int(total_rows[0].get("count", 0)) if total_rows else 0
-        members = [cls._row_to_resource_payload(row, params.select) for row in rows]
+        members = [cls._row_to_resource_payload(row, params.select, normalized_resource_type) for row in rows]
         return {
-            "uri": f"{cfg.base_url}/oslc/query/{resource_type}",
+            "uri": f"{cfg.base_url}/oslc/query/{normalized_resource_type}",
             "type": "oslc:QueryResult",
-            "resourceType": resource_type,
+            "resourceType": normalized_resource_type,
             "oslc:totalCount": total_count,
             "page": params.page_num,
             "pageSize": params.page_size,
@@ -852,6 +991,13 @@ class OSLCService:
                 relationshipElementId: elementId(r),
                 targetElementId: elementId(m),
                 targetLabels: labels(m),
+                targetProperties: {
+                  element_type: m.element_type,
+                  entity_type: m.entity_type,
+                  type: m.type,
+                  semantic_role: m.semantic_role,
+                  source_format: m.source_format
+                },
                 targetName: coalesce(m.name, m.title, m.code, m.label, m.id, elementId(m))
               }) AS outgoing
             LIMIT 1
@@ -863,8 +1009,11 @@ class OSLCService:
         return cls._resource_detail_payload(rows[0])
 
     @classmethod
-    def _build_resource_query(cls, params: OSLCQueryParameters):
+    def _build_resource_query(cls, params: OSLCQueryParameters, resource_type: str = DEFAULT_RESOURCE_TYPE):
         where_clauses = ["NOT (n:DatasheetChunk OR n:GraphChunk)"]
+        domain_predicate = cls._resource_type_predicate(resource_type)
+        if domain_predicate:
+            where_clauses.append(domain_predicate)
         cypher_params: Dict[str, Any] = {
             "skip": (params.page_num - 1) * params.page_size,
             "limit": params.page_size,
@@ -873,22 +1022,25 @@ class OSLCService:
         for index, condition in enumerate(params.where):
             where_clauses.append(cls._condition_to_cypher(condition, index, cypher_params))
 
-        if params.search_terms:
-            cypher_params["search_terms"] = params.search_terms.lower()
-            where_clauses.append(
-                """
-                (
-                  toLower(coalesce(toString(properties(n)['name']), '')) CONTAINS $search_terms OR
-                  toLower(coalesce(toString(properties(n)['title']), '')) CONTAINS $search_terms OR
-                  toLower(coalesce(toString(properties(n)['code']), '')) CONTAINS $search_terms OR
-                  toLower(coalesce(toString(properties(n)['label']), '')) CONTAINS $search_terms OR
-                  toLower(coalesce(toString(properties(n)['id']), '')) CONTAINS $search_terms OR
-                  any(key IN keys(n) WHERE toLower(toString(properties(n)[key])) CONTAINS $search_terms)
-                )
-                """
-            )
+        search_predicates = []
+        search_score_parts = []
+        for term_index, term in enumerate(cls._normalized_search_terms(params.search_terms)):
+            term_key = f"search_term_{term_index}"
+            cypher_params[term_key] = term.lower()
+            predicate = cls._search_term_predicate(term_key)
+            search_predicates.append(predicate)
+            search_score_parts.append(f"CASE WHEN {predicate} THEN 1 ELSE 0 END")
+        if search_predicates:
+            where_clauses.append(f"({' OR '.join(search_predicates)})")
 
-        order_by = cls._build_order_by(params.order_by)
+        base_order_by = cls._build_order_by(params.order_by)
+        if search_score_parts:
+            tie_breakers = base_order_by.removeprefix("ORDER BY ")
+            order_by = f"ORDER BY search_score DESC, {tie_breakers}"
+            search_score_projection = f", ({' + '.join(search_score_parts)}) AS search_score"
+        else:
+            order_by = base_order_by
+            search_score_projection = ""
 
         cypher = f"""
         MATCH (n)
@@ -896,6 +1048,7 @@ class OSLCService:
         RETURN elementId(n) AS element_id,
                labels(n) AS labels,
                properties(n) AS properties
+               {search_score_projection}
         {order_by}
         SKIP $skip
         LIMIT $limit
@@ -903,31 +1056,78 @@ class OSLCService:
         return cypher, cypher_params
 
     @classmethod
-    def _build_count_query(cls, params: OSLCQueryParameters):
+    def _build_count_query(cls, params: OSLCQueryParameters, resource_type: str = DEFAULT_RESOURCE_TYPE):
         where_clauses = ["NOT (n:DatasheetChunk OR n:GraphChunk)"]
+        domain_predicate = cls._resource_type_predicate(resource_type)
+        if domain_predicate:
+            where_clauses.append(domain_predicate)
         cypher_params: Dict[str, Any] = {}
         for index, condition in enumerate(params.where):
             where_clauses.append(cls._condition_to_cypher(condition, index, cypher_params))
-        if params.search_terms:
-            cypher_params["search_terms"] = params.search_terms.lower()
-            where_clauses.append(
-                """
-                (
-                  toLower(coalesce(toString(properties(n)['name']), '')) CONTAINS $search_terms OR
-                  toLower(coalesce(toString(properties(n)['title']), '')) CONTAINS $search_terms OR
-                  toLower(coalesce(toString(properties(n)['code']), '')) CONTAINS $search_terms OR
-                  toLower(coalesce(toString(properties(n)['label']), '')) CONTAINS $search_terms OR
-                  toLower(coalesce(toString(properties(n)['id']), '')) CONTAINS $search_terms OR
-                  any(key IN keys(n) WHERE toLower(toString(properties(n)[key])) CONTAINS $search_terms)
-                )
-                """
-            )
+        search_predicates = []
+        for term_index, term in enumerate(cls._normalized_search_terms(params.search_terms)):
+            term_key = f"search_term_{term_index}"
+            cypher_params[term_key] = term.lower()
+            search_predicates.append(cls._search_term_predicate(term_key))
+        if search_predicates:
+            where_clauses.append(f"({' OR '.join(search_predicates)})")
         cypher = f"""
         MATCH (n)
         WHERE {' AND '.join(clause.strip() for clause in where_clauses)}
         RETURN count(n) AS count
         """
         return cypher, cypher_params
+
+    @classmethod
+    def _resource_type_predicate(cls, resource_type: str) -> str:
+        normalized = str(resource_type or cls.DEFAULT_RESOURCE_TYPE).strip().lower()
+        requirement = (
+            "(any(lbl IN labels(n) WHERE toLower(lbl) IN "
+            "['requirement', 'requirementrevision', 'oslcrequirement', 'reqifspecobject']) OR "
+            "toLower(coalesce(toString(n.semantic_role), '')) = 'requirement' OR "
+            "toLower(coalesce(toString(n.element_type), toString(n.entity_type), '')) IN "
+            "['requirement', 'requirementrevision'])"
+        )
+        collection = (
+            "(any(lbl IN labels(n) WHERE toLower(lbl) IN "
+            "['specification', 'requirementcollection', 'reqifspecification']) OR "
+            "toLower(coalesce(toString(n.semantic_role), '')) = 'requirement_specification' OR "
+            "toLower(coalesce(toString(n.element_type), toString(n.entity_type), '')) IN "
+            "['specification', 'requirementcollection'])"
+        )
+        if normalized == cls.DEFAULT_RESOURCE_TYPE:
+            return ""
+        if normalized == cls.RM_REQUIREMENT_TYPE:
+            return requirement
+        if normalized == cls.RM_COLLECTION_TYPE:
+            return collection
+        if normalized == cls.AM_RESOURCE_TYPE:
+            architecture = (
+                "(n:ModelElement OR any(lbl IN labels(n) WHERE toLower(lbl) IN "
+                "['system', 'subsystem', 'component', 'interface', 'function', 'capability', "
+                "'operationalactivity', 'performer', 'package', 'project', 'usecase', 'actor', "
+                "'activity', 'signal', 'flowport', 'itemflow', 'constraintblock', 'view']) OR "
+                "toLower(coalesce(toString(n.source_format), '')) IN "
+                "['xmi', 'mdxml', 'sysml', 'uml', 'archimate'] OR "
+                "toLower(coalesce(toString(n.type), '')) CONTAINS 'uml:' OR "
+                "toLower(coalesce(toString(n.type), '')) CONTAINS 'sysml:' OR "
+                "toLower(coalesce(toString(n.archimate_type), '')) <> '')"
+            )
+            return f"({architecture} AND NOT {requirement} AND NOT {collection})"
+        raise ValueError(f"Unsupported OSLC resource type: {resource_type}")
+
+    @staticmethod
+    def _search_term_predicate(term_key: str) -> str:
+        return (
+            "("
+            f"toLower(coalesce(toString(properties(n)['name']), '')) CONTAINS ${term_key} OR "
+            f"toLower(coalesce(toString(properties(n)['title']), '')) CONTAINS ${term_key} OR "
+            f"toLower(coalesce(toString(properties(n)['code']), '')) CONTAINS ${term_key} OR "
+            f"toLower(coalesce(toString(properties(n)['label']), '')) CONTAINS ${term_key} OR "
+            f"toLower(coalesce(toString(properties(n)['id']), '')) CONTAINS ${term_key} OR "
+            f"any(key IN keys(n) WHERE toLower(coalesce(toString(properties(n)[key]), '')) CONTAINS ${term_key})"
+            ")"
+        )
 
     @staticmethod
     def _condition_to_cypher(condition: OSLCCondition, index: int, params: Dict[str, Any]) -> str:
@@ -946,8 +1146,20 @@ class OSLCService:
         }
         operator = operator_map[condition.operator]
         if property_name.lower() in {"type", "rdf:type", "label", "labels"}:
+            if condition.operator == "=":
+                return f"any(lbl IN labels(n) WHERE toLower(lbl) = toLower(toString($${value_key})))".replace("$$", "$")
+            if condition.operator == "!=":
+                return f"none(lbl IN labels(n) WHERE toLower(lbl) = toLower(toString($${value_key})))".replace("$$", "$")
             return f"any(lbl IN labels(n) WHERE toLower(lbl) {operator} toLower(toString($${value_key})))".replace("$$", "$")
+        if isinstance(condition.value, (int, float)) and not isinstance(condition.value, bool):
+            return f"toFloat(properties(n)[$${property_key}]) {operator} toFloat($${value_key})".replace("$$", "$")
         return f"coalesce(toString(properties(n)[$${property_key}]), '') {operator} toString($${value_key})".replace("$$", "$")
+
+    @staticmethod
+    def _normalized_search_terms(search_terms: Any) -> List[str]:
+        if isinstance(search_terms, str):
+            return [search_terms.strip()] if search_terms.strip() else []
+        return [str(term).strip() for term in (search_terms or []) if str(term).strip()]
 
     @staticmethod
     def _build_order_by(order_by: List[tuple[str, str]]) -> str:
@@ -959,40 +1171,148 @@ class OSLCService:
             sort_dir = "DESC" if str(direction).lower() == "desc" else "ASC"
             safe_name = field_name.replace("'", "")
             if safe_name.lower() in {"type", "rdf:type", "label", "labels"}:
-                fragments.append(f"toLower(head(labels(n))) {sort_dir}")
+                fragments.append(
+                    "reduce(label_key = '', lbl IN labels(n) | "
+                    "CASE WHEN label_key = '' OR toLower(lbl) < label_key "
+                    f"THEN toLower(lbl) ELSE label_key END) {sort_dir}"
+                )
             else:
                 fragments.append(f"toLower(toString(coalesce(properties(n)['{safe_name}'], ''))) {sort_dir}")
         return "ORDER BY " + ", ".join(fragments)
 
     @classmethod
-    def _row_to_resource_payload(cls, row: Dict[str, Any], selected_fields: List[str]) -> Dict[str, Any]:
+    def resource_domain_types(cls, labels: List[str], properties: Dict[str, Any]) -> List[str]:
+        """Return OSLC domain RDF types inferred from stable graph discriminators."""
+        lowered_labels = {str(label).strip().lower() for label in (labels or [])}
+        lowered = {
+            key: str((properties or {}).get(key) or "").strip().lower()
+            for key in ("semantic_role", "element_type", "entity_type", "type", "source_format", "archimate_type")
+        }
+        if (
+            lowered_labels.intersection({"requirement", "requirementrevision", "oslcrequirement", "reqifspecobject"})
+            or lowered["semantic_role"] == "requirement"
+            or lowered["element_type"] in {"requirement", "requirementrevision"}
+            or lowered["entity_type"] in {"requirement", "requirementrevision"}
+        ):
+            return [cls.RM_REQUIREMENT_URI]
+        if (
+            lowered_labels.intersection({"specification", "requirementcollection", "reqifspecification"})
+            or lowered["semantic_role"] == "requirement_specification"
+            or lowered["element_type"] in {"specification", "requirementcollection"}
+            or lowered["entity_type"] in {"specification", "requirementcollection"}
+        ):
+            return [cls.RM_COLLECTION_URI]
+        architecture_labels = {
+            "modelelement", "system", "subsystem", "component", "interface", "function", "capability",
+            "operationalactivity", "performer", "package", "project", "usecase", "actor", "activity",
+            "signal", "flowport", "itemflow", "constraintblock", "view",
+        }
+        if (
+            lowered_labels.intersection(architecture_labels)
+            or lowered["source_format"] in {"xmi", "mdxml", "sysml", "uml", "archimate"}
+            or "uml:" in lowered["type"]
+            or "sysml:" in lowered["type"]
+            or bool(lowered["archimate_type"])
+        ):
+            return [cls.AM_TYPE_URI]
+        return []
+
+    @classmethod
+    def _profile_type_uris(cls, resource_type: str, labels: List[str], properties: Dict[str, Any]) -> List[str]:
+        normalized = str(resource_type or cls.DEFAULT_RESOURCE_TYPE).strip().lower()
+        explicit = {
+            cls.AM_RESOURCE_TYPE: [cls.AM_TYPE_URI],
+            cls.RM_REQUIREMENT_TYPE: [cls.RM_REQUIREMENT_URI],
+            cls.RM_COLLECTION_TYPE: [cls.RM_COLLECTION_URI],
+        }.get(normalized)
+        return explicit or cls.resource_domain_types(labels, properties)
+
+    @classmethod
+    def _shape_for_types(cls, type_uris: List[str]) -> Optional[str]:
+        type_to_shape = {
+            cls.AM_TYPE_URI: cls.AM_RESOURCE_TYPE,
+            cls.RM_REQUIREMENT_URI: cls.RM_REQUIREMENT_TYPE,
+            cls.RM_COLLECTION_URI: cls.RM_COLLECTION_TYPE,
+        }
+        shape_id = next((type_to_shape[item] for item in type_uris if item in type_to_shape), None)
+        return f"{cls.config().base_url}/oslc/shapes/{shape_id}" if shape_id else None
+
+    @classmethod
+    def _row_to_resource_payload(
+        cls,
+        row: Dict[str, Any],
+        selected_fields: List[str],
+        resource_type: str = DEFAULT_RESOURCE_TYPE,
+    ) -> Dict[str, Any]:
         properties = dict(row.get("properties") or {})
+        cfg = cls.config()
+        encoded_id = quote(str(row.get('element_id') or ''), safe='')
+        resource_uri = f"{cfg.base_url}/oslc/resources/{encoded_id}"
+        types = row.get("labels") or []
+        domain_types = cls._profile_type_uris(resource_type, types, properties)
+        rdf_types = domain_types or types
+        title = properties.get("name") or properties.get("title") or properties.get("code") or properties.get("label") or properties.get("id") or row.get("element_id")
         if selected_fields:
-            selected = {field_name: properties.get(field_name) for field_name in selected_fields}
+            selected = {}
+            for field_name in selected_fields:
+                normalized = field_name.lower()
+                if normalized in {"uri", "rdf:about"}:
+                    selected[field_name] = resource_uri
+                elif normalized in {"type", "types", "rdf:type", "label", "labels"}:
+                    selected[field_name] = rdf_types
+                elif normalized in {"title", "dcterms:title"}:
+                    selected[field_name] = title
+                elif normalized in {"elementid", "element_id"}:
+                    selected[field_name] = row.get("element_id")
+                else:
+                    selected[field_name] = properties.get(field_name)
         else:
             selected = properties
-        cfg = cls.config()
-        return {
-            "uri": f"{cfg.base_url}/oslc/resources/{row.get('element_id')}",
+        payload = {
+            "uri": resource_uri,
             "elementId": row.get("element_id"),
-            "types": row.get("labels") or [],
-            "title": properties.get("name") or properties.get("title") or properties.get("code") or properties.get("label") or properties.get("id") or row.get("element_id"),
+            "types": types,
+            "rdf:type": rdf_types,
+            "oslc:serviceProvider": f"{cfg.base_url}/oslc/providers/{cfg.provider_id}",
+            "title": title,
             "properties": selected,
         }
+        instance_shape = cls._shape_for_types(domain_types)
+        if instance_shape:
+            payload["oslc:instanceShape"] = instance_shape
+        if row.get("search_score") is not None:
+            payload["oslc:score"] = max(0, min(100, int(row.get("search_score") or 0)))
+        return payload
 
     @classmethod
     def _resource_detail_payload(cls, row: Dict[str, Any]) -> Dict[str, Any]:
         properties = dict(row.get("properties") or {})
         cfg = cls.config()
+        labels = row.get("labels") or []
+        domain_types = cls.resource_domain_types(labels, properties)
         links = [
-            item for item in (row.get("outgoing") or [])
+            {
+                **item,
+                "targetUri": f"{cfg.base_url}/oslc/resources/{quote(str(item.get('targetElementId') or ''), safe='')}",
+                "predicate": "http://purl.org/dc/terms/relation",
+                "targetRdfTypes": cls.resource_domain_types(
+                    item.get("targetLabels") or [], item.get("targetProperties") or {}
+                ),
+            }
+            for item in (row.get("outgoing") or [])
             if item and item.get("relationshipType") and item.get("targetElementId")
         ]
-        return {
-            "uri": f"{cfg.base_url}/oslc/resources/{row.get('element_id')}",
+        payload = {
+            "uri": f"{cfg.base_url}/oslc/resources/{quote(str(row.get('element_id') or ''), safe='')}",
             "elementId": row.get("element_id"),
-            "types": row.get("labels") or [],
+            "types": labels,
+            "rdf:type": domain_types or labels,
+            "oslc:serviceProvider": f"{cfg.base_url}/oslc/providers/{cfg.provider_id}",
             "title": properties.get("name") or properties.get("title") or properties.get("code") or properties.get("label") or properties.get("id") or row.get("element_id"),
             "properties": properties,
             "outgoingLinks": links,
         }
+        instance_shape = cls._shape_for_types(domain_types)
+        if instance_shape:
+            payload["oslc:instanceShape"] = instance_shape
+        return payload

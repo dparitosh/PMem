@@ -46,6 +46,7 @@ class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       return (
         <div
+          role="alert"
           style={{
             display: 'flex',
             flexDirection: 'column',

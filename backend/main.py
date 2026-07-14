@@ -3960,9 +3960,14 @@ def get_xsd_relational_report(ontology_id: str = Query(..., min_length=1, max_le
 
 # ======================== RECOMMENDATION ENDPOINTS ========================
 
-from Services.change_impact_recommender import ChangeImpactRecommender
-from Services.similar_parts_recommender import SimilarPartsRecommender
-from Services.manufacturing_process_recommender import ManufacturingProcessRecommender
+try:
+    from .Services.change_impact_recommender import ChangeImpactRecommender
+    from .Services.similar_parts_recommender import SimilarPartsRecommender
+    from .Services.manufacturing_process_recommender import ManufacturingProcessRecommender
+except ImportError:
+    from Services.change_impact_recommender import ChangeImpactRecommender
+    from Services.similar_parts_recommender import SimilarPartsRecommender
+    from Services.manufacturing_process_recommender import ManufacturingProcessRecommender
 
 _change_impact = ChangeImpactRecommender(graph)
 _similar_parts = SimilarPartsRecommender(graph)
@@ -4131,7 +4136,10 @@ def recommendations_health():
 
 # ======================== ONTOLOGY MAPPER ENDPOINTS ========================
 
-from Services.ontology_mapper_service import OntologyMapperService
+try:
+    from .Services.ontology_mapper_service import OntologyMapperService
+except ImportError:
+    from Services.ontology_mapper_service import OntologyMapperService
 
 LEGACY_ONTOLOGY_MAPPER_NOTICE = {
     "deprecated": True,
@@ -4358,11 +4366,15 @@ def get_available_ontologies():
 
 from fastapi import UploadFile, File, Form
 from pathlib import Path as _Path
-from Services.data_import_service import DataImportService
-from Services.ollama_service import get_ollama_service
+try:
+    from .Services.data_import_service import DataImportService
+    from .Services.ollama_service import get_ollama_service
+except ImportError:
+    from Services.data_import_service import DataImportService
+    from Services.ollama_service import get_ollama_service
 
 # Directory containing ontology .ttl files served by the frontend
-ONTOLOGY_DIR = _Path(__file__).resolve().parent.parent.parent / "frontend" / "public" / "Ontology"
+ONTOLOGY_DIR = _Path(__file__).resolve().parent.parent / "frontend" / "public" / "Ontology"
 
 
 class OllamaQueryRequest(BaseModel):
@@ -5029,7 +5041,7 @@ async def commit_import(task_id: str):
                 invalidate_graphvis_cache()
                 try:
                     OSLCTRSService.publish_event(
-                        f"{OSLCTRSService.base_url()}/api/v1/import/status/{task_id}",
+                        OSLCTRSService.import_resource_uri(task_id),
                         "Modification",
                         title=f"Import committed for {task_id}",
                         metadata={"task_id": task_id, "path": "unified_commit", "result_summary": str(result)[:500]},
@@ -5098,7 +5110,7 @@ async def commit_import(task_id: str):
             invalidate_graphvis_cache()
             try:
                 OSLCTRSService.publish_event(
-                    f"{OSLCTRSService.base_url()}/api/v1/import/status/{task_id}",
+                    OSLCTRSService.import_resource_uri(task_id),
                     "Modification",
                     title=f"Import committed for {task_id}",
                     metadata={"task_id": task_id, "path": "legacy_commit", "committed_count": committed_count},
@@ -5126,7 +5138,10 @@ async def commit_import(task_id: str):
 # ============================================================================
 # Webhook Handlers with Signature Validation
 # ============================================================================
-from Services.webhook_validator import WebhookValidator, WEBHOOK_SECRETS
+try:
+    from .Services.webhook_validator import WebhookValidator, WEBHOOK_SECRETS
+except ImportError:
+    from Services.webhook_validator import WebhookValidator, WEBHOOK_SECRETS
 
 # Configure webhook secrets from environment variables
 # Set as: NEO4J_WEBHOOK_SECRET="your_secret_key" in .env

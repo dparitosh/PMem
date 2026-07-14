@@ -9,14 +9,15 @@ import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import AppShell from './app/AppShell';
 import { normalizePage } from './app/navigation';
+import { API_METHODS } from './services/apiClient';
 
 const Chatbot = lazy(() => import('./Components/Chatbot'));
 const ImportPage = lazy(() => import('./pages/ImportPage'));
-const OntologyStudioPage = lazy(() => import('./pages/OntologyStudioPage'));
+const OntologyJunctionPage = lazy(() => import('./pages/OntologyJunctionPage'));
 const MetadataRegistryPage = lazy(() => import('./pages/MetadataRegistryPage'));
 const GraphExplorerPage = lazy(() => import('./pages/GraphExplorerPage'));
 const ModelWorkbenchPage = lazy(() => import('./pages/ModelWorkbenchPage'));
-const QualityPage = lazy(() => import('./pages/QualityPage'));
+const RecommendationsPage = lazy(() => import('./pages/RecommendationsPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const WhereUsedPage = lazy(() => import('./pages/WhereUsedPage'));
@@ -27,8 +28,21 @@ const NAV_STORAGE_KEY = 'depo.activePage';
 
 function getInitialActivePage() {
   if (typeof window === 'undefined') return 'graph';
-  const stored = window.localStorage.getItem(NAV_STORAGE_KEY);
-  return normalizePage(stored || 'graph');
+  try {
+    const stored = window.localStorage.getItem(NAV_STORAGE_KEY);
+    return normalizePage(stored || 'graph');
+  } catch (_error) {
+    return 'graph';
+  }
+}
+
+function persistActivePage(value) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(NAV_STORAGE_KEY, value);
+  } catch (_error) {
+    // Storage can be unavailable in private/restricted browser contexts.
+  }
 }
 
 function PageFallback() {
@@ -56,28 +70,56 @@ function App() {
   const [chatResults, setChatResults] = useState(null);
   const [showChat, setShowChat] = useState(false);
   const [visibleRelationships, setVisibleRelationships] = useState(null);
+  const [serviceStatus, setServiceStatus] = useState('checking');
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(NAV_STORAGE_KEY, page === 'home' ? 'home' : activePage);
+    persistActivePage(page === 'home' ? 'home' : activePage);
   }, [page, activePage]);
+
+  useEffect(() => {
+    if (page === 'home') return undefined;
+    const controller = new AbortController();
+    let active = true;
+    Promise.resolve(API_METHODS.health.check({ signal: controller.signal, timeout: 5000 }))
+      .then(() => {
+        if (active) setServiceStatus('online');
+      })
+      .catch((error) => {
+        if (active && error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError') {
+          setServiceStatus('offline');
+        }
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [page]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('resize'));
+  }, [activePage, showChat]);
+
+  useEffect(() => {
+    if (!showChat || typeof window === 'undefined') return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setShowChat(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [showChat]);
 
   const toggleChat = useCallback(() => {
     setShowChat((prev) => !prev);
-    setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
   }, []);
 
   const handleNavigate = useCallback((target) => {
     const nextPage = normalizePage(target);
     if (nextPage === 'home') {
       setPage('home');
-      if (typeof window !== 'undefined') window.localStorage.setItem(NAV_STORAGE_KEY, 'home');
       return;
     }
     setPage('app');
     setActivePage(nextPage);
-    if (typeof window !== 'undefined') window.localStorage.setItem(NAV_STORAGE_KEY, nextPage);
-    setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
   }, []);
 
   const handleSchemaCleaned = useCallback(() => {
@@ -106,11 +148,11 @@ function App() {
       case 'import':
         return <ImportPage />;
       case 'ontology':
-        return <OntologyStudioPage />;
+        return <OntologyJunctionPage />;
       case 'registry':
         return <MetadataRegistryPage />;
       case 'quality':
-        return <QualityPage setActiveTab={handleNavigate} />;
+        return <RecommendationsPage setActiveTab={handleNavigate} />;
       case 'reports':
         return <ReportsPage searchResults={searchResults} chatResults={chatResults} graphData={data} />;
       case 'admin':
@@ -189,6 +231,7 @@ function App() {
             onHome={() => setPage('home')}
             showChat={showChat}
             onToggleChat={toggleChat}
+            serviceStatus={serviceStatus}
             rightDrawer={(
               <ErrorBoundary>
                 <Suspense fallback={<PageFallback />}>

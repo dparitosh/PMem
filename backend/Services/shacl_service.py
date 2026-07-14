@@ -104,9 +104,9 @@ class ShaclValidationService:
                 shacl_graph = rdflib.Graph().parse(data=shacl_graph_str, format="turtle")
             
             if not shacl_graph:
-                # If no shapes provided, maybe check if data graph has shapes?
-                # Sometimes shapes are included in data.
-                pass
+                shacl_graph = rdflib.Graph().parse(data=self.create_default_shapes(), format="turtle")
+            if len(shacl_graph) == 0:
+                return {"conforms": False, "error": "SHACL shapes graph is empty", "validation_engine": "pyshacl"}
 
             conforms, report_graph, report_text = validate(
                 data_graph,
@@ -161,7 +161,7 @@ iae:ClassShape a sh:NodeShape ;
     sh:property [
         sh:path        rdfs:label ;
         sh:minCount    1 ;
-        sh:datatype    xsd:string ;
+        sh:or ( [ sh:datatype rdf:langString ] [ sh:datatype xsd:string ] ) ;
         sh:message     "Every owl:Class must have at least one rdfs:label." ;
     ] ;
     sh:property [
@@ -190,7 +190,7 @@ iae:ObjectPropertyShape a sh:NodeShape ;
     sh:property [
         sh:path     rdfs:label ;
         sh:minCount 1 ;
-        sh:datatype xsd:string ;
+        sh:or ( [ sh:datatype rdf:langString ] [ sh:datatype xsd:string ] ) ;
         sh:message  "Every owl:ObjectProperty must have rdfs:label." ;
     ] ;
     sh:property [
@@ -223,6 +223,7 @@ iae:ObjectPropertyShape a sh:NodeShape ;
     ] ;
     sh:property [
         sh:path        dc:source ;
+        sh:minCount    1 ;
         sh:severity    sh:Warning ;
         sh:message     "ObjectProperty should specify provenance via dc:source." ;
     ] .
@@ -234,7 +235,7 @@ iae:DatatypePropertyShape a sh:NodeShape ;
     sh:property [
         sh:path     rdfs:label ;
         sh:minCount 1 ;
-        sh:datatype xsd:string ;
+        sh:or ( [ sh:datatype rdf:langString ] [ sh:datatype xsd:string ] ) ;
         sh:message  "Every owl:DatatypeProperty must have rdfs:label." ;
     ] ;
     sh:property [
@@ -253,6 +254,7 @@ iae:DatatypePropertyShape a sh:NodeShape ;
         sh:path     rdfs:range ;
         sh:minCount 1 ;
         sh:nodeKind sh:IRI ;
+        sh:pattern  "^http://www.w3.org/2001/XMLSchema#" ;
         sh:message  "Every owl:DatatypeProperty must specify rdfs:range as XSD datatype." ;
     ] .
 
@@ -263,7 +265,7 @@ iae:AnnotationPropertyShape a sh:NodeShape ;
     sh:property [
         sh:path     rdfs:label ;
         sh:minCount 1 ;
-        sh:datatype xsd:string ;
+        sh:or ( [ sh:datatype rdf:langString ] [ sh:datatype xsd:string ] ) ;
         sh:message  "owl:AnnotationProperty must have rdfs:label." ;
     ] ;
     sh:property [
@@ -280,7 +282,7 @@ iae:IndividualShape a sh:NodeShape ;
     sh:property [
         sh:path     rdfs:label ;
         sh:minCount 1 ;
-        sh:datatype xsd:string ;
+        sh:or ( [ sh:datatype rdf:langString ] [ sh:datatype xsd:string ] ) ;
         sh:message  "Every owl:NamedIndividual must have rdfs:label." ;
     ] ;
     sh:property [
@@ -349,6 +351,7 @@ iae:FunctionalPropertyShape a sh:NodeShape ;
 # ── 8. Inverse property validation ─────────────────────────────────────────
 iae:InversePropertyShape a sh:PropertyShape ;
     sh:name    "Inverse Property Validation" ;
+    sh:targetSubjectsOf owl:inverseOf ;
     sh:path    owl:inverseOf ;
     sh:class   owl:ObjectProperty ;
     sh:message "owl:inverseOf must reference another owl:ObjectProperty." .
@@ -356,6 +359,7 @@ iae:InversePropertyShape a sh:PropertyShape ;
 # ── 9. Class disjointness validation ───────────────────────────────────────
 iae:DisjointClassShape a sh:PropertyShape ;
     sh:name    "Disjoint Class Validation" ;
+    sh:targetSubjectsOf owl:disjointWith ;
     sh:path    owl:disjointWith ;
     sh:class   owl:Class ;
     sh:message "owl:disjointWith must reference owl:Class." .

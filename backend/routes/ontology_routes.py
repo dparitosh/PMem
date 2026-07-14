@@ -69,6 +69,7 @@ class SwrlRuleRequest(BaseModel):
     rule: Dict[str, Any]
     facts: Optional[List[Dict[str, Any]]] = None
     execution_id: Optional[str] = None
+    scope_id: Optional[str] = None
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -304,7 +305,12 @@ async def swrl_materialization_plan(request: SwrlRuleRequest):
             return result
         return {
             **result,
-            "plan": InferenceNeo4jRepository.materialization_plan(rule, result.get("inferred_facts") or [], execution_id),
+            "plan": InferenceNeo4jRepository.materialization_plan(
+                rule,
+                result.get("inferred_facts") or [],
+                execution_id,
+                scope_id=request.scope_id or execution_id,
+            ),
         }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

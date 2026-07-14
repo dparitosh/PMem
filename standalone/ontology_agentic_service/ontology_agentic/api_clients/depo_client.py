@@ -28,6 +28,15 @@ class DepoApiClient:
         self.auth_token = str(auth_token or "").strip()
         if not self.base_url:
             raise DepoApiError("DEPO API base URL is required")
+        parsed_base = parse.urlparse(self.base_url)
+        if parsed_base.scheme not in {"http", "https"} or not parsed_base.netloc:
+            raise DepoApiError("DEPO API base URL must be an absolute HTTP(S) URL")
+        if self.timeout_seconds <= 0:
+            raise DepoApiError("DEPO API timeout must be greater than zero")
+
+    @staticmethod
+    def _path_segment(value: str) -> str:
+        return parse.quote(str(value), safe="")
 
     def health(self) -> dict[str, Any]:
         return self._request_json("GET", "/health")
@@ -72,12 +81,12 @@ class DepoApiClient:
 
     def oslc_provider(self, provider_id: str | None = None) -> dict[str, Any]:
         normalized_provider_id = str(provider_id or settings.default_oslc_provider_id).strip() or settings.default_oslc_provider_id
-        return self._request_json("GET", f"/oslc/providers/{parse.quote(normalized_provider_id)}")
+        return self._request_json("GET", f"/oslc/providers/{self._path_segment(normalized_provider_id)}")
 
     def oslc_shapes(self, shape_id: str = "") -> dict[str, Any]:
         normalized_shape_id = str(shape_id or "").strip()
         if normalized_shape_id:
-            return self._request_json("GET", f"/oslc/shapes/{parse.quote(normalized_shape_id)}")
+            return self._request_json("GET", f"/oslc/shapes/{self._path_segment(normalized_shape_id)}")
         return self._request_json("GET", "/oslc/shapes")
 
     def oslc_query_resources(
@@ -88,14 +97,14 @@ class DepoApiClient:
         normalized_type = str(resource_type or "resources").strip() or "resources"
         query = self._query_string(query_params or {})
         suffix = f"?{query}" if query else ""
-        return self._request_json("GET", f"/oslc/query/{parse.quote(normalized_type)}{suffix}")
+        return self._request_json("GET", f"/oslc/query/{self._path_segment(normalized_type)}{suffix}")
 
     def oslc_resource(self, element_id: str, include_links: bool = True) -> dict[str, Any]:
         normalized_element_id = str(element_id or "").strip()
         if not normalized_element_id:
             raise DepoApiError("element_id is required")
         query = parse.urlencode({"include_links": str(bool(include_links)).lower()})
-        return self._request_json("GET", f"/oslc/resources/{parse.quote(normalized_element_id)}?{query}")
+        return self._request_json("GET", f"/oslc/resources/{self._path_segment(normalized_element_id)}?{query}")
 
     def oslc_dictionary(
         self,
@@ -118,12 +127,12 @@ class DepoApiClient:
         }
         query = self._query_string(params)
         suffix = f"?{query}" if query else ""
-        return self._request_json("GET", f"/oslc/dictionaries/{parse.quote(normalized_prefix)}{suffix}")
+        return self._request_json("GET", f"/oslc/dictionaries/{self._path_segment(normalized_prefix)}{suffix}")
 
     def oslc_taxonomies(self, ontology_id: str = "") -> dict[str, Any]:
         normalized_ontology_id = str(ontology_id or "").strip()
         if normalized_ontology_id:
-            return self._request_json("GET", f"/oslc/taxonomies/{parse.quote(normalized_ontology_id)}")
+            return self._request_json("GET", f"/oslc/taxonomies/{self._path_segment(normalized_ontology_id)}")
         return self._request_json("GET", "/oslc/taxonomies")
 
     def oslc_trs(self, section: str = "descriptor", after: int | None = None, limit: int | None = None) -> dict[str, Any]:
@@ -171,14 +180,17 @@ class DepoApiClient:
         if not normalized_task_id:
             raise DepoApiError("task_id is required")
         query = parse.urlencode({"format": normalized_format})
-        path = f"/api/v1/import/owl/{parse.quote(normalized_task_id)}/export?{query}"
+        path = f"/api/v1/import/owl/{self._path_segment(normalized_task_id)}/export?{query}"
         return self._request_binary("GET", path)
 
     def download_import_owl_export(self, task_id: str, output_dir: str | Path, export_format: str = "ttl") -> dict[str, Any]:
         response = self.export_import_owl(task_id, export_format)
         destination_dir = Path(output_dir).resolve()
         destination_dir.mkdir(parents=True, exist_ok=True)
-        destination = destination_dir / response.filename
+        safe_filename = Path(response.filename).name
+        if safe_filename in {"", ".", ".."}:
+            safe_filename = "download.bin"
+        destination = destination_dir / safe_filename
         destination.write_bytes(response.body)
         return {
             "task_id": task_id,
@@ -248,5 +260,5 @@ class DepoApiClient:
         for segment in str(content_disposition or "").split(";"):
             part = segment.strip()
             if part.lower().startswith("filename="):
-                return part.split("=", 1)[1].strip().strip('"')
+                return Path(part.split("=", 1)[1].strip().strip('"').replace("\\", "/")).name
         return ""

@@ -1,10 +1,2 @@
-import React from 'react';
-import OntologyMapper from '../Components/OntologyMapper';
-
-export default function OntologyStudioPage() {
-  return (
-    <div className="depo-page">
-      <OntologyMapper />
-    </div>
-  );
-}
+// Compatibility export for integrations that still import the former internal name.
+export { default } from './OntologyJunctionPage';

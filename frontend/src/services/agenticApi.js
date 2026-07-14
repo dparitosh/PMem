@@ -28,7 +28,7 @@ export const agenticAPI = {
     { document, source_name: sourceName },
   ),
   runAgent: (agentName, inputs = {}) => agenticClient.post(
-    agenticUrl(replaceParams(API.agentic.runAgent, { agent_name: encodeURIComponent(agentName) })),
+    agenticUrl(replaceParams(API.agentic.runAgent, { agent_name: agentName })),
     { inputs },
   ),
   runWorkflow: (workflowId, inputs = {}) => agenticClient.post(

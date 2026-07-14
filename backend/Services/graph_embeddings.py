@@ -60,6 +60,14 @@ def _env(*keys: str) -> Optional[str]:
     return None
 
 
+def _positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+        return value if value > 0 else default
+    except (TypeError, ValueError):
+        return default
+
+
 # ✅ Use centralized configuration when available
 if CENTRALIZED_CONFIG_AVAILABLE:
     try:
@@ -90,13 +98,14 @@ CHUNK_LABEL = "GraphChunk"
 DATASHEET_CHUNK_LABEL = "DatasheetChunk"
 TEXT_PROPERTY = "content"
 EMBEDDING_PROPERTY = "embedding"
+EMBEDDING_VECTOR_DIMENSIONS = _positive_int_env("EMBEDDING_VECTOR_DIMENSIONS", 768)
 
 # Tuning
-BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "20"))
-MAX_RETRIES = int(os.getenv("EMBEDDING_MAX_RETRIES", "6"))
+BATCH_SIZE = _positive_int_env("EMBEDDING_BATCH_SIZE", 20)
+MAX_RETRIES = _positive_int_env("EMBEDDING_MAX_RETRIES", 6)
 BASE_WAIT = float(os.getenv("EMBEDDING_BASE_WAIT", "2"))
-MAX_TOKENS_PER_CHUNK = int(os.getenv("EMBEDDING_MAX_TOKENS", "512"))
-MAX_RELS_PER_CHUNK = int(os.getenv("EMBEDDING_MAX_RELS", "40"))
+MAX_TOKENS_PER_CHUNK = _positive_int_env("EMBEDDING_MAX_TOKENS", 512)
+MAX_RELS_PER_CHUNK = _positive_int_env("EMBEDDING_MAX_RELS", 40)
 
 _encoding = tiktoken.get_encoding("cl100k_base")
 
@@ -335,7 +344,7 @@ def ensure_indexes(driver):
                 ON (c.{EMBEDDING_PROPERTY})
                 OPTIONS {{
                     indexConfig: {{
-                        `vector.dimensions`: 768,
+                        `vector.dimensions`: {EMBEDDING_VECTOR_DIMENSIONS},
                         `vector.similarity_function`: 'cosine'
                     }}
                 }}
@@ -363,7 +372,7 @@ def ensure_indexes(driver):
                 ON (c.{EMBEDDING_PROPERTY})
                 OPTIONS {{
                     indexConfig: {{
-                        `vector.dimensions`: 768,
+                        `vector.dimensions`: {EMBEDDING_VECTOR_DIMENSIONS},
                         `vector.similarity_function`: 'cosine'
                     }}
                 }}

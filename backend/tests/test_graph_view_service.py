@@ -93,6 +93,38 @@ def test_individual_filter_retains_stpx_cad_business_objects_with_id_names():
     assert [rel["elementId"] for rel in filtered["relationships"]] == ["r1"]
 
 
+def test_rows_to_graph_preserves_traversal_hint_and_normalizes_relationship_type():
+    graph = GraphViewService.rows_to_graph(
+        [
+            {
+                "n": {
+                    "elementId": "n1",
+                    "labels": ["Product"],
+                    "properties": {"name": "Pump"},
+                    "can_traverse": True,
+                },
+                "m": {
+                    "elementId": "n2",
+                    "labels": ["Occurrence"],
+                    "properties": {"name": "Pump occurrence"},
+                    "can_traverse": False,
+                },
+                "r": {
+                    "elementId": "r1",
+                    "type": "PartRef",
+                    "start": "n1",
+                    "end": "n2",
+                    "properties": {},
+                },
+            }
+        ]
+    )
+
+    assert next(node for node in graph["nodes"] if node["elementId"] == "n1")["can_traverse"] is True
+    assert graph["relationships"][0]["type"] == "PART_REFERENCE"
+    assert graph["relationships"][0]["properties"]["raw_type"] == "PartRef"
+
+
 def test_get_traversal_slice_reports_direct_depth(monkeypatch):
     monkeypatch.setattr(
         GraphViewService,
@@ -253,7 +285,7 @@ def test_contextual_subgraph_expand_neighbors_accepts_instance_neighbors_only(mo
     cypher = captured["cypher"]
     assert "adjacent:Individual" not in cypher
     assert "instance_node_labels" in cypher
-    assert "schema_node_labels" not in cypher
+    assert "NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)" in cypher
 
 
 def test_contextual_subgraph_query_projects_bridge_relationships_without_relationship_functions(monkeypatch):
@@ -278,3 +310,65 @@ def test_contextual_subgraph_query_projects_bridge_relationships_without_relatio
     assert "AS r_payload" in cypher
     assert "WHEN r_payload IS NOT NULL THEN r_payload" in cypher
     assert "WITH seed, r, adjacent, r_payload" in cypher
+
+
+def test_contextual_subgraph_keeps_relevance_seed_as_root_after_node_sorting(monkeypatch):
+    monkeypatch.setattr(
+        GraphViewService,
+        "_run",
+        staticmethod(
+            lambda _cypher, _params: [
+                {
+                    "n": {
+                        "elementId": "seed-z",
+                        "labels": ["Product"],
+                        "properties": {"name": "Z selected"},
+                        "can_traverse": True,
+                    },
+                    "m": {
+                        "elementId": "neighbor-a",
+                        "labels": ["Occurrence"],
+                        "properties": {"name": "A neighbor"},
+                        "can_traverse": False,
+                    },
+                    "r": {
+                        "elementId": "r1",
+                        "type": "RELATED_TO",
+                        "start": "seed-z",
+                        "end": "neighbor-a",
+                        "properties": {},
+                    },
+                }
+            ]
+        ),
+    )
+
+    graph = GraphViewService.get_contextual_subgraph(search="selected", expand_neighbors=True)
+
+    assert [node["elementId"] for node in graph["nodes"]] == ["neighbor-a", "seed-z"]
+    assert graph["view"]["root_node_id"] == "seed-z"
+    assert graph["root"]["elementId"] == "seed-z"
+    assert graph["view"]["mode"] == "neighborhood"
+
+
+def test_contextual_neighbor_query_applies_scope_and_terminal_node_filters(monkeypatch):
+    captured = {}
+
+    def fake_run(cypher, params):
+        captured["cypher"] = cypher
+        captured["params"] = params
+        return []
+
+    monkeypatch.setattr(GraphViewService, "_run", staticmethod(fake_run))
+
+    GraphViewService.get_contextual_subgraph(
+        search="pump",
+        ontology_prefix="ap242",
+        import_id="job-1",
+        expand_neighbors=True,
+    )
+
+    assert "direct_adjacent.import_id = $import_id" in captured["cypher"]
+    assert "direct_adjacent.ontology_prefix = $ontology_prefix" in captured["cypher"]
+    assert "label IN $schema_node_labels" in captured["cypher"]
+    assert captured["params"]["import_id"] == "job-1"

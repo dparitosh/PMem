@@ -52,7 +52,9 @@ export const pageAliases = {
 };
 
 export function normalizePage(page) {
-  return pageAliases[page] || page || 'graph';
+  if (typeof page !== 'string') return 'graph';
+  const candidate = page.trim().toLowerCase();
+  return pageAliases[candidate] || 'graph';
 }
 
 export function pageLabel(page) {

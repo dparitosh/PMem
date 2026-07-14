@@ -348,6 +348,54 @@ async def list_registered_ontologies():
     return OntologyUploadManager.list_ontologies_with_neo4j_counts(_g)
 
 
+@ontology_router.get(
+    "/{ontology_id}",
+    summary="Get Registered Ontology",
+    description="Retrieve public metadata for one registered ontology by its stable identifier.",
+    tags=["ontology"],
+    responses={404: {"description": "Ontology not found"}},
+)
+async def get_registered_ontology(ontology_id: str):
+    """Return ontology metadata without exposing server-side storage paths."""
+    result = OntologyUploadManager.get_ontology(ontology_id)
+    if result.get("status") != "success":
+        error = result.get("error", "Ontology not found")
+        status_code = 404 if str(error).lower() == "ontology not found" else 500
+        raise HTTPException(status_code=status_code, detail=error)
+
+    metadata = result.get("metadata") or {}
+    public_fields = {
+        "ontology_id",
+        "ontology_name",
+        "prefix",
+        "file_type",
+        "generation_type",
+        "description",
+        "schema_type",
+        "version",
+        "status",
+        "uploaded_at",
+        "file_size",
+        "source_namespace",
+        "target_namespace",
+        "is_latest",
+        "replaces",
+        "superseded_by",
+        "merged_into",
+    }
+    public_metadata = {
+        key: value
+        for key, value in metadata.items()
+        if key in public_fields
+    }
+    public_metadata.setdefault("ontology_id", ontology_id)
+    return {
+        "status": "success",
+        "metadata": public_metadata,
+        "file_exists": bool(result.get("file_exists")),
+    }
+
+
 @ontology_router.post(
     "/merge",
     summary="Merge two ontologies",
@@ -473,7 +521,7 @@ async def merge_ontologies(body: dict):
 
     try:
         OSLCTRSService.publish_event(
-            f"{OSLCTRSService.base_url()}/api/v1/ontology/{to_id}",
+            OSLCTRSService.ontology_resource_uri(to_id),
             "Modification",
             title=f"Ontology merge from {from_id} into {to_id}",
             metadata={"from_ontology_id": from_id, "to_ontology_id": to_id, "from_prefix": from_prefix, "to_prefix": to_prefix, "nodes_updated": nodes_updated},

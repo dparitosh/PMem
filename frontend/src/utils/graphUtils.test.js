@@ -350,6 +350,20 @@ test('deduplicateNodesAndLinks keeps a single copy of nodes and links', () => {
   expect(result.links).toHaveLength(1);
 });
 
+test('deduplicateNodesAndLinks merges labels, properties, and traversal hints', () => {
+  const result = deduplicateNodesAndLinks(
+    [
+      { elementId: 'n1', labels: ['Product'], properties: { name: 'Pump' }, can_traverse: false },
+      { elementId: 'n1', labels: ['Individual'], properties: { code: 'P-1' }, can_traverse: true },
+    ],
+    []
+  );
+
+  expect(result.nodes[0].labels).toEqual(['Product', 'Individual']);
+  expect(result.nodes[0].properties).toEqual({ name: 'Pump', code: 'P-1' });
+  expect(result.nodes[0].can_traverse).toBe(true);
+});
+
 test('mergeGraphData unions graph slices without duplicates', () => {
   const result = mergeGraphData(
     { nodes: [{ elementId: 'n1' }], links: [{ elementId: 'r1', source: 'n1', target: 'n1', type: 'RELATED_TO' }] },
@@ -402,6 +416,21 @@ test('validateConnectivity flags orphan nodes', () => {
 
   expect(result.isConnected).toBe(false);
   expect(result.orphanNodeIds).toEqual(['n2']);
+  expect(result.componentCount).toBe(2);
+});
+
+test('validateConnectivity detects disconnected clusters without orphan nodes', () => {
+  const result = validateConnectivity({
+    nodes: [{ elementId: 'a' }, { elementId: 'b' }, { elementId: 'c' }, { elementId: 'd' }],
+    links: [
+      { elementId: 'r1', source: 'a', target: 'b', type: 'RELATED_TO' },
+      { elementId: 'r2', source: 'c', target: 'd', type: 'RELATED_TO' },
+    ],
+  });
+
+  expect(result.isConnected).toBe(false);
+  expect(result.orphanNodeIds).toEqual([]);
+  expect(result.componentCount).toBe(2);
 });
 
 test('normalizeSearchTerm strips wildcard markers while preserving the query tokens', () => {
@@ -425,6 +454,12 @@ test('isMetadataWrapperNode hides technical id nodes but keeps requirement busin
       name: 'Ability to work in various environmental conditions',
       catalogue_id: 'REQ-000023',
     },
+  })).toBe(false);
+
+  expect(isMetadataWrapperNode({
+    elementId: 'part1',
+    labels: ['Part'],
+    properties: { name: 'id5223', part_number: 'P-5223' },
   })).toBe(false);
 });
 

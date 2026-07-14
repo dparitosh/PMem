@@ -18,20 +18,42 @@ logger = logging.getLogger(__name__)
 
 
 def _node_payload(node: Dict[str, Any]) -> Dict[str, Any]:
-    return {
+    payload = {
         "elementId": node.get("elementId"),
         "labels": node.get("labels") or [],
         "properties": node.get("properties") or {},
     }
+    # Traversal capability is response metadata, not a persisted graph property.
+    # Keep it at the top level so the UI does not show actions for terminal nodes.
+    if isinstance(node.get("can_traverse"), bool):
+        payload["can_traverse"] = node["can_traverse"]
+    return payload
 
 
 def _relationship_payload(rel: Dict[str, Any]) -> Dict[str, Any]:
+    raw_type = str(rel.get("type") or "RELATED_TO").strip()
+    normalized_type = re.sub(r"[\s-]+", "_", raw_type).upper() or "RELATED_TO"
+    aliases = {
+        "MASTERREF": "MASTER_REFERENCE",
+        "RELATEDREF": "RELATED_REFERENCE",
+        "RELATEDREFS": "RELATED_REFERENCE",
+        "PARTREF": "PART_REFERENCE",
+        "INSTANCEREF": "INSTANCE_REFERENCE",
+        "INSTANCEREFS": "INSTANCE_REFERENCE",
+        "PARENTREF": "PARENT_REFERENCE",
+        "SEG0SATISFY": "SATISFIES",
+        "SATISFY": "SATISFIES",
+        "GENERALRELATION": "GENERAL_RELATION",
+        "TRACE": "TRACE_LINK",
+    }
+    properties = dict(rel.get("properties") or {})
+    properties.setdefault("raw_type", raw_type)
     return {
         "elementId": rel.get("elementId"),
-        "type": rel.get("type"),
+        "type": aliases.get(normalized_type, normalized_type),
         "start": rel.get("start"),
         "end": rel.get("end"),
-        "properties": rel.get("properties") or {},
+        "properties": properties,
     }
 
 
@@ -270,7 +292,18 @@ class GraphViewService:
             for key in ("n", "m"):
                 node = row.get(key)
                 if node and node.get("elementId"):
-                    nodes[node["elementId"]] = _node_payload(node)
+                    node_id = node["elementId"]
+                    incoming = _node_payload(node)
+                    existing = nodes.get(node_id)
+                    if existing:
+                        incoming["labels"] = sorted(set(existing.get("labels") or []) | set(incoming.get("labels") or []))
+                        incoming["properties"] = {
+                            **(existing.get("properties") or {}),
+                            **(incoming.get("properties") or {}),
+                        }
+                        if existing.get("can_traverse") is True:
+                            incoming["can_traverse"] = True
+                    nodes[node_id] = incoming
             rel = row.get("r")
             if rel and rel.get("elementId"):
                 relationships[rel["elementId"]] = _relationship_payload(rel)
@@ -1567,6 +1600,17 @@ RETURN count(res) AS count
           WHERE direct_adjacent IS NULL OR (
             NOT (direct_adjacent:DatasheetChunk OR direct_adjacent:GraphChunk)
             AND NOT any(label IN labels(direct_adjacent) WHERE label IN $relationship_node_labels)
+            AND ($import_id = '' OR direct_adjacent.import_id = $import_id)
+            AND (
+              $ontology_prefix = '' OR
+              direct_adjacent.ontology_prefix = $ontology_prefix OR
+              direct_adjacent.prefix = $ontology_prefix OR
+              EXISTS {
+                MATCH (direct_adjacent)-[neighbor_type_rel]->(neighbor_cls)
+                WHERE type(neighbor_type_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (neighbor_cls.ontology_prefix = $ontology_prefix OR neighbor_cls.prefix = $ontology_prefix)
+              }
+            )
             AND (
               any(label IN labels(direct_adjacent) WHERE label IN $instance_node_labels)
               OR coalesce(direct_adjacent.is_cad_business_object, false) = true
@@ -1579,6 +1623,17 @@ RETURN count(res) AS count
           WHERE NOT (bridge:DatasheetChunk OR bridge:GraphChunk OR bridge_adjacent:DatasheetChunk OR bridge_adjacent:GraphChunk)
             AND any(label IN labels(bridge) WHERE label IN $relationship_node_labels)
             AND NOT any(label IN labels(bridge_adjacent) WHERE label IN $relationship_node_labels)
+            AND ($import_id = '' OR bridge_adjacent.import_id = $import_id)
+            AND (
+              $ontology_prefix = '' OR
+              bridge_adjacent.ontology_prefix = $ontology_prefix OR
+              bridge_adjacent.prefix = $ontology_prefix OR
+              EXISTS {
+                MATCH (bridge_adjacent)-[neighbor_type_rel]->(neighbor_cls)
+                WHERE type(neighbor_type_rel) IN ['INSTANCE_OF', 'TYPED_BY', 'CLASSIFIED_AS']
+                  AND (neighbor_cls.ontology_prefix = $ontology_prefix OR neighbor_cls.prefix = $ontology_prefix)
+              }
+            )
             AND (
               any(label IN labels(bridge_adjacent) WHERE label IN $instance_node_labels)
               OR coalesce(bridge_adjacent.is_cad_business_object, false) = true
@@ -1765,6 +1820,8 @@ RETURN count(res) AS count
             can_traverse: EXISTS {
               MATCH (seed)-[]-(candidate)
               WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+                AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
+                AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                 AND (
                   any(label IN labels(candidate) WHERE label IN $instance_node_labels)
                   OR coalesce(candidate.is_cad_business_object, false) = true
@@ -1790,6 +1847,8 @@ RETURN count(res) AS count
                 OR coalesce(adjacent.semantic_role, '') IN $semantic_instance_roles THEN EXISTS {
                 MATCH (adjacent)-[]-(candidate)
                 WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+                  AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
+                  AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                   AND (
                     any(label IN labels(candidate) WHERE label IN $instance_node_labels)
                     OR coalesce(candidate.is_cad_business_object, false) = true
@@ -1817,13 +1876,28 @@ RETURN count(res) AS count
             },
         )
         graph = cls._filter_graph_nodes(cls.rows_to_graph(rows), only_individual_nodes=True)
-        root_node = (graph.get("nodes") or [None])[0]
+        # The rows retain relevance order; the graph nodes are sorted for stable
+        # rendering, so the first graph node is not necessarily the selected seed.
+        selected_root_id = next(
+            (
+                row.get("n", {}).get("elementId")
+                for row in rows
+                if isinstance(row.get("n"), dict) and row.get("n", {}).get("elementId")
+            ),
+            None,
+        )
+        root_node = next(
+            (node for node in graph.get("nodes", []) if node.get("elementId") == selected_root_id),
+            None,
+        )
         graph["view"] = {
             "type": "contextual-subgraph",
+            "mode": "neighborhood" if expand_neighbors else "search-results",
             "search": raw_search,
             "ontology_prefix": ontology_prefix or "",
             "import_id": import_id or "",
             "root_node_id": root_node.get("elementId") if root_node else None,
+            "scope_applied": bool(ontology_prefix or import_id),
         }
         graph["root"] = root_node
         return graph
@@ -1846,6 +1920,8 @@ RETURN count(res) AS count
             can_traverse: EXISTS {
               MATCH ($node_var)-[]-(candidate)
               WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+                AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
+                AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                 AND (
                   any(label IN labels(candidate) WHERE label IN $instance_node_labels)
                   OR coalesce(candidate.is_cad_business_object, false) = true
@@ -1865,6 +1941,8 @@ RETURN count(res) AS count
                 OR coalesce($node_var.semantic_role, '') IN $semantic_instance_roles THEN EXISTS {
                 MATCH ($node_var)-[]-(candidate)
                 WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+                  AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
+                  AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                   AND (
                     any(label IN labels(candidate) WHERE label IN $instance_node_labels)
                     OR coalesce(candidate.is_cad_business_object, false) = true
@@ -2028,6 +2106,8 @@ RETURN count(res) AS count
                 can_traverse: EXISTS {
                   MATCH (source_node)-[]-(candidate)
                   WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+                    AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
+                    AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                     AND (
                       any(label IN labels(candidate) WHERE label IN $instance_node_labels)
                       OR coalesce(candidate.is_cad_business_object, false) = true
@@ -2046,6 +2126,8 @@ RETURN count(res) AS count
                     OR coalesce(target_node.semantic_role, '') IN $semantic_instance_roles THEN EXISTS {
                     MATCH (target_node)-[]-(candidate)
                     WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+                      AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
+                      AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                       AND (
                         any(label IN labels(candidate) WHERE label IN $instance_node_labels)
                         OR coalesce(candidate.is_cad_business_object, false) = true

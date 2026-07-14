@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import re
+import copy
+from collections import Counter
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
@@ -109,7 +111,7 @@ class OntologyTaxonomyService:
         parsed = OntologyTaxonomyService._parse_rdf(meta, file_path)
         if not parsed:
             parsed = OntologyTaxonomyService._xml_terms(source_file_path, prefix)
-        if not parsed.get("nodes"):
+        if not parsed.get("nodes") and parsed.get("source") != "rdf_parse_error":
             parsed = OntologyTaxonomyService._text_terms(meta, source_file_path)
 
         reasoning_summary = OntologyTaxonomyService._cached_reasoning(file_path_str, mtime, size, prefix).get("summary", {})
@@ -122,10 +124,14 @@ class OntologyTaxonomyService:
             "nodes": parsed.get("nodes", []),
             "edges": parsed.get("edges", []),
             "reasoning_summary": reasoning_summary,
+            "diagnostics": parsed.get("diagnostics", []),
             "summary": {
                 "terms": len(parsed.get("nodes", [])),
                 "taxonomy_links": len(parsed.get("edges", [])),
                 "triple_count": parsed.get("triple_count", 0),
+                "total_terms": parsed.get("total_nodes", len(parsed.get("nodes", []))),
+                "total_taxonomy_links": parsed.get("total_edges", len(parsed.get("edges", []))),
+                "truncated": bool(parsed.get("truncated", False)),
             },
         }
 
@@ -134,9 +140,9 @@ class OntologyTaxonomyService:
         meta = OntologyTaxonomyService._resolve_metadata(ontology_identifier)
         source_file_path = Path(meta.get("file_path", ""))
         semantic_file_path = Path(meta.get("owl_file_path") or meta.get("file_path", ""))
-        if not source_file_path.exists():
+        if not str(meta.get("file_path") or "").strip() or not source_file_path.is_file():
             raise ValueError(f"Ontology file is missing: {ontology_identifier}")
-        if not semantic_file_path.exists():
+        if not semantic_file_path.is_file():
             semantic_file_path = source_file_path
 
         prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
@@ -182,16 +188,26 @@ class OntologyTaxonomyService:
 
         graph = Graph()
         parsed_ok = False
+        parse_errors: List[str] = []
         for rdf_format in rdf_formats:
             try:
                 graph = Graph()
                 graph.parse(str(file_path), format=rdf_format)
                 parsed_ok = True
                 break
-            except Exception:
+            except Exception as exc:
+                parse_errors.append(f"{rdf_format}: {type(exc).__name__}: {exc}")
                 continue
         if not parsed_ok:
-            return None
+            if ext == ".xml":
+                return None
+            return {
+                "source": "rdf_parse_error",
+                "nodes": [],
+                "edges": [],
+                "triple_count": 0,
+                "diagnostics": [{"severity": "error", "message": message} for message in parse_errors],
+            }
 
         class_uris: Set[URIRef] = set()
         hierarchy_edges: List[Tuple[URIRef, URIRef, str]] = []
@@ -203,15 +219,6 @@ class OntologyTaxonomyService:
             if isinstance(subject, URIRef):
                 class_uris.add(subject)
         for subject in graph.subjects(RDF.type, SKOS.Concept):
-            if isinstance(subject, URIRef):
-                class_uris.add(subject)
-        for subject in graph.subjects(RDF.type, OWL.ObjectProperty):
-            if isinstance(subject, URIRef):
-                class_uris.add(subject)
-        for subject in graph.subjects(RDF.type, OWL.DatatypeProperty):
-            if isinstance(subject, URIRef):
-                class_uris.add(subject)
-        for subject in graph.subjects(RDF.type, OWL.AnnotationProperty):
             if isinstance(subject, URIRef):
                 class_uris.add(subject)
         for subject, parent in graph.subject_objects(RDFS.subClassOf):
@@ -230,9 +237,11 @@ class OntologyTaxonomyService:
                 class_uris.add(parent)
                 hierarchy_edges.append((subject, parent, "narrower"))
 
+        base_id_counts = Counter(_term_id(prefix, uri) for uri in class_uris)
+        duplicate_ids = {term_id for term_id, count in base_id_counts.items() if count > 1}
         nodes = [
             {
-                "term_id": _term_id(prefix, uri),
+                "term_id": str(uri) if _term_id(prefix, uri) in duplicate_ids else _term_id(prefix, uri),
                 "uri": str(uri),
                 "label": _label(graph, uri),
                 "definition": _definition(graph, uri),
@@ -273,8 +282,12 @@ class OntologyTaxonomyService:
         edges: List[Dict[str, str]] = []
 
         def visit(element: ET.Element) -> None:
-            name = element.attrib.get("name") or element.attrib.get("id") or element.attrib.get("xmi:id")
-            type_name = element.attrib.get("type") or element.attrib.get("xmi:type") or ""
+            attributes = {
+                (key.rsplit("}", 1)[-1] if "}" in key else key.rsplit(":", 1)[-1]): value
+                for key, value in element.attrib.items()
+            }
+            name = attributes.get("name") or attributes.get("id")
+            type_name = attributes.get("type") or ""
             local_tag = element.tag.rsplit("}", 1)[-1]
             current_id = ""
             if name:
@@ -316,7 +329,20 @@ class OntologyTaxonomyService:
                 "source": source_type,
             })
 
-        return {"source": "xml", "nodes": nodes[:1000], "edges": edges[:1500]}
+        retained_nodes = nodes[:1000]
+        retained_ids = {node["term_id"] for node in retained_nodes}
+        retained_edges = [
+            edge for edge in edges
+            if edge.get("source_term") in retained_ids and edge.get("target_term") in retained_ids
+        ][:1500]
+        return {
+            "source": "xml",
+            "nodes": retained_nodes,
+            "edges": retained_edges,
+            "truncated": len(nodes) > len(retained_nodes) or len(edges) > len(retained_edges),
+            "total_nodes": len(nodes),
+            "total_edges": len(edges),
+        }
 
     @staticmethod
     def _text_terms(meta: Dict[str, Any], file_path: Path) -> Dict[str, Any]:
@@ -356,14 +382,14 @@ class OntologyTaxonomyService:
         source_key = cls._cache_key_for_path(source_file_path)
         prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
 
-        return cls._cached_taxonomy_payload(
+        return copy.deepcopy(cls._cached_taxonomy_payload(
             file_key[0], file_key[1], file_key[2],
             source_key[0], source_key[1], source_key[2],
             prefix,
             str(meta.get("ontology_id") or ""),
             str(meta.get("ontology_name") or ""),
             str(meta.get("original_filename") or meta.get("stored_filename") or ""),
-        )
+        ))
 
     @classmethod
     def get_reasoning(cls, ontology_identifier: str) -> Dict[str, Any]:
@@ -373,7 +399,7 @@ class OntologyTaxonomyService:
         file_path = context["file_path"]
         prefix = str(context.get("prefix") or "").strip()
         file_key = cls._cache_key_for_path(file_path)
-        result = dict(cls._cached_reasoning(file_key[0], file_key[1], file_key[2], prefix))
+        result = copy.deepcopy(cls._cached_reasoning(file_key[0], file_key[1], file_key[2], prefix))
         result.update({
             "ontology_id": meta.get("ontology_id"),
             "ontology_name": meta.get("ontology_name"),

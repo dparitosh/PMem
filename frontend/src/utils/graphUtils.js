@@ -156,14 +156,7 @@ export const isMetadataWrapperNode = (node) => {
     return false;
   }
 
-  if (/^id[\w:-]*$/i.test(displayName) || /^id\d+$/i.test(displayName)) {
-    if (labels.some((label) => technicalInstanceLabels.includes(label)) && !hasBusinessIdentity) {
-      return true;
-    }
-    return true;
-  }
-
-  if (labels.some((label) => [
+  const hasKnownBusinessLabel = labels.some((label) => [
     'part',
     'partversion',
     'part_occurrence',
@@ -183,7 +176,18 @@ export const isMetadataWrapperNode = (node) => {
     'class',
     'objectproperty',
     'datatypeproperty',
-  ].includes(label))) {
+  ].includes(label));
+
+  if (/^id[\w:-]*$/i.test(displayName) || /^id\d+$/i.test(displayName)) {
+    if (labels.some((label) => technicalInstanceLabels.includes(label)) && !hasBusinessIdentity) {
+      return true;
+    }
+    // An id-like display value is common in PLM/XML data and is not sufficient
+    // evidence that a typed business object is merely a metadata wrapper.
+    return !hasBusinessIdentity && !hasKnownBusinessLabel;
+  }
+
+  if (hasKnownBusinessLabel) {
     return false;
   }
 
@@ -439,9 +443,24 @@ export const buildLinkSignature = (link) => {
 export const deduplicateNodesAndLinks = (nodes = [], links = []) => {
   const nodeMap = new Map();
   nodes.forEach((node) => {
-    if (node?.elementId && !nodeMap.has(node.elementId)) {
+    if (!node?.elementId) return;
+    const existing = nodeMap.get(node.elementId);
+    if (!existing) {
       nodeMap.set(node.elementId, node);
+      return;
     }
+    nodeMap.set(node.elementId, {
+      ...existing,
+      ...node,
+      labels: Array.from(new Set([...(existing.labels || []), ...(node.labels || [])])),
+      properties: {
+        ...(existing.properties || {}),
+        ...(node.properties || {}),
+      },
+      can_traverse: existing.can_traverse === true || node.can_traverse === true
+        ? true
+        : (node.can_traverse ?? existing.can_traverse),
+    });
   });
 
   const linkMap = new Map();
@@ -560,9 +579,41 @@ export const validateConnectivity = (data = { nodes: [], links: [] }) => {
     .map((node) => node?.elementId)
     .filter((nodeId) => nodeId && !connectedIds.has(nodeId));
 
+  const adjacency = new Map(nodes
+    .map((node) => node?.elementId)
+    .filter(Boolean)
+    .map((nodeId) => [nodeId, new Set()]));
+  links.forEach((link) => {
+    const sourceId = getLinkEndpointId(link.source);
+    const targetId = getLinkEndpointId(link.target);
+    if (!adjacency.has(sourceId) || !adjacency.has(targetId)) return;
+    adjacency.get(sourceId).add(targetId);
+    adjacency.get(targetId).add(sourceId);
+  });
+  const remaining = new Set(adjacency.keys());
+  const components = [];
+  while (remaining.size > 0) {
+    const start = remaining.values().next().value;
+    const component = [];
+    const pending = [start];
+    remaining.delete(start);
+    while (pending.length > 0) {
+      const nodeId = pending.pop();
+      component.push(nodeId);
+      (adjacency.get(nodeId) || []).forEach((neighborId) => {
+        if (!remaining.has(neighborId)) return;
+        remaining.delete(neighborId);
+        pending.push(neighborId);
+      });
+    }
+    components.push(component);
+  }
+
   return {
-    isConnected: orphanNodeIds.length === 0 || nodes.length <= 1,
+    isConnected: components.length <= 1,
     orphanNodeIds,
+    componentCount: components.length,
+    components,
   };
 };
 

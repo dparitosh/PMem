@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Boxes, Network, GitFork, Layers, RefreshCcw, ZoomIn, ZoomOut, ScanSearch } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import graphApi from '../services/graphApi';
-import ReactFlowDiagramCanvas from '../Components/DiagramCanvas/ReactFlowDiagramCanvas';
+import GraphVisualizationWidget from '../Components/GraphMiner/GraphVisualizationWidget';
 import { createDiagramModel } from '../diagram/engine/diagramEngine';
 import './ModelWorkbenchPage.css';
 
@@ -494,7 +494,7 @@ export default function ModelWorkbenchPage({ onNavigate }) {
         <section className="model-viewer-panel model-diagram-panel semantic-diagram-panel">
           <div className="panel-title model-diagram-header"><span className="model-diagram-title"><Network size={16} /> Diagram Canvas <span className="diagram-count">{`${visibleNodes.length} elements / ${visibleLinks.length} relationships`}</span></span><span className="model-diagram-controls"><button type="button" className="canvas-control-button" onClick={() => setViewportCommand(`zoom-out:${Date.now()}`)} aria-label="Zoom out"><ZoomOut size={14} /></button><button type="button" className="canvas-control-button" onClick={() => setViewportCommand(`zoom-in:${Date.now()}`)} aria-label="Zoom in"><ZoomIn size={14} /></button><button type="button" className="canvas-control-button" onClick={() => setViewportCommand(`fit:${Date.now()}`)} aria-label="Fit diagram"><ScanSearch size={14} /></button></span></div>
           <div className="semantic-canvas-wrap react-flow-wrap">
-            {(activeCanvasGraph.nodes || []).length === 0 ? <div className="empty-state">No diagram elements available. Select a view/folder or clear the search filter.</div> : <ReactFlowDiagramCanvas graph={activeCanvasGraph} diagramKind={activeView === 'architecture' ? 'archimate' : 'uaf'} selectedId={selectedElement?.id} viewportCommand={viewportCommand} onSelect={(item) => { if (item?.id) setSelectedId(item.id); }} onGraphChange={setReactFlowGraph} onNodeDoubleClick={handleCanvasDoubleClick} />}
+            {(activeCanvasGraph.nodes || []).length === 0 ? <div className="empty-state">No diagram elements available. Select a view/folder or clear the search filter.</div> : <GraphVisualizationWidget renderer="react-flow" graph={activeCanvasGraph} diagramKind={activeView === 'architecture' ? 'archimate' : 'uaf'} selectedId={selectedElement?.id} viewportCommand={viewportCommand} onSelect={(item) => { if (item?.id) setSelectedId(item.id); }} onGraphChange={setReactFlowGraph} onNodeDoubleClick={handleCanvasDoubleClick} />}
           </div>
         </section>
 

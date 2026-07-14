@@ -38,7 +38,7 @@ class OSLCQueryParameters:
     where: List[OSLCCondition] = field(default_factory=list)
     select: List[str] = field(default_factory=list)
     order_by: List[Tuple[str, str]] = field(default_factory=list)
-    search_terms: str = ""
+    search_terms: List[str] = field(default_factory=list)
     page_size: int = 50
     page_num: int = 1
 
@@ -59,7 +59,7 @@ class OSLCQueryService:
         if raw.get("oslc.orderBy"):
             params.order_by = cls._parse_order_by(str(raw["oslc.orderBy"]))
         if raw.get("oslc.searchTerms"):
-            params.search_terms = str(raw["oslc.searchTerms"]).strip()
+            params.search_terms = cls._parse_search_terms(str(raw["oslc.searchTerms"]))
 
         paging_enabled = str(raw.get("oslc.paging", "")).lower() == "true"
         if paging_enabled:
@@ -76,10 +76,7 @@ class OSLCQueryService:
         expression = raw_where.strip()
         if not expression:
             return []
-        if " or " in expression.lower():
-            raise OSLCQueryValidationError("oslc.where currently supports AND-connected clauses only.")
-
-        parts = re.split(r"\s+and\s+", expression, flags=re.IGNORECASE)
+        parts = cls._split_boolean_expression(expression)
         conditions: List[OSLCCondition] = []
         for part in parts:
             token = part.strip()
@@ -87,6 +84,86 @@ class OSLCQueryService:
                 continue
             conditions.append(cls._parse_condition(token))
         return conditions
+
+    @classmethod
+    def _split_boolean_expression(cls, expression: str) -> List[str]:
+        """Split AND clauses without treating quoted words as operators."""
+        parts: List[str] = []
+        start = 0
+        quote = ""
+        escaped = False
+        index = 0
+        while index < len(expression):
+            char = expression[index]
+            if escaped:
+                escaped = False
+                index += 1
+                continue
+            if char == "\\" and quote:
+                escaped = True
+                index += 1
+                continue
+            if char in {"'", '"'}:
+                if not quote:
+                    quote = char
+                elif quote == char:
+                    quote = ""
+                index += 1
+                continue
+            if not quote:
+                match = re.match(r"\s+(and|or)\s+", expression[index:], flags=re.IGNORECASE)
+                if match:
+                    operator = match.group(1).lower()
+                    if operator == "or":
+                        raise OSLCQueryValidationError("oslc.where currently supports AND-connected clauses only.")
+                    parts.append(expression[start:index].strip())
+                    index += match.end()
+                    start = index
+                    continue
+            index += 1
+        if quote:
+            raise OSLCQueryValidationError("Unterminated quoted value in oslc.where.")
+        parts.append(expression[start:].strip())
+        return [part for part in parts if part]
+
+    @classmethod
+    def _parse_search_terms(cls, raw_terms: str) -> List[str]:
+        """Parse the OSLC comma-separated quoted search-term form."""
+        value = raw_terms.strip()
+        if not value:
+            return []
+        terms: List[str] = []
+        current: List[str] = []
+        quote = ""
+        escaped = False
+        for char in value:
+            if escaped:
+                current.append(char)
+                escaped = False
+                continue
+            if char == "\\" and quote:
+                escaped = True
+                continue
+            if char in {"'", '"'}:
+                if not quote:
+                    quote = char
+                    continue
+                if quote == char:
+                    quote = ""
+                    continue
+            if char == "," and not quote:
+                term = "".join(current).strip()
+                if term:
+                    terms.append(term)
+                current = []
+                continue
+            current.append(char)
+        if quote:
+            raise OSLCQueryValidationError("Unterminated quoted value in oslc.searchTerms.")
+        term = "".join(current).strip()
+        if term:
+            terms.append(term)
+        return terms
 
     @classmethod
     def _parse_condition(cls, token: str) -> OSLCCondition:

@@ -108,10 +108,13 @@ def test_neo4j_materialization_plan_removes_stale_inferred_facts():
     assert "DELETE r" in stale_step["cypher"]
     assert stale_step["params"]["ruleId"] == "compliance"
     assert stale_step["params"]["version"] == "3"
-    assert stale_step["params"]["factKeys"] == ["compliance|Part-1|requiresReview|STD-1"]
+    assert len(stale_step["params"]["factKeys"]) == 1
+    assert len(stale_step["params"]["factKeys"][0]) == 64
+    assert stale_step["params"]["scopeId"] == "exec-7"
+    assert "scopeId: $scopeId" in stale_step["cypher"]
     assert "NOT coalesce(r.factKey, '') IN $factKeys" in stale_step["cypher"]
     assert "UNWIND $rows AS row" in merge_step["cypher"]
     assert "MERGE (s)-[r:INFERRED_FACT {factKey: row.factKey}]->(o)" in merge_step["cypher"]
     assert "Part-1" not in merge_step["cypher"]
     assert merge_step["params"]["rows"][0]["sourceFacts"] == ["fact-1"]
-    assert merge_step["params"]["rows"][0]["factKey"] == "compliance|Part-1|requiresReview|STD-1"
+    assert merge_step["params"]["rows"][0]["factKey"] == stale_step["params"]["factKeys"][0]

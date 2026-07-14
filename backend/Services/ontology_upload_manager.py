@@ -8,6 +8,9 @@ import json
 import time
 import shutil
 import tempfile
+import copy
+import threading
+import uuid
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -33,11 +36,45 @@ class OntologyUploadManager:
     _LIST_CACHE_TTL_SEC = 5
     _list_cache: Optional[Dict[str, Any]] = None
     _list_cache_ts: float = 0.0
+    _metadata_lock = threading.RLock()
 
     @classmethod
     def _invalidate_list_cache(cls) -> None:
         cls._list_cache = None
         cls._list_cache_ts = 0.0
+
+    @classmethod
+    def _atomic_write_json(cls, path: Path, payload: Dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+        try:
+            with open(temp_path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2, ensure_ascii=False, default=str)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_path, path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink(missing_ok=True)
+
+    @staticmethod
+    def _safe_upload_filename(filename: str) -> str:
+        raw = str(filename or "").strip().replace("\\", "/")
+        safe_name = Path(raw).name
+        if not safe_name or safe_name in {".", ".."}:
+            raise ValueError("A valid upload filename is required")
+        return safe_name
+
+    @classmethod
+    def _ontology_dir(cls, ontology_id: str) -> Path:
+        token = str(ontology_id or "").strip()
+        if not token or token in {".", ".."} or not re.fullmatch(r"[A-Za-z0-9._-]+", token):
+            raise ValueError("Invalid ontology_id")
+        root = cls.ONTOLOGY_STORAGE_DIR.resolve()
+        candidate = (root / token).resolve()
+        if root not in candidate.parents:
+            raise ValueError("Invalid ontology_id")
+        return candidate
     
     @classmethod
     def initialize(cls):
@@ -183,7 +220,10 @@ class OntologyUploadManager:
                 'metadata': {...}
             }
         """
+        lock_acquired = False
         try:
+            cls._metadata_lock.acquire()
+            lock_acquired = True
             cls.initialize()
 
             user_prefix = str(prefix or "").strip()
@@ -208,19 +248,16 @@ class OntologyUploadManager:
             else:
                 previous_versions = []
 
-            # Mark old entry as superseded so list_ontologies can filter to latest only
-            if existing:
-                cls._mark_superseded(existing['ontology_id'])
-
             # Create ontology subdirectory
             # Normalize prefix to a filesystem-safe token
             safe_prefix = re.sub(r'[^a-zA-Z0-9_-]', '_', str(prefix or '').strip().lower()) or 'ontology'
-            ontology_id = f"{safe_prefix}_{int(datetime.now().timestamp())}"
-            ontology_dir = cls.ONTOLOGY_STORAGE_DIR / ontology_id
+            ontology_id = f"{safe_prefix}_{uuid.uuid4().hex[:16]}"
+            ontology_dir = cls._ontology_dir(ontology_id)
             ontology_dir.mkdir(parents=True, exist_ok=True)
 
             # Save file
-            file_path = ontology_dir / filename
+            safe_filename = cls._safe_upload_filename(filename)
+            file_path = ontology_dir / safe_filename
             with open(file_path, 'wb') as f:
                 f.write(file_content)
 
@@ -228,7 +265,7 @@ class OntologyUploadManager:
                 ontology_dir=ontology_dir,
                 file_path=file_path,
                 file_content=file_content,
-                filename=filename,
+                filename=safe_filename,
                 file_type=file_type,
                 generation_type=generation_type,
             )
@@ -253,8 +290,8 @@ class OntologyUploadManager:
                 'description': description,
                 'schema_type': schema_type or 'schema',
                 'source_namespace': source_namespace or '',
-                'original_filename': filename,
-                'stored_filename': filename,
+                'original_filename': safe_filename,
+                'stored_filename': safe_filename,
                 'file_path': str(file_path),
                 'file_size': len(file_content),
                 'uploaded_at': datetime.now().isoformat(),
@@ -268,13 +305,17 @@ class OntologyUploadManager:
 
             # Save metadata (no BOM)
             metadata_path = ontology_dir / 'metadata.json'
-            with open(metadata_path, 'w', encoding='utf-8') as f:
-                json.dump(metadata, f, indent=2, ensure_ascii=False)
+            cls._atomic_write_json(metadata_path, metadata)
+
+            # Publish the new version before superseding the previous one so a
+            # failed save never removes the last usable registry entry.
+            if existing and existing.get('ontology_id') != ontology_id:
+                cls._mark_superseded(existing['ontology_id'])
 
             logger.info(f"Saved ontology {ontology_id} v{version} to {ontology_dir}")
             cls._invalidate_list_cache()
 
-            return {
+            result = {
                 'status': 'success',
                 'ontology_id': ontology_id,
                 'storage_path': str(file_path),
@@ -284,8 +325,13 @@ class OntologyUploadManager:
                 'is_new_version': existing is not None,
                 'replaces': replaces,
             }
+            cls._metadata_lock.release()
+            lock_acquired = False
+            return result
 
         except Exception as e:
+            if lock_acquired:
+                cls._metadata_lock.release()
             logger.exception("Error saving ontology file")
             return {
                 'status': 'error',
@@ -296,7 +342,7 @@ class OntologyUploadManager:
     def get_ontology(cls, ontology_id: str) -> Dict[str, Any]:
         """Retrieve ontology metadata"""
         try:
-            metadata_path = cls.ONTOLOGY_STORAGE_DIR / ontology_id / 'metadata.json'
+            metadata_path = cls._ontology_dir(ontology_id) / 'metadata.json'
             
             if not metadata_path.exists():
                 return {'status': 'error', 'error': 'Ontology not found'}
@@ -350,7 +396,7 @@ class OntologyUploadManager:
             cls.initialize()
             now = time.time()
             if cls._list_cache is not None and (now - cls._list_cache_ts) < cls._LIST_CACHE_TTL_SEC:
-                return cls._list_cache
+                return copy.deepcopy(cls._list_cache)
             
             all_ontologies = []
             if cls.ONTOLOGY_STORAGE_DIR.exists():
@@ -376,9 +422,9 @@ class OntologyUploadManager:
                 'ontologies': ontologies,
                 'count': len(ontologies)
             }
-            cls._list_cache = result
+            cls._list_cache = copy.deepcopy(result)
             cls._list_cache_ts = now
-            return result
+            return copy.deepcopy(result)
         except Exception as e:
             logger.exception("Error listing ontologies")
             return {'status': 'error', 'error': str(e)}
@@ -579,7 +625,7 @@ class OntologyUploadManager:
         """Delete ontology metadata/files from local storage by ontology ID."""
         try:
             cls.initialize()
-            ontology_dir = cls.ONTOLOGY_STORAGE_DIR / ontology_id
+            ontology_dir = cls._ontology_dir(ontology_id)
             metadata_path = ontology_dir / 'metadata.json'
 
             if not metadata_path.exists():
@@ -589,6 +635,8 @@ class OntologyUploadManager:
                 metadata = json.load(f)
 
             shutil.rmtree(ontology_dir, ignore_errors=False)
+            if metadata.get('is_latest', True) and metadata.get('replaces'):
+                cls._mark_latest(str(metadata.get('replaces')))
             cls._invalidate_list_cache()
 
             return {
@@ -605,7 +653,7 @@ class OntologyUploadManager:
     def get_file_for_reuse(cls, ontology_id: str) -> Optional[bytes]:
         """Retrieve file for reuse/reprocessing"""
         try:
-            metadata_path = cls.ONTOLOGY_STORAGE_DIR / ontology_id / 'metadata.json'
+            metadata_path = cls._ontology_dir(ontology_id) / 'metadata.json'
             
             if not metadata_path.exists():
                 return None
@@ -652,17 +700,32 @@ class OntologyUploadManager:
     def _mark_superseded(cls, ontology_id: str) -> None:
         """Set is_latest=False on the given ontology entry (it has been replaced by a newer version)."""
         try:
-            metadata_path = cls.ONTOLOGY_STORAGE_DIR / ontology_id / 'metadata.json'
+            metadata_path = cls._ontology_dir(ontology_id) / 'metadata.json'
             if not metadata_path.exists():
                 return
             with open(metadata_path, 'r', encoding='utf-8-sig') as f:
                 meta = json.load(f)
             meta['is_latest'] = False
-            with open(metadata_path, 'w', encoding='utf-8') as f:
-                json.dump(meta, f, indent=2)
+            cls._atomic_write_json(metadata_path, meta)
             cls._invalidate_list_cache()
         except Exception as e:
             logger.exception("Could not mark %s as superseded", ontology_id)
+
+    @classmethod
+    def _mark_latest(cls, ontology_id: str) -> None:
+        """Promote a retained previous version after deleting its replacement."""
+        try:
+            metadata_path = cls._ontology_dir(ontology_id) / 'metadata.json'
+            if not metadata_path.exists():
+                return
+            with cls._metadata_lock:
+                with open(metadata_path, 'r', encoding='utf-8-sig') as handle:
+                    meta = json.load(handle)
+                meta['is_latest'] = True
+                cls._atomic_write_json(metadata_path, meta)
+            cls._invalidate_list_cache()
+        except Exception:
+            logger.exception("Could not promote %s as latest", ontology_id)
 
     @classmethod
     def list_latest_ontologies(cls) -> Dict[str, Any]:
@@ -1251,16 +1314,16 @@ MERGE (p)-[:PROPERTY_OF]->(c)
     def _update_status(cls, ontology_id: str, status: str, extra: Optional[Dict[str, Any]] = None) -> None:
         """Update the status field (and optional extra fields) in metadata.json."""
         try:
-            metadata_path = cls.ONTOLOGY_STORAGE_DIR / ontology_id / 'metadata.json'
+            metadata_path = cls._ontology_dir(ontology_id) / 'metadata.json'
             if not metadata_path.exists():
                 return
-            with open(metadata_path, 'r', encoding='utf-8-sig') as f:
-                meta = json.load(f)
-            meta['status'] = status
-            if extra:
-                meta.update(extra)
-            with open(metadata_path, 'w', encoding='utf-8') as f:
-                json.dump(meta, f, indent=2)
+            with cls._metadata_lock:
+                with open(metadata_path, 'r', encoding='utf-8-sig') as f:
+                    meta = json.load(f)
+                meta['status'] = status
+                if extra:
+                    meta.update(extra)
+                cls._atomic_write_json(metadata_path, meta)
             cls._invalidate_list_cache()
         except Exception as e:
             logger.exception("Could not update status for %s", ontology_id)
@@ -1269,14 +1332,14 @@ MERGE (p)-[:PROPERTY_OF]->(c)
     def update_metadata(cls, ontology_id: str, fields: Dict[str, Any]) -> None:
         """Merge arbitrary fields into an ontology's metadata.json (public helper)."""
         try:
-            metadata_path = cls.ONTOLOGY_STORAGE_DIR / ontology_id / 'metadata.json'
+            metadata_path = cls._ontology_dir(ontology_id) / 'metadata.json'
             if not metadata_path.exists():
                 return
-            with open(metadata_path, 'r', encoding='utf-8-sig') as f:
-                meta = json.load(f)
-            meta.update(fields)
-            with open(metadata_path, 'w', encoding='utf-8') as f:
-                json.dump(meta, f, indent=2)
+            with cls._metadata_lock:
+                with open(metadata_path, 'r', encoding='utf-8-sig') as f:
+                    meta = json.load(f)
+                meta.update(fields)
+                cls._atomic_write_json(metadata_path, meta)
             cls._invalidate_list_cache()
         except Exception as e:
             logger.exception("Could not update metadata for %s", ontology_id)

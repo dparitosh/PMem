@@ -7,11 +7,14 @@ import os
 import logging
 import shutil
 import tempfile
+import uuid
 from typing import Any, Dict, List, Optional
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, File, UploadFile, HTTPException, Form
-from pydantic import BaseModel
+from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 
 
@@ -140,12 +143,32 @@ class DocumentPlanRequest(BaseModel):
     filename: Optional[str] = None
     content_type: Optional[str] = None
     mime_type: Optional[str] = None
-    metadata: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DocumentJobResponse(BaseModel):
+    task_id: str
+    status: str
+    stage: str
+    progress: int = 0
+    status_url: str
+    artifacts_url: str
 
 # ========== Configuration ==========
 TEMP_UPLOAD_DIR = os.getenv("DOCUMENT_TEMP_DIR", "temp_uploads")
-MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "50"))
-MAX_FILES_PER_UPLOAD = int(os.getenv("MAX_FILES_PER_UPLOAD", "10"))
+
+
+def _positive_int_setting(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+        return value if value > 0 else default
+    except (TypeError, ValueError):
+        return default
+
+
+MAX_FILE_SIZE_MB = _positive_int_setting("MAX_FILE_SIZE_MB", 50)
+MAX_FILES_PER_UPLOAD = _positive_int_setting("MAX_FILES_PER_UPLOAD", 10)
+DOCUMENT_INDEX_NAME = os.getenv("NEO4J_DATASHEET_VECTOR_INDEX", "datasheet_index").strip() or "datasheet_index"
 
 # ========== Helper Functions ==========
 def create_temp_upload_dir() -> str:
@@ -176,7 +199,11 @@ def save_uploaded_file(upload_file: UploadFile, temp_dir: str) -> str:
     """
     try:
         safe_name = _safe_upload_filename(upload_file.filename)
-        file_path = os.path.join(temp_dir, safe_name)
+        candidate = Path(temp_dir) / safe_name
+        if candidate.exists():
+            collision_dir = Path(tempfile.mkdtemp(prefix="same_name_", dir=temp_dir))
+            candidate = collision_dir / safe_name
+        file_path = str(candidate)
         
         with open(file_path, "wb") as f:
             shutil.copyfileobj(upload_file.file, f)
@@ -218,7 +245,7 @@ def validate_upload_size(file: UploadFile, max_size_mb: int = None) -> tuple:
         
         # Check content type or file format
         file_ext = Path(file.filename).suffix.lower()
-        supported = [".pdf", ".docx", ".doc", ".pptx", ".ppt", ".txt", ".md", ".html", ".htm"]
+        supported = [".pdf", ".docx", ".pptx", ".txt", ".md", ".html", ".htm"]
         
         if file_ext not in supported:
             return False, f"Unsupported file format: {file_ext}. Supported: {', '.join(supported)}"
@@ -227,6 +254,8 @@ def validate_upload_size(file: UploadFile, max_size_mb: int = None) -> tuple:
         file.file.seek(0, os.SEEK_END)
         size_bytes = file.file.tell()
         file.file.seek(0)
+        if size_bytes == 0:
+            return False, f"File is empty: {file.filename}"
         if size_bytes > max_bytes:
             return False, f"File too large: {file.filename} ({round(size_bytes / (1024 * 1024), 2)} MB, max {max_size_mb} MB)"
         
@@ -234,6 +263,16 @@ def validate_upload_size(file: UploadFile, max_size_mb: int = None) -> tuple:
     
     except Exception as e:
         return False, str(e)
+
+
+def _validated_index_name(index_name: Optional[str]) -> str:
+    requested = str(index_name or DOCUMENT_INDEX_NAME).strip()
+    if requested != DOCUMENT_INDEX_NAME:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported document index '{requested}'; configured index is '{DOCUMENT_INDEX_NAME}'",
+        )
+    return requested
 
 
 def _summarize_document_processing(processing_result: dict) -> dict:
@@ -251,6 +290,18 @@ def _summarize_document_processing(processing_result: dict) -> dict:
         "total_chunks": total_chunks,
         "chunks_created": total_chunks,
     }
+
+
+def _job_response(state: dict[str, Any]) -> DocumentJobResponse:
+    task_id = str(state.get("task_id") or "")
+    return DocumentJobResponse(
+        task_id=task_id,
+        status=str(state.get("status") or "unknown"),
+        stage=str(state.get("stage") or "unknown"),
+        progress=int(state.get("progress") or 0),
+        status_url=f"/api/v1/documents/jobs/{task_id}",
+        artifacts_url=f"/api/v1/documents/jobs/{task_id}/artifacts",
+    )
 
 # ========== API Endpoints ==========
 
@@ -274,11 +325,110 @@ async def plan_document_pipeline(request: DocumentPlanRequest):
         return {
             "status": "ok",
             "plan": build_unstructured_plan(metadata),
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except Exception as exc:
         logger.error("Document planning failed: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/jobs", response_model=DocumentJobResponse, status_code=202)
+async def submit_document_job(
+    files: List[UploadFile] = File(...),
+    index_name: Optional[str] = Form(None),
+):
+    """Retain source documents and process them in a durable background job."""
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    if len(files) > MAX_FILES_PER_UPLOAD:
+        raise HTTPException(status_code=400, detail=f"Too many files: {len(files)} (max: {MAX_FILES_PER_UPLOAD})")
+    selected_index = _validated_index_name(index_name)
+    processor = _require_document_processor()
+    del processor  # Readiness is checked before retaining and accepting the job.
+    temp_dir = create_temp_upload_dir()
+    try:
+        from .document_job_service import DocumentJobService
+        from .workflow_artifact_service import WorkflowArtifactService
+
+        saved_uploads: list[tuple[UploadFile, str]] = []
+        for upload in files:
+            is_valid, error = validate_upload_size(upload, MAX_FILE_SIZE_MB)
+            if not is_valid:
+                raise HTTPException(status_code=400, detail=error)
+            saved_uploads.append((upload, save_uploaded_file(upload, temp_dir)))
+
+        task_id = str(uuid.uuid4())
+        WorkflowArtifactService.ensure_task(task_id, "document.unstructured")
+        retained_paths: list[str] = []
+        source_artifacts: list[dict[str, Any]] = []
+        for position, (upload, temporary_path) in enumerate(saved_uploads, start=1):
+            artifact = WorkflowArtifactService.copy_file(
+                task_id,
+                f"source_{position:03d}",
+                _safe_upload_filename(upload.filename),
+                temporary_path,
+                "source_document",
+                {"original_filename": upload.filename or "", "position": position},
+            )
+            retained = WorkflowArtifactService.resolve_artifact_path(task_id, artifact["path"])
+            if retained is None:
+                raise RuntimeError("Retained source artifact could not be resolved")
+            retained_paths.append(str(retained))
+            source_artifacts.append(artifact)
+        state = DocumentJobService.submit(
+            retained_paths,
+            source_artifacts,
+            task_id=task_id,
+            index_name=selected_index,
+        )
+        return _job_response(state)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Document job submission failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Document job submission failed: {exc}") from exc
+    finally:
+        cleanup_temp_files(temp_dir)
+
+
+@router.get("/jobs/{task_id}")
+async def get_document_job(task_id: str):
+    from .document_job_service import DocumentJobService
+
+    state = DocumentJobService.get_status(task_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Document job not found")
+    return state
+
+
+@router.post("/jobs/{task_id}/cancel")
+async def cancel_document_job(task_id: str):
+    from .document_job_service import DocumentJobService
+
+    state = DocumentJobService.cancel(task_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Document job not found")
+    return state
+
+
+@router.get("/jobs/{task_id}/artifacts")
+async def get_document_job_artifacts(task_id: str):
+    from .workflow_artifact_service import WorkflowArtifactService
+
+    manifest = WorkflowArtifactService.get_manifest(task_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail="Document job artifacts not found")
+    return manifest
+
+
+@router.get("/jobs/{task_id}/artifacts/{artifact_path:path}")
+async def download_document_job_artifact(task_id: str, artifact_path: str):
+    from .workflow_artifact_service import WorkflowArtifactService
+
+    path = WorkflowArtifactService.resolve_artifact_path(task_id, artifact_path)
+    if path is None or not path.is_file():
+        raise HTTPException(status_code=404, detail="Document artifact not found")
+    return FileResponse(path, filename=path.name)
 
 @router.get("/supported-formats", response_model=SupportedFormatsResponse)
 async def get_supported_formats_endpoint():
@@ -296,8 +446,8 @@ async def get_supported_formats_endpoint():
         # Map formats to extensions
         format_to_ext = {
             "pdf": [".pdf"],
-            "word": [".docx", ".doc"],
-            "powerpoint": [".pptx", ".ppt"],
+            "word": [".docx"],
+            "powerpoint": [".pptx"],
             "text": [".txt", ".md"],
             "html": [".html", ".htm"],
         }
@@ -315,7 +465,9 @@ async def get_supported_formats_endpoint():
                 "max_file_size_mb": MAX_FILE_SIZE_MB,
                 "max_files_per_upload": MAX_FILES_PER_UPLOAD,
                 "note": "Embeddings are required for indexing. Vision LLMs are only needed for image/scanned-document enhancement.",
-            "upload_ready": _document_processor_status()["available"]
+            "upload_ready": processor["available"],
+            "index_name": DOCUMENT_INDEX_NAME,
+            "ocr_available": bool((processor.get("runtime") or {}).get("ocr_available")),
             }
         )
     
@@ -372,6 +524,7 @@ async def upload_documents(
             )
         
         logger.info(f"📦 Processing {len(files)} document(s)...")
+        selected_index = _validated_index_name(index_name)
         
         # Create temporary directory
         temp_dir = create_temp_upload_dir()
@@ -397,15 +550,18 @@ async def upload_documents(
         
         # Process documents using batch processor
         processor = _require_document_processor()
-        processing_result = processor["process_documents_batch"](
+        processing_result = await run_in_threadpool(
+            processor["process_documents_batch"],
             saved_files,
-            index_name=index_name or "datasheet_index"
+            index_name=selected_index,
         )
         counters = _summarize_document_processing(processing_result)
         
         # Prepare response
+        succeeded = int(processing_result['summary']['successfully_processed'])
+        failed = int(processing_result['summary']['failed_processing'])
         response = DocumentUploadResponse(
-            status="success" if processing_result['summary']['failed_processing'] == 0 else "partial",
+            status="success" if failed == 0 else ("failed" if succeeded == 0 else "partial"),
             message=(
                 f"Successfully processed {processing_result['summary']['successfully_processed']} "
                 f"out of {processing_result['summary']['total_files']} files"
@@ -413,7 +569,7 @@ async def upload_documents(
             summary=processing_result['summary'],
             results=processing_result['processing_results'],
             **counters,
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now(timezone.utc).isoformat()
         )
         
         logger.info(f"✅ Upload and processing completed: {response.message}")
@@ -437,7 +593,7 @@ async def upload_documents(
         # Also cleanup document processor temp directory
         try:
             _document_processor_status()["cleanup_temp_directory"]()
-        except:
+        except Exception:
             pass
 
 @router.post("/upload-single", response_model=DocumentUploadResponse)
@@ -469,6 +625,7 @@ async def upload_single_document(
             raise HTTPException(status_code=400, detail=error)
         
         logger.info(f"📄 Processing single document: {file.filename}")
+        selected_index = _validated_index_name(index_name)
         
         # Create temporary directory
         temp_dir = create_temp_upload_dir()
@@ -478,9 +635,10 @@ async def upload_single_document(
         
         # Process document
         processor = _require_document_processor()
-        processing_result = processor["process_documents_batch"](
+        processing_result = await run_in_threadpool(
+            processor["process_documents_batch"],
             [file_path],
-            index_name=index_name or "datasheet_index"
+            index_name=selected_index,
         )
         counters = _summarize_document_processing(processing_result)
         
@@ -495,7 +653,7 @@ async def upload_single_document(
             summary=processing_result['summary'],
             results=processing_result['processing_results'],
             **counters,
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now(timezone.utc).isoformat()
         )
         
         logger.info(f"✅ Single document processing completed")
@@ -518,7 +676,7 @@ async def upload_single_document(
         
         try:
             _document_processor_status()["cleanup_temp_directory"]()
-        except:
+        except Exception:
             pass
 
 @router.get("/health")
@@ -530,25 +688,27 @@ async def health_check():
         Status of document processing service
     """
     try:
+        processor = _document_processor_status()
         return {
-            **({"status": "healthy"} if _document_processor_status()["available"] else {"status": "degraded"}),
+            **({"status": "healthy"} if processor["available"] else {"status": "degraded"}),
             "service": "Document Upload API",
-            "processor_available": _document_processor_status()["available"],
-            "processor_module": _document_processor_status()["module"],
-            "processor_runtime": _document_processor_status()["runtime"],
-            "supported_formats": list(_document_processor_status()["get_format_description"]().keys()),
+            "processor_available": processor["available"],
+            "processor_module": processor["module"],
+            "processor_runtime": processor["runtime"],
+            "supported_formats": list(processor["get_format_description"]().keys()),
             "max_file_size_mb": MAX_FILE_SIZE_MB,
             "max_files_per_upload": MAX_FILES_PER_UPLOAD,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "note": "Embeddings are required for indexing. Vision LLMs are only needed for image/scanned-document enhancement.",
-            "upload_ready": _document_processor_status()["available"]
+            "upload_ready": processor["available"],
+            "index_name": DOCUMENT_INDEX_NAME,
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return {
             "status": "unhealthy",
             "error": str(e),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 # Usage in main.py:

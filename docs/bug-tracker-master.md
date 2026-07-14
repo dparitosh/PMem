@@ -615,6 +615,86 @@ Validation:
 - OSLC TRS descriptor now includes AP242 and OSLC Architecture Management domain metadata so change-feed consumers can classify the feed correctly.
 - Release note clarifies that OSLC `AM` means Architecture Management; additive manufacturing semantics remain AP242/manufacturing ontology content when present in loaded data.
 
+### 2026-07-14 OSLC grouped defect closure
+
+- Query defects were closed as one contract group: quote-safe filtering, numeric comparison, correct negative type filtering, comma-separated search terms with OR matching and descending relevance score, deterministic ordering, safe projection, resource-type validation, and encoded resource identifiers.
+- Configuration and ResourceShape defects were closed together: invalid maximum page-size configuration now falls back safely, fallback shape inference scans all eligible graph data, and SHACL discovery cannot accidentally select files from the process working directory.
+- TRS durability defects were closed together: atomic state replacement, thread and cross-process publication locking, fail-closed corruption detection, retention-gap/rebase signaling, current-graph Base membership, and configured-host URI rendering.
+- Linking defects were closed at every publisher: ontology merges, Semantic Bridge links, completed imports, and administrative schema changes now reference stable, resolvable OSLC resources instead of internal REST endpoints.
+- Added `backend/tests/test_oslc_services.py` as focused regression coverage. The release description remains an OSLC-aligned read/query/shape/TRS provider, not a fully certified write/update provider.
+
+### 2026-07-14 OSLC AM and RM domain profile closure
+
+- Added explicit OSLC Architecture Management and Requirements Management discovery profiles instead of treating all lifecycle data as one generic graph capability.
+- Added typed query bases for `/oslc/query/architecture-resources`, `/oslc/query/requirements`, and `/oslc/query/requirement-collections`, with matching ResourceShapes.
+- Requirements imported through SysML/XMI, ReqIF, PLMXML, or normalized graph paths are classified as `oslc_rm:Requirement`; ReqIF specifications and equivalent nodes are classified as `oslc_rm:RequirementCollection`. RM classification takes priority over AM when a requirement originates in an architecture file.
+- Architecture/model instances are classified as `oslc_am:Resource`; cross-domain outgoing links expose target OSLC RDF types so requirement-to-architecture traceability remains discoverable.
+- Added RM metadata to the Service Provider and TRS descriptor, plus RDF-domain classification on graph-backed TRS Base members.
+- This closes the missing RM discovery gap and strengthens AM discovery. Full AM/RM write operations, delegated dialogs, and RDF content negotiation remain outside the current read-only profile.
+
+### 2026-07-14 Metadata registry, taxonomy, inference, and reports closure
+
+- Secured ontology registry paths: upload filenames and ontology identifiers are contained within the configured registry root, ontology IDs use collision-resistant UUID tokens, metadata writes are atomic and locked, and deleting a latest version promotes its retained predecessor.
+- Fixed governed metadata semantics: create no longer overwrites an existing asset, PATCH updates only explicitly supplied fields, effective dates are validated, lifecycle transitions follow a controlled state model, and audit events retain changed fields with before/after values.
+- Fixed SKOS integrity: malformed, duplicate, cross-scheme, and dangling concepts fail validation; Neo4j identity is scoped by scheme; updates remove stale concepts/relationships; related links are symmetric; traversal cannot emit edges outside the requested node slice.
+- Fixed ontology taxonomy extraction: XML truncation cannot leave dangling edges, namespaced XMI attributes are recognized, duplicate local names retain unique identities, ontology properties are not counted as taxonomy classes, parse failures are reported instead of converted into text-token taxonomies, and cached results are isolated from caller mutation.
+- Fixed inference correctness: disabled SWRL rules do not execute, materialized facts are scoped to an execution/dataset, collision-resistant fact keys replace delimiter keys, individual type closure includes all ancestors, domain/range declarations are separated from inferred facts, and disjointness reports actual conflicting individual types.
+- Fixed report correctness and durability: optional XSD attributes remain optional, nested anonymous XSD fields are not flattened into parent tables, standard XSD ranges and Turtle `.owl` files are recognized, SHACL defaults are applied when shapes are absent, targetless checks now have targets, taxonomy reports preserve the extracted hierarchy without silent 50-term truncation, dictionary definitions are retained, zero applied links no longer report committed, and artifact manifests are atomic without absolute server paths.
+- Added `backend/tests/test_metadata_taxonomy_inference_reports.py` and updated SKOS/SWRL contract tests for scheme-scoped identities and scoped hashed inference keys.
+
+### 2026-07-14 API and standalone execution closure
+
+- Fixed package-mode ASGI startup: `backend.main:app` no longer depends on adding `backend` manually to `PYTHONPATH`, and the static ontology directory now resolves inside the repository instead of its parent drive directory.
+- Hardened `/api/v1/ingest-data`: generated Cypher identifiers are restricted, node `MERGE` maps use valid Cypher syntax, merge keys must be declared properties, malformed JSON/configuration returns 400, uploads are bounded to 25 MiB and 100,000 rows, writes use the timeout wrapper, and raw generated queries are no longer returned to clients.
+- Verified the generated backend OpenAPI contract contains 172 paths with no duplicate method/path registrations or operation IDs after adding durable document-job routes.
+- Added installable `pyproject.toml` metadata and console entry points for both standalone packages; repository pytest configuration now discovers their imports and suites without manual path setup.
+- Hardened the standalone DEPO API adapter: only absolute HTTP(S) base URLs and positive timeouts are accepted, dynamic path segments encode slashes, and server-provided download filenames cannot escape the selected output directory.
+- Fixed data-product packaging so case-insensitive artifact-name collisions are renamed deterministically, duplicate sources are actually ignored as documented, partial builds are cleaned up, existing ZIPs are not overwritten, and the catalog test no longer depends on `D:\\dataproduct1.xlsx`.
+- Added `backend/tests/test_api_standalone_regressions.py` for OpenAPI, ingestion-query, standalone HTTP adapter, URL encoding, download containment, and artifact collision regressions.
+
+### 2026-07-14 Unstructured data pipeline closure
+
+- Replaced deleted temporary paths as graph identity with deterministic `document_id` values and stable `document://` source URIs. Re-uploading the same named content now merges with the same `DocumentAsset`, and API results no longer expose temporary server paths.
+- Prevented same-named files in a batch from overwriting one another while preserving their original filenames for identity and lineage.
+- Added traceable character start/end offsets to every chunk, deterministic composite chunk identity, uniqueness constraints for documents/chunks, and atomic batched Neo4j writes.
+- Added strict embedding validation: vector count, finite values, consistent dimensions, and configured vector-index dimension must agree before any graph write. Embedding calls and Neo4j writes are bounded into configurable batches.
+- Made document vector/full-text index creation fail closed, validated configured Neo4j index identifiers, aligned retrieval code with configured index names, and stopped the frontend from sending per-file index names that the backend never honored.
+- Removed unsupported legacy `.doc` and `.ppt` claims from backend/frontend contracts; those files now receive a conversion-required plan instead of failing inside modern Office parsers.
+- Added OOXML expanded-size, entry-count, encryption, and structure checks; bounded PDF page count and extracted text size; rejected empty uploads; and replaced regex HTML stripping with visible-text parsing.
+- Moved extraction/embedding/indexing work off the FastAPI event loop, made upload limits resilient to invalid environment values, used UTC response timestamps, and corrected all-failed batches from `partial` to `failed`.
+- Corrected planning/governance metadata to match the executable pipeline: it performs extraction, chunking, embedding, and direct retrieval indexing; it does not currently perform entity mapping or retain the original source document.
+- Expanded `backend/tests/test_document_processor.py` and `backend/tests/test_documents_api.py` with identity, path-containment, offset, embedding, format, collision, empty-file, index-contract, and archive-expansion regressions.
+
+### 2026-07-14 Durable unstructured jobs and semantic proposal follow-through
+
+- Added additive durable APIs: `POST /api/v1/documents/jobs`, job status, cooperative cancellation, artifact manifest, and contained artifact download. Existing synchronous upload endpoints remain available for compatibility.
+- Source documents are copied atomically into workflow artifact storage before a job is accepted. Every retained source, state file, processing report, and semantic proposal report includes a SHA-256 checksum in the manifest.
+- Background state is persisted atomically across queued, extraction, embedding, indexing, completion, partial failure, cancellation, and interruption states. Dead local workers are reconciled as interrupted instead of leaving tasks permanently running.
+- Cancellation is checked from persisted state as well as in-process events, including between embedding batches and before graph writes, so cancellation also works when the API request reaches a different worker process.
+- Added optional scanned-PDF OCR fallback using capability-detected PyMuPDF, Pillow, pytesseract, and the external Tesseract runtime. Native PDF text remains preferred; missing OCR dependencies do not break text-native PDF processing.
+- Added deterministic, review-only extraction for requirement statements/IDs and engineering numeric parameters with canonical OSLC RM/parameter type proposals. Proposals are never committed automatically and are persisted separately for human approval.
+- Updated the frontend document workflow to submit retained background jobs, poll durable status, cancel the correct document endpoint, and report terminal job results instead of holding one long upload request open.
+- Added `backend/tests/test_document_jobs.py` covering retained/checksummed source files, job result artifacts, cancellation durability, optional OCR fallback, and semantic proposals.
+
+### 2026-07-14 Pages, components, UI/UX, interfaces, and API closure
+
+- Fixed navigation state as one root cause across all pages: unknown, malformed, and obsolete persisted page IDs now fall back to Graph Explorer; storage access is guarded for restricted browser contexts; duplicate direct storage writes and delayed resize timers were removed.
+- Replaced the shell's hard-coded `Online` badge with a bounded, abortable backend health check and distinct checking/online/unavailable states.
+- Fixed shared ontology-provider lifecycle behavior: overlapping requests are coalesced, state is not written after unmount, hidden tabs do not poll, and intervals are cleaned up.
+- Fixed shell accessibility and responsive UX: active navigation exposes `aria-current`, chat exposes expanded/control state and a labeled drawer, Escape closes chat, error fallback is announced, and the navigation rail scrolls on short/mobile viewports.
+- Fixed the broken ontology detail interface: the frontend now sends the ontology ID to `GET /api/v1/ontology/{ontology_id}`, and the backend returns public metadata without filesystem paths or a false collection endpoint.
+- Centralized safe path substitution: dynamic IDs are URL encoded, repeated placeholders are supported, and nested artifact paths preserve separators while encoding each segment.
+- Added navigation, shell accessibility, URL-contract, and ontology-detail regressions. Validation: 55 frontend tests passed, the production build compiled, 203 backend tests passed with 6 skipped, OpenAPI contains 173 paths, and `git diff --check` passed.
+
+### 2026-07-14 Mendix and Graph Miner qualification baseline
+
+- Added a renderer-neutral graph widget boundary, a lifecycle-safe D3 renderer, and pure client Graph Miner operations for bounded neighborhoods, shortest paths, connected components, isolates, hubs, degree centrality, and relationship frequencies.
+- Isolated ontology presentation normalization and import intent/resumable-job rules from their oversized legacy page components so Mendix pages can reuse tested domain behavior without embedding those pages.
+- Standardized `OntologyJunctionPage` and `RecommendationsPage` names while retaining compatibility exports for existing imports.
+- Added automated frontend endpoint classification against backend OpenAPI and deterministic navigation boundary/browser smoke coverage.
+- Added a Mendix 11.12 pluggable widget project with React Flow/D3 selection, modeled node-selection variables, size limits, accessibility semantics, locked dependencies, and release packaging.
+- Baselined requirements in `docs/mendix-graph-miner-requirements-plan.md` and delivery status/decisions in `docs/mendix-transition-tracker.md`.
+
 ### 2026-07-04 Large XMI timeout and parser performance update
 
 - Replaced broad XPath scans in the XMI parser with direct `root.iter()` traversal and local-name helper methods to reduce CPU overhead on large MagicDraw/Cameo XMI files.
@@ -666,4 +746,3 @@ Validation:
 - Fixed Import metadata modal ambiguity by not rendering the import workspace behind the active ontology metadata modal; this removes duplicate filename exposure and makes the modal workflow clearer.
 - Validation passed: `npm run build`, `GraphHEB.test.js`, `graphUtils.test.js`, `DataImportPipeline.routing.test.js`, and `git diff --check` for touched frontend files.
 - Remaining frontend work: `DataImportPipeline.test.js` still times out and needs test lifecycle/mock cleanup; larger componentization of Graph Explorer, Ontology Junction, and Import remains pending.
-

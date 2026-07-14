@@ -55,12 +55,16 @@ async def query_resources(resource_type: str, request: Request):
         raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
     try:
         params = OSLCQueryService.parse(dict(request.query_params), max_page_size=OSLCService.config().max_page_size)
+        return OSLCService.query_resources(resource_type, params)
     except OSLCQueryValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return OSLCService.query_resources(resource_type, params)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.get("/resources/{element_id}")
+@router.get("/resources/{element_id:path}")
 async def get_resource(element_id: str, include_links: bool = Query(default=True)):
     if not OSLCService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
@@ -77,21 +81,30 @@ async def get_resource(element_id: str, include_links: bool = Query(default=True
 async def get_trs_descriptor():
     if not OSLCTRSService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC TRS is disabled.")
-    return OSLCTRSService.tracked_resource_set()
+    try:
+        return OSLCTRSService.tracked_resource_set()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/trs/base")
 async def get_trs_base(limit: int = Query(default=200, ge=1, le=1000)):
     if not OSLCTRSService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC TRS is disabled.")
-    return OSLCTRSService.base_resources(limit=limit)
+    try:
+        return OSLCTRSService.base_resources(limit=limit)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/trs/changelog")
 async def get_trs_changelog(after: int = Query(default=0, ge=0), limit: int = Query(default=200, ge=1, le=1000)):
     if not OSLCTRSService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC TRS is disabled.")
-    return OSLCTRSService.change_log(after=after, limit=limit)
+    try:
+        return OSLCTRSService.change_log(after=after, limit=limit)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/dictionaries/{prefix}")

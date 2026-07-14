@@ -13,6 +13,11 @@ from langchain_core.documents import Document
 
 logger = logging.getLogger(__name__)
 
+GRAPH_VECTOR_INDEX = os.getenv("NEO4J_GRAPH_VECTOR_INDEX", "graph_embedding")
+GRAPH_KEYWORD_INDEX = os.getenv("NEO4J_GRAPH_KEYWORD_INDEX", "keyword_index")
+DATASHEET_VECTOR_INDEX = os.getenv("NEO4J_DATASHEET_VECTOR_INDEX", "datasheet_index")
+DATASHEET_KEYWORD_INDEX = os.getenv("NEO4J_DATASHEET_KEYWORD_INDEX", "datasheetkeyword")
+
 # --- Prompts (always safe to define) ---
 data_prompt = ChatPromptTemplate.from_messages([
     ("system", """You are a graph database assistant. 
@@ -58,12 +63,12 @@ if LLM_AVAILABLE and EMBEDDER_AVAILABLE:
         general_vector = Neo4jVector.from_existing_index(
             embeddings,
             graph=graph,
-            index_name="graph_embedding",
+            index_name=GRAPH_VECTOR_INDEX,
             node_label="GraphChunk",
             text_node_property="content",
             embedding_node_property="embedding",
             search_type="hybrid",
-            keyword_index_name="keyword_index",
+            keyword_index_name=GRAPH_KEYWORD_INDEX,
             retrieval_query="""
 WITH node, score
 WITH node, score, labels(node) as node_labels
@@ -84,12 +89,12 @@ RETURN
         datasheet_vector = Neo4jVector.from_existing_index(
             embeddings,
             graph=graph,
-            index_name="datasheet_index",
+            index_name=DATASHEET_VECTOR_INDEX,
             node_label="DatasheetChunk",
             text_node_property="content",
             embedding_node_property="embedding",
             search_type="hybrid",
-            keyword_index_name="datasheetkeyword",
+            keyword_index_name=DATASHEET_KEYWORD_INDEX,
             retrieval_query="""
 WITH node, score
 WITH node, score, labels(node) as node_labels
@@ -102,7 +107,8 @@ RETURN
     display_content AS text,
     score,
     {
-        filename: node.source,
+        filename: node.filename,
+        document_id: node.document_id,
         chunkID: node.chunk_id
     } AS metadata
 """

@@ -1,0 +1,8 @@
+.depo-graph-miner-empty {
+    min-height: 280px;
+    display: grid;
+    place-items: center;
+    border: 1px dashed #9fb3c8;
+    color: #52606d;
+    font: 600 13px/1.4 "Segoe UI", sans-serif;
+}

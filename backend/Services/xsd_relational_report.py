@@ -13,7 +13,15 @@ def _local(value: str) -> str:
     return str(value or "").rsplit(":", 1)[-1]
 
 
-def _occurrence(element: ET.Element) -> Dict[str, Any]:
+def _occurrence(element: ET.Element, source_kind: str) -> Dict[str, Any]:
+    if source_kind == "attribute":
+        required = element.get("use", "optional") == "required"
+        return {
+            "min_occurs": 1 if required else 0,
+            "max_occurs": 1,
+            "required": required,
+            "repeating": False,
+        }
     minimum = element.get("minOccurs", "1")
     maximum = element.get("maxOccurs", "1")
     return {
@@ -38,8 +46,24 @@ def _column(name: str, source_kind: str, xsd_type: str, element: ET.Element, com
         "is_primary_key_candidate": lower_name in IDENTITY_NAMES,
         "is_foreign_key_candidate": is_fk,
         "foreign_key_target": local_type if is_fk else "",
-        **_occurrence(element),
+        **_occurrence(element, source_kind),
     }
+
+
+def _owned_descendants(root: ET.Element, tag: str) -> List[ET.Element]:
+    """Return declarations owned by a type without flattening nested anonymous types."""
+    found: List[ET.Element] = []
+
+    def visit(node: ET.Element) -> None:
+        for child in list(node):
+            if child.tag == tag:
+                found.append(child)
+            if child.tag == f"{XSD}complexType":
+                continue
+            visit(child)
+
+    visit(root)
+    return found
 
 
 def build_xsd_relational_report(xsd_path: Path) -> Dict[str, Any]:
@@ -54,14 +78,22 @@ def build_xsd_relational_report(xsd_path: Path) -> Dict[str, Any]:
         if not table_name:
             continue
         table_columns: List[Dict[str, Any]] = []
-        for element in complex_type.iter(f"{XSD}element"):
+        for element in _owned_descendants(complex_type, f"{XSD}element"):
             name = element.get("name") or _local(element.get("ref", ""))
             if name:
-                row = _column(name, "element", element.get("type", ""), element, complex_types, simple_types)
+                inline_simple = element.find(f"{XSD}simpleType") is not None
+                row = _column(
+                    name,
+                    "element",
+                    element.get("type", "") or ("inline:simple" if inline_simple else ""),
+                    element,
+                    complex_types,
+                    simple_types | ({"simple"} if inline_simple else set()),
+                )
                 row["table"] = table_name
                 table_columns.append(row)
                 columns.append(row)
-        for attribute in complex_type.iter(f"{XSD}attribute"):
+        for attribute in _owned_descendants(complex_type, f"{XSD}attribute"):
             name = attribute.get("name") or _local(attribute.get("ref", ""))
             if name:
                 row = _column(name, "attribute", attribute.get("type", ""), attribute, complex_types, simple_types)

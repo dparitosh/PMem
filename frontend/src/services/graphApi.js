@@ -3,7 +3,7 @@ import { apiClient } from './apiClient';
 
 export const graphApi = {
   getOverview(limit = 900, signal) {
-    return apiClient.get(API.graph.graphView ? buildUrl(API.graph.graphView) : buildUrl(API.graph.graphvis), {
+    return apiClient.get(buildUrl(API.graph.graphView), {
       params: { limit },
       signal,
     });

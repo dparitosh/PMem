@@ -131,7 +131,7 @@ apiClient.interceptors.response.use(
 
 // ========== HEALTH & STATUS ==========
 export const healthAPI = {
-  check: () => apiClient.get(buildUrl(API.health.health)),
+  check: (options = {}) => apiClient.get(buildUrl(API.health.health), options),
   ready: () => apiClient.get(buildUrl(API.health.ready)),
   graphMetrics: () => apiClient.get(buildUrl(API.health.graphMetrics)),
   ontologiesAvailable: () => apiClient.get(buildUrl(API.health.ontologiesAvailable)),
@@ -309,7 +309,7 @@ export const workflowAPI = {
     buildUrl(replaceParams(API.workflow.artifactFile, {
       task_id: taskId,
       artifact_path: artifactPath,
-    })),
+    }, { pathParams: ['artifact_path'] })),
 };
 
 // ========== INGESTION ENDPOINTS ==========
@@ -345,6 +345,17 @@ export const documentAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  submitJob: (files, metadata = {}) => {
+    const formData = new FormData();
+    (Array.isArray(files) ? files : [files]).forEach((file) => formData.append('files', file));
+    Object.entries(metadata).forEach(([key, value]) => formData.append(key, value));
+    return apiClient.post(buildUrl(API.document.jobs), formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  getJob: (taskId) => apiClient.get(buildUrl(replaceParams(API.document.job, { task_id: taskId }))),
+  cancelJob: (taskId) => apiClient.post(buildUrl(replaceParams(API.document.cancelJob, { task_id: taskId }))),
+  getJobArtifacts: (taskId) => apiClient.get(buildUrl(replaceParams(API.document.jobArtifacts, { task_id: taskId }))),
   checkHealth: () => apiClient.get(buildUrl(API.document.health)),
 };
 

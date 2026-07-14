@@ -539,8 +539,10 @@ const getRelationshipVisual = (relationshipType) => {
 
 const getVisibleRelationshipStrokeWidth = (relationshipType, nodeCount, linkCount) => {
   const baseWidth = Number(getRelationshipVisual(relationshipType).width || LINK_STROKE_WIDTH);
-  if (nodeCount > 120 || linkCount > 160) return Math.max(baseWidth, 1.75);
-  return Math.max(baseWidth, 1.45);
+  const densityAdjusted = nodeCount > 120 || linkCount > 160
+    ? Math.min(baseWidth, 1.75)
+    : baseWidth;
+  return Math.min(3, Math.max(densityAdjusted, 1.25));
 };
 
 const getVisibleRelationshipOpacity = (nodeCount, linkCount) => {
@@ -1921,16 +1923,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
       try {
         performanceLog('[API] Loading graph overview...');
-        let response;
-        try {
-          response = await apiClient.get(API.graph.graphView, {
-            params: { limit: DEFAULT_GRAPH_OVERVIEW_LIMIT },
-            signal: abortController.signal,
-          });
-        } catch (primaryError) {
-          logger.warn('[GRAPH] Falling back to legacy /graphvis endpoint', primaryError);
-          response = await apiClient.get(API.graph.graphvis, { signal: abortController.signal });
-        }
+        const response = await graphApi.getOverview(DEFAULT_GRAPH_OVERVIEW_LIMIT, abortController.signal);
 
         const dataSet = normalizeGraphDataset(response.data);
         performanceLog('[DATA] Graph overview received:', {
@@ -2246,7 +2239,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
     try {
       let response;
       if (ontologyType === 'step' && partName && partName !== 'ALL') {
-        const endpointPath = replaceParams(API.graph.ontologyStepPart, { part: encodeURIComponent(partName) });
+        const endpointPath = replaceParams(API.graph.ontologyStepPart, { part: partName });
         response = await apiClient.get(endpointPath);
       } else if (ontologyType.endsWith('_instances')) {
         // pattern: 'ap242_instances' -> call instances endpoint for 'ap242'
@@ -2258,13 +2251,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       } else if (ontologyType === 'mbse_instances') {
         response = await apiClient.get(API.graph.ontologyMbseInstances);
       } else {
-        try {
-          response = await graphApi.getOntologyGraph(ontologyType, DEFAULT_ONTOLOGY_VIEW_LIMIT);
-        } catch (primaryError) {
-          logger.warn('[ONTOLOGY] Falling back to legacy ontology graph endpoint', primaryError);
-          const legacyEndpointPath = replaceParams(API.graph.graphvisByOntology, { prefix: ontologyType });
-          response = await apiClient.get(legacyEndpointPath);
-        }
+        response = await graphApi.getOntologyGraph(ontologyType, DEFAULT_ONTOLOGY_VIEW_LIMIT);
       }
       const dataSet = normalizeGraphDataset(response.data);
       if (dataSet.nodes.length > 0) {

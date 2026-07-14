@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<widget
+    id="depo.graphminer.DepoGraphMiner"
+    pluginWidget="true"
+    needsEntityContext="false"
+    offlineCapable="false"
+    supportedPlatform="Web"
+    xmlns="http://www.mendix.com/widget/1.0/"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.mendix.com/widget/1.0/ ../node_modules/@mendix/pluggable-widgets-tools/config/widget.xsd">
+    <name>DEPO Graph Miner</name>
+    <description>Explore DEPO nodes and relationships with React Flow or D3 rendering.</description>
+    <icon />
+    <properties>
+        <propertyGroup caption="Data">
+            <property key="nodesJson" type="expression" required="true">
+                <caption>Nodes JSON</caption>
+                <description>JSON array containing id, label, type, properties, metadata, and optional position.</description>
+                <returnType type="String" />
+            </property>
+            <property key="linksJson" type="expression" required="true">
+                <caption>Relationships JSON</caption>
+                <description>JSON array containing id, source, target, type, properties, and metadata.</description>
+                <returnType type="String" />
+            </property>
+            <property key="selectedNodeId" type="expression" required="false">
+                <caption>Selected node ID</caption>
+                <description>Optional externally selected graph node identifier.</description>
+                <returnType type="String" />
+            </property>
+        </propertyGroup>
+        <propertyGroup caption="Interaction">
+            <property key="onNodeSelect" type="action" required="false">
+                <caption>On node select</caption>
+                <description>Microflow or nanoflow to execute after a node is selected.</description>
+                <actionVariables>
+                    <actionVariable key="nodeId" type="String" caption="Node ID" />
+                    <actionVariable key="nodeLabel" type="String" caption="Node label" />
+                    <actionVariable key="nodeType" type="String" caption="Node type" />
+                </actionVariables>
+            </property>
+            <property key="onGraphChange" type="action" required="false">
+                <caption>On graph change</caption>
+                <description>Microflow or nanoflow to execute after a node position or relationship changes.</description>
+            </property>
+            <systemProperty key="TabIndex" />
+        </propertyGroup>
+        <propertyGroup caption="Visualization">
+            <property key="renderer" type="enumeration" defaultValue="reactFlow">
+                <caption>Renderer</caption>
+                <description>Select the interactive renderer.</description>
+                <enumerationValues>
+                    <enumerationValue key="reactFlow">React Flow</enumerationValue>
+                    <enumerationValue key="d3">D3 force graph</enumerationValue>
+                </enumerationValues>
+            </property>
+            <property key="height" type="integer" defaultValue="520">
+                <caption>Height</caption>
+                <description>Canvas height in pixels.</description>
+            </property>
+            <property key="showLabels" type="boolean" defaultValue="true">
+                <caption>Show labels</caption>
+                <description>Show labels when graph density permits.</description>
+            </property>
+            <property key="maxNodes" type="integer" defaultValue="1000">
+                <caption>Maximum nodes</caption>
+                <description>Fail-safe maximum number of nodes rendered by this widget.</description>
+            </property>
+        </propertyGroup>
+    </properties>
+</widget>

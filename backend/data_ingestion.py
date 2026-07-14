@@ -3,17 +3,40 @@ from typing import List
 import pandas as pd
 import io
 import json
-from core.graph import graph  # Assuming graph is the Neo4j connection
+import re
+
+try:
+    from .core.graph import query_with_timeout
+except ImportError:  # Support direct execution from the backend directory.
+    from core.graph import query_with_timeout
 
 router = APIRouter()
+
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
+_MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+_MAX_IMPORT_ROWS = 100_000
+
+
+def _identifier(value: str, field_name: str) -> str:
+    candidate = str(value or "").strip()
+    if not _IDENTIFIER.fullmatch(candidate):
+        raise ValueError(f"Invalid {field_name}: use letters, digits and underscores, starting with a letter or underscore")
+    return candidate
+
+
+def _property_list(values: List[str], field_name: str = "property") -> List[str]:
+    if not isinstance(values, list) or not values:
+        raise ValueError(f"At least one {field_name} is required")
+    return [_identifier(value, field_name) for value in values]
 
 # Import functions from Neo4j_Import adapted for this app
 def load_file_from_bytes(file_bytes: bytes, filename: str) -> pd.DataFrame:
     """Load file from bytes into DataFrame."""
     try:
-        if filename.endswith(".csv"):
+        normalized_filename = str(filename or "").lower()
+        if normalized_filename.endswith(".csv"):
             df = pd.read_csv(io.BytesIO(file_bytes))
-        elif filename.endswith((".xlsx", ".xls")):
+        elif normalized_filename.endswith((".xlsx", ".xls")):
             df = pd.read_excel(io.BytesIO(file_bytes))
         else:
             raise ValueError("Unsupported file type")
@@ -24,8 +47,13 @@ def load_file_from_bytes(file_bytes: bytes, filename: str) -> pd.DataFrame:
 
 def create_node_import_query(label: str, properties: List[str], merge_keys: List[str]) -> str:
     """Generate Cypher query for node import."""
+    label = _identifier(label, "node label")
+    properties = _property_list(properties)
+    merge_keys = [_identifier(key, "merge key") for key in (merge_keys or [])]
+    if any(key not in properties for key in merge_keys):
+        raise ValueError("Every merge key must also be included in properties")
     props_str = ", ".join([f"n.`{p}` = row.`{p}`" for p in properties])
-    merge_str = ", ".join([f"n.`{k}` = row.`{k}`" for k in merge_keys]) if merge_keys else "n = row"
+    merge_str = ", ".join([f"`{k}`: row.`{k}`" for k in merge_keys])
     merge_clause = f"MERGE (n:`{label}` {{{merge_str}}})" if merge_keys else f"CREATE (n:`{label}`)"
 
     query = f"""
@@ -38,6 +66,11 @@ def create_node_import_query(label: str, properties: List[str], merge_keys: List
 def create_relationship_import_query(rel_type: str, from_label: str, to_label: str,
                                    from_prop: str, to_prop: str) -> str:
     """Generate Cypher query for relationship import."""
+    rel_type = _identifier(rel_type, "relationship type")
+    from_label = _identifier(from_label, "source label")
+    to_label = _identifier(to_label, "target label")
+    from_prop = _identifier(from_prop, "source property")
+    to_prop = _identifier(to_prop, "target property")
     query = f"""
     UNWIND $rows AS row
     MATCH (a:`{from_label}` {{{from_prop}: row.`{from_prop}`}})
@@ -48,6 +81,10 @@ def create_relationship_import_query(rel_type: str, from_label: str, to_label: s
 
 def create_index_query(index_type: str, index_name: str, label: str, properties: List[str]) -> str:
     """Generate index creation query."""
+    index_type = str(index_type or "").lower()
+    index_name = _identifier(index_name, "index name")
+    label = _identifier(label, "node label")
+    properties = _property_list(properties)
     prop_list = ", ".join([f"n.`{p}`" for p in properties])
     if index_type == "range":
         return f"CREATE INDEX `{index_name}` IF NOT EXISTS FOR (n:`{label}`) ON ({prop_list})"
@@ -61,6 +98,10 @@ def create_index_query(index_type: str, index_name: str, label: str, properties:
 
 def create_constraint_query(constraint_type: str, constraint_name: str, label: str, properties: List[str]) -> str:
     """Generate constraint creation query."""
+    constraint_type = str(constraint_type or "").lower()
+    constraint_name = _identifier(constraint_name, "constraint name")
+    label = _identifier(label, "node label")
+    properties = _property_list(properties)
     prop_list = ", ".join([f"n.`{p}`" for p in properties])
     if constraint_type == "unique":
         return f"CREATE CONSTRAINT `{constraint_name}` IF NOT EXISTS FOR (n:`{label}`) REQUIRE ({prop_list}) IS UNIQUE"
@@ -81,14 +122,23 @@ async def ingest_data(
     """Import data from uploaded file into Neo4j."""
     try:
         # Parse configurations
-        node_defs = json.loads(nodeDefinitions)
-        rel_defs = json.loads(relationshipDefinitions)
-        index_defs = json.loads(indexes)
-        constraint_defs = json.loads(constraints)
+        try:
+            node_defs = json.loads(nodeDefinitions)
+            rel_defs = json.loads(relationshipDefinitions)
+            index_defs = json.loads(indexes)
+            constraint_defs = json.loads(constraints)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON configuration: {exc.msg}") from exc
+        if not all(isinstance(value, list) for value in (node_defs, rel_defs, index_defs, constraint_defs)):
+            raise HTTPException(status_code=400, detail="All ingestion configuration fields must be JSON arrays")
 
         # Load file
         file_bytes = await file.read()
+        if len(file_bytes) > _MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
         df = load_file_from_bytes(file_bytes, file.filename)
+        if len(df.index) > _MAX_IMPORT_ROWS:
+            raise HTTPException(status_code=413, detail="Import exceeds the 100,000 row limit")
 
         # Convert to dict rows
         rows = df.where(pd.notnull(df), None).to_dict('records')
@@ -132,14 +182,18 @@ async def ingest_data(
         for query in queries:
             try:
                 if "UNWIND" in query:
-                    graph.query(query, parameters={"rows": rows})
+                    query_with_timeout(query, params={"rows": rows})
                 else:
-                    graph.query(query)
-                results.append({"query": query, "status": "success"})
+                    query_with_timeout(query)
+                results.append({"status": "success"})
             except Exception as e:
-                results.append({"query": query, "status": "error", "error": str(e)})
+                results.append({"status": "error", "error": str(e)})
 
         return {"message": "Data ingestion completed", "results": results}
 
+    except HTTPException:
+        raise
+    except (KeyError, TypeError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -59,9 +59,7 @@ export const supportedFormats = [
   { ext: '.xsd', name: 'XSD' },
   { ext: '.exp', name: 'EXPRESS' },
   { ext: '.pdf', name: 'PDF' },
-  { ext: '.doc', name: 'Word' },
   { ext: '.docx', name: 'Word' },
-  { ext: '.ppt', name: 'PowerPoint' },
   { ext: '.pptx', name: 'PowerPoint' },
   { ext: '.txt', name: 'Text' },
   { ext: '.md', name: 'Markdown' },
@@ -105,14 +103,14 @@ export const workflowCatalog = [
     label: 'Unstructured document pipeline',
     title: 'Unstructured document pipeline',
     category: 'AI Ingestion',
-    description: 'Extract text, chunks, embeddings, and graph-search context from PDFs, Word documents, PowerPoint decks, text, Markdown, and HTML.',
+    description: 'Retain source documents, extract traceable text chunks, generate embeddings and review-only semantic proposals, and index GraphRAG context.',
     inputs: 'PDF, Word, PowerPoint, Text, Markdown, HTML',
-    outputs: ['Document chunks', 'Embedding index', 'GraphRAG retrieval context'],
+    outputs: ['Retained source artifact', 'Document chunks', 'Embedding index', 'Semantic proposals', 'GraphRAG retrieval context'],
     status: 'available',
     execution: 'Document upload',
     prerequisite: 'Choose one or more documents',
     icon: FileText,
-    stages: ['Upload documents', 'Extract content', 'Chunk and embed', 'Index for GraphRAG'],
+    stages: ['Retain source documents', 'Extract content', 'Chunk, embed, and propose semantics', 'Index and persist reports'],
     writes_to_neo4j: true,
     retains_artifacts: true,
   },
@@ -299,7 +297,7 @@ export const inferFileTypeFromExtension = (fileName) => {
   if (['.xmi', '.mdxml'].includes(ext)) return 'xmi';
   if (['.xsd'].includes(ext)) return 'xsd';
   if (['.exp'].includes(ext)) return 'express';
-  if (['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.txt', '.md', '.html', '.htm'].includes(ext)) return 'document';
+  if (['.pdf', '.docx', '.pptx', '.txt', '.md', '.html', '.htm'].includes(ext)) return 'document';
   return '';
 };
 

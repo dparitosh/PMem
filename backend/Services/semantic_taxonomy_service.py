@@ -71,11 +71,20 @@ def normalize_skos_payload(payload: Mapping[str, Any]) -> Tuple[SkosConceptSchem
     )
 
     concepts: List[SkosConcept] = []
+    seen_ids: set[str] = set()
     for raw in payload.get("concepts") or []:
         concept_id = str(raw.get("concept_id") or raw.get("id") or raw.get("uri") or "").strip()
         pref_label = str(raw.get("pref_label") or raw.get("label") or raw.get("name") or "").strip()
         if not concept_id or not pref_label:
-            continue
+            raise ValueError("Every SKOS concept requires concept_id and pref_label")
+        if concept_id in seen_ids:
+            raise ValueError(f"Duplicate SKOS concept_id: {concept_id}")
+        seen_ids.add(concept_id)
+        concept_scheme_id = str(raw.get("scheme_id") or scheme.scheme_id).strip()
+        if concept_scheme_id != scheme.scheme_id:
+            raise ValueError(
+                f"Concept {concept_id} belongs to scheme {concept_scheme_id}, expected {scheme.scheme_id}"
+            )
         raw_mappings = raw.get("mappings") or {}
         mappings = {
             mapping_type: _as_tuple(targets)
@@ -85,7 +94,7 @@ def normalize_skos_payload(payload: Mapping[str, Any]) -> Tuple[SkosConceptSchem
         concepts.append(
             SkosConcept(
                 concept_id=concept_id,
-                scheme_id=str(raw.get("scheme_id") or scheme.scheme_id).strip(),
+                scheme_id=concept_scheme_id,
                 pref_label=pref_label,
                 alt_labels=_as_tuple(raw.get("alt_labels") or raw.get("altLabel")),
                 definition=str(raw.get("definition") or "").strip(),
@@ -124,7 +133,7 @@ class SemanticTaxonomyService:
                 for target in getattr(concept, ref_kind):
                     if target not in by_id:
                         issues.append({
-                            "severity": "warning",
+                            "severity": "error",
                             "code": "missing_reference",
                             "message": f"{concept.concept_id} has {ref_kind} reference to unknown concept {target}",
                             "concept": concept.concept_id,
@@ -188,6 +197,8 @@ class SemanticTaxonomyService:
         if root_id not in by_id:
             return {"root": root_id, "nodes": [], "edges": [], "message": "Root concept not found"}
 
+        if direction not in {"broader", "narrower"}:
+            raise ValueError("direction must be 'broader' or 'narrower'")
         depth = max(1, min(int(depth or 1), 10))
         queue: List[Tuple[str, int]] = [(root_id, 0)]
         visited: set[str] = set()
@@ -199,6 +210,8 @@ class SemanticTaxonomyService:
                 continue
             visited.add(current)
             concept = by_id[current]
+            if level >= depth:
+                continue
             next_ids = concept.broader if direction == "broader" else concept.narrower
             for next_id in next_ids:
                 if next_id not in by_id:
@@ -210,8 +223,8 @@ class SemanticTaxonomyService:
         return {
             "root": root_id,
             "direction": direction,
-            "nodes": [SemanticTaxonomyService.to_dict(by_id[node_id]) for node_id in visited],
-            "edges": edges,
+            "nodes": [SemanticTaxonomyService.to_dict(by_id[node_id]) for node_id in sorted(visited)],
+            "edges": [dict(item) for item in sorted({tuple(sorted(edge.items())) for edge in edges})],
         }
 
     @staticmethod
@@ -284,6 +297,10 @@ class SkosNeo4jRepository:
 
     @staticmethod
     def storage_plan(scheme: SkosConceptScheme, concepts: Sequence[SkosConcept]) -> List[Dict[str, Any]]:
+        validation = SemanticTaxonomyService.validate(concepts)
+        if not validation["valid"]:
+            codes = sorted({item["code"] for item in validation["issues"] if item["severity"] == "error"})
+            raise ValueError(f"Invalid SKOS taxonomy: {', '.join(codes)}")
         now = datetime.now(timezone.utc).isoformat()
         concept_rows = [
             {
@@ -311,15 +328,15 @@ class SkosNeo4jRepository:
                     mapping_keys.add((concept.concept_id, target, mapping_type))
 
         hierarchy_rows = [
-            {"childId": child_id, "parentId": parent_id}
+            {"schemeId": scheme.scheme_id, "childId": child_id, "parentId": parent_id}
             for child_id, parent_id in sorted(hierarchy_keys)
         ]
         related_rows = [
-            {"sourceId": source_id, "targetId": target_id}
+            {"schemeId": scheme.scheme_id, "sourceId": source_id, "targetId": target_id}
             for source_id, target_id in sorted(related_keys)
         ]
         mapping_rows = [
-            {"sourceId": source_id, "targetIri": target_iri, "mappingType": mapping_type}
+            {"schemeId": scheme.scheme_id, "sourceId": source_id, "targetIri": target_iri, "mappingType": mapping_type}
             for source_id, target_iri, mapping_type in sorted(mapping_keys)
         ]
 
@@ -330,8 +347,13 @@ class SkosNeo4jRepository:
                 "params": {},
             },
             {
+                "name": "drop_legacy_skos_concept_constraint",
+                "cypher": "DROP CONSTRAINT skos_concept_id IF EXISTS",
+                "params": {},
+            },
+            {
                 "name": "skos_concept_constraint",
-                "cypher": "CREATE CONSTRAINT skos_concept_id IF NOT EXISTS FOR (c:SkosConcept) REQUIRE c.conceptId IS UNIQUE",
+                "cypher": "CREATE CONSTRAINT skos_concept_identity IF NOT EXISTS FOR (c:SkosConcept) REQUIRE (c.schemeId, c.conceptId) IS UNIQUE",
                 "params": {},
             },
             {
@@ -350,11 +372,19 @@ class SkosNeo4jRepository:
                 },
             },
             {
+                "name": "remove_stale_concepts",
+                "cypher": (
+                    "MATCH (s:SkosConceptScheme {schemeId: $schemeId})-[:HAS_CONCEPT]->(c:SkosConcept {schemeId: $schemeId}) "
+                    "WHERE NOT c.conceptId IN $conceptIds DETACH DELETE c"
+                ),
+                "params": {"schemeId": scheme.scheme_id, "conceptIds": [c.concept_id for c in concepts]},
+            },
+            {
                 "name": "upsert_concepts",
                 "cypher": (
                     "UNWIND $rows AS row "
                     "MATCH (s:SkosConceptScheme {schemeId: row.schemeId}) "
-                    "MERGE (c:SkosConcept {conceptId: row.conceptId}) "
+                    "MERGE (c:SkosConcept {schemeId: row.schemeId, conceptId: row.conceptId}) "
                     "SET c.prefLabel = row.prefLabel, c.altLabels = row.altLabels, "
                     "c.definition = row.definition, c.schemeId = row.schemeId, c.updatedAt = row.updatedAt "
                     "MERGE (s)-[:HAS_CONCEPT]->(c)"
@@ -362,11 +392,19 @@ class SkosNeo4jRepository:
                 "params": {"rows": concept_rows},
             },
             {
+                "name": "remove_stale_relationships",
+                "cypher": (
+                    "MATCH (c:SkosConcept {schemeId: $schemeId})-[r:SKOS_NARROWER|SKOS_BROADER|SKOS_RELATED|SKOS_MAPPING]->() "
+                    "DELETE r"
+                ),
+                "params": {"schemeId": scheme.scheme_id},
+            },
+            {
                 "name": "upsert_hierarchy",
                 "cypher": (
                     "UNWIND $rows AS row "
-                    "MATCH (child:SkosConcept {conceptId: row.childId}) "
-                    "MATCH (parent:SkosConcept {conceptId: row.parentId}) "
+                    "MATCH (child:SkosConcept {schemeId: row.schemeId, conceptId: row.childId}) "
+                    "MATCH (parent:SkosConcept {schemeId: row.schemeId, conceptId: row.parentId}) "
                     "MERGE (parent)-[:SKOS_NARROWER]->(child) "
                     "MERGE (child)-[:SKOS_BROADER]->(parent)"
                 ),
@@ -376,9 +414,10 @@ class SkosNeo4jRepository:
                 "name": "upsert_related",
                 "cypher": (
                     "UNWIND $rows AS row "
-                    "MATCH (source:SkosConcept {conceptId: row.sourceId}) "
-                    "MATCH (target:SkosConcept {conceptId: row.targetId}) "
-                    "MERGE (source)-[:SKOS_RELATED]->(target)"
+                    "MATCH (source:SkosConcept {schemeId: row.schemeId, conceptId: row.sourceId}) "
+                    "MATCH (target:SkosConcept {schemeId: row.schemeId, conceptId: row.targetId}) "
+                    "MERGE (source)-[:SKOS_RELATED]->(target) "
+                    "MERGE (target)-[:SKOS_RELATED]->(source)"
                 ),
                 "params": {"rows": related_rows},
             },
@@ -386,7 +425,7 @@ class SkosNeo4jRepository:
                 "name": "upsert_mappings",
                 "cypher": (
                     "UNWIND $rows AS row "
-                    "MATCH (source:SkosConcept {conceptId: row.sourceId}) "
+                    "MATCH (source:SkosConcept {schemeId: row.schemeId, conceptId: row.sourceId}) "
                     "MERGE (target:ExternalSemanticResource {iri: row.targetIri}) "
                     "MERGE (source)-[r:SKOS_MAPPING {mappingType: row.mappingType}]->(target)"
                 ),

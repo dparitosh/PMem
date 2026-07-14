@@ -1,0 +1,5 @@
+# Optional scanned-PDF OCR enhancement for the unstructured document pipeline.
+# The Tesseract executable must also be installed and available on PATH.
+PyMuPDF==1.26.3
+pytesseract==0.3.13
+Pillow==11.3.0

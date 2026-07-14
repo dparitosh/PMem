@@ -76,6 +76,14 @@ def test_skos_neo4j_storage_plan_is_parameterized_and_separates_skos_labels():
 
     assert "SkosConcept" in all_cypher
     assert "OntologyClass" not in all_cypher
-    assert "MERGE (c:SkosConcept {conceptId: row.conceptId})" in all_cypher
+    assert "MERGE (c:SkosConcept {schemeId: row.schemeId, conceptId: row.conceptId})" in all_cypher
+    assert "REQUIRE (c.schemeId, c.conceptId) IS UNIQUE" in all_cypher
+    assert any(
+        step["name"] == "drop_legacy_skos_concept_constraint"
+        and step["cypher"] == "DROP CONSTRAINT skos_concept_id IF EXISTS"
+        for step in plan
+    )
+    assert any(step["name"] == "remove_stale_concepts" for step in plan)
+    assert any(step["name"] == "remove_stale_relationships" for step in plan)
     assert "Bearing" not in all_cypher
     assert any(step["name"] == "upsert_hierarchy" and step["params"]["rows"] for step in plan)
