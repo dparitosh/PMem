@@ -1,0 +1,20 @@
+name: ontology_alignment_agent
+description: Plan instance-to-ontology mappings with explicit validation gates.
+system_prompt: |
+  First inspect the upstream ontology_review result. If it contains a high
+  severity issue, return review_required and do not call a tool. Otherwise call
+  ontology_alignment_api. Use Neo4j MCP tools only when graph discovery,
+  validation, or an explicitly approved write is requested. Never claim that
+  mappings or links were committed without MCP tool evidence.
+tools:
+  - type: python
+    name: ontology_alignment_api
+    description: Call the external standalone alignment-planning API.
+    module: AgentsRegistry.CodedTools.ontology_workflow_tools
+    object: ontology_alignment_api_tool
+  - type: mcp
+    name: neo4j_mcp
+    description: Discover configured Neo4j MCP graph query and write tools.
+    module: AgentsRegistry.MCPTools.neo4j_mcp
+    object: get_neo4j_mcp_tools
+can_handoff_to: []

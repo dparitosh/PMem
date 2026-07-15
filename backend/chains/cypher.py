@@ -8,6 +8,13 @@ from langchain_neo4j import GraphCypherQAChain, Neo4jGraph
 from langchain.prompts.prompt import PromptTemplate
 from typing import Optional, List, Dict, Any
 
+try:
+    from backend.core.cypher_safety import assert_read_only_cypher
+    from backend.core.db_config import get_config
+except Exception:
+    from core.cypher_safety import assert_read_only_cypher
+    from core.db_config import get_config
+
 logger = logging.getLogger(__name__)
 
 schema = graph.get_schema
@@ -97,7 +104,7 @@ if LLM_AVAILABLE:
         # This may fail with ValidationError if graph type doesn't match
         cypher_qa = GraphCypherQAChain.from_llm(
             llm=llm,
-            graph=graph,
+            graph=readonly_graph,
             verbose=True,
             cypher_prompt=cypher_prompt,
             allow_dangerous_requests=True,
@@ -140,7 +147,7 @@ def query_cypher(query: str) -> List[Dict[str, Any]]:
         ...     print(record)
     """
     try:
-        return graph.query(query)
+        return graph.query(assert_read_only_cypher(query))
     except Exception as exc:
         logger.error(f"Direct Cypher query failed: {exc}")
         raise

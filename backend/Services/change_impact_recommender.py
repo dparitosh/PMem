@@ -299,8 +299,50 @@ class ChangeImpactRecommender:
         if not impacted_parts:
             return []
         eids = [p["elementId"] for p in impacted_parts]
-        rows = []
-        rows2 = []
+        rows = self._graph.query(
+            """
+            UNWIND $eids AS eid
+            MATCH (part) WHERE elementId(part) = eid
+            MATCH (part)-[rel]-(process)
+            WHERE any(label IN labels(process) WHERE label IN [
+                    'Process', 'ProcessInstance', 'WorkPlan', 'HeaderOperation',
+                    'GeneralOperation', 'LoadingOperation', 'OperationInst'
+                  ])
+               OR toLower(coalesce(process.semantic_role, '')) IN [
+                    'process', 'operation', 'manufacturing_process', 'work_plan'
+                  ]
+            RETURN DISTINCT process.name AS name,
+                   head(labels(process)) AS source_tag,
+                   part.name AS from_part,
+                   type(rel) AS link_type
+            LIMIT 200
+            """,
+            params={"eids": eids},
+        ) or []
+        rows2 = self._graph.query(
+            """
+            UNWIND $eids AS eid
+            MATCH (part) WHERE elementId(part) = eid
+            MATCH (process)
+            WHERE coalesce(part.import_id, '') <> ''
+              AND process.import_id = part.import_id
+              AND (
+                any(label IN labels(process) WHERE label IN [
+                  'Process', 'ProcessInstance', 'WorkPlan', 'HeaderOperation',
+                  'GeneralOperation', 'LoadingOperation', 'OperationInst'
+                ])
+                OR toLower(coalesce(process.semantic_role, '')) IN [
+                  'process', 'operation', 'manufacturing_process', 'work_plan'
+                ]
+              )
+            RETURN DISTINCT process.name AS name,
+                   head(labels(process)) AS source_tag,
+                   part.name AS from_part,
+                   'SAME_IMPORT' AS link_type
+            LIMIT 200
+            """,
+            params={"eids": eids},
+        ) or []
         seen = set()
         results = []
         for r in rows + rows2:

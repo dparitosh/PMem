@@ -1,3 +1,10 @@
+"""Canonical, dependency-light ontology workflow tools.
+
+These functions are the single implementation used by both the standalone API
+and IIF.  Agent-framework objects belong in the IIF adapter; this module only
+depends on RDFLib and the Python standard library.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -5,192 +12,179 @@ from typing import Any
 
 from rdflib import BNode, Graph, OWL, RDF, RDFS
 
-try:
-    from owlready2 import get_ontology  # type: ignore
-    OWLREADY2_AVAILABLE = True
-except Exception:  # pragma: no cover
-    OWLREADY2_AVAILABLE = False
-    get_ontology = None
+
+SUPPORTED_EXTENSIONS = {".owl", ".rdf", ".ttl", ".xml", ".nt", ".n3", ".jsonld"}
+_RDFLIB_FORMATS = {
+    ".owl": "xml",
+    ".rdf": "xml",
+    ".xml": "xml",
+    ".ttl": "turtle",
+    ".nt": "nt",
+    ".n3": "n3",
+    ".jsonld": "json-ld",
+}
 
 
-SUPPORTED_EXTENSIONS = {".owl", ".rdf", ".ttl", ".xml", ".nt", ".n3"}
-
-
-def ensure_path(path_value: str | Path) -> Path:
-    path = Path(path_value)
-    if not path.exists():
-        raise FileNotFoundError(f"Path not found: {path}")
+def _ontology_path(path_value: str | Path) -> Path:
+    path = Path(path_value).expanduser().resolve()
+    if not path.exists() or not path.is_file():
+        raise FileNotFoundError(f"Ontology file not found: {path}")
+    if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+        raise ValueError(f"Unsupported ontology extension: {path.suffix}")
     return path
 
 
-def inspect_ontology_artifact(path_value: str | Path) -> dict[str, Any]:
-    path = ensure_path(path_value)
-    if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-        raise ValueError(f"Unsupported ontology extension: {path.suffix}")
-
-    summary = {
-        "path": str(path),
-        "format": path.suffix.lower().lstrip("."),
-        "engine": "rdflib",
-        "classes": 0,
-        "object_properties": 0,
-        "datatype_properties": 0,
-        "annotation_like_properties": 0,
-        "individuals": 0,
-        "subclass_edges": 0,
-        "domain_edges": 0,
-        "range_edges": 0,
-        "ontology_iris": [],
-        "warnings": [],
-    }
-
-    owlready2_supported_suffixes = {".owl", ".rdf", ".xml"}
-    if OWLREADY2_AVAILABLE and path.suffix.lower() in owlready2_supported_suffixes:
-        owlready2_error = None
-        for candidate in (str(path.resolve()), path.resolve().as_posix()):
-            try:
-                onto = get_ontology(candidate).load()
-                summary["engine"] = "owlready2"
-                summary["classes"] = len(list(onto.classes()))
-                summary["object_properties"] = len(list(onto.object_properties()))
-                summary["datatype_properties"] = len(list(onto.data_properties()))
-                summary["individuals"] = len(list(onto.individuals()))
-                summary["ontology_iris"] = [onto.base_iri] if onto.base_iri else []
-                owlready2_error = None
-                break
-            except Exception as exc:
-                owlready2_error = exc
-        if owlready2_error is not None:
-            summary["warnings"].append(f"owlready2_load_failed: {owlready2_error}")
-    elif OWLREADY2_AVAILABLE:
-        summary["warnings"].append(f"owlready2_skipped_for_format: {path.suffix.lower()}")
-
+def _parse_graph(path_value: str | Path) -> tuple[Path, Graph]:
+    path = _ontology_path(path_value)
     graph = Graph()
-    graph.parse(path)
+    graph.parse(path, format=_RDFLIB_FORMATS[path.suffix.lower()])
+    return path, graph
 
+
+def ontology_inspect(path: str | Path) -> dict[str, Any]:
+    """Inspect one ontology artifact and return deterministic asserted facts."""
+    ontology_path, graph = _parse_graph(path)
     classes = set(graph.subjects(RDF.type, OWL.Class))
-    object_props = set(graph.subjects(RDF.type, OWL.ObjectProperty))
-    datatype_props = set(graph.subjects(RDF.type, OWL.DatatypeProperty))
-    subclass_edges = list(graph.triples((None, RDFS.subClassOf, None)))
-    domain_edges = list(graph.triples((None, RDFS.domain, None)))
-    range_edges = list(graph.triples((None, RDFS.range, None)))
-    ontology_iris = {str(s) for s in graph.subjects(RDF.type, OWL.Ontology)}
-
+    object_properties = set(graph.subjects(RDF.type, OWL.ObjectProperty))
+    datatype_properties = set(graph.subjects(RDF.type, OWL.DatatypeProperty))
+    annotation_properties = set(graph.subjects(RDF.type, OWL.AnnotationProperty))
     individuals = set(graph.subjects(RDF.type, OWL.NamedIndividual))
-    for subject, _, obj in graph.triples((None, RDF.type, None)):
+    for subject, _, object_type in graph.triples((None, RDF.type, None)):
         if (
-            obj in classes
+            object_type in classes
             and subject not in classes
-            and subject not in object_props
-            and subject not in datatype_props
+            and subject not in object_properties
+            and subject not in datatype_properties
             and not isinstance(subject, BNode)
         ):
             individuals.add(subject)
 
-    annotation_like = set()
-    for prop in graph.subjects(RDF.type, RDF.Property):
-        if prop not in object_props and prop not in datatype_props:
-            annotation_like.add(prop)
-
-    summary.update(
-        {
-            "classes": max(summary["classes"], len(classes)),
-            "object_properties": max(summary["object_properties"], len(object_props)),
-            "datatype_properties": max(summary["datatype_properties"], len(datatype_props)),
-            "annotation_like_properties": len(annotation_like),
-            "individuals": max(summary["individuals"], len(individuals)),
-            "subclass_edges": len(subclass_edges),
-            "domain_edges": len(domain_edges),
-            "range_edges": len(range_edges),
-            "ontology_iris": sorted(set(summary["ontology_iris"]) | ontology_iris),
-        }
-    )
-
-    if summary["domain_edges"] == 0 or summary["range_edges"] == 0:
-        summary["warnings"].append("domain_or_range_edges_missing")
-    if summary["subclass_edges"] == 0:
-        summary["warnings"].append("subclass_edges_missing")
-
-    return summary
-
-
-def review_ontology_structure(path_value: str | Path) -> dict[str, Any]:
-    summary = inspect_ontology_artifact(path_value)
-    issues: list[dict[str, Any]] = []
-
-    if summary["classes"] == 0:
-        issues.append({"severity": "high", "code": "NO_CLASSES", "message": "No OWL classes were detected."})
-    if summary["object_properties"] == 0 and summary["datatype_properties"] == 0:
-        issues.append({"severity": "high", "code": "NO_PROPERTIES", "message": "No ontology properties were detected."})
-    if summary["domain_edges"] == 0:
-        issues.append({"severity": "medium", "code": "NO_DOMAIN", "message": "No domain relationships were detected."})
-    if summary["range_edges"] == 0:
-        issues.append({"severity": "medium", "code": "NO_RANGE", "message": "No range relationships were detected."})
-    if summary["individuals"] == 0:
-        issues.append({"severity": "low", "code": "NO_INDIVIDUALS", "message": "No individuals were detected in the ontology artifact."})
-
     return {
+        "path": str(ontology_path),
+        "format": ontology_path.suffix.lower().lstrip("."),
+        "parser": "rdflib",
+        "scope": "asserted_graph",
+        "triples": len(graph),
+        "classes": len(classes),
+        "object_properties": len(object_properties),
+        "datatype_properties": len(datatype_properties),
+        "annotation_properties": len(annotation_properties),
+        "individuals": len(individuals),
+        "subclass_edges": sum(1 for _ in graph.triples((None, RDFS.subClassOf, None))),
+        "domain_edges": sum(1 for _ in graph.triples((None, RDFS.domain, None))),
+        "range_edges": sum(1 for _ in graph.triples((None, RDFS.range, None))),
+        "ontology_iris": sorted(str(subject) for subject in graph.subjects(RDF.type, OWL.Ontology)),
+    }
+
+
+def ontology_review(path: str | Path, profile: str = "schema") -> dict[str, Any]:
+    """Review asserted ontology structure using an explicit qualification profile."""
+    normalized_profile = str(profile or "schema").strip().lower()
+    if normalized_profile not in {"schema", "schema_and_instances"}:
+        raise ValueError("profile must be 'schema' or 'schema_and_instances'")
+    summary = ontology_inspect(path)
+    checks = [
+        ("NO_CLASSES", "high", summary["classes"] == 0, "No OWL classes were detected."),
+        (
+            "NO_PROPERTIES",
+            "high",
+            summary["object_properties"] + summary["datatype_properties"] == 0,
+            "No object or datatype properties were detected.",
+        ),
+    ]
+    if normalized_profile == "schema_and_instances":
+        checks.append(
+            ("NO_INDIVIDUALS", "low", summary["individuals"] == 0, "No individuals were detected.")
+        )
+    issues = [
+        {"code": code, "severity": severity, "message": message}
+        for code, severity, failed, message in checks
+        if failed
+    ]
+    observations = []
+    if summary["subclass_edges"] == 0:
+        observations.append("No asserted subclass hierarchy was detected.")
+    if summary["domain_edges"] == 0 or summary["range_edges"] == 0:
+        observations.append("Some properties may not declare asserted domain/range axioms.")
+    return {
+        "status": "ok" if not issues else "review_required",
+        "profile": normalized_profile,
         "summary": summary,
         "issues": issues,
-        "status": "ok" if not issues else "review_required",
+        "observations": observations,
     }
 
 
-def plan_instance_alignment(ontology_path: str | Path, instance_metadata: dict[str, Any]) -> dict[str, Any]:
-    summary = inspect_ontology_artifact(ontology_path)
-    entity_count = len(instance_metadata.get("entities", []))
-    attribute_count = len(instance_metadata.get("attributes", []))
-    relationship_count = len(instance_metadata.get("relationships", []))
-    metadata_count = len(instance_metadata.get("metadata", []))
+def _list_field(metadata: dict[str, Any], name: str) -> list[Any]:
+    value = metadata.get(name, [])
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"instance_metadata.{name} must be an array")
+    return value
 
+
+def ontology_alignment_plan(
+    path: str | Path,
+    instance_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Plan instance linking without mutating either source or ontology."""
+    metadata = instance_metadata or {}
+    if not isinstance(metadata, dict):
+        raise ValueError("instance_metadata must be an object")
+    summary = ontology_inspect(path)
     return {
-        "ontology_summary": summary,
-        "alignment_plan": {
-            "entity_to_class": entity_count,
-            "attribute_to_dataproperty": attribute_count,
-            "relationship_to_objectproperty": relationship_count,
-            "metadata_to_annotation_or_provenance": metadata_count,
-        },
-        "required_validations": [
-            "class_existence_check",
-            "datatype_compatibility_check",
-            "domain_range_compatibility_check",
-            "duplicate_mapping_check",
-        ],
         "status": "ready_for_mapping",
+        "ontology_summary": summary,
+        "mapping_targets": {
+            "entity_to_class": len(_list_field(metadata, "entities")),
+            "attribute_to_datatype_property": len(_list_field(metadata, "attributes")),
+            "relationship_to_object_property": len(_list_field(metadata, "relationships")),
+            "metadata_to_annotation": len(_list_field(metadata, "metadata")),
+        },
+        "validations": [
+            "class_existence",
+            "datatype_compatibility",
+            "domain_range_compatibility",
+            "duplicate_mapping",
+            "ontology_scope",
+        ],
     }
 
 
-def export_ontology(path_value: str | Path, output_dir: str | Path, export_format: str) -> dict[str, Any]:
-    path = ensure_path(path_value)
-    out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    graph = Graph()
-    graph.parse(path)
-
-    normalized = export_format.lower()
-    if normalized == "ttl":
-        fmt = "turtle"
-        suffix = ".ttl"
-    elif normalized in {"rdf", "rdfxml", "xml"}:
-        fmt = "xml"
-        suffix = ".rdf"
-    elif normalized == "nt":
-        fmt = "nt"
-        suffix = ".nt"
-    elif normalized == "jsonld":
-        fmt = "json-ld"
-        suffix = ".jsonld"
-    else:
-        raise ValueError(f"Unsupported export format: {export_format}")
-
-    target = out_dir / f"{path.stem}.exported{suffix}"
-    graph.serialize(destination=target, format=fmt)
-
+def ontology_export(
+    path: str | Path,
+    output_dir: str | Path,
+    export_format: str = "ttl",
+) -> dict[str, Any]:
+    """Export an ontology using one canonical format identifier."""
+    ontology_path, graph = _parse_graph(path)
+    formats = {
+        "ttl": ("turtle", ".ttl"),
+        "rdf": ("xml", ".rdf"),
+        "nt": ("nt", ".nt"),
+        "jsonld": ("json-ld", ".jsonld"),
+    }
+    normalized_format = str(export_format).strip().lower()
+    try:
+        serialization, suffix = formats[normalized_format]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported export format: {export_format}") from exc
+    destination = Path(output_dir).expanduser().resolve()
+    destination.mkdir(parents=True, exist_ok=True)
+    output_path = destination / f"{ontology_path.stem}.exported{suffix}"
+    graph.serialize(destination=output_path, format=serialization)
     return {
-        "source_path": str(path),
-        "output_path": str(target),
-        "export_format": normalized,
         "status": "exported",
+        "source_path": str(ontology_path),
+        "output_path": str(output_path),
+        "format": normalized_format,
     }
+
+
+__all__ = [
+    "ontology_inspect",
+    "ontology_review",
+    "ontology_alignment_plan",
+    "ontology_export",
+]

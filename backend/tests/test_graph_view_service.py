@@ -309,7 +309,7 @@ def test_contextual_subgraph_query_projects_bridge_relationships_without_relatio
     assert "NULL AS r,\n          bridge_adjacent AS adjacent" in cypher
     assert "AS r_payload" in cypher
     assert "WHEN r_payload IS NOT NULL THEN r_payload" in cypher
-    assert "WITH seed, r, adjacent, r_payload" in cypher
+    assert "WITH seed, score, r, adjacent, r_payload" in cypher
 
 
 def test_contextual_subgraph_keeps_relevance_seed_as_root_after_node_sorting(monkeypatch):
@@ -372,3 +372,45 @@ def test_contextual_neighbor_query_applies_scope_and_terminal_node_filters(monke
     assert "direct_adjacent.ontology_prefix = $ontology_prefix" in captured["cypher"]
     assert "label IN $schema_node_labels" in captured["cypher"]
     assert captured["params"]["import_id"] == "job-1"
+
+
+def test_contextual_subgraph_enforces_node_limit_after_neighbor_projection(monkeypatch):
+    monkeypatch.setattr(
+        GraphViewService,
+        "_run",
+        staticmethod(lambda _cypher, _params: [{
+            "n": {"elementId": "root", "labels": ["View"], "properties": {"name": "Root", "semantic_role": "view"}},
+            "m": {"elementId": "neighbor", "labels": ["Product"], "properties": {"name": "Neighbor"}},
+            "r": {"elementId": "rel", "type": "RELATED_TO", "start": "root", "end": "neighbor", "properties": {}},
+        }]),
+    )
+
+    graph = GraphViewService.get_contextual_subgraph(search="root", limit=1, expand_neighbors=True)
+
+    assert graph["counts"] == {"nodes": 1, "relationships": 0}
+    assert graph["nodes"][0]["elementId"] == "root"
+    assert graph["view"]["root_node_id"] == "root"
+
+
+def test_contextual_subgraph_accepts_mbse_view_and_folder_roles():
+    assert GraphViewService._is_individual_node({
+        "elementId": "v1", "labels": ["View"], "properties": {"semantic_role": "view"}
+    })
+    assert GraphViewService._is_individual_node({
+        "elementId": "p1", "labels": ["Package", "MbseNode"], "properties": {"semantic_role": "folder"}
+    })
+
+
+def test_contextual_subgraph_uses_controlled_properties_not_dynamic_key_scan(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        GraphViewService,
+        "_run",
+        staticmethod(lambda cypher, params: captured.update(cypher=cypher, params=params) or []),
+    )
+
+    GraphViewService.get_contextual_subgraph(search="pump", limit=5)
+
+    assert "keys(seed)" not in captured["cypher"]
+    assert "properties(seed)['name']" in captured["cypher"]
+    assert "LIMIT toInteger($limit)" in captured["cypher"]

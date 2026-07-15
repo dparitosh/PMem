@@ -9,18 +9,9 @@ AgentHandler = Callable[[dict[str, Any]], dict[str, Any]]
 class AgentSpec:
     name: str
     description: str
-    use_case: str
-    role: str
-    objective: list[str]
-    input_context: list[str]
-    checks: list[str]
-    constraints: list[str]
-    output_rules: list[str]
-    output_schema: dict[str, Any]
-    termination_rule: str
-    additional_guidelines: list[str] = field(default_factory=list)
-    tools: list[str] = field(default_factory=list)
-    examples: list[dict[str, Any]] = field(default_factory=list)
+    system_prompt: str
+    tools: list[dict[str, Any]] = field(default_factory=list)
+    can_handoff_to: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

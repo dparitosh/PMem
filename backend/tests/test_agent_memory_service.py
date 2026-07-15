@@ -130,3 +130,22 @@ def test_ensure_schema_is_attempted_once(monkeypatch):
     assert first["ensured"] is True
     assert second["cached"] is True
     assert len(calls) == 6
+
+
+def test_extract_touched_nodes_reads_nested_frontend_graph_snapshot():
+    nodes = AgentMemoryService._extract_touched_nodes({
+        "selectedNode": {"elementId": "selected", "name": "Selected"},
+        "visibleGraph": {
+            "nodes": [
+                {"elementId": "visible", "name": "Visible"},
+                {"elementId": "selected", "name": "Duplicate"},
+            ]
+        },
+        "searchResults": {"nodes": [{"elementId": "search", "label": "Search"}]},
+    })
+
+    assert nodes == [
+        {"element_id": "selected", "label": "Selected"},
+        {"element_id": "visible", "label": "Visible"},
+        {"element_id": "search", "label": "Search"},
+    ]

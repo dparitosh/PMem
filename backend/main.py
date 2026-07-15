@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Path, Request, APIRouter, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response
+from starlette.concurrency import run_in_threadpool
 import logging as _logging
 from logging.handlers import RotatingFileHandler
 import json
@@ -1064,6 +1065,37 @@ async def _run_with_timeout(func, timeout_seconds: int, *args):
 
 async def _stream_with_timeout(session_id: str, message: str, graph_context=None):
     stream_iter = None
+    response_parts: list[str] = []
+    stream_failed = False
+    memory_recorded = False
+
+    async def record_completed_stream() -> None:
+        nonlocal memory_recorded
+        if memory_recorded or stream_failed or AgentMemoryService is None:
+            return
+        assistant_response = "".join(response_parts)
+        try:
+            await asyncio.to_thread(
+                AgentMemoryService.record_chat_turn,
+                session_id=session_id,
+                user_message=message,
+                assistant_response=assistant_response,
+                graph_context=graph_context,
+                status="completed",
+            )
+            await asyncio.to_thread(
+                AgentMemoryService.record_reasoning_trace,
+                session_id=session_id,
+                task="chat-stream",
+                tool_name="knowledge_companion",
+                input_payload={"message": message, "graph_context_present": bool(graph_context)},
+                result_summary={"response_length": len(assistant_response), "status": "completed"},
+                success=True,
+            )
+            memory_recorded = True
+        except Exception as memory_exc:
+            logger.warning("Agent memory stream record skipped: %s", memory_exc)
+
     try:
         async with _session_lock(session_id):
             stream_iter = generate_response_stream(session_id, message, graph_context)
@@ -1076,7 +1108,22 @@ async def _stream_with_timeout(session_id: str, message: str, graph_context=None
                     event = await asyncio.wait_for(stream_iter.__anext__(), timeout=remaining)
                 except StopAsyncIteration:
                     break
+                for line in str(event or "").splitlines():
+                    if not line.startswith("data:"):
+                        continue
+                    try:
+                        payload = json.loads(line[5:].strip())
+                    except (TypeError, ValueError):
+                        continue
+                    if payload.get("token"):
+                        response_parts.append(str(payload["token"]))
+                    if payload.get("error"):
+                        stream_failed = True
+                    if payload.get("done") and not stream_failed:
+                        await record_completed_stream()
                 yield event
+            if response_parts and not stream_failed:
+                await record_completed_stream()
     except asyncio.TimeoutError:
         logger.warning("Chat stream timed out for session %s", session_id)
         yield f"data: {json.dumps({'error': 'Chat stream timed out. Please retry with a narrower or more specific question.'})}\n\n"
@@ -1840,7 +1887,8 @@ async def get_contextual_subgraph(
         from Services.graph_view_service import GraphViewService
 
     try:
-        return GraphViewService.get_contextual_subgraph(
+        return await run_in_threadpool(
+            GraphViewService.get_contextual_subgraph,
             search=search,
             ontology_prefix=ontology_prefix,
             import_id=import_id,
@@ -5092,16 +5140,29 @@ async def commit_import(task_id: str):
                 node_id = props.get("id", "")
                 if node_id:
                     label = _safe_cypher_identifier(node.get("label", "Element"), default="Element")
-                    cypher = f"MERGE (n:`{label}` {{id: $id}}) SET n += $props"
-                    graph.query(cypher, {"id": node_id, "props": props}, timeout=300)
+                    cypher = f"MERGE (n:`{label}` {{id: $id, import_id: $import_id}}) SET n += $props"
+                    scoped_props = {**props, "import_id": task_id}
+                    graph.query(
+                        cypher,
+                        {"id": node_id, "import_id": task_id, "props": scoped_props},
+                        timeout=300,
+                    )
                     committed_count += 1
             for rel in relationships:
                 from_id = rel.get("from_props", {}).get("id", "")
                 to_id = rel.get("to_props", {}).get("id", "")
                 rel_type = _safe_cypher_identifier(rel.get("type", "RELATES_TO"), default="RELATES_TO")
                 if from_id and to_id:
-                    cypher = f"MATCH (a {{id: $from_id}}) MATCH (b {{id: $to_id}}) MERGE (a)-[:`{rel_type}`]->(b)"
-                    graph.query(cypher, {"from_id": from_id, "to_id": to_id}, timeout=300)
+                    cypher = (
+                        f"MATCH (a {{id: $from_id, import_id: $import_id}}) "
+                        f"MATCH (b {{id: $to_id, import_id: $import_id}}) "
+                        f"MERGE (a)-[:`{rel_type}`]->(b)"
+                    )
+                    graph.query(
+                        cypher,
+                        {"from_id": from_id, "to_id": to_id, "import_id": task_id},
+                        timeout=300,
+                    )
                     committed_count += 1
 
             task["status"] = "committed"

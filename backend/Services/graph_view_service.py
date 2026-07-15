@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from xml.etree import ElementTree as ET
+from neo4j import Query, READ_ACCESS, WRITE_ACCESS
 
 try:
     from backend.core.db_config import get_config, get_driver
@@ -95,7 +96,6 @@ class GraphViewService:
 
     SCHEMA_NODE_LABELS = [
         "OntologyClass",
-        "Class",
         "ObjectProperty",
         "DatatypeProperty",
         "Restriction",
@@ -158,6 +158,11 @@ class GraphViewService:
         "ProcessInstance",
         "Document",
         "Site",
+        "View",
+        "Package",
+        "Class",
+        "MbseNode",
+        "InstanceNode",
     ]
 
     INSTANCE_SEMANTIC_ROLES = [
@@ -176,6 +181,8 @@ class GraphViewService:
         "surface_finish",
         "requirement",
         "requirement_specification",
+        "view",
+        "folder",
     ]
 
     RELATIONSHIP_NODE_LABELS = [
@@ -189,17 +196,17 @@ class GraphViewService:
     def _run(cypher: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         config = get_config()
         driver = get_driver()
-        with driver.session(database=config.database) as session:
-            result = session.run(cypher, params or {})
-            return [dict(record) for record in result]
+        with driver.session(database=config.database, default_access_mode=READ_ACCESS) as session:
+            result = session.run(Query(cypher, timeout=float(config.query_timeout)), params or {})
+            return result.data()
 
     @staticmethod
     def _write(cypher: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         config = get_config()
         driver = get_driver()
-        with driver.session(database=config.database) as session:
-            result = session.run(cypher, params or {})
-            return [dict(record) for record in result]
+        with driver.session(database=config.database, default_access_mode=WRITE_ACCESS) as session:
+            result = session.run(Query(cypher, timeout=float(config.query_timeout)), params or {})
+            return result.data()
 
     @staticmethod
     def _normalize_search_term(value: str) -> str:
@@ -1274,12 +1281,12 @@ RETURN count(res) AS count
                 AND NOT any(label IN labels(m) WHERE label IN $relationship_node_labels)
                 AND (
                   any(label IN labels(n) WHERE label IN $instance_node_labels)
-                  OR coalesce(n.is_cad_business_object, false) = true
+                  OR coalesce(properties(n)['is_cad_business_object'], false) = true
                   OR coalesce(n.semantic_role, '') IN $semantic_instance_roles
                 )
                 AND (
                   any(label IN labels(m) WHERE label IN $instance_node_labels)
-                  OR coalesce(m.is_cad_business_object, false) = true
+                  OR coalesce(properties(m)['is_cad_business_object'], false) = true
                   OR coalesce(m.semantic_role, '') IN $semantic_instance_roles
                 )
               RETURN n,
@@ -1303,12 +1310,12 @@ RETURN count(res) AS count
                 AND elementId(n) < elementId(m)
                 AND (
                   any(label IN labels(n) WHERE label IN $instance_node_labels)
-                  OR coalesce(n.is_cad_business_object, false) = true
+                  OR coalesce(properties(n)['is_cad_business_object'], false) = true
                   OR coalesce(n.semantic_role, '') IN $semantic_instance_roles
                 )
                 AND (
                   any(label IN labels(m) WHERE label IN $instance_node_labels)
-                  OR coalesce(m.is_cad_business_object, false) = true
+                  OR coalesce(properties(m)['is_cad_business_object'], false) = true
                   OR coalesce(m.semantic_role, '') IN $semantic_instance_roles
                 )
               WITH n, bridge, m
@@ -1613,7 +1620,7 @@ RETURN count(res) AS count
             )
             AND (
               any(label IN labels(direct_adjacent) WHERE label IN $instance_node_labels)
-              OR coalesce(direct_adjacent.is_cad_business_object, false) = true
+              OR coalesce(properties(direct_adjacent)['is_cad_business_object'], false) = true
               OR coalesce(direct_adjacent.semantic_role, '') IN $semantic_instance_roles
             )
           )
@@ -1636,7 +1643,7 @@ RETURN count(res) AS count
             )
             AND (
               any(label IN labels(bridge_adjacent) WHERE label IN $instance_node_labels)
-              OR coalesce(bridge_adjacent.is_cad_business_object, false) = true
+              OR coalesce(properties(bridge_adjacent)['is_cad_business_object'], false) = true
               OR coalesce(bridge_adjacent.semantic_role, '') IN $semantic_instance_roles
             )
           RETURN NULL AS r,
@@ -1649,9 +1656,9 @@ RETURN count(res) AS count
             end: elementId(bridge_adjacent)
           } AS r_payload
         }
-        WITH seed, r, adjacent, r_payload
+        WITH seed, score, r, adjacent, r_payload
         """ if expand_neighbors else """
-        WITH seed, NULL AS r, NULL AS adjacent, NULL AS r_payload
+        WITH seed, score, NULL AS r, NULL AS adjacent, NULL AS r_payload
         """
 
         query = """
@@ -1664,7 +1671,7 @@ RETURN count(res) AS count
         WHERE NOT (seed:DatasheetChunk OR seed:GraphChunk)
             AND (
               any(label IN labels(seed) WHERE label IN $instance_node_labels)
-              OR coalesce(seed.is_cad_business_object, false) = true
+              OR coalesce(properties(seed)['is_cad_business_object'], false) = true
               OR coalesce(seed.semantic_role, '') IN $semantic_instance_roles
             )
             AND NOT any(label IN labels(seed) WHERE label IN $relationship_node_labels)
@@ -1687,9 +1694,17 @@ RETURN count(res) AS count
                   ] WHERE toLower(coalesce(toStringOrNull(value), '')) STARTS WITH search_term)
                 ELSE
                   toLower(elementId(seed)) CONTAINS search_term OR
-                  any(key IN keys(seed) WHERE
-                    toLower(coalesce(toStringOrNull(seed[key]), '')) CONTAINS search_term
-                  )
+                  any(value IN [
+                    properties(seed)['id'], properties(seed)['uid'], properties(seed)['instance_id'],
+                    properties(seed)['identifier'], properties(seed)['catalogue_id'],
+                    properties(seed)['requirement_id'], properties(seed)['requirement_ref'],
+                    properties(seed)['name'], properties(seed)['title'], properties(seed)['code'],
+                    properties(seed)['label'], properties(seed)['display_name'],
+                    properties(seed)['displayName'], properties(seed)['external_id'],
+                    properties(seed)['externalId'], properties(seed)['source_filename'],
+                    properties(seed)['idref'], properties(seed)['href'],
+                    properties(seed)['part_type'], properties(seed)['element_type']
+                  ] WHERE toLower(coalesce(toStringOrNull(value), '')) CONTAINS search_term)
               END
             )
             AND (
@@ -1776,7 +1791,7 @@ RETURN count(res) AS count
               ] WHERE toLower(coalesce(toStringOrNull(value), '')) CONTAINS search_term) THEN 500
               WHEN toLower(elementId(seed)) STARTS WITH search_term THEN 450
               WHEN toLower(elementId(seed)) CONTAINS search_term THEN 400
-              WHEN any(key IN keys(seed) WHERE toLower(coalesce(toStringOrNull(seed[key]), '')) CONTAINS search_term) THEN 100
+              WHEN any(value IN [properties(seed)['description'], properties(seed)['definition']] WHERE toLower(coalesce(toStringOrNull(value), '')) CONTAINS search_term) THEN 100
               ELSE 0
             END AS score
           WHERE search_term = '' OR score > 0
@@ -1789,7 +1804,7 @@ RETURN count(res) AS count
               WHEN toLower(coalesce(toStringOrNull(properties(seed)['requirement_ref']), '')) STARTS WITH search_term THEN 4
               WHEN any(label IN labels(seed) WHERE label IN ['Part', 'Product', 'ProductRevision']) THEN 3
               WHEN toLower(coalesce(toStringOrNull(properties(seed)['part_type']), '')) CONTAINS 'requirement' THEN 2
-              WHEN coalesce(seed.is_cad_business_object, false) = true THEN 2
+              WHEN coalesce(properties(seed)['is_cad_business_object'], false) = true THEN 2
               WHEN coalesce(seed.semantic_role, '') IN $semantic_instance_roles THEN 1
               ELSE 0
             END DESC,
@@ -1808,10 +1823,12 @@ RETURN count(res) AS count
             ELSE 1
           END
         }
-        WITH collect(DISTINCT seed) AS seeds
-        UNWIND seeds AS seed
+        WITH seed, score
+        ORDER BY score DESC, elementId(seed) ASC
         __NEIGHBOR_MATCH__
-        LIMIT CASE WHEN trim($search) = '' THEN toInteger($limit) ELSE 80 END
+        WITH seed, score, r, adjacent, r_payload
+        ORDER BY score DESC, elementId(seed) ASC, coalesce(elementId(adjacent), '') ASC
+        LIMIT toInteger($limit)
         RETURN
           {
             elementId: elementId(seed),
@@ -1824,7 +1841,7 @@ RETURN count(res) AS count
                 AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                 AND (
                   any(label IN labels(candidate) WHERE label IN $instance_node_labels)
-                  OR coalesce(candidate.is_cad_business_object, false) = true
+                  OR coalesce(properties(candidate)['is_cad_business_object'], false) = true
                   OR coalesce(candidate.semantic_role, '') IN $semantic_instance_roles
                 )
             }
@@ -1843,7 +1860,7 @@ RETURN count(res) AS count
             properties: properties(adjacent),
             can_traverse: CASE
               WHEN any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
-                OR coalesce(adjacent.is_cad_business_object, false) = true
+                OR coalesce(properties(adjacent)['is_cad_business_object'], false) = true
                 OR coalesce(adjacent.semantic_role, '') IN $semantic_instance_roles THEN EXISTS {
                 MATCH (adjacent)-[]-(candidate)
                 WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
@@ -1851,7 +1868,7 @@ RETURN count(res) AS count
                   AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                   AND (
                     any(label IN labels(candidate) WHERE label IN $instance_node_labels)
-                    OR coalesce(candidate.is_cad_business_object, false) = true
+                    OR coalesce(properties(candidate)['is_cad_business_object'], false) = true
                     OR coalesce(candidate.semantic_role, '') IN $semantic_instance_roles
                   )
               }
@@ -1890,6 +1907,25 @@ RETURN count(res) AS count
             (node for node in graph.get("nodes", []) if node.get("elementId") == selected_root_id),
             None,
         )
+        if len(graph.get("nodes", [])) > search_limit:
+            ordered_nodes = ([root_node] if root_node else []) + [
+                node for node in graph["nodes"]
+                if not root_node or node.get("elementId") != root_node.get("elementId")
+            ]
+            graph["nodes"] = ordered_nodes[:search_limit]
+            kept_ids = {node.get("elementId") for node in graph["nodes"]}
+            graph["relationships"] = [
+                rel for rel in graph.get("relationships", [])
+                if rel.get("start") in kept_ids and rel.get("end") in kept_ids
+            ]
+            graph["counts"] = {
+                "nodes": len(graph["nodes"]),
+                "relationships": len(graph["relationships"]),
+            }
+            root_node = next(
+                (node for node in graph["nodes"] if node.get("elementId") == selected_root_id),
+                None,
+            )
         graph["view"] = {
             "type": "contextual-subgraph",
             "mode": "neighborhood" if expand_neighbors else "search-results",
@@ -1924,7 +1960,7 @@ RETURN count(res) AS count
                 AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                 AND (
                   any(label IN labels(candidate) WHERE label IN $instance_node_labels)
-                  OR coalesce(candidate.is_cad_business_object, false) = true
+                  OR coalesce(properties(candidate)['is_cad_business_object'], false) = true
                   OR coalesce(candidate.semantic_role, '') IN $semantic_instance_roles
                 )
             }
@@ -1937,7 +1973,7 @@ RETURN count(res) AS count
             properties: properties($node_var),
             can_traverse: CASE
               WHEN any(label IN labels($node_var) WHERE label IN $instance_node_labels)
-                OR coalesce($node_var.is_cad_business_object, false) = true
+                OR coalesce(properties($node_var)['is_cad_business_object'], false) = true
                 OR coalesce($node_var.semantic_role, '') IN $semantic_instance_roles THEN EXISTS {
                 MATCH ($node_var)-[]-(candidate)
                 WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
@@ -1945,7 +1981,7 @@ RETURN count(res) AS count
                   AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                   AND (
                     any(label IN labels(candidate) WHERE label IN $instance_node_labels)
-                    OR coalesce(candidate.is_cad_business_object, false) = true
+                    OR coalesce(properties(candidate)['is_cad_business_object'], false) = true
                     OR coalesce(candidate.semantic_role, '') IN $semantic_instance_roles
                   )
               }
@@ -1964,7 +2000,7 @@ RETURN count(res) AS count
                 NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
                 AND (
                   any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
-                  OR coalesce(adjacent.is_cad_business_object, false) = true
+                  OR coalesce(properties(adjacent)['is_cad_business_object'], false) = true
                   OR coalesce(adjacent.semantic_role, '') IN $semantic_instance_roles
                 )
               )
@@ -1978,12 +2014,12 @@ RETURN count(res) AS count
                 AND NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
                 AND (
                   any(label IN labels(mid) WHERE label IN $instance_node_labels)
-                  OR coalesce(mid.is_cad_business_object, false) = true
+                  OR coalesce(properties(mid)['is_cad_business_object'], false) = true
                   OR coalesce(mid.semantic_role, '') IN $semantic_instance_roles
                 )
                 AND (
                   any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
-                  OR coalesce(adjacent.is_cad_business_object, false) = true
+                  OR coalesce(properties(adjacent)['is_cad_business_object'], false) = true
                   OR coalesce(adjacent.semantic_role, '') IN $semantic_instance_roles
                 )
               RETURN mid AS source_node, r2 AS rel, adjacent AS target_node
@@ -2011,7 +2047,7 @@ RETURN count(res) AS count
                 AND NOT any(label IN labels(adjacent) WHERE label IN $relationship_node_labels)
                 AND (
                   any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
-                  OR coalesce(adjacent.is_cad_business_object, false) = true
+                  OR coalesce(properties(adjacent)['is_cad_business_object'], false) = true
                   OR coalesce(adjacent.semantic_role, '') IN $semantic_instance_roles
                 )
               )
@@ -2031,7 +2067,7 @@ RETURN count(res) AS count
                 AND NOT any(label IN labels(adjacent) WHERE label IN $relationship_node_labels)
                 AND (
                   any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
-                  OR coalesce(adjacent.is_cad_business_object, false) = true
+                  OR coalesce(properties(adjacent)['is_cad_business_object'], false) = true
                   OR coalesce(adjacent.semantic_role, '') IN $semantic_instance_roles
                 )
               RETURN seed AS source_node,
@@ -2053,7 +2089,7 @@ RETURN count(res) AS count
                 AND NOT any(label IN labels(adjacent) WHERE label IN $schema_node_labels)
                 AND (
                   any(label IN labels(adjacent) WHERE label IN $instance_node_labels)
-                  OR coalesce(adjacent.is_cad_business_object, false) = true
+                  OR coalesce(properties(adjacent)['is_cad_business_object'], false) = true
                   OR coalesce(adjacent.semantic_role, '') IN $semantic_instance_roles
                 )
                 AND NOT coalesce(
@@ -2110,7 +2146,7 @@ RETURN count(res) AS count
                     AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                     AND (
                       any(label IN labels(candidate) WHERE label IN $instance_node_labels)
-                      OR coalesce(candidate.is_cad_business_object, false) = true
+                      OR coalesce(properties(candidate)['is_cad_business_object'], false) = true
                       OR coalesce(candidate.semantic_role, '') IN $semantic_instance_roles
                     )
                 }
@@ -2122,7 +2158,7 @@ RETURN count(res) AS count
                 properties: properties(target_node),
                 can_traverse: CASE
                   WHEN any(label IN labels(target_node) WHERE label IN $instance_node_labels)
-                    OR coalesce(target_node.is_cad_business_object, false) = true
+                    OR coalesce(properties(target_node)['is_cad_business_object'], false) = true
                     OR coalesce(target_node.semantic_role, '') IN $semantic_instance_roles THEN EXISTS {
                     MATCH (target_node)-[]-(candidate)
                     WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
@@ -2130,7 +2166,7 @@ RETURN count(res) AS count
                       AND NOT any(label IN labels(candidate) WHERE label IN $schema_node_labels)
                       AND (
                         any(label IN labels(candidate) WHERE label IN $instance_node_labels)
-                        OR coalesce(candidate.is_cad_business_object, false) = true
+                        OR coalesce(properties(candidate)['is_cad_business_object'], false) = true
                         OR coalesce(candidate.semantic_role, '') IN $semantic_instance_roles
                       )
                   }

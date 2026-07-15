@@ -334,6 +334,12 @@ class AgentMemoryService:
             values = context.get(key)
             if isinstance(values, list):
                 candidates.extend(item for item in values if isinstance(item, dict))
+        for key in ("visibleGraph", "visible_graph", "searchResults", "search_results"):
+            section = context.get(key)
+            if isinstance(section, dict):
+                values = section.get("nodes")
+                if isinstance(values, list):
+                    candidates.extend(item for item in values if isinstance(item, dict))
 
         seen = set()
         touched = []
@@ -342,8 +348,12 @@ class AgentMemoryService:
             if not element_id or element_id in seen:
                 continue
             seen.add(element_id)
+            props = node.get("properties") if isinstance(node.get("properties"), dict) else {}
             touched.append({
                 "element_id": element_id,
-                "label": str(node.get("label") or node.get("name") or node.get("type") or "")[:300],
+                "label": str(
+                    node.get("label") or node.get("name") or node.get("type")
+                    or props.get("label") or props.get("name") or props.get("type") or ""
+                )[:300],
             })
         return touched

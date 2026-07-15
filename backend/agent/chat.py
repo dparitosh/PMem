@@ -377,16 +377,45 @@ def graph_context_search(query: str) -> str:
             from Services.graph_view_service import GraphViewService
 
         search_terms = _extract_graph_search_terms(query) or [query]
+        merged_nodes: dict[str, dict] = {}
+        merged_relationships: dict[str, dict] = {}
+        roots = []
         for term in search_terms:
             payload = GraphViewService.get_contextual_subgraph(
                 search=term,
-                limit=180,
+                limit=60,
                 search_mode="broader",
                 expand_neighbors=True,
             )
-            if payload and (payload.get("nodes") or payload.get("relationships")):
-                graph_payload = payload
+            if not payload:
+                continue
+            for node in payload.get("nodes") or []:
+                node_id = str(node.get("elementId") or "")
+                if node_id:
+                    merged_nodes[node_id] = node
+            for rel in payload.get("relationships") or []:
+                rel_id = str(rel.get("elementId") or "")
+                if rel_id:
+                    merged_relationships[rel_id] = rel
+            if payload.get("root"):
+                roots.append(payload["root"])
+            if len(merged_nodes) >= 180:
                 break
+        if merged_nodes or merged_relationships:
+            node_ids = set(merged_nodes)
+            relationships = [
+                rel for rel in merged_relationships.values()
+                if rel.get("start") in node_ids and rel.get("end") in node_ids
+            ]
+            graph_payload = {
+                "nodes": list(merged_nodes.values())[:180],
+                "relationships": relationships[:240],
+                "root": roots[0] if roots else None,
+                "counts": {
+                    "nodes": min(len(merged_nodes), 180),
+                    "relationships": min(len(relationships), 240),
+                },
+            }
     except Exception as exc:
         logger.warning("Schema-aware graph context lookup failed, falling back to vector search: %s", exc)
 
@@ -678,19 +707,11 @@ async def call_model(state: AgentState):
     system_prompt = """You are a senior Digital Engineering expert with deep expertise in Manufacturing Engineering, Systems Engineering (MBSE/SysML), and 3DEXPERIENCE PLM platform. You help Manufacturing Engineers, Operations Managers, and Systems Engineers understand their product and process data.
 
 == KNOWLEDGE GRAPH CONTEXT ==
-The graph (Neo4j, using the configured customer database) contains two domains:
-
-1. Motor Assembly — 3DEXPERIENCE (ds3dx):
-   - 5 HP MOTOR ASSEMBLY with 15 parts: ROTOR SHAFT, LAMINATED ROTOR CORE, THREE PHASE WINDINGS, LAMINATED STATOR CORE, SKF_6205-2Z, SKF_6306-2Z, END BELL, MOTOR COVER, FAN, FAN COVER, BEARING_HOLDER, CIRCLIP_1, FLANGE, ROTOR SHAFT KEY, TERMINAL BOX
-   - Assembly sequence: #10 (ROTOR SHAFT) → #20 (LAMINATED ROTOR CORE) → ... → #180 (Current Sensor)
-   - WorkPlan: SugarPlant assembly Process | HeaderOps: 5 HP Motor Assembly Process A, FDA Unit Process
-   - Cross-domain: Requirements (REQ-001 to REQ-008), Design Decisions (DD-001 to DD-004), Change Requests (CR-2024-001 to CR-2024-004)
-
-2. Sugar Plant MBSE — SysML 2018 (sysml):
-   - Use Cases: Variable Speed Drive, Energy efficiency for juice purification, Deliver RPM & Power, Maintain Temperature, Monitor Motor Parameters, Start/Stop Motor, etc.
-   - Blocks: Variable Speed Drive, Bearing System, Cooling System, Motor Specifications, etc.
-   - Packages: Problem Domain, Functional Analysis, Logical Architecture, Bearing Subsystem, etc.
-   - Actor: Service Engineer
+The configured Neo4j database may contain ontology schema, imported engineering
+instances, MBSE, requirements, product structures, manufacturing processes, and
+traceability links. Treat the active graph and supplied UI context as the only
+source of customer-specific facts. Do not assume sample projects, component
+counts, names, identifiers, sequences, or relationships.
 
 == TRACEABILITY PRIORITY ==
 When the user asks about engineering traceability, prefer this chain:

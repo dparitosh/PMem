@@ -18,7 +18,6 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             ? crypto.randomUUID()
             : Math.random().toString(36).slice(2) + Date.now().toString(36)
     );
-    const assistantIdRef = useRef(null);
 
     const buildGraphContextSnapshot = () => {
         const summarizeNode = (node) => {
@@ -63,9 +62,16 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             return null;
         }
 
+        const selectedNode = graphData?.selectedNode || graphData?.selected_node || graphData?.root || null;
         return {
             source: 'frontend-graph-context',
             capturedAt: new Date().toISOString(),
+            selectedNode: selectedNode ? summarizeNode(selectedNode) : null,
+            rootNode: graphData?.root ? summarizeNode(graphData.root) : null,
+            viewMode: graphData?.view?.mode || graphData?.mode || '',
+            ontology: graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '',
+            importId: graphData?.view?.import_id || graphData?.import_id || '',
+            searchQuery: graphData?.view?.search || graphData?.search || '',
             visibleGraph: graphSummary(visibleGraph, 'visibleGraph'),
             searchResults: graphSummary(searchGraph, 'searchResults'),
         };
@@ -174,19 +180,23 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
     // [OK] SECURE: Input validation + error handling
     const handleAsk = async (queryText = null) => {
         const messageText = queryText || question.trim();
+        let controller = null;
+        let assistantId = null;
         
         try {
             // [OK] Validate input against prompt injection
             const validated = validateChatInput(messageText);
             
-            // Cancel any in-flight request
+            // Cancel any in-flight request and finalize its placeholder.
             if (abortRef.current) abortRef.current.abort();
-            const controller = new AbortController();
+            setChatMessages(prev => prev.map(item =>
+                item.streaming ? { ...item, streaming: false } : item
+            ));
+            controller = new AbortController();
             abortRef.current = controller;
 
             const userMsg = { id: Date.now(), role: 'user', text: validated };
-            const assistantId = `asst-${Date.now()}`;
-            assistantIdRef.current = assistantId;
+            assistantId = `asst-${Date.now()}`;
             const assistantMsg = { id: assistantId, role: 'assistant', text: '', streaming: true };
 
             setChatMessages(prev => [...prev, userMsg, assistantMsg]);
@@ -197,6 +207,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
 
             let accumulated = '';
             let buffer = '';
+            let streamCompleted = false;
 
             logger.data('Sending chat request:', validated);
 
@@ -217,8 +228,8 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             const decoder = new TextDecoder();
 
             const processLine = (line) => {
-                if (!line.startsWith('data: ')) return;
-                const raw = line.slice(6).trim();
+                if (!/^data:\s?/.test(line)) return;
+                const raw = line.slice(5).trim();
                 if (!raw) return;
                 try {
                     const parsed = JSON.parse(raw);
@@ -232,6 +243,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                     } else if (parsed.status) {
                         setStatusLabel(parsed.status);
                     } else if (parsed.done) {
+                        streamCompleted = true;
                         setChatMessages(prev => prev.map(m =>
                             m.id === assistantId ? { ...m, streaming: false } : m
                         ));
@@ -239,6 +251,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                         setShowSpinner(false);
                         if (setChatResults) setChatResults([{ query: validated, response: accumulated, timestamp: new Date().toISOString() }]);
                     } else if (parsed.error) {
+                        streamCompleted = true;
                         const errMsg = typeof parsed.error === 'string' ? parsed.error : 'An error occurred.';
                         setError(errMsg);
                         setStatusLabel(null);
@@ -258,7 +271,18 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                 buffer = lines.pop();
                 for (const line of lines) processLine(line.trim());
             }
+            buffer += decoder.decode();
             if (buffer.trim()) processLine(buffer.trim());
+            if (!streamCompleted) {
+                setChatMessages(prev => prev.map(item =>
+                    item.id === assistantId ? { ...item, streaming: false } : item
+                ));
+                setStatusLabel(null);
+                setShowSpinner(false);
+                if (setChatResults) {
+                    setChatResults([{ query: validated, response: accumulated, timestamp: new Date().toISOString() }]);
+                }
+            }
 
         } catch (err) {
             if (err.name === 'AbortError') return;
@@ -274,9 +298,8 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             setStatusLabel(null);
             setError('Error: ' + (err.message || 'Unknown error occurred'));
             
-            const failId = assistantIdRef.current;
             setChatMessages(prev => prev.map(m =>
-                m.id === failId
+                m.id === assistantId
                     ? { ...m, text: 'Sorry, I encountered an error. Please try again.', streaming: false, statusLabel: null }
                     : m
             ));
@@ -352,7 +375,14 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                 </div>
                 {chatMessages.length > 0 && (
                     <button
-                        onClick={() => { setChatMessages([]); setStatusLabel(null); setError(null); }}
+                        onClick={() => {
+                            if (abortRef.current) abortRef.current.abort();
+                            abortRef.current = null;
+                            setChatMessages([]);
+                            setStatusLabel(null);
+                            setShowSpinner(false);
+                            setError(null);
+                        }}
                         title="Clear conversation"
                         style={{
                             background: 'rgba(255,255,255,0.15)', color: '#fff',

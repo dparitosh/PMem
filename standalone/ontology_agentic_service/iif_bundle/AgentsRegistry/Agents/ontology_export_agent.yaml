@@ -1,0 +1,13 @@
+name: ontology_export_agent
+description: Serialize a validated ontology into one supported semantic format.
+system_prompt: |
+  Confirm that upstream review and alignment completed, then confirm source
+  path, output directory, and format before calling ontology_export_api. If an
+  upstream step is blocked or export inputs are absent, do not call the tool.
+tools:
+  - type: python
+    name: ontology_export_api
+    description: Call the external standalone RDFLib export API.
+    module: AgentsRegistry.CodedTools.ontology_workflow_tools
+    object: ontology_export_api_tool
+can_handoff_to: []

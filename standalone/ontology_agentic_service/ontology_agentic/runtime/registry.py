@@ -24,18 +24,9 @@ class AgentRegistry:
         spec = AgentSpec(
             name=payload["name"],
             description=payload["description"],
-            use_case=payload.get("use_case", ""),
-            role=payload.get("role", ""),
-            objective=payload.get("objective", []),
-            input_context=payload.get("input_context", []),
-            checks=payload.get("what_to_check_or_do", payload.get("checks", [])),
-            constraints=payload.get("constraints", []),
-            output_rules=payload.get("output_rules", []),
-            output_schema=payload.get("output_schema", {}),
-            termination_rule=payload.get("termination_rule", ""),
-            additional_guidelines=payload.get("additional_guidelines", []),
-            tools=payload.get("tools_information", payload.get("tools", [])),
-            examples=payload.get("one_shot_examples", payload.get("examples", [])),
+            system_prompt=payload.get("system_prompt", ""),
+            tools=payload.get("tools", []),
+            can_handoff_to=payload.get("can_handoff_to", []),
         )
         self._agents[spec.name] = RegisteredAgent(
             spec=spec,
@@ -57,10 +48,9 @@ class AgentRegistry:
             {
                 "name": agent.spec.name,
                 "description": agent.spec.description,
-                "use_case": agent.spec.use_case,
                 "handler_name": agent.handler_name,
                 "tools": agent.spec.tools,
-                "checks": agent.spec.checks,
+                "can_handoff_to": agent.spec.can_handoff_to,
             }
             for agent in self._agents.values()
         ]

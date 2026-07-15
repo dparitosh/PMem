@@ -1,69 +1,36 @@
-# Ontology Agentic Component Kit
+# Standalone Ontology Agent Service
 
-Standalone modular tools and agent specifications for ontology-focused
-low-code/no-code workflows. The FastAPI app is an optional local adapter for
-testing and integration; the reusable unit is the Python tool function plus
-its YAML agent specification, not this HTTP process.
+This folder contains only the ontology agents and external tools needed for
+drag-and-drop IIF workflows:
 
-This package is intentionally isolated from the main DEPO application, but it can now orchestrate DEPO backend APIs through a thin adapter layer instead of duplicating semantic workflow logic.
+- RDFLib inspection, review, alignment planning, and export over HTTP;
+- optional Owlready2 loading and HermiT/Pellet reasoning over HTTP;
+- optional Neo4j tool discovery through MCP;
+- four independent agent YAML definitions;
+- a plain-text workflow-building and testing guide.
 
-It provides:
+It intentionally excludes DEPO/OSLC adapters, STEP, ReqIF, requirement
+normalization, OpenAPI importing, frontend code, and an additional ontology
+orchestrator. IIF's existing `workflow_orchestrator` controls canvas execution.
 
-- a lightweight agent registry
-- deterministic ontology workflow handlers
-- prompt-spec driven agent definitions
-- optional `Owlready2` / `RDFLib` based ontology inspection and export
-- a DEPO API adapter for registered ontologies, OSLC discovery/query/TRS, graph/context search, workflow execution, ontology merge, and export retrieval
-- optional STEP/AP242 inspection and TTL export tools when the main backend modules are available
-- ReqIF inspection and Turtle export for requirements interchange
-- an optional FastAPI adapter for local discovery and smoke testing
-
-## Folder Layout
+## Layout
 
 ```text
-standalone/ontology_agentic_service/
-  app/
-    main.py
-  ontology_agentic/
-    agents/
-      specs/
-    api_clients/
-    runtime/
-    tools/
-    config.py
-    models.py
-  tests/
-  requirements.txt
-  start_service.py
+app/main.py                           Optional standalone HTTP API
+ontology_agentic/
+  config.py                          API and optional-security configuration
+  security.py                        Optional bearer/path controls
+  runtime/                           Four-agent local execution adapter
+  tools/ontology_tools.py            RDFLib implementation
+  tools/owlready2_tools.py            Optional Owlready2 implementation
+iif_bundle/
+  AgentsRegistry/Agents/             Four agent YAML files
+  AgentsRegistry/CodedTools/         Five external HTTP FunctionTools
+  AgentsRegistry/MCPTools/           Neo4j MCP factory
+  HOW_TO_BUILD_AND_TEST_WORKFLOWS.txt
 ```
 
-## What It Does
-
-The service exposes ontology-oriented agent workflows for:
-
-1. ontology intake
-2. ontology structure review
-3. instance-to-ontology alignment planning
-4. ontology export
-5. orchestration of the above as a workflow
-6. DEPO registered ontology discovery
-7. DEPO semantic workflow execution
-8. DEPO graph/context search
-9. DEPO OSLC catalog/provider/query/TRS discovery
-10. STEP/AP242 file inspection and TTL export
-11. ReqIF requirements inspection and RDF/Turtle export
-12. requirement normalization and AP242/MBSE/PLM alignment export
-13. DEPO ontology merge
-14. DEPO import-generated OWL export download
-
-## What It Does Not Do
-
-- it does not depend on the current frontend
-- it does not require Neo4j locally for offline ontology review
-- it does not hide missing data behind guessed outputs
-- it does not require an LLM to run the default workflows
-
-## Quick Start
+## Install and start the external API
 
 ```powershell
 cd D:\Depo_Onto_Engine\standalone\ontology_agentic_service
@@ -73,393 +40,56 @@ pip install -r requirements.txt
 python start_service.py
 ```
 
-The API will be available at:
+Default address: `http://127.0.0.1:8012`.
 
-- `http://localhost:8012/docs`
-- `http://localhost:8012/openapi.json`
-
-For a low-code/no-code orchestrator, consume `GET /api/v1/tools` from the
-optional adapter or load the Python tool catalog directly. Each tool record
-declares its category, callable signature, side-effect level, and whether
-human approval is required.
-
-## Main Endpoints
+## Endpoints
 
 - `GET /health`
 - `GET /api/v1/agents`
 - `GET /api/v1/tools`
 - `POST /api/v1/agents/{agent_name}/run`
 - `POST /api/v1/workflows/run`
+- `POST /api/v1/ontology/owlready2`
 
-## Tool Coverage
+## Agents
 
-The standalone package exposes these tool groups through `ontology_agentic.tools` and through workflow wrappers where appropriate.
+- `ontology_intake_agent`
+- `ontology_review_agent`
+- `ontology_alignment_agent`
+- `ontology_export_agent`
 
-Local ontology tools:
+## Standalone tools
 
-- `inspect_ontology_artifact`
-- `review_ontology_structure`
-- `plan_instance_alignment`
-- `export_ontology`
-
-STEP/AP242 tools:
-
-- `inspect_step_file`
-- `export_step_to_ttl`
-
-ReqIF tools:
-
-- `inspect_reqif_file`
-- `export_reqif_to_ttl`
-
-Requirement normalization tools:
-
-- `normalize_requirement_records`
-- `requirement_alignment_profile`
-- `export_requirements_alignment_ttl`
-
-DEPO backend tools:
-
-- `depo_healthcheck`
-- `depo_list_registered_ontologies`
-- `depo_execute_semantic_workflow`
-- `depo_merge_ontologies`
-- `depo_export_import_owl`
-
-Graph/context search tools:
-
-- `depo_graph_search`
-- `depo_graph_search_many`
-
-OSLC linked-data tools:
-
-- `depo_oslc_catalog`
-- `depo_oslc_provider`
-- `depo_oslc_shapes`
-- `depo_oslc_query_resources`
-- `depo_oslc_resource`
-- `depo_oslc_dictionary`
-- `depo_oslc_taxonomies`
-- `depo_oslc_trs`
-
-Workflow IDs available through `POST /api/v1/workflows/run`:
-
+- `ontology_inspect`
 - `ontology_review`
-- `ontology_alignment`
+- `ontology_alignment_plan`
 - `ontology_export`
-- `step_inspect`
-- `step_export`
-- `reqif_inspect`
-- `reqif_export`
-- `requirements_normalize`
-- `requirements_alignment_profile`
-- `requirements_alignment_export`
-- `depo_healthcheck`
-- `depo_registered_ontologies`
-- `depo_graph_search`
-- `depo_oslc`
-- `depo_semantic_workflow`
-- `depo_ontology_merge`
-- `depo_import_export`
+- `owlready2_analyze`
 
-## Local Workflow Example
+The IIF bundle exposes corresponding HTTP tool IDs plus `neo4j_mcp`. See
+[HOW_TO_BUILD_AND_TEST_WORKFLOWS.txt](D:/Depo_Onto_Engine/standalone/ontology_agentic_service/iif_bundle/HOW_TO_BUILD_AND_TEST_WORKFLOWS.txt)
+for the complete agent mapping, environment variables, drag/drop combinations,
+and test procedures.
 
-```json
-{
-  "workflow_id": "ontology_review",
-  "inputs": {
-    "ontology_path": "D:/Download/DEPO_RR/requirements/mbse_output.owl",
-    "export_formats": ["ttl", "rdfxml"]
-  }
-}
+## Optional security
+
+Security is disabled by default for local development. Enable bearer and path
+controls with:
+
+```powershell
+$env:ONTOLOGY_API_SECURITY_ENABLED = 'true'
+$env:ONTOLOGY_API_TOKEN = 'long-random-token'
+$env:ONTOLOGY_API_ALLOWED_INPUT_ROOTS = 'D:\approved-input'
+$env:ONTOLOGY_API_ALLOWED_OUTPUT_ROOTS = 'D:\approved-output'
 ```
 
-## STEP/AP242 Workflow Examples
+Neo4j MCP filtering is independently enabled with
+`NEO4J_MCP_SECURITY_ENABLED=true`.
 
-Inspect a STEP/STPX file and summarize AP242/PMI content:
+## Validate
 
-```json
-{
-  "workflow_id": "step_inspect",
-  "inputs": {
-    "step_path": "D:/path/to/part.stp",
-    "sample_size": 20
-  }
-}
+```powershell
+python -m pytest tests -q
 ```
 
-Export STEP/STPX to Turtle using the AP242-aware backend converter:
-
-```json
-{
-  "workflow_id": "step_export",
-  "inputs": {
-    "step_path": "D:/path/to/part.stp",
-    "output_path": "D:/path/to/part.ttl",
-    "namespace_prefix": "ap242",
-    "include_pmi": true
-  }
-}
-```
-
-Note: STEP files contain low-level geometry, topology, placement, and reference entities. Keep raw STEP entity-reference graphs separate from business-object contextual graphs so customer users see meaningful parts, requirements, functions, PMI, and process traceability first.
-
-## ReqIF Workflow Examples
-
-ReqIF support targets ReqIF 1.2 using the OMG machine-readable schema family: `ReqIF/20110402/driver.xsd`, `ReqIF/20110401/reqif.xsd`, and `ReqIF/20101201/reqif.cmof`. It parses the ReqIF XML structure to extract `SPEC-OBJECT`, `SPECIFICATION`, `SPEC-RELATION`, attribute definitions, and attribute values. Export maps requirements to a lightweight RDF model aligned with OSLC RM concepts so they can later be loaded into Neo4j, linked to AP242/PLMXML/SysML entities, and queried by GraphRAG.
-
-Inspect a ReqIF or ReqIFZ file:
-
-```json
-{
-  "workflow_id": "reqif_inspect",
-  "inputs": {
-    "reqif_path": "D:/path/to/requirements.reqif",
-    "sample_size": 50
-  }
-}
-```
-
-Export ReqIF requirements and relations to Turtle:
-
-```json
-{
-  "workflow_id": "reqif_export",
-  "inputs": {
-    "reqif_path": "D:/path/to/requirements.reqif",
-    "output_path": "D:/path/to/requirements.ttl",
-    "base_uri": "http://depo-onto.local/reqif/project-a/"
-  }
-}
-```
-
-Recommended full application enhancement after this standalone parser: add ReqIF as an Import workflow type, load exported RDF into Neo4j with requirement nodes and `SATISFIES`/`DERIVES`/`REFINES` relations, expose it through OSLC RM, and include it in change-impact GraphRAG queries.
-
-## Requirement Normalization And Cross-Domain Alignment
-
-Requirements from ReqIF, Word, Excel, HTML, or extracted document rows should be normalized before they are loaded into Neo4j or linked in Semantic Bridge. The canonical requirement model aligns as follows:
-
-- ReqIF: `SPEC-OBJECT`, `SPECIFICATION`, `SPEC-RELATION`, attribute definitions, and values.
-- OSLC RM: external linked-data representation as `oslc_rm:Requirement`.
-- MBSE/SysML: `Requirement`, `satisfy`, `derive/refine`, `verify`, and allocation to functions/blocks.
-- AP242: product, part, PMI, geometric constraint, and manufacturing context that requirements constrain.
-- PLM: part revisions, EBOM/MBOM/SBOM/BOP, process plans, changes, and verification artifacts.
-
-Normalize extracted requirement records:
-
-```json
-{
-  "workflow_id": "requirements_normalize",
-  "inputs": {
-    "source_name": "customer-requirements.xlsx",
-    "source_type": "excel",
-    "records": [
-      {
-        "Requirement ID": "REQ-006",
-        "Title": "Bearing life expectancy",
-        "Text": "Bearing shall meet 20000 hour life under rated load.",
-        "Part ID": "SKF_6306-2Z",
-        "Function": "Support rotor shaft",
-        "Process": "Bearing installation",
-        "Verifies": "TEST-006"
-      }
-    ]
-  }
-}
-```
-
-Export normalized requirements and cross-domain links to Turtle:
-
-```json
-{
-  "workflow_id": "requirements_alignment_export",
-  "inputs": {
-    "output_path": "D:/path/to/requirements-alignment.ttl",
-    "payload": {
-      "requirements": [],
-      "relationships": []
-    }
-  }
-}
-```
-
-This is the bridge that lets change-impact queries traverse requirement -> MBSE function/block -> AP242 part/PMI -> PLM BOM/process/change data.
-
-## DEPO API Workflow Examples
-
-### 1. List registered ontologies from the current DEPO backend
-
-```json
-{
-  "workflow_id": "depo_registered_ontologies",
-  "inputs": {
-    "depo_api_base_url": "http://localhost:8000"
-  }
-}
-```
-
-### 2. Search ontology-backed graph data through DEPO
-
-Single-term search uses the hardened `/graphfilter` API. Use this when an external agent wants the same node-first graph search behavior as the main application.
-
-```json
-{
-  "workflow_id": "depo_graph_search",
-  "inputs": {
-    "depo_api_base_url": "http://localhost:8000",
-    "search": "REQ-*",
-    "ontology_prefix": ""
-  }
-}
-```
-
-Multi-term search uses `/graphfilter-multi` and is useful for comparing requirements, parts, functions, and processes in one request.
-
-```json
-{
-  "workflow_id": "depo_graph_search",
-  "inputs": {
-    "depo_api_base_url": "http://localhost:8000",
-    "names": ["REQ-*", "Part", "Function"]
-  }
-}
-```
-
-### 3. Use DEPO OSLC linked-data endpoints
-
-The standalone service exposes DEPO's OSLC-aligned read-only facade for Teamcenter LDS-style discovery, query, resource shape, dictionary, taxonomy, and TRS inspection. This is an interoperability facade, not a full OSLC certification claim.
-
-Service Provider Catalog:
-
-```json
-{
-  "workflow_id": "depo_oslc",
-  "inputs": {
-    "depo_api_base_url": "http://localhost:8000",
-    "action": "catalog"
-  }
-}
-```
-
-OSLC query with search terms:
-
-```json
-{
-  "workflow_id": "depo_oslc",
-  "inputs": {
-    "depo_api_base_url": "http://localhost:8000",
-    "action": "query",
-    "resource_type": "resources",
-    "query_params": {
-      "oslc.searchTerms": "REQ",
-      "oslc.pageSize": 20
-    }
-  }
-}
-```
-
-TRS descriptor or changelog:
-
-```json
-{
-  "workflow_id": "depo_oslc",
-  "inputs": {
-    "depo_api_base_url": "http://localhost:8000",
-    "action": "trs",
-    "section": "changelog",
-    "limit": 50
-  }
-}
-```
-
-Supported OSLC actions are `catalog`, `provider`, `shapes`, `query`, `resource`, `dictionary`, `taxonomies`, and `trs`.
-
-### 4. Execute Semantic Bridge instance linking remotely
-
-```json
-{
-  "workflow_id": "depo_semantic_workflow",
-  "inputs": {
-    "depo_api_base_url": "http://localhost:8000",
-    "depo_workflow_id": "instance.link",
-    "payload": {
-      "ontology_id": "mbseout",
-      "import_artifact_manifest": {
-        "task_id": "instance-import-task-id"
-      },
-      "apply_links": true
-    }
-  }
-}
-```
-
-### 5. Merge two ontologies through the existing DEPO backend
-
-```json
-{
-  "workflow_id": "depo_ontology_merge",
-  "inputs": {
-    "depo_api_base_url": "http://localhost:8000",
-    "from_ontology_id": "source_ontology",
-    "to_ontology_id": "target_ontology",
-    "dry_run": true
-  }
-}
-```
-
-### 6. Download a generated OWL export from an import task
-
-```json
-{
-  "workflow_id": "depo_import_export",
-  "inputs": {
-    "depo_api_base_url": "http://localhost:8000",
-    "task_id": "import-task-id",
-    "export_format": "ttl",
-    "output_dir": "D:/Depo_Onto_Engine/standalone/ontology_agentic_service/output/depo_exports"
-  }
-}
-```
-
-## Agent Specs
-
-Prompt specs are stored under:
-
-- [ontology_agentic/agents/specs](D:/Depo_Onto_Engine/standalone/ontology_agentic_service/ontology_agentic/agents/specs)
-
-They follow the deterministic structure from your provided prompt template:
-
-- explicit role
-- explicit objective
-- explicit inputs
-- exact checks
-- strict output schema
-
-## Integration Notes
-
-This package is now a clean starting point for:
-
-- ontology review services
-- semantic bridge orchestration
-- ontology export microservices
-- DEPO backend workflow automation
-- future LLM-backed ontology copilots
-
-The current adapter uses the existing DEPO backend contracts directly:
-
-- `GET /api/v1/ontology/registered`
-- `POST /api/v1/workflows/execute`
-- `POST /graphfilter`
-- `POST /graphfilter-multi`
-- `GET /oslc/catalog`
-- `GET /oslc/providers/{provider_id}`
-- `GET /oslc/shapes` and `GET /oslc/shapes/{shape_id}`
-- `GET /oslc/query/{resource_type}`
-- `GET /oslc/resources/{element_id}`
-- `GET /oslc/dictionaries/{prefix}`
-- `GET /oslc/taxonomies` and `GET /oslc/taxonomies/{ontology_id}`
-- `GET /oslc/trs`, `/oslc/trs/base`, and `/oslc/trs/changelog`
-- `POST /api/v1/ontology/merge`
-- `GET /api/v1/import/owl/{task_id}/export`
-
-That means the isolated package stays modular, while your production workflow semantics continue to live in the main application.
+This does not start IIF.

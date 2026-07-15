@@ -3,24 +3,26 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "depo-ontology-agentic-service"
+name = "ontology-agent-workflow-service"
 version = "0.1.0"
-description = "Standalone ontology workflow and DEPO API adapter"
+description = "Standalone ontology agent tools and external API adapter"
 requires-python = ">=3.10"
 dependencies = [
-    "fastapi>=0.115,<1",
-    "uvicorn[standard]>=0.30,<1",
-    "pydantic>=2.7,<3",
     "rdflib>=7.0,<8",
     "PyYAML>=6.0,<7",
 ]
 
 [project.optional-dependencies]
-owl = ["owlready2>=0.46"]
-test = ["pytest>=8,<9"]
+api = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "pydantic>=2.7,<3",
+]
+reasoning = ["owlready2>=0.48,<1"]
+test = ["pytest>=8,<9", "httpx>=0.27,<1"]
 
 [project.scripts]
-depo-ontology-agentic = "app.main:run"
+ontology-agent-service = "app.main:run"
 
 [tool.setuptools.packages.find]
 where = ["."]

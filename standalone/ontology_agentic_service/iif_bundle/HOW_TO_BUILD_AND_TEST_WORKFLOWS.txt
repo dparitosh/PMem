@@ -1,0 +1,477 @@
+ONTOLOGY AGENTS, EXTERNAL TOOLS, DRAG/DROP WORKFLOWS, AND TESTING
+========================================================================
+
+1. ARCHITECTURE
+---------------
+
+The IIF agents do not import RDFLib, Owlready2, FastAPI, or the standalone
+source directory. They call external capabilities through two transports:
+
+  HTTP  -> Standalone Ontology API at ONTOLOGY_API_BASE_URL
+           RDFLib inspection, review, alignment planning, export
+           Owlready2 loading, consistency analysis, HermiT/Pellet reasoning
+
+  MCP   -> Neo4j MCP server at NEO4J_MCP_URL
+           Neo4j tool discovery, graph queries, and server-authorized writes
+
+Default HTTP API URL:
+
+  http://127.0.0.1:8012
+
+There is no ONTOLOGY_AGENTIC_SERVICE_PATH setting. IIF only needs the API URL.
+RDFLib and Owlready2 are installed with the standalone API, not inside IIF.
+
+
+2. BUNDLE FILES
+---------------
+
+AgentsRegistry/Agents/ontology_intake_agent.yaml
+AgentsRegistry/Agents/ontology_review_agent.yaml
+AgentsRegistry/Agents/ontology_alignment_agent.yaml
+AgentsRegistry/Agents/ontology_export_agent.yaml
+
+AgentsRegistry/CodedTools/ontology_workflow_tools.py
+  Contains the five HTTP FunctionTool wrappers.
+
+AgentsRegistry/MCPTools/neo4j_mcp.py
+  Discovers tools from the configured Neo4j MCP server.
+
+HOW_TO_BUILD_AND_TEST_WORKFLOWS.txt
+  This mapping and test guide.
+
+
+3. COMPLETE AGENT-TO-TOOL MAPPING
+---------------------------------
+
+AGENT: ontology_intake_agent
+
+  TOOL: ontology_inspect_api
+  TYPE: Python FunctionTool calling external HTTP API
+  ENDPOINT: POST /api/v1/agents/ontology_intake_agent/run
+  EXTERNAL ENGINE: RDFLib
+  SIDE EFFECT: Read only
+  USE: Asserted triples, classes, properties, individuals, hierarchy,
+       domain/range edges, annotations, and ontology IRIs.
+
+  TOOL: owlready2_reasoning_api
+  TYPE: Python FunctionTool calling external HTTP API
+  ENDPOINT: POST /api/v1/ontology/owlready2
+  EXTERNAL ENGINE: Owlready2 isolated World
+  SIDE EFFECT: Read only, CPU intensive when reasoning is enabled
+  USE: Owlready2 loading validation, imported ontology metadata,
+       consistency evidence, HermiT/Pellet reasoning.
+
+
+AGENT: ontology_review_agent
+
+  TOOL: ontology_review_api
+  TYPE: Python FunctionTool calling external HTTP API
+  ENDPOINT: POST /api/v1/agents/ontology_review_agent/run
+  EXTERNAL ENGINE: RDFLib
+  SIDE EFFECT: Read only
+  USE: Schema or schema_and_instances qualification profile.
+
+  TOOL: owlready2_reasoning_api
+  TYPE: Python FunctionTool calling external HTTP API
+  ENDPOINT: POST /api/v1/ontology/owlready2
+  EXTERNAL ENGINE: Owlready2 plus optional HermiT/Pellet
+  SIDE EFFECT: Read only, CPU intensive when reasoning is enabled
+  USE: Consistency checks and inferred classification evidence.
+
+
+AGENT: ontology_alignment_agent
+
+  TOOL: ontology_alignment_api
+  TYPE: Python FunctionTool calling external HTTP API
+  ENDPOINT: POST /api/v1/agents/ontology_alignment_agent/run
+  EXTERNAL ENGINE: RDFLib-backed standalone alignment planner
+  SIDE EFFECT: Read only
+  USE: Plan entity-to-class, attribute-to-datatype-property,
+       relationship-to-object-property, and metadata-to-annotation mappings.
+
+  TOOL GROUP: neo4j_mcp
+  TYPE: MCP tool factory; individual tools are discovered from the MCP server
+  MODULE: AgentsRegistry.MCPTools.neo4j_mcp
+  FACTORY: get_neo4j_mcp_tools
+  EXTERNAL ENGINE: Neo4j MCP server and Neo4j database
+  SIDE EFFECT: Depends on each server-published MCP tool
+  USE: Validate graph entities and relationships, query Context Graph data,
+       and perform explicitly approved graph writes.
+
+
+AGENT: ontology_export_agent
+
+  TOOL: ontology_export_api
+  TYPE: Python FunctionTool calling external HTTP API
+  ENDPOINT: POST /api/v1/agents/ontology_export_agent/run
+  EXTERNAL ENGINE: RDFLib serializer
+  SIDE EFFECT: Writes a file on the standalone API host
+  USE: Export TTL, RDF/XML, N-Triples, or JSON-LD.
+
+
+4. TOOL OBJECT MAPPING USED BY AGENT YAML
+-----------------------------------------
+
+Agent YAML tool name           Python object
+----------------------------  ---------------------------------
+ontology_inspect_api          ontology_inspect_api_tool
+ontology_review_api           ontology_review_api_tool
+ontology_alignment_api        ontology_alignment_api_tool
+ontology_export_api           ontology_export_api_tool
+owlready2_reasoning_api       owlready2_reasoning_api_tool
+neo4j_mcp                     get_neo4j_mcp_tools
+
+HTTP tool module:
+  AgentsRegistry.CodedTools.ontology_workflow_tools
+
+Neo4j MCP module:
+  AgentsRegistry.MCPTools.neo4j_mcp
+
+
+5. EXTERNAL SERVICE CONFIGURATION
+---------------------------------
+
+Ontology HTTP API:
+
+  $env:ONTOLOGY_API_BASE_URL = 'http://127.0.0.1:8012'
+
+The ontology path supplied by IIF must be accessible to the standalone API
+host. When both programs run on the same Windows host, an absolute Windows path
+can be used. For different hosts, upload or mount the artifact first.
+
+Neo4j MCP disabled:
+
+  $env:NEO4J_MCP_ENABLED = 'false'
+
+Neo4j MCP enabled over HTTP:
+
+  $env:NEO4J_MCP_ENABLED = 'true'
+  $env:NEO4J_MCP_URL = 'http://127.0.0.1:8080/mcp'
+  $env:NEO4J_MCP_ARGS = '[]'
+  $env:NEO4J_MCP_ENV_JSON = '{}'
+
+If the selected Neo4j MCP server is command-based, set NEO4J_MCP_URL to the
+server command and provide its JSON argument array through NEO4J_MCP_ARGS.
+Keep Neo4j credentials in the MCP server environment or secret store. Do not
+put credentials in agent YAML, workflow JSON, prompts, or this tool file.
+
+When Neo4j MCP is disabled or unreachable, the MCP factory returns no Neo4j
+tools. RDFLib/Owlready2 HTTP workflows can still load and run.
+
+
+5A. OPTIONAL SECURITY MODES
+---------------------------
+
+Security is disabled by default for current local development workflows:
+
+  $env:ONTOLOGY_API_SECURITY_ENABLED = 'false'
+  $env:NEO4J_MCP_SECURITY_ENABLED = 'false'
+
+With these values, the API does not require a token or restrict filesystem
+roots, HTTP tools may override base_url, and all MCP-published tools are
+available. Use this mode only on a trusted development machine.
+
+Enable ontology API security:
+
+  $env:ONTOLOGY_API_SECURITY_ENABLED = 'true'
+  $env:ONTOLOGY_API_TOKEN = 'replace-with-a-long-random-token'
+  $env:ONTOLOGY_API_ALLOWED_INPUT_ROOTS = 'D:\approved-input'
+  $env:ONTOLOGY_API_ALLOWED_OUTPUT_ROOTS = 'D:\approved-output'
+  $env:ONTOLOGY_API_ALLOW_BASE_URL_OVERRIDE = 'false'
+
+Set ONTOLOGY_API_TOKEN in both the standalone API process and the IIF process.
+The HTTP wrappers add it as a bearer token. On Windows, separate multiple
+allowed roots with a semicolon:
+
+  D:\approved-input;E:\shared-ontologies
+
+When ontology security is enabled:
+
+  - /api/* routes require the bearer token;
+  - ontology input paths must remain under allowed input roots;
+  - output_dir and output_path must remain under allowed output roots;
+  - tool-provided base_url overrides are rejected unless explicitly enabled.
+
+Enable optional Neo4j MCP filtering:
+
+  $env:NEO4J_MCP_SECURITY_ENABLED = 'true'
+  $env:NEO4J_MCP_ALLOW_WRITES = 'false'
+  $env:NEO4J_MCP_ALLOWED_TOOLS = 'read_neo4j_cypher,get_schema'
+
+NEO4J_MCP_ALLOWED_TOOLS is optional. When provided, only exact listed tool
+names are attached to the agent. With security enabled and writes disabled,
+tools whose names contain create, delete, detach, drop, merge, remove, set,
+update, or write are filtered out.
+
+Set NEO4J_MCP_ALLOW_WRITES=true only when an external approval mechanism and
+write-scoped credentials are ready. The current agent prompt by itself is not
+a technical approval control.
+
+
+6. STANDALONE API DEPENDENCIES
+------------------------------
+
+The standalone HTTP API owns these dependencies:
+
+  FastAPI and Uvicorn          HTTP transport
+  Pydantic                     API request models
+  RDFLib 7.x                   Asserted graph parsing and serialization
+  Owlready2 0.48+              Isolated ontology World and reasoning
+  Java                         Required only when HermiT/Pellet is executed
+
+IIF owns these dependencies:
+
+  llama-index-core             FunctionTool and agent runtime
+  llama-index-tools-mcp        MCP client and tool discovery
+
+
+7. TOOL INPUT CONTRACTS
+-----------------------
+
+ontology_inspect_api
+  path: required string
+  base_url: optional string
+  timeout_seconds: optional number, default 120
+
+ontology_review_api
+  path: required string
+  profile: schema or schema_and_instances
+  base_url: optional string
+  timeout_seconds: optional number, default 120
+
+ontology_alignment_api
+  path: required string
+  instance_metadata_json: optional JSON object string
+  base_url: optional string
+  timeout_seconds: optional number, default 120
+
+ontology_export_api
+  path: required string
+  output_dir: required string; directory is on the API host
+  export_format: ttl, rdf, nt, or jsonld
+  base_url: optional string
+  timeout_seconds: optional number, default 120
+
+owlready2_reasoning_api
+  path: required string
+  run_reasoner: optional boolean, default false
+  reasoner: hermit or pellet
+  infer_property_values: optional boolean, default false
+  base_url: optional string
+  timeout_seconds: optional number, default 300
+
+neo4j_mcp
+  Inputs depend on the tools published by the configured MCP server.
+  Inspect the discovered tool schemas before building the workflow.
+
+
+8. DRAG AND DROP WORKFLOW CREATION
+----------------------------------
+
+1. Load the coded HTTP tool file and Neo4j MCP factory into the IIF registry.
+2. Load the four agent YAML files.
+3. Refresh the agent registry.
+4. Create an empty workflow canvas.
+5. Drag only the agents required by the use case.
+6. Connect each downstream input to an earlier step alias.
+7. Do not add a separate ontology orchestrator. Use IIF's existing
+   workflow_orchestrator.
+8. Save and test with a small ontology before using production artifacts.
+
+Full qualification and graph-alignment workflow:
+
+  ontology_intake_agent
+    alias: ontology_intake
+    input: User Query
+       |
+       v
+  ontology_review_agent
+    alias: ontology_review
+    input: ontology_intake
+       |
+       v
+  ontology_alignment_agent
+    alias: ontology_alignment
+    input: ontology_review
+       |
+       v
+  ontology_export_agent                         OPTIONAL
+    alias: ontology_export
+    input: ontology_alignment
+
+The alignment agent may use Neo4j MCP after the external alignment API returns
+a plan. It must not execute a graph write solely because a plan exists.
+
+
+9. AGENTS THAT CAN BE DRAGGED OUT
+---------------------------------
+
+Remove ontology_export_agent:
+  Produces a read-only intake, review, and alignment workflow.
+
+Remove ontology_alignment_agent and ontology_export_agent:
+  Produces an intake and qualification workflow with no Neo4j access.
+
+Keep only ontology_intake_agent:
+  Produces RDFLib asserted facts and optional Owlready2 evidence.
+
+Disable Neo4j MCP:
+  Keep ontology_alignment_agent for a read-only mapping plan, but no MCP graph
+  tools will be attached.
+
+
+10. EXECUTION AND SAFETY RULES
+------------------------------
+
+1. RDFLib output is asserted-graph evidence. Owlready2 reasoner output is
+   inferred evidence. Never merge the labels or claim RDFLib performed OWL
+   reasoning.
+2. Use run_reasoner=false for quick Owlready2 loading validation.
+3. HermiT/Pellet requires Java and may take significant CPU and time.
+4. The standalone Owlready2 API uses an isolated World for every request and
+   disables remote ontology imports.
+5. A high-severity review issue blocks alignment and export unless a human
+   explicitly approves continuation.
+6. Neo4j read tools can validate the Context Graph. When optional MCP security
+   is enabled, write-like tools are removed unless NEO4J_MCP_ALLOW_WRITES=true.
+   A prompt request for approval is guidance, not a technical approval gate.
+7. Export writes on the standalone API host, not necessarily the IIF host.
+8. Do not place API tokens or Neo4j credentials in tool arguments visible to
+   the LLM when the MCP server can obtain them from its environment.
+
+
+11. CREATE A TEST ONTOLOGY
+--------------------------
+
+Save this as D:\temp\ontology-test.ttl for RDFLib tests:
+
+@prefix ex: <https://example.test/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+ex:TestOntology a owl:Ontology .
+ex:Asset a owl:Class .
+ex:Pump a owl:Class ; rdfs:subClassOf ex:Asset .
+ex:hasCode a owl:DatatypeProperty ;
+  rdfs:domain ex:Asset ;
+  rdfs:range rdfs:Literal .
+ex:reviewNote a owl:AnnotationProperty .
+ex:pump1 a owl:NamedIndividual, ex:Pump .
+
+For Owlready2 testing, use an RDF/XML .owl file because the standalone
+Owlready2 API accepts .owl, .rdf, .xml, and .nt.
+
+
+12. TEST THE EXTERNAL ONTOLOGY API BEFORE IIF
+---------------------------------------------
+
+Start the standalone API in its own PowerShell window:
+
+  cd D:\Depo_Onto_Engine\standalone\ontology_agentic_service
+  python start_service.py
+
+Health test:
+
+  Invoke-RestMethod http://127.0.0.1:8012/health
+
+RDFLib intake test:
+
+  $body = @{
+    inputs = @{ ontology_path = 'D:\temp\ontology-test.ttl' }
+  } | ConvertTo-Json -Depth 5
+
+  Invoke-RestMethod `
+    -Method Post `
+    -Uri http://127.0.0.1:8012/api/v1/agents/ontology_intake_agent/run `
+    -ContentType 'application/json' `
+    -Body $body
+
+Owlready2 loading test without a reasoner:
+
+  $body = @{
+    path = 'D:\temp\ontology-test.owl'
+    run_reasoner = $false
+    reasoner = 'hermit'
+  } | ConvertTo-Json
+
+  Invoke-RestMethod `
+    -Method Post `
+    -Uri http://127.0.0.1:8012/api/v1/ontology/owlready2 `
+    -ContentType 'application/json' `
+    -Body $body
+
+
+13. TEST IN IIF
+---------------
+
+Test A - Agent and tool discovery
+Expected:
+  Four ontology agents are visible.
+  HTTP tools match the mapping in section 3.
+  Neo4j tools appear on ontology_alignment_agent only when MCP is enabled and
+  reachable.
+
+Test B - Intake through RDFLib API
+Expected for ontology-test.ttl:
+  classes=2
+  datatype_properties=1
+  annotation_properties=1
+  individuals=1
+
+Test C - Owlready2 load
+Use an RDF/XML .owl file with run_reasoner=false.
+Expected:
+  engine=owlready2
+  world_scope=isolated
+  remote_imports_allowed=false
+  reasoning_run=false
+
+Test D - Owlready2 reasoner
+Use a small consistent .owl file with Java available.
+Expected:
+  reasoning_run=true
+  reasoner=hermit or pellet
+  inconsistent_classes is returned.
+
+Test E - Review gate
+Use an ontology with classes but no object or datatype properties.
+Expected:
+  NO_PROPERTIES high-severity issue.
+  Alignment, Neo4j MCP calls, and export do not execute.
+
+Test F - Alignment without Neo4j MCP
+Set NEO4J_MCP_ENABLED=false.
+Expected:
+  ontology_alignment_api returns a plan.
+  No Neo4j tools or graph writes are used.
+
+Test G - Neo4j MCP read
+Enable MCP and ask the alignment agent to validate an existing class or node.
+Expected:
+  A discovered Neo4j read tool is called and returns tool evidence.
+
+Test H - Neo4j write approval
+Request a relationship creation.
+Expected:
+  The agent asks for explicit approval before selecting a write-capable MCP
+  tool. Canceling approval results in no database mutation.
+
+Test I - Export
+Expected:
+  ontology_export_api returns an actual output path on the API host.
+
+Test J - API unavailable
+Stop the standalone API and run intake.
+Expected:
+  A controlled "Ontology API is unavailable" tool error.
+
+
+14. AUTOMATED STANDALONE VALIDATION
+-----------------------------------
+
+  cd D:\Depo_Onto_Engine\standalone\ontology_agentic_service
+  python -m pytest tests -q
+
+This validates the agent-to-tool mapping, HTTP wrapper contracts, MCP factory,
+standalone registry, RDFLib tools, and Owlready2 API registration without
+starting IIF.
