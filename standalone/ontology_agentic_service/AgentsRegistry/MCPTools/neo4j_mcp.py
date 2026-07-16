@@ -36,7 +36,7 @@ def _tool_name(tool: Any) -> str:
     return str(getattr(metadata, "name", "") or getattr(tool, "name", ""))
 
 
-async def get_neo4j_mcp_tools() -> list[Any]:
+async def neo4j_mcp() -> list[Any]:
     """Return configured Neo4j MCP tools, or no tools when the connector is disabled."""
     if not _enabled("NEO4J_MCP_ENABLED"):
         return []
@@ -73,4 +73,4 @@ async def get_neo4j_mcp_tools() -> list[Any]:
     return filtered
 
 
-__all__ = ["get_neo4j_mcp_tools"]
+__all__ = ["neo4j_mcp"]

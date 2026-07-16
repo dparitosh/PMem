@@ -10,16 +10,16 @@ tools:
   - type: python
     name: ontology_alignment_plan
     description: Plan instance mappings locally without writing ontology or graph data.
-    module: AgentsRegistry.CodedTools.ontology_rdflib_tools
-    object: ontology_alignment_plan_tool
+    module: AgentsRegistry.CodedTools.ontology_alignment_plan
+    object: ontology_alignment_plan
   - type: python
     name: external_context_graph_search
     description: Query the configured external context-graph HTTP API.
-    module: AgentsRegistry.CodedTools.ontology_external_api_tools
-    object: external_context_graph_search_tool
+    module: AgentsRegistry.CodedTools.external_context_graph_search
+    object: external_context_graph_search
   - type: mcp
     name: neo4j_mcp
     description: Load optional Neo4j MCP tools using environment-controlled safety filters.
     module: AgentsRegistry.MCPTools.neo4j_mcp
-    object: get_neo4j_mcp_tools
+    object: neo4j_mcp
 can_handoff_to: []

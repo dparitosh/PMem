@@ -11,50 +11,50 @@ The failure shown in iif_log.txt used this incorrect mapping:
   module: AgentsRegistry.CodedTools.ontology_external_api_tools
   object: ontology_external_api_tools
 
-There is no exported FunctionTool named ontology_external_api_tools. Use one of the exact object
-names below. Module is the import path; object is a variable or factory inside that module.
+There is no exported FunctionTool named ontology_external_api_tools. The corrected layout now
+uses one file per UI tool, and every module filename, tool name, and exported object name matches.
 
 EXACT TOOL MAPPINGS
 -------------------
 ontology_inspect
   type: python
-  module: AgentsRegistry.CodedTools.ontology_rdflib_tools
-  object: ontology_inspect_tool
+  module: AgentsRegistry.CodedTools.ontology_inspect
+  object: ontology_inspect
 
 ontology_review
   type: python
-  module: AgentsRegistry.CodedTools.ontology_rdflib_tools
-  object: ontology_review_tool
+  module: AgentsRegistry.CodedTools.ontology_review
+  object: ontology_review
 
 ontology_alignment_plan
   type: python
-  module: AgentsRegistry.CodedTools.ontology_rdflib_tools
-  object: ontology_alignment_plan_tool
+  module: AgentsRegistry.CodedTools.ontology_alignment_plan
+  object: ontology_alignment_plan
 
 ontology_export
   type: python
-  module: AgentsRegistry.CodedTools.ontology_rdflib_tools
-  object: ontology_export_tool
+  module: AgentsRegistry.CodedTools.ontology_export
+  object: ontology_export
 
 owlready2_analyze
   type: python
-  module: AgentsRegistry.CodedTools.ontology_owlready2_tools
-  object: owlready2_analyze_tool
+  module: AgentsRegistry.CodedTools.owlready2_analyze
+  object: owlready2_analyze
 
 external_registered_ontologies
   type: python
-  module: AgentsRegistry.CodedTools.ontology_external_api_tools
-  object: external_registered_ontologies_tool
+  module: AgentsRegistry.CodedTools.external_registered_ontologies
+  object: external_registered_ontologies
 
 external_context_graph_search
   type: python
-  module: AgentsRegistry.CodedTools.ontology_external_api_tools
-  object: external_context_graph_search_tool
+  module: AgentsRegistry.CodedTools.external_context_graph_search
+  object: external_context_graph_search
 
 neo4j_mcp
   type: mcp
   module: AgentsRegistry.MCPTools.neo4j_mcp
-  object: get_neo4j_mcp_tools
+  object: neo4j_mcp
 
 EXACT AGENT TOOL ASSIGNMENTS
 ----------------------------
@@ -92,12 +92,13 @@ Option A - recommended, exact and repeatable:
   1. Copy AgentsRegistry/CodedTools/*.py to IIF AgentsRegistry/CodedTools/.
   2. Copy AgentsRegistry/MCPTools/*.py to IIF AgentsRegistry/MCPTools/.
   3. Copy AgentsRegistry/Agents/*.yaml to IIF AgentsRegistry/Agents/.
-  4. Restart one IIF instance.
+  4. Remove the obsolete grouped modules ontology_rdflib_tools.py,
+     ontology_owlready2_tools.py, and ontology_external_api_tools.py if previously installed.
+  5. Restart one IIF instance.
 
 Option B - IIF GUI:
-  Create each tool separately and use the exact module/object pair above. If the GUI code editor
-  generates a Python module around submitted code, enter only the function code expected by that
-  editor; do not paste a complete multi-tool module into a single-function field.
+  Create each tool separately and use the exact module/object pair above. File, tool, and object
+  now have the same name. Every coded-tool file is self-contained.
 
 OPTIONAL TOOLS
 --------------

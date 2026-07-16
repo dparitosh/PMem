@@ -2,12 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from AgentsRegistry.CodedTools.ontology_rdflib_tools import (
-    ontology_alignment_plan,
-    ontology_export,
-    ontology_inspect,
-    ontology_review,
-)
+from AgentsRegistry.CodedTools.ontology_alignment_plan import run_ontology_alignment_plan as ontology_alignment_plan
+from AgentsRegistry.CodedTools.ontology_export import run_ontology_export as ontology_export
+from AgentsRegistry.CodedTools.ontology_inspect import run_ontology_inspect as ontology_inspect
+from AgentsRegistry.CodedTools.ontology_review import run_ontology_review as ontology_review
 
 
 ONTOLOGY = """@prefix ex: <http://example.test/> .

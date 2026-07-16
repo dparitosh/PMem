@@ -5,7 +5,7 @@ import pytest
 
 pytest.importorskip("owlready2")
 
-from AgentsRegistry.CodedTools.ontology_owlready2_tools import owlready2_analyze
+from AgentsRegistry.CodedTools.owlready2_analyze import run_owlready2_analyze as owlready2_analyze
 
 
 RDF_XML = """<?xml version="1.0"?>

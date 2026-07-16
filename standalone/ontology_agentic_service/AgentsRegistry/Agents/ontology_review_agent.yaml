@@ -9,11 +9,11 @@ tools:
   - type: python
     name: ontology_review
     description: Review asserted ontology structure under a schema or schema-and-instances profile.
-    module: AgentsRegistry.CodedTools.ontology_rdflib_tools
-    object: ontology_review_tool
+    module: AgentsRegistry.CodedTools.ontology_review
+    object: ontology_review
   - type: python
     name: owlready2_analyze
     description: Perform isolated Owlready2 analysis and optional HermiT or Pellet reasoning.
-    module: AgentsRegistry.CodedTools.ontology_owlready2_tools
-    object: owlready2_analyze_tool
+    module: AgentsRegistry.CodedTools.owlready2_analyze
+    object: owlready2_analyze
 can_handoff_to: []

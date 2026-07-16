@@ -7,6 +7,6 @@ tools:
   - type: python
     name: ontology_export
     description: Export an ontology locally as Turtle, RDF/XML, N-Triples, or JSON-LD.
-    module: AgentsRegistry.CodedTools.ontology_rdflib_tools
-    object: ontology_export_tool
+    module: AgentsRegistry.CodedTools.ontology_export
+    object: ontology_export
 can_handoff_to: []

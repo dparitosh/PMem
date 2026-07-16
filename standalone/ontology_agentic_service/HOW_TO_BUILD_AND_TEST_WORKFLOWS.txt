@@ -28,8 +28,9 @@ Ontology Export Agent
 
 WHY THE TOOLS ARE SEPARATE
 --------------------------
-ontology_rdflib_tools.py and ontology_owlready2_tools.py run inside the IIF Python process.
-ontology_external_api_tools.py is the only coded tool module that makes HTTP calls.
+Each file under CodedTools is self-contained and exposes exactly one same-named UI tool object.
+The RDFLib and Owlready2 tools run inside the IIF Python process. The two external_* tool files
+contain their own explicit HTTP API functions.
 MCPTools/neo4j_mcp.py discovers tools from a separately configured Neo4j MCP server.
 This separation prevents local ontology functions from silently depending on an HTTP service.
 
@@ -151,7 +152,7 @@ absolute path that can be passed in agent/workflow inputs. Allowed formats are .
 .ttl, .nt, .n3, and .jsonld. The default upload limit is 50 MiB.
 
 OpenAPI import is catalog inspection only; it does not execute document-provided code or silently
-create tools. External API calls remain explicit tools in ontology_external_api_tools.py.
+create tools. External API calls remain explicit, self-contained, same-named tool files.
 
 Adapter security is optional during local development:
   DEPO_IIF_ADAPTER_SECURITY_ENABLED=false

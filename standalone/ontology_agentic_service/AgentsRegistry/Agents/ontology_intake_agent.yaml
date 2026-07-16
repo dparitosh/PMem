@@ -9,16 +9,16 @@ tools:
   - type: python
     name: ontology_inspect
     description: Inspect asserted ontology structure locally with RDFLib.
-    module: AgentsRegistry.CodedTools.ontology_rdflib_tools
-    object: ontology_inspect_tool
+    module: AgentsRegistry.CodedTools.ontology_inspect
+    object: ontology_inspect
   - type: python
     name: owlready2_analyze
     description: Load an ontology in an isolated Owlready2 world and optionally reason.
-    module: AgentsRegistry.CodedTools.ontology_owlready2_tools
-    object: owlready2_analyze_tool
+    module: AgentsRegistry.CodedTools.owlready2_analyze
+    object: owlready2_analyze
   - type: python
     name: external_registered_ontologies
     description: Read ontology catalog data from the configured external HTTP API.
-    module: AgentsRegistry.CodedTools.ontology_external_api_tools
-    object: external_registered_ontologies_tool
+    module: AgentsRegistry.CodedTools.external_registered_ontologies
+    object: external_registered_ontologies
 can_handoff_to: []

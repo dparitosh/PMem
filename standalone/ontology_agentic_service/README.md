@@ -7,8 +7,8 @@ not a standalone FastAPI application, and it does not modify or start `D:\Downlo
 ontology_agentic_service/
 |-- AgentsRegistry/
 |   |-- Agents/                 # four agent YAML definitions
-|   |-- CodedTools/             # local libraries and external HTTP tools
-|   `-- MCPTools/               # optional Neo4j MCP discovery
+|   |-- CodedTools/             # seven self-contained one-file/one-object UI tools
+|   `-- MCPTools/               # one self-contained optional Neo4j MCP tool
 |-- FastAPIAdapter/             # optional existing-Depo-frontend API compatibility
 |-- tests/                      # tool and registry contract tests
 |-- HOW_TO_BUILD_AND_TEST_WORKFLOWS.txt
@@ -21,8 +21,8 @@ ontology_agentic_service/
 
 The key boundary is deliberate:
 
-- `ontology_rdflib_tools.py` and `ontology_owlready2_tools.py` run locally inside IIF.
-- `ontology_external_api_tools.py` contains all direct external HTTP calls.
+- The seven files under `CodedTools` are self-contained and each exposes one same-named UI tool.
+- The two `external_*` files contain their explicit external HTTP API functions.
 - `neo4j_mcp.py` connects only when Neo4j MCP is enabled.
 
 Optional dependencies are separated: install the Owlready2 or Neo4j MCP requirements only when

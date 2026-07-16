@@ -37,7 +37,7 @@ def test_external_and_mcp_boundaries_are_not_mixed():
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         for tool in data["tools"]:
             if tool["name"].startswith("external_"):
-                assert tool["module"].endswith("ontology_external_api_tools")
+                assert tool["module"].endswith(tool["name"])
                 assert tool["type"] == "python"
             if tool["name"] == "neo4j_mcp":
                 assert tool["module"].endswith("neo4j_mcp")
@@ -70,3 +70,16 @@ def test_tool_modules_compile_when_iif_prepends_generated_content():
         source = path.read_text(encoding="utf-8")
         assert "from __future__ import" not in source
         compile("IIF_GENERATED_HEADER = True\n" + source, str(path), "exec")
+
+
+def test_each_ui_tool_has_matching_file_module_and_object_name():
+    for path in AGENTS.glob("*.yaml"):
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        for tool in data["tools"]:
+            assert tool["module"].rsplit(".", 1)[-1] == tool["name"]
+            assert tool["object"] == tool["name"]
+            module_path = ROOT.joinpath(*tool["module"].split(".")).with_suffix(".py")
+            assert module_path.is_file()
+            if tool["type"] == "python":
+                source = module_path.read_text(encoding="utf-8")
+                assert "AgentsRegistry.ToolSupport" not in source
