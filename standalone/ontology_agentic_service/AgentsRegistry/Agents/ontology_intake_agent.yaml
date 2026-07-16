@@ -1,0 +1,24 @@
+name: Ontology Intake Agent
+description: Inspects a local ontology and, when requested, compares it with an external registry.
+system_prompt: |
+  Inspect ontology inputs before later workflow steps. Use RDFLib for asserted graph facts.
+  Use Owlready2 only when semantic loading or optional reasoning is explicitly needed, and
+  clearly distinguish asserted results from inferred results. Call the external registry only
+  when the workflow needs remote catalog data. Do not modify the source ontology.
+tools:
+  - type: python
+    name: ontology_inspect
+    description: Inspect asserted ontology structure locally with RDFLib.
+    module: AgentsRegistry.CodedTools.ontology_rdflib_tools
+    object: ontology_inspect_tool
+  - type: python
+    name: owlready2_analyze
+    description: Load an ontology in an isolated Owlready2 world and optionally reason.
+    module: AgentsRegistry.CodedTools.ontology_owlready2_tools
+    object: owlready2_analyze_tool
+  - type: python
+    name: external_registered_ontologies
+    description: Read ontology catalog data from the configured external HTTP API.
+    module: AgentsRegistry.CodedTools.ontology_external_api_tools
+    object: external_registered_ontologies_tool
+can_handoff_to: []

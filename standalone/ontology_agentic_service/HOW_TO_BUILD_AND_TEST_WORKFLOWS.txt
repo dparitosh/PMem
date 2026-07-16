@@ -1,0 +1,172 @@
+ONTOLOGY AGENTS: BUILD, DRAG/DROP, AND TEST GUIDE
+=================================================
+
+PURPOSE
+-------
+This folder is an IIF AgentsRegistry asset pack. It is not another FastAPI application and does
+not need a separate ontology service process. Copy or merge its AgentsRegistry folder into the
+IIF AgentsRegistry, then use IIF's existing agent canvas/workflow orchestrator.
+
+AGENT AND TOOL MAPPING
+----------------------
+Ontology Intake Agent
+  - ontology_inspect                 local RDFLib
+  - owlready2_analyze                local Owlready2; reasoning is optional
+  - external_registered_ontologies   external HTTP API
+
+Ontology Review Agent
+  - ontology_review                  local RDFLib
+  - owlready2_analyze                local Owlready2; reasoning is optional
+
+Ontology Alignment Agent
+  - ontology_alignment_plan          local RDFLib, read-only planning
+  - external_context_graph_search    external HTTP API
+  - neo4j_mcp                        optional MCP connector
+
+Ontology Export Agent
+  - ontology_export                  local RDFLib; writes an exported copy
+
+WHY THE TOOLS ARE SEPARATE
+--------------------------
+ontology_rdflib_tools.py and ontology_owlready2_tools.py run inside the IIF Python process.
+ontology_external_api_tools.py is the only coded tool module that makes HTTP calls.
+MCPTools/neo4j_mcp.py discovers tools from a separately configured Neo4j MCP server.
+This separation prevents local ontology functions from silently depending on an HTTP service.
+
+INSTALL INTO IIF
+----------------
+1. Do not start this folder as an application.
+2. Install requirements-ontology.txt into the Python environment used to run IIF.
+3. If needed, separately install requirements-owlready2.txt and/or requirements-neo4j-mcp.txt.
+4. Copy the YAML and Python files under AgentsRegistry/Agents, CodedTools, and MCPTools into the
+   matching IIF directories. No package marker files are included or replaced.
+5. Restart IIF so its registry loader discovers the four YAML agent definitions.
+6. Drag the required agents onto the IIF canvas and connect them in the desired order.
+
+The source files in D:\Download\IIF_v1 are not modified by this asset pack.
+
+EXAMPLE WORKFLOWS
+-----------------
+Basic structural review:
+  Ontology Intake Agent -> Ontology Review Agent
+
+Review, mapping plan, and export:
+  Ontology Intake Agent -> Ontology Review Agent -> Ontology Alignment Agent -> Ontology Export Agent
+
+External catalog/context workflow:
+  Ontology Intake Agent -> Ontology Alignment Agent
+  Enable and configure the external API first. Only external_* tools call that API.
+
+Neo4j-assisted alignment:
+  Ontology Intake Agent -> Ontology Alignment Agent
+  Enable and configure Neo4j MCP. The agent still works with its local planner if MCP is disabled.
+
+Agents intentionally have no fixed can_handoff_to links. IIF's canvas determines composition,
+so agents can be dragged into or removed from a workflow without editing YAML dependencies.
+
+INPUTS
+------
+Local tools receive an absolute ontology file path visible to the IIF process. Supported RDFLib
+extensions: .owl, .rdf, .xml, .ttl, .nt, .n3, .jsonld. Owlready2 accepts .owl, .rdf, .xml, .nt.
+The alignment planner accepts instance_metadata with optional arrays named entities, attributes,
+relationships, and metadata. It returns a draft plan and required validation names; it does not
+claim those validations ran and does not write to Neo4j.
+
+EXTERNAL HTTP API CONFIGURATION
+-------------------------------
+ONTOLOGY_EXTERNAL_API_ENABLED=false
+ONTOLOGY_EXTERNAL_API_BASE_URL=http://127.0.0.1:8000
+ONTOLOGY_EXTERNAL_API_TOKEN=
+ONTOLOGY_EXTERNAL_API_TIMEOUT_SECONDS=30
+ONTOLOGY_EXTERNAL_REGISTERED_PATH=/api/v1/ontology/registered
+ONTOLOGY_EXTERNAL_CONTEXT_SEARCH_PATH=/graphfilter
+
+The connector is disabled by default, so missing services do not generate connection-refused
+requests. The target URL is environment-controlled, not model-controlled. Authentication is optional.
+
+NEO4J MCP CONFIGURATION
+-----------------------
+NEO4J_MCP_ENABLED=false
+NEO4J_MCP_URL=
+NEO4J_MCP_COMMAND=
+NEO4J_MCP_ARGS_JSON=[]
+NEO4J_MCP_ENV_JSON={}
+NEO4J_MCP_SECURITY_ENABLED=false
+NEO4J_MCP_ALLOW_WRITES=false
+NEO4J_MCP_ALLOWED_TOOLS=
+
+Set either URL for a remote MCP endpoint or COMMAND plus JSON arguments/environment for a local
+MCP process. Disabled MCP returns no tools. If security filtering is enabled, writes are denied
+unless NEO4J_MCP_ALLOW_WRITES=true; NEO4J_MCP_ALLOWED_TOOLS can further allow-list tool names.
+
+OWLREADY2 REASONING
+-------------------
+Owlready2 structural loading is local. HermiT/Pellet reasoning additionally needs a working Java
+runtime. Imported ontologies must be resolvable locally because remote imports are disabled.
+Install requirements-owlready2.txt only when the Owlready2 tool will be used.
+
+DEPENDENCY SETS
+---------------
+requirements-ontology.txt     required local RDFLib/FunctionTool runtime
+requirements-owlready2.txt    optional Owlready2 analysis and reasoning
+requirements-neo4j-mcp.txt    optional Neo4j MCP discovery
+requirements-depo-adapter.txt optional existing-Depo-frontend FastAPI router
+requirements-test.txt         test-only PyYAML and pytest dependencies
+
+EXISTING DEPO FRONTEND ADAPTER
+------------------------------
+FastAPIAdapter/depo_compat_router.py is a router factory, not a standalone server. It exposes:
+  GET  /health
+  GET  /api/v1/agents
+  GET  /api/v1/tools
+  POST /api/v1/openapi/import
+  POST /api/v1/agents/{agent_name}/run
+  POST /api/v1/workflows/run
+  POST /api/v1/ontology/files
+
+Install it into an IIF-exported FastAPI package:
+1. Copy the FastAPIAdapter directory into the exported package root.
+2. Install requirements-depo-adapter.txt in the exported package environment.
+3. In the exported package main.py, after app is created, add:
+
+     from FastAPIAdapter import create_depo_compat_router
+     app.include_router(create_depo_compat_router())
+
+   Do not add another prefix; the router already declares the paths expected by the Depo frontend.
+4. Store workflow JSON files under the exported package storage directory. The workflow_id sent
+   by the frontend must match a JSON filename stem, or an id/name/list key inside that JSON.
+5. Set the Depo frontend build environment and restart/rebuild that frontend:
+
+     REACT_APP_AGENTIC_ENABLED=true
+     REACT_APP_AGENTIC_SERVICE_URL=http://127.0.0.1:<IIF_EXPORT_PORT>
+
+The adapter translates Depo inputs to IIF workflow_execute calls. It does not initialize an LLM,
+start IIF, or duplicate IIF orchestration. IIF's normal lifespan must initialize the agents first.
+
+Ontology uploads are stored under Uploaded_files/ontology by default and return a server-visible
+absolute path that can be passed in agent/workflow inputs. Allowed formats are .owl, .rdf, .xml,
+.ttl, .nt, .n3, and .jsonld. The default upload limit is 50 MiB.
+
+OpenAPI import is catalog inspection only; it does not execute document-provided code or silently
+create tools. External API calls remain explicit tools in ontology_external_api_tools.py.
+
+Adapter security is optional during local development:
+  DEPO_IIF_ADAPTER_SECURITY_ENABLED=false
+  DEPO_IIF_ADAPTER_TOKEN=
+
+When enabled, the caller must send Authorization: Bearer <token>. The existing Depo frontend does
+not currently attach this token, so keep security disabled locally or add frontend token handling
+before enabling it. Production deployments should place authentication at the gateway or enable
+the adapter security after adding frontend support.
+
+TESTING
+-------
+From this folder:
+  python -m pip install -r requirements-test.txt
+  python -m pytest -q
+
+Validate against IIF's registry contract without starting IIF:
+  python D:\Download\IIF_v1\AgentsRegistry\validate_registry.py --root D:\Depo_Onto_Engine\standalone\ontology_agentic_service
+
+Before using external or MCP tools, test their configured endpoints separately. Keep Neo4j writes
+disabled until read-only discovery and query behavior have been verified.

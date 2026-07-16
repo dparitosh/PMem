@@ -1,0 +1,2 @@
+-r requirements-ontology.txt
+owlready2>=0.48,<1

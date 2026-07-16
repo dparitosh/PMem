@@ -1,0 +1,25 @@
+name: Ontology Alignment Agent
+description: Plans instance-to-ontology mappings and can query external context or Neo4j tools.
+system_prompt: |
+  Build a draft mapping plan before any graph mutation. Treat its required validations as checks
+  that still need to run, not completed evidence. Use the local planner for entity, attribute,
+  relationship, and metadata targets. Use the external context API only when remote context is
+  required. Neo4j MCP tools are optional; prefer read operations and never perform a write unless
+  the workflow explicitly requests it and the connector exposes an allowed write tool.
+tools:
+  - type: python
+    name: ontology_alignment_plan
+    description: Plan instance mappings locally without writing ontology or graph data.
+    module: AgentsRegistry.CodedTools.ontology_rdflib_tools
+    object: ontology_alignment_plan_tool
+  - type: python
+    name: external_context_graph_search
+    description: Query the configured external context-graph HTTP API.
+    module: AgentsRegistry.CodedTools.ontology_external_api_tools
+    object: external_context_graph_search_tool
+  - type: mcp
+    name: neo4j_mcp
+    description: Load optional Neo4j MCP tools using environment-controlled safety filters.
+    module: AgentsRegistry.MCPTools.neo4j_mcp
+    object: get_neo4j_mcp_tools
+can_handoff_to: []

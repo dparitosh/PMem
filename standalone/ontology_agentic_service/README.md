@@ -1,95 +1,36 @@
-# Standalone Ontology Agent Service
+# Ontology workflow assets for IIF
 
-This folder contains only the ontology agents and external tools needed for
-drag-and-drop IIF workflows:
-
-- RDFLib inspection, review, alignment planning, and export over HTTP;
-- optional Owlready2 loading and HermiT/Pellet reasoning over HTTP;
-- optional Neo4j tool discovery through MCP;
-- four independent agent YAML definitions;
-- a plain-text workflow-building and testing guide.
-
-It intentionally excludes DEPO/OSLC adapters, STEP, ReqIF, requirement
-normalization, OpenAPI importing, frontend code, and an additional ontology
-orchestrator. IIF's existing `workflow_orchestrator` controls canvas execution.
-
-## Layout
+This directory contains drag-and-drop agents and tool definitions for IIF. It is an asset pack,
+not a standalone FastAPI application, and it does not modify or start `D:\Download\IIF_v1`.
 
 ```text
-app/main.py                           Optional standalone HTTP API
-ontology_agentic/
-  config.py                          API and optional-security configuration
-  security.py                        Optional bearer/path controls
-  runtime/                           Four-agent local execution adapter
-  tools/ontology_tools.py            RDFLib implementation
-  tools/owlready2_tools.py            Optional Owlready2 implementation
-iif_bundle/
-  AgentsRegistry/Agents/             Four agent YAML files
-  AgentsRegistry/CodedTools/         Five external HTTP FunctionTools
-  AgentsRegistry/MCPTools/           Neo4j MCP factory
-  HOW_TO_BUILD_AND_TEST_WORKFLOWS.txt
+ontology_agentic_service/
+|-- AgentsRegistry/
+|   |-- Agents/                 # four agent YAML definitions
+|   |-- CodedTools/             # local libraries and external HTTP tools
+|   `-- MCPTools/               # optional Neo4j MCP discovery
+|-- FastAPIAdapter/             # optional existing-Depo-frontend API compatibility
+|-- tests/                      # tool and registry contract tests
+|-- HOW_TO_BUILD_AND_TEST_WORKFLOWS.txt
+|-- requirements-ontology.txt
+|-- requirements-owlready2.txt
+|-- requirements-neo4j-mcp.txt
+|-- requirements-depo-adapter.txt
+`-- requirements-test.txt
 ```
 
-## Install and start the external API
+The key boundary is deliberate:
 
-```powershell
-cd D:\Depo_Onto_Engine\standalone\ontology_agentic_service
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python start_service.py
-```
+- `ontology_rdflib_tools.py` and `ontology_owlready2_tools.py` run locally inside IIF.
+- `ontology_external_api_tools.py` contains all direct external HTTP calls.
+- `neo4j_mcp.py` connects only when Neo4j MCP is enabled.
 
-Default address: `http://127.0.0.1:8012`.
+Optional dependencies are separated: install the Owlready2 or Neo4j MCP requirements only when
+that capability is enabled. `AgentsRegistry` deliberately contains no package `__init__.py` files,
+so merging it cannot overwrite IIF's existing registry package markers.
 
-## Endpoints
+`FastAPIAdapter` is an optional router for an IIF-exported FastAPI package. It implements the
+existing Depo frontend's agentic API contract without creating a second application.
 
-- `GET /health`
-- `GET /api/v1/agents`
-- `GET /api/v1/tools`
-- `POST /api/v1/agents/{agent_name}/run`
-- `POST /api/v1/workflows/run`
-- `POST /api/v1/ontology/owlready2`
-
-## Agents
-
-- `ontology_intake_agent`
-- `ontology_review_agent`
-- `ontology_alignment_agent`
-- `ontology_export_agent`
-
-## Standalone tools
-
-- `ontology_inspect`
-- `ontology_review`
-- `ontology_alignment_plan`
-- `ontology_export`
-- `owlready2_analyze`
-
-The IIF bundle exposes corresponding HTTP tool IDs plus `neo4j_mcp`. See
-[HOW_TO_BUILD_AND_TEST_WORKFLOWS.txt](D:/Depo_Onto_Engine/standalone/ontology_agentic_service/iif_bundle/HOW_TO_BUILD_AND_TEST_WORKFLOWS.txt)
-for the complete agent mapping, environment variables, drag/drop combinations,
-and test procedures.
-
-## Optional security
-
-Security is disabled by default for local development. Enable bearer and path
-controls with:
-
-```powershell
-$env:ONTOLOGY_API_SECURITY_ENABLED = 'true'
-$env:ONTOLOGY_API_TOKEN = 'long-random-token'
-$env:ONTOLOGY_API_ALLOWED_INPUT_ROOTS = 'D:\approved-input'
-$env:ONTOLOGY_API_ALLOWED_OUTPUT_ROOTS = 'D:\approved-output'
-```
-
-Neo4j MCP filtering is independently enabled with
-`NEO4J_MCP_SECURITY_ENABLED=true`.
-
-## Validate
-
-```powershell
-python -m pytest tests -q
-```
-
-This does not start IIF.
+See [HOW_TO_BUILD_AND_TEST_WORKFLOWS.txt](HOW_TO_BUILD_AND_TEST_WORKFLOWS.txt) for the complete
+agent/tool mapping, configuration, drag-and-drop examples, and validation commands.

@@ -1,0 +1,12 @@
+name: Ontology Export Agent
+description: Serializes a local ontology into an explicitly selected RDF format.
+system_prompt: |
+  Export only after the workflow has selected a source file, destination directory, and format.
+  Report the generated path. This tool creates an exported copy and must not overwrite the source.
+tools:
+  - type: python
+    name: ontology_export
+    description: Export an ontology locally as Turtle, RDF/XML, N-Triples, or JSON-LD.
+    module: AgentsRegistry.CodedTools.ontology_rdflib_tools
+    object: ontology_export_tool
+can_handoff_to: []

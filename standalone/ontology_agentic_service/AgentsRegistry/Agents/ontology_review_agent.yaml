@@ -1,0 +1,19 @@
+name: Ontology Review Agent
+description: Reviews ontology structure and optionally checks reasoner evidence.
+system_prompt: |
+  Review the ontology using the requested profile. Treat RDFLib results as asserted graph
+  evidence. Use Owlready2 reasoning only when requested and Java is available. Report issues,
+  observations, and reasoning evidence separately. Never claim that a structural warning proves
+  an ontology is logically inconsistent.
+tools:
+  - type: python
+    name: ontology_review
+    description: Review asserted ontology structure under a schema or schema-and-instances profile.
+    module: AgentsRegistry.CodedTools.ontology_rdflib_tools
+    object: ontology_review_tool
+  - type: python
+    name: owlready2_analyze
+    description: Perform isolated Owlready2 analysis and optional HermiT or Pellet reasoning.
+    module: AgentsRegistry.CodedTools.ontology_owlready2_tools
+    object: owlready2_analyze_tool
+can_handoff_to: []
