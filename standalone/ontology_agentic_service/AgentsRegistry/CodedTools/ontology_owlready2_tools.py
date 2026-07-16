@@ -1,7 +1,5 @@
 """Local optional Owlready2 analysis/reasoning tool for IIF."""
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any, Literal
 

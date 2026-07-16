@@ -44,6 +44,9 @@ INSTALL INTO IIF
 6. Drag the required agents onto the IIF canvas and connect them in the desired order.
 
 The source files in D:\Download\IIF_v1 are not modified by this asset pack.
+For manual configuration through the IIF UI, follow IIF_UI_CONFIGURATION.txt exactly. In
+particular, do not paste a complete YAML file into System Prompt and do not use a module filename
+as a FunctionTool object name.
 
 EXAMPLE WORKFLOWS
 -----------------

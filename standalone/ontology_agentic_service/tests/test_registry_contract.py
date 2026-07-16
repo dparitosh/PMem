@@ -23,6 +23,8 @@ def test_agent_tool_mapping_is_complete_and_canvas_composable():
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         loaded[data["name"]] = {tool["name"] for tool in data["tools"]}
         assert data["can_handoff_to"] == []
+        assert "system_prompt:" not in data["system_prompt"]
+        assert "\ntools:" not in data["system_prompt"]
         for tool in data["tools"]:
             assert tool["type"] in {"python", "mcp"}
             assert tool["module"].startswith("AgentsRegistry.")
@@ -59,3 +61,12 @@ def test_old_service_layout_is_absent():
     assert not (ROOT / "ontology_agentic").exists()
     assert not (ROOT / "iif_bundle").exists()
     assert not (ROOT / "start_service.py").exists()
+
+
+def test_tool_modules_compile_when_iif_prepends_generated_content():
+    tool_files = list((ROOT / "AgentsRegistry" / "CodedTools").glob("*.py"))
+    tool_files += list((ROOT / "AgentsRegistry" / "MCPTools").glob("*.py"))
+    for path in tool_files:
+        source = path.read_text(encoding="utf-8")
+        assert "from __future__ import" not in source
+        compile("IIF_GENERATED_HEADER = True\n" + source, str(path), "exec")

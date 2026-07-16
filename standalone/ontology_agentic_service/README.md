@@ -34,3 +34,6 @@ existing Depo frontend's agentic API contract without creating a second applicat
 
 See [HOW_TO_BUILD_AND_TEST_WORKFLOWS.txt](HOW_TO_BUILD_AND_TEST_WORKFLOWS.txt) for the complete
 agent/tool mapping, configuration, drag-and-drop examples, and validation commands.
+
+When configuring through the IIF UI, use `IIF_UI_CONFIGURATION.txt` for exact module/object names
+and agent field values. The System Prompt field accepts prompt text only, not the complete YAML.

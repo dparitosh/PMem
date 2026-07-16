@@ -1,0 +1,117 @@
+IIF TOOL AND AGENT CONFIGURATION - EXACT VALUES
+================================================
+
+IMPORTANT
+---------
+The preferred installation is to copy the Python files and YAML files into the matching
+AgentsRegistry directories. Do not paste an entire YAML document into the System Prompt field.
+Do not use a Python filename or module name as the exported object name.
+
+The failure shown in iif_log.txt used this incorrect mapping:
+  module: AgentsRegistry.CodedTools.ontology_external_api_tools
+  object: ontology_external_api_tools
+
+There is no exported FunctionTool named ontology_external_api_tools. Use one of the exact object
+names below. Module is the import path; object is a variable or factory inside that module.
+
+EXACT TOOL MAPPINGS
+-------------------
+ontology_inspect
+  type: python
+  module: AgentsRegistry.CodedTools.ontology_rdflib_tools
+  object: ontology_inspect_tool
+
+ontology_review
+  type: python
+  module: AgentsRegistry.CodedTools.ontology_rdflib_tools
+  object: ontology_review_tool
+
+ontology_alignment_plan
+  type: python
+  module: AgentsRegistry.CodedTools.ontology_rdflib_tools
+  object: ontology_alignment_plan_tool
+
+ontology_export
+  type: python
+  module: AgentsRegistry.CodedTools.ontology_rdflib_tools
+  object: ontology_export_tool
+
+owlready2_analyze
+  type: python
+  module: AgentsRegistry.CodedTools.ontology_owlready2_tools
+  object: owlready2_analyze_tool
+
+external_registered_ontologies
+  type: python
+  module: AgentsRegistry.CodedTools.ontology_external_api_tools
+  object: external_registered_ontologies_tool
+
+external_context_graph_search
+  type: python
+  module: AgentsRegistry.CodedTools.ontology_external_api_tools
+  object: external_context_graph_search_tool
+
+neo4j_mcp
+  type: mcp
+  module: AgentsRegistry.MCPTools.neo4j_mcp
+  object: get_neo4j_mcp_tools
+
+EXACT AGENT TOOL ASSIGNMENTS
+----------------------------
+Ontology Intake Agent
+  ontology_inspect
+  owlready2_analyze
+  external_registered_ontologies
+
+Ontology Review Agent
+  ontology_review
+  owlready2_analyze
+
+Ontology Alignment Agent
+  ontology_alignment_plan
+  external_context_graph_search
+  neo4j_mcp
+
+Ontology Export Agent
+  ontology_export
+
+SYSTEM PROMPT FIELD
+-------------------
+Enter only the indented text located under system_prompt: | in the relevant YAML file. Do not
+include the literal "system_prompt: |" line, tools:, module:, object:, or can_handoff_to:.
+
+For example, the Ontology Alignment Agent System Prompt begins:
+  Build a draft mapping plan before any graph mutation...
+
+It must not begin:
+  system_prompt: |
+
+INSTALLATION OPTIONS
+--------------------
+Option A - recommended, exact and repeatable:
+  1. Copy AgentsRegistry/CodedTools/*.py to IIF AgentsRegistry/CodedTools/.
+  2. Copy AgentsRegistry/MCPTools/*.py to IIF AgentsRegistry/MCPTools/.
+  3. Copy AgentsRegistry/Agents/*.yaml to IIF AgentsRegistry/Agents/.
+  4. Restart one IIF instance.
+
+Option B - IIF GUI:
+  Create each tool separately and use the exact module/object pair above. If the GUI code editor
+  generates a Python module around submitted code, enter only the function code expected by that
+  editor; do not paste a complete multi-tool module into a single-function field.
+
+OPTIONAL TOOLS
+--------------
+Keep these disabled until their dependencies/configuration are ready:
+  ONTOLOGY_EXTERNAL_API_ENABLED=false
+  NEO4J_MCP_ENABLED=false
+
+Owlready2 is imported only when owlready2_analyze runs. Install requirements-owlready2.txt before
+calling it. Neo4j MCP needs requirements-neo4j-mcp.txt only when enabled.
+
+NON-TOOL ERRORS SEEN IN iif_log.txt
+-----------------------------------
+1. NameResolutionError for the Azure user-auth host is DNS/network/VPN related, not an agent tool.
+2. WinError 10048 on 127.0.0.1:8001 means another IIF process already owns that port. Run only one
+   instance or configure a different port.
+3. The tool SyntaxError occurred because generated content appeared before a future import. The
+   current asset modules no longer use future imports and are safe from that specific wrapper error.

@@ -1,7 +1,5 @@
 """Local RDFLib tools for IIF ontology workflows."""
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Any, Literal
 

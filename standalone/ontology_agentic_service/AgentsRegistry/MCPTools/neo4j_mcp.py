@@ -1,7 +1,5 @@
 """Optional Neo4j MCP tool factory for IIF."""
 
-from __future__ import annotations
-
 import json
 import os
 import re
