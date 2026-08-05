@@ -4,6 +4,12 @@ import logging
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.llm import llm, LLM_AVAILABLE
 from core.graph import graph
+try:
+    from backend.core.cypher_safety import assert_read_only_cypher
+    from backend.core.graph import query_with_timeout
+except Exception:
+    from core.cypher_safety import assert_read_only_cypher
+    from core.graph import query_with_timeout
 from langchain_neo4j import GraphCypherQAChain, Neo4jGraph
 from langchain.prompts.prompt import PromptTemplate
 from typing import Optional, List, Dict, Any
@@ -108,7 +114,7 @@ class Neo4jGraphStoreAdapter:
             List of result records as dictionaries
         """
         try:
-            result = self._graph.query(query)
+            result = query_with_timeout(assert_read_only_cypher(query))
             logger.debug(f"Cypher query executed: {query[:100]}... | Results: {len(result) if isinstance(result, list) else 'dict'}")
             return result
         except Exception as exc:
@@ -189,7 +195,7 @@ def query_cypher(query: str) -> List[Dict[str, Any]]:
         ...     print(record)
     """
     try:
-        return graph.query(query)
+        return query_with_timeout(assert_read_only_cypher(query))
     except Exception as exc:
         logger.error(f"Direct Cypher query failed: {exc}")
         raise

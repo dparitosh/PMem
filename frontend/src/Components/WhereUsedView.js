@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import '../App.css';
 import { API, buildUrl } from '../config';
 import { apiClient, API_METHODS } from '../services/apiClient';
@@ -6,21 +6,22 @@ import { useSchema } from '../SchemaContext';
 import DataGridWidget from '../widgets/DataGridWidget';
 import logger from '../utils/logger';
 import { normalizeGraphDataset as normalizeGraphDatasetShared, getLinkEndpointId } from '../utils/graphUtils';
+import { UI_COLORS } from '../styles/uiTokens';
 
-// ──── DEVELOPER CONFIG: Node Display Label ────────────────────────────────
+// Shared UI configuration
 //
-// DISPLAY_NAME_PROPERTY  — priority-ordered list of node properties to try.
+// Shared UI configuration
 //   The first property found on a node is used as the display name.
 //   Set to [] (empty array) to rely solely on the Neo4j label.
 const DISPLAY_NAME_PROPERTY = ['name', 'title', 'code', 'key', 'abbreviation', 'id'];
 //
-// DISPLAY_MODE  — controls what is shown in the node label.
-//   'both-label-first'  → "Label - PropertyValue"   (default)
-//   'both-prop-first'   → "PropertyValue (Label)"
-//   'label-only'        → "Label"
-//   'property-only'     → "PropertyValue"
+// Shared UI configuration
+// Shared UI configuration
+// Shared UI configuration
+// Shared UI configuration
+// Shared UI configuration
 const DISPLAY_MODE = 'both-label-first';
-// ───────────────────────────────────────────────────────────────────────────
+// Shared UI configuration
 
 const SEARCHABLE_NODE_KEYS = [
   'name', 'title', 'code', 'key', 'abbreviation', 'id', 'description', 'label',
@@ -118,16 +119,16 @@ const formatNodeDisplay = (label, propValue) => {
 };
 
 const WU = {
-    primary: '#004B87',
-    primarySoft: '#E8F1FC',
-    surface: '#FFFFFF',
-    bg: '#F8F9FA',
+    primary: UI_COLORS.primary,
+    primarySoft: UI_COLORS.primaryLight,
+    surface: UI_COLORS.surface,
+    bg: UI_COLORS.bg,
     border: '#D9E2EC',
     borderStrong: '#BCCCDC',
-    text: '#1A2B3C',
+    text: UI_COLORS.textPrimary,
     muted: '#52606D',
     subtle: '#7B8794',
-    error: '#C0392B',
+    error: UI_COLORS.red,
 };
 
 const panelStyle = {
@@ -189,6 +190,8 @@ const WhereUsedView = ({
     const [fallbackGraphData, setFallbackGraphData] = useState({ nodes: [], links: [] });
     const [graphLoading, setGraphLoading] = useState(false);
     const [graphError, setGraphError] = useState('');
+    const searchAbortRef = useRef(null);
+    const expansionAbortRef = useRef(null);
     // Schema-driven display
     const { getDisplayName: schemaDisplayName } = useSchema() || {};
 
@@ -202,14 +205,16 @@ const WhereUsedView = ({
         if (hasPrimaryGraph || (fallbackGraphData.nodes || []).length > 0) return undefined;
 
         let cancelled = false;
+        const controller = new AbortController();
         const loadGraph = async () => {
             setGraphLoading(true);
             setGraphError('');
             try {
-                const response = await apiClient.get(buildUrl(API.graph.graphView), { params: { limit: 5000 } });
+                const response = await apiClient.get(buildUrl(API.graph.graphView), { params: { limit: 5000 }, signal: controller.signal });
                 const normalized = normalizeGraphDatasetShared(response.data);
                 if (!cancelled) setFallbackGraphData(normalized);
             } catch (error) {
+                if (controller.signal.aborted) return;
                 if (!cancelled) setGraphError(error?.response?.data?.detail || error.message || 'Failed to load graph data for Where Used.');
             } finally {
                 if (!cancelled) setGraphLoading(false);
@@ -217,17 +222,26 @@ const WhereUsedView = ({
         };
 
         loadGraph();
-        return () => { cancelled = true; };
+        return () => { cancelled = true; controller.abort(); };
     }, [data, fallbackGraphData.nodes]);
+
+    useEffect(() => () => {
+        searchAbortRef.current?.abort();
+        expansionAbortRef.current?.abort();
+    }, []);
     
     // Unified search using same backend logic as GraphHEB (POST /graphfilter)
     const handleSearch = async () => {
         const term = searchTerm.trim();
         if (!term) return;
+        searchAbortRef.current?.abort();
+        const controller = new AbortController();
+        searchAbortRef.current = controller;
         setIsSearching(true);
         setSearchError(null);
         try {
-            const response = await apiClient.post(buildUrl(API.graph.graphfilter), { search: term.toLowerCase() });
+            const response = await apiClient.post(buildUrl(API.graph.graphfilter), { search: term.toLowerCase() }, { signal: controller.signal });
+            if (controller.signal.aborted) return;
             const records = response.data?.results || [];
             const nodesMap = new Map();
 
@@ -266,6 +280,7 @@ const WhereUsedView = ({
                 setLevels([]);
             }
         } catch (err) {
+            if (controller.signal.aborted || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.name === 'AbortError') return;
             logger.search('Search error (server):', err);
             try {
                 const fallbackNodes = (effectiveGraphData?.nodes || [])
@@ -287,13 +302,17 @@ const WhereUsedView = ({
                 setSearchError('Search failed.');
             }
         } finally {
-            setIsSearching(false);
+            if (!controller.signal.aborted) setIsSearching(false);
+            if (searchAbortRef.current === controller) searchAbortRef.current = null;
         }
     };
 
     // Upward expansion logic: recursively fetch parents via graphtraverse until top-level
     const expandAllParents = useCallback(async (startNode) => {
         if (!startNode?.elementId) return;
+        expansionAbortRef.current?.abort();
+        const controller = new AbortController();
+        expansionAbortRef.current = controller;
         setIsExpandingUpwards(true);
         setExpansionError(null);
         try {
@@ -308,7 +327,8 @@ const WhereUsedView = ({
                 visited.add(currentNodeId);
 
                 try {
-                    const resp = await API_METHODS.graph.traverse(currentNodeId);
+                    const resp = await API_METHODS.graph.traverse(currentNodeId, { signal: controller.signal });
+                    if (controller.signal.aborted) return;
                     const records = resp.data?.results || [];
                     const normalizedTraversal = records.length ? null : normalizeGraphDatasetShared(resp.data);
 
@@ -346,6 +366,7 @@ const WhereUsedView = ({
                         }
                     });
                 } catch (e) {
+                    if (controller.signal.aborted) return;
                     logger.warn('Traverse fetch failed for %s: %s', currentNodeId, e.message);
                 }
             }
@@ -392,9 +413,11 @@ const WhereUsedView = ({
             });
             setAutoExpanded(true);
         } catch (err) {
+            if (controller.signal.aborted || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.name === 'AbortError') return;
             setExpansionError(err.message);
         } finally {
-            setIsExpandingUpwards(false);
+            if (!controller.signal.aborted) setIsExpandingUpwards(false);
+            if (expansionAbortRef.current === controller) expansionAbortRef.current = null;
         }
     }, []);
 

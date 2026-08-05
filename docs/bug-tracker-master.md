@@ -692,8 +692,6 @@ Validation:
 - Isolated ontology presentation normalization and import intent/resumable-job rules from their oversized legacy page components so Mendix pages can reuse tested domain behavior without embedding those pages.
 - Standardized `OntologyJunctionPage` and `RecommendationsPage` names while retaining compatibility exports for existing imports.
 - Added automated frontend endpoint classification against backend OpenAPI and deterministic navigation boundary/browser smoke coverage.
-- Added a Mendix 11.12 pluggable widget project with React Flow/D3 selection, modeled node-selection variables, size limits, accessibility semantics, locked dependencies, and release packaging.
-- Baselined requirements in `docs/mendix-graph-miner-requirements-plan.md` and delivery status/decisions in `docs/mendix-transition-tracker.md`.
 
 ### 2026-07-04 Large XMI timeout and parser performance update
 

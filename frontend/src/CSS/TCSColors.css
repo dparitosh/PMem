@@ -1,115 +1,115 @@
 /* TCS Color Scheme Overrides - Global Bootstrap Theme */
 :root {
-  --tcs-blue: #004B87 !important;
-  --tcs-blue-dark: #003366 !important;
-  --tcs-blue-light: #e6f0ff !important;
-  --tcs-white: #ffffff !important;
-  --tcs-gray: #6c757d !important;
-  --bs-primary: #004B87 !important;
-  --bs-primary-rgb: 0, 75, 135 !important;
+  --tcs-blue: var(--ui-primary, #005a9c);
+  --tcs-blue-dark: var(--ui-primary-dark, #003f73);
+  --tcs-blue-light: #e6f0ff;
+  --tcs-white: #ffffff;
+  --tcs-gray: #6c757d;
+  --bs-primary: var(--ui-primary, #005a9c);
+  --bs-primary-rgb: 0, 90, 156;
 }
 
 /* Override Bootstrap primary color with !important */
-.btn-primary {
+.depo-shell .btn-primary {
   --bs-btn-color: #fff !important;
-  --bs-btn-bg: #004B87 !important;
-  --bs-btn-border-color: #004B87 !important;
+  --bs-btn-bg: var(--tcs-blue) !important;
+  --bs-btn-border-color: var(--tcs-blue) !important;
   --bs-btn-hover-color: #fff !important;
-  --bs-btn-hover-bg: #003366 !important;
-  --bs-btn-hover-border-color: #003366 !important;
+  --bs-btn-hover-bg: var(--tcs-blue-dark) !important;
+  --bs-btn-hover-border-color: var(--tcs-blue-dark) !important;
   --bs-btn-focus-shadow-rgb: 0, 75, 135 !important;
   --bs-btn-active-color: #fff !important;
-  --bs-btn-active-bg: #003366 !important;
-  --bs-btn-active-border-color: #003366 !important;
+  --bs-btn-active-bg: var(--tcs-blue-dark) !important;
+  --bs-btn-active-border-color: var(--tcs-blue-dark) !important;
   --bs-btn-active-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125) !important;
   --bs-btn-disabled-color: #fff !important;
-  --bs-btn-disabled-bg: #004B87 !important;
-  --bs-btn-disabled-border-color: #004B87 !important;
+  --bs-btn-disabled-bg: var(--tcs-blue) !important;
+  --bs-btn-disabled-border-color: var(--tcs-blue) !important;
 }
 
-.btn-outline-primary {
-  --bs-btn-color: #004B87 !important;
-  --bs-btn-border-color: #004B87 !important;
+.depo-shell .btn-outline-primary {
+  --bs-btn-color: var(--tcs-blue) !important;
+  --bs-btn-border-color: var(--tcs-blue) !important;
   --bs-btn-hover-color: #fff !important;
-  --bs-btn-hover-bg: #004B87 !important;
-  --bs-btn-hover-border-color: #004B87 !important;
+  --bs-btn-hover-bg: var(--tcs-blue) !important;
+  --bs-btn-hover-border-color: var(--tcs-blue) !important;
   --bs-btn-focus-shadow-rgb: 0, 75, 135 !important;
   --bs-btn-active-color: #fff !important;
-  --bs-btn-active-bg: #004B87 !important;
-  --bs-btn-active-border-color: #004B87 !important;
+  --bs-btn-active-bg: var(--tcs-blue) !important;
+  --bs-btn-active-border-color: var(--tcs-blue) !important;
   --bs-btn-active-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125) !important;
-  --bs-btn-disabled-color: #004B87 !important;
+  --bs-btn-disabled-color: var(--tcs-blue) !important;
   --bs-btn-disabled-bg: transparent !important;
-  --bs-btn-disabled-border-color: #004B87 !important;
-  border-color: #004B87 !important;
+  --bs-btn-disabled-border-color: var(--tcs-blue) !important;
+  border-color: var(--tcs-blue) !important;
 }
 
-.text-primary {
+.depo-shell .text-primary {
   --bs-text-opacity: 1 !important;
-  color: #004B87 !important;
+  color: var(--tcs-blue) !important;
 }
 
-.nav-tabs .nav-link:hover {
-  border-color: #004B87 #004B87 #dee2e6 !important;
-  color: #004B87 !important;
+.depo-shell .nav-tabs .nav-link:hover {
+  border-color: var(--tcs-blue) var(--tcs-blue) #dee2e6 !important;
+  color: var(--tcs-blue) !important;
 }
 
 /* Specific overrides for main app navigation - higher specificity */
-.nav-tabs button.nav-link {
+.depo-shell .nav-tabs button.nav-link {
   background-color: transparent !important;
-  color: #004B87 !important;
-  border: 1px solid #004B87 !important;
+  color: var(--tcs-blue) !important;
+  border: 1px solid var(--tcs-blue) !important;
 }
 
-.nav-tabs button.nav-link.active {
-  background-color: #004B87 !important;
+.depo-shell .nav-tabs button.nav-link.active {
+  background-color: var(--tcs-blue) !important;
   color: white !important;
-  border: 1px solid #004B87 !important;
+  border: 1px solid var(--tcs-blue) !important;
 }
 
-.nav-tabs button.nav-link:hover {
-  background-color: #004B87 !important;
+.depo-shell .nav-tabs button.nav-link:hover {
+  background-color: var(--tcs-blue) !important;
   color: white !important;
-  border: 1px solid #004B87 !important;
+  border: 1px solid var(--tcs-blue) !important;
 }
 .data-import-tcs .btn-primary {
-  background-color: #004B87 !important;
-  border-color: #004B87 !important;
+  background-color: var(--tcs-blue) !important;
+  border-color: var(--tcs-blue) !important;
 }
 
 .data-import-tcs .btn-primary:hover {
-  background-color: #003366 !important;
-  border-color: #003366 !important;
+  background-color: var(--tcs-blue-dark) !important;
+  border-color: var(--tcs-blue-dark) !important;
 }
 
 .data-import-tcs .btn-outline-primary {
-  color: #004B87 !important;
-  border-color: #004B87 !important;
+  color: var(--tcs-blue) !important;
+  border-color: var(--tcs-blue) !important;
 }
 
 .data-import-tcs .btn-outline-primary:hover {
-  background-color: #004B87 !important;
-  border-color: #004B87 !important;
+  background-color: var(--tcs-blue) !important;
+  border-color: var(--tcs-blue) !important;
 }
 
 .data-import-tcs .text-primary {
-  color: #004B87 !important;
+  color: var(--tcs-blue) !important;
 }
 
 .data-import-tcs .nav-tabs .nav-link.active {
-  background-color: #004B87 !important;
-  border-color: #004B87 !important;
+  background-color: var(--tcs-blue) !important;
+  border-color: var(--tcs-blue) !important;
   color: white !important;
 }
 
 .data-import-tcs .nav-tabs .nav-link {
-  color: #004B87 !important;
+  color: var(--tcs-blue) !important;
   border-color: #dee2e6 #dee2e6 #dee2e6 !important;
 }
 
 .data-import-tcs .nav-tabs .nav-link:hover {
-  border-color: #004B87 #004B87 #dee2e6 !important;
-  color: #004B87 !important;
+  border-color: var(--tcs-blue) var(--tcs-blue) #dee2e6 !important;
+  color: var(--tcs-blue) !important;
 }
 
 .data-import-tcs .card-header {
@@ -118,38 +118,38 @@
 }
 
 .data-import-tcs .btn-outline-danger {
-  color: #dc3545 !important;
-  border-color: #dc3545 !important;
+  color: var(--ui-danger, #b42318) !important;
+  border-color: var(--ui-danger, #b42318) !important;
 }
 
 .data-import-tcs .btn-outline-danger:hover {
-  background-color: #dc3545 !important;
-  border-color: #dc3545 !important;
+  background-color: var(--ui-danger, #b42318) !important;
+  border-color: var(--ui-danger, #b42318) !important;
 }
 
 /* Force DataImport buttons to use TCS colors */
 .data-import-tcs button.btn.btn-outline-primary,
 .data-import-tcs button.btn.btn-primary {
-  background-color: #004B87 !important;
-  border-color: #004B87 !important;
+  background-color: var(--tcs-blue) !important;
+  border-color: var(--tcs-blue) !important;
   color: white !important;
 }
 
 .data-import-tcs button.btn.btn-outline-primary:hover,
 .data-import-tcs button.btn.btn-primary:hover {
-  background-color: #003366 !important;
-  border-color: #003366 !important;
+  background-color: var(--tcs-blue-dark) !important;
+  border-color: var(--tcs-blue-dark) !important;
   color: white !important;
 }
 
 .data-import-tcs button.btn.btn-outline-danger {
   background-color: transparent !important;
-  border-color: #dc3545 !important;
-  color: #dc3545 !important;
+  border-color: var(--ui-danger, #b42318) !important;
+  color: var(--ui-danger, #b42318) !important;
 }
 
 .data-import-tcs button.btn.btn-outline-danger:hover {
-  background-color: #dc3545 !important;
-  border-color: #dc3545 !important;
+  background-color: var(--ui-danger, #b42318) !important;
+  border-color: var(--ui-danger, #b42318) !important;
   color: white !important;
 }

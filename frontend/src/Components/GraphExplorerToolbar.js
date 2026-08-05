@@ -41,12 +41,12 @@ function GraphExplorerToolbar({
   onOpenContextualGraph,
   ontologyLoading,
   ontologyError,
-  ontologyOptions,
+  ontologyOptions = [],
   onSelectedOntologyChange,
   selectedStepPart,
   stepPartsLoading,
   stepPartsError,
-  stepParts,
+  stepParts = [],
   onSelectedStepPartChange,
   isLayoutSwitching,
   ontologyGraphMessage,
@@ -139,6 +139,7 @@ function GraphExplorerToolbar({
         >
           <input
             type="text"
+            aria-label="Search graph"
             placeholder={graphViewMode === 'individual' ? 'Search instances, type, label, properties...' : 'Search nodes...'}
             value={searchInput}
             style={{
@@ -252,6 +253,7 @@ function GraphExplorerToolbar({
           <Database size={15} color={theme.inkSoft} strokeWidth={2.4} aria-hidden="true" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <select
+              aria-label="Select an ontology"
               value={selectedOntology}
               onChange={(event) => onSelectedOntologyChange?.(event.target.value)}
               disabled={ontologyLoading || !!ontologyError}
@@ -288,6 +290,7 @@ function GraphExplorerToolbar({
           <Settings size={15} color={theme.inkSoft} strokeWidth={2.4} aria-hidden="true" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <select
+              aria-label="Filter STEP data by part"
               value={selectedStepPart}
               onChange={(event) => onSelectedStepPartChange?.(event.target.value)}
               disabled={stepPartsLoading || ontologyLoading || !!stepPartsError}
@@ -327,7 +330,7 @@ function GraphExplorerToolbar({
           alignItems: 'center',
           gap: 6,
           fontSize: 13,
-          color: '#004B87',
+          color: theme.primary,
           minWidth: 148,
           visibility: (searchLoading || isLayoutSwitching || ontologyLoading) ? 'visible' : 'hidden',
         }}
@@ -411,6 +414,7 @@ function GraphExplorerToolbar({
       )}
 
       <button
+        type="button"
         onClick={onReset}
         title="Reset graph"
         style={{ padding: '5px 10px', border: 'none', borderRadius: '6px', backgroundColor: theme.primary, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all .2s ease', opacity: (graphSearchActive || selectedOntology !== 'ALL' || graphViewMode !== 'ontology') ? 1 : 0.78, display: 'inline-flex', alignItems: 'center', gap: 6 }}
@@ -419,6 +423,7 @@ function GraphExplorerToolbar({
         Reset
       </button>
       <button
+        type="button"
         onClick={onToggleChat}
         style={{ padding: '5px 10px', border: 'none', borderRadius: '6px', backgroundColor: theme.primary, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer', transition: 'all .2s ease', display: 'inline-flex', alignItems: 'center', gap: 6 }}
         title={showChat ? 'Hide chat assistant' : 'Show chat assistant'}

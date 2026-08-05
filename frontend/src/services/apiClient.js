@@ -22,6 +22,44 @@ const apiClient = axios.create({
 
 const MAX_GET_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 700;
+const SESSION_STORAGE_KEY = 'depo.sessionId.v1';
+
+export function getClientSessionId() {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.sessionStorage.getItem(SESSION_STORAGE_KEY) || null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+export function clearClientSessionId() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch (_error) {
+    // Restricted browser storage should not break conversation reset.
+  }
+}
+
+export function setClientSessionId(sessionId) {
+  if (!sessionId || typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(SESSION_STORAGE_KEY, String(sessionId));
+  } catch (_error) {
+    // Restricted browser storage should not break API requests.
+  }
+}
+
+function adoptServerSession(response) {
+  const serverSessionId = response?.headers?.['x-session-id'];
+  if (!serverSessionId || typeof window === 'undefined') return;
+  try {
+    setClientSessionId(serverSessionId);
+  } catch (_error) {
+    // Restricted browser storage should not break API requests.
+  }
+}
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -46,6 +84,15 @@ function isTransientNetworkError(error) {
  */
 apiClient.interceptors.request.use(
   (requestConfig) => {
+    const sessionId = getClientSessionId();
+    if (sessionId) {
+      requestConfig.headers = requestConfig.headers || {};
+      requestConfig.headers['X-Session-ID'] = sessionId;
+    }
+    if (config.adminApiKey && String(requestConfig.url || '').includes('/api/v1/admin/')) {
+      requestConfig.headers = requestConfig.headers || {};
+      requestConfig.headers['X-API-Key'] = config.adminApiKey;
+    }
     if (config.debug) {
       // eslint-disable-next-line no-console
       console.debug('[API] Request:', {
@@ -67,6 +114,7 @@ apiClient.interceptors.request.use(
  */
 apiClient.interceptors.response.use(
   (response) => {
+    adoptServerSession(response);
     if (config.debug) {
       // eslint-disable-next-line no-console
       console.debug('[API] Response:', {
@@ -132,7 +180,7 @@ apiClient.interceptors.response.use(
 // ========== HEALTH & STATUS ==========
 export const healthAPI = {
   check: (options = {}) => apiClient.get(buildUrl(API.health.health), options),
-  ready: () => apiClient.get(buildUrl(API.health.ready)),
+  ready: (options = {}) => apiClient.get(buildUrl(API.health.ready), options),
   graphMetrics: () => apiClient.get(buildUrl(API.health.graphMetrics)),
   ontologiesAvailable: () => apiClient.get(buildUrl(API.health.ontologiesAvailable)),
 };
@@ -144,8 +192,8 @@ export const graphAPI = {
     apiClient.post(buildUrl(API.graph.graphfilter), { search: searchTerm }),
   filterMulti: (filters) => 
     apiClient.post(buildUrl(API.graph.graphfilterMulti), filters),
-  traverse: (nodeId) => 
-    apiClient.get(buildUrl(replaceParams(API.graph.graphtraverseNode, { node_id: nodeId }))),
+  traverse: (nodeId, options = {}) =>
+    apiClient.get(buildUrl(replaceParams(API.graph.graphtraverseNode, { node_id: nodeId })), options),
   getSchemaGraph: () => apiClient.get(buildUrl(API.graph.schemaGraph)),
   getInstanceGraph: () => apiClient.get(buildUrl(API.graph.instanceGraph)),
   getOntologyInstances: (ontologyId, params = {}) =>
@@ -202,12 +250,12 @@ export const ontologyAPI = {
       timeout: 300000, // 5 minutes for ontology uploads
     });
   },
-  listRegistered: () => 
-    apiClient.get(buildUrl(API.ontology.registered)),
+  listRegistered: (options = {}) =>
+    apiClient.get(buildUrl(API.ontology.registered), options),
   get: (ontologyId) => 
     apiClient.get(buildUrl(replaceParams(API.ontology.get, { ontology: ontologyId }))),
-  getDataDictionary: (ontologyId) => 
-    apiClient.get(buildUrl(replaceParams(API.ontology.dataDictionary, { ontology: ontologyId }))),
+  getDataDictionary: (ontologyId, options = {}) =>
+    apiClient.get(buildUrl(replaceParams(API.ontology.dataDictionary, { ontology: ontologyId })), options),
   getTaxonomy: (ontologyId) =>
     apiClient.get(buildUrl(replaceParams(API.ontology.taxonomy, { ontology: ontologyId }))),
   getReasoning: (ontologyId) =>
@@ -361,8 +409,8 @@ export const documentAPI = {
 
 // ========== ADMIN ENDPOINTS ==========
 export const adminAPI = {
-  health: () => apiClient.get(buildUrl(API.admin.health)),
-  registry: () => apiClient.get(buildUrl(API.admin.registry)),
+  health: (options = {}) => apiClient.get(buildUrl(API.admin.health), options),
+  registry: (options = {}) => apiClient.get(buildUrl(API.admin.registry), options),
   cleanSchema: () =>
     apiClient.post(buildUrl(API.admin.cleanSchema), { confirm: 'CLEAN_NEO4J_SCHEMA' }),
   clearCache: () => apiClient.post(buildUrl(API.admin.clearCache)),
@@ -378,17 +426,17 @@ export const adminAPI = {
     }, {
       timeout: 300000,
     }),
-  schemaStats: () => apiClient.get(buildUrl(API.admin.schemaStats)),
+  schemaStats: (options = {}) => apiClient.get(buildUrl(API.admin.schemaStats), options),
   resetDatabase: (recreateIndexes = true) =>
     apiClient.post(buildUrl(API.admin.resetDatabase), null, { params: { recreate_indexes: recreateIndexes } }),
 };
 
 export const metadataRegistryAPI = {
-  list: (params = {}) => apiClient.get(buildUrl(API.metadataRegistry.assets), { params }),
+  list: (params = {}, options = {}) => apiClient.get(buildUrl(API.metadataRegistry.assets), { ...options, params }),
   get: (assetId) => apiClient.get(buildUrl(replaceParams(API.metadataRegistry.asset, { asset_id: assetId }))),
-  create: (payload) => apiClient.post(buildUrl(API.metadataRegistry.assets), payload),
+  create: (payload, options = {}) => apiClient.post(buildUrl(API.metadataRegistry.assets), payload, options),
   update: (assetId, payload) => apiClient.patch(buildUrl(replaceParams(API.metadataRegistry.asset, { asset_id: assetId })), payload),
-  transition: (assetId, payload) => apiClient.post(buildUrl(replaceParams(API.metadataRegistry.transition, { asset_id: assetId })), payload),
+  transition: (assetId, payload, options = {}) => apiClient.post(buildUrl(replaceParams(API.metadataRegistry.transition, { asset_id: assetId })), payload, options),
   history: (assetId, params = {}) => apiClient.get(buildUrl(replaceParams(API.metadataRegistry.history, { asset_id: assetId })), { params }),
 };
 
@@ -403,7 +451,7 @@ export const requirementsAPI = {
 export const modelingAPI = {
   metamodel: () => apiClient.get(buildUrl(API.modeling.metamodel)),
   ensureIndexes: () => apiClient.post(buildUrl(API.modeling.indexes)),
-  graph: (params = {}) => apiClient.get(buildUrl(API.modeling.graph), { params }),
+  graph: (params = {}, signal) => apiClient.get(buildUrl(API.modeling.graph), { params, signal }),
   tree: (params = {}) => apiClient.get(buildUrl(API.modeling.tree), { params }),
   search: (params = {}) => apiClient.get(buildUrl(API.modeling.search), { params }),
   context: (elementId, params = {}) => apiClient.get(buildUrl(replaceParams(API.modeling.context, { element_id: elementId })), { params }),

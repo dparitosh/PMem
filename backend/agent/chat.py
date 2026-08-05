@@ -347,7 +347,8 @@ def project_product_info(query: str) -> str:
     """Answer graph and nodes questions using Cypher"""
     if cypher_qa is None:
         return "Cypher QA chain is not available (LLM not configured or unreachable)."
-    return _normalize_graph_response(cypher_qa(query))
+    result = cypher_qa.invoke({"query": query}) if hasattr(cypher_qa, "invoke") else cypher_qa(query)
+    return _normalize_graph_response(result)
 
 @tool #(args_schema=VectorSearchInput)
 def vector_search(query: str) -> str:
@@ -937,6 +938,9 @@ async def generate_response_stream(session_id: str, user_input: str, graph_conte
             chunk_size = 6
             for i in range(0, len(final_answer), chunk_size):
                 yield f"data: {json.dumps({'token': final_answer[i:i + chunk_size]})}\n\n"
+
+        else:
+            yield f"data: {json.dumps({'error': 'The AI completed without returning an answer. Please try again.'})}\n\n"
 
         yield f"data: {json.dumps({'done': True})}\n\n"
 

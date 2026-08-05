@@ -12,60 +12,45 @@ describe('OntologyMetadataForm Component', () => {
     jest.clearAllMocks();
   });
 
+  const renderForm = (props = {}) => {
+    render(
+      <OntologyMetadataForm
+        selectedFile={mockFile}
+        onSubmit={mockOnSubmit}
+        onCancel={mockOnCancel}
+        {...props}
+      />
+    );
+  };
+
   describe('Rendering', () => {
     it('should render modal with title when shown', () => {
-      render(
-        <OntologyMetadataForm
-          selectedFile={mockFile}
-          onSubmit={mockOnSubmit}
-          onCancel={mockOnCancel}
-          formTitle="Test Ontology Form"
-        />
-      );
+      renderForm({ formTitle: 'Test Ontology Form' });
 
       expect(screen.getByText(/Test Ontology Form/i)).toBeInTheDocument();
     });
 
     it('should display file information correctly', () => {
-      render(
-        <OntologyMetadataForm
-          selectedFile={mockFile}
-          onSubmit={mockOnSubmit}
-          onCancel={mockOnCancel}
-        />
-      );
+      renderForm();
 
       expect(screen.getByText(/Domain_model.xsd/)).toBeInTheDocument();
       expect(screen.getByText(/^XSD$/)).toBeInTheDocument();
     });
 
     it('should render form inputs for ontology name, prefix, and generation type', () => {
-      render(
-        <OntologyMetadataForm
-          selectedFile={mockFile}
-          onSubmit={mockOnSubmit}
-          onCancel={mockOnCancel}
-        />
-      );
+      renderForm();
 
       expect(screen.getByLabelText(/Ontology Name/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/Namespace Prefix/i)).toBeInTheDocument();
       expect(screen.getByRole('combobox')).toBeInTheDocument();
     });
 
-    it('should show correct generation type options for XSD files', () => {
-      render(
-        <OntologyMetadataForm
-          selectedFile={mockFile}
-          onSubmit={mockOnSubmit}
-          onCancel={mockOnCancel}
-        />
-      );
+    it('should show correct generation type options for XSD files', async () => {
+      renderForm();
 
       const selectElement = screen.getByRole('combobox');
       expect(selectElement).toBeInTheDocument();
-      // Options should be in select dropdown
-      fireEvent.click(selectElement);
+      await userEvent.click(selectElement);
       // SHACL should be recommended for XSD
       expect(screen.getAllByText(/SHACL.*Recommended/i).length).toBeGreaterThan(0);
     });
@@ -73,13 +58,7 @@ describe('OntologyMetadataForm Component', () => {
 
   describe('Form Validation', () => {
     it('should show error when ontology name is empty', async () => {
-      render(
-        <OntologyMetadataForm
-          selectedFile={mockFile}
-          onSubmit={mockOnSubmit}
-          onCancel={mockOnCancel}
-        />
-      );
+      renderForm();
 
       const submitButton = screen.getByRole('button', { name: /Upload and Parse/i });
       await userEvent.click(submitButton);
@@ -91,13 +70,7 @@ describe('OntologyMetadataForm Component', () => {
     });
 
     it('should show error when prefix is empty', async () => {
-      render(
-        <OntologyMetadataForm
-          selectedFile={mockFile}
-          onSubmit={mockOnSubmit}
-          onCancel={mockOnCancel}
-        />
-      );
+      renderForm();
 
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
       await userEvent.type(ontologyNameInput, 'Test Ontology');
@@ -112,13 +85,7 @@ describe('OntologyMetadataForm Component', () => {
     });
 
     it('should show error when prefix contains invalid characters', async () => {
-      render(
-        <OntologyMetadataForm
-          selectedFile={mockFile}
-          onSubmit={mockOnSubmit}
-          onCancel={mockOnCancel}
-        />
-      );
+      renderForm();
 
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
       await userEvent.type(ontologyNameInput, 'Test Ontology');
@@ -136,13 +103,7 @@ describe('OntologyMetadataForm Component', () => {
     });
 
     it('should preselect recommended generation type for XSD files', async () => {
-      render(
-        <OntologyMetadataForm
-          selectedFile={mockFile}
-          onSubmit={mockOnSubmit}
-          onCancel={mockOnCancel}
-        />
-      );
+      renderForm();
 
       await waitFor(() => {
         expect(screen.getByRole('combobox')).toHaveValue('shacl');
@@ -150,15 +111,8 @@ describe('OntologyMetadataForm Component', () => {
     });
 
     it('should accept valid form data and call onSubmit', async () => {
-      render(
-        <OntologyMetadataForm
-          selectedFile={mockFile}
-          onSubmit={mockOnSubmit}
-          onCancel={mockOnCancel}
-        />
-      );
+      renderForm();
 
-      // Fill form
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
       await userEvent.type(ontologyNameInput, 'Domain Model');
 
@@ -185,13 +139,7 @@ describe('OntologyMetadataForm Component', () => {
 
   describe('User Interactions', () => {
     it('should convert prefix to lowercase automatically', async () => {
-      render(
-        <OntologyMetadataForm
-          selectedFile={mockFile}
-          onSubmit={mockOnSubmit}
-          onCancel={mockOnCancel}
-        />
-      );
+      renderForm();
 
       const prefixInput = screen.getByPlaceholderText(/e.g., myprefix/i);
       await userEvent.type(prefixInput, 'TestPrefix');
@@ -200,13 +148,7 @@ describe('OntologyMetadataForm Component', () => {
     });
 
     it('should call onCancel when cancel button is clicked', async () => {
-      render(
-        <OntologyMetadataForm
-          selectedFile={mockFile}
-          onSubmit={mockOnSubmit}
-          onCancel={mockOnCancel}
-        />
-      );
+      renderForm();
 
       const cancelButton = screen.getByRole('button', { name: /Cancel/i });
       await userEvent.click(cancelButton);
@@ -215,14 +157,7 @@ describe('OntologyMetadataForm Component', () => {
     });
 
     it('should disable buttons while loading', () => {
-      render(
-        <OntologyMetadataForm
-          selectedFile={mockFile}
-          onSubmit={mockOnSubmit}
-          onCancel={mockOnCancel}
-          isLoading={true}
-        />
-      );
+      renderForm({ isLoading: true });
 
       const cancelButton = screen.getByRole('button', { name: /Cancel/i });
       const submitButton = screen.getByRole('button', { name: /Processing/i });
@@ -232,13 +167,7 @@ describe('OntologyMetadataForm Component', () => {
     });
 
     it('should accept optional description field', async () => {
-      render(
-        <OntologyMetadataForm
-          selectedFile={mockFile}
-          onSubmit={mockOnSubmit}
-          onCancel={mockOnCancel}
-        />
-      );
+      renderForm();
 
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
       await userEvent.type(ontologyNameInput, 'Domain Model');
@@ -266,20 +195,13 @@ describe('OntologyMetadataForm Component', () => {
   });
 
   describe('XMI File Handling', () => {
-    it('should show OWL as recommended for XMI files', () => {
+    it('should show OWL as recommended for XMI files', async () => {
       const xmiFile = new File(['test content'], 'Domain_model.xmi', { type: 'application/xml' });
-      
-      render(
-        <OntologyMetadataForm
-          selectedFile={xmiFile}
-          onSubmit={mockOnSubmit}
-          onCancel={mockOnCancel}
-        />
-      );
+      renderForm({ selectedFile: xmiFile });
 
       const selectElement = screen.getByRole('combobox');
-      fireEvent.click(selectElement);
-      
+      await userEvent.click(selectElement);
+
       // OWL should be recommended for XMI
       expect(screen.getAllByText(/OWL.*Recommended/i).length).toBeGreaterThan(0);
     });

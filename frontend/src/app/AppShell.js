@@ -72,8 +72,13 @@ export default function AppShell({
 
       <main className="depo-main">
         <div className="depo-content">{children}</div>
-        {showChat && rightDrawer && (
-          <aside id="depo-chat-drawer" className="depo-drawer" aria-label="Chat assistant">
+        {rightDrawer && (
+          <aside
+            id="depo-chat-drawer"
+            className="depo-drawer"
+            aria-label="Chat assistant"
+            hidden={!showChat}
+          >
             {rightDrawer}
           </aside>
         )}

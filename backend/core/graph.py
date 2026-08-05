@@ -140,6 +140,10 @@ def get_graph():
 
 # Provide a property-like access for backward compatibility
 class GraphProxy:
+    def query(self, query_text: str, params: dict = None, timeout: int = None):
+        """Execute every application query through the timed driver gateway."""
+        return query_with_timeout(query_text, params=params, timeout=timeout)
+
     def __getattr__(self, name):
         return getattr(get_graph(), name)
 
@@ -178,10 +182,11 @@ def query_with_timeout(query_text: str, params: dict = None, timeout: int = None
                 result = session.run(cypher, query_params)
                 rows = result.data()
         else:
+            legacy_graph = get_graph()
             if query_params:
-                rows = graph.query(query_text, params=query_params)
+                rows = legacy_graph.query(query_text, params=query_params)
             else:
-                rows = graph.query(query_text)
+                rows = legacy_graph.query(query_text)
 
         elapsed = time.time() - start_time
         if elapsed > timeout:
@@ -205,6 +210,7 @@ def query_with_timeout(query_text: str, params: dict = None, timeout: int = None
 
 # ── Schema cache ──────────────────────────────────────────────────────────
 _SCHEMA_CACHE_TTL = 600  # seconds (10 min)
+_EMPTY_SCHEMA_CACHE_TTL = 5  # connection/startup failures must recover quickly
 _schema_cache: dict | None = None
 _schema_cache_ts: float = 0.0
 
@@ -216,8 +222,16 @@ def get_graph_schema() -> dict:
     global _schema_cache, _schema_cache_ts
 
     now = time.time()
-    if _schema_cache is not None and (now - _schema_cache_ts) < _SCHEMA_CACHE_TTL:
-        return _schema_cache
+    if _schema_cache is not None:
+        has_schema = bool(
+            _schema_cache.get("nodeLabels")
+            or _schema_cache.get("relationshipTypes")
+            or _schema_cache.get("node_labels")
+            or _schema_cache.get("rel_types")
+        )
+        cache_ttl = _SCHEMA_CACHE_TTL if has_schema else _EMPTY_SCHEMA_CACHE_TTL
+        if (now - _schema_cache_ts) < cache_ttl:
+            return _schema_cache
 
     # Graceful fallback when Neo4j is not available
     if Neo4jGraph is None:

@@ -1,9 +1,10 @@
 import os
 import sys
 import logging
+import re
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.llm import llm, LLM_AVAILABLE
-from core.graph import graph
+from core.graph import graph, query_with_timeout
 from langchain_neo4j import GraphCypherQAChain, Neo4jGraph
 from langchain.prompts.prompt import PromptTemplate
 from typing import Optional, List, Dict, Any
@@ -84,6 +85,52 @@ cypher_prompt = PromptTemplate.from_template(CYPHER_GENERATION_TEMPLATE)
 cypher_qa = None
 
 
+class ReadOnlyGraphAdapter:
+    """Delegate schema access while enforcing read-only, timed query execution."""
+
+    def __init__(self, wrapped_graph):
+        self._graph = wrapped_graph
+
+    def query(self, query: str, params: Optional[dict] = None):
+        return query_with_timeout(assert_read_only_cypher(query), params=params)
+
+    def __getattr__(self, name):
+        return getattr(self._graph, name)
+
+
+readonly_graph = ReadOnlyGraphAdapter(graph)
+
+
+class SafeCypherQA:
+    """Generate one Cypher statement and execute it through the read-only gateway."""
+
+    @staticmethod
+    def _extract_query(response: Any) -> str:
+        text = getattr(response, "content", response)
+        if isinstance(text, list):
+            text = "".join(
+                str(item.get("text", "") if isinstance(item, dict) else item)
+                for item in text
+            )
+        text = str(text or "").strip()
+        fenced = re.search(r"```(?:cypher)?\s*(.*?)```", text, flags=re.IGNORECASE | re.DOTALL)
+        if fenced:
+            text = fenced.group(1).strip()
+        text = re.sub(r"^\s*(?:cypher(?:\s+query)?\s*:)\s*", "", text, flags=re.IGNORECASE)
+        return assert_read_only_cypher(text)
+
+    def invoke(self, payload: Any) -> Dict[str, Any]:
+        question = payload.get("query") or payload.get("question") or payload.get("input") if isinstance(payload, dict) else payload
+        prompt = cypher_prompt.format(schema=graph.get_schema, question=str(question or ""))
+        generated = llm.invoke(prompt)
+        query = self._extract_query(generated)
+        rows = readonly_graph.query(query)
+        return {"result": rows, "intermediate_steps": [{"query": query}]}
+
+    def __call__(self, question: str) -> Dict[str, Any]:
+        return self.invoke({"query": question})
+
+
 # ============================================
 # Cypher QA Chain Initialization (With Fallback)
 # ============================================
@@ -100,17 +147,7 @@ cypher_qa = None
 
 if LLM_AVAILABLE:
     try:
-        # Attempt chain initialization
-        # This may fail with ValidationError if graph type doesn't match
-        cypher_qa = GraphCypherQAChain.from_llm(
-            llm=llm,
-            graph=readonly_graph,
-            verbose=True,
-            cypher_prompt=cypher_prompt,
-            allow_dangerous_requests=True,
-            return_direct=True,
-            return_intermediate_steps=True,
-        )
+        cypher_qa = SafeCypherQA()
         logger.info("Cypher QA chain initialized successfully")
     
     except Exception as exc:
@@ -147,7 +184,7 @@ def query_cypher(query: str) -> List[Dict[str, Any]]:
         ...     print(record)
     """
     try:
-        return graph.query(assert_read_only_cypher(query))
+        return query_with_timeout(assert_read_only_cypher(query))
     except Exception as exc:
         logger.error(f"Direct Cypher query failed: {exc}")
         raise

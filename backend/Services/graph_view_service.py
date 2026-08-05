@@ -1519,7 +1519,10 @@ RETURN count(res) AS count
                 AND NOT any(label IN labels(n) WHERE label IN $schema_node_labels)
                 AND NOT any(label IN labels(n) WHERE label IN $relationship_node_labels)
                 AND coalesce(np['ontology_prefix'], np['prefix'], np['source_format'], '') = $prefix
-                AND NOT (n)--()
+                AND NOT EXISTS {
+                  MATCH (n)--(peer)
+                  WHERE coalesce(peer.ontology_prefix, peer.prefix, peer.source_format, '') = $prefix
+                }
               RETURN n, null AS r, null AS m, np, {} AS mp
               ORDER BY coalesce(np['name'], np['label'], labels(n)[0], elementId(n)) ASC
               LIMIT $limit

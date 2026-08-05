@@ -7,6 +7,29 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+:root {
+  --ui-primary: #005a9c;
+  --ui-primary-dark: #003f73;
+  --ui-danger: #b42318;
+  --ui-surface: #ffffff;
+  --ui-page: #f4f8fb;
+  --ui-border: #d9e2ec;
+  --ui-text: #1f2933;
+  --ui-muted: #66788a;
+  --ui-radius: 8px;
+  --ui-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+#root {
+  min-height: 100%;
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;

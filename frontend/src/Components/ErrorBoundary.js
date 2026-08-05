@@ -7,11 +7,11 @@ import React from 'react';
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { 
-      hasError: false, 
-      error: null, 
+    this.state = {
+      hasError: false,
+      error: null,
       errorInfo: null,
-      errorCount: 0
+      errorCount: 0,
     };
   }
 
@@ -23,11 +23,11 @@ class ErrorBoundary extends React.Component {
     // Log error details for debugging
     console.error('ErrorBoundary caught:', error);
     console.error('Error details:', errorInfo);
-    
-    this.setState(prevState => ({
+
+    this.setState((prevState) => ({
       error,
       errorInfo,
-      errorCount: prevState.errorCount + 1
+      errorCount: prevState.errorCount + 1,
     }));
 
     // You can also log to an error reporting service here (Sentry, etc.)
@@ -35,10 +35,10 @@ class ErrorBoundary extends React.Component {
   }
 
   handleReset = () => {
-    this.setState({ 
-      hasError: false, 
-      error: null, 
-      errorInfo: null 
+    this.setState({
+      hasError: false,
+      error: null,
+      errorInfo: null,
     });
   };
 
@@ -52,7 +52,7 @@ class ErrorBoundary extends React.Component {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            height: '100vh',
+            minHeight: '100dvh',
             backgroundColor: '#f8f9fa',
             padding: '20px',
             fontFamily: 'system-ui, -apple-system, sans-serif',
@@ -69,7 +69,7 @@ class ErrorBoundary extends React.Component {
             }}
           >
             <h1 style={{ color: '#dc3545', marginBottom: '16px' }}>
-              ⚠️ Something went wrong
+              Warning: Something went wrong
             </h1>
             <p style={{ color: '#666', marginBottom: '24px', lineHeight: '1.6' }}>
               The application encountered an unexpected error. Please try refreshing the page or contact support if the problem persists.
@@ -111,7 +111,7 @@ class ErrorBoundary extends React.Component {
                 onClick={this.handleReset}
                 style={{
                   padding: '10px 24px',
-                  backgroundColor: '#004B87',
+                  backgroundColor: '#005a9c',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
@@ -123,7 +123,7 @@ class ErrorBoundary extends React.Component {
                 Try Again
               </button>
               <button
-                onClick={() => window.location.href = '/'}
+                onClick={() => { window.location.href = '/'; }}
                 style={{
                   padding: '10px 24px',
                   backgroundColor: '#6c757d',

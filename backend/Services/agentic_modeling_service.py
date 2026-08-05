@@ -64,6 +64,10 @@ def _intent(prompt: str) -> str:
 
 def create_proposal(payload: Dict[str, Any]) -> Dict[str, Any]:
     prompt = str(payload.get("prompt") or payload.get("message") or "").strip()
+    if len(prompt) < 3:
+        raise ValueError("Proposal prompt must contain at least 3 characters")
+    if len(prompt) > 4000:
+        raise ValueError("Proposal prompt cannot exceed 4000 characters")
     project = str(payload.get("project") or modeling_service.DEFAULT_PROJECT).strip()
     context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
     intent = _intent(prompt)
@@ -118,25 +122,41 @@ def approve_proposal(proposal_id: str, approved_by: str = "user", comment: str =
     rows = query_with_timeout(
         """
         MATCH (p:AgentProposal {id: $id})
+        WHERE coalesce(p.status, 'proposed') = 'proposed'
         SET p.status = 'approved', p.approved_by = $approved_by, p.approval_comment = $comment, p.approved_at = datetime(), p.updated_at = datetime()
         RETURN properties(p) AS proposal
         """,
         {"id": proposal_id, "approved_by": approved_by or "user", "comment": comment or ""},
         timeout=60,
     ) or []
-    return {"proposal": _decode_props(rows[0].get("proposal")) if rows else None, "executed": False, "message": "Approved proposal recorded. Execute through explicit CRUD/import action."}
+    if not rows:
+        existing = query_with_timeout(
+            "MATCH (p:AgentProposal {id: $id}) RETURN p.status AS status LIMIT 1",
+            {"id": proposal_id},
+            timeout=60,
+        ) or []
+        return {"proposal": None, "error": "invalid_state" if existing else "not_found", "current_status": existing[0].get("status") if existing else None, "executed": False}
+    return {"proposal": _decode_props(rows[0].get("proposal")), "executed": False, "message": "Approved proposal recorded. Execute through explicit CRUD/import action."}
 
 
 def reject_proposal(proposal_id: str, rejected_by: str = "user", comment: str = "") -> Dict[str, Any]:
     rows = query_with_timeout(
         """
         MATCH (p:AgentProposal {id: $id})
+        WHERE coalesce(p.status, 'proposed') = 'proposed'
         SET p.status = 'rejected', p.rejected_by = $rejected_by, p.rejection_comment = $comment, p.rejected_at = datetime(), p.updated_at = datetime()
         RETURN properties(p) AS proposal
         """,
         {"id": proposal_id, "rejected_by": rejected_by or "user", "comment": comment or ""},
         timeout=60,
     ) or []
-    return {"proposal": _decode_props(rows[0].get("proposal")) if rows else None}
+    if not rows:
+        existing = query_with_timeout(
+            "MATCH (p:AgentProposal {id: $id}) RETURN p.status AS status LIMIT 1",
+            {"id": proposal_id},
+            timeout=60,
+        ) or []
+        return {"proposal": None, "error": "invalid_state" if existing else "not_found", "current_status": existing[0].get("status") if existing else None}
+    return {"proposal": _decode_props(rows[0].get("proposal"))}
 
 

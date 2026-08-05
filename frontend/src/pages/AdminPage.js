@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot } from 'lucide-react';
 import AdminPanel from '../Components/AdminPanel';
 import { API_METHODS } from '../services/apiClient';
@@ -74,26 +74,35 @@ export default function AdminPage({ onSchemaCleaned }) {
   const [agenticError, setAgenticError] = useState('');
   const [openApiCatalog, setOpenApiCatalog] = useState(null);
   const [openApiLoading, setOpenApiLoading] = useState(false);
+  const registryControllerRef = useRef(null);
+  const agenticControllerRef = useRef(null);
 
   const loadRegistry = useCallback(async () => {
+    registryControllerRef.current?.abort();
+    const controller = new AbortController();
+    registryControllerRef.current = controller;
     setLoading(true);
     setError('');
     try {
-      const response = await API_METHODS.admin.registry();
+      const response = await API_METHODS.admin.registry({ signal: controller.signal });
       setRegistry(response.data);
     } catch (err) {
+      if (controller.signal.aborted) return;
       const detail = err?.response?.data?.detail || err?.message || 'Admin registry is unavailable.';
       setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
+      if (registryControllerRef.current === controller) registryControllerRef.current = null;
     }
   }, []);
 
   useEffect(() => {
     loadRegistry();
+    return () => registryControllerRef.current?.abort();
   }, [loadRegistry]);
 
   const loadAgenticCatalog = useCallback(async () => {
+    agenticControllerRef.current?.abort();
     if (!agenticEnabled) {
       setAgenticCatalog(null);
       setAgenticError('');
@@ -104,28 +113,34 @@ export default function AdminPage({ onSchemaCleaned }) {
       setAgenticError('Agentic components are enabled, but REACT_APP_AGENTIC_SERVICE_URL is not configured.');
       return;
     }
+    const controller = new AbortController();
+    agenticControllerRef.current = controller;
     setAgenticLoading(true);
     setAgenticError('');
     try {
       const [agentsResponse, toolsResponse] = await Promise.all([
-        agenticAPI.listAgents(),
-        agenticAPI.listTools(),
+        agenticAPI.listAgents({ signal: controller.signal }),
+        agenticAPI.listTools({ signal: controller.signal }),
       ]);
+      if (controller.signal.aborted) return;
       setAgenticCatalog({
         agents: agentsResponse.data?.agents || [],
         tools: toolsResponse.data?.tools || [],
         invalidExports: toolsResponse.data?.invalid_exports || [],
       });
     } catch (err) {
+      if (controller.signal.aborted) return;
       const detail = err?.response?.data?.detail || err?.message || 'Agentic component catalog is unavailable.';
       setAgenticError(typeof detail === 'string' ? detail : JSON.stringify(detail));
     } finally {
-      setAgenticLoading(false);
+      if (!controller.signal.aborted) setAgenticLoading(false);
+      if (agenticControllerRef.current === controller) agenticControllerRef.current = null;
     }
   }, [agenticConfigured, agenticEnabled]);
 
   useEffect(() => {
     loadAgenticCatalog();
+    return () => agenticControllerRef.current?.abort();
   }, [loadAgenticCatalog]);
 
   const importOpenApi = useCallback(async (event) => {

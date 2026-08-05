@@ -1,6 +1,39 @@
 from backend.Services.graph_view_service import GraphViewService
 
 
+def test_graph_overview_does_not_reference_unbound_prefix(monkeypatch):
+    captured = {}
+
+    def fake_run(cypher, params):
+        captured["cypher"] = cypher
+        captured["params"] = params
+        return []
+
+    monkeypatch.setattr(GraphViewService, "_run", staticmethod(fake_run))
+
+    GraphViewService.get_graph_overview(limit=25)
+
+    assert "$prefix" not in captured["cypher"]
+
+
+def test_architecture_view_includes_nodes_without_same_model_neighbors(monkeypatch):
+    captured = {}
+
+    def fake_run(cypher, params):
+        captured["cypher"] = cypher
+        captured["params"] = params
+        return []
+
+    monkeypatch.setattr(GraphViewService, "_run", staticmethod(fake_run))
+
+    graph = GraphViewService.get_architecture_process_view(prefix="archimate", limit=25)
+
+    assert "NOT EXISTS" in captured["cypher"]
+    assert "coalesce(peer.ontology_prefix, peer.prefix, peer.source_format, '') = $prefix" in captured["cypher"]
+    assert captured["params"]["prefix"] == "archimate"
+    assert graph["view"]["type"] == "architecture-process"
+
+
 def test_resolve_ontology_prefix_from_registry_id(monkeypatch):
     def fake_run(_cypher, params):
         assert params == {"token": "ap242_1781013408"}

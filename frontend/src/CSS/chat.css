@@ -1,6 +1,7 @@
-input[type="text"]:focus {
-    outline: solid !important;
-    border: 1px #6C757D !important;
+.chat-messages + div input[type="text"]:focus {
+    outline: 2px solid #6C757D;
+    outline-offset: 1px;
+    border: 1px solid #6C757D;
 }
 
 .chat-paragraph { margin: 7px 0; line-height: 1.55; }

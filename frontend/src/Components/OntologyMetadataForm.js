@@ -1,20 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Database, Network, RefreshCw } from 'lucide-react';
-
-const C = {
-  primary: '#004B87',
-  primaryDark: '#003366',
-  primaryLight: '#E8F1FC',
-  green: '#28A745',
-  orange: '#FFC107',
-  red: '#D32F2F',
-  textPrimary: '#1A2B3C',
-  textMuted: '#6C757D',
-  border: '#E9ECEF',
-  borderDark: '#CED4DA',
-  bg: '#F8F9FA',
-  surface: '#FFFFFF',
-};
+import { UI_COLORS as C } from '../styles/uiTokens';
 
 const getGenerationOptionsForFileType = (fileType) => {
   if (fileType === 'xsd') {

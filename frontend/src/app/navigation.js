@@ -1,6 +1,7 @@
 import {
   Boxes,
   ClipboardList,
+  Code2,
   FileBarChart2,
   FileText,
   GitFork,
@@ -18,6 +19,7 @@ export const navigationItems = [
   { id: 'ontology', label: 'Ontology Junction', icon: Network },
   { id: 'registry', label: 'Metadata Registry', icon: ClipboardList },
   { id: 'graph', label: 'Graph Explorer', icon: GitFork },
+  { id: 'code-audit', label: 'Code Network', icon: Code2 },
   { id: 'modeling', label: 'Modeling', icon: LayoutDashboard },
   { id: 'requirements', label: 'ReqIF', icon: FileText },
   { id: 'whereused', label: 'Where Used', icon: Boxes },
@@ -28,6 +30,8 @@ export const navigationItems = [
 
 export const pageAliases = {
   graph: 'graph',
+  'code-audit': 'code-audit',
+  code: 'code-audit',
   modeling: 'modeling',
   model: 'modeling',
   workbench: 'modeling',

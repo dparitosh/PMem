@@ -13,6 +13,7 @@ import logging as _logging
 from logging.handlers import RotatingFileHandler
 import json
 import re
+from pathlib import Path as FileSystemPath
 
 # ✅ Load environment variables from .env file
 load_dotenv()
@@ -65,6 +66,33 @@ def setup_logging():
     return root_logger
 
 logger = setup_logging()
+
+try:
+    from .Services.runtime_state_store import (
+        allow_request as allow_shared_request,
+        acquire_session_lease,
+        delete_chat_job as delete_shared_chat_job,
+        delete_session as delete_shared_session,
+        get_chat_job as get_shared_chat_job,
+        get_session as get_shared_session,
+        list_chat_jobs as list_shared_chat_jobs,
+        save_chat_job as save_shared_chat_job,
+        save_session as save_shared_session,
+        release_session_lease,
+    )
+except ImportError:
+    from Services.runtime_state_store import (
+        allow_request as allow_shared_request,
+        acquire_session_lease,
+        delete_chat_job as delete_shared_chat_job,
+        delete_session as delete_shared_session,
+        get_chat_job as get_shared_chat_job,
+        get_session as get_shared_session,
+        list_chat_jobs as list_shared_chat_jobs,
+        save_chat_job as save_shared_chat_job,
+        save_session as save_shared_session,
+        release_session_lease,
+    )
 
 # Sensitive data patterns to filter from logs
 SENSITIVE_PATTERNS = [
@@ -476,14 +504,8 @@ class RateLimitMiddleware:
             await self.app(scope, receive, send)
             return
         
-        # Clean old requests (older than window)
-        request_counts[client_ip] = [
-            t for t in request_counts[client_ip]
-            if current_time - t < RATE_LIMIT_WINDOW
-        ]
-        
-        # Check rate limit
-        if len(request_counts[client_ip]) >= RATE_LIMIT_MAX:
+        # Use shared SQLite state so the limit is consistent across workers.
+        if not allow_shared_request(client_ip, current_time, RATE_LIMIT_WINDOW, RATE_LIMIT_MAX):
             logger.warning("Rate limit exceeded for %s %s from %s", method, path, client_ip)
             await send({
                 "type": "http.response.start",
@@ -495,9 +517,6 @@ class RateLimitMiddleware:
                 "body": b'{"detail": "Too many requests. Please try again later."}',
             })
             return
-        
-        # Record request
-        request_counts[client_ip].append(current_time)
         
         await self.app(scope, receive, send)
 
@@ -529,23 +548,23 @@ class SessionSecurityMiddleware:
         # Get or create session ID
         headers = dict(scope.get("headers", []))
         session_id = headers.get(b"x-session-id", b"").decode()
+        supplied_session_id = bool(session_id)
         client_ip = scope.get("client", ("unknown", 0))[0]
         
         current_time = unix_time()
         
-        # Clean expired sessions
-        expired_sessions = [
-            sid for sid, sess in session_store.items()
-            if current_time - sess.get('last_accessed_at', current_time) > SESSION_TIMEOUT
-        ]
-        for sid in expired_sessions:
-            del session_store[sid]
-            if sid in session_ips:
-                del session_ips[sid]
-        
-        # Check session validity
-        if session_id and session_id in session_store:
-            session = session_store[session_id]
+        # Check shared session validity; the local dictionaries remain a small hot cache.
+        session = session_store.get(session_id) if session_id else None
+        shared_session = get_shared_session(session_id) if session_id else None
+        if shared_session:
+            session = {
+                'created_at': shared_session['created_at'],
+                'last_accessed_at': shared_session['last_accessed_at'],
+                'data': {},
+            }
+            session_ips[session_id] = shared_session.get('ips', [])
+
+        if session_id and session and current_time - session.get('last_accessed_at', current_time) <= SESSION_TIMEOUT:
             
             # Check for IP change (session fixation detection)
             if client_ip not in session_ips[session_id]:
@@ -555,13 +574,18 @@ class SessionSecurityMiddleware:
                 session_id = str(uuid4())
                 session_store[session_id] = session
                 session_ips[session_id] = [client_ip]
-                del session_store[old_session_id]
-                del session_ips[old_session_id]
+                session_store.pop(old_session_id, None)
+                session_ips.pop(old_session_id, None)
+                delete_shared_session(old_session_id)
             
             # Update last accessed time
             session['last_accessed_at'] = current_time
+            session_store[session_id] = session
+            save_shared_session(session_id, session.get('created_at', current_time), current_time, session_ips[session_id])
         else:
             # Create new session
+            if session_id:
+                delete_shared_session(session_id)
             session_id = str(uuid4())
             session_store[session_id] = {
                 'created_at': current_time,
@@ -569,13 +593,32 @@ class SessionSecurityMiddleware:
                 'data': {}
             }
             session_ips[session_id] = [client_ip]
+            save_shared_session(session_id, current_time, current_time, [client_ip])
         
         # Pass session ID to app via scope
         scope['session_id'] = session_id
-        
-        await self.app(scope, receive, send)
+        scope['session_id_supplied'] = supplied_session_id
+
+        async def send_with_session(message):
+            if message.get("type") == "http.response.start":
+                headers_out = list(message.get("headers") or [])
+                headers_out.append((b"x-session-id", session_id.encode("ascii")))
+                message = {**message, "headers": headers_out}
+            await send(message)
+
+        await self.app(scope, receive, send_with_session)
 
 app.add_middleware(SessionSecurityMiddleware)
+
+
+def _bind_chat_session(http_request: Request, requested_session_id: str) -> str:
+    """Bind chat payloads to the server-issued session carried by the header."""
+    server_session_id = http_request.scope.get("session_id")
+    if not server_session_id:
+        raise HTTPException(status_code=401, detail="A valid client session is required")
+    if http_request.scope.get("session_id_supplied") and requested_session_id != server_session_id:
+        raise HTTPException(status_code=403, detail="Chat session does not match the client session")
+    return server_session_id
 
 # 🔒 SECURITY: HTTP Security Headers Middleware
 class SecurityHeadersMiddleware:
@@ -908,10 +951,21 @@ app.add_middleware(TimeoutMiddleware)
 def _build_allowed_origins() -> list[str]:
     configured = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
     origins = {origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()}
+    raw_ports = os.getenv("FRONTEND_PORTS", os.getenv("FRONTEND_PORT", "3000"))
+    ports = set()
+    for raw_port in raw_ports.split(","):
+        try:
+            port = int(raw_port.strip())
+            if 1 <= port <= 65535:
+                ports.add(port)
+        except (TypeError, ValueError):
+            continue
+    ports.add(3000)
     for host in ("localhost", "127.0.0.1", os.getenv("APP_HOST", "").strip()):
         if host:
-            origins.add(f"http://{host}:3000")
-            origins.add(f"https://{host}:3000")
+            for port in ports:
+                origins.add(f"http://{host}:{port}")
+                origins.add(f"https://{host}:{port}")
     return sorted(origins)
 
 
@@ -924,6 +978,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Session-ID"],
 )
 
 # 🔒 SECURITY: Neo4j query timeout configuration
@@ -946,13 +1001,13 @@ _CHAT_JOBS_LOCK = asyncio.Lock()
 async def _cleanup_chat_jobs() -> None:
     now = time.time()
     async with _CHAT_JOBS_LOCK:
-        expired = [
-            job_id
-            for job_id, job in _CHAT_JOBS.items()
-            if (now - float(job.get("updated_at") or job.get("created_at") or now)) > CHAT_JOB_TTL_SECONDS
-        ]
+        persisted_jobs = {job.get("job_id"): job for job in list_shared_chat_jobs() if job.get("job_id")}
+        _CHAT_JOBS.update(persisted_jobs)
+        expired = [job_id for job_id, job in _CHAT_JOBS.items()
+                   if (now - float(job.get("updated_at") or job.get("created_at") or now)) > CHAT_JOB_TTL_SECONDS]
         for job_id in expired:
             _CHAT_JOBS.pop(job_id, None)
+            delete_shared_chat_job(job_id)
         if len(_CHAT_JOBS) > CHAT_JOB_MAX_COUNT:
             overflow = len(_CHAT_JOBS) - CHAT_JOB_MAX_COUNT
             oldest = sorted(_CHAT_JOBS.items(), key=lambda item: item[1].get("updated_at") or item[1].get("created_at") or 0)[:overflow]
@@ -962,11 +1017,13 @@ async def _cleanup_chat_jobs() -> None:
 
 async def _update_chat_job(job_id: str, **updates) -> None:
     async with _CHAT_JOBS_LOCK:
-        job = _CHAT_JOBS.get(job_id)
+        job = _CHAT_JOBS.get(job_id) or get_shared_chat_job(job_id)
         if not job:
             return
         job.update(updates)
         job["updated_at"] = time.time()
+        _CHAT_JOBS[job_id] = job
+        save_shared_chat_job(job_id, job)
 
 
 async def _execute_chat_job(job_id: str, session_id: str, message: str, graph_context=None) -> None:
@@ -1037,6 +1094,7 @@ async def _get_session_lock(session_id: str) -> asyncio.Lock:
 @asynccontextmanager
 async def _session_lock(session_id: str):
     lock = await _get_session_lock(session_id)
+    owner = f"{os.getpid()}:{id(lock)}:{uuid4()}"
     try:
         await asyncio.wait_for(lock.acquire(), timeout=SESSION_LOCK_TIMEOUT_SECONDS)
     except asyncio.TimeoutError as exc:
@@ -1045,9 +1103,24 @@ async def _session_lock(session_id: str):
             detail="Another request is in progress for this session. Please retry shortly.",
         ) from exc
 
+    shared_acquired = False
     try:
+        deadline = time.monotonic() + SESSION_LOCK_TIMEOUT_SECONDS
+        lease_ttl = max(SESSION_LOCK_TTL_SECONDS, CHAT_REQUEST_TIMEOUT_SECONDS + 60, CHAT_STREAM_TIMEOUT_SECONDS + 60)
+        while time.monotonic() < deadline:
+            shared_acquired = await asyncio.to_thread(acquire_session_lease, session_id, owner, lease_ttl)
+            if shared_acquired:
+                break
+            await asyncio.sleep(0.1)
+        if not shared_acquired:
+            raise HTTPException(
+                status_code=429,
+                detail="Another request is in progress for this session. Please retry shortly.",
+            )
         yield
     finally:
+        if shared_acquired:
+            await asyncio.to_thread(release_session_lease, session_id, owner)
         if lock.locked():
             lock.release()
         _SESSION_LOCK_LAST_USED[session_id] = time.monotonic()
@@ -1312,11 +1385,12 @@ def schema():
 
 
 @app.post("/chat/validate")
-async def chat_validate(request: ChatRequest):
+async def chat_validate(http_request: Request, request: ChatRequest):
     """Validate external chat request payloads without invoking the LLM."""
+    session_id = _bind_chat_session(http_request, request.session_id)
     return {
         "status": "ok",
-        "session_id": request.session_id,
+        "session_id": session_id,
         "message_length": len(request.message),
         "graph_context_present": bool(request.graph_context),
         "execute_endpoint": "/chat",
@@ -1325,10 +1399,11 @@ async def chat_validate(request: ChatRequest):
 
 
 @app.post("/chat/jobs")
-async def chat_job_submit(request: ChatRequest, background_tasks: BackgroundTasks):
+async def chat_job_submit(http_request: Request, request: ChatRequest, background_tasks: BackgroundTasks):
     """Submit an asynchronous chat job for external apps that cannot wait on long LLM calls."""
     if generate_response is None:
         raise HTTPException(status_code=503, detail="Chat service is unavailable. Please check backend configuration.")
+    session_id = _bind_chat_session(http_request, request.session_id)
     await _cleanup_chat_jobs()
     now = time.time()
     job_id = f"chatjob-{uuid4()}"
@@ -1336,58 +1411,62 @@ async def chat_job_submit(request: ChatRequest, background_tasks: BackgroundTask
         _CHAT_JOBS[job_id] = {
             "job_id": job_id,
             "status": "queued",
-            "session_id": request.session_id,
+            "session_id": session_id,
             "message_length": len(request.message),
             "created_at": now,
             "updated_at": now,
             "poll_endpoint": f"/chat/jobs/{job_id}",
         }
-    background_tasks.add_task(_execute_chat_job, job_id, request.session_id, request.message, request.graph_context)
+        save_shared_chat_job(job_id, _CHAT_JOBS[job_id])
+    background_tasks.add_task(_execute_chat_job, job_id, session_id, request.message, request.graph_context)
     return JSONResponse(status_code=202, content={
         "status": "accepted",
         "job_id": job_id,
-        "session_id": request.session_id,
+        "session_id": session_id,
         "poll_endpoint": f"/chat/jobs/{job_id}",
         "message": "Chat job accepted. Poll the job endpoint for completion.",
     })
 
 
 @app.get("/chat/jobs/{job_id}")
-async def chat_job_status(job_id: str):
+async def chat_job_status(http_request: Request, job_id: str):
     """Return async chat job status and response when complete."""
     await _cleanup_chat_jobs()
     async with _CHAT_JOBS_LOCK:
-        job = dict(_CHAT_JOBS.get(job_id) or {})
+        job = dict(_CHAT_JOBS.get(job_id) or get_shared_chat_job(job_id) or {})
     if not job:
         raise HTTPException(status_code=404, detail=f"Chat job not found or expired: {job_id}")
+    if not http_request.scope.get("session_id_supplied") or job.get("session_id") != http_request.scope.get("session_id"):
+        raise HTTPException(status_code=403, detail="Chat job is not available for this client session")
     return job
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(http_request: Request, request: ChatRequest):
     if generate_response is None:
         raise HTTPException(status_code=503, detail="Chat service is unavailable. Please check backend configuration.")
+    session_id = _bind_chat_session(http_request, request.session_id)
 
     try:
-        async with _session_lock(request.session_id):
+        async with _session_lock(session_id):
             result = await _run_with_timeout(
                 generate_response,
                 CHAT_REQUEST_TIMEOUT_SECONDS,
-                request.session_id,
+                session_id,
                 request.message,
                 request.graph_context,
             )
         if AgentMemoryService is not None:
             try:
                 AgentMemoryService.record_chat_turn(
-                    session_id=request.session_id,
+                    session_id=session_id,
                     user_message=request.message,
                     assistant_response=result,
                     graph_context=request.graph_context,
                     status="completed",
                 )
                 AgentMemoryService.record_reasoning_trace(
-                    session_id=request.session_id,
+                    session_id=session_id,
                     task="chat",
                     tool_name="knowledge_companion",
                     input_payload={"message": request.message, "graph_context_present": bool(request.graph_context)},
@@ -1396,11 +1475,11 @@ async def chat(request: ChatRequest):
                 )
             except Exception as memory_exc:
                 logger.warning("Agent memory chat record skipped: %s", memory_exc)
-        return ChatResponse(session_id=request.session_id, response=result)
+        return ChatResponse(session_id=session_id, response=result)
     except HTTPException:
         raise
     except asyncio.TimeoutError:
-        logger.warning("Chat request timed out for session %s", request.session_id)
+        logger.warning("Chat request timed out for session %s", session_id)
         raise HTTPException(status_code=504, detail="Chat request timed out. Please retry with a narrower question.")
     except Exception as e:
         logger.error(f"Chat endpoint error: {type(e).__name__}: {str(e)}", exc_info=True)
@@ -1408,7 +1487,7 @@ async def chat(request: ChatRequest):
 
 
 @app.post("/chat-stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(http_request: Request, request: ChatRequest):
     """Streaming chat endpoint — returns Server-Sent Events (text/event-stream).
     Each event is a JSON object:
       {"token": "..."}   — next text chunk
@@ -1418,9 +1497,10 @@ async def chat_stream(request: ChatRequest):
     """
     if generate_response_stream is None:
         raise HTTPException(status_code=503, detail="Chat stream service is unavailable. Please check backend configuration.")
+    session_id = _bind_chat_session(http_request, request.session_id)
 
     return StreamingResponse(
-        _stream_with_timeout(request.session_id, request.message, request.graph_context),
+        _stream_with_timeout(session_id, request.message, request.graph_context),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -1438,7 +1518,7 @@ async def chat_health():
         "chat_post_available": generate_response is not None,
         "chat_stream_available": generate_response_stream is not None,
         "session_id_required": False,
-        "session_id_behavior": "If omitted or blank, the backend creates a session id and returns it in the response.",
+        "session_id_behavior": "The server issues a session id in X-Session-ID; clients should return it on subsequent requests.",
         "methods": {
             "ask": "POST /chat",
             "stream": "POST /chat-stream",
@@ -1466,10 +1546,12 @@ async def agent_memory_status():
 
 
 @app.get("/api/v1/agent-memory/sessions/{session_id}/context")
-async def agent_memory_session_context(session_id: str, limit: int = Query(6, ge=1, le=20)):
+async def agent_memory_session_context(request: Request, session_id: str, limit: int = Query(6, ge=1, le=20)):
     """Return compact recent memory for a chat session."""
     if AgentMemoryService is None:
         raise HTTPException(status_code=503, detail="Agent memory service unavailable")
+    if not request.scope.get("session_id_supplied") or request.scope.get("session_id") != session_id:
+        raise HTTPException(status_code=403, detail="Session context is not available for this client session")
     return AgentMemoryService.recent_context(session_id, limit=limit)
 
 
@@ -1484,7 +1566,7 @@ async def chat_capabilities():
                 "path": "/chat/validate",
                 "description": "Validates Teamcenter/AWC or external request body without invoking the model.",
                 "body": {
-                    "session_id": "string optional; backend generates one if omitted",
+                    "session_id": "string optional; use the server-issued X-Session-ID header",
                     "message": "string",
                     "graph_context": "object optional"
                 }
@@ -1499,7 +1581,7 @@ async def chat_capabilities():
                 "method": "POST",
                 "path": "/chat",
                 "body": {
-                    "session_id": "string optional; backend generates one if omitted",
+                    "session_id": "string optional; use the server-issued X-Session-ID header",
                     "message": "string",
                     "graph_context": "optional object",
                 },
@@ -1508,7 +1590,7 @@ async def chat_capabilities():
                 "method": "POST",
                 "path": "/chat-stream",
                 "body": {
-                    "session_id": "string optional; backend generates one if omitted",
+                    "session_id": "string optional; use the server-issued X-Session-ID header",
                     "message": "string",
                     "graph_context": "optional object",
                 },
@@ -1704,6 +1786,7 @@ async def get_sample_queries():
 
 _graphvis_cache: dict = {"data": None, "ts": 0.0}
 _GRAPHVIS_CACHE_TTL = 60  # 60 seconds — short enough that deleting Neo4j clears within a minute
+_GRAPHVIS_CACHE_ENABLED = os.getenv("GRAPHVIS_CACHE_ENABLED", "false").lower() == "true"
 
 def invalidate_graphvis_cache():
     """Clear graph cache when Neo4j connection fails"""
@@ -1753,7 +1836,7 @@ async def check_neo4j_health():
 async def get_entire_graph():
     import asyncio, time
     now = time.monotonic()
-    if _graphvis_cache["data"] is not None and (now - _graphvis_cache["ts"]) < _GRAPHVIS_CACHE_TTL:
+    if _GRAPHVIS_CACHE_ENABLED and _graphvis_cache["data"] is not None and (now - _graphvis_cache["ts"]) < _GRAPHVIS_CACHE_TTL:
         cached = _graphvis_cache["data"]
         has_edges = any(isinstance(row, dict) and row.get("r") for row in cached)
         if has_edges:
@@ -1792,7 +1875,7 @@ async def get_entire_graph():
             results = results + isolated
         except Exception:
             pass
-        if results:
+        if results and _GRAPHVIS_CACHE_ENABLED:
             _graphvis_cache["data"] = results
             _graphvis_cache["ts"] = time.monotonic()
         return {"results": results}
@@ -1833,6 +1916,25 @@ async def get_graph_view(limit: int = 1000):
         return GraphViewService.get_graph_overview(limit=limit)
     except RuntimeError as exc:
         raise _graph_service_unavailable("/api/v1/graph/view", exc)
+
+
+@app.get("/api/v1/code-audit")
+async def get_code_audit(refresh: bool = Query(default=False)):
+    """Return the repository dependency graph, optionally rebuilding it first."""
+    try:
+        from tools.code_graph_audit import OUTPUT, audit
+
+        if refresh or not OUTPUT.exists():
+            report = await run_in_threadpool(audit)
+            OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+            OUTPUT.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+        else:
+            report = json.loads(OUTPUT.read_text(encoding="utf-8"))
+        report["generated_at"] = FileSystemPath(OUTPUT).stat().st_mtime
+        return report
+    except Exception as exc:
+        logger.exception("Code audit generation failed")
+        raise HTTPException(status_code=500, detail="Code audit generation failed") from exc
 
 
 @app.get("/api/v1/graph/view/architecture/{prefix}")
@@ -4423,6 +4525,21 @@ except ImportError:
 
 # Directory containing ontology .ttl files served by the frontend
 ONTOLOGY_DIR = _Path(__file__).resolve().parent.parent / "frontend" / "public" / "Ontology"
+MAX_IMPORT_UPLOAD_BYTES = int(os.getenv("MAX_IMPORT_UPLOAD_BYTES", str(500 * 1024 * 1024)))
+
+
+async def _read_upload_with_limit(file: UploadFile, max_bytes: int) -> bytes:
+    """Read an upload incrementally and reject it before unbounded buffering."""
+    if max_bytes <= 0:
+        raise RuntimeError("MAX_IMPORT_UPLOAD_BYTES must be positive")
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(1024 * 1024):
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(status_code=413, detail="Uploaded file exceeds the configured size limit")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 class OllamaQueryRequest(BaseModel):
@@ -4568,7 +4685,7 @@ async def upload_file(
     try:
         # Read filename and content
         filename = file.filename or "unknown"
-        content = await file.read()
+        content = await _read_upload_with_limit(file, MAX_IMPORT_UPLOAD_BYTES)
         if not content:
             raise HTTPException(status_code=400, detail="File is empty")
 
@@ -5362,7 +5479,10 @@ async def modeling_validation(project: str = "Digital Engineering Model"):
 
 @app.post("/api/v1/modeling/agent/proposals")
 async def modeling_agent_create_proposal(payload: Dict[str, Any]):
-    return _agentic_modeling_service().create_proposal(payload)
+    try:
+        return _agentic_modeling_service().create_proposal(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/api/v1/modeling/agent/proposals")
@@ -5373,13 +5493,23 @@ async def modeling_agent_list_proposals(project: str = "Digital Engineering Mode
 @app.post("/api/v1/modeling/agent/proposals/{proposal_id}/approve")
 async def modeling_agent_approve_proposal(proposal_id: str, payload: Dict[str, Any] | None = None):
     payload = payload or {}
-    return _agentic_modeling_service().approve_proposal(proposal_id, approved_by=payload.get("approved_by") or "user", comment=payload.get("comment") or "")
+    result = _agentic_modeling_service().approve_proposal(proposal_id, approved_by=payload.get("approved_by") or "user", comment=payload.get("comment") or "")
+    if result.get("error") == "not_found":
+        raise HTTPException(status_code=404, detail="Agent proposal not found")
+    if result.get("error") == "invalid_state":
+        raise HTTPException(status_code=409, detail=f"Agent proposal is already {result.get('current_status') or 'finalized'}")
+    return result
 
 
 @app.post("/api/v1/modeling/agent/proposals/{proposal_id}/reject")
 async def modeling_agent_reject_proposal(proposal_id: str, payload: Dict[str, Any] | None = None):
     payload = payload or {}
-    return _agentic_modeling_service().reject_proposal(proposal_id, rejected_by=payload.get("rejected_by") or "user", comment=payload.get("comment") or "")
+    result = _agentic_modeling_service().reject_proposal(proposal_id, rejected_by=payload.get("rejected_by") or "user", comment=payload.get("comment") or "")
+    if result.get("error") == "not_found":
+        raise HTTPException(status_code=404, detail="Agent proposal not found")
+    if result.get("error") == "invalid_state":
+        raise HTTPException(status_code=409, detail=f"Agent proposal is already {result.get('current_status') or 'finalized'}")
+    return result
 @app.post("/api/v1/modeling/seed")
 async def modeling_seed(payload: Dict[str, Any] | None = None):
     payload = payload or {}

@@ -366,6 +366,38 @@ def test_merge_ontologies_uses_semantic_structure_instead_of_raw_tokens(monkeypa
     assert captured["payload"]["overlaps"][0]["match_basis"] == "label"
 
 
+def test_merge_exports_have_one_primary_ontology_header(monkeypatch, tmp_path):
+    source = tmp_path / "source.ttl"
+    target = tmp_path / "target.ttl"
+    source.write_text(
+        "@prefix s: <urn:source:> . @prefix owl: <http://www.w3.org/2002/07/owl#> . "
+        "s:o a owl:Ontology . s:Thing a owl:Class .",
+        encoding="utf-8",
+    )
+    target.write_text(
+        "@prefix t: <urn:target:> . @prefix owl: <http://www.w3.org/2002/07/owl#> . "
+        "t:o a owl:Ontology . t:Other a owl:Class .",
+        encoding="utf-8",
+    )
+    artifacts = []
+    monkeypatch.setattr(
+        "backend.Services.semantic_workflow_service.OntologyReasoningService.semantic_context",
+        lambda ontology_id: {"file_path": str(source if ontology_id == "source" else target)},
+    )
+    monkeypatch.setattr(
+        "backend.Services.semantic_workflow_service.WorkflowArtifactService.write_text",
+        lambda *args: artifacts.append(args),
+    )
+
+    SemanticWorkflowService._write_ontology_graph_exports("task", "source", "target")
+
+    assert len(artifacts) == 4
+    ttl = next(args[3] for args in artifacts if args[2] == "merged_ontology.ttl")
+    assert ttl.count("owl:Ontology") == 1
+    assert "source ontology: source" in ttl
+    assert "target ontology: target" in ttl
+
+
 def test_instance_link_does_not_auto_apply_owlready_only_iri_targets(monkeypatch):
     rows = [
         {

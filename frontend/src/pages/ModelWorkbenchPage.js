@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Boxes, Network, GitFork, Layers, RefreshCcw, ZoomIn, ZoomOut, ScanSearch } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import graphApi from '../services/graphApi';
@@ -39,9 +39,9 @@ function normalizeNode(raw) {
 
 function normalizeLink(raw) {
   const properties = raw?.properties && typeof raw.properties === 'object' ? raw.properties : {};
-  const id = raw?.id || raw?.elementId || raw?.uid || properties.id || `${endpointId(raw?.source)}-${raw?.type || raw?.label || 'REL'}-${endpointId(raw?.target)}`;
   const source = endpointId(raw?.source || raw?.from || raw?.start);
   const target = endpointId(raw?.target || raw?.to || raw?.end);
+  const id = raw?.id || raw?.elementId || raw?.uid || properties.id || `${source}-${raw?.type || raw?.label || 'REL'}-${target}`;
   if (!id || !source || !target) return null;
   return { id: String(id), source: String(source), target: String(target), type: cleanLabel(raw?.type || raw?.label || raw?.relationship_type || properties.type, 'RELATED_TO'), properties };
 }
@@ -334,13 +334,20 @@ export default function ModelWorkbenchPage({ onNavigate }) {
   const [status, setStatus] = useState({ loading: false, error: '' });
   const [reactFlowGraph, setReactFlowGraph] = useState(null);
   const [viewportCommand, setViewportCommand] = useState('');
+  const loadRequestIdRef = useRef(0);
+  const loadAbortControllerRef = useRef(null);
 
   const loadView = useCallback(async () => {
+    const requestId = ++loadRequestIdRef.current;
+    loadAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortControllerRef.current = controller;
     setStatus({ loading: true, error: '' });
     try {
       const response = activeView === 'architecture'
-        ? await graphApi.getArchitectureGraph('archimate', 1800)
-        : await API_METHODS.modeling.graph({ limit: 1600 });
+        ? await graphApi.getArchitectureGraph('archimate', 1800, controller.signal)
+        : await API_METHODS.modeling.graph({ limit: 1600 }, controller.signal);
+      if (requestId !== loadRequestIdRef.current) return;
       const normalized = normalizeDataset(response?.data);
       setDataset(normalized);
       setSelectedId('');
@@ -350,6 +357,7 @@ export default function ModelWorkbenchPage({ onNavigate }) {
       setReactFlowGraph(null);
       setStatus({ loading: false, error: '' });
     } catch (err) {
+      if (requestId !== loadRequestIdRef.current || controller.signal.aborted) return;
       setDataset({ nodes: [], links: [], message: '', representations: [] });
       setSelectedId('');
       setActiveTreeItem(null);
@@ -361,6 +369,10 @@ export default function ModelWorkbenchPage({ onNavigate }) {
   }, [activeView]);
 
   useEffect(() => { loadView(); }, [loadView]);
+  useEffect(() => () => {
+    loadRequestIdRef.current += 1;
+    loadAbortControllerRef.current?.abort();
+  }, []);
 
   const modelTree = useMemo(() => buildModelTree(dataset, activeView), [dataset, activeView]);
   const matchedNodes = useMemo(() => dataset.nodes.filter((node) => matchesQuery(node, query)), [dataset.nodes, query]);

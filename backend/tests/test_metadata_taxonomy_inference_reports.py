@@ -53,6 +53,39 @@ def test_metadata_dates_and_lifecycle_values_are_validated():
         )
     with pytest.raises(ValueError):
         metadata_registry_routes.LifecycleTransitionRequest(status="anything-goes")
+    with pytest.raises(ValueError):
+        metadata_registry_routes.MetadataAssetRequest(name="Invalid status", lifecycle_status="anything-goes")
+
+
+def test_metadata_patch_cannot_bypass_lifecycle_transition(monkeypatch):
+    recorder = _RecordingGraph()
+    monkeypatch.setattr(metadata_registry_routes, "graph", recorder)
+
+    with pytest.raises(Exception) as exc_info:
+        metadata_registry_routes.update_metadata_asset(
+            "asset-1",
+            metadata_registry_routes.MetadataAssetUpdateRequest(lifecycle_status="approved"),
+        )
+
+    assert getattr(exc_info.value, "status_code", None) == 400
+    assert "transition endpoint" in str(getattr(exc_info.value, "detail", ""))
+    assert not any("a += $updates" in cypher for cypher, _ in recorder.calls)
+
+
+def test_metadata_lifecycle_transition_keeps_previous_status_for_audit(monkeypatch):
+    recorder = _RecordingGraph()
+    monkeypatch.setattr(metadata_registry_routes, "graph", recorder)
+
+    metadata_registry_routes.transition_metadata_asset(
+        "asset-1",
+        metadata_registry_routes.LifecycleTransitionRequest(status="in_review", actor="steward"),
+    )
+
+    transition_cypher = next(cypher for cypher, _ in recorder.calls if "lifecycle_transition" in cypher)
+    assert "WITH a, previous_status" in transition_cypher
+    assert "e.previous_status = previous_status" in transition_cypher
+    transition_params = next(params for cypher, params in recorder.calls if "lifecycle_transition" in cypher)
+    assert transition_params["allowed_from"] == ["draft"]
 
 
 def test_ontology_registry_uses_unique_ids_and_contains_uploaded_filename(monkeypatch, tmp_path):

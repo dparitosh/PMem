@@ -46,7 +46,7 @@ const resolveBackendUrl = () => {
     return fallback;
   }
 
-  return configuredBackendUrl;
+  return configuredBackendUrl.replace(/\/$/, '');
 };
 
 // Base configuration
@@ -61,6 +61,10 @@ const baseConfig = {
   debug: process.env.REACT_APP_DEBUG === 'true',
   logLevel: process.env.REACT_APP_LOG_LEVEL || 'info',
   requestTimeout: parseInt(process.env.REACT_APP_REQUEST_TIMEOUT || '300000', 10),
+  chatStreamTimeout: parseInt(process.env.REACT_APP_CHAT_STREAM_TIMEOUT || '900000', 10),
+  // This key is intentionally opt-in. It is visible to browser users and is
+  // appropriate only for a trusted internal admin deployment.
+  adminApiKey: process.env.REACT_APP_ADMIN_API_KEY || '',
 };
 
 // Deprecated: Keep old property for backward compatibility

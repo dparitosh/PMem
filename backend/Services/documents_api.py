@@ -329,7 +329,7 @@ async def plan_document_pipeline(request: DocumentPlanRequest):
         }
     except Exception as exc:
         logger.error("Document planning failed: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Document planning failed") from exc
 
 
 @router.post("/jobs", response_model=DocumentJobResponse, status_code=202)
@@ -386,7 +386,7 @@ async def submit_document_job(
         raise
     except Exception as exc:
         logger.error("Document job submission failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Document job submission failed: {exc}") from exc
+        raise HTTPException(status_code=500, detail="Document job submission failed") from exc
     finally:
         cleanup_temp_files(temp_dir)
 
@@ -473,7 +473,7 @@ async def get_supported_formats_endpoint():
     
     except Exception as e:
         logger.error(f"Error fetching supported formats: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to retrieve supported document formats") from e
 
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_documents(

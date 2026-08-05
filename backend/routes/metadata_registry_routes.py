@@ -13,6 +13,14 @@ except ImportError:
     from core.graph import graph
 
 router = APIRouter(prefix="/metadata-registry", tags=["metadata-registry"])
+LIFECYCLE_STATUSES = {"draft", "in_review", "approved", "deprecated", "retired"}
+
+
+def _normalize_lifecycle_status(value: str) -> str:
+    status = str(value or "").strip().lower()
+    if status not in LIFECYCLE_STATUSES:
+        raise ValueError("Unsupported lifecycle status")
+    return status
 
 
 class MetadataAssetRequest(BaseModel):
@@ -30,6 +38,11 @@ class MetadataAssetRequest(BaseModel):
     effective_to: str = Field(default="", max_length=50)
     ontology_uri: str = Field(default="", max_length=2000)
     implementation_ref: str = Field(default="", max_length=2000)
+
+    @field_validator("lifecycle_status")
+    @classmethod
+    def validate_lifecycle_status(cls, value: str) -> str:
+        return _normalize_lifecycle_status(value)
 
     @field_validator("effective_from", "effective_to")
     @classmethod
@@ -69,6 +82,11 @@ class MetadataAssetUpdateRequest(BaseModel):
     ontology_uri: Optional[str] = Field(default=None, max_length=2000)
     implementation_ref: Optional[str] = Field(default=None, max_length=2000)
 
+    @field_validator("lifecycle_status")
+    @classmethod
+    def validate_lifecycle_status(cls, value: Optional[str]) -> Optional[str]:
+        return None if value is None else _normalize_lifecycle_status(value)
+
     @field_validator("effective_from", "effective_to")
     @classmethod
     def validate_effective_date(cls, value: Optional[str]) -> Optional[str]:
@@ -102,10 +120,7 @@ class LifecycleTransitionRequest(BaseModel):
     @field_validator("status")
     @classmethod
     def validate_status(cls, value: str) -> str:
-        status = str(value or "").strip().lower()
-        if status not in {"draft", "in_review", "approved", "deprecated", "retired"}:
-            raise ValueError("Unsupported lifecycle status")
-        return status
+        return _normalize_lifecycle_status(value)
 
 
 def _now() -> str:
@@ -200,6 +215,8 @@ def update_metadata_asset(asset_id: str, request: MetadataAssetUpdateRequest):
     updates = request.model_dump(exclude_unset=True, exclude_none=True)
     if not updates:
         raise HTTPException(status_code=400, detail="At least one metadata field is required")
+    if "lifecycle_status" in updates:
+        raise HTTPException(status_code=400, detail="Use the lifecycle transition endpoint to change lifecycle_status")
     rows = graph.query(
         """
         MATCH (a:MetadataAsset {asset_id: $asset_id})
@@ -231,11 +248,11 @@ def update_metadata_asset(asset_id: str, request: MetadataAssetUpdateRequest):
 @router.post("/assets/{asset_id}/transition")
 def transition_metadata_asset(asset_id: str, request: LifecycleTransitionRequest):
     allowed_from = {
-        "draft": ["draft", "in_review"],
-        "in_review": ["in_review", "draft"],
-        "approved": ["approved", "in_review"],
-        "deprecated": ["deprecated", "approved"],
-        "retired": ["retired", "draft", "in_review", "approved", "deprecated"],
+        "draft": ["in_review"],
+        "in_review": ["draft"],
+        "approved": ["in_review"],
+        "deprecated": ["approved"],
+        "retired": ["deprecated"],
     }[request.status]
     rows = graph.query(
         """
@@ -243,7 +260,7 @@ def transition_metadata_asset(asset_id: str, request: LifecycleTransitionRequest
         WHERE coalesce(a.lifecycle_status, 'draft') IN $allowed_from
         WITH a, coalesce(a.lifecycle_status, 'draft') AS previous_status
         SET a.lifecycle_status = $status, a.updated_at = $updated_at
-        WITH a
+        WITH a, previous_status
         MERGE (e:MetadataAuditEvent {event_id: $event_id})
         SET e.action = 'lifecycle_transition', e.actor = $actor,
             e.comment = $comment, e.status = $status, e.previous_status = previous_status,

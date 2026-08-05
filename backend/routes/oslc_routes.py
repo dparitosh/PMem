@@ -34,7 +34,7 @@ async def list_resource_shapes():
     try:
         return OSLCService.list_shapes()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="Unable to list OSLC resource shapes") from exc
 
 
 @router.get("/shapes/{shape_id}")
@@ -46,7 +46,7 @@ async def get_resource_shape(shape_id: str):
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="Unable to retrieve the OSLC resource shape") from exc
 
 
 @router.get("/query/{resource_type}")
@@ -126,7 +126,7 @@ async def get_oslc_dictionary(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="Unable to retrieve the OSLC dictionary") from exc
 
 
 @router.get("/taxonomies")
@@ -136,7 +136,7 @@ async def list_oslc_taxonomies():
     try:
         return OSLCService.list_taxonomies()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="Unable to list OSLC taxonomies") from exc
 
 
 @router.get("/taxonomies/{ontology_id}")
@@ -148,4 +148,4 @@ async def get_oslc_taxonomy(ontology_id: str):
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail="Unable to retrieve the OSLC taxonomy") from exc

@@ -110,3 +110,35 @@ def test_archimate_parser_preserves_archi_folder_nodes_and_names():
     assert stats["folder_containment_count"] >= 3
     assert any(rel["type"] == "CONTAINS" for rel in stats["_xmi_relationships"])
     assert any(rel["type"] == "VIEW_CONTAINS" for rel in stats["_xmi_relationships"])
+
+
+def test_archimate_parser_keeps_junctions_as_elements_and_preserves_relationship_attributes():
+    sample = b"""<?xml version="1.0"?>
+<model xmlns="https://www.opengroup.org/xsd/archimate/3.1/"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" identifier="m-junction">
+  <elements>
+    <element identifier="source" xsi:type="BusinessProcess"><name>Source</name></element>
+    <element identifier="junction" xsi:type="Junction" junctionType="or"><name>Decision</name></element>
+    <element identifier="target" xsi:type="BusinessProcess"><name>Target</name></element>
+  </elements>
+  <relationships>
+    <relationship identifier="r1" xsi:type="AccessRelationship" source="source" target="junction" accessType="ReadWrite" />
+    <relationship identifier="r2" xsi:type="InfluenceRelationship" source="junction" target="target" strength="++" />
+  </relationships>
+</model>"""
+
+    rows, stats = parse_archimate_model_exchange(sample)
+
+    junction = next(row for row in rows if row["id"] == "junction")
+    assert junction["element_type"] == "Junction"
+    assert junction["junction_type"] == "or"
+    assert stats["unresolved_relationship_count"] == 0
+    relationships = {rel["properties"]["id"]: rel for rel in stats["_xmi_relationships"]}
+    assert relationships["r1"]["properties"]["access_type"] == "ReadWrite"
+    assert relationships["r2"]["properties"]["strength"] == "++"
+
+
+def test_archimate_detection_accepts_arbitrary_namespace_prefix_on_model_root():
+    sample = b'<ame:model xmlns:ame="https://www.opengroup.org/xsd/archimate/3.1/" identifier="m1" />'
+
+    assert looks_like_archimate_xml(sample)

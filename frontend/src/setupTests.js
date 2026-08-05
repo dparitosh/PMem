@@ -28,3 +28,29 @@ jest.mock('axios', () => ({
   create: jest.fn(() => mockAxios),
   isAxiosError: jest.fn(() => false),
 }));
+
+const originalConsoleError = console.error;
+let consoleErrorSpy;
+
+beforeAll(() => {
+  consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation((...args) => {
+    const [message = ''] = args;
+
+    if (
+      typeof message === 'string' &&
+      (
+        message.includes('ReactDOMTestUtils.act is deprecated in favor of React.act') ||
+        message.includes('A suspended resource finished loading inside a test') ||
+        message.includes('inside a test was not wrapped in act(...)')
+      )
+    ) {
+      return;
+    }
+
+    originalConsoleError(...args);
+  });
+});
+
+afterAll(() => {
+  consoleErrorSpy?.mockRestore?.();
+});

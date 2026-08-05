@@ -53,7 +53,6 @@ Refactor GraphHEB.js into smaller, focused components:
 GraphHEB/
   ├── ForceDirectedGraph.js (D3 force simulation, rendering)
   ├── TreeViewLayout.js (Indented tree rendering)
-  ├── SearchPanel.js (Search/filter UI and logic)
   ├── NodeTooltip.js (Tooltip rendering)
   ├── ExpansionControls.js (Node expand/collapse)
   ├── RecommendationPanel.js (Recommendation slider)

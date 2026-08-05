@@ -1,6 +1,20 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import ReportsTab from './ReportsTab';
+
+jest.mock('../contexts/OntologyContext', () => ({
+  OntologyProvider: ({ children }) => children,
+  useOntologies: () => ({
+    ontologies: [],
+    loading: false,
+    error: null,
+    lastUpdated: null,
+    fetchOntologies: jest.fn(),
+    getOntologyByPrefix: jest.fn(),
+    getOntologyById: jest.fn(),
+  }),
+}));
+
 import { OntologyProvider } from '../contexts/OntologyContext';
 
 test('ReportsTab falls back to graph nodes when search results are empty', () => {

@@ -180,9 +180,12 @@ class SemanticWorkflowService:
     def _write_ontology_graph_exports(cls, task_id: str, source_id: str, target_id: str) -> None:
         """Pre-generate merged ontology export artifacts to avoid request-time serialization timeouts."""
         try:
-            from rdflib import Graph as RDFGraph, URIRef
+            from rdflib import Graph as RDFGraph, URIRef, Literal
+            from rdflib.namespace import DCTERMS, OWL, RDF, RDFS
             graph = RDFGraph()
             loaded = []
+            target_ontology_iris = []
+            imported_iris = set()
             # These namespaces belong to the application/runtime, not to an
             # ontology export. Keep the source files authoritative and prevent
             # agent/graph/bridge implementation triples leaking into the file.
@@ -200,6 +203,11 @@ class SemanticWorkflowService:
                     try:
                         source_graph = RDFGraph()
                         source_graph.parse(str(path), format=fmt)
+                        source_headers = set(source_graph.subjects(RDF.type, OWL.Ontology))
+                        if ontology_id == target_id:
+                            target_ontology_iris.extend(source_headers)
+                        for header in source_headers:
+                            imported_iris.update(source_graph.objects(header, OWL.imports))
                         for subject, predicate, obj in source_graph:
                             uri_values = [value for value in (subject, predicate, obj) if isinstance(value, URIRef)]
                             if any(
@@ -214,6 +222,23 @@ class SemanticWorkflowService:
                         continue
             if not graph:
                 return
+
+            # A graph union can contain multiple owl:Ontology subjects. Make
+            # the exported artifact a single logical ontology while retaining
+            # source provenance and external vocabulary imports.
+            primary_iri = next(iter(target_ontology_iris), None)
+            if primary_iri is None:
+                primary_iri = URIRef(f"http://depo-onto.local/merged/{task_id}#")
+            ontology_subjects = set(graph.subjects(RDF.type, OWL.Ontology))
+            for header in ontology_subjects:
+                for triple in list(graph.triples((header, None, None))):
+                    graph.remove(triple)
+            graph.add((primary_iri, RDF.type, OWL.Ontology))
+            graph.add((primary_iri, RDFS.label, Literal(f"Merged ontology: {target_id}")))
+            graph.add((primary_iri, DCTERMS.source, Literal(f"source ontology: {source_id}")))
+            graph.add((primary_iri, DCTERMS.source, Literal(f"target ontology: {target_id}")))
+            for imported_iri in imported_iris:
+                graph.add((primary_iri, OWL.imports, imported_iri))
             for filename, fmt, artifact_type in (
                 ("merged_ontology.ttl", "turtle", "ontology_export_ttl"),
                 ("merged_ontology.rdf", "xml", "ontology_export_rdf"),
@@ -848,7 +873,11 @@ class SemanticWorkflowService:
             UNWIND $rows AS row
             MATCH (n {import_row_key: row.import_row_key, import_id: row.import_id})
             MATCH (target)
-            WHERE elementId(target) = row.ontology_class_element_id
+            WHERE (
+                (coalesce(row.target_ontology_iri, '') <> '' AND
+                 coalesce(target.iri, target.uri, target.resource_iri, '') = row.target_ontology_iri)
+                OR elementId(target) = row.ontology_class_element_id
+            )
             MERGE (n)-[bridge:SEMANTICALLY_MAPPED_TO]->(target)
             SET bridge.mapping = row.mapping,
                 bridge.ontology_term = row.ontology_term,

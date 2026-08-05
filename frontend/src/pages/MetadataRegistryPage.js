@@ -1,13 +1,23 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock3, Database, Plus, RefreshCw, Search, ShieldCheck } from 'lucide-react';
 import { useOntologies } from '../contexts/OntologyContext';
 import { API_METHODS } from '../services/apiClient';
 
 const STATUS_LABELS = {
+  draft: 'Draft',
+  in_review: 'In review',
   approved: 'Approved',
   published: 'Published',
   uploaded: 'Review required',
   deprecated: 'Deprecated',
+  retired: 'Retired',
+};
+
+const LIFECYCLE_ACTIONS = {
+  draft: { status: 'in_review', label: 'Submit for review' },
+  in_review: { status: 'approved', label: 'Approve' },
+  approved: { status: 'deprecated', label: 'Deprecate' },
+  deprecated: { status: 'retired', label: 'Retire' },
 };
 
 function statusLabel(value) {
@@ -19,6 +29,7 @@ function statusTone(value) {
   const key = String(value || '').toLowerCase();
   if (['approved', 'published', 'available'].includes(key)) return '#147d72';
   if (['deprecated', 'rejected'].includes(key)) return '#b54708';
+  if (key === 'retired') return '#52606d';
   return '#8a5a00';
 }
 
@@ -33,34 +44,67 @@ export default function MetadataRegistryPage() {
   const [dictionaryFilter, setDictionaryFilter] = useState('');
   const [prefixFilter, setPrefixFilter] = useState(null);
   const [registryAssets, setRegistryAssets] = useState([]);
+  const [registryLoaded, setRegistryLoaded] = useState(false);
   const [registryLoading, setRegistryLoading] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [transitioningAssetIds, setTransitioningAssetIds] = useState(new Set());
   const [registryMessage, setRegistryMessage] = useState(null);
   const [newAsset, setNewAsset] = useState({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '' });
+  const registryControllerRef = useRef(null);
+  const dictionaryControllerRef = useRef(null);
+  const mutationControllersRef = useRef(new Set());
 
   const loadRegistryAssets = async () => {
+    registryControllerRef.current?.abort();
+    const controller = new AbortController();
+    registryControllerRef.current = controller;
     setRegistryLoading(true);
     try {
-      const response = await API_METHODS.metadataRegistry.list({ limit: 1000 });
+      const response = await API_METHODS.metadataRegistry.list({ limit: 1000 }, { signal: controller.signal });
       setRegistryAssets(response?.data?.assets || []);
+      setRegistryLoaded(true);
+      setRegistryMessage(null);
     } catch (err) {
+      if (controller.signal.aborted) return;
       setRegistryMessage({ kind: 'warning', text: err?.response?.data?.detail || err?.message || 'Governed registry is unavailable.' });
     } finally {
-      setRegistryLoading(false);
+      if (!controller.signal.aborted) setRegistryLoading(false);
+      if (registryControllerRef.current === controller) registryControllerRef.current = null;
     }
   };
 
-  useEffect(() => { loadRegistryAssets(); }, []);
+  useEffect(() => {
+    const mutationControllers = mutationControllersRef.current;
+    loadRegistryAssets();
+    return () => {
+      registryControllerRef.current?.abort();
+      dictionaryControllerRef.current?.abort();
+      mutationControllers.forEach((controller) => controller.abort());
+      mutationControllers.clear();
+    };
+  }, []);
 
   const createAsset = async (event) => {
     event.preventDefault();
-    if (!newAsset.name.trim()) return;
+    if (!newAsset.name.trim() || createLoading) return;
+    const controller = new AbortController();
+    registryControllerRef.current?.abort();
+    registryControllerRef.current = null;
+    setRegistryLoading(false);
+    mutationControllersRef.current.add(controller);
+    setCreateLoading(true);
     try {
-      const response = await API_METHODS.metadataRegistry.create(newAsset);
+      const response = await API_METHODS.metadataRegistry.create(newAsset, { signal: controller.signal });
       setRegistryAssets((current) => [response.data, ...current]);
+      setRegistryLoaded(true);
       setRegistryMessage({ kind: 'success', text: 'Metadata asset registered in the governed registry.' });
       setNewAsset({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '' });
     } catch (err) {
+      if (controller.signal.aborted) return;
       setRegistryMessage({ kind: 'warning', text: err?.response?.data?.detail || err?.message || 'Metadata asset could not be registered.' });
+    } finally {
+      mutationControllersRef.current.delete(controller);
+      if (!controller.signal.aborted) setCreateLoading(false);
     }
   };
 
@@ -76,22 +120,41 @@ export default function MetadataRegistryPage() {
     ].some((value) => String(value || '').toLowerCase().includes(needle)));
   }, [ontologies, query]);
 
-  const reviewCount = ontologies.filter((entry) => {
-    const status = String(entry.status || '').toLowerCase();
-    return !['approved', 'published', 'available'].includes(status);
-  }).length;
-  const publishedCount = ontologies.length - reviewCount;
-  const governedAssets = registryAssets.length > 0;
+  const summaryStatuses = registryLoaded
+    ? registryAssets.map((asset) => asset.lifecycle_status)
+    : ontologies.map((entry) => entry.status);
+  const publishedCount = summaryStatuses.filter((status) => ['approved', 'published', 'available'].includes(String(status || '').toLowerCase())).length;
+  const reviewCount = summaryStatuses.filter((status) => ['draft', 'in_review', 'uploaded', ''].includes(String(status || '').toLowerCase())).length;
+  const visibleRegistryAssets = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return registryAssets;
+    return registryAssets.filter((asset) => [
+      asset.name,
+      asset.asset_id,
+      asset.asset_type,
+      asset.definition,
+      asset.owner,
+      asset.steward,
+      asset.domain,
+      asset.lifecycle_status,
+    ].some((value) => String(value || '').toLowerCase().includes(needle)));
+  }, [query, registryAssets]);
 
   const loadDictionary = async (ontologyId) => {
+    dictionaryControllerRef.current?.abort();
+    const controller = new AbortController();
+    dictionaryControllerRef.current = controller;
     setSelectedOntology(ontologyId);
     setDictionary([]);
     setDictionaryError(null);
     setPrefixFilter(null);
-    if (!ontologyId) return;
+    if (!ontologyId) {
+      setDictionaryLoading(false);
+      return;
+    }
     setDictionaryLoading(true);
     try {
-      const response = await API_METHODS.ontology.getDataDictionary(ontologyId);
+      const response = await API_METHODS.ontology.getDataDictionary(ontologyId, { signal: controller.signal });
       const payload = response?.data?.data || {};
       const source = ontologies.find((entry) => (entry.ontology_id || entry.value || entry.prefix) === ontologyId);
       const prefix = response?.data?.prefix || source?.prefix || ontologyId;
@@ -102,9 +165,11 @@ export default function MetadataRegistryPage() {
       ];
       setDictionary(nodes);
     } catch (err) {
+      if (controller.signal.aborted) return;
       setDictionaryError(err?.response?.data?.detail || err?.message || 'Data Dictionary is unavailable for this source.');
     } finally {
-      setDictionaryLoading(false);
+      if (!controller.signal.aborted) setDictionaryLoading(false);
+      if (dictionaryControllerRef.current === controller) dictionaryControllerRef.current = null;
     }
   };
 
@@ -118,7 +183,7 @@ export default function MetadataRegistryPage() {
               Governed catalog for definitions, ownership, lifecycle, versions, and physical implementations.
             </div>
           </div>
-          <button type="button" className="depo-button depo-button--secondary" onClick={() => { fetchOntologies(); loadRegistryAssets(); }} disabled={loading || registryLoading}>
+          <button type="button" className="depo-button depo-button--secondary" onClick={() => { fetchOntologies(); loadRegistryAssets(); }} disabled={loading || registryLoading || createLoading || transitioningAssetIds.size > 0}>
             <RefreshCw size={14} className={loading ? 'depo-spin' : ''} />
             Refresh catalog
           </button>
@@ -155,16 +220,18 @@ export default function MetadataRegistryPage() {
           )}
           {section === 'assets' && <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-            <Summary icon={<Database size={15} />} label="Governed assets" value={governedAssets ? registryAssets.length : ontologies.length} />
+            <Summary icon={<Database size={15} />} label="Governed assets" value={registryLoaded ? registryAssets.length : ontologies.length} />
             <Summary icon={<ShieldCheck size={15} />} label="Published / available" value={publishedCount} />
             <Summary icon={<Clock3 size={15} />} label="Review required" value={reviewCount} />
           </div>
-          <form onSubmit={createAsset} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
+          <form onSubmit={createAsset} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, alignItems: 'end' }}>
             <label className="depo-field"><span>Name</span><input className="depo-input" value={newAsset.name} onChange={(event) => setNewAsset({ ...newAsset, name: event.target.value })} placeholder="e.g. Part number" /></label>
+            <label className="depo-field"><span>Definition</span><input className="depo-input" value={newAsset.definition} onChange={(event) => setNewAsset({ ...newAsset, definition: event.target.value })} /></label>
             <label className="depo-field"><span>Type</span><input className="depo-input" value={newAsset.asset_type} onChange={(event) => setNewAsset({ ...newAsset, asset_type: event.target.value })} /></label>
             <label className="depo-field"><span>Owner</span><input className="depo-input" value={newAsset.owner} onChange={(event) => setNewAsset({ ...newAsset, owner: event.target.value })} /></label>
+            <label className="depo-field"><span>Steward</span><input className="depo-input" value={newAsset.steward} onChange={(event) => setNewAsset({ ...newAsset, steward: event.target.value })} /></label>
             <label className="depo-field"><span>Domain</span><input className="depo-input" value={newAsset.domain} onChange={(event) => setNewAsset({ ...newAsset, domain: event.target.value })} /></label>
-            <button type="submit" className="depo-button"><Plus size={14} /> Register</button>
+            <button type="submit" className="depo-button" disabled={createLoading || !newAsset.name.trim()}><Plus size={14} /> {createLoading ? 'Registering...' : 'Register'}</button>
           </form>
           {registryMessage && <div className={`depo-alert depo-alert--${registryMessage.kind}`}>{registryMessage.text}</div>}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 560 }}>
@@ -177,13 +244,34 @@ export default function MetadataRegistryPage() {
               aria-label="Search metadata registry"
             />
           </div>
-          {error && <div className="depo-alert depo-alert--warning">Live registry unavailable: {error}</div>}
-          {!loading && !entries.length && <div className="depo-empty">No registry entries match this search.</div>}
-          {governedAssets ? <GovernedAssetsTable assets={registryAssets} onTransition={async (asset) => {
+          {error && !registryLoaded && <div className="depo-alert depo-alert--warning">Live registry unavailable: {error}</div>}
+          {!loading && registryLoaded && !visibleRegistryAssets.length && <div className="depo-empty">{registryAssets.length ? 'No governed assets match this search.' : 'No governed metadata assets are registered yet.'}</div>}
+          {!loading && !registryLoaded && !entries.length && <div className="depo-empty">No registry entries match this search.</div>}
+          {registryLoaded ? <GovernedAssetsTable assets={visibleRegistryAssets} transitioningAssetIds={transitioningAssetIds} onTransition={async (asset, action) => {
+            if (!action || transitioningAssetIds.has(asset.asset_id)) return;
+            const controller = new AbortController();
+            registryControllerRef.current?.abort();
+            registryControllerRef.current = null;
+            setRegistryLoading(false);
+            mutationControllersRef.current.add(controller);
+            setTransitioningAssetIds((current) => new Set(current).add(asset.asset_id));
             try {
-              const response = await API_METHODS.metadataRegistry.transition(asset.asset_id, { status: asset.lifecycle_status === 'approved' ? 'deprecated' : 'approved', actor: asset.owner || 'registry-user' });
+              const response = await API_METHODS.metadataRegistry.transition(asset.asset_id, { status: action.status, actor: asset.owner || 'registry-user' }, { signal: controller.signal });
               setRegistryAssets((current) => current.map((item) => item.asset_id === asset.asset_id ? response.data : item));
-            } catch (err) { setRegistryMessage({ kind: 'warning', text: err?.response?.data?.detail || err?.message || 'Lifecycle transition failed.' }); }
+              setRegistryMessage({ kind: 'success', text: `Lifecycle changed to ${statusLabel(action.status)}.` });
+            } catch (err) {
+              if (!controller.signal.aborted) setRegistryMessage({ kind: 'warning', text: err?.response?.data?.detail || err?.message || 'Lifecycle transition failed.' });
+            }
+            finally {
+              mutationControllersRef.current.delete(controller);
+              if (!controller.signal.aborted) {
+                setTransitioningAssetIds((current) => {
+                  const next = new Set(current);
+                  next.delete(asset.asset_id);
+                  return next;
+                });
+              }
+            }
           }} /> : entries.length > 0 && (
             <div style={{ overflowX: 'auto' }}>
               <table className="depo-table">
@@ -270,19 +358,21 @@ function RegistryDictionaryTable({ nodes, filter, prefixFilter, onPrefixFilterCh
   );
 }
 
-function GovernedAssetsTable({ assets, onTransition }) {
+function GovernedAssetsTable({ assets, onTransition, transitioningAssetIds }) {
   return (
     <div style={{ overflowX: 'auto' }}>
       <table className="depo-table">
-        <thead><tr><th>Name</th><th>Type</th><th>Owner / steward</th><th>Version</th><th>Lifecycle</th><th>Action</th></tr></thead>
-        <tbody>{assets.map((asset) => (
-          <tr key={asset.asset_id}>
-            <td><strong>{asset.name}</strong><small style={{ display: 'block', color: '#697586' }}>{asset.asset_id}</small></td>
-            <td>{asset.asset_type}</td><td>{asset.owner || '—'} / {asset.steward || '—'}</td><td>{asset.version}</td>
+        <thead><tr><th>Name / definition</th><th>Type / domain</th><th>Owner / steward</th><th>Version</th><th>Lifecycle</th><th>Action</th></tr></thead>
+        <tbody>{assets.map((asset) => {
+          const action = LIFECYCLE_ACTIONS[String(asset.lifecycle_status || 'draft').toLowerCase()];
+          const transitioning = transitioningAssetIds.has(asset.asset_id);
+          return <tr key={asset.asset_id}>
+            <td><strong>{asset.name}</strong><small style={{ display: 'block', color: '#697586' }}>{asset.definition || asset.asset_id}</small></td>
+            <td>{asset.asset_type}<small style={{ display: 'block', color: '#697586' }}>{asset.domain || 'No domain'}</small></td><td>{asset.owner || '—'} / {asset.steward || '—'}</td><td>{asset.version}</td>
             <td><span style={{ color: statusTone(asset.lifecycle_status), fontWeight: 700 }}>{statusLabel(asset.lifecycle_status)}</span></td>
-            <td><button type="button" className="depo-button depo-button--secondary" onClick={() => onTransition(asset)}>{asset.lifecycle_status === 'approved' ? 'Deprecate' : 'Approve'}</button></td>
+            <td>{action ? <button type="button" className="depo-button depo-button--secondary" disabled={transitioning} onClick={() => onTransition(asset, action)}>{transitioning ? 'Updating...' : action.label}</button> : <span className="depo-panel__meta">No action</span>}</td>
           </tr>
-        ))}</tbody>
+        })}</tbody>
       </table>
     </div>
   );

@@ -4,12 +4,13 @@ import { healthAPI } from '../services/apiClient';
 import Chatbot from './Chatbot';
 import ErrorBoundary from './ErrorBoundary';
 import logger from '../utils/logger';
+import { UI_COLORS } from '../styles/uiTokens';
 
 const DASHBOARD_ENABLED = true;
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function fmt(n) {
-  if (n == null) return '—';
+  if (n == null) return '-';
   return Number(n).toLocaleString();
 }
 
@@ -18,7 +19,7 @@ function SectionTitle({ children }) {
     <div style={{
       fontSize: 10,
       fontWeight: 800,
-      color: '#0f7c82',
+      color: UI_COLORS.primary,
       paddingBottom: 4,
       marginBottom: 10,
       textTransform: 'uppercase',
@@ -29,16 +30,16 @@ function SectionTitle({ children }) {
   );
 }
 
-// ─── Ontology list ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Ontology list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function OntologyList({ ontologies, loading }) {
-  if (loading) return <div style={{ color: '#888', fontSize: 12, padding: 8 }}>Loading ontologies…</div>;
+  if (loading) return <div style={{ color: '#888', fontSize: 12, padding: 8 }}>Loading ontologies...</div>;
   if (!ontologies.length) return <div style={{ color: '#888', fontSize: 12, padding: 8 }}>No ontologies registered yet.</div>;
 
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
-          <tr style={{ background: '#004B87', color: '#fff' }}>
+          <tr style={{ background: UI_COLORS.primary, color: '#fff' }}>
             {['Name', 'Type', 'Uses', 'Last Used'].map(h => (
               <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600 }}>{h}</th>
             ))}
@@ -47,10 +48,10 @@ function OntologyList({ ontologies, loading }) {
         <tbody>
           {ontologies.map((o, i) => (
             <tr key={o.id || i} style={{ background: i % 2 === 0 ? '#f8f9fa' : '#fff' }}>
-              <td style={{ padding: '6px 10px', fontWeight: 600, color: '#004B87' }}>{o.name || o.id}</td>
+              <td style={{ padding: '6px 10px', fontWeight: 600, color: UI_COLORS.primary }}>{o.name || o.id}</td>
               <td style={{ padding: '6px 10px' }}>
                 <span style={{
-                  background: '#e8f0fe', color: '#004B87',
+                  background: UI_COLORS.primaryLight, color: UI_COLORS.primary,
                   borderRadius: 4, padding: '2px 7px', fontSize: 11, fontWeight: 600,
                 }}>
                   {(o.type || 'ontology').toUpperCase()}
@@ -58,7 +59,7 @@ function OntologyList({ ontologies, loading }) {
               </td>
               <td style={{ padding: '6px 10px', color: '#444' }}>{fmt(o.usageCount)}</td>
               <td style={{ padding: '6px 10px', color: '#777' }}>
-                {o.lastUsed ? new Date(o.lastUsed).toLocaleDateString() : '—'}
+                {o.lastUsed ? new Date(o.lastUsed).toLocaleDateString() : '-'}
               </td>
             </tr>
           ))}
@@ -68,7 +69,7 @@ function OntologyList({ ontologies, loading }) {
   );
 }
 
-// ─── Metrics breakdown tables ─────────────────────────────────────────────────
+// â”€â”€â”€ Metrics breakdown tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function BreakdownTable({ title, rows, colKey, colLabel = 'Count' }) {
   if (!rows || !rows.length) return null;
   return (
@@ -89,8 +90,8 @@ function BreakdownTable({ title, rows, colKey, colLabel = 'Count' }) {
               const pct = Math.round((cnt / maxCount) * 100);
               return (
                 <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f8f9fa' }}>
-                  <td style={{ padding: '4px 8px', color: '#004B87', fontWeight: 500 }}>
-                    {r[colKey] || '—'}
+                  <td style={{ padding: '4px 8px', color: UI_COLORS.primary, fontWeight: 500 }}>
+                    {r[colKey] || '-'}
                   </td>
                   <td style={{ padding: '4px 8px', textAlign: 'right' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
@@ -100,7 +101,7 @@ function BreakdownTable({ title, rows, colKey, colLabel = 'Count' }) {
                       }}>
                         <div style={{
                           width: `${pct}%`, height: '100%',
-                          background: '#004B87', borderRadius: 3,
+                          background: UI_COLORS.primary, borderRadius: 3,
                         }} />
                       </div>
                       <span style={{ color: '#333', minWidth: 36, textAlign: 'right' }}>{fmt(cnt)}</span>
@@ -116,16 +117,19 @@ function BreakdownTable({ title, rows, colKey, colLabel = 'Count' }) {
   );
 }
 
-// ─── Main landing page ────────────────────────────────────────────────────────
+// â”€â”€â”€ Main landing page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function LandingPage({ setChatResults, onNavigate }) {
   const [metrics, setMetrics] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
   const [ontologies, setOntologies] = useState([]);
   const [ontologiesLoading, setOntologiesLoading] = useState(true);
+  const [metricsError, setMetricsError] = useState('');
+  const [ontologiesError, setOntologiesError] = useState('');
   const [lastRefreshed, setLastRefreshed] = useState(null);
 
   const loadMetrics = useCallback(async () => {
     setMetricsLoading(true);
+    setMetricsError('');
     try {
       const response = await healthAPI.graphMetrics();
       setMetrics(response?.data ?? {
@@ -139,6 +143,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
       setLastRefreshed(new Date());
     } catch (error) {
       logger.error('Failed to load metrics:', error);
+      setMetricsError('Graph metrics are currently unavailable.');
       setMetrics({
         total_nodes: 0,
         total_relationships: 0,
@@ -154,11 +159,13 @@ export default function LandingPage({ setChatResults, onNavigate }) {
 
   const loadOntologies = useCallback(async () => {
     setOntologiesLoading(true);
+    setOntologiesError('');
     try {
       const response = await healthAPI.ontologiesAvailable();
       setOntologies(response?.data?.ontologies || []);
     } catch (error) {
       logger.error('Failed to load ontologies:', error);
+      setOntologiesError('Ontology registry is currently unavailable.');
       setOntologies([]);
     } finally {
       setOntologiesLoading(false);
@@ -189,7 +196,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
           padding: 24,
           boxShadow: '0 8px 24px rgba(0, 75, 135, 0.08)',
         }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#004B87', marginBottom: 8 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: UI_COLORS.primary, marginBottom: 8 }}>
             Dashboard Temporarily Disabled
           </div>
           <div style={{ fontSize: 14, color: '#445', lineHeight: 1.6 }}>
@@ -201,7 +208,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
               <button
                 onClick={() => onNavigate('data-import')}
                 style={{
-                  background: '#004B87',
+                  background: UI_COLORS.primary,
                   color: '#fff',
                   border: 'none',
                   borderRadius: 6,
@@ -224,7 +231,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
       height: '100%', display: 'flex', flexDirection: 'column',
       background: 'linear-gradient(180deg, #f3f7fb 0%, #f8fafc 100%)', overflow: 'hidden',
     }}>
-      {/* ── Top hero bar ───────────────────────────────────────────── */}
+      {/* â”€â”€ Top hero bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div style={{
         background: 'linear-gradient(135deg, #081a2f 0%, #133457 58%, #1d4f7a 100%)',
         color: '#fff', padding: '16px 20px',
@@ -259,7 +266,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
         </div>
       </div>
 
-      {/* ── Main body: left panel (metrics + ontologies) + right (chat) ─ */}
+      {/* â”€â”€ Main body: left panel (metrics + ontologies) + right (chat) â”€ */}
       <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', gap: 0, overflow: 'hidden' }}>
 
         {/* Left panel */}
@@ -275,15 +282,27 @@ export default function LandingPage({ setChatResults, onNavigate }) {
           {/* Ontology list */}
           <div style={{ flexShrink: 0, padding: '14px 14px', borderBottom: '1px solid rgba(139, 160, 184, 0.12)' }}>
             <SectionTitle>Ontology Registry</SectionTitle>
-            <OntologyList ontologies={ontologies} loading={ontologiesLoading} />
+            {ontologiesError ? (
+              <div role="alert" style={{ color: '#b42318', fontSize: 12, padding: 8 }}>
+                {ontologiesError}
+                <button type="button" onClick={loadOntologies} style={{ marginLeft: 8 }}>Retry</button>
+              </div>
+            ) : (
+              <OntologyList ontologies={ontologies} loading={ontologiesLoading} />
+            )}
           </div>
 
           {/* Ontology breakdown */}
           <div style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto', padding: '14px' }}>
             <SectionTitle>Graph Profile</SectionTitle>
 
-            {metricsLoading ? (
-              <div style={{ color: '#888', fontSize: 12 }}>Loading metrics…</div>
+            {metricsError ? (
+              <div role="alert" style={{ color: '#b42318', fontSize: 12 }}>
+                {metricsError}
+                <button type="button" onClick={loadMetrics} style={{ marginLeft: 8 }}>Retry</button>
+              </div>
+            ) : metricsLoading ? (
+              <div style={{ color: '#888', fontSize: 12 }}>Loading metrics...</div>
             ) : (
               <>
                 {metrics?.ontology_breakdown?.length > 0 && (

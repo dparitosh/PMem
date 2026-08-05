@@ -31,9 +31,10 @@ from functools import lru_cache
 from dataclasses import dataclass
 from enum import Enum
 import atexit
+import threading
 
 from dotenv import load_dotenv
-from neo4j import GraphDatabase, Driver, Session
+from neo4j import GraphDatabase, Driver, Session, TrustAll, TrustCustomCAs, TrustSystemCAs
 import socket
 from urllib.parse import urlparse
 
@@ -68,6 +69,7 @@ class Neo4jConfig:
     
     # SSL/TLS
     encrypted: bool = True
+    tls_verify: bool = True
     trust_system_ca_signed_certificates: bool = True
     trust_custom_ca_signed_certificates: Optional[str] = None
     
@@ -192,8 +194,10 @@ def get_config() -> Neo4jConfig:
     # Optional: Custom SSL configuration
     custom_ca = os.getenv("NEO4J_CUSTOM_CA_PATH")
     
-    default_encrypted = deployment_type != Neo4jDeploymentType.ON_PREMISES
+    sandbox_mode = os.getenv("SANDBOX_MODE", "false").lower() == "true"
+    default_encrypted = False if sandbox_mode else deployment_type != Neo4jDeploymentType.ON_PREMISES
     encrypted_env = os.getenv("NEO4J_ENCRYPTED")
+    tls_verify_env = os.getenv("NEO4J_TLS_VERIFY")
 
     config = Neo4jConfig(
         uri=uri,
@@ -221,6 +225,11 @@ def get_config() -> Neo4jConfig:
             if encrypted_env is not None
             else default_encrypted
         ),
+        tls_verify=(
+            tls_verify_env.lower() == "true"
+            if tls_verify_env is not None
+            else not sandbox_mode
+        ),
         trust_system_ca_signed_certificates=os.getenv(
             "NEO4J_TRUST_SYSTEM_CA", "true"
         ).lower() == "true",
@@ -247,6 +256,7 @@ class Neo4jDriverPool:
     _config: Optional[Neo4jConfig] = None
     _last_connection_error_time: float = 0.0
     _RECONNECTION_COOLDOWN: float = 60.0  # seconds
+    _creation_lock = threading.Lock()
     
     def __new__(cls) -> "Neo4jDriverPool":
         """Singleton pattern"""
@@ -271,6 +281,16 @@ class Neo4jDriverPool:
         # Return existing driver if available
         if self._driver is not None:
             return self._driver
+
+        # Driver creation is lazy and can be reached concurrently by the first
+        # API requests. Only one thread should create and publish the singleton.
+        with self._creation_lock:
+            if self._driver is not None:
+                return self._driver
+            return self._create_driver()
+
+    def _create_driver(self) -> Driver:
+        """Create and verify the singleton driver while holding the creation lock."""
         
         # Allow override of cooldown via env for easier debugging
         try:
@@ -329,9 +349,14 @@ class Neo4jDriverPool:
                 # For on-premises (bolt:// or bolt+s://), add encryption settings
                 if config.encrypted or config.deployment_type == Neo4jDeploymentType.ENTERPRISE:
                     driver_kwargs['encrypted'] = config.encrypted
-                    driver_kwargs['trust_system_ca_signed_certificates'] = config.trust_system_ca_signed_certificates
                     if config.trust_custom_ca_signed_certificates:
-                        driver_kwargs['custom_trust'] = config.trust_custom_ca_signed_certificates
+                        driver_kwargs['trusted_certificates'] = TrustCustomCAs(
+                            config.trust_custom_ca_signed_certificates
+                        )
+                    elif not config.tls_verify:
+                        driver_kwargs['trusted_certificates'] = TrustAll()
+                    elif config.trust_system_ca_signed_certificates:
+                        driver_kwargs['trusted_certificates'] = TrustSystemCAs()
             
             # Create driver with appropriate settings
             # Defensive: ensure unsupported keys are not passed to the neo4j driver.
@@ -366,7 +391,6 @@ class Neo4jDriverPool:
                 self._driver = GraphDatabase.driver(
                     config.uri,
                     auth=(config.username, config.password),
-                    database=config.database,
                     **driver_kwargs,
                 )
             except Exception as create_exc:
@@ -388,7 +412,6 @@ class Neo4jDriverPool:
                             self._driver = GraphDatabase.driver(
                                 config.uri,
                                 auth=(config.username, config.password),
-                                database=config.database,
                                 **driver_kwargs,
                             )
                         else:
@@ -527,7 +550,7 @@ class Neo4jConnection:
     def __enter__(self) -> Session:
         """Enter context - create session"""
         driver = get_driver()
-        self.session = driver.session(database=self.database or "neo4j")
+        self.session = driver.session(database=self.database or get_config().database)
         return self.session
     
     def __exit__(self, _exc_type, _exc_val, _exc_tb) -> None:

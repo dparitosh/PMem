@@ -16,6 +16,7 @@ In-process cache: _owl_storage[task_id] = ttl_str  (single-worker safe).
 """
 
 import logging
+import os
 import xml.etree.ElementTree as ET
 import tempfile
 from pathlib import Path
@@ -29,8 +30,9 @@ try:
 except Exception:  # pragma: no cover - optional dependency or import path issue
     OwlreadyOntologyRuntime = None
 
-# In-process TTL cache (safe only with --workers 1 / single uvicorn process)
+# In-process TTL cache is opt-in because it is not shared between workers.
 _owl_storage: Dict[str, str] = {}
+_MEMORY_CACHE_ENABLED = os.getenv("OWL_MEMORY_CACHE_ENABLED", "false").lower() == "true"
 
 # Disk-backed TTL cache — survives process restarts (uvicorn --reload, crashes).
 # Written alongside the in-memory cache so TTL is available after a hot reload.
@@ -422,7 +424,8 @@ class OWLGenerationService:
     @staticmethod
     def store_owl(task_id: str, ttl: str) -> None:
         """Store generated TTL in memory cache and persist to disk."""
-        _owl_storage[task_id] = ttl
+        if _MEMORY_CACHE_ENABLED:
+            _owl_storage[task_id] = ttl
         try:
             _TTL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
             _ttl_path(task_id).write_text(ttl, encoding="utf-8")
@@ -437,14 +440,15 @@ class OWLGenerationService:
     @staticmethod
     def retrieve_owl(task_id: str) -> Optional[str]:
         """Retrieve cached TTL from memory, falling back to disk if not found."""
-        if task_id in _owl_storage:
+        if _MEMORY_CACHE_ENABLED and task_id in _owl_storage:
             return _owl_storage[task_id]
         # Disk fallback — survives process restart / hot reload
         disk = _ttl_path(task_id)
         if disk.exists():
             try:
                 ttl = disk.read_text(encoding="utf-8")
-                _owl_storage[task_id] = ttl  # repopulate in-memory cache
+                if _MEMORY_CACHE_ENABLED:
+                    _owl_storage[task_id] = ttl  # repopulate in-memory cache
                 return ttl
             except Exception as e:
                 logger.warning(f"TTL disk read failed for {task_id}: {e}")

@@ -44,3 +44,16 @@ describe('optional agentic service configuration', () => {
     expect(config.agenticServiceUrl).toBe('http://127.0.0.1:8012');
   });
 });
+
+test('normalizes a trailing slash from the configured backend URL', () => {
+  const original = process.env.REACT_APP_BACKEND_URL;
+  process.env.REACT_APP_BACKEND_URL = 'https://api.example.test/';
+  jest.resetModules();
+
+  const { config } = require('./config');
+  expect(config.backendUrl).toBe('https://api.example.test');
+
+  if (original === undefined) delete process.env.REACT_APP_BACKEND_URL;
+  else process.env.REACT_APP_BACKEND_URL = original;
+  jest.resetModules();
+});

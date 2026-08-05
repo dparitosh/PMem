@@ -4,6 +4,19 @@ from typing import Dict, List
 import os
 import time
 
+try:
+    from ..Services.runtime_state_store import (
+        clear_chat_messages,
+        load_chat_messages,
+        replace_chat_messages,
+    )
+except ImportError:
+    from Services.runtime_state_store import (
+        clear_chat_messages,
+        load_chat_messages,
+        replace_chat_messages,
+    )
+
 # A global in-memory session store
 chat_sessions: Dict[str, List[BaseMessage]] = {}
 chat_session_timestamps: Dict[str, float] = {}
@@ -50,7 +63,14 @@ class InMemorySessionHistory(BaseChatMessageHistory):
 
     def _load_session(self):
         _prune_sessions()
-        if self.session_id not in chat_sessions:
+        persisted = load_chat_messages(self.session_id, CHAT_SESSION_MESSAGE_LIMIT)
+        if persisted:
+            chat_sessions[self.session_id] = [
+                HumanMessage(content=item["content"]) if item.get("role") == "user"
+                else AIMessage(content=item["content"])
+                for item in persisted
+            ]
+        elif self.session_id not in chat_sessions:
             chat_sessions[self.session_id] = []
         _touch_session(self.session_id)
         self.messages = chat_sessions[self.session_id]
@@ -59,17 +79,20 @@ class InMemorySessionHistory(BaseChatMessageHistory):
         self.messages.append(HumanMessage(content=content))
         chat_sessions[self.session_id] = _trim_messages(self.messages)
         self.messages = chat_sessions[self.session_id]
+        replace_chat_messages(self.session_id, [{"role": "user" if isinstance(item, HumanMessage) else "assistant", "content": str(item.content)} for item in self.messages], CHAT_SESSION_MESSAGE_LIMIT)
         _touch_session(self.session_id)
 
     def add_ai_message(self, content: str) -> None:
         self.messages.append(AIMessage(content=content))
         chat_sessions[self.session_id] = _trim_messages(self.messages)
         self.messages = chat_sessions[self.session_id]
+        replace_chat_messages(self.session_id, [{"role": "user" if isinstance(item, HumanMessage) else "assistant", "content": str(item.content)} for item in self.messages], CHAT_SESSION_MESSAGE_LIMIT)
         _touch_session(self.session_id)
 
     def clear(self) -> None:
         chat_sessions[self.session_id] = []
         chat_session_timestamps.pop(self.session_id, None)
+        clear_chat_messages(self.session_id)
         self.messages = []
 
     def get_messages(self) -> List[BaseMessage]:

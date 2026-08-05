@@ -7,33 +7,9 @@ import {
   Info,
 } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
+import { UI_COLORS as C } from '../styles/uiTokens';
 
-// ============================================================
-// Corporate Design Tokens — TCS Blue / Infineon Brand System
-// ============================================================
-const C = {
-  primary:      '#004B87',
-  primaryDark:  '#003366',
-  primaryLight: '#E8F1FC',
-  primaryHover: '#0066CC',
-  orange:       '#FF6900',
-  orangeLight:  '#FFF5F0',
-  green:        '#28A745',
-  greenLight:   '#F0FFF4',
-  amber:        '#E6A817',
-  amberLight:   '#FFFBEB',
-  red:          '#C0392B',
-  redLight:     '#FEF2F2',
-  textPrimary:  '#1A2B3C',
-  textSec:      '#6C757D',
-  textMuted:    '#ADB5BD',
-  border:       '#E9ECEF',
-  borderDark:   '#CED4DA',
-  bg:           '#F8F9FA',
-  surface:      '#FFFFFF',
-};
-
-// ————— Layout primitives ——————————————————————————————
+// Shared UI configuration
 const CARD = {
   background: C.surface,
   borderRadius: '10px',
@@ -100,7 +76,7 @@ const COMPACT_ALERT = {
   gap: 8,
 };
 
-// ————— Shared UI components ———————————————————————————
+// Shared UI configuration
 const Badge = ({ color = C.primary, children }) => (
   <span style={{
     display: 'inline-block', padding: '2px 9px', borderRadius: '10px',
@@ -119,7 +95,7 @@ const ScoreBar = ({ score, max = 100 }) => {
         <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: '4px', transition: 'width .4s ease' }} />
       </div>
       <span style={{ fontSize: '12px', fontWeight: 700, color: barColor, minWidth: '100px', whiteSpace: 'nowrap' }}>
-        {score} — {label}
+        {score} Ã¢â‚¬â€ {label}
       </span>
     </div>
   );
@@ -134,7 +110,7 @@ const SimilarityBar = ({ score }) => (
   </div>
 );
 
-// ————— Icon + label section header —————————————————————
+// Shared UI configuration
 const SectionHeader = ({ icon: Icon, label, count, color = C.primary }) => (
   <div style={{
     fontSize: '12px', fontWeight: 700, color: C.textPrimary, marginBottom: '12px',
@@ -231,7 +207,7 @@ const normalizeRecommendationResult = (service, payload) => {
 };
 
 // ============================================================
-// Result sub-tab bar — reused across all three result components
+// Shared UI configuration
 // ============================================================
 const ResultTabBar = ({ tabs, active, onChange }) => (
   <div style={{
@@ -269,7 +245,7 @@ const ResultTabBar = ({ tabs, active, onChange }) => (
 );
 
 // ============================================================
-// Welcome / Scenario Panel — shown when no service is selected
+// Shared UI configuration
 // ============================================================
 const ScenarioPanel = ({ onSelect, health }) => {
   const scenarios = [
@@ -291,7 +267,7 @@ const ScenarioPanel = ({ onSelect, health }) => {
       lightColor: C.primaryLight,
       title: 'Similar Parts',
       tagline: 'Find reuse candidates with structural and semantic similarity.',
-      scenario: `A procurement lead is evaluating whether to source a new Rotor Shaft variant or reuse an existing part from another product line. The AI surfaces structurally and semantically similar parts by comparing assembly co-occurrence, type, RFLP layer, and traceability links — you review and decide.`,
+      scenario: `A procurement lead is evaluating whether to source a new Rotor Shaft variant or reuse an existing part from another product line. The AI surfaces structurally and semantically similar parts by comparing assembly co-occurrence, type, RFLP layer, and traceability links Ã¢â‚¬â€ you review and decide.`,
       tryWith: 'Rotor Shaft Machined',
       tryLabel: 'Use sample',
     },
@@ -412,7 +388,7 @@ const ScenarioPanel = ({ onSelect, health }) => {
 };
 
 // ============================================================
-// AI Insight Banner — human-in-loop guidance after results
+// Shared UI configuration
 // Alternate layout: stacked block, metric chips, no flex cramping
 // ============================================================
 const MetricChip = ({ value, label, color }) => (
@@ -467,7 +443,7 @@ const AIInsightBanner = ({ service, data }) => {
     const rel    = data.process_summary?.total_related   || 0;
     insight = {
       color: C.green, bg: C.greenLight, Icon: Info,
-      headline: `Process landscape mapped — ${direct + inst + rel} total process${(direct + inst + rel) !== 1 ? 'es' : ''} identified`,
+      headline: `Process landscape mapped Ã¢â‚¬â€ ${direct + inst + rel} total process${(direct + inst + rel) !== 1 ? 'es' : ''} identified`,
       chips: [
         { value: direct, label: 'Direct' },
         { value: inst,   label: 'Instances' },
@@ -499,7 +475,7 @@ const AIInsightBanner = ({ service, data }) => {
       width: '100%',
       boxSizing: 'border-box',
     }}>
-      {/* Headline row — inline layout avoids flex shrink bug */}
+      {/* Headline row Ã¢â‚¬â€ inline layout avoids flex shrink bug */}
       <div style={{ marginBottom: '14px', lineHeight: 1.5 }}>
         <Icon
           size={15}
@@ -634,7 +610,7 @@ const RecommendationsTab = () => {
     <div style={{ padding: '20px', minHeight: '100%', overflowX: 'hidden', background: C.bg, boxSizing: 'border-box' }}>
       <style>{`@keyframes rec-spin { to { transform: rotate(360deg); } }`}</style>
 
-      {/* Persistent service sub-tab bar — always visible */}
+      {/* Persistent service sub-tab bar Ã¢â‚¬â€ always visible */}
       <div style={{
         display: 'flex', gap: '0', marginBottom: '16px',
         borderBottom: `2px solid ${C.border}`, alignItems: 'flex-end',
@@ -697,7 +673,7 @@ const RecommendationsTab = () => {
         </div>
       </div>
 
-      {/* Welcome scenario panel — shown when no service chosen */}
+      {/* Welcome scenario panel Ã¢â‚¬â€ shown when no service chosen */}
       {!activeService && <ScenarioPanel onSelect={handleSelect} health={health} />}
 
       {/* Input area */}
@@ -819,7 +795,7 @@ const ChangeImpactResult = ({ data }) => {
 
   return (
     <div>
-      {/* Header — always visible */}
+      {/* Header Ã¢â‚¬â€ always visible */}
       <div style={CARD}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>
           <div>
@@ -855,9 +831,9 @@ const ChangeImpactResult = ({ data }) => {
                 {data.impacted_parts.map((p, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
                     <td style={TD}><span style={{ fontWeight: 700, color: C.primary }}>{p.name}</span></td>
-                    <td style={TD}><Badge color={C.primaryHover}>{p.source_tag || '—'}</Badge></td>
-                    <td style={TD}><span style={{ fontWeight: 600, color: C.orange }}>{p.relation_type || '—'}</span></td>
-                    <td style={TD}>{p.class_name || '—'}</td>
+                    <td style={TD}><Badge color={C.primaryHover}>{p.source_tag || 'Ã¢â‚¬â€'}</Badge></td>
+                    <td style={TD}><span style={{ fontWeight: 600, color: C.orange }}>{p.relation_type || 'Ã¢â‚¬â€'}</span></td>
+                    <td style={TD}>{p.class_name || 'Ã¢â‚¬â€'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -878,7 +854,7 @@ const ChangeImpactResult = ({ data }) => {
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
                     <td style={TD}><span style={{ fontWeight: 700, color: C.primary }}>{a.assembly_name}</span></td>
                     <td style={TD}><span style={{ fontWeight: 600, color: C.textSec }}>{a.depth}</span></td>
-                    <td style={TD}>{a.from_part || '—'}</td>
+                    <td style={TD}>{a.from_part || 'Ã¢â‚¬â€'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -898,8 +874,8 @@ const ChangeImpactResult = ({ data }) => {
                 {data.impacted_requirements.map((r, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
                     <td style={TD}><span style={{ fontWeight: 700, color: C.amber }}>{r.name}</span></td>
-                    <td style={TD}><Badge color={C.amber}>{r.catalogue_id || '—'}</Badge></td>
-                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{r.linked_part || '—'}</span></td>
+                    <td style={TD}><Badge color={C.amber}>{r.catalogue_id || 'Ã¢â‚¬â€'}</Badge></td>
+                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{r.linked_part || 'Ã¢â‚¬â€'}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -919,8 +895,8 @@ const ChangeImpactResult = ({ data }) => {
                 {data.process_impacts.map((p, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
                     <td style={TD}><span style={{ fontWeight: 700, color: C.green }}>{p.name}</span></td>
-                    <td style={TD}><Badge color={C.green}>{p.source_tag || '—'}</Badge></td>
-                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{p.from_part || '—'}</span></td>
+                    <td style={TD}><Badge color={C.green}>{p.source_tag || 'Ã¢â‚¬â€'}</Badge></td>
+                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{p.from_part || 'Ã¢â‚¬â€'}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -940,8 +916,8 @@ const ChangeImpactResult = ({ data }) => {
                 {data.realization_chain.map((r, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
                     <td style={TD}><span style={{ fontWeight: 700, color: C.primary }}>{r.name}</span></td>
-                    <td style={TD}><Badge color={C.orange}>{r.link_type || '—'}</Badge></td>
-                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{r.from_part || '—'}</span></td>
+                    <td style={TD}><Badge color={C.orange}>{r.link_type || 'Ã¢â‚¬â€'}</Badge></td>
+                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{r.from_part || 'Ã¢â‚¬â€'}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -970,7 +946,7 @@ const SimilarPartsResult = ({ data }) => {
 
   return (
     <div>
-      {/* Header — always visible */}
+      {/* Header Ã¢â‚¬â€ always visible */}
       <div style={CARD}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
           <Search size={17} color={C.primary} strokeWidth={2.5} />
@@ -1068,7 +1044,7 @@ const ManufacturingResult = ({ data }) => {
 
   return (
     <div>
-      {/* Header — always visible */}
+      {/* Header Ã¢â‚¬â€ always visible */}
       <div style={CARD}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>
           <div>
@@ -1112,8 +1088,8 @@ const ManufacturingResult = ({ data }) => {
                 {data.direct_processes.map((p, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
                     <td style={TD}><span style={{ fontWeight: 700, color: C.green }}>{p.process_name}</span></td>
-                    <td style={TD}><Badge color={C.green}>{p.source_tag || '—'}</Badge></td>
-                    <td style={TD}><span style={{ color: C.textSec, fontSize: '12px' }}>{p.file_name || '—'}</span></td>
+                    <td style={TD}><Badge color={C.green}>{p.source_tag || 'Ã¢â‚¬â€'}</Badge></td>
+                    <td style={TD}><span style={{ color: C.textSec, fontSize: '12px' }}>{p.file_name || 'Ã¢â‚¬â€'}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -1133,8 +1109,8 @@ const ManufacturingResult = ({ data }) => {
                 {data.process_instances.map((p, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
                     <td style={TD}><span style={{ fontWeight: 700, color: C.orange }}>{p.name}</span></td>
-                    <td style={TD}><Badge color={C.orange}>{p.source_tag || '—'}</Badge></td>
-                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{p.references_instance || '—'}</span></td>
+                    <td style={TD}><Badge color={C.orange}>{p.source_tag || 'Ã¢â‚¬â€'}</Badge></td>
+                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{p.references_instance || 'Ã¢â‚¬â€'}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -1154,8 +1130,8 @@ const ManufacturingResult = ({ data }) => {
                 {data.related_part_processes.map((p, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
                     <td style={TD}><span style={{ fontWeight: 700, color: C.amber }}>{p.process_name}</span></td>
-                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{p.part_name || '—'}</span></td>
-                    <td style={TD}><Badge color={C.amber}>{p.relation || '—'}</Badge></td>
+                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{p.part_name || 'Ã¢â‚¬â€'}</span></td>
+                    <td style={TD}><Badge color={C.amber}>{p.relation || 'Ã¢â‚¬â€'}</Badge></td>
                   </tr>
                 ))}
               </tbody>
@@ -1187,7 +1163,7 @@ const ManufacturingResult = ({ data }) => {
 };
 
 // ============================================================
-// Radial Impact Graph (D3) — concentric rings around change entity
+// Shared UI configuration
 // ============================================================
 const RING_COLORS = [C.red, C.orange, C.amber, C.primary, C.green];
 
@@ -1296,12 +1272,12 @@ const RadialImpactGraph = ({ data }) => {
             .attr('text-anchor', 'middle')
             .attr('font-size', 9)
             .attr('fill', C.textPrimary)
-            .text(name.length > 20 ? name.slice(0, 18) + '…' : name);
+            .text(name.length > 20 ? name.slice(0, 18) + 'Ã¢â‚¬Â¦' : name);
         }
       });
     });
 
-    // Center node — "CR" label (Change Request)
+    // Shared UI configuration
     g.append('circle').attr('r', 20).attr('fill', C.orange).attr('stroke', '#fff').attr('stroke-width', 2);
     g.append('text').attr('text-anchor', 'middle').attr('dy', 4)
       .attr('font-size', 9).attr('fill', '#fff').attr('font-weight', 700).text('CR');
@@ -1349,7 +1325,7 @@ const RadialImpactGraph = ({ data }) => {
 };
 
 // ============================================================
-// Process Flow Timeline (D3) — grouped by process type
+// Shared UI configuration
 // ============================================================
 const FLOW_COLORS = { direct: C.primary, instance: C.orange, related: C.amber };
 
@@ -1417,7 +1393,7 @@ const ProcessFlowTimeline = ({ data }) => {
         g.append('text')
           .attr('x', leftPad + 18).attr('y', iy + itemH / 2 + 4)
           .attr('font-size', 11).attr('fill', C.textPrimary)
-          .text(item.name?.length > 45 ? item.name.slice(0, 43) + '…' : item.name);
+          .text(item.name?.length > 45 ? item.name.slice(0, 43) + 'Ã¢â‚¬Â¦' : item.name);
         // Tag badge
         if (item.tag) {
           const tagX = leftPad + Math.min(width - leftPad - 40, 400) - 5;
@@ -1462,7 +1438,7 @@ const ProcessFlowTimeline = ({ data }) => {
   );
 };
 
-// 🔒 MEDIUM PRIORITY: Memoize component to prevent unnecessary re-renders
+// Shared UI configuration
 export default React.memo(RecommendationsTab, (prevProps, nextProps) => {
   // Only re-render if selectedNode or key data changes
   return (

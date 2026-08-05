@@ -2,6 +2,8 @@
 3DXML API routes aligned with the shared ontology upload and registry flow.
 """
 
+import os
+
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from typing import List, Optional
@@ -14,6 +16,18 @@ from ..Services.threedxml_import_service import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ontology", tags=["3DXML Extraction"])
+MAX_3DXML_FILE_SIZE = int(os.getenv("MAX_3DXML_FILE_SIZE", str(500 * 1024 * 1024)))
+
+
+async def _read_upload_with_limit(file: UploadFile, max_bytes: int) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(1024 * 1024):
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(status_code=413, detail="3DXML file exceeds the configured size limit")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 class ExtractionResponse(BaseModel):
@@ -50,7 +64,7 @@ async def extract_3dxml_ontology(
 ):
     """Upload a 3DXML file, register it in the ontology catalog, and optionally push it to Neo4j."""
     try:
-        file_content = await file.read()
+        file_content = await _read_upload_with_limit(file, MAX_3DXML_FILE_SIZE)
         result = ThreeDXMLImportService.register_upload(
             filename=file.filename or "",
             file_content=file_content,
@@ -84,7 +98,7 @@ async def extract_3dxml_ontology(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.error("3DXML extraction failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"3DXML extraction failed: {exc}") from exc
+        raise HTTPException(status_code=500, detail="3DXML extraction failed") from exc
 
 
 @router.get("/3dxml/status/{task_id}", response_model=ExtractionStatus)

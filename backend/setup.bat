@@ -34,9 +34,30 @@ if "%DO_BACKEND%"=="1" (
     echo ============================================================
     echo.
 
-    echo [0/3] Skipping Python version check - ensure Python 3.8+ is installed and on PATH
+    where python >nul 2>&1
+    if errorlevel 1 (
+        echo ERROR: Python 3.12+ is required but was not found on PATH.
+        echo INFO: Install Python and rerun setup.bat --backend.
+        exit /b 1
+    )
+    python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)" >nul 2>&1
+    if errorlevel 1 (
+        echo ERROR: Python 3.12+ is required.
+        exit /b 1
+    )
+    echo [0/3] Python runtime check passed.
 
-    if not exist "%ROOT%.dt_venv\Scripts\activate.bat" (
+    set "VENV_OK=0"
+    if exist "%ROOT%.dt_venv\Scripts\python.exe" (
+        "%ROOT%.dt_venv\Scripts\python.exe" -c "import sys; print(sys.executable)" >nul 2>&1
+        if not errorlevel 1 set "VENV_OK=1"
+    )
+
+    if "%VENV_OK%"=="0" (
+        if exist "%ROOT%.dt_venv" (
+            echo [INFO] Existing .dt_venv is stale or invalid. Preserving it as a backup ...
+            ren "%ROOT%.dt_venv" ".dt_venv.broken-%RANDOM%"
+        )
         echo [1/3] Creating Python virtual environment .dt_venv ...
         python -m venv "%ROOT%.dt_venv"
         if errorlevel 1 (

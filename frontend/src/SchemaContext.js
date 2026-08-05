@@ -15,7 +15,16 @@ export function SchemaProvider({ children }) {
 
   useEffect(() => {
     let cancelled = false;
-    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const controller = new AbortController();
+    const wait = (ms) => new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, ms);
+      controller.signal.addEventListener('abort', () => {
+        clearTimeout(timer);
+        const error = new Error('Request cancelled');
+        error.name = 'AbortError';
+        reject(error);
+      }, { once: true });
+    });
 
     const shouldRetry = (err) => {
       const code = String(err?.code || '').toUpperCase();
@@ -34,7 +43,7 @@ export function SchemaProvider({ children }) {
       try {
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
           try {
-            const res = await apiClient.get(buildUrl(API.schema.schema), { timeout: 300000 });
+            const res = await apiClient.get(buildUrl(API.schema.schema), { timeout: 300000, signal: controller.signal });
             if (!cancelled) setSchema(res.data);
             return;
           } catch (err) {
@@ -45,13 +54,14 @@ export function SchemaProvider({ children }) {
           }
         }
       } catch (err) {
+        if (controller.signal.aborted || err?.name === 'AbortError' || err?.code === 'ERR_CANCELED') return;
         logger.warn('Failed to fetch graph schema:', err.message);
       } finally {
         if (!cancelled) setSchemaLoading(false);
       }
     };
     fetchSchema();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, []);
 
   /**

@@ -1,5 +1,5 @@
 import React from 'react';
-import { widgetCardStyle, widgetColors } from './widgetStyles';
+import { widgetCardStyle } from './widgetStyles';
 
 export default function GraphWidget({ title = 'Graph Explorer', subtitle, children, minHeight = 520 }) {
   return (

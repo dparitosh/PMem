@@ -123,6 +123,21 @@ def _collect_properties(element: Any, property_definitions: Dict[str, Dict[str, 
     return properties
 
 
+def _collect_xml_attributes(element: Any, excluded: set[str]) -> Dict[str, str]:
+    """Preserve vendor and relationship attributes without duplicating core IDs."""
+    properties: Dict[str, str] = {}
+    excluded_names = {name.lower() for name in excluded}
+    for key, value in (element.attrib or {}).items():
+        local_key = _local_name(key)
+        if local_key.lower() in excluded_names or not str(value).strip():
+            continue
+        snake_key = re.sub(r"(?<!^)(?=[A-Z])", "_", local_key)
+        safe_key = re.sub(r"[^A-Za-z0-9_]+", "_", snake_key).strip("_").lower()
+        if safe_key:
+            properties[safe_key] = str(value).strip()
+    return properties
+
+
 
 def _folder_name(element: Any, fallback: str) -> str:
     return _first_child_text(element, "name") or _attr(element, "name") or fallback
@@ -164,7 +179,7 @@ def _is_archimate_relationship_type(value: str) -> bool:
     return type_name.endswith("relationship") or type_name in {
         "access", "aggregation", "assignment", "association", "composition",
         "flow", "influence", "realization", "serving", "specialization",
-        "triggering", "junction",
+        "triggering",
     }
 
 
@@ -176,9 +191,9 @@ def _is_archimate_view_type(value: str) -> bool:
 def looks_like_archimate_xml(file_content: bytes) -> bool:
     head = (file_content or b"")[:16384].decode("utf-8", errors="ignore").lower()
     normalized_head = head.replace("opengroup.org//xsd", "opengroup.org/xsd")
+    has_model_root = bool(re.search(r"<\s*(?:[a-z_][\w.-]*:)?model(?:\s|>)", head))
     return any(hint in normalized_head for hint in ARCHIMATE_NAMESPACE_HINTS) and (
-        "<model" in head
-        or "<archimate:model" in head
+        has_model_root
         or "<elements" in head
         or "<relationships" in head
         or "archimatetool.com/archimate" in head
@@ -344,6 +359,7 @@ def parse_archimate_model_exchange(file_content: bytes) -> Tuple[List[Dict[str, 
             "source_ontology": namespace or "ArchiMate Model Exchange",
             "model_identifier": model_metadata.get("model_identifier", ""),
             "model_name": model_metadata.get("model_name", "") or _attr(root, "name"),
+            **_collect_xml_attributes(element, {"identifier", "id", "name", "type"}),
             **_collect_properties(element, property_definitions),
         }
         rows.append(row)
@@ -376,6 +392,7 @@ def parse_archimate_model_exchange(file_content: bytes) -> Tuple[List[Dict[str, 
                 "source_format": ARCHIMATE_PREFIX,
                 "ontology_prefix": ARCHIMATE_PREFIX,
                 "source_ontology": namespace or "ArchiMate Model Exchange",
+                **_collect_xml_attributes(relationship, {"identifier", "id", "source", "target", "type", "name"}),
                 **_collect_properties(relationship, property_definitions),
             },
         })

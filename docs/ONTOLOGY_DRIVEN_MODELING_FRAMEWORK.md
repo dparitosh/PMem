@@ -8,7 +8,7 @@ This application now separates modeling concerns into reusable layers instead of
 - Diagram engine: `frontend/src/diagram/engine/diagramEngine.js`
 - Diagram registry: `frontend/src/diagram/registry/diagramRegistry.js`
 - Layouts/rendering adapters: `frontend/src/diagram/layouts`, `frontend/src/adapters/reactFlowAdapter.js`
-- Semantic mapping: `frontend/src/config/semanticMappings`
+- Semantic mapping is supplied by the modeling API and consumed by the active workbench.
 - Ontology-independent validation: `frontend/src/validation/diagramValidation.js`
 - Neo4j persistence: `backend/Services/modeling_service.py`
 - Agentic AI proposals/audit: `backend/Services/agentic_modeling_service.py`
@@ -40,7 +40,7 @@ export const myDiagramType = {
 ```
 
 2. Register it by adding it to `diagramTypeConfigs`.
-3. Add semantic class/property mappings in `frontend/src/config/semanticMappings/index.js`.
+3. Add semantic class/property mappings to the modeling API contract.
 4. Use existing backend CRUD APIs; do not add React hardcoding for the new profile.
 
 ## Backend APIs

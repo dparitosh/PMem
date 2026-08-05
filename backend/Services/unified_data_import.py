@@ -323,6 +323,7 @@ class FileFormatDetector:
         )
 
         stats = {
+            'success': True,
             "row_count": len(preview_rows),
             "column_count": len(columns),
             "columns": list(columns),
@@ -2460,6 +2461,10 @@ class Neo4jImporter:
             except Exception as e:
                 logger.error(f"Query execution error: {str(e)}", exc_info=True)
                 stats['errors'].append(str(e))
+                stats['success'] = False
+                # Later statements often depend on earlier nodes/indexes. Stop
+                # instead of reporting a misleading partially-successful commit.
+                break
 
         return stats
 

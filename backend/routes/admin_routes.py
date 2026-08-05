@@ -3,7 +3,8 @@ Admin Routes - Schema Management
 Provides endpoints for database cleaning and schema operations
 """
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+import hmac
 from pydantic import BaseModel
 import logging
 import json
@@ -20,6 +21,16 @@ except ImportError:
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin"])
 CLEAN_SCHEMA_CONFIRM_TOKEN = "CLEAN_NEO4J_SCHEMA"
+
+
+async def require_admin_api_key(request: Request) -> None:
+    """Require an explicitly configured key for destructive admin actions."""
+    expected = os.getenv("ADMIN_API_KEY", "").strip()
+    if not expected:
+        raise HTTPException(status_code=503, detail="Admin API key is not configured")
+    supplied = request.headers.get("X-API-Key", "")
+    if not hmac.compare_digest(supplied, expected):
+        raise HTTPException(status_code=401, detail="Invalid or missing admin API key")
 
 
 class CleanSchemaRequest(BaseModel):
@@ -540,7 +551,7 @@ except Exception as e:
         Neo4jSchemaCleaner = None
 
 
-@router.post("/clean-schema")
+@router.post("/clean-schema", dependencies=[Depends(require_admin_api_key)])
 async def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
     """
     Clean Neo4j database: delete all nodes, relationships, AND ontology metadata
@@ -605,10 +616,10 @@ async def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
         raise
     except Exception as e:
         logger.exception("Failed to clean schema")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to clean the Neo4j schema") from e
 
 
-@router.post("/delete-data")
+@router.post("/delete-data", dependencies=[Depends(require_admin_api_key)])
 async def delete_data_by_label(body: DeleteDataRequest):
     """
     Delete large Neo4j node sets in batches.
@@ -688,7 +699,7 @@ async def delete_data_by_label(body: DeleteDataRequest):
         raise
     except Exception as e:
         logger.exception("Failed to delete Neo4j data")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to delete Neo4j data") from e
     finally:
         if cleaner is not None:
             cleaner.close()
@@ -746,7 +757,7 @@ async def get_schema_stats():
                 ),
             }
         logger.exception("Failed to get schema stats")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to retrieve schema statistics") from e
 
 
 @router.get("/ontology-duplicate-audit")
@@ -809,10 +820,10 @@ async def ontology_duplicate_audit(limit: int = 100):
         }
     except Exception as e:
         logger.exception("Failed to audit ontology duplicates")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to audit ontology duplicates") from e
 
 
-@router.post("/reset-database")
+@router.post("/reset-database", dependencies=[Depends(require_admin_api_key)])
 async def reset_database(recreate_indexes: bool = True):
     """
     Complete database reset with optional index recreation
@@ -841,10 +852,10 @@ async def reset_database(recreate_indexes: bool = True):
         raise
     except Exception as e:
         logger.exception("Failed to reset database")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to reset the Neo4j database") from e
 
 
-@router.post("/clear-cache")
+@router.post("/clear-cache", dependencies=[Depends(require_admin_api_key)])
 async def clear_cache():
     """
     Clear non-destructive application caches used by admin and graph views.

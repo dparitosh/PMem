@@ -9,31 +9,16 @@ import {
   ontologyDisplayName,
   ontologyTermId,
 } from '../utils/ontologyPresentation';
+import { UI_COLORS as C, UI_STATUS_COLORS } from '../styles/uiTokens';
 
-// ── Design tokens (corporate palette) ─────────────────────────────────────────
-const C = {
-  primary:      '#004B87',
-  primaryDark:  '#003366',
-  primaryLight: '#E8F1FC',
-  green:        '#28A745',
-  red:          '#D32F2F',
-  textPrimary:  '#1A2B3C',
-  textSec:      '#6C757D',
-  textMuted:    '#ADB5BD',
-  border:       '#E9ECEF',
-  borderDark:   '#CED4DA',
-  bg:           '#F8F9FA',
-  surface:      '#FFFFFF',
-};
-
-// Relation type → badge color
+// Shared UI configuration
 const REL_COLORS = {
-  equivalentClass: { bg: '#D4EDDA', text: '#155724', border: '#C3E6CB' },
-  exactMatch:      { bg: '#D4EDDA', text: '#155724', border: '#C3E6CB' },
-  closeMatch:      { bg: '#FFF3CD', text: '#856404', border: '#FFEEBA' },
-  predicate:       { bg: '#D1ECF1', text: '#0C5460', border: '#BEE5EB' },
-  label:           { bg: '#E2D9F3', text: '#4A1C7C', border: '#D1C4E9' },
-  mapsTo:          { bg: '#CCE5FF', text: '#004085', border: '#B8DAFF' },
+  equivalentClass: UI_STATUS_COLORS.success,
+  exactMatch: UI_STATUS_COLORS.success,
+  closeMatch: UI_STATUS_COLORS.warn,
+  predicate: UI_STATUS_COLORS.info,
+  label: UI_STATUS_COLORS.violet,
+  mapsTo: UI_STATUS_COLORS.accent,
 };
 
 const SOURCE_FORMATS = [
@@ -51,7 +36,7 @@ const TAXONOMY_MAX_ROOTS = 18;
 const TAXONOMY_MAX_CHILDREN = 12;
 const TAXONOMY_MAX_DEPTH = 3;
 const TAXONOMY_MAX_RENDERED_NODES = 220;
-// ── CSV export ─────────────────────────────────────────────────────────────────
+// Shared UI configuration
 function exportCSV(rows, headers, filename) {
   const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [headers.join(','), ...rows.map(r => headers.map(h => esc(r[h])).join(','))];
@@ -196,7 +181,7 @@ export function RequirementsWorkbench({ filter = "", onNavigate }) {
   );
 }
 
-// ── Shared table style helpers ─────────────────────────────────────────────────
+// Shared UI configuration
 const TH = (extra = {}) => ({
   padding: '9px 14px',
   background: C.primary,
@@ -222,7 +207,7 @@ const TD = (extra = {}) => ({
   ...extra,
 });
 
-// ── RelBadge ───────────────────────────────────────────────────────────────────
+// Shared UI configuration
 function RelBadge({ type }) {
   const s = REL_COLORS[type] || { bg: C.bg, text: C.textSec, border: C.border };
   return (
@@ -234,7 +219,7 @@ function RelBadge({ type }) {
   );
 }
 
-// ── Vocabulary / Mappings table ────────────────────────────────────────────────
+// Shared UI configuration
 function VocabularyTable({ edges, filter }) {
   const [selectedRow, setSelectedRow] = useState(null);
   const lc = filter.toLowerCase();
@@ -334,7 +319,7 @@ function VocabularyTable({ edges, filter }) {
                           </div>
                           <div style={{ textAlign: 'center', paddingTop: '10px' }}>
                             <RelBadge type={e.mapping_type} />
-                            <div style={{ fontSize: '18px', color: C.textMuted, marginTop: '4px' }}>→</div>
+                            <div style={{ fontSize: '18px', color: C.textMuted, marginTop: '4px' }}>Ã¢â€ â€™</div>
                           </div>
                           <div>
                             <div style={{ fontSize: '11px', fontWeight: 700, color: C.textSec, textTransform: 'uppercase', marginBottom: '4px' }}>Target</div>
@@ -614,7 +599,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
           <div style={{ padding: '9px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
             <span style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary }}>Owlready2 Semantics</span>
             <span style={{ fontSize: '10px', fontWeight: 700, color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
-              {reasoning.summary?.classes || 0} classes · {reasoning.summary?.subclass_edges || 0} subclass links
+              {reasoning.summary?.classes || 0} classes Ã‚Â· {reasoning.summary?.subclass_edges || 0} subclass links
             </span>
           </div>
           <div style={{ padding: '10px 12px', display: 'grid', gap: '10px' }}>
@@ -635,7 +620,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
                   <div key={prop.iri} style={{ fontSize: '12px', color: C.textPrimary, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '6px', padding: '6px 8px' }}>
                     <strong>{prop.label}</strong>
                     <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
-                      Domain: {(prop.domain || []).map((d) => d.label).join(', ') || 'None'} · Range: {(prop.range || []).map((r) => r.label).join(', ') || 'None'}
+                      Domain: {(prop.domain || []).map((d) => d.label).join(', ') || 'None'} Ã‚Â· Range: {(prop.range || []).map((r) => r.label).join(', ') || 'None'}
                     </div>
                   </div>
                 ))}
@@ -1498,7 +1483,7 @@ function normalizeBridgeMappingRow(row = {}) {
   };
 }
 
-// ── Main component ─────────────────────────────────────────────────────────────
+// Shared UI configuration
 export default function OntologyMapper() {
   const [data, setData] = useState({ nodes: [], edges: [] });
   const [mappingEdges, setMappingEdges] = useState([]);
@@ -2547,7 +2532,7 @@ export default function OntologyMapper() {
         <div style={{ display: 'grid', gap: '6px', justifySelf: 'end', width: '100%', maxWidth: 460 }}>
           {mappingOptionsError && (
             <div style={{ color: C.red, fontSize: '12px', padding: '8px 12px', background: '#FFE5E5', border: `1px solid ${C.red}`, borderRadius: '6px' }}>
-              ⚠️ {mappingOptionsError}
+              Ã¢Å¡Â Ã¯Â¸Â {mappingOptionsError}
             </div>
           )}
 
@@ -2562,7 +2547,7 @@ export default function OntologyMapper() {
                 disabled={mappingOptions.length === 0}
                 style={{ minWidth: '320px', padding: '6px 10px', background: C.surface, border: `1px solid ${mappingOptionsError ? C.red : C.borderDark}`, color: C.textPrimary, borderRadius: '5px', fontWeight: 600, fontSize: '12px', cursor: mappingOptions.length === 0 ? 'not-allowed' : 'pointer', opacity: mappingOptions.length === 0 ? 0.6 : 1 }}
               >
-                <option value="">{mappingOptions.length === 0 ? '— No ontologies loaded —' : '— Select ontology —'}</option>
+                <option value="">{mappingOptions.length === 0 ? 'Ã¢â‚¬â€ No ontologies loaded Ã¢â‚¬â€' : 'Ã¢â‚¬â€ Select ontology Ã¢â‚¬â€'}</option>
                 {Array.from(new Map(mappingOptions.map(o => [o.prefix, o])).values()).map((o, idx) => (
                   <option key={o.value || `mapping-${idx}`} value={o.value}>
                     {o.label}{o.usageCount ? ` (used ${o.usageCount}x)` : ''}
@@ -2587,7 +2572,7 @@ export default function OntologyMapper() {
             </div>
             {stats && (
               <div style={{ fontSize: '11px', color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '20px', padding: '4px 10px' }}>
-                {stats.total_terms} terms · {stats.total_vocabulary_mappings} mapping edges
+                {stats.total_terms} terms Ã‚Â· {stats.total_vocabulary_mappings} mapping edges
               </div>
             )}
           </>
@@ -2597,7 +2582,7 @@ export default function OntologyMapper() {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textSec }}>
           <div style={{ width: 32, height: 32, border: `3px solid ${C.border}`, borderTop: `3px solid ${C.primary}`, borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
-          Loading ontology data…
+          Loading ontology dataÃ¢â‚¬Â¦
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       ) : error ? (
@@ -2644,7 +2629,7 @@ export default function OntologyMapper() {
               />
               {filter && (
                 <button onClick={() => setFilter('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, padding: 0, display: 'flex', alignItems: 'center', fontSize: '12px' }}>
-                  ✕
+                  Ã¢Å“â€¢
                 </button>
               )}
             </div>
@@ -2862,7 +2847,7 @@ export default function OntologyMapper() {
             <ErrorBoundary>
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '16px', minHeight: '400px' }}>
 
-              {/* ── Link Instance to Ontology ─────────────────────────────── */}
+              {/* Ã¢â€â‚¬Ã¢â€â‚¬ Link Instance to Ontology Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
               <div style={{ marginBottom: '20px', border: `2px solid ${C.primary}`, borderRadius: '8px', padding: '16px', background: C.primaryLight }}>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>Instance-to-ontology bridge</div>
                 <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '14px', lineHeight: 1.45 }}>
@@ -2919,7 +2904,7 @@ export default function OntologyMapper() {
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {mapBusy ? 'Working…' : 'Preview bridge suggestions'}
+                      {mapBusy ? 'WorkingÃ¢â‚¬Â¦' : 'Preview bridge suggestions'}
                     </button>
                   </div>
                 </div>
@@ -2963,7 +2948,7 @@ export default function OntologyMapper() {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {unifyBusy ? 'Linking…' : 'Link'}
+                    {unifyBusy ? 'LinkingÃ¢â‚¬Â¦' : 'Link'}
                   </button>
                 </div>
                 <div style={{
@@ -2982,10 +2967,10 @@ export default function OntologyMapper() {
                       {selectedImportTaskInfo?.filename || 'No instance selected'}
                     </div>
                     <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
-                      Task {selectedImportTaskInfo?.task_id || 'n/a'} · {selectedImportTaskInfo?.file_type || 'unknown'} · {selectedImportTaskInfo?.status || 'unknown'}{selectedImportTaskInfo?.current_stage ? ` · ${selectedImportTaskInfo.current_stage}` : ''}
+                      Task {selectedImportTaskInfo?.task_id || 'n/a'} Ã‚Â· {selectedImportTaskInfo?.file_type || 'unknown'} Ã‚Â· {selectedImportTaskInfo?.status || 'unknown'}{selectedImportTaskInfo?.current_stage ? ` Ã‚Â· ${selectedImportTaskInfo.current_stage}` : ''}
                     </div>
                     <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
-                      Manifest {selectedImportManifest ? 'available' : 'missing'} · source format {selectedMappingType || 'unknown'}
+                      Manifest {selectedImportManifest ? 'available' : 'missing'} Ã‚Â· source format {selectedMappingType || 'unknown'}
                     </div>
                   </div>
                   <div>
@@ -2994,7 +2979,7 @@ export default function OntologyMapper() {
                       {selectedOntologyOption?.label || 'No ontology selected'}
                     </div>
                     <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
-                      Prefix {selectedOntologyOption?.prefix || selectedOntologyApi || 'n/a'} · id {selectedOntologyOption?.value || 'n/a'}
+                      Prefix {selectedOntologyOption?.prefix || selectedOntologyApi || 'n/a'} Ã‚Â· id {selectedOntologyOption?.value || 'n/a'}
                     </div>
                     <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
                       {selectedOntologyOption?.source ? `Registered from ${selectedOntologyOption.source}` : 'Active ontology used as the semantic target for bridge validation and export.'}
@@ -3033,7 +3018,7 @@ export default function OntologyMapper() {
                           selectedBridgeSummary.generic_matches_filtered !== undefined ? `Filtered: ${selectedBridgeSummary.generic_matches_filtered}` : null,
                           selectedBridgeSummary.metadata_signals_used !== undefined ? `Metadata signals: ${selectedBridgeSummary.metadata_signals_used}` : null,
                           selectedBridgeSummary.applied_links !== undefined ? `Applied links: ${selectedBridgeSummary.applied_links}` : null,
-                        ].filter(Boolean).join(' · ')}
+                        ].filter(Boolean).join(' Ã‚Â· ')}
                       </div>
                     )}
                   </div>
@@ -3211,7 +3196,7 @@ export default function OntologyMapper() {
                 )}
               </div>
 
-              {/* ── Entity Mapper ───────────────────────────────────────────── */}
+              {/* Ã¢â€â‚¬Ã¢â€â‚¬ Entity Mapper Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
               <div style={{ fontSize: '13px', fontWeight: 600, color: C.textPrimary, marginBottom: '10px' }}>Manual override</div>
               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px', marginBottom: '16px', background: C.bg }}>
                 <div style={{ fontSize: '11px', color: C.textSec, marginBottom: '10px', lineHeight: 1.45 }}>
@@ -3308,11 +3293,11 @@ export default function OntologyMapper() {
                 )}
               </div>
 
-              {/* ── Mapping Table ───────────────────────────────────────────── */}
+              {/* Ã¢â€â‚¬Ã¢â€â‚¬ Mapping Table Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'auto', maxHeight: '500px' }}>
                 {selectedMappingEdge && (
                   <div style={{ padding: '8px 12px', borderBottom: `1px solid ${C.border}`, background: C.primaryLight, fontSize: '11px', color: C.primaryDark }}>
-                    Selected mapping: {selectedMappingEdge.source_label || selectedMappingEdge.source_term || 'source'} → {selectedMappingEdge.target_label || selectedMappingEdge.target_term || 'target'}
+                    Selected mapping: {selectedMappingEdge.source_label || selectedMappingEdge.source_term || 'source'} Ã¢â€ â€™ {selectedMappingEdge.target_label || selectedMappingEdge.target_term || 'target'}
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '8px' }}>
@@ -3366,7 +3351,7 @@ export default function OntologyMapper() {
                           <td style={TD()}>
                             <div style={{ fontWeight: 600, fontSize: '12px' }}>{edge.source_label || edge.source_term || edge.source_instance_label || 'Imported entity'}</div>
                             <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
-                              {edge.source_instance_label || 'Imported instance'}{edge.source_instance_id ? ` · ${edge.source_instance_id}` : ''}
+                              {edge.source_instance_label || 'Imported instance'}{edge.source_instance_id ? ` Ã‚Â· ${edge.source_instance_id}` : ''}
                             </div>
                             <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
                               term: {edge.source_term || 'n/a'}

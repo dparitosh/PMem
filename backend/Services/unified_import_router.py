@@ -13,6 +13,18 @@ from pydantic import BaseModel, Field
 MAX_FILE_SIZE = 500 * 1024 * 1024  # 500 MB
 MAX_FILE_SIZE_DISPLAY = "500 MB"
 
+
+async def _read_upload_with_limit(file: UploadFile, max_bytes: int) -> bytes:
+    """Read an upload incrementally and reject oversized content early."""
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(1024 * 1024):
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(status_code=413, detail=f"File too large. Maximum size: {MAX_FILE_SIZE_DISPLAY}")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
 from .unified_data_import import (
     UnifiedDataImportService,
     FileFormatDetector,
@@ -226,7 +238,7 @@ async def upload_ontology_file(
         base_uri = ""
         
         # Read file content
-        file_content = await file.read()
+        file_content = await _read_upload_with_limit(file, MAX_FILE_SIZE)
         if not file_content:
             raise HTTPException(status_code=400, detail="File is empty")
         

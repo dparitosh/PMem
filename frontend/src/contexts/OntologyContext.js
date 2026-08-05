@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { API_METHODS } from '../services/apiClient';
 import logger from '../utils/logger';
 
@@ -16,11 +16,13 @@ export const OntologyProvider = ({ children }) => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const mountedRef = useRef(false);
   const requestRef = useRef(null);
+  const abortRef = useRef(null);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      abortRef.current?.abort();
     };
   }, []);
 
@@ -29,10 +31,12 @@ export const OntologyProvider = ({ children }) => {
    */
   const fetchOntologies = useCallback(async () => {
     if (requestRef.current) return requestRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
     const request = (async () => {
       try {
         if (mountedRef.current) setError(null);
-        const res = await API_METHODS.ontology.listRegistered();
+        const res = await API_METHODS.ontology.listRegistered({ signal: controller.signal });
         const ontologyList = (res?.data?.ontologies || []).map(o => ({
           value: o.ontology_id || o.id || o.prefix || o.value || o.name,
           label: o.ontology_name || o.name || o.label || o.ontology_id || o.prefix || o.id,
@@ -62,12 +66,16 @@ export const OntologyProvider = ({ children }) => {
         }
         return ontologyList;
       } catch (err) {
+        if (err?.name === 'AbortError' || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') {
+          return [];
+        }
         const errorMsg = err.response?.data?.detail || err.message || 'Failed to load ontologies';
         if (mountedRef.current) setError(errorMsg);
         logger.error('[OntologyContext] Failed to fetch ontologies:', err);
         return [];
       } finally {
         requestRef.current = null;
+        if (abortRef.current === controller) abortRef.current = null;
       }
     })();
     requestRef.current = request;
@@ -94,15 +102,23 @@ export const OntologyProvider = ({ children }) => {
     return () => clearInterval(interval);
   }, [fetchOntologies]);
 
-  const value = {
+  const getOntologyByPrefix = useCallback(
+    (prefix) => ontologies.find(o => o.prefix === prefix || o.ontology_prefix === prefix),
+    [ontologies],
+  );
+  const getOntologyById = useCallback(
+    (id) => ontologies.find(o => o.ontology_id === id || o.value === id),
+    [ontologies],
+  );
+  const value = useMemo(() => ({
     ontologies,
     loading,
     error,
     lastUpdated,
-    fetchOntologies, // Allow manual refresh from components
-    getOntologyByPrefix: (prefix) => ontologies.find(o => o.prefix === prefix || o.ontology_prefix === prefix),
-    getOntologyById: (id) => ontologies.find(o => o.ontology_id === id || o.value === id),
-  };
+    fetchOntologies,
+    getOntologyByPrefix,
+    getOntologyById,
+  }), [ontologies, loading, error, lastUpdated, fetchOntologies, getOntologyByPrefix, getOntologyById]);
 
   return (
     <OntologyContext.Provider value={value}>

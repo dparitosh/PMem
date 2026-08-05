@@ -60,6 +60,13 @@ if not exist "backend\.dt_venv\Scripts\python.exe" (
     exit /b 1
 )
 
+backend\.dt_venv\Scripts\python.exe -c "import sys; print(sys.executable)" >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] backend\.dt_venv is stale or points to a missing Python installation.
+    echo [INFO] Run: .\setup.bat --backend
+    exit /b 1
+)
+
 set "EXISTING_BACKEND_PID="
 for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R /C:":%PORT% .*LISTENING"') do (
     set "EXISTING_BACKEND_PID=%%P"
@@ -78,6 +85,8 @@ if not "%EXISTING_BACKEND_PID%"=="" (
 )
 
 if "%ALLOWED_ORIGINS%"=="" set "ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://%LAN_HOST%:3000"
+if "%FRONTEND_PORT%"=="" set "FRONTEND_PORT=3000"
+set "FRONTEND_PORTS=%FRONTEND_PORT%"
 
 :: Support both package imports (backend.*) and legacy backend-local imports (core.*).
 set "PYTHONPATH=%CD%;%CD%\backend"

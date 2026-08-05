@@ -1,11 +1,9 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import Any, Optional
-from uuid import uuid4
 
 class ChatRequest(BaseModel):
-    session_id: str = Field(
-        default_factory=lambda: f"chat-{uuid4()}",
-        min_length=1,
+    session_id: Optional[str] = Field(
+        default=None,
         max_length=256,
         description="Session identifier. If omitted, the backend creates one for external clients.",
     )
@@ -18,10 +16,10 @@ class ChatRequest(BaseModel):
     @field_validator('session_id', mode='before')
     def validate_session_id(cls, v):
         if v is None:
-            return f"chat-{uuid4()}"
+            return None
         value = str(v).strip()
         if not value:
-            return f"chat-{uuid4()}"
+            return None
         return value[:256]
 
     @field_validator('message')

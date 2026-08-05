@@ -24,9 +24,9 @@ function agenticUrl(endpoint) {
 export const agenticAPI = {
   isEnabled: () => Boolean(config.agenticEnabled),
   isConfigured: () => Boolean(config.agenticEnabled && config.agenticServiceUrl),
-  health: () => agenticClient.get(agenticUrl(API.agentic.health)),
-  listAgents: () => agenticClient.get(agenticUrl(API.agentic.agents)),
-  listTools: () => agenticClient.get(agenticUrl(API.agentic.tools)),
+  health: (options = {}) => agenticClient.get(agenticUrl(API.agentic.health), options),
+  listAgents: (options = {}) => agenticClient.get(agenticUrl(API.agentic.agents), options),
+  listTools: (options = {}) => agenticClient.get(agenticUrl(API.agentic.tools), options),
   importOpenApi: (document, sourceName = '') => agenticClient.post(
     agenticUrl(API.agentic.openApiImport),
     { document, source_name: sourceName },

@@ -29,8 +29,8 @@ export const validateChatInput = (input) => {
     throw new ValidationError('Query too short (minimum 3 characters)');
   }
 
-  if (trimmed.length > 2000) {
-    throw new ValidationError('Query too long (maximum 2000 characters)');
+  if (trimmed.length > 4000) {
+    throw new ValidationError('Query too long (maximum 4000 characters)');
   }
 
   // Detect prompt injection attempts
@@ -51,9 +51,9 @@ export const validateChatInput = (input) => {
     }
   }
 
-  // Remove potentially dangerous characters but keep content readable
+  // Preserve technical syntax (XML, JSON, Cypher, QNames); rendering and
+  // transport layers perform their own context-appropriate escaping.
   const sanitized = trimmed
-    .replace(/[<>{}]/g, '')  // Remove angle brackets and braces
     .replace(/\0/g, '')      // Remove null bytes
     .replace(/\r\n/g, '\n'); // Normalize line endings
 

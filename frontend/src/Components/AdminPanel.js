@@ -1,14 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import { useOntologies } from '../contexts/OntologyContext';
+import { UI_COLORS } from '../styles/uiTokens';
 
 const colors = {
-  blue: '#004B87',
-  border: '#d9e2ec',
-  text: '#243b53',
-  muted: '#52606d',
-  bg: '#f7f9fb',
+  blue: UI_COLORS.primary,
+  border: UI_COLORS.border,
+  text: UI_COLORS.textPrimary,
+  muted: UI_COLORS.textSec,
+  bg: UI_COLORS.bg,
   danger: '#b42318',
   dangerBg: '#fff1f0',
   ok: '#1f7a4d',
@@ -77,15 +78,20 @@ export default function AdminPanel({ onSchemaCleaned }) {
   const [deleteValue, setDeleteValue] = useState('');
   const [deleteBatchSize, setDeleteBatchSize] = useState(10000);
   const [deletePreview, setDeletePreview] = useState(null);
+  const adminLoadControllerRef = useRef(null);
 
   const loadAdminState = useCallback(async () => {
+    adminLoadControllerRef.current?.abort();
+    const controller = new AbortController();
+    adminLoadControllerRef.current = controller;
     setLoading(true);
     setError('');
     try {
       const [healthRes, statsRes] = await Promise.allSettled([
-        API_METHODS.admin.health(),
-        API_METHODS.admin.schemaStats(),
+        API_METHODS.admin.health({ signal: controller.signal }),
+        API_METHODS.admin.schemaStats({ signal: controller.signal }),
       ]);
+      if (controller.signal.aborted) return;
       if (healthRes.status === 'fulfilled') {
         setHealth(healthRes.value.data || null);
       } else {
@@ -105,12 +111,14 @@ export default function AdminPanel({ onSchemaCleaned }) {
         setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
       }
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
+      if (adminLoadControllerRef.current === controller) adminLoadControllerRef.current = null;
     }
   }, []);
 
   useEffect(() => {
     loadAdminState();
+    return () => adminLoadControllerRef.current?.abort();
   }, [loadAdminState]);
 
   const cleanSchema = useCallback(async () => {

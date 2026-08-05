@@ -1,23 +1,36 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles } from 'lucide-react';
 import '../CSS/chat.css';
-import { API, buildUrl } from '../config';
+import { API, buildUrl, config } from '../config';
 import { validateChatInput, ValidationError } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { formatChatMarkdown } from '../utils/chatMarkdown';
+import { clearClientSessionId, getClientSessionId, setClientSessionId } from '../services/apiClient';
+
+const CHAT_COLORS = {
+    primary: '#005a9c',
+    primarySoft: '#e8f1fc',
+    primaryBorder: '#c2d9f0',
+    surfaceMuted: '#f8fafc',
+    assistantBubble: '#eef2f6',
+    danger: '#c62828',
+    dangerSoft: '#ffebee',
+    dangerBorder: '#ffcdd2',
+    textMuted: '#66788a',
+};
 
 const Chatbot = ({ setChatResults, graphData, searchResults }) => {
     const [chatMessages, setChatMessages] = useState([]);
     const [question, setQuestion] = useState('');
     const [showSpinner, setShowSpinner] = useState(false);
+    const [requestActive, setRequestActive] = useState(false);
     const [error, setError] = useState(null);
     const [statusLabel, setStatusLabel] = useState(null);
     const abortRef = useRef(null);
-    const sessionIdRef = useRef(
-        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-            ? crypto.randomUUID()
-            : Math.random().toString(36).slice(2) + Date.now().toString(36)
-    );
+    const requestActiveRef = useRef(false);
+    const messageSequenceRef = useRef(0);
+    const messagesEndRef = useRef(null);
+    const sessionIdRef = useRef(getClientSessionId());
 
     const buildGraphContextSnapshot = () => {
         const summarizeNode = (node) => {
@@ -180,8 +193,11 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
     // [OK] SECURE: Input validation + error handling
     const handleAsk = async (queryText = null) => {
         const messageText = queryText || question.trim();
+        if (requestActiveRef.current) return;
         let controller = null;
         let assistantId = null;
+        let timeoutId = null;
+        let timedOut = false;
         
         try {
             // [OK] Validate input against prompt injection
@@ -194,9 +210,17 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             ));
             controller = new AbortController();
             abortRef.current = controller;
+            requestActiveRef.current = true;
+            setRequestActive(true);
+            const timeoutMs = Number(config.chatStreamTimeout) || 900000;
+            timeoutId = window.setTimeout(() => {
+                timedOut = true;
+                controller.abort();
+            }, timeoutMs);
 
-            const userMsg = { id: Date.now(), role: 'user', text: validated };
-            assistantId = `asst-${Date.now()}`;
+            const messageSequence = ++messageSequenceRef.current;
+            const userMsg = { id: `user-${messageSequence}`, role: 'user', text: validated };
+            assistantId = `asst-${messageSequence}`;
             const assistantMsg = { id: assistantId, role: 'assistant', text: '', streaming: true };
 
             setChatMessages(prev => [...prev, userMsg, assistantMsg]);
@@ -208,22 +232,44 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             let accumulated = '';
             let buffer = '';
             let streamCompleted = false;
+            let streamFailed = false;
 
             logger.data('Sending chat request:', validated);
 
-            const response = await fetch(buildUrl(API.chat.chatStream), {
+            let activeSessionId = getClientSessionId() || sessionIdRef.current;
+            sessionIdRef.current = activeSessionId;
+            const graphContext = buildGraphContextSnapshot();
+            const sendRequest = (sessionId) => fetch(buildUrl(API.chat.chatStream), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    session_id: sessionIdRef.current,
-                    message: validated,
-                    graph_context: buildGraphContextSnapshot(),
-                }),
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(sessionId ? { 'X-Session-ID': sessionId } : {}),
+                },
+                body: JSON.stringify({ session_id: sessionId, message: validated, graph_context: graphContext }),
                 signal: controller.signal,
             });
 
-            if (!response.ok) throw new Error(`Server error ${response.status}`);
+            let response = await sendRequest(activeSessionId);
+            let returnedSessionId = response.headers.get('x-session-id');
+            if (returnedSessionId) {
+                sessionIdRef.current = returnedSessionId;
+                setClientSessionId(returnedSessionId);
+            }
+            if (response.status === 403 && returnedSessionId && returnedSessionId !== activeSessionId) {
+                activeSessionId = returnedSessionId;
+                response = await sendRequest(activeSessionId);
+                returnedSessionId = response.headers.get('x-session-id');
+                if (returnedSessionId) {
+                    sessionIdRef.current = returnedSessionId;
+                    setClientSessionId(returnedSessionId);
+                }
+            }
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload?.detail || `Server error ${response.status}`);
+            }
 
+            if (!response.body) throw new Error('The server returned an empty chat stream.');
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
 
@@ -244,14 +290,23 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                         setStatusLabel(parsed.status);
                     } else if (parsed.done) {
                         streamCompleted = true;
+                        if (!accumulated && !streamFailed) {
+                            streamFailed = true;
+                            const emptyMessage = 'The AI completed without returning an answer. Please try again.';
+                            setError(emptyMessage);
+                            setChatMessages(prev => prev.map(m =>
+                                m.id === assistantId ? { ...m, text: emptyMessage, streaming: false } : m
+                            ));
+                        }
                         setChatMessages(prev => prev.map(m =>
                             m.id === assistantId ? { ...m, streaming: false } : m
                         ));
                         setStatusLabel(null);
                         setShowSpinner(false);
-                        if (setChatResults) setChatResults([{ query: validated, response: accumulated, timestamp: new Date().toISOString() }]);
+                        if (!streamFailed && setChatResults) setChatResults([{ query: validated, response: accumulated, timestamp: new Date().toISOString() }]);
                     } else if (parsed.error) {
                         streamCompleted = true;
+                        streamFailed = true;
                         const errMsg = typeof parsed.error === 'string' ? parsed.error : 'An error occurred.';
                         setError(errMsg);
                         setStatusLabel(null);
@@ -273,7 +328,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             }
             buffer += decoder.decode();
             if (buffer.trim()) processLine(buffer.trim());
-            if (!streamCompleted) {
+            if (!streamCompleted && accumulated) {
                 setChatMessages(prev => prev.map(item =>
                     item.id === assistantId ? { ...item, streaming: false } : item
                 ));
@@ -282,10 +337,23 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                 if (setChatResults) {
                     setChatResults([{ query: validated, response: accumulated, timestamp: new Date().toISOString() }]);
                 }
+            } else if (!streamCompleted) {
+                throw new Error('The chat stream ended without a response.');
             }
 
         } catch (err) {
-            if (err.name === 'AbortError') return;
+            if (err.name === 'AbortError') {
+                if (timedOut) {
+                    const timeoutMessage = 'Chat request timed out. Please try again.';
+                    setError(timeoutMessage);
+                    setStatusLabel(null);
+                    setShowSpinner(false);
+                    setChatMessages(prev => prev.map(m =>
+                        m.id === assistantId ? { ...m, text: timeoutMessage, streaming: false } : m
+                    ));
+                }
+                return;
+            }
             
             if (err instanceof ValidationError) {
                 setError(err.message);
@@ -303,6 +371,15 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                     ? { ...m, text: 'Sorry, I encountered an error. Please try again.', streaming: false, statusLabel: null }
                     : m
             ));
+        } finally {
+            if (timeoutId) window.clearTimeout(timeoutId);
+            if (abortRef.current === controller) {
+                abortRef.current = null;
+                requestActiveRef.current = false;
+                setRequestActive(false);
+                setShowSpinner(false);
+                setStatusLabel(null);
+            }
         }
     };
 
@@ -313,12 +390,24 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
     // [OK] CLEANUP: Abort requests on unmount
     useEffect(() => {
         // Fetch dynamic sample queries from backend
+        const sampleController = new AbortController();
         const fetchSampleQueries = async () => {
             try {
+                const activeSessionId = getClientSessionId() || sessionIdRef.current;
+                sessionIdRef.current = activeSessionId;
                 const response = await fetch(buildUrl(API.chat.sampleQueries), {
                     method: 'GET',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(activeSessionId ? { 'X-Session-ID': activeSessionId } : {}),
+                    },
+                    signal: sampleController.signal,
                 });
+                const returnedSessionId = response.headers.get('x-session-id');
+                if (returnedSessionId) {
+                    sessionIdRef.current = returnedSessionId;
+                    setClientSessionId(returnedSessionId);
+                }
                 if (response.ok) {
                     const data = await response.json();
                     if (data.queries && data.queries.length > 0) {
@@ -331,6 +420,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                     }
                 }
             } catch (err) {
+                if (sampleController.signal.aborted || err?.name === 'AbortError') return;
                 logger.warn('Could not fetch dynamic queries, using defaults:', err.message);
                 // Keep default queries on error
             }
@@ -340,11 +430,16 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
         
         // Cleanup: Abort requests on unmount
         return () => {
+            sampleController.abort();
             if (abortRef.current) {
                 abortRef.current.abort();
             }
         };
     }, []);
+
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView?.({ block: 'end' });
+    }, [chatMessages, statusLabel]);
 
     return (
         <div style={{ 
@@ -358,7 +453,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
         }}>
             {/* Chat header */}
             <div style={{
-                background: 'linear-gradient(135deg,#004B87 0%,#1a6fb5 100%)',
+                background: 'linear-gradient(135deg,#005a9c 0%,#1a6fb5 100%)',
                 color: '#fff', padding: '8px 14px',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 flexShrink: 0,
@@ -375,12 +470,18 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                 </div>
                 {chatMessages.length > 0 && (
                     <button
+                        type="button"
                         onClick={() => {
                             if (abortRef.current) abortRef.current.abort();
                             abortRef.current = null;
+                            requestActiveRef.current = false;
+                            clearClientSessionId();
+                            sessionIdRef.current = null;
                             setChatMessages([]);
+                            if (setChatResults) setChatResults([]);
                             setStatusLabel(null);
                             setShowSpinner(false);
+                            setRequestActive(false);
                             setError(null);
                         }}
                         title="Clear conversation"
@@ -393,11 +494,11 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                 )}
             </div>
 
-            {/* Status bar — shown while a tool is executing */}
+            {/* Status bar â€” shown while a tool is executing */}
             {statusLabel && (
                 <div style={{
-                    background: '#eaf2fb', color: '#004B87',
-                    borderBottom: '1px solid #c2d9f0',
+                    background: CHAT_COLORS.primarySoft, color: CHAT_COLORS.primary,
+                    borderBottom: `1px solid ${CHAT_COLORS.primaryBorder}`,
                     padding: '5px 14px', fontSize: 12, fontWeight: 600,
                     display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
                 }}>
@@ -413,13 +514,13 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                     flex: 1,
                     overflowY: 'auto',
                     padding: '4px 6px',
-                    backgroundColor: '#f8f9fa',
+                    backgroundColor: CHAT_COLORS.surfaceMuted,
                     minHeight: 0
                 }}>
                     {chatMessages.length === 0 ? (
                         <div style={{
                             textAlign: 'center',
-                            color: '#6c757d',
+                            color: CHAT_COLORS.textMuted,
                             paddingTop: '20px',
                             fontSize: '13px'
                         }}>
@@ -428,13 +529,13 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                             </p>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, textAlign: 'left' }}>
                                 {sampleQueries.map((query, idx) => (
-                                    <button key={idx} onClick={() => handleSampleQueryClick(query)}
+                                    <button key={idx} type="button" onClick={() => handleSampleQueryClick(query)}
                                         style={{
                                             padding: '7px 10px',
-                                            backgroundColor: '#e8f0fe',
-                                            border: '1px solid #c2d9f0',
+                                            backgroundColor: CHAT_COLORS.primarySoft,
+                                            border: `1px solid ${CHAT_COLORS.primaryBorder}`,
                                             borderRadius: 6,
-                                            color: '#004B87',
+                                            color: CHAT_COLORS.primary,
                                             cursor: 'pointer',
                                             fontSize: 11,
                                             fontWeight: 500,
@@ -460,7 +561,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                                         maxWidth: '90%',
                                         padding: '6px 8px',
                                         borderRadius: '6px',
-                                        backgroundColor: msg.role === 'user' ? '#004B87' : '#e8e8e8',
+                                        backgroundColor: msg.role === 'user' ? CHAT_COLORS.primary : CHAT_COLORS.assistantBubble,
                                         color: msg.role === 'user' ? '#fff' : '#1a1a1a',
                                         border: msg.role === 'assistant' ? '1px solid #e2e6ea' : 'none',
                                         boxShadow: msg.role === 'assistant' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
@@ -475,26 +576,27 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                                         msg.text
                                     )}
                                     {msg.streaming && showSpinner && (
-                                        <span style={{ display: 'inline-block', marginLeft: 6, fontSize: 10, color: '#888' }}>●●●</span>
+                                        <span style={{ display: 'inline-block', marginLeft: 6, fontSize: 10, color: '#888' }}>...</span>
                                     )}
                                 </div>
                             </div>
                         ))
                     )}
+                    <div ref={messagesEndRef} aria-hidden="true" />
                 </div>
 
                 {/* Error Display */}
                 {error && (
                     <div style={{
-                        backgroundColor: '#ffebee',
-                        color: '#c62828',
+                        backgroundColor: CHAT_COLORS.dangerSoft,
+                        color: CHAT_COLORS.danger,
                         padding: '8px 12px',
                         fontSize: '12px',
-                        borderTop: '1px solid #ffcdd2',
+                        borderTop: `1px solid ${CHAT_COLORS.dangerBorder}`,
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                     }}>
                         <span>{error}</span>
-                        <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: '#c62828', cursor: 'pointer', fontSize: 14, padding: 0 }}>✕</button>
+                        <button type="button" aria-label="Dismiss chat error" onClick={() => setError(null)} style={{ background: 'none', border: 'none', color: CHAT_COLORS.danger, cursor: 'pointer', fontSize: 14, padding: 0 }}>x</button>
                     </div>
                 )}
 
@@ -516,7 +618,8 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                                 handleAsk();
                             }
                         }}
-                        placeholder='Ask about parts, traceability, CAD structure, change impact…'
+                        placeholder='Ask about parts, traceability, CAD structure, change impact...'
+                        aria-label="Chat question"
                         style={{
                             flex: 1,
                             padding: '7px 10px',
@@ -525,23 +628,25 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                             fontSize: '12px',
                             fontFamily: 'inherit'
                         }}
-                        disabled={showSpinner}
+                        disabled={requestActive}
                     />
                     <button
+                        type="button"
                         onClick={() => handleAsk()}
-                        disabled={showSpinner || !question.trim()}
+                        aria-label="Send chat question"
+                        disabled={requestActive || !question.trim()}
                         style={{
                             padding: '7px 16px',
-                            backgroundColor: showSpinner || !question.trim() ? '#ccc' : '#004B87',
+                            backgroundColor: requestActive || !question.trim() ? '#ccc' : CHAT_COLORS.primary,
                             color: 'white',
                             border: 'none',
                             borderRadius: '6px',
-                            cursor: showSpinner || !question.trim() ? 'not-allowed' : 'pointer',
+                            cursor: requestActive || !question.trim() ? 'not-allowed' : 'pointer',
                             fontSize: '12px',
                             fontWeight: 600
                         }}
                     >
-                        {showSpinner ? 'Sending...' : 'Send'}
+                        {requestActive ? 'Sending...' : 'Send'}
                     </button>
                 </div>
             </div>

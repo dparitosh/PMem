@@ -3,6 +3,7 @@ import { API, buildUrl } from '../config';
 import { apiClient } from '../services/apiClient';
 import { normalizeGraphDataset as normalizeGraphDatasetShared } from '../utils/graphUtils';
 import { useOntologies } from '../contexts/OntologyContext';
+import KpiStrip from '../widgets/KpiStrip';
 
 const NOISY_COLUMNS = new Set([
   'args',
@@ -57,6 +58,17 @@ const REPORT_PRESETS = {
   overview: ['entity_type', 'name', 'title', 'type', 'id', 'source_tag'],
   governance: ['entity_type', 'name', 'type', 'source_tag', 'ref_type', 'id'],
   lineage: ['name', 'id', 'import_id', 'source_tag', 'ref_type', 'title'],
+};
+
+const REPORT_COLORS = {
+  primary: '#005a9c',
+  primarySoft: '#e8f1fc',
+  accent: '#1f6f8b',
+  accentSoft: '#e8f4f3',
+  warn: '#6b4e00',
+  warnSoft: '#fff8e1',
+  warnBorder: '#c49a00',
+  neutral: '#33506b',
 };
 
 const stripUnwanted = (rows) =>
@@ -323,13 +335,14 @@ const ReportsTab = ({ searchResults, graphData }) => {
   useEffect(() => {
     if (activeReport !== 'xsd-relational' || !selectedXsdOntology) return undefined;
     let cancelled = false;
+    const controller = new AbortController();
     setXsdReportLoading(true);
     setXsdReportError('');
-    apiClient.get(buildUrl(API.reports.xsdRelational), { params: { ontology_id: selectedXsdOntology } })
+    apiClient.get(buildUrl(API.reports.xsdRelational), { params: { ontology_id: selectedXsdOntology }, signal: controller.signal })
       .then((response) => { if (!cancelled) setXsdReport(response.data || null); })
-      .catch((error) => { if (!cancelled) setXsdReportError(error?.response?.data?.detail || error.message || 'XSD relational report failed.'); })
+      .catch((error) => { if (!cancelled && !controller.signal.aborted) setXsdReportError(error?.response?.data?.detail || error.message || 'XSD relational report failed.'); })
       .finally(() => { if (!cancelled) setXsdReportLoading(false); });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [activeReport, selectedXsdOntology]);
 
   const effectiveGraphData = useMemo(() => {
@@ -342,14 +355,16 @@ const ReportsTab = ({ searchResults, graphData }) => {
     if (hasPrimaryGraph || (fallbackGraphData.nodes || []).length > 0) return undefined;
 
     let cancelled = false;
+    const controller = new AbortController();
     const loadGraph = async () => {
       setGraphLoading(true);
       setGraphError('');
       try {
-        const response = await apiClient.get(buildUrl(API.graph.graphView), { params: { limit: 5000 } });
+        const response = await apiClient.get(buildUrl(API.graph.graphView), { params: { limit: 5000 }, signal: controller.signal });
         const normalized = normalizeGraphDatasetShared(response.data);
         if (!cancelled) setFallbackGraphData(normalized);
       } catch (error) {
+        if (controller.signal.aborted) return;
         if (!cancelled) setGraphError(error?.response?.data?.detail || error.message || 'Failed to load graph data for reports.');
       } finally {
         if (!cancelled) setGraphLoading(false);
@@ -357,7 +372,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
     };
 
     loadGraph();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [fallbackGraphData.nodes, graphData]);
 
   const ontologyRows = useMemo(() => (ontologies || []).map((ontology) => ({
@@ -610,9 +625,9 @@ const ReportsTab = ({ searchResults, graphData }) => {
               <button
                 className="btn btn-sm"
                 style={{
-                  color: activeReport === 'search' ? '#fff' : '#004B87',
-                  background: activeReport === 'search' ? '#004B87' : '#eef4fb',
-                  border: '1px solid #004B87',
+                  color: activeReport === 'search' ? '#fff' : REPORT_COLORS.primary,
+                  background: activeReport === 'search' ? REPORT_COLORS.primary : REPORT_COLORS.primarySoft,
+                  border: `1px solid ${REPORT_COLORS.primary}`,
                   fontWeight: 700,
                   fontSize: 13,
                   borderRadius: 999,
@@ -628,9 +643,9 @@ const ReportsTab = ({ searchResults, graphData }) => {
               <button
                 className="btn btn-sm"
                 style={{
-                  color: activeReport === 'relationships' ? '#fff' : '#0a8276',
-                  background: activeReport === 'relationships' ? '#0a8276' : '#e8f4f3',
-                  border: '1px solid #0a8276',
+                  color: activeReport === 'relationships' ? '#fff' : REPORT_COLORS.accent,
+                  background: activeReport === 'relationships' ? REPORT_COLORS.accent : REPORT_COLORS.accentSoft,
+                  border: `1px solid ${REPORT_COLORS.accent}`,
                   fontWeight: 700,
                   fontSize: 13,
                   borderRadius: 999,
@@ -659,9 +674,9 @@ const ReportsTab = ({ searchResults, graphData }) => {
               <button
                 className="btn btn-sm"
                 style={{
-                  color: activeReport === 'ontologies' ? '#fff' : '#6b4e00',
-                  background: activeReport === 'ontologies' ? '#6b4e00' : '#fff8e1',
-                  border: '1px solid #c49a00',
+                  color: activeReport === 'ontologies' ? '#fff' : REPORT_COLORS.warn,
+                  background: activeReport === 'ontologies' ? REPORT_COLORS.warn : REPORT_COLORS.warnSoft,
+                  border: `1px solid ${REPORT_COLORS.warnBorder}`,
                   fontWeight: 700,
                   fontSize: 13,
                   borderRadius: 999,
@@ -699,7 +714,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
               <button
                 className="btn btn-sm"
                 onClick={() => { setReportPreset('governance'); setActiveReport('xsd-relational'); }}
-                style={{ color: activeReport === 'xsd-relational' ? '#fff' : '#6b4e00', background: activeReport === 'xsd-relational' ? '#6b4e00' : '#fff8e1', border: '1px solid #c49a00', fontWeight: 700, fontSize: 13, borderRadius: 999, padding: '6px 12px' }}
+                style={{ color: activeReport === 'xsd-relational' ? '#fff' : REPORT_COLORS.warn, background: activeReport === 'xsd-relational' ? REPORT_COLORS.warn : REPORT_COLORS.warnSoft, border: `1px solid ${REPORT_COLORS.warnBorder}`, fontWeight: 700, fontSize: 13, borderRadius: 999, padding: '6px 12px' }}
               >
                 XSD Relational
               </button>
@@ -719,7 +734,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
                     onClick={() => applyReportPreset(preset.id)}
                     style={{
                       color: reportPreset === preset.id ? '#fff' : '#52606d',
-                      background: reportPreset === preset.id ? '#33506b' : '#f8fafc',
+                      background: reportPreset === preset.id ? REPORT_COLORS.neutral : '#f8fafc',
                       border: '1px solid #cbd5e1',
                       fontWeight: 700,
                       fontSize: 12,
@@ -742,9 +757,9 @@ const ReportsTab = ({ searchResults, graphData }) => {
                     )
                   }
                   style={{
-                    color: '#004B87',
-                    background: '#e8f4fd',
-                    border: '1px solid #004B87',
+                    color: REPORT_COLORS.primary,
+                    background: REPORT_COLORS.primarySoft,
+                    border: `1px solid ${REPORT_COLORS.primary}`,
                     fontWeight: 700,
                     fontSize: 12,
                   }}
@@ -768,9 +783,9 @@ const ReportsTab = ({ searchResults, graphData }) => {
                     )
                   }
                   style={{
-                    color: '#0a8276',
-                    background: '#e8f4f3',
-                    border: '1px solid #0a8276',
+                    color: REPORT_COLORS.accent,
+                    background: REPORT_COLORS.accentSoft,
+                    border: `1px solid ${REPORT_COLORS.accent}`,
                     fontWeight: 700,
                     fontSize: 12,
                   }}
@@ -823,9 +838,9 @@ const ReportsTab = ({ searchResults, graphData }) => {
                         fontSize: 12,
                         fontWeight: 700,
                         cursor: 'pointer',
-                        background: relTypeFilter === type ? '#0a8276' : '#ffffff',
-                        color: relTypeFilter === type ? '#ffffff' : '#0a8276',
-                        border: '1px solid #0a8276',
+                        background: relTypeFilter === type ? REPORT_COLORS.accent : '#ffffff',
+                        color: relTypeFilter === type ? '#ffffff' : REPORT_COLORS.accent,
+                        border: `1px solid ${REPORT_COLORS.accent}`,
                       }}
                     >
                       {type} <span style={{ opacity: 0.8 }}>({count})</span>
@@ -885,12 +900,12 @@ const ReportsTab = ({ searchResults, graphData }) => {
                     <table className="table table-striped table-hover mb-0">
                       <thead className="sticky-top bg-light">
                         <tr>
-                          <th style={{ minWidth: 180, borderBottom: '2px solid #0a8276' }}>
+                          <th style={{ minWidth: 180, borderBottom: `2px solid ${REPORT_COLORS.accent}` }}>
                             RELATIONSHIP TYPE
                           </th>
-                          <th style={{ minWidth: 220, borderBottom: '2px solid #0a8276' }}>SOURCE</th>
-                          <th style={{ minWidth: 220, borderBottom: '2px solid #0a8276' }}>TARGET</th>
-                          <th style={{ minWidth: 90, textAlign: 'right', borderBottom: '2px solid #0a8276' }}>
+                          <th style={{ minWidth: 220, borderBottom: `2px solid ${REPORT_COLORS.accent}` }}>SOURCE</th>
+                          <th style={{ minWidth: 220, borderBottom: `2px solid ${REPORT_COLORS.accent}` }}>TARGET</th>
+                          <th style={{ minWidth: 90, textAlign: 'right', borderBottom: `2px solid ${REPORT_COLORS.accent}` }}>
                             COUNT
                           </th>
                         </tr>
@@ -901,8 +916,8 @@ const ReportsTab = ({ searchResults, graphData }) => {
                             <td>
                               <span
                                 style={{
-                                  background: '#e8f4f3',
-                                  color: '#0a5952',
+                                  background: REPORT_COLORS.accentSoft,
+                                  color: REPORT_COLORS.accent,
                                   padding: '3px 9px',
                                   borderRadius: 999,
                                   fontSize: 12,
@@ -1000,10 +1015,10 @@ const ReportsTab = ({ searchResults, graphData }) => {
                       type="button"
                       onClick={() => setShowColumnSelector((open) => !open)}
                       style={{
-                        backgroundColor: '#0a8276',
+                        backgroundColor: REPORT_COLORS.accent,
                         color: '#fff',
                         fontWeight: 700,
-                        border: '1px solid #0a8276',
+                        border: `1px solid ${REPORT_COLORS.accent}`,
                         padding: '6px 12px',
                         boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
                       }}
@@ -1246,9 +1261,9 @@ const ReportsTab = ({ searchResults, graphData }) => {
                         )
                       }
                       style={{
-                        color: '#004B87',
-                        background: '#e8f4fd',
-                        border: '1px solid #004B87',
+                        color: REPORT_COLORS.primary,
+                        background: REPORT_COLORS.primarySoft,
+                        border: `1px solid ${REPORT_COLORS.primary}`,
                         fontWeight: 700,
                         fontSize: 12,
                       }}
@@ -1288,9 +1303,12 @@ function XsdRelationalReport({ report, loading, error, selectedOntology, ontolog
         </select>
         <span style={{ fontSize: 12, color: '#52606d' }}>Source: {report.source_file}</span>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
-        {Object.entries(report.summary || {}).map(([key, value]) => <div key={key} style={{ padding: 10, border: '1px solid #d9e2ec', borderRadius: 7, background: '#f8fafc' }}><div style={{ fontSize: 10, color: '#52606d', textTransform: 'uppercase', fontWeight: 800 }}>{key.replace(/_/g, ' ')}</div><strong style={{ fontSize: 18, color: '#102a43' }}>{value}</strong></div>)}
-      </div>
+      <KpiStrip
+        items={Object.entries(report.summary || {}).map(([key, value]) => ({
+          label: key.replace(/_/g, ' '),
+          value,
+        }))}
+      />
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, .3fr) minmax(0, .7fr)', gap: 12 }}>
         <div style={{ border: '1px solid #d9e2ec', borderRadius: 7, overflow: 'auto', maxHeight: 520 }}>
           {tables.map((table) => <button key={table.name} type="button" onClick={() => setSelectedTable(table.name)} style={{ display: 'block', width: '100%', padding: '9px 10px', textAlign: 'left', border: 0, borderBottom: '1px solid #eef2f6', background: activeTable?.name === table.name ? '#e8f1fc' : '#fff', color: '#102a43', cursor: 'pointer' }}><strong>{table.name}</strong><small style={{ display: 'block', color: '#697586' }}>{table.columns.length} columns · {table.foreign_key_candidates.length} FK candidates</small></button>)}

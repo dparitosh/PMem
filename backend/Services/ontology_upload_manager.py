@@ -34,6 +34,7 @@ class OntologyUploadManager:
         os.getenv('ONTOLOGY_STORAGE_DIR') or str(Path(__file__).parent.parent.parent / "ontology_uploads")
     )
     _LIST_CACHE_TTL_SEC = 5
+    _LIST_CACHE_ENABLED = os.getenv('ONTOLOGY_LIST_CACHE_ENABLED', 'false').lower() == 'true'
     _list_cache: Optional[Dict[str, Any]] = None
     _list_cache_ts: float = 0.0
     _metadata_lock = threading.RLock()
@@ -395,7 +396,7 @@ class OntologyUploadManager:
         try:
             cls.initialize()
             now = time.time()
-            if cls._list_cache is not None and (now - cls._list_cache_ts) < cls._LIST_CACHE_TTL_SEC:
+            if cls._LIST_CACHE_ENABLED and cls._list_cache is not None and (now - cls._list_cache_ts) < cls._LIST_CACHE_TTL_SEC:
                 return copy.deepcopy(cls._list_cache)
             
             all_ontologies = []
@@ -422,8 +423,9 @@ class OntologyUploadManager:
                 'ontologies': ontologies,
                 'count': len(ontologies)
             }
-            cls._list_cache = copy.deepcopy(result)
-            cls._list_cache_ts = now
+            if cls._LIST_CACHE_ENABLED:
+                cls._list_cache = copy.deepcopy(result)
+                cls._list_cache_ts = now
             return copy.deepcopy(result)
         except Exception as e:
             logger.exception("Error listing ontologies")

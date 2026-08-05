@@ -11,8 +11,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import OntologyMetadataForm from './OntologyMetadataForm';
-import { API_METHODS } from '../services/apiClient';
-import { apiClient } from '../services/apiClient';
+import { API_METHODS, apiClient, getClientSessionId, setClientSessionId } from '../services/apiClient';
 import { useOntologies } from '../contexts/OntologyContext';
 import { API, buildUrl, replaceParams } from '../config';
 import {
@@ -39,24 +38,7 @@ import {
   requiresOntologyMetadataCapture,
   serializeFileForPersistence,
 } from '../workflows/importPresentation';
-
-// Design tokens (matching OntologyMapper & GraphHEB)
-const C = {
-  primary:      '#004B87',
-  primaryDark:  '#003366',
-  primaryLight: '#E8F1FC',
-  green:        '#28A745',
-  orange:       '#FFC107',
-  red:          '#D32F2F',
-  textPrimary:  '#1A2B3C',
-  textSec:      '#6C757D',
-  textMuted:    '#ADB5BD',
-  border:       '#E9ECEF',
-  borderDark:   '#CED4DA',
-  bg:           '#F8F9FA',
-  surface:      '#FFFFFF',
-  darkBg:       '#2C3E50',
-};
+import { UI_COLORS as C } from '../styles/uiTokens';
 
 const IMPORT_JOBS_STORAGE_KEY = 'depo.import.jobs.v2';
 const IMPORT_ONTOLOGIES_CACHE_KEY = 'depo.import.ontologies.v1';
@@ -127,6 +109,8 @@ export default function DataImportPipeline() {
   const [metadataFormPrefill, setMetadataFormPrefill] = useState(null);
   const didRestoreJobsRef = useRef(false);
   const resumedPersistedJobsRef = useRef(false);
+  const ontologyLoadAbortRef = useRef(null);
+  const importRequestControllersRef = useRef(new Set());
   const isMountedRef = useMountedRef();
   const { activePollersRef, clearPoller, schedulePoller } = usePollerRegistry(isMountedRef);
   const [ontologyCatalogState, setOntologyCatalogState] = useState({
@@ -140,7 +124,16 @@ export default function DataImportPipeline() {
   // Get ontologies from centralized context (shared across all components)
   const { ontologies: contextOntologies } = useOntologies();
 
+  useEffect(() => () => {
+    ontologyLoadAbortRef.current?.abort();
+    importRequestControllersRef.current.forEach((controller) => controller.abort());
+    importRequestControllersRef.current.clear();
+  }, []);
+
   const loadOntologyOptions = useCallback(async ({ forceLive = false } = {}) => {
+    ontologyLoadAbortRef.current?.abort();
+    const controller = new AbortController();
+    ontologyLoadAbortRef.current = controller;
     const cachedRaw = window.localStorage.getItem(IMPORT_ONTOLOGIES_CACHE_KEY);
     const cachedOntologies = (() => {
       try {
@@ -150,6 +143,7 @@ export default function DataImportPipeline() {
       }
     })();
 
+    if (!isMountedRef.current) return;
     setOntologyCatalogState((prev) => ({ ...prev, loading: true, message: forceLive ? 'Refreshing ontology catalog...' : prev.message }));
 
     try {
@@ -158,17 +152,19 @@ export default function DataImportPipeline() {
         let lastErr = null;
         for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
-            const response = await API_METHODS.ontology.listRegistered();
+            const response = await API_METHODS.ontology.listRegistered({ signal: controller.signal });
             sourceOntologies = response?.data?.ontologies || [];
             lastErr = null;
             break;
           } catch (err) {
             lastErr = err;
             await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
+            if (controller.signal.aborted) return;
           }
         }
         if (lastErr) throw lastErr;
       }
+      if (controller.signal.aborted || !isMountedRef.current) return;
       const normalized = normalizeOntologyOptions(sourceOntologies);
       if (normalized.length > 0) {
         setAvailableOntologies(normalized);
@@ -199,6 +195,7 @@ export default function DataImportPipeline() {
         });
       }
     } catch (err) {
+      if (controller.signal.aborted || !isMountedRef.current) return;
       console.error('Failed to process ontologies:', err);
       if (cachedOntologies.length > 0) {
         setAvailableOntologies(cachedOntologies);
@@ -219,7 +216,10 @@ export default function DataImportPipeline() {
         lastLoadedAt: null,
       });
     }
-  }, [contextOntologies]);
+    finally {
+      if (ontologyLoadAbortRef.current === controller) ontologyLoadAbortRef.current = null;
+    }
+  }, [contextOntologies, isMountedRef]);
 
   // Transform context ontologies into DataImportPipeline format
   useEffect(() => {
@@ -683,10 +683,10 @@ export default function DataImportPipeline() {
         const statusResponse = await API_METHODS.document.getJob(taskId);
         job = statusResponse.data || statusResponse;
         const jobSnapshot = job;
-        setPipelineStatus(prev => ({
-          ...prev,
-          [fileId]: {
-            ...(prev[fileId] || {}),
+        setPipelineStatus(prev => {
+          const previousStatus = prev[fileId] || {};
+          const nextStatus = {
+            ...previousStatus,
             taskId,
             stage: jobSnapshot.stage || 'processing',
             backendStage: jobSnapshot.stage || 'processing',
@@ -696,8 +696,12 @@ export default function DataImportPipeline() {
               ? `${jobSnapshot.stage || 'Processing'}: ${jobSnapshot.stage_detail.file}`
               : `Document job: ${jobSnapshot.stage || 'processing'}`,
             lastUpdatedAt: new Date().toISOString(),
-          },
-        }));
+          };
+          return {
+            ...prev,
+            [fileId]: nextStatus,
+          };
+        });
       }
       const result = job?.result || job;
       const summary = result?.summary || {};
@@ -852,15 +856,15 @@ export default function DataImportPipeline() {
     const maxAttempts = 600;
     let attempts = 0;
 
-    const poll = async () => {
+    const poll = async (signal) => {
       try {
-        if (!activePollersRef.current.has(pollerKey) || !isMountedRef.current) {
+        if (signal?.aborted || !activePollersRef.current.has(pollerKey) || !isMountedRef.current) {
           clearPoller(pollerKey);
           return;
         }
         const statusUrl = buildUrl(replaceParams(API.import.status, { task_id: taskId }));
-        const res = await apiClient.get(statusUrl);
-        if (!activePollersRef.current.has(pollerKey) || !isMountedRef.current) {
+        const res = await apiClient.get(statusUrl, { signal });
+        if (signal?.aborted || !activePollersRef.current.has(pollerKey) || !isMountedRef.current) {
           clearPoller(pollerKey);
           return;
         }
@@ -908,10 +912,10 @@ export default function DataImportPipeline() {
         const shaclConforms = data?.result?.shacl_conforms ?? data?.shacl_conforms ?? null;
         const shaclFile = data?._shacl_file ?? data?.result?._shacl_file ?? null;
 
-        setPipelineStatus(prev => ({
-          ...prev,
-          [fileId]: {
-            ...(prev[fileId] || {}),
+        setPipelineStatus(prev => {
+          const previousStatus = prev[fileId] || {};
+          const nextStatus = {
+            ...previousStatus,
             taskId,
             stage: mappedStage,
             backendStage: data.current_stage,
@@ -923,8 +927,8 @@ export default function DataImportPipeline() {
               ? data.committing
               : ((data.current_stage === 'ingest' || !!data.commit_phase) && data.status !== 'completed' && data.status !== 'failed'),
             error: data.error ? true : false,
-            completedAt: data.status === 'completed' ? new Date().toLocaleTimeString() : null,
-            completedAtIso: data.status === 'completed' ? new Date().toISOString() : (prev[fileId]?.completedAtIso || null),
+            completedAt: data.status === 'completed' ? (previousStatus.completedAt || new Date().toLocaleTimeString()) : null,
+            completedAtIso: data.status === 'completed' ? (previousStatus.completedAtIso || new Date().toISOString()) : null,
             lastUpdatedAt: new Date().toISOString(),
             commitPhase: data.commit_phase || null,
             // A previous commit attempt may have failed in this browser state.
@@ -941,8 +945,14 @@ export default function DataImportPipeline() {
             artifact_manifest: data.artifact_manifest,
             workflow_id: data.workflow_id,
             resumeExpired: false,
-          }
-        }));
+          };
+          const previousComparable = { ...previousStatus };
+          const nextComparable = { ...nextStatus };
+          delete previousComparable.lastUpdatedAt;
+          delete nextComparable.lastUpdatedAt;
+          if (JSON.stringify(previousComparable) === JSON.stringify(nextComparable)) return prev;
+          return { ...prev, [fileId]: nextStatus };
+        });
 
         // Auto-set preview data when preview/verify stage or completed is reached
         if (data.current_stage === 'preview' || data.current_stage === 'verify' || data.status === 'completed') {
@@ -957,8 +967,8 @@ export default function DataImportPipeline() {
           // Fetch actual preview rows from the preview endpoint
           try {
             const previewUrl = buildUrl(replaceParams(API.import.preview, { task_id: taskId }));
-            const previewRes = await apiClient.get(previewUrl);
-            if (!activePollersRef.current.has(pollerKey) || !isMountedRef.current) {
+            const previewRes = await apiClient.get(previewUrl, { signal });
+            if (signal?.aborted || !activePollersRef.current.has(pollerKey) || !isMountedRef.current) {
               return;
             }
             if (previewRes.data) {
@@ -994,6 +1004,10 @@ export default function DataImportPipeline() {
           clearPoller(pollerKey);
         }
       } catch (err) {
+        if (signal?.aborted || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError' || err?.name === 'AbortError') {
+          clearPoller(pollerKey);
+          return;
+        }
         if (attempts < maxAttempts) {
           attempts++;
           setPipelineStatus(prev => ({
@@ -1016,7 +1030,11 @@ export default function DataImportPipeline() {
       }
     };
 
-    poll();
+    const initialController = new AbortController();
+    importRequestControllersRef.current.add(initialController);
+    poll(initialController.signal).finally(() => {
+      importRequestControllersRef.current.delete(initialController);
+    });
   }, [activePollersRef, clearPoller, isMountedRef, schedulePoller]);
 
   useEffect(() => {
@@ -1234,12 +1252,21 @@ export default function DataImportPipeline() {
     const commitUrl = buildUrl(replaceParams(API.import.commit, { task_id: taskId }));
     const commitTimeoutMs = getImportTimeoutMs();
     const fileId = Object.entries(pipelineStatus).find(([, status]) => status.taskId === taskId)?.[0] || taskId;
+    const activeSessionId = getClientSessionId();
+    const commitController = new AbortController();
+    const commitTimeout = window.setTimeout(() => commitController.abort(), commitTimeoutMs);
+    importRequestControllersRef.current.add(commitController);
     fetch(commitUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(commitTimeoutMs),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(activeSessionId ? { 'X-Session-ID': activeSessionId } : {}),
+      },
+      signal: commitController.signal,
     })
       .then(async commitRes => {
+        const returnedSessionId = commitRes.headers.get('x-session-id');
+        if (returnedSessionId) setClientSessionId(returnedSessionId);
         if (!commitRes.ok) {
           const errBody = await commitRes.json().catch(() => ({}));
           const detail = errBody?.detail || errBody?.message || errBody?.error || commitRes.statusText;
@@ -1309,6 +1336,7 @@ export default function DataImportPipeline() {
         setError(null);
       })
       .catch(err => {
+        if (commitController.signal.aborted || err?.name === 'AbortError') return;
         // Mark as error in the file card
         setPipelineStatus(prev => {
           const updated = { ...prev };
@@ -1326,6 +1354,10 @@ export default function DataImportPipeline() {
           return updated;
         });
         setError(`Commit failed: ${err.message}`);
+      })
+      .finally(() => {
+        window.clearTimeout(commitTimeout);
+        importRequestControllersRef.current.delete(commitController);
       });
   };
 

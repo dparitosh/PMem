@@ -7,9 +7,9 @@
   --depo-ink-950: #111827;
   --depo-ink-900: #182332;
   --depo-ink-800: #223247;
-  --depo-blue-700: #005ea8;
-  --depo-blue-600: #0072bc;
-  --depo-teal-500: #008c95;
+  --depo-blue-700: var(--ui-primary, #005a9c);
+  --depo-blue-600: var(--ui-primary, #005a9c);
+  --depo-teal-500: var(--ui-primary, #005a9c);
   --depo-amber-500: #d99000;
   --depo-slate-900: #1f2933;
   --depo-slate-700: #52606d;
@@ -20,6 +20,7 @@
   --depo-surface: rgba(255, 255, 255, 0.88);
   --depo-shadow: 0 18px 40px rgba(8, 26, 47, 0.08);
   height: 100vh;
+  height: 100dvh;
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr);
   grid-template-rows: 64px minmax(0, 1fr);
@@ -138,6 +139,14 @@
   box-shadow:
     inset 3px 0 0 var(--depo-amber-500),
     0 10px 22px rgba(0, 0, 0, 0.18);
+}
+
+.depo-rail__button:focus-visible,
+.depo-breadcrumb button:focus-visible,
+.depo-icon-button:focus-visible,
+.depo-button:focus-visible {
+  outline: 2px solid var(--depo-blue-700, #123b67);
+  outline-offset: 2px;
 }
 
 .depo-topbar {
@@ -572,6 +581,9 @@
     top: 64px;
     bottom: 0;
     height: auto;
+    width: min(320px, 100vw);
+    min-width: 0;
+    max-width: 100%;
     z-index: 20;
     box-shadow: -8px 0 18px rgba(16, 42, 67, 0.16);
   }

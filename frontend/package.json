@@ -29,7 +29,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "test:unit": "react-scripts test --watchAll=false --runInBand --passWithNoTests --forceExit",
+    "test:unit": "react-scripts test --watchAll=false --runInBand --passWithNoTests",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {

@@ -1,5 +1,7 @@
 # DEPO Frontend
 
+For trusted internal deployments, set `REACT_APP_ADMIN_API_KEY` to the same value as the backend `ADMIN_API_KEY` to enable destructive Admin actions. This value is shipped to the browser, so do not use it as a secret for an untrusted/public deployment.
+
 React frontend for the DEPO application.
 
 ## What The UI Covers
@@ -73,3 +75,6 @@ For one-file runtime control, copy `service-boundaries.env.example` to
 This frontend is the main customer-facing UI.
 
 The standalone ontology agentic service in `standalone/ontology_agentic_service/` is a separate companion service and is not a replacement for this UI.
+# Optional internal-admin configuration
+# REACT_APP_ADMIN_API_KEY must match backend ADMIN_API_KEY for destructive Admin actions.
+# This value is exposed in the browser bundle; use only for trusted internal deployments.
