@@ -27,7 +27,7 @@ if "%LAN_HOST%"=="" (
 if "%LAN_HOST%"=="" set "LAN_HOST=localhost"
 
 set "BACKEND_URL=%REACT_APP_BACKEND_URL%"
-if "%BACKEND_URL%"=="" set "BACKEND_URL=http://%LAN_HOST%:8000"
+if "%BACKEND_URL%"=="" set "BACKEND_URL=http://127.0.0.1:8000"
 set "HOST=%FRONTEND_HOST%"
 if "%HOST%"=="" set "HOST=0.0.0.0"
 set "DISPLAY_HOST=%LAN_HOST%"

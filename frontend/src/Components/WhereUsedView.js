@@ -210,7 +210,7 @@ const WhereUsedView = ({
             setGraphLoading(true);
             setGraphError('');
             try {
-                const response = await apiClient.get(buildUrl(API.graph.graphView), { params: { limit: 5000 }, signal: controller.signal });
+                const response = await apiClient.get(buildUrl(API.graph.graphView), { params: { limit: 1200 }, signal: controller.signal });
                 const normalized = normalizeGraphDatasetShared(response.data);
                 if (!cancelled) setFallbackGraphData(normalized);
             } catch (error) {

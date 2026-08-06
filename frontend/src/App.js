@@ -120,28 +120,45 @@ function App() {
     let active = true;
     let inFlight = false;
     let currentController = null;
+    let retryDelayMs = 30000;
+    let retryTimer = null;
+    let consecutiveFailures = 0;
     const checkHealth = async () => {
       if (!active || inFlight) return;
       inFlight = true;
+      if (retryTimer) {
+        window.clearTimeout(retryTimer);
+        retryTimer = null;
+      }
       const controller = new AbortController();
       currentController = controller;
       try {
         await API_METHODS.health.ready({ signal: controller.signal, timeout: 5000 });
-        if (active) setServiceStatus('online');
+        if (active) {
+          setServiceStatus('online');
+          retryDelayMs = 30000;
+          consecutiveFailures = 0;
+        }
       } catch (error) {
         if (active && error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError') {
-          setServiceStatus('offline');
+          consecutiveFailures += 1;
+          if (consecutiveFailures >= 2) {
+            setServiceStatus('offline');
+          }
+          retryDelayMs = Math.min(retryDelayMs * 2, 300000);
         }
       } finally {
         inFlight = false;
         if (currentController === controller) currentController = null;
+        if (active) {
+          retryTimer = window.setTimeout(checkHealth, retryDelayMs);
+        }
       }
     };
     checkHealth();
-    const interval = window.setInterval(checkHealth, 30000);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      if (retryTimer) window.clearTimeout(retryTimer);
       currentController?.abort();
     };
   }, [page]);

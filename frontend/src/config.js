@@ -7,6 +7,8 @@
 const configuredBackendUrl = process.env.REACT_APP_BACKEND_URL;
 const configuredAgenticServiceUrl = process.env.REACT_APP_AGENTIC_SERVICE_URL;
 const agenticEnabled = String(process.env.REACT_APP_AGENTIC_ENABLED || '').trim().toLowerCase() === 'true';
+const rewriteLocalhostBackend =
+  String(process.env.REACT_APP_REWRITE_LOCALHOST_BACKEND || '').trim().toLowerCase() === 'true';
 
 const resolveLocalServiceUrl = (configuredUrl, fallbackPort) => {
   if (!configuredUrl) return '';
@@ -38,7 +40,7 @@ const resolveBackendUrl = () => {
     const browserHost = typeof window !== 'undefined' ? window.location?.hostname : '';
     const isLocalConfigured = configured.hostname === 'localhost' || configured.hostname === '127.0.0.1';
     const isRemoteBrowser = browserHost && browserHost !== 'localhost' && browserHost !== '127.0.0.1';
-    if (isLocalConfigured && isRemoteBrowser) {
+    if (rewriteLocalhostBackend && isLocalConfigured && isRemoteBrowser) {
       configured.hostname = browserHost;
       return configured.toString().replace(/\/$/, '');
     }
@@ -340,6 +342,9 @@ const UI_CONFIG = {
  * Utility function to build full URL from base and endpoint
  */
 export const buildUrl = (endpoint) => {
+  if (!endpoint || typeof endpoint !== 'string') {
+    return '';
+  }
   if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
     return endpoint;
   }

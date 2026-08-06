@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { API_METHODS } from '../services/apiClient';
+import { apiClient } from '../services/apiClient';
+import { API, buildUrl } from '../config';
 import logger from '../utils/logger';
 
 /**
@@ -29,6 +30,36 @@ export const OntologyProvider = ({ children }) => {
   /**
    * Fetch ontologies from backend
    */
+  const normalizeOntologyRows = useCallback((rows = []) => {
+    return (Array.isArray(rows) ? rows : []).map((o) => {
+      const value = o.ontology_id || o.id || o.prefix || o.value || o.name || o.ontology_prefix || '';
+      const prefix = o.prefix || o.ontology_prefix || o.ontology_id || o.id || value;
+      return {
+        value,
+        label: o.ontology_name || o.name || o.label || value || prefix,
+        prefix,
+        ontology_prefix: prefix,
+        ontology_id: o.ontology_id || o.id || prefix,
+        type: o.file_type || o.type,
+        source: o.source,
+        namespace: o.namespace || o.source_namespace || o.target_namespace || '',
+        source_namespace: o.source_namespace || o.namespace || '',
+        target_namespace: o.target_namespace || o.namespace || '',
+        status: o.status || o.availability,
+        availability: o.availability || o.status,
+        node_count: Number(o.node_count || o.neo4j_nodes_merged || 0),
+        relationship_count: Number(o.relationship_count || o.neo4j_relationships_merged || 0),
+        graph_available:
+          Boolean(o.graph_available) ||
+          Number(o.node_count || o.neo4j_nodes_merged || 0) > 0 ||
+          Number(o.relationship_count || o.neo4j_relationships_merged || 0) > 0 ||
+          String(o.status || o.availability || '').toLowerCase() === 'uploaded',
+        disabled: Boolean(o.disabled),
+        raw: o,
+      };
+    });
+  }, []);
+
   const fetchOntologies = useCallback(async () => {
     if (requestRef.current) return requestRef.current;
     const controller = new AbortController();
@@ -36,30 +67,31 @@ export const OntologyProvider = ({ children }) => {
     const request = (async () => {
       try {
         if (mountedRef.current) setError(null);
-        const res = await API_METHODS.ontology.listRegistered({ signal: controller.signal });
-        const ontologyList = (res?.data?.ontologies || []).map(o => ({
-          value: o.ontology_id || o.id || o.prefix || o.value || o.name,
-          label: o.ontology_name || o.name || o.label || o.ontology_id || o.prefix || o.id,
-          prefix: o.prefix || o.ontology_prefix || o.ontology_id || o.id,
-          ontology_prefix: o.ontology_prefix || o.prefix || o.ontology_id || o.id,
-          ontology_id: o.ontology_id || o.id || o.prefix,
-          type: o.file_type || o.type,
-          source: o.source,
-          namespace: o.namespace || o.source_namespace || o.target_namespace || '',
-          source_namespace: o.source_namespace || o.namespace || '',
-          target_namespace: o.target_namespace || o.namespace || '',
-          status: o.status || o.availability,
-          availability: o.availability || o.status,
-          node_count: Number(o.node_count || o.neo4j_nodes_merged || 0),
-          relationship_count: Number(o.relationship_count || o.neo4j_relationships_merged || 0),
-          graph_available:
-            Boolean(o.graph_available) ||
-            Number(o.node_count || o.neo4j_nodes_merged || 0) > 0 ||
-            Number(o.relationship_count || o.neo4j_relationships_merged || 0) > 0 ||
-            String(o.status || o.availability || '').toLowerCase() === 'uploaded',
-          disabled: Boolean(o.disabled),
-          raw: o, // Keep full metadata
-        }));
+        const endpoints = [
+          buildUrl(API.ontology.registered),
+          buildUrl(API.graph.ontologyRegisteredRoot),
+          buildUrl(API.graph.ontologiesList),
+        ];
+        let payload = null;
+        let lastError = null;
+        for (const endpoint of endpoints) {
+          try {
+            const response = await apiClient.get(endpoint, { signal: controller.signal });
+            payload = response?.data || null;
+            if (payload) break;
+          } catch (err) {
+            lastError = err;
+          }
+        }
+        if (!payload) throw lastError || new Error('Failed to load ontologies');
+        const ontologyRows =
+          payload.ontologies ||
+          payload.items ||
+          payload.results ||
+          payload.data?.ontologies ||
+          payload.data?.items ||
+          [];
+        const ontologyList = normalizeOntologyRows(ontologyRows);
         if (mountedRef.current) {
           setOntologies(ontologyList);
           setLastUpdated(new Date());
@@ -80,7 +112,7 @@ export const OntologyProvider = ({ children }) => {
     })();
     requestRef.current = request;
     return request;
-  }, []);
+  }, [normalizeOntologyRows]);
 
   /**
    * Initial fetch on mount
@@ -96,10 +128,31 @@ export const OntologyProvider = ({ children }) => {
    * Auto-refresh every 30 seconds (single polling, shared across all components)
    */
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (typeof document === 'undefined' || !document.hidden) fetchOntologies();
-    }, 30000); // 30 seconds
-    return () => clearInterval(interval);
+    let active = true;
+    let retryDelayMs = 30000;
+    let retryTimer = null;
+    const scheduleNextFetch = () => {
+      if (!active) return;
+      retryTimer = setTimeout(async () => {
+        if (typeof document !== 'undefined' && document.hidden) {
+          scheduleNextFetch();
+          return;
+        }
+        try {
+          await fetchOntologies();
+          retryDelayMs = 30000;
+        } catch (_error) {
+          retryDelayMs = Math.min(retryDelayMs * 2, 300000);
+        } finally {
+          scheduleNextFetch();
+        }
+      }, retryDelayMs);
+    };
+    scheduleNextFetch();
+    return () => {
+      active = false;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [fetchOntologies]);
 
   const getOntologyByPrefix = useCallback(

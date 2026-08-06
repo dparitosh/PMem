@@ -39,22 +39,23 @@ export function SchemaProvider({ children }) {
     };
 
     const fetchSchema = async () => {
-      const maxAttempts = 3;
+      const maxAttempts = 2;
       try {
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
           try {
-            const res = await apiClient.get(buildUrl(API.schema.schema), { timeout: 300000, signal: controller.signal });
+            const res = await apiClient.get(buildUrl(API.schema.schema), { timeout: 10000, signal: controller.signal });
             if (!cancelled) setSchema(res.data);
             return;
           } catch (err) {
             if (attempt >= maxAttempts || !shouldRetry(err)) {
               throw err;
             }
-            await wait(600 * attempt);
+            await wait(250 * attempt);
           }
         }
       } catch (err) {
         if (controller.signal.aborted || err?.name === 'AbortError' || err?.code === 'ERR_CANCELED') return;
+        if (!cancelled) setSchema(null);
         logger.warn('Failed to fetch graph schema:', err.message);
       } finally {
         if (!cancelled) setSchemaLoading(false);

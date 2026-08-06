@@ -38,6 +38,7 @@ export default function CodeAuditPage() {
   const [live, setLive] = useState(true);
   const [tooltip, setTooltip] = useState(null);
   const [viewMode, setViewMode] = useState('ranked');
+  const retryRef = useRef({ delayMs: 30000, timerId: null });
 
   const load = useCallback(async (refresh = false) => {
     setLoading(true);
@@ -45,8 +46,10 @@ export default function CodeAuditPage() {
     try {
       const response = await apiClient.get('/api/v1/code-audit', { params: { refresh } });
       setReport(response.data);
+      retryRef.current.delayMs = 30000;
     } catch (requestError) {
       setError(requestError?.response?.data?.detail || requestError.message || 'Unable to load code network');
+      retryRef.current.delayMs = Math.min(retryRef.current.delayMs * 2, 300000);
     } finally {
       setLoading(false);
     }
@@ -55,8 +58,16 @@ export default function CodeAuditPage() {
   useEffect(() => { load(false); }, [load]);
   useEffect(() => {
     if (!live) return undefined;
-    const timer = window.setInterval(() => load(true), 30000);
-    return () => window.clearInterval(timer);
+    const schedule = () => {
+      retryRef.current.timerId = window.setTimeout(async () => {
+        await load(true);
+        if (live) schedule();
+      }, retryRef.current.delayMs);
+    };
+    schedule();
+    return () => {
+      if (retryRef.current.timerId) window.clearTimeout(retryRef.current.timerId);
+    };
   }, [live, load]);
 
   const rawGraph = useMemo(() => {

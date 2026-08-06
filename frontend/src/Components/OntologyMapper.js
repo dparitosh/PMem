@@ -1132,7 +1132,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
   }, [tableMode]);
 
   return (
-    <div style={{ display: 'grid', gap: 12, minHeight: 680 }}>
+    <div style={{ display: 'grid', gap: 12, minHeight: 'calc(100dvh - 120px)' }}>
       <section style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, padding: '12px 14px', display: 'grid', gap: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 12, flexWrap: 'wrap' }}>
           <div>
@@ -1149,7 +1149,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
         </div>
       </section>
 
-      <section style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'hidden' }}>
+      <section style={{ border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'hidden', flex: '1 1 auto', minHeight: 0 }}>
         <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary }}>Inspector</div>
@@ -1223,8 +1223,8 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
         )}
       </section>
 
-      <div className="owl-browser-layout" style={{ display: 'flex', gap: 12, minHeight: 620, alignItems: 'stretch', overflowX: 'auto', paddingBottom: 2 }}>
-        <section style={{ flex: '1 1 38%', minWidth: 340, maxWidth: '70%', resize: 'horizontal', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'auto' }}>
+      <div className="owl-browser-layout" style={{ display: 'flex', gap: 12, minHeight: '56vh', alignItems: 'stretch', overflowX: 'auto', paddingBottom: 2, flex: '1 1 auto' }}>
+        <section style={{ flex: '1 1 38%', minWidth: 340, maxWidth: '70%', resize: 'horizontal', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'auto', minHeight: '56vh' }}>
           <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: C.textPrimary }}>Hierarchy</div>
           </div>
@@ -1242,7 +1242,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
           </div>
         </section>
 
-        <section style={{ flex: '2 1 58%', minWidth: 520, resize: 'horizontal', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'auto', display: 'grid', gridTemplateRows: 'auto 1fr' }}>
+        <section style={{ flex: '2 1 58%', minWidth: 520, resize: 'horizontal', border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, overflow: 'auto', display: 'grid', gridTemplateRows: 'auto 1fr', minHeight: '56vh' }}>
           <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}`, display: 'grid', gap: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'start', flexWrap: 'wrap' }}>
               <div>
@@ -1510,7 +1510,7 @@ export default function OntologyMapper() {
   const [dictionarySourceMode, setDictionarySourceMode] = useState('primary');
   const [targetDictionarySourceMode, setTargetDictionarySourceMode] = useState('primary');
   const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedMapping, setSelectedMapping] = useState('');
   const [selectedMappingType, setSelectedMappingType] = useState('');
@@ -1676,14 +1676,16 @@ export default function OntologyMapper() {
       usageCount: ont.usageCount,
     }));
 
-    // Deduplicate by ontology prefix and keep the newest upload.
-    const byPrefix = new Map();
+    // Deduplicate by a stable ontology identity, but never collapse distinct ontologies
+    // that happen to share an empty or reused prefix.
+    const byIdentity = new Map();
     allOptions.forEach((o) => {
-      if (!byPrefix.has(o.prefix) || o.uploaded_at > byPrefix.get(o.prefix).uploaded_at) {
-        byPrefix.set(o.prefix, o);
+      const identity = o.prefix || o.value || o.ontologyKey || `${o.label}-${o.uploaded_at || ''}`;
+      if (!byIdentity.has(identity) || o.uploaded_at > byIdentity.get(identity).uploaded_at) {
+        byIdentity.set(identity, o);
       }
     });
-    return Array.from(byPrefix.values());
+    return Array.from(byIdentity.values());
   }, []);
 
   const parseLegacyMappingKey = (key = '') => {
@@ -1734,6 +1736,8 @@ export default function OntologyMapper() {
       // Initialize defaults only once (or if current selection no longer exists)
       const selectedOption = resolveSelectedOntologyOption(options, selectedMapping);
       if (!selectedOption) {
+        setSelectedMapping('');
+        setSelectedOntologyApi('');
         setLoading(false);
         return;
       }

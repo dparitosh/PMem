@@ -14,7 +14,7 @@ import agenticAPI from './agenticApi';
  */
 const apiClient = axios.create({
   baseURL: config.backendUrl,
-  timeout: config.requestTimeout || 300000,
+  timeout: config.requestTimeout || 60000,
   headers: {
     'Content-Type': 'application/json',
   },

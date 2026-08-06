@@ -24,7 +24,7 @@ function detectLanIp() {
 
 const port = process.env.PORT || process.argv[2] || '3000';
 const lanHost = process.env.APP_HOST || detectLanIp();
-const backendUrl = process.env.REACT_APP_BACKEND_URL || process.argv[3] || `http://${lanHost}:8000`;
+const backendUrl = process.env.REACT_APP_BACKEND_URL || process.argv[3] || 'http://127.0.0.1:8000';
 const host = process.env.HOST || process.argv[4] || '0.0.0.0';
 const displayHost = host === '0.0.0.0' ? lanHost : host;
 
