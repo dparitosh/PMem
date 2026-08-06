@@ -1,0 +1,892 @@
+[
+    {
+        "Method":  "GET",
+        "Path":  "/ap242/rotor-shaft-pmi",
+        "Operation":  "get_rotor_shaft_pmi_shape_ap242_rotor_shaft_pmi_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/ap242/search",
+        "Operation":  "ap242_search_ap242_search_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/import/cancel/{task_id}",
+        "Operation":  "cancel_import_api_import_cancel__task_id__post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/import/commit/{task_id}",
+        "Operation":  "commit_import_api_import_commit__task_id__post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/import/pre-commit/{task_id}",
+        "Operation":  "pre_commit_check_api_import_pre_commit__task_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/import/preview/{task_id}",
+        "Operation":  "get_import_preview_api_import_preview__task_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/import/status/{task_id}",
+        "Operation":  "get_import_status_api_import_status__task_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/import/tasks",
+        "Operation":  "list_import_tasks_api_import_tasks_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/import/upload",
+        "Operation":  "upload_file_api_import_upload_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/ontology/{ontology_id}/debug",
+        "Operation":  "debug_ontology_api_ontology__ontology_id__debug_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/admin/clean-schema",
+        "Operation":  "clean_neo4j_schema_api_v1_admin_clean_schema_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/admin/clear-cache",
+        "Operation":  "clear_cache_api_v1_admin_clear_cache_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/admin/delete-data",
+        "Operation":  "delete_data_by_label_api_v1_admin_delete_data_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/admin/health",
+        "Operation":  "admin_health_api_v1_admin_health_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/admin/ontology-duplicate-audit",
+        "Operation":  "ontology_duplicate_audit_api_v1_admin_ontology_duplicate_audit_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/admin/registry",
+        "Operation":  "get_admin_registry_api_v1_admin_registry_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/admin/reset-database",
+        "Operation":  "reset_database_api_v1_admin_reset_database_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/admin/schema-stats",
+        "Operation":  "get_schema_stats_api_v1_admin_schema_stats_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/agent-memory/sessions/{session_id}/context",
+        "Operation":  "agent_memory_session_context_api_v1_agent_memory_sessions__session_id__context_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/agent-memory/status",
+        "Operation":  "agent_memory_status_api_v1_agent_memory_status_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/documents/health",
+        "Operation":  "health_check_api_v1_documents_health_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/documents/jobs",
+        "Operation":  "submit_document_job_api_v1_documents_jobs_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/documents/jobs/{task_id}",
+        "Operation":  "get_document_job_api_v1_documents_jobs__task_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/documents/jobs/{task_id}/artifacts",
+        "Operation":  "get_document_job_artifacts_api_v1_documents_jobs__task_id__artifacts_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/documents/jobs/{task_id}/artifacts/{artifact_path}",
+        "Operation":  "download_document_job_artifact_api_v1_documents_jobs__task_id__artifacts__artifact_path__get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/documents/jobs/{task_id}/cancel",
+        "Operation":  "cancel_document_job_api_v1_documents_jobs__task_id__cancel_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/documents/plan",
+        "Operation":  "plan_document_pipeline_api_v1_documents_plan_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/documents/supported-formats",
+        "Operation":  "get_supported_formats_endpoint_api_v1_documents_supported_formats_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/documents/upload",
+        "Operation":  "upload_documents_api_v1_documents_upload_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/documents/upload-single",
+        "Operation":  "upload_single_document_api_v1_documents_upload_single_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/graph/contextual-subgraph",
+        "Operation":  "get_contextual_subgraph_api_v1_graph_contextual_subgraph_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/graph/view",
+        "Operation":  "get_graph_view_api_v1_graph_view_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/graph/view/architecture/{prefix}",
+        "Operation":  "get_architecture_process_view_api_v1_graph_view_architecture__prefix__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/graph/view/ontology/{prefix}",
+        "Operation":  "get_virtual_ontology_view_api_v1_graph_view_ontology__prefix__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/import/artifacts/{task_id}",
+        "Operation":  "get_import_artifacts_api_v1_import_artifacts__task_id__get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/import/cancel/{task_id}",
+        "Operation":  "cancel_import_api_v1_import_cancel__task_id__post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/import/commit/{task_id}",
+        "Operation":  "commit_import_api_v1_import_commit__task_id__post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/import/formats",
+        "Operation":  "get_import_formats_api_v1_import_formats_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/import/ollama/health",
+        "Operation":  "ollama_health_api_v1_import_ollama_health_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/import/ollama/query",
+        "Operation":  "ollama_query_api_v1_import_ollama_query_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/import/owl/{task_id}",
+        "Operation":  "get_import_owl_api_v1_import_owl__task_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/import/owl/{task_id}/export",
+        "Operation":  "export_import_owl_api_v1_import_owl__task_id__export_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/import/pre-commit/{task_id}",
+        "Operation":  "pre_commit_check_api_v1_import_pre_commit__task_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/import/preview/{task_id}",
+        "Operation":  "get_import_preview_api_v1_import_preview__task_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/import/status/{task_id}",
+        "Operation":  "get_import_status_api_v1_import_status__task_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/import/tasks",
+        "Operation":  "list_import_tasks_api_v1_import_tasks_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/import/upload",
+        "Operation":  "upload_file_api_v1_import_upload_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ingest-data",
+        "Operation":  "ingest_data_api_v1_ingest_data_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/metadata-registry/assets",
+        "Operation":  "list_metadata_assets_api_v1_metadata_registry_assets_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/metadata-registry/assets",
+        "Operation":  "create_metadata_asset_api_v1_metadata_registry_assets_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/metadata-registry/assets/{asset_id}",
+        "Operation":  "get_metadata_asset_api_v1_metadata_registry_assets__asset_id__get"
+    },
+    {
+        "Method":  "PATCH",
+        "Path":  "/api/v1/metadata-registry/assets/{asset_id}",
+        "Operation":  "update_metadata_asset_api_v1_metadata_registry_assets__asset_id__patch"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/metadata-registry/assets/{asset_id}/history",
+        "Operation":  "metadata_asset_history_api_v1_metadata_registry_assets__asset_id__history_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/metadata-registry/assets/{asset_id}/transition",
+        "Operation":  "transition_metadata_asset_api_v1_metadata_registry_assets__asset_id__transition_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/modeling/agent/proposals",
+        "Operation":  "modeling_agent_list_proposals_api_v1_modeling_agent_proposals_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/modeling/agent/proposals",
+        "Operation":  "modeling_agent_create_proposal_api_v1_modeling_agent_proposals_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/modeling/agent/proposals/{proposal_id}/approve",
+        "Operation":  "modeling_agent_approve_proposal_api_v1_modeling_agent_proposals__proposal_id__approve_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/modeling/agent/proposals/{proposal_id}/reject",
+        "Operation":  "modeling_agent_reject_proposal_api_v1_modeling_agent_proposals__proposal_id__reject_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/modeling/context/{element_id}",
+        "Operation":  "modeling_context_api_v1_modeling_context__element_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/modeling/graph",
+        "Operation":  "modeling_graph_api_v1_modeling_graph_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/modeling/indexes",
+        "Operation":  "modeling_indexes_api_v1_modeling_indexes_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/modeling/links",
+        "Operation":  "modeling_create_link_api_v1_modeling_links_post"
+    },
+    {
+        "Method":  "DELETE",
+        "Path":  "/api/v1/modeling/links/{element_id}",
+        "Operation":  "modeling_delete_link_api_v1_modeling_links__element_id__delete"
+    },
+    {
+        "Method":  "PUT",
+        "Path":  "/api/v1/modeling/links/{element_id}",
+        "Operation":  "modeling_update_link_api_v1_modeling_links__element_id__put"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/modeling/metamodel",
+        "Operation":  "modeling_metamodel_api_v1_modeling_metamodel_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/modeling/nodes",
+        "Operation":  "modeling_create_node_api_v1_modeling_nodes_post"
+    },
+    {
+        "Method":  "DELETE",
+        "Path":  "/api/v1/modeling/nodes/{element_id}",
+        "Operation":  "modeling_delete_node_api_v1_modeling_nodes__element_id__delete"
+    },
+    {
+        "Method":  "PUT",
+        "Path":  "/api/v1/modeling/nodes/{element_id}",
+        "Operation":  "modeling_update_node_api_v1_modeling_nodes__element_id__put"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/modeling/search",
+        "Operation":  "modeling_search_api_v1_modeling_search_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/modeling/seed",
+        "Operation":  "modeling_seed_api_v1_modeling_seed_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/modeling/tree",
+        "Operation":  "modeling_tree_api_v1_modeling_tree_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/modeling/validation",
+        "Operation":  "modeling_validation_api_v1_modeling_validation_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/{ontology_id}",
+        "Operation":  "get_registered_ontology_api_v1_ontology__ontology_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/{ontology_id}/data-dictionary",
+        "Operation":  "get_registered_ontology_data_dictionary_api_v1_ontology__ontology_id__data_dictionary_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/{ontology_id}/debug",
+        "Operation":  "debug_ontology_api_v1_ontology__ontology_id__debug_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/{ontology_id}/export",
+        "Operation":  "export_registered_ontology_api_v1_ontology__ontology_id__export_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/{ontology_id}/inference/preview",
+        "Operation":  "preview_uploaded_ontology_inference_api_v1_ontology__ontology_id__inference_preview_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/{ontology_id}/mappings/{mapping_type}",
+        "Operation":  "get_registered_ontology_mapping_edges_api_v1_ontology__ontology_id__mappings__mapping_type__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/{ontology_id}/reason",
+        "Operation":  "get_uploaded_ontology_reasoning_api_v1_ontology__ontology_id__reason_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/{ontology_id}/taxonomy",
+        "Operation":  "get_uploaded_ontology_taxonomy_api_v1_ontology__ontology_id__taxonomy_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/{prefix}/data-dictionary",
+        "Operation":  "get_generic_data_dictionary_api_v1_ontology__prefix__data_dictionary_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/{prefix}/map-entity",
+        "Operation":  "map_entity_generic_api_v1_ontology__prefix__map_entity_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/{prefix}/mappings/{source_format}",
+        "Operation":  "get_generic_mappings_api_v1_ontology__prefix__mappings__source_format__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/3dxml/formats",
+        "Operation":  "get_supported_formats_api_v1_ontology_3dxml_formats_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/3dxml/status/{task_id}",
+        "Operation":  "get_extraction_status_api_v1_ontology_3dxml_status__task_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/ap239/data-dictionary",
+        "Operation":  "get_ap239_data_dictionary_api_v1_ontology_ap239_data_dictionary_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/ap239/domain-pipelines",
+        "Operation":  "get_ap239_domain_pipelines_api_v1_ontology_ap239_domain_pipelines_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/ap239/map-entity",
+        "Operation":  "map_entity_to_ap239_api_v1_ontology_ap239_map_entity_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/ap239/mappings/{source_format}",
+        "Operation":  "get_ap239_mappings_api_v1_ontology_ap239_mappings__source_format__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/ap242/data-dictionary",
+        "Operation":  "get_ap242_data_dictionary_api_v1_ontology_ap242_data_dictionary_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/ap242/mappings/{source_format}",
+        "Operation":  "get_ap242_mappings_api_v1_ontology_ap242_mappings__source_format__get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/cleanup-old-xsd",
+        "Operation":  "cleanup_old_xsd_schemas_api_v1_ontology_cleanup_old_xsd_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/extract-3dxml",
+        "Operation":  "extract_3dxml_ontology_api_v1_ontology_extract_3dxml_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/merge",
+        "Operation":  "merge_ontologies_api_v1_ontology_merge_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/pipelines/domain/{domain_name}",
+        "Operation":  "get_domain_configuration_api_v1_ontology_pipelines_domain__domain_name__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/pipelines/domains",
+        "Operation":  "get_available_domains_api_v1_ontology_pipelines_domains_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/pipelines/process",
+        "Operation":  "process_data_through_pipeline_api_v1_ontology_pipelines_process_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/ontology/registered",
+        "Operation":  "list_registered_ontologies_api_v1_ontology_registered_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/semantic/rules/execute-preview",
+        "Operation":  "execute_swrl_rule_preview_api_v1_ontology_semantic_rules_execute_preview_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/semantic/rules/materialization-plan",
+        "Operation":  "swrl_materialization_plan_api_v1_ontology_semantic_rules_materialization_plan_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/semantic/rules/validate",
+        "Operation":  "validate_swrl_rule_api_v1_ontology_semantic_rules_validate_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/semantic/skos/search",
+        "Operation":  "search_skos_taxonomy_api_v1_ontology_semantic_skos_search_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/semantic/skos/storage-plan",
+        "Operation":  "skos_storage_plan_api_v1_ontology_semantic_skos_storage_plan_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/semantic/skos/traverse",
+        "Operation":  "traverse_skos_taxonomy_api_v1_ontology_semantic_skos_traverse_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/semantic/skos/validate",
+        "Operation":  "validate_skos_taxonomy_api_v1_ontology_semantic_skos_validate_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/ontology/upload",
+        "Operation":  "upload_ontology_file_api_v1_ontology_upload_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/reports",
+        "Operation":  "get_reports_api_v1_reports_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/reports/xsd-relational",
+        "Operation":  "get_xsd_relational_report_api_v1_reports_xsd_relational_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/requirements",
+        "Operation":  "get_normalized_requirements_api_v1_requirements_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/sysml-v2/integration-plan",
+        "Operation":  "sysml_v2_integration_plan_api_v1_sysml_v2_integration_plan_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/sysml-v2/status",
+        "Operation":  "sysml_v2_status_api_v1_sysml_v2_status_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/webhooks/neo4j",
+        "Operation":  "handle_neo4j_webhook_api_v1_webhooks_neo4j_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/workflows/artifacts/{task_id}/{artifact_path}",
+        "Operation":  "get_workflow_artifact_file_api_v1_workflows_artifacts__task_id___artifact_path__get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/v1/workflows/execute",
+        "Operation":  "execute_workflow_api_v1_workflows_execute_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/api/v1/workflows/options",
+        "Operation":  "get_workflow_options_api_v1_workflows_options_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/api/webhooks/neo4j",
+        "Operation":  "handle_neo4j_webhook_api_webhooks_neo4j_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/chat",
+        "Operation":  "chat_chat_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/chat/capabilities",
+        "Operation":  "chat_capabilities_chat_capabilities_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/chat/health",
+        "Operation":  "chat_health_chat_health_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/chat/jobs",
+        "Operation":  "chat_job_submit_chat_jobs_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/chat/jobs/{job_id}",
+        "Operation":  "chat_job_status_chat_jobs__job_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/chat/sample-queries",
+        "Operation":  "get_sample_queries_chat_sample_queries_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/chat/status",
+        "Operation":  "chat_health_chat_status_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/chat/validate",
+        "Operation":  "chat_validate_chat_validate_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/chat-stream",
+        "Operation":  "chat_stream_chat_stream_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/comparative-search",
+        "Operation":  "comparative_search_comparative_search_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/data-import/cancel/{task_id}",
+        "Operation":  "cancel_import_data_import_cancel__task_id__post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/data-import/commit/{task_id}",
+        "Operation":  "commit_import_data_import_commit__task_id__post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/data-import/pre-commit/{task_id}",
+        "Operation":  "pre_commit_check_data_import_pre_commit__task_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/data-import/preview/{task_id}",
+        "Operation":  "get_import_preview_data_import_preview__task_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/data-import/status/{task_id}",
+        "Operation":  "get_import_status_data_import_status__task_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/data-import/tasks",
+        "Operation":  "list_import_tasks_data_import_tasks_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/data-import/upload",
+        "Operation":  "upload_file_data_import_upload_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/embeddings/build",
+        "Operation":  "build_graph_embeddings_embeddings_build_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/graphfilter",
+        "Operation":  "filter_graph_nodes_graphfilter_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/graphfilter-multi",
+        "Operation":  "filter_graph_nodes_multi_graphfilter_multi_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/graph-metrics",
+        "Operation":  "get_graph_metrics_graph_metrics_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/graphtraverse/{node_id}",
+        "Operation":  "traverse_node_graphtraverse__node_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/graphvis",
+        "Operation":  "get_entire_graph_graphvis_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/graphvis/by-ontology/{prefix}",
+        "Operation":  "get_graph_by_ontology_graphvis_by_ontology__prefix__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/health",
+        "Operation":  "health_health_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/health/neo4j",
+        "Operation":  "check_neo4j_health_health_neo4j_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/instance-graph",
+        "Operation":  "get_instance_graph_instance_graph_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontologies/available",
+        "Operation":  "get_available_ontologies_ontologies_available_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontologies/list",
+        "Operation":  "list_ontologies_ontologies_list_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontology/{ontology_type}",
+        "Operation":  "get_ontology_graph_ontology__ontology_type__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontology/{ontology_type}/instances",
+        "Operation":  "get_ontology_instances_ontology__ontology_type__instances_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontology/mbse-instances",
+        "Operation":  "get_mbse_instance_graph_ontology_mbse_instances_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontology/options",
+        "Operation":  "get_ontology_options_ontology_options_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontology/registered",
+        "Operation":  "list_ontologies_registered_ontology_registered_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontology/step/{part_name}",
+        "Operation":  "get_step_part_graph_ontology_step__part_name__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontology/step/parts",
+        "Operation":  "get_step_parts_ontology_step_parts_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontology-mapper/{mapping_type}/data-dictionary",
+        "Operation":  "get_data_dictionary_ontology_mapper__mapping_type__data_dictionary_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontology-mapper/{mapping_type}/mappings",
+        "Operation":  "get_ontology_mappings_ontology_mapper__mapping_type__mappings_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontology-mapper/{mapping_type}/stats",
+        "Operation":  "get_mapping_stats_ontology_mapper__mapping_type__stats_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontology-mapper/{mapping_type}/vocabulary",
+        "Operation":  "get_vocabulary_mappings_ontology_mapper__mapping_type__vocabulary_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontology-mapper/options",
+        "Operation":  "get_mapping_options_ontology_mapper_options_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ontology-mappings",
+        "Operation":  "get_ontology_mappings_ontology_mappings_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/oslc/catalog",
+        "Operation":  "get_service_provider_catalog_oslc_catalog_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/oslc/dictionaries/{prefix}",
+        "Operation":  "get_oslc_dictionary_oslc_dictionaries__prefix__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/oslc/providers/{provider_id}",
+        "Operation":  "get_service_provider_oslc_providers__provider_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/oslc/query/{resource_type}",
+        "Operation":  "query_resources_oslc_query__resource_type__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/oslc/resources/{element_id}",
+        "Operation":  "get_resource_oslc_resources__element_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/oslc/shapes",
+        "Operation":  "list_resource_shapes_oslc_shapes_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/oslc/shapes/{shape_id}",
+        "Operation":  "get_resource_shape_oslc_shapes__shape_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/oslc/taxonomies",
+        "Operation":  "list_oslc_taxonomies_oslc_taxonomies_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/oslc/taxonomies/{ontology_id}",
+        "Operation":  "get_oslc_taxonomy_oslc_taxonomies__ontology_id__get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/oslc/trs",
+        "Operation":  "get_trs_descriptor_oslc_trs_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/oslc/trs/base",
+        "Operation":  "get_trs_base_oslc_trs_base_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/oslc/trs/changelog",
+        "Operation":  "get_trs_changelog_oslc_trs_changelog_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/ready",
+        "Operation":  "readiness_ready_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/recommendations/change-impact",
+        "Operation":  "recommend_change_impact_recommendations_change_impact_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/recommendations/health",
+        "Operation":  "recommendations_health_recommendations_health_get"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/recommendations/manufacturing",
+        "Operation":  "recommend_manufacturing_recommendations_manufacturing_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/recommendations/similar-parts",
+        "Operation":  "recommend_similar_parts_recommendations_similar_parts_post"
+    },
+    {
+        "Method":  "POST",
+        "Path":  "/reports",
+        "Operation":  "get_reports_reports_post"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/schema",
+        "Operation":  "schema_schema_get"
+    },
+    {
+        "Method":  "GET",
+        "Path":  "/schema-graph",
+        "Operation":  "get_schema_graph_schema_graph_get"
+    }
+]

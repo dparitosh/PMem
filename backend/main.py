@@ -1784,16 +1784,11 @@ async def get_sample_queries():
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=str(e))
 
-_graphvis_cache: dict = {"data": None, "ts": 0.0}
+from backend.core.graphvis_cache import graphvis_cache as _graphvis_cache
 _GRAPHVIS_CACHE_TTL = 60  # 60 seconds — short enough that deleting Neo4j clears within a minute
-_GRAPHVIS_CACHE_ENABLED = os.getenv("GRAPHVIS_CACHE_ENABLED", "false").lower() == "true"
+from backend.core.graphvis_cache import GRAPHVIS_CACHE_ENABLED as _GRAPHVIS_CACHE_ENABLED
 
-def invalidate_graphvis_cache():
-    """Clear graph cache when Neo4j connection fails"""
-    global _graphvis_cache
-    _graphvis_cache["data"] = None
-    _graphvis_cache["ts"] = 0.0
-    logger.info("Graph cache invalidated due to connection error")
+from backend.core.graphvis_cache import invalidate_graphvis_cache
 
 @app.get("/health/neo4j")
 async def check_neo4j_health():

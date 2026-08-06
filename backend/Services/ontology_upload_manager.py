@@ -455,20 +455,17 @@ class OntologyUploadManager:
         except Exception as exc:
             raise RuntimeError(str(exc)) from exc
 
-    @classmethod
-    def list_ontologies_with_neo4j_counts(cls, graph=None, include_neo4j_only: bool = True) -> Dict[str, Any]:
-        """List registered ontology prefixes with runtime Neo4j counts.
+    @staticmethod
+    def _availability(node_count: int, relationship_count: int, empty_state: str = "metadata_only") -> str:
+        if node_count <= 0:
+            return empty_state
+        return "available" if relationship_count > 0 else "loaded_empty"
 
-        File metadata is the product registry. Neo4j is used only as the
-        configured runtime validation source for node/relationship availability.
-        """
-        result = cls.list_ontologies()
-        if result.get("status") != "success":
-            return result
-
-        ontologies = normalize_ontology_entries(result.get("ontologies", []))
-        by_prefix: Dict[str, Dict[str, Any]] = {}
-        for row in ontologies:
+    @staticmethod
+    def _registry_index(ontologies: list[dict]) -> Dict[str, Dict[str, Any]]:
+        indexed: Dict[str, Dict[str, Any]] = {}
+        for source_row in normalize_ontology_entries(ontologies):
+            row = dict(source_row)
             prefix = str(row.get("prefix") or row.get("ontology_prefix") or row.get("ontology_id") or "").strip()
             if not prefix:
                 continue
@@ -478,8 +475,11 @@ class OntologyUploadManager:
             row.setdefault("node_count", row.get("neo4j_nodes_merged", 0) or 0)
             row.setdefault("relationship_count", row.get("neo4j_relationships_merged", 0) or 0)
             row["availability"] = "metadata_only"
-            by_prefix[prefix.lower()] = row
+            indexed[prefix.lower()] = row
+        return indexed
 
+    @classmethod
+    def _enrich_registry_counts(cls, by_prefix: Dict[str, Dict[str, Any]], graph=None) -> None:
         count_query = """
         MATCH (n)
         WHERE n.prefix = $prefix
@@ -501,62 +501,76 @@ class OntologyUploadManager:
                 first = counts[0] if counts else {}
                 node_count = int(first.get("node_count") or 0)
                 relationship_count = int(first.get("relationship_count") or 0)
-                row["node_count"] = node_count
-                row["relationship_count"] = relationship_count
-                if node_count > 0 and relationship_count > 0:
-                    row["availability"] = "available"
-                elif node_count > 0:
-                    row["availability"] = "loaded_empty"
-                else:
-                    row["availability"] = "metadata_only"
+                row.update({
+                    "node_count": node_count,
+                    "relationship_count": relationship_count,
+                    "availability": cls._availability(node_count, relationship_count),
+                })
+                row.pop("count_error", None)
             except Exception as exc:
                 row["availability"] = "count_failed"
                 row["count_error"] = str(exc)
 
+    @staticmethod
+    def _neo4j_only_entry(direct: Dict[str, Any]) -> Dict[str, Any] | None:
+        prefix = str(direct.get("prefix") or "").strip()
+        if not prefix:
+            return None
+        name = str(direct.get("ontology_name") or prefix).replace(" SPLM", "").replace("_splm", "").strip() or prefix.upper()
+        node_count = int(direct.get("node_count") or 0)
+        relationship_count = int(direct.get("relationship_count") or 0)
+        return {
+            "ontology_id": prefix, "ontology_name": name, "name": name,
+            "prefix": prefix, "ontology_prefix": prefix,
+            "namespace": "", "source_namespace": "", "file_type": "neo4j",
+            "generation_type": "direct", "schema_type": "schema", "source": "neo4j",
+            "status": "discovered", "node_count": node_count,
+            "relationship_count": relationship_count,
+            "availability": OntologyUploadManager._availability(node_count, relationship_count, "loaded_empty"),
+        }
+
+    @classmethod
+    def _merge_neo4j_only_entries(cls, by_prefix: Dict[str, Dict[str, Any]], graph=None) -> None:
+        direct_rows = cls._query_configured_neo4j(
+            """
+            MATCH (n)
+            WHERE n.prefix IS NOT NULL
+              AND NOT (n:DatasheetChunk OR n:GraphChunk)
+            WITH n.prefix AS prefix, collect(DISTINCT n) AS nodes
+            UNWIND nodes AS a
+            OPTIONAL MATCH (a)-[r]-(b)
+            WHERE b IN nodes
+            WITH prefix, nodes, count(DISTINCT r) AS relationship_count
+            RETURN prefix,
+                   coalesce(head([n IN nodes WHERE n.ontology_name IS NOT NULL | n.ontology_name]), prefix) AS ontology_name,
+                   size(nodes) AS node_count,
+                   relationship_count
+            ORDER BY prefix
+            """,
+            graph=graph,
+        )
+        for direct in direct_rows:
+            entry = cls._neo4j_only_entry(direct)
+            if entry and entry["prefix"].lower() not in by_prefix:
+                by_prefix[entry["prefix"].lower()] = entry
+
+    @classmethod
+    def list_ontologies_with_neo4j_counts(cls, graph=None, include_neo4j_only: bool = True) -> Dict[str, Any]:
+        """List registered ontology prefixes with runtime Neo4j counts.
+
+        File metadata is the product registry. Neo4j is used only as the
+        configured runtime validation source for node/relationship availability.
+        """
+        result = cls.list_ontologies()
+        if result.get("status") != "success":
+            return result
+
+        by_prefix = cls._registry_index(result.get("ontologies", []))
+        cls._enrich_registry_counts(by_prefix, graph=graph)
+
         if include_neo4j_only:
             try:
-                direct_rows = cls._query_configured_neo4j(
-                    """
-                    MATCH (n)
-                    WHERE n.prefix IS NOT NULL
-                      AND NOT (n:DatasheetChunk OR n:GraphChunk)
-                    WITH n.prefix AS prefix, collect(DISTINCT n) AS nodes
-                    UNWIND nodes AS a
-                    OPTIONAL MATCH (a)-[r]-(b)
-                    WHERE b IN nodes
-                    WITH prefix, nodes, count(DISTINCT r) AS relationship_count
-                    RETURN prefix,
-                           coalesce(head([n IN nodes WHERE n.ontology_name IS NOT NULL | n.ontology_name]), prefix) AS ontology_name,
-                           size(nodes) AS node_count,
-                           relationship_count
-                    ORDER BY prefix
-                    """,
-                    graph=graph,
-                )
-                for direct in direct_rows:
-                    prefix = str(direct.get("prefix") or "").strip()
-                    if not prefix or prefix.lower() in by_prefix:
-                        continue
-                    name = str(direct.get("ontology_name") or prefix).replace(" SPLM", "").replace("_splm", "").strip() or prefix.upper()
-                    node_count = int(direct.get("node_count") or 0)
-                    relationship_count = int(direct.get("relationship_count") or 0)
-                    by_prefix[prefix.lower()] = {
-                        "ontology_id": prefix,
-                        "ontology_name": name,
-                        "name": name,
-                        "prefix": prefix,
-                        "ontology_prefix": prefix,
-                        "namespace": "",
-                        "source_namespace": "",
-                        "file_type": "neo4j",
-                        "generation_type": "direct",
-                        "schema_type": "schema",
-                        "source": "neo4j",
-                        "status": "discovered",
-                        "node_count": node_count,
-                        "relationship_count": relationship_count,
-                        "availability": "available" if relationship_count > 0 else "loaded_empty",
-                    }
+                cls._merge_neo4j_only_entries(by_prefix, graph=graph)
             except Exception as exc:
                 logger.warning("Neo4j ontology prefix discovery failed: %s", exc)
 
@@ -1007,6 +1021,151 @@ RETURN count(r) AS count
         }
 
     @classmethod
+    def _parse_source_rows(cls, file_type: str, file_content: bytes, file_path: Path) -> tuple[list, list, list]:
+        """Parse a stored source without performing metadata or Neo4j writes."""
+        rows: list = []
+        xmi_relationships: list = []
+        extracted_relationships: list = []
+        if file_type == "xsd":
+            try:
+                from .ap239_parser import parse_ap239_xsd
+                rows, _ = parse_ap239_xsd(file_content)
+            except Exception as exc:
+                logger.warning("AP239 parse fallback: %s", exc)
+                from .unified_data_import import FileFormatDetector
+                rows, _ = FileFormatDetector.parse_xsd(file_content)
+        elif file_type == "xmi":
+            from .unified_data_import import FileFormatDetector
+            rows, stats = FileFormatDetector.parse_xmi(file_content)
+            xmi_relationships = list((stats or {}).get("_xmi_relationships", []) or [])
+        elif file_type == "ontology":
+            from .unified_data_import import FileFormatDetector
+            rows, _ = FileFormatDetector.parse_rdf(file_content, file_path.name)
+        elif file_type == "3dxml":
+            from .threedxml_ontology_extractor import ThreeDXMLExtractor
+            with tempfile.TemporaryDirectory(prefix="threedxml_") as temp_dir:
+                temp_file_path = Path(temp_dir) / file_path.name
+                temp_file_path.write_bytes(file_content)
+                extractor = ThreeDXMLExtractor(temp_dir)
+                extracted = extractor.extract()
+                rows = list((extracted or {}).get("entities", {}).values())
+                extracted_relationships = list(extractor.relationships or [])
+        else:
+            raise ValueError(f"Unsupported file type for Neo4j push: {file_type}")
+        return list(rows or []), xmi_relationships, extracted_relationships
+
+    @staticmethod
+    def _normalize_source_rows(rows: list, prefix: str) -> tuple[list[dict], list[dict]]:
+        """Normalize parsed entities and derive deduplicated class properties."""
+        skip_keys = {
+            "name", "concept_type", "entity_type", "namespace",
+            "type", "id", "label", "local_name",
+        }
+        valid_rows: list[dict] = []
+        property_pairs: set[tuple[str, str]] = set()
+
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name") or "").strip()
+            if not name:
+                raw_type = row.get("type") or row.get("label")
+                name = str(raw_type).split(":")[-1].strip() if raw_type else ""
+            if not name:
+                name = str(row.get("local_name") or row.get("id") or "").strip()
+            if not name:
+                continue
+
+            valid_rows.append({
+                "name": name,
+                "concept_type": str(row.get("concept_type") or row.get("entity_type") or row.get("type") or "Unknown"),
+                "namespace": str(row.get("namespace", prefix)),
+            })
+            attributes = row.get("attributes") if isinstance(row.get("attributes"), dict) else {}
+            property_pairs.update((name, str(key)) for key in attributes if str(key).strip())
+            for key, value in row.items():
+                if key in {"attributes", "metadata", "relationships"} or key in skip_keys:
+                    continue
+                if value is not None and str(value).strip():
+                    property_pairs.add((name, str(key)))
+
+        property_rows = [
+            {"class_name": class_name, "prop_name": prop_name}
+            for class_name, prop_name in sorted(property_pairs)
+        ]
+        return valid_rows, property_rows
+
+    @staticmethod
+    def _relationship_groups(valid_rows: list[dict], xmi_relationships: list, extracted_relationships: list) -> dict[str, list[dict]]:
+        """Validate, sanitize, and deduplicate parsed class relationships."""
+        class_names = {row["name"] for row in valid_rows}
+        grouped: dict[str, set[tuple[str, str]]] = {}
+
+        def add(source: Any, target: Any, relation_type: Any) -> None:
+            source_name = str(source or "").strip()
+            target_name = str(target or "").strip()
+            if source_name not in class_names or target_name not in class_names:
+                return
+            safe_type = re.sub(r"[^A-Za-z0-9_]", "_", str(relation_type or "RELATED_TO").strip()).upper()
+            safe_type = safe_type or "RELATED_TO"
+            grouped.setdefault(safe_type, set()).add((source_name, target_name))
+
+        for relationship in xmi_relationships:
+            if isinstance(relationship, dict):
+                add(relationship.get("from_label"), relationship.get("to_label"), relationship.get("type"))
+        for relationship in extracted_relationships:
+            add(
+                getattr(relationship, "source", None),
+                getattr(relationship, "target", None),
+                getattr(relationship, "relation_type", None),
+            )
+
+        return {
+            relation_type: [
+                {"from_label": source, "to_label": target}
+                for source, target in sorted(pairs)
+            ]
+            for relation_type, pairs in sorted(grouped.items())
+        }
+
+    @staticmethod
+    def _merge_relationship_groups(graph, prefix: str, groups: dict[str, list[dict]]) -> int:
+        total = 0
+        for relation_type, rows in groups.items():
+            cypher = f"""
+UNWIND $rows AS row
+MATCH (a:OntologyClass {{name: row.from_label, prefix: $prefix}})
+MATCH (b:OntologyClass {{name: row.to_label, prefix: $prefix}})
+MERGE (a)-[:{relation_type}]->(b)
+"""
+            graph.query(cypher, params={"rows": rows, "prefix": prefix})
+            total += len(rows)
+        return total
+
+    @staticmethod
+    def _merge_property_rows(graph, prefix: str, property_rows: list[dict], batch_size: int = 500) -> int:
+        if not property_rows:
+            return 0
+        cypher = """
+UNWIND $rows AS row
+MATCH (c:OntologyClass {name: row.class_name, prefix: $prefix})
+MERGE (p:OntologyProperty {name: row.prop_name, prefix: $prefix})
+ON CREATE SET p.ontology_prefix = $prefix
+ON MATCH SET p.ontology_prefix = $prefix
+MERGE (p)-[:PROPERTY_OF]->(c)
+"""
+        try:
+            for offset in range(0, len(property_rows), batch_size):
+                graph.query(cypher, params={
+                    "rows": property_rows[offset:offset + batch_size],
+                    "prefix": prefix,
+                })
+            return len(property_rows)
+        except Exception as exc:
+            logger.warning("OntologyProperty merge skipped: %s", exc)
+            return 0
+
+    @classmethod
     def push_to_neo4j(cls, ontology_id: str, graph, schema_type: str = "schema") -> Dict[str, Any]:
         """Parse the stored ontology file and MERGE its entities into Neo4j as OntologyClass or Instance nodes.
 
@@ -1078,89 +1237,14 @@ RETURN count(r) AS count
                 })
                 return rdf_result
 
-            # Parse entities
-            rows: list = []
-            xmi_relationships: list = []
-            extracted_relationships: list = []
-            if file_type == 'xsd':
-                try:
-                    from .ap239_parser import parse_ap239_xsd
-                    rows, _ = parse_ap239_xsd(file_content)
-                except Exception as e:
-                    logger.warning(f"AP239 parse fallback: {e}")
-                    from .unified_data_import import FileFormatDetector
-                    rows, _ = FileFormatDetector.parse_xsd(file_content)
-            elif file_type == 'xmi':
-                from .unified_data_import import FileFormatDetector
-                rows, stats = FileFormatDetector.parse_xmi(file_content)
-                xmi_relationships = list((stats or {}).get("_xmi_relationships", []) or [])
-            elif file_type == 'ontology':
-                from .unified_data_import import FileFormatDetector
-                rows, _ = FileFormatDetector.parse_rdf(file_content, file_path.name)
-            elif file_type == '3dxml':
-                try:
-                    from .threedxml_ontology_extractor import ThreeDXMLExtractor
-                except Exception:
-                    from backend.Services.threedxml_ontology_extractor import ThreeDXMLExtractor
-
-                with tempfile.TemporaryDirectory(prefix='threedxml_') as temp_dir:
-                    temp_file_path = Path(temp_dir) / file_path.name
-                    temp_file_path.write_bytes(file_content)
-                    extractor = ThreeDXMLExtractor(temp_dir)
-                    extracted = extractor.extract()
-                    rows = list((extracted or {}).get('entities', {}).values())
-                    extracted_relationships = list(extractor.relationships or [])
-            else:
-                return {'status': 'error', 'error': f"Unsupported file type for Neo4j push: {file_type}"}
-
-            # Build valid row list (must have a name)
-            # Also capture every non-empty property key from each row as an OntologyProperty.
-            valid_rows = []
-            property_rows: list = []   # [{class_name, prop_name}]
-
-            _SKIP_KEYS = {"name", "concept_type", "namespace", "type", "id", "label"}
-
-            def _resolve_row_name(row: Dict[str, Any]) -> str:
-                name = str(row.get('name', '')).strip()
-                if name:
-                    return name
-                raw_type = row.get('type') or row.get('label')
-                if raw_type:
-                    token = str(raw_type).split(':')[-1].strip()
-                    if token:
-                        return token
-                for fallback_key in ('local_name', 'id'):
-                    fallback = row.get(fallback_key)
-                    if fallback:
-                        return str(fallback).strip()
-                return ''
-
-            for r in rows:
-                name = _resolve_row_name(r)
-                if not name:
-                    continue
-                concept_type = str(
-                    r.get('concept_type')
-                    or r.get('entity_type')
-                    or r.get('type')
-                    or 'Unknown'
+            try:
+                rows, xmi_relationships, extracted_relationships = cls._parse_source_rows(
+                    file_type, file_content, file_path
                 )
-                namespace = str(r.get('namespace', prefix))
-                valid_rows.append({
-                    'name': name,
-                    'concept_type': concept_type,
-                    'namespace': namespace,
-                })
-                attributes = r.get('attributes') if isinstance(r.get('attributes'), dict) else {}
-                for attr_name in attributes.keys():
-                    if attr_name and str(attr_name).strip():
-                        property_rows.append({'class_name': name, 'prop_name': str(attr_name)})
-                # Collect non-empty extra keys as OntologyProperty candidates
-                for key, val in r.items():
-                    if key in {'attributes', 'metadata', 'relationships'}:
-                        continue
-                    if key not in _SKIP_KEYS and val is not None and str(val).strip():
-                        property_rows.append({'class_name': name, 'prop_name': str(key)})
+            except ValueError as exc:
+                return {"status": "error", "error": str(exc)}
+
+            valid_rows, property_rows = cls._normalize_source_rows(rows, prefix)
 
             if not valid_rows:
                 return {'status': 'success', 'nodes_merged': 0, 'ontology_id': ontology_id,
@@ -1205,94 +1289,26 @@ RETURN count(c) AS merged
             node_type_label = "OntologyClass" if determined_schema_type == "schema" else "Instance"
             logger.info(f"Neo4j push: {merged} {node_type_label} nodes merged for {ontology_id} v{version} (schema_type={determined_schema_type})")
 
-            relationship_sources = []
-            if xmi_relationships:
-                relationship_sources.extend(
-                    {
-                        "from_label": (rel.get("from_label") or "").strip(),
-                        "to_label": (rel.get("to_label") or "").strip(),
-                        "type": (rel.get("type") or "RELATED_TO").strip() or "RELATED_TO",
-                    }
-                    for rel in xmi_relationships
-                )
-            if extracted_relationships:
-                relationship_sources.extend(
-                    {
-                        "from_label": (rel.source or "").strip(),
-                        "to_label": (rel.target or "").strip(),
-                        "type": (rel.relation_type or "RELATED_TO").strip() or "RELATED_TO",
-                    }
-                    for rel in extracted_relationships
-                )
-
             relationship_total = 0
-
-            # For structured schema uploads, create class-to-class relationships from parsed links.
-            if determined_schema_type == "schema" and relationship_sources:
-                class_names = {row["name"] for row in valid_rows}
-                rel_groups: Dict[str, set] = {}
-                for rel in relationship_sources:
-                    from_label = (rel.get("from_label") or "").strip()
-                    to_label = (rel.get("to_label") or "").strip()
-                    if not from_label or not to_label:
-                        continue
-                    if from_label not in class_names or to_label not in class_names:
-                        continue
-                    raw_type = (rel.get("type") or "RELATED_TO").strip() or "RELATED_TO"
-                    rel_type = re.sub(r"[^A-Za-z0-9_]", "_", raw_type).upper()
-                    rel_groups.setdefault(rel_type, set()).add((from_label, to_label))
-
-                rel_total = 0
-                for rel_type, pairs in rel_groups.items():
-                    rel_rows = [{"from_label": f, "to_label": t} for (f, t) in pairs]
-                    rel_cypher = f"""
-UNWIND $rows AS row
-MATCH (a:OntologyClass {{name: row.from_label, prefix: $prefix}})
-MATCH (b:OntologyClass {{name: row.to_label, prefix: $prefix}})
-MERGE (a)-[:{rel_type}]->(b)
-"""
-                    graph.query(rel_cypher, params={"rows": rel_rows, "prefix": prefix})
-                    rel_total += len(rel_rows)
-                if rel_total:
-                    relationship_total = rel_total
-                    logger.info(f"Neo4j push: {rel_total} OntologyClass relationships merged for {ontology_id}")
-
-            # MERGE OntologyProperty nodes and link them to their OntologyClass
-            # Deduplicate property rows to avoid repeated MERGE operations
-            if property_rows:
-                seen_props = set()
-                deduped_props = []
-                for pr in property_rows:
-                    key = (pr['class_name'], pr['prop_name'])
-                    if key in seen_props:
-                        continue
-                    seen_props.add(key)
-                    deduped_props.append(pr)
-                property_rows = deduped_props
-
-            if property_rows:
-                prop_cypher = """
-UNWIND $rows AS row
-MATCH (c:OntologyClass {name: row.class_name, prefix: $prefix})
-MERGE (p:OntologyProperty {name: row.prop_name, prefix: $prefix})
-ON CREATE SET p.ontology_prefix = $prefix
-ON MATCH SET p.ontology_prefix = $prefix
-MERGE (p)-[:PROPERTY_OF]->(c)
-"""
-
-                try:
-                    _BATCH = 500
-                    for _i in range(0, len(property_rows), _BATCH):
-                        graph.query(prop_cypher, params={
-                            'rows': property_rows[_i:_i + _BATCH],
-                            'prefix': prefix,
-                        })
+            if determined_schema_type == "schema":
+                relationship_groups = cls._relationship_groups(
+                    valid_rows, xmi_relationships, extracted_relationships
+                )
+                relationship_total = cls._merge_relationship_groups(graph, prefix, relationship_groups)
+                if relationship_total:
                     logger.info(
-                        f"Neo4j push: {len(property_rows)} OntologyProperty links merged "
-                        f"for {ontology_id}"
+                        "Neo4j push: %s OntologyClass relationships merged for %s",
+                        relationship_total,
+                        ontology_id,
                     )
-                except Exception as prop_err:
-                    logger.warning(f"OntologyProperty merge skipped: {prop_err}")
+
+            property_total = cls._merge_property_rows(graph, prefix, property_rows)
+            if property_total:
+                logger.info(
+                    "Neo4j push: %s OntologyProperty links merged for %s",
+                    property_total,
+                    ontology_id,
+                )
 
             # Update metadata status
             cls._update_status(ontology_id, 'pushed_to_neo4j', {

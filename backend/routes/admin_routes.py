@@ -868,10 +868,10 @@ async def clear_cache():
     }
     try:
         try:
-            from backend.main import invalidate_graphvis_cache
+            from backend.core.graphvis_cache import invalidate_graphvis_cache
         except ImportError:
-            from main import invalidate_graphvis_cache
-        invalidate_graphvis_cache()
+            from core.graphvis_cache import invalidate_graphvis_cache
+        invalidate_graphvis_cache("admin clear-cache")
         cleared["graph_cache"] = True
     except Exception as exc:
         logger.warning("Could not clear graph cache: %s", exc)

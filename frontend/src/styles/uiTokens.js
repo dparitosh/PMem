@@ -1,0 +1,30 @@
+export const UI_COLORS = {
+  primary: '#005a9c',
+  primaryDark: '#003f73',
+  primaryLight: '#e8f1fc',
+  primaryHover: '#0066cc',
+  orange: '#ff6900',
+  orangeLight: '#fff5f0',
+  green: '#28a745',
+  greenLight: '#f0fff4',
+  amber: '#e6a817',
+  amberLight: '#fffbeb',
+  red: '#d32f2f',
+  redLight: '#fef2f2',
+  textPrimary: '#1a2b3c',
+  textSec: '#6c757d',
+  textMuted: '#adb5bd',
+  border: '#e9ecef',
+  borderDark: '#ced4da',
+  bg: '#f8f9fa',
+  surface: '#ffffff',
+  darkBg: '#2c3e50',
+};
+
+export const UI_STATUS_COLORS = {
+  success: { bg: '#d4edda', text: '#155724', border: '#c3e6cb' },
+  info: { bg: '#d1ecf1', text: '#0c5460', border: '#bee5eb' },
+  warn: { bg: '#fff3cd', text: '#856404', border: '#ffeeba' },
+  accent: { bg: '#cce5ff', text: '#004085', border: '#b8daff' },
+  violet: { bg: '#e2d9f3', text: '#4a1c7c', border: '#d1c4e9' },
+};

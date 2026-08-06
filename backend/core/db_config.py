@@ -240,6 +240,57 @@ def get_config() -> Neo4jConfig:
     return config
 
 
+def _float_environment(name: str, default: float) -> float:
+    """Read a positive float setting without silently accepting invalid input."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("Ignoring invalid %s=%r; using %s", name, raw, default)
+        return default
+    if value < 0:
+        logger.warning("Ignoring negative %s=%r; using %s", name, raw, default)
+        return default
+    return value
+
+
+def _is_host_resolvable(uri: str, timeout: float = 3.0) -> bool:
+    """Check URI host resolution while restoring the process socket timeout."""
+    host = urlparse(uri).hostname or uri
+    previous_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(timeout)
+    try:
+        socket.getaddrinfo(host, None)
+        return True
+    except (OSError, ValueError):
+        return False
+    finally:
+        socket.setdefaulttimeout(previous_timeout)
+
+
+def _driver_kwargs(config: Neo4jConfig) -> Dict[str, Any]:
+    """Build version-compatible Neo4j driver options from validated config."""
+    options: Dict[str, Any] = {
+        "max_connection_pool_size": config.max_connection_pool_size,
+        "connection_acquisition_timeout": config.connection_acquisition_timeout,
+        "connection_timeout": config.connection_timeout,
+        "user_agent": config.user_agent,
+    }
+    if config.deployment_type != Neo4jDeploymentType.AURA and (
+        config.encrypted or config.deployment_type == Neo4jDeploymentType.ENTERPRISE
+    ):
+        options["encrypted"] = config.encrypted
+        if config.trust_custom_ca_signed_certificates:
+            options["trusted_certificates"] = TrustCustomCAs(config.trust_custom_ca_signed_certificates)
+        elif not config.tls_verify:
+            options["trusted_certificates"] = TrustAll()
+        elif config.trust_system_ca_signed_certificates:
+            options["trusted_certificates"] = TrustSystemCAs()
+    return options
+
+
 class Neo4jDriverPool:
     """
     Singleton Neo4j driver pool manager.
@@ -293,10 +344,9 @@ class Neo4jDriverPool:
         """Create and verify the singleton driver while holding the creation lock."""
         
         # Allow override of cooldown via env for easier debugging
-        try:
-            self._RECONNECTION_COOLDOWN = float(os.getenv("NEO4J_RECONNECTION_COOLDOWN", str(self._RECONNECTION_COOLDOWN)))
-        except Exception:
-            pass
+        self._RECONNECTION_COOLDOWN = _float_environment(
+            "NEO4J_RECONNECTION_COOLDOWN", self._RECONNECTION_COOLDOWN
+        )
 
         # Check cooldown to prevent repeated connection attempts
         current_time = time.time()
@@ -318,45 +368,11 @@ class Neo4jDriverPool:
             self._config = config
 
             # Helper: check DNS resolution for the host portion of the URI
-            def _is_host_resolvable(uri: str, timeout: float = 3.0) -> bool:
-                try:
-                    host = urlparse(uri).hostname or uri
-                    # Temporarily set default timeout for resolution
-                    old = socket.getdefaulttimeout()
-                    socket.setdefaulttimeout(timeout)
-                    try:
-                        socket.getaddrinfo(host, None)
-                        return True
-                    finally:
-                        socket.setdefaulttimeout(old)
-                except Exception:
-                    return False
-            
             # ✅ FIXED: Build driver kwargs based on deployment type
             # neo4j+s:// and bolt+s:// handle encryption automatically
             # Don't pass encryption settings for these schemes
             # Note: socket_keep_alive and socket_connection_timeout are not valid Neo4j driver params
-            driver_kwargs = {
-                'max_connection_pool_size': config.max_connection_pool_size,
-                'connection_acquisition_timeout': config.connection_acquisition_timeout,
-                'connection_timeout': config.connection_timeout,
-                'user_agent': config.user_agent,
-            }
-            
-            # Only add encryption settings for schemes that support them
-            # neo4j+s:// and bolt+s:// handle encryption automatically
-            if config.deployment_type != Neo4jDeploymentType.AURA:
-                # For on-premises (bolt:// or bolt+s://), add encryption settings
-                if config.encrypted or config.deployment_type == Neo4jDeploymentType.ENTERPRISE:
-                    driver_kwargs['encrypted'] = config.encrypted
-                    if config.trust_custom_ca_signed_certificates:
-                        driver_kwargs['trusted_certificates'] = TrustCustomCAs(
-                            config.trust_custom_ca_signed_certificates
-                        )
-                    elif not config.tls_verify:
-                        driver_kwargs['trusted_certificates'] = TrustAll()
-                    elif config.trust_system_ca_signed_certificates:
-                        driver_kwargs['trusted_certificates'] = TrustSystemCAs()
+            driver_kwargs = _driver_kwargs(config)
             
             # Create driver with appropriate settings
             # Defensive: ensure unsupported keys are not passed to the neo4j driver.
