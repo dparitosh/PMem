@@ -42,10 +42,15 @@ function getInitialActivePage() {
 function getLocationPage() {
   if (typeof window === 'undefined') return null;
   const hash = String(window.location.hash || '');
-  if (hash.startsWith('#/')) return normalizePage(hash.slice(2).split('/')[0]);
+  if (hash === '#/' || hash === '#') return 'home';
+  if (hash.startsWith('#/')) {
+    const hashPage = hash.slice(2).split('/')[0];
+    return hashPage ? normalizePage(hashPage) : 'home';
+  }
   const pathname = String(window.location.pathname || '/');
-  if (pathname !== '/') return normalizePage(pathname.split('/').filter(Boolean)[0]);
-  return null;
+  if (pathname === '/') return 'home';
+  const pathPage = pathname.split('/').filter(Boolean)[0];
+  return pathPage ? normalizePage(pathPage) : 'home';
 }
 
 function pushPageLocation(value) {
@@ -133,7 +138,26 @@ function App() {
       const controller = new AbortController();
       currentController = controller;
       try {
-        await API_METHODS.health.ready({ signal: controller.signal, timeout: 5000 });
+        const healthChecks = [
+          () => API_METHODS.health.ready({ signal: controller.signal, timeout: 5000 }),
+          () => API_METHODS.health.check({ signal: controller.signal, timeout: 5000 }),
+          () => API_METHODS.ontology.listRegistered({ signal: controller.signal, timeout: 8000 }),
+        ];
+        let lastError = null;
+        let healthy = false;
+        for (const runCheck of healthChecks) {
+          try {
+            await runCheck();
+            healthy = true;
+            break;
+          } catch (error) {
+            if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') {
+              throw error;
+            }
+            lastError = error;
+          }
+        }
+        if (!healthy && lastError) throw lastError;
         if (active) {
           setServiceStatus('online');
           retryDelayMs = 30000;
@@ -142,7 +166,7 @@ function App() {
       } catch (error) {
         if (active && error?.code !== 'ERR_CANCELED' && error?.name !== 'CanceledError') {
           consecutiveFailures += 1;
-          if (consecutiveFailures >= 2) {
+          if (consecutiveFailures >= 3) {
             setServiceStatus('offline');
           }
           retryDelayMs = Math.min(retryDelayMs * 2, 300000);

@@ -64,8 +64,8 @@ const DISPLAY_NAME_PROPERTY = ['name', 'title', 'code', 'key', 'abbreviation', '
 // These improve readability and maintainability
 const HIGHLIGHT_AUTO_CLEAR_MS = 15000;        // 15 seconds - clear highlight after timeout
 const ENTITY_EXTRACTION_DELAY_MS = 500;       // 500ms - allow text selection to settle
-const DEFAULT_GRAPH_OVERVIEW_LIMIT = 900;
-const DEFAULT_ONTOLOGY_VIEW_LIMIT = 200;
+const DEFAULT_GRAPH_OVERVIEW_LIMIT = Math.max(1, Number(API?.ui?.graphMaxNodes) || 750);
+const DEFAULT_ONTOLOGY_VIEW_LIMIT = DEFAULT_GRAPH_OVERVIEW_LIMIT;
 // Helper: resolve the first matching property from DISPLAY_NAME_PROPERTY list
 const resolveDisplayProp = (props) => {
   if (!props || !DISPLAY_NAME_PROPERTY || DISPLAY_NAME_PROPERTY.length === 0) return null;
@@ -76,9 +76,12 @@ const resolveDisplayProp = (props) => {
   return null;
 };
 
-const resolveOntologySearchPrefix = (ontologyValue) => {
+const resolveOntologySearchPrefix = (ontologyValue, fallbackOntologyValue = '') => {
   if (!ontologyValue || ontologyValue === 'ALL' || ontologyValue === 'step' || ontologyValue === 'mbse_instances') {
-    return '';
+    if (!fallbackOntologyValue || fallbackOntologyValue === ontologyValue) {
+      return '';
+    }
+    return resolveOntologySearchPrefix(fallbackOntologyValue, '');
   }
   if (ontologyValue.endsWith('_instances')) {
     return ontologyValue.replace(/_instances$/, '');
@@ -225,8 +228,8 @@ const CHAR_CROSS      = '\u2717';     // ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â
 // ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬
 
 const ENTITY_COLOR_SWATCH = [
-  '#1F3D63', '#355C7D', '#486581', '#0F766E', '#8D6E63', '#C05621',
-  '#6B46C1', '#0E7490', '#A16207', '#BE185D', '#3E4C59', '#0F4C5C',
+  '#1F3D63', '#0F766E', '#7C3AED', '#C05621', '#0E7490', '#A16207',
+  '#BE185D', '#486581', '#355C7D', '#2F855A', '#B45309', '#6B46C1',
 ];
 
 const hashText = (value) => {
@@ -360,11 +363,18 @@ const createNodeSearchFunction = () => {
           node?.id,
           node?.name,
           node?.title,
+          node?.label,
+          node?.type,
+          node?.entity_type,
           node?.code,
+          Array.isArray(node?.labels) ? node.labels.join(' ') : null,
           props.id,
           props.uid,
           props.name,
           props.title,
+          props.label,
+          props.type,
+          props.entity_type,
           props.code,
           props.key,
           props.identifier,
@@ -614,10 +624,67 @@ const getAdaptiveLinkDistance = (relationshipType, nodeCount, linkCount) => {
 };
 
 const getAdaptiveChargeStrength = (nodeCount) => {
-  if (nodeCount > 180) return -115;
-  if (nodeCount > 90) return -165;
+  if (nodeCount > 180) return -220;
+  if (nodeCount > 90) return -245;
   if (nodeCount > 40) return CHARGE_STRENGTH;
   return -280;
+};
+
+const varyColorBySeed = (baseColor, seed, options = {}) => {
+  const {
+    lightnessRange = 18,
+    saturationBoost = 0,
+    chromaFloor = 26,
+  } = options;
+  const color = d3.hcl(baseColor);
+  if (!color) return baseColor;
+  const hash = hashText(seed || baseColor);
+  const offset = (hash % (lightnessRange * 2 + 1)) - lightnessRange;
+  color.l = Math.max(32, Math.min(78, color.l + offset));
+  color.c = Math.max(chromaFloor, Math.min(92, color.c + saturationBoost + ((hash % 9) - 4)));
+  return color.formatHex();
+};
+
+const ONTOLOGY_CLASS_PALETTE = ['#163E6D', '#1D4F91', '#2563EB', '#3B82F6', '#5B9BFF', '#2B6CB0'];
+const OBJECT_PROPERTY_PALETTE = ['#C05621', '#DD6B20', '#F97316', '#FB923C', '#EA580C', '#B45309'];
+const DATATYPE_PROPERTY_PALETTE = ['#2C5282', '#3B82F6', '#60A5FA', '#D97706', '#F59E0B', '#FDBA74'];
+
+const pickPaletteColor = (palette, seed) => {
+  if (!Array.isArray(palette) || palette.length === 0) return TCS_GRAPH_THEME.primary;
+  return palette[hashText(seed) % palette.length];
+};
+
+const getNodeSemanticFamily = (nodeLike) => {
+  const label = resolveNodeType(nodeLike);
+  const props = nodeLike?.properties && typeof nodeLike.properties === 'object' && !Array.isArray(nodeLike.properties)
+    ? nodeLike.properties
+    : nodeLike || {};
+  const normalized = `${label || ''} ${props.entity_type || ''} ${props.semantic_role || ''}`.toLowerCase();
+  if (normalized.includes('ontologyclass') || normalized.includes(' class')) return 'Classes';
+  if (normalized.includes('objectproperty') || normalized.includes('property')) return 'Properties';
+  if (normalized.includes('datatypeproperty') || normalized.includes('datatype')) return 'Data Types';
+  if (normalized.includes('requirement') || normalized.includes('specification')) return 'Requirements';
+  if (normalized.includes('document') || normalized.includes('view') || normalized.includes('package')) return 'Documents';
+  if (normalized.includes('part') || normalized.includes('product') || normalized.includes('assembly') || normalized.includes('bom')) return 'Products';
+  if (normalized.includes('relation') || normalized.includes('trace') || normalized.includes('connection')) return 'Relations';
+  if (normalized.includes('instance') || normalized.includes('individual') || normalized.includes('resource')) return 'Instances';
+  return 'Other';
+};
+
+const getClusterTarget = (family, width, height) => {
+  const positions = {
+    Classes: [0.28, 0.24],
+    Properties: [0.7, 0.24],
+    'Data Types': [0.84, 0.46],
+    Requirements: [0.24, 0.72],
+    Documents: [0.52, 0.18],
+    Products: [0.62, 0.72],
+    Relations: [0.18, 0.48],
+    Instances: [0.82, 0.72],
+    Other: [0.5, 0.5],
+  };
+  const [xFactor, yFactor] = positions[family] || positions.Other;
+  return { x: width * xFactor, y: height * yFactor };
 };
 
 export const normalizeGraphDataset = (payload, options) => normalizeGraphDatasetShared(payload, options);
@@ -625,10 +692,14 @@ export const normalizeGraphDataset = (payload, options) => normalizeGraphDataset
 const sanitizeContextualGraph = (graphData, rootNodeId) => {
   const neighborhood = getOneHopNeighborhood(graphData, rootNodeId);
   const rootId = String(rootNodeId || '').trim();
+  const preserveSchemaNodes = graphData?.view?.fallback === 'schema'
+    || String(rootNodeId || '').includes(':');
   const nodes = (neighborhood.nodes || []).filter((node) => {
     if (!node?.elementId) return false;
     if (node.elementId === rootId) return true;
-    return !isMetadataWrapperNode(node) && !isRelationshipCarrierNode(node) && !isSchemaTerminalNode(node);
+    return !isMetadataWrapperNode(node)
+      && !isRelationshipCarrierNode(node)
+      && (preserveSchemaNodes || !isSchemaTerminalNode(node));
   });
   const nodeIds = new Set(nodes.map((node) => node.elementId));
   const links = (neighborhood.links || []).filter((link) => {
@@ -1209,7 +1280,7 @@ const GraphHEB = ({
       : baseGraphDataset;
   }, [activeDisplayData, baseGraphDataset, graphSearchActive]);
   const ontologySliceSummary = useMemo(() => {
-    if (graphViewMode !== 'ontology' || selectedOntology === 'ALL') {
+    if (graphViewMode !== 'ontology') {
       return null;
     }
 
@@ -1261,14 +1332,29 @@ const GraphHEB = ({
     ].filter((entry) => schemaLabelCounts[entry.key] > 0)
       .map((entry) => ({ label: entry.label, count: schemaLabelCounts[entry.key] }));
 
+    const totalCounts = activeGraphDataset?.view?.total_counts || graphData?.view?.total_counts || null;
+    const semanticFamilyCounts = nodes.reduce((acc, node) => {
+      const family = getNodeSemanticFamily(node);
+      acc[family] = (acc[family] || 0) + 1;
+      return acc;
+    }, {});
+    const visibleFamilies = Object.entries(semanticFamilyCounts)
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, selectedOntology === 'ALL' ? 6 : 4)
+      .map(([label, count]) => ({ label, count }));
+
     return {
+      modeLabel: selectedOntology === 'ALL' ? 'Visible overview slice' : 'Current schema slice',
       nodeCount: nodes.length,
       relationshipCount: links.length,
       visibleRelationships,
       visibleSchemaLabels,
       hasSubclassEdges: Boolean(relationshipCounts.SUBCLASS_OF),
+      visibleFamilies,
+      totalCounts,
+      isCapped: Boolean(totalCounts && (totalCounts.nodes > nodes.length || totalCounts.relationships > links.length)),
     };
-  }, [activeGraphDataset, graphViewMode, selectedOntology]);
+  }, [activeGraphDataset, graphData, graphViewMode, selectedOntology]);
 
   const findBestSearchMatchId = useCallback((nodes, query) => {
     const term = normalizeSearchTerm(query);
@@ -1431,27 +1517,78 @@ const GraphHEB = ({
       resetCenteredSearch = false,
       syncResults = false,
       forceSearchResults = false,
+      preserveIsolatedNodes = false,
     } = options;
 
     const normalizedSlice = deduplicateNodesAndLinks(nextData?.nodes || [], nextData?.links || []);
     const validatedSlice = validateConnectivity(normalizedSlice);
+    if (preserveIsolatedNodes) {
+      if (validatedSlice.orphanNodeIds.length > 0 && isDevelopment) {
+        performanceWarn('[GRAPH] commitGraphSlice preserving isolated nodes:', validatedSlice.orphanNodeIds);
+      }
+      if (updateFilteredData) setFilteredData(normalizedSlice);
+      setData(normalizedSlice);
+      if (updateGraphData) setGraphData(normalizedSlice);
+      if (updateFullDataset) setFullDataset(normalizedSlice);
+      if (updateSearchResultData) setSearchResultData(normalizedSlice);
+
+      if (clearActiveSearchId) {
+        setActiveSearchResultId(null);
+        activeSearchResultIdRef.current = null;
+      } else if (typeof nextActiveSearchId !== 'undefined') {
+        setActiveSearchResultId(nextActiveSearchId);
+        activeSearchResultIdRef.current = nextActiveSearchId;
+      }
+
+      if (resetCenteredSearch) {
+        lastCenteredSearchRef.current = '';
+      }
+
+      if (syncResults) {
+        syncSharedSearchResults(normalizedSlice.nodes || [], { force: forceSearchResults });
+      }
+      return;
+    }
+    const graphNodeCap = Math.max(1, Number(API?.ui?.graphMaxNodes) || 750);
+    const nodeList = normalizedSlice.nodes || [];
+    const linkList = normalizedSlice.links || [];
+    const nodeDegree = new Map(nodeList.map((node) => [node.elementId, 0]));
+    linkList.forEach((link) => {
+      const sourceId = getLinkEndpointId(link.source);
+      const targetId = getLinkEndpointId(link.target);
+      if (sourceId && nodeDegree.has(sourceId)) nodeDegree.set(sourceId, (nodeDegree.get(sourceId) || 0) + 1);
+      if (targetId && nodeDegree.has(targetId)) nodeDegree.set(targetId, (nodeDegree.get(targetId) || 0) + 1);
+    });
+    const cappedNodes = nodeList
+      .slice()
+      .sort((left, right) => {
+        const rightDegree = nodeDegree.get(right.elementId) || 0;
+        const leftDegree = nodeDegree.get(left.elementId) || 0;
+        if (rightDegree !== leftDegree) return rightDegree - leftDegree;
+        return String(left.elementId || '').localeCompare(String(right.elementId || ''));
+      })
+      .slice(0, graphNodeCap);
+    const allowedNodeIds = new Set(cappedNodes.map((node) => node.elementId));
+    const cappedLinks = linkList.filter((link) => {
+      const sourceId = getLinkEndpointId(link.source);
+      const targetId = getLinkEndpointId(link.target);
+      return allowedNodeIds.has(sourceId) && allowedNodeIds.has(targetId);
+    });
     const connectedNodeIds = new Set();
-    (normalizedSlice.links || []).forEach((link) => {
+    cappedLinks.forEach((link) => {
       const sourceId = getLinkEndpointId(link.source);
       const targetId = getLinkEndpointId(link.target);
       if (sourceId) connectedNodeIds.add(sourceId);
       if (targetId) connectedNodeIds.add(targetId);
     });
-    const prunedSlice = (normalizedSlice.links || []).length > 0
-      ? {
-          nodes: (normalizedSlice.nodes || []).filter((node) => connectedNodeIds.has(node.elementId)),
-          links: (normalizedSlice.links || []).filter((link) => {
-            const sourceId = getLinkEndpointId(link.source);
-            const targetId = getLinkEndpointId(link.target);
-            return connectedNodeIds.has(sourceId) && connectedNodeIds.has(targetId);
-          }),
-        }
-      : normalizedSlice;
+    const prunedSlice = {
+      nodes: cappedNodes.filter((node) => connectedNodeIds.has(node.elementId)),
+      links: cappedLinks.filter((link) => {
+        const sourceId = getLinkEndpointId(link.source);
+        const targetId = getLinkEndpointId(link.target);
+        return connectedNodeIds.has(sourceId) && connectedNodeIds.has(targetId);
+      }),
+    };
     if (validatedSlice.orphanNodeIds.length > 0 && isDevelopment) {
       performanceWarn('[GRAPH] commitGraphSlice orphan nodes detected:', validatedSlice.orphanNodeIds);
     }
@@ -1509,6 +1646,7 @@ const GraphHEB = ({
         resetCenteredSearch: true,
         syncResults: preserveSearch,
         forceSearchResults: preserveSearch,
+        preserveIsolatedNodes: true,
       });
 
       if (preserveSearch) {
@@ -1609,12 +1747,15 @@ const GraphHEB = ({
     const queryTerm = normalizeSearchTerm(queryOverride || debouncedSearchQueryRef.current || searchInput || searchQuery);
     const candidateMap = new Map();
 
+    const allowSchemaFallbackNodes = searchResultDataRef.current?.view?.fallback === 'schema'
+      || filteredDataRef.current?.view?.fallback === 'schema';
+
     [...(searchResultDataRef.current?.nodes || []), ...(filteredDataRef.current?.nodes || [])]
       .filter((node) => (
         node?.elementId
         && !isMetadataWrapperNode(node)
         && !isRelationshipCarrierNode(node)
-        && !isSchemaTerminalNode(node)
+        && (allowSchemaFallbackNodes || !isSchemaTerminalNode(node))
       ))
       .forEach((node) => {
         if (!candidateMap.has(node.elementId)) {
@@ -1687,7 +1828,16 @@ const GraphHEB = ({
   const getNodeColor = useCallback((nodeLike) => {
     const label = resolveNodeType(nodeLike);
     if (!label) return TCS_GRAPH_THEME.inkMuted;
+    const nodeLabels = Array.isArray(nodeLike?.labels) ? nodeLike.labels.map((entry) => String(entry || '')) : [];
     const subtypeKey = resolveNodeColorKey(nodeLike);
+    const displayName = resolveNodeName(nodeLike);
+    const normalizedLabel = String(subtypeKey || label).toLowerCase();
+    const hashSeed = (() => {
+      const baseKey = String(subtypeKey || label || 'Node').toLowerCase();
+      const genericType = ['ontologyclass', 'class', 'individual', 'resource', 'node', 'entity', 'item'].includes(baseKey);
+      if (genericType && displayName) return `${baseKey}:${displayName}`;
+      return subtypeKey || label;
+    })();
 
     // Explicit color map for known ontology labels - optimized for clarity
     const colorMap = {
@@ -1700,6 +1850,12 @@ const GraphHEB = ({
       'Property':          '#5D6D7E',
       'Relationship':      '#486581',
       'Annotation':        '#7B8794',
+      'Requirement':       '#7C3AED',
+      'RequirementRevision':'#6D28D9',
+      'Specification':     '#5B21B6',
+      'Document':          '#0F766E',
+      'Package':           '#0E7490',
+      'View':              '#BE185D',
 
       // Instance Data Layer
       'Individual':        '#486581',
@@ -1716,15 +1872,34 @@ const GraphHEB = ({
       'PLMXMLFile':        '#7B8794',
       'StepFile':          '#9AA5B1',
       'StepInstance':      '#52606D',
+      'MetadataAsset':     '#0F766E',
+      'GeneralRelation':   '#C05621',
     };
 
-    if (colorMap[subtypeKey]) return colorMap[subtypeKey];
-    if (colorMap[label]) return colorMap[label];
+    const explicitColor = colorMap[subtypeKey] || colorMap[label];
+    const variantSeed = `${subtypeKey || label}:${displayName || hashSeed}`;
+    const isOntologyClassFamily = label === 'OntologyClass' || nodeLabels.includes('OntologyClass');
+    const isObjectPropertyFamily = ['ObjectProperty', 'OntologyProperty', 'Property'].includes(label) || nodeLabels.includes('ObjectProperty');
+    const isDatatypePropertyFamily = label === 'DatatypeProperty' || nodeLabels.includes('DatatypeProperty');
+    if (isOntologyClassFamily) {
+      return pickPaletteColor(ONTOLOGY_CLASS_PALETTE, variantSeed);
+    }
+    if (isObjectPropertyFamily) {
+      return pickPaletteColor(OBJECT_PROPERTY_PALETTE, variantSeed);
+    }
+    if (isDatatypePropertyFamily) {
+      return pickPaletteColor(DATATYPE_PROPERTY_PALETTE, variantSeed);
+    }
+    if (explicitColor) {
+      return varyColorBySeed(explicitColor, variantSeed, {
+        lightnessRange: ['OntologyClass', 'ObjectProperty', 'DatatypeProperty', 'Property'].includes(label) ? 16 : 12,
+        saturationBoost: ['OntologyClass', 'ObjectProperty', 'DatatypeProperty', 'Property'].includes(label) ? 6 : 0,
+      });
+    }
 
-    const normalizedLabel = String(subtypeKey || label).toLowerCase();
-    if (normalizedLabel.includes('property')) return '#6B7280';
+    if (normalizedLabel.includes('property')) return '#0E7490';
     if (normalizedLabel.includes('class')) return '#1F3D63';
-    if (normalizedLabel.includes('assembly') || normalizedLabel.includes('bom')) return '#0E7490';
+    if (normalizedLabel.includes('assembly') || normalizedLabel.includes('bom')) return '#2F855A';
     if (normalizedLabel.includes('product')) return '#274C77';
     if (normalizedLabel.includes('part')) return '#355C7D';
     if (normalizedLabel.includes('requirement')) return '#7C3AED';
@@ -1734,8 +1909,37 @@ const GraphHEB = ({
     if (normalizedLabel.includes('material')) return '#A16207';
     if (normalizedLabel.includes('organization') || normalizedLabel.includes('person')) return '#BE185D';
     if (normalizedLabel.includes('instance')) return '#486581';
+    if (normalizedLabel.includes('metadata')) return '#0F766E';
+    if (normalizedLabel.includes('generalrelation') || normalizedLabel.includes('trace')) return '#C05621';
 
-    return ENTITY_COLOR_SWATCH[hashText(subtypeKey) % ENTITY_COLOR_SWATCH.length];
+    return ENTITY_COLOR_SWATCH[hashText(hashSeed) % ENTITY_COLOR_SWATCH.length];
+  }, []);
+
+  const getNodeLabelColor = useCallback((nodeLike) => {
+    const baseColor = getNodeColor(nodeLike);
+    const color = d3.color(baseColor);
+    if (!color) return TCS_GRAPH_THEME.ink;
+    try {
+      const luminance = typeof color.luminance === 'function' ? color.luminance() : 0.5;
+      if (luminance < 0.42) return '#FFFFFF';
+      if (luminance < 0.58) return color.brighter(0.9).formatHex();
+      return color.darker(0.55).formatHex();
+    } catch (error) {
+      return baseColor;
+    }
+  }, [getNodeColor]);
+
+  const getRelationshipLabelColor = useCallback((relationshipType) => {
+    const visual = getRelationshipVisual(relationshipType);
+    const color = d3.color(visual.color);
+    if (!color) return visual.color;
+    try {
+      const luminance = typeof color.luminance === 'function' ? color.luminance() : 0.5;
+      if (luminance < 0.38) return '#FFFFFF';
+      return color.darker(0.2).formatHex();
+    } catch (error) {
+      return visual.color;
+    }
   }, []);
 
   // Primary label logic used in force-directed graph labels.
@@ -2112,7 +2316,10 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
       const performContextualSearch = async () => {
         try {
-          const ontologyPrefix = resolveOntologySearchPrefix(selectedOntologyRef.current);
+          const ontologyPrefix = resolveOntologySearchPrefix(
+            selectedOntologyRef.current,
+            preferredOntologyValue
+          );
           const response = await graphApi.getContextualSubgraph({
             search: debouncedSearchQuery,
             // Keep the backend search broad and object-centric; root context is
@@ -2129,10 +2336,11 @@ const getPrimaryNodeLabel = useCallback((d) => {
           }
 
           const normalized = normalizeGraphDataset(response.data);
+          const allowSchemaFallbackNodes = normalized?.view?.fallback === 'schema';
           const candidateNodes = normalized.nodes.filter((node) => (
             node?.elementId
             && !isMetadataWrapperNode(node)
-            && !isSchemaTerminalNode(node)
+            && (allowSchemaFallbackNodes || !isSchemaTerminalNode(node))
           ));
           const rankedMatches = nodeSearchFunction(candidateNodes, debouncedSearchQuery);
           await loadContextualSearchMatch(rankedMatches, debouncedSearchQuery, requestId, normalized);
@@ -2389,7 +2597,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       if (requestId === graphScopeRequestIdRef.current) setOntologyLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [commitGraphSlice]);
+  }, [commitGraphSlice, preferredOntologyValue]);
   // Ontology options are now loaded from centralized OntologyContext
   // This eliminates duplicate polling and API calls across components
 
@@ -2566,7 +2774,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
   const hasExpandableConnections = (nodeData) => {
     // Allow expansion in contextual-instance mode even without an active search.
     const isNotExpanded = !expandedNodesRef.current.has(nodeData.elementId);
-    const hasSearchQuery = !!debouncedSearchQueryRef.current;
+    const hasSearchQuery = graphSearchActiveRef.current || !!debouncedSearchQueryRef.current;
     const isContextualMode = graphViewModeRef.current === 'individual';
     const backendTraversalHint = nodeData?.can_traverse ?? nodeData?.properties?.can_traverse;
     const nodeId = nodeData?.elementId;
@@ -2592,7 +2800,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
   const canCollapseNode = (nodeData) => {
     // Allow collapse in contextual-instance mode and search mode.
     const isExpanded = expandedNodesRef.current.has(nodeData.elementId);
-    const hasSearchQuery = !!debouncedSearchQueryRef.current; // Use live debounced search state
+    const hasSearchQuery = graphSearchActiveRef.current || !!debouncedSearchQueryRef.current; // Use live active search state
     const isContextualMode = graphViewModeRef.current === 'individual';
 
     return (hasSearchQuery || isContextualMode) && isExpanded;
@@ -2790,6 +2998,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       resetCenteredSearch: true,
       syncResults: true,
       forceSearchResults: !!currentSearchQuery,
+      preserveIsolatedNodes: graphViewModeRef.current === 'individual',
     });
 
     // Mirror expand behavior: only replace the backing dataset when we are not
@@ -3015,6 +3224,8 @@ const boundaryForce = (width, height) => {
     const linkCount = processedLinks.length;
     const showNodeLabels = shouldRenderNodeLabels(nodeCount, linkCount, graphSearchActive, graphViewMode);
     const nodeLabelStyle = getNodeLabelStyle(nodeCount, graphViewMode);
+    const shouldClusterDenseGraph = graphViewMode === 'ontology' && !graphSearchActive && nodeCount > 140;
+    const clusterStrength = shouldClusterDenseGraph ? 0.045 : 0.028;
 
     logger.render('[LINK PROCESSING]', {
       inputLinks: renderData.links.length,
@@ -3032,8 +3243,12 @@ const boundaryForce = (width, height) => {
         }))
         .force('charge', d3.forceManyBody().strength(getAdaptiveChargeStrength(nodeCount)))
         .force('center', d3.forceCenter(width / 2, height / 2).strength(CENTER_FORCE_STRENGTH))
-        .force('x', d3.forceX(width / 2).strength(0.028))
-        .force('y', d3.forceY(height / 2).strength(0.022))
+        .force('x', d3.forceX((d) => (
+          shouldClusterDenseGraph ? getClusterTarget(getNodeSemanticFamily(d), width, height).x : width / 2
+        )).strength(clusterStrength))
+        .force('y', d3.forceY((d) => (
+          shouldClusterDenseGraph ? getClusterTarget(getNodeSemanticFamily(d), width, height).y : height / 2
+        )).strength(shouldClusterDenseGraph ? 0.04 : 0.022))
         .force('collide', d3.forceCollide().radius((d) => getNodeCollisionRadius(d, showNodeLabels)).iterations(renderData.nodes.length > 300 ? 1 : 2))
         .force('boundary', boundaryForce(width, height));
 
@@ -3077,8 +3292,12 @@ const boundaryForce = (width, height) => {
         simulationRef.current.nodes(renderData.nodes);
         simulationRef.current.force('link').links(processedLinks);
         simulationRef.current.force('center', d3.forceCenter(width / 2, height / 2).strength(CENTER_FORCE_STRENGTH));
-        simulationRef.current.force('x', d3.forceX(width / 2).strength(0.028));
-        simulationRef.current.force('y', d3.forceY(height / 2).strength(0.022));
+        simulationRef.current.force('x', d3.forceX((d) => (
+          shouldClusterDenseGraph ? getClusterTarget(getNodeSemanticFamily(d), width, height).x : width / 2
+        )).strength(clusterStrength));
+        simulationRef.current.force('y', d3.forceY((d) => (
+          shouldClusterDenseGraph ? getClusterTarget(getNodeSemanticFamily(d), width, height).y : height / 2
+        )).strength(shouldClusterDenseGraph ? 0.04 : 0.022));
         simulationRef.current.force('charge', d3.forceManyBody().strength(getAdaptiveChargeStrength(nodeCount)));
         simulationRef.current.force('collide', d3.forceCollide().radius((d) => getNodeCollisionRadius(d, showNodeLabels)).iterations(renderData.nodes.length > 300 ? 1 : 2));
         simulationRef.current.force('boundary', boundaryForce(width, height));
@@ -3170,15 +3389,7 @@ const boundaryForce = (width, height) => {
                 : d;
 
               // HEADER: Show the relationship type with close button
-              let tooltipContent = `
-                <div style="position:relative; background: linear-gradient(135deg, #ff6b6b 0%, #feca57 100%); color: white; padding: 8px 12px; margin: -8px -8px 8px -8px; font-weight: bold; border-radius: 4px 4px 0 0;">
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <i class="fas fa-link" style="font-size: 16px;"></i>
-                    <span>${relationshipType}</span>
-                  </div>
-                  ${tooltipCloseBtn}
-                </div>
-              `;
+              let tooltipContent = buildTooltipHeader(relationshipType, tooltipCloseBtn, getRelationshipVisual(d.type).color);
 
               // Add relationship direction info
               const currentGraphSlice = getCurrentGraphSlice();
@@ -3245,7 +3456,7 @@ const boundaryForce = (width, height) => {
     const relationshipLabelStyle = getRelationshipLabelStyle(simulationLinks.length, graphViewMode);
     const shouldShowRelationshipLabels = shouldRenderRelationshipLabels(nodeCount, simulationLinks.length, graphSearchActive, graphViewMode);
     const linkLabel = shouldShowRelationshipLabels
-      ? gRef.current.selectAll('.link-label')
+          ? gRef.current.selectAll('.link-label')
         .data(simulationLinks.filter((d) => d?.type), (d) => d.elementId)
         .join(
           (enter) => enter.append('text')
@@ -3253,7 +3464,7 @@ const boundaryForce = (width, height) => {
             .attr('font-size', relationshipLabelStyle.fontSize)
             .attr('font-weight', 600)
             .attr('text-anchor', 'middle')
-            .attr('fill', '#516070')
+            .attr('fill', d => getRelationshipLabelColor(d.type))
             .attr('paint-order', 'stroke fill')
             .attr('stroke', '#ffffff')
             .attr('stroke-width', 3)
@@ -3262,6 +3473,7 @@ const boundaryForce = (width, height) => {
             .text((d) => truncateGraphLabel(getRelationshipDisplayName(d), relationshipLabelStyle.maxLength)),
           (update) => update
             .attr('font-size', relationshipLabelStyle.fontSize)
+            .attr('fill', d => getRelationshipLabelColor(d.type))
             .text((d) => truncateGraphLabel(getRelationshipDisplayName(d), relationshipLabelStyle.maxLength)),
           (exit) => exit.remove()
         )
@@ -3294,7 +3506,9 @@ const boundaryForce = (width, height) => {
           group.append('circle')
             .attr('class', 'node-circle')
             .attr('r', NODE_RADIUS)
-            .attr('fill', d => getNodeColor(d));
+            .attr('fill', d => getNodeColor(d))
+            .attr('stroke', d => d3.color(getNodeColor(d))?.darker(0.9)?.formatHex?.() || TCS_GRAPH_THEME.borderStrong)
+            .attr('stroke-width', 1.2);
 
           // Active search node halo so the main context is obvious in the graph
           group.append('circle')
@@ -3324,7 +3538,7 @@ const boundaryForce = (width, height) => {
             .attr('font-weight', 'bold')
             .attr('dx', NODE_RADIUS + 5)
             .attr('dy', 3)
-            .attr('fill', '#000')
+            .attr('fill', d => getNodeLabelColor(d))
             .style('display', showNodeLabels ? null : 'none')
             .style('pointer-events', 'none');
 
@@ -3449,7 +3663,7 @@ const boundaryForce = (width, height) => {
               ((d.labels && d.labels.length > 0) ? d.labels[0] : 'Node');
 
             // HEADER: Show the node label/type with close button
-            let tooltipContent = buildTooltipHeader(nodeType, tooltipCloseBtn);
+            let tooltipContent = buildTooltipHeader(nodeType, tooltipCloseBtn, getNodeColor(d));
             // Recommendation action buttons (top, right after header)
             tooltipContent += buildRecActionBar(d);
 
@@ -3654,7 +3868,9 @@ const boundaryForce = (width, height) => {
         update => {
           // Update circle color based on label
           update.select('.node-circle')
-            .attr('fill', d => getNodeColor(d));
+            .attr('fill', d => getNodeColor(d))
+            .attr('stroke', d => d3.color(getNodeColor(d))?.darker(0.9)?.formatHex?.() || TCS_GRAPH_THEME.borderStrong)
+            .attr('stroke-width', 1.2);
 
           update.select('.search-active-ring')
             .style('opacity', d => d.elementId === activeSearchResultId ? 1 : 0)
@@ -3673,7 +3889,7 @@ const boundaryForce = (width, height) => {
             .text(d => showNodeLabels ? truncateGraphLabel(getPrimaryNodeLabel(d), nodeLabelStyle.maxLength) : '')
             .attr('font-size', nodeLabelStyle.fontSize)
             .attr('font-weight', 'bold')
-            .attr('fill', '#000')
+            .attr('fill', d => getNodeLabelColor(d))
             .style('display', showNodeLabels ? null : 'none');
 
           // Update expand/collapse control visibility and color
@@ -3694,6 +3910,14 @@ const boundaryForce = (width, height) => {
               if (hasExpandableConnections(d)) return '+'; // Plus for expand
               return '';
             });
+
+          update.select('.expand-control-hitbox')
+            .style('pointer-events', d => (
+              (hasExpandableConnections(d) || canCollapseNode(d)) ? 'all' : 'none'
+            ))
+            .style('cursor', d => (
+              (hasExpandableConnections(d) || canCollapseNode(d)) ? 'pointer' : 'default'
+            ));
 
           // Update loading indicator
           update.select('.loading-indicator')
@@ -3889,7 +4113,7 @@ const boundaryForce = (width, height) => {
         .style('opacity', isHighlighted ? 1 : 0)
         .attr('stroke', isHighlighted ? '#2BB3C0' : 'none');
       group.select('.node-label')
-        .attr('fill', isHighlighted ? TCS_GRAPH_THEME.primary : '#000');
+        .attr('fill', getNodeLabelColor(d));
     });
   }, [highlightedNodeIds]);
 
@@ -3936,7 +4160,7 @@ const boundaryForce = (width, height) => {
         .attr('stroke', isActive ? TCS_GRAPH_THEME.primary : 'none');
 
       group.select('.node-label')
-        .attr('fill', (isActive || isMatch) ? TCS_GRAPH_THEME.primary : '#000');
+        .attr('fill', getNodeLabelColor(d));
 
       if (isActive) {
         group.raise();
@@ -3995,6 +4219,7 @@ const boundaryForce = (width, height) => {
         position: 'relative',
         width: '100%',
         height: '100%',
+        minHeight: '82vh',
         background: `linear-gradient(180deg, ${TCS_GRAPH_THEME.surfaceMuted} 0%, #F2F5F8 100%)`,
         display: 'flex',
         flexDirection: 'column',
@@ -4240,7 +4465,7 @@ const boundaryForce = (width, height) => {
         </div>
       )}
 
-  <svg ref={svgRef} style={{ width: '100%', flex: '1 1 auto', minHeight: 0, margin: 0, padding: 0, position: 'relative', zIndex: 0 }}></svg>
+  <svg ref={svgRef} style={{ width: '100%', flex: '1 1 auto', minHeight: '720px', margin: 0, padding: 0, position: 'relative', zIndex: 0 }}></svg>
 
       <div ref={tooltipRef} className="tooltip" style={{
         position: 'absolute',

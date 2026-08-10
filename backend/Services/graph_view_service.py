@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -16,6 +17,15 @@ except Exception:  # pragma: no cover
     from core.db_config import get_config, get_driver
 
 logger = logging.getLogger(__name__)
+
+
+def _graph_node_limit(default: int = 750) -> int:
+    raw = os.getenv("GRAPH_MAX_NODES") or os.getenv("REACT_APP_GRAPH_MAX_NODES")
+    try:
+        value = int(raw) if raw is not None else default
+    except ValueError:
+        value = default
+    return max(1, min(value, 750))
 
 
 def _node_payload(node: Dict[str, Any]) -> Dict[str, Any]:
@@ -78,6 +88,10 @@ def _first_text_value(properties: Dict[str, Any], keys: Iterable[str]) -> str:
 
 class GraphViewService:
     """Read-only graph view generation using the official Neo4j driver."""
+
+    @classmethod
+    def _run_fallback_query(cls, cypher: str, params: Dict[str, Any]):
+        return cls._run(cypher, params)
 
     SCHEMA_RELATIONSHIP_TYPES = [
         "SUBCLASS_OF",
@@ -192,6 +206,45 @@ class GraphViewService:
         "ConnectionRevision",
     ]
 
+    @classmethod
+    def _ontology_total_counts(cls, prefix: str, ontology_id: str) -> Dict[str, int]:
+        rows = cls._run(
+            """
+            MATCH (n)
+            WHERE coalesce(n.ontology_prefix, n.prefix, n.source_ontology, '') IN [$prefix, $ontology_id]
+            RETURN
+              count(n) AS nodes,
+              sum(CASE WHEN n:OntologyClass THEN 1 ELSE 0 END) AS classes,
+              sum(CASE WHEN n:ObjectProperty THEN 1 ELSE 0 END) AS object_properties,
+              sum(CASE WHEN n:DatatypeProperty THEN 1 ELSE 0 END) AS datatype_properties
+            """,
+            {
+                "prefix": str(prefix or "").strip(),
+                "ontology_id": str(ontology_id or "").strip(),
+            },
+        )
+        rel_rows = cls._run(
+            """
+            MATCH (a)-[r]->(b)
+            WHERE coalesce(a.ontology_prefix, a.prefix, a.source_ontology, '') IN [$prefix, $ontology_id]
+              AND coalesce(b.ontology_prefix, b.prefix, b.source_ontology, '') IN [$prefix, $ontology_id]
+            RETURN count(r) AS relationships
+            """,
+            {
+                "prefix": str(prefix or "").strip(),
+                "ontology_id": str(ontology_id or "").strip(),
+            },
+        )
+        payload = rows[0] if rows else {}
+        rel_payload = rel_rows[0] if rel_rows else {}
+        return {
+            "nodes": int(payload.get("nodes") or 0),
+            "relationships": int(rel_payload.get("relationships") or 0),
+            "classes": int(payload.get("classes") or 0),
+            "object_properties": int(payload.get("object_properties") or 0),
+            "datatype_properties": int(payload.get("datatype_properties") or 0),
+        }
+
     @staticmethod
     def _run(cypher: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         config = get_config()
@@ -216,30 +269,52 @@ class GraphViewService:
     @classmethod
     def _resolve_ontology_prefix(cls, value: str) -> str:
         """Resolve registry ontology ids to graph prefixes when callers pass either form."""
+        return cls._resolve_ontology_scope(value)["prefix"]
+
+    @classmethod
+    def _resolve_ontology_scope(cls, value: str) -> Dict[str, str]:
         token = str(value or "").strip()
         if not token or token.upper() == "ALL":
-            return token
+            return {"prefix": token, "ontology_id": token}
 
-        rows = cls._run(
-            """
-            MATCH (n)
-            WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
-              AND (
-                n.prefix = $token OR
-                n.ontology_prefix = $token OR
-                n.source_ontology = $token OR
-                n.ontology_id = $token OR
-                n.id = $token
-              )
-            WITH coalesce(n.prefix, n.ontology_prefix) AS prefix, count(n) AS node_count
-            WHERE prefix IS NOT NULL AND prefix <> ''
-            RETURN prefix
-            ORDER BY node_count DESC, prefix ASC
-            LIMIT 1
-            """,
-            {"token": token},
-        )
-        return (rows[0].get("prefix") if rows else None) or token
+        try:
+            resolved_rows = cls._run(
+                """
+                MATCH (o)
+                WHERE o.ontology_id = $token OR o.ontology_prefix = $token OR o.prefix = $token
+                RETURN coalesce(o.ontology_prefix, o.prefix, $token) AS prefix,
+                       coalesce(o.ontology_id, o.ontology_prefix, o.prefix, $token) AS ontology_id
+                LIMIT 1
+                """,
+                {"token": token},
+            ) or []
+        except Exception:
+            resolved_rows = []
+
+        if resolved_rows:
+            prefix = str(resolved_rows[0].get("prefix") or token).strip()
+            ontology_id = str(resolved_rows[0].get("ontology_id") or prefix or token).strip()
+            return {"prefix": prefix or token, "ontology_id": ontology_id or prefix or token}
+
+        try:
+            from backend.Services.ontology_upload_manager import OntologyUploadManager
+        except Exception:
+            from Services.ontology_upload_manager import OntologyUploadManager
+
+        try:
+            listed = OntologyUploadManager.list_ontologies()
+        except Exception:
+            listed = {"status": "error", "ontologies": []}
+
+        if listed.get("status") == "success":
+            token_l = token.lower()
+            for meta in listed.get("ontologies", []):
+                prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or "").strip()
+                ontology_id = str(meta.get("ontology_id") or prefix).strip()
+                if token_l in {prefix.lower(), ontology_id.lower()}:
+                    return {"prefix": prefix or token, "ontology_id": ontology_id or prefix or token}
+
+        return {"prefix": token, "ontology_id": token}
 
     @staticmethod
     def _extract_xsd_named_subclass_rows(file_path: Path, class_uri_lookup: Dict[str, str]) -> List[Dict[str, str]]:
@@ -612,78 +687,35 @@ class GraphViewService:
         return graph
 
     @classmethod
-    def _ontology_view_rows(cls, prefix: str, limit: int) -> List[Dict[str, Any]]:
+    def _ontology_view_rows(cls, prefix: str, ontology_id: str, limit: int) -> List[Dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 5000))
         relationship_slice_limit = max(12, min(safe_limit // 5, 240))
         isolated_limit = max(20, min(safe_limit // 4, 320))
         return cls._run(
             """
             CALL () {
-              CALL () {
-                MATCH (n)-[r]->(m)
-                WHERE type(r) = 'SUBCLASS_OF'
-                  AND any(label IN labels(n) WHERE label IN $schema_node_labels)
-                  AND any(label IN labels(m) WHERE label IN $schema_node_labels)
-                  AND (n.prefix = $prefix OR n.ontology_prefix = $prefix)
-                  AND (m.prefix = $prefix OR m.ontology_prefix = $prefix)
-                RETURN n, r, m
-                ORDER BY coalesce(n.name, n.uri, ''), coalesce(m.name, m.uri, '')
-                LIMIT $relationship_slice_limit
-              UNION
-                MATCH (n)-[r]->(m)
-                WHERE type(r) = 'DOMAIN'
-                  AND any(label IN labels(n) WHERE label IN $schema_node_labels)
-                  AND any(label IN labels(m) WHERE label IN $schema_node_labels)
-                  AND (n.prefix = $prefix OR n.ontology_prefix = $prefix)
-                  AND (m.prefix = $prefix OR m.ontology_prefix = $prefix)
-                RETURN n, r, m
-                ORDER BY coalesce(n.name, n.uri, ''), coalesce(m.name, m.uri, '')
-                LIMIT $relationship_slice_limit
-              UNION
-                MATCH (n)-[r]->(m)
-                WHERE type(r) = 'RANGE'
-                  AND any(label IN labels(n) WHERE label IN $schema_node_labels)
-                  AND any(label IN labels(m) WHERE label IN $schema_node_labels)
-                  AND (n.prefix = $prefix OR n.ontology_prefix = $prefix)
-                  AND (m.prefix = $prefix OR m.ontology_prefix = $prefix)
-                RETURN n, r, m
-                ORDER BY coalesce(n.name, n.uri, ''), coalesce(m.name, m.uri, '')
-                LIMIT $relationship_slice_limit
-              UNION
-                MATCH (n)-[r]->(m)
-                WHERE type(r) = 'SUBPROPERTY_OF'
-                  AND any(label IN labels(n) WHERE label IN $schema_node_labels)
-                  AND any(label IN labels(m) WHERE label IN $schema_node_labels)
-                  AND (n.prefix = $prefix OR n.ontology_prefix = $prefix)
-                  AND (m.prefix = $prefix OR m.ontology_prefix = $prefix)
-                RETURN n, r, m
-                ORDER BY coalesce(n.name, n.uri, ''), coalesce(m.name, m.uri, '')
-                LIMIT $relationship_slice_limit
-              UNION
-                MATCH (n)-[r]->(m)
-                WHERE type(r) IN ['EQUIVALENT_CLASS', 'DISJOINT_WITH', 'INVERSE_OF', 'ON_PROPERTY', 'SOME_VALUES_FROM', 'ALL_VALUES_FROM', 'HAS_VALUE', 'CLASS_RESTRICTION']
-                  AND any(label IN labels(n) WHERE label IN $schema_node_labels)
-                  AND any(label IN labels(m) WHERE label IN $schema_node_labels)
-                  AND (n.prefix = $prefix OR n.ontology_prefix = $prefix)
-                  AND (m.prefix = $prefix OR m.ontology_prefix = $prefix)
-                RETURN n, r, m
-                ORDER BY coalesce(n.name, n.uri, ''), coalesce(m.name, m.uri, '')
-                LIMIT $relationship_slice_limit
-              UNION
-                MATCH (n)
-                WHERE any(label IN labels(n) WHERE label IN $schema_node_labels)
-                  AND (n.prefix = $prefix OR n.ontology_prefix = $prefix)
-                  AND NOT EXISTS {
-                    MATCH (n)-[r]->(m)
-                    WHERE type(r) IN $schema_relationship_types
-                      AND any(label IN labels(m) WHERE label IN $schema_node_labels)
-                      AND (m.prefix = $prefix OR m.ontology_prefix = $prefix)
-                  }
-                RETURN n, NULL AS r, NULL AS m
-                ORDER BY coalesce(n.name, n.uri, '')
-                LIMIT $isolated_limit
-              }
+              MATCH (n)-[r]->(m)
+              WHERE type(r) IN $schema_relationship_types
+                AND any(label IN labels(n) WHERE label IN $schema_node_labels)
+                AND any(label IN labels(m) WHERE label IN $schema_node_labels)
+                AND (n.prefix = $prefix OR n.ontology_prefix = $prefix)
+                AND (m.prefix = $prefix OR m.ontology_prefix = $prefix)
               RETURN n, r, m
+              ORDER BY coalesce(n.name, n.uri, ''), coalesce(m.name, m.uri, '')
+              LIMIT $relationship_slice_limit
+              UNION
+              MATCH (n)
+              WHERE any(label IN labels(n) WHERE label IN $schema_node_labels)
+                AND (n.prefix = $prefix OR n.ontology_prefix = $prefix)
+                AND NOT EXISTS {
+                  MATCH (n)-[r]->(m)
+                  WHERE type(r) IN $schema_relationship_types
+                    AND any(label IN labels(m) WHERE label IN $schema_node_labels)
+                    AND (m.prefix = $prefix OR m.ontology_prefix = $prefix)
+                }
+              RETURN n, NULL AS r, NULL AS m
+              ORDER BY coalesce(n.name, n.uri, '')
+              LIMIT $isolated_limit
             }
             RETURN
               {elementId: elementId(n), labels: labels(n), properties: properties(n)} AS n,
@@ -1269,26 +1301,31 @@ RETURN count(res) AS count
             return {"status": "error", "error": str(exc)}
 
     @classmethod
-    def get_graph_overview(cls, limit: int = 1000) -> Dict[str, Any]:
+    def get_graph_overview(cls, limit: int = 1000, scope: str = "all") -> Dict[str, Any]:
+        limit = min(max(1, int(limit)), _graph_node_limit())
+        normalized_scope = str(scope or "all").strip().lower()
+        if normalized_scope not in {"all", "business-instances"}:
+            raise ValueError("scope must be 'all' or 'business-instances'")
+        include_schema = normalized_scope == "all"
         rows = cls._run(
             """
             CALL () {
               MATCH (n)-[r]->(m)
               WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR m:DatasheetChunk OR m:GraphChunk)
-                AND NOT any(label IN labels(n) WHERE label IN $schema_node_labels)
-                AND NOT any(label IN labels(m) WHERE label IN $schema_node_labels)
+                AND ($include_schema OR NOT any(label IN labels(n) WHERE label IN $schema_node_labels))
+                AND ($include_schema OR NOT any(label IN labels(m) WHERE label IN $schema_node_labels))
                 AND NOT any(label IN labels(n) WHERE label IN $relationship_node_labels)
                 AND NOT any(label IN labels(m) WHERE label IN $relationship_node_labels)
-                AND (
+                AND ($include_schema OR (
                   any(label IN labels(n) WHERE label IN $instance_node_labels)
                   OR coalesce(properties(n)['is_cad_business_object'], false) = true
                   OR coalesce(n.semantic_role, '') IN $semantic_instance_roles
-                )
-                AND (
+                ))
+                AND ($include_schema OR (
                   any(label IN labels(m) WHERE label IN $instance_node_labels)
                   OR coalesce(properties(m)['is_cad_business_object'], false) = true
                   OR coalesce(m.semantic_role, '') IN $semantic_instance_roles
-                )
+                ))
               RETURN n,
                 {
                   elementId: elementId(r),
@@ -1303,21 +1340,21 @@ RETURN count(res) AS count
               MATCH (n)--(bridge)--(m)
               WHERE NOT (n:DatasheetChunk OR n:GraphChunk OR m:DatasheetChunk OR m:GraphChunk)
                 AND any(label IN labels(bridge) WHERE label IN $relationship_node_labels)
-                AND NOT any(label IN labels(n) WHERE label IN $schema_node_labels)
-                AND NOT any(label IN labels(m) WHERE label IN $schema_node_labels)
+                AND ($include_schema OR NOT any(label IN labels(n) WHERE label IN $schema_node_labels))
+                AND ($include_schema OR NOT any(label IN labels(m) WHERE label IN $schema_node_labels))
                 AND NOT any(label IN labels(n) WHERE label IN $relationship_node_labels)
                 AND NOT any(label IN labels(m) WHERE label IN $relationship_node_labels)
                 AND elementId(n) < elementId(m)
-                AND (
+                AND ($include_schema OR (
                   any(label IN labels(n) WHERE label IN $instance_node_labels)
                   OR coalesce(properties(n)['is_cad_business_object'], false) = true
                   OR coalesce(n.semantic_role, '') IN $semantic_instance_roles
-                )
-                AND (
+                ))
+                AND ($include_schema OR (
                   any(label IN labels(m) WHERE label IN $instance_node_labels)
                   OR coalesce(properties(m)['is_cad_business_object'], false) = true
                   OR coalesce(m.semantic_role, '') IN $semantic_instance_roles
-                )
+                ))
               WITH n, bridge, m
               RETURN n,
                 {
@@ -1360,10 +1397,20 @@ RETURN count(res) AS count
                 "instance_node_labels": cls.INSTANCE_NODE_LABELS,
                 "semantic_instance_roles": cls.INSTANCE_SEMANTIC_ROLES,
                 "relationship_node_labels": cls.RELATIONSHIP_NODE_LABELS,
+                "include_schema": include_schema,
             },
         )
-        graph = cls._filter_graph_nodes(cls.rows_to_graph(rows), only_individual_nodes=True)
-        graph["view"] = {"type": "overview", "scope": "business-instances"}
+        graph = cls._filter_graph_nodes(
+            cls.rows_to_graph(rows),
+            only_individual_nodes=normalized_scope == "business-instances",
+        )
+        graph["view"] = {"type": "overview", "scope": normalized_scope}
+        if not graph.get("nodes"):
+            graph["status"] = "empty"
+            graph["message"] = (
+                "No business-instance nodes matched the overview scope. "
+                "Use an ontology graph view for schema nodes."
+            )
         return graph
 
     @staticmethod
@@ -1493,6 +1540,7 @@ RETURN count(res) AS count
     def get_architecture_process_view(cls, prefix: str = "archimate", limit: int = 1000) -> Dict[str, Any]:
         """Return connected architecture/process model nodes for an imported ArchiMate graph."""
         prefix = str(prefix or "archimate").strip() or "archimate"
+        limit = min(max(1, int(limit)), _graph_node_limit())
         rows = cls._run(
             """
             CALL () {
@@ -1546,32 +1594,65 @@ RETURN count(res) AS count
 
     @classmethod
     def get_virtual_ontology_view(cls, prefix: str, limit: int = 1000) -> Dict[str, Any]:
-        prefix = cls._resolve_ontology_prefix(prefix)
-        rows = cls._ontology_view_rows(prefix, limit)
-        if not rows and prefix:
-            hydrated = cls._hydrate_registered_ontology_schema(prefix)
-            if hydrated:
-                rows = cls._ontology_view_rows(prefix, limit)
-        elif prefix:
-            has_subclass = any(row.get("r", {}).get("type") == "SUBCLASS_OF" for row in rows if row.get("r"))
-            if not has_subclass:
-                augmented = cls._augment_registered_ontology_subclass_edges(prefix)
-                if augmented:
-                    rows = cls._ontology_view_rows(prefix, limit)
-        graph = cls.rows_to_graph(rows)
-        if prefix:
-            graph_rel_types = {rel.get("type") for rel in graph.get("relationships", [])}
-            graph_property_nodes = sum(
-                1
-                for node in graph.get("nodes", [])
-                if "ObjectProperty" in (node.get("labels") or []) or "DatatypeProperty" in (node.get("labels") or [])
-            )
-            if graph_property_nodes == 0 or not ({"DOMAIN", "RANGE", "SUBCLASS_OF"} & graph_rel_types):
+        limit = min(max(1, int(limit)), _graph_node_limit())
+        try:
+            scope = cls._resolve_ontology_scope(prefix)
+            prefix = scope["prefix"]
+            ontology_id = scope["ontology_id"]
+            total_counts = cls._ontology_total_counts(prefix, ontology_id) if prefix else {
+                "nodes": 0,
+                "relationships": 0,
+                "classes": 0,
+                "object_properties": 0,
+                "datatype_properties": 0,
+            }
+            rows = cls._ontology_view_rows(prefix, ontology_id, limit)
+            if not rows and prefix:
+                hydrated = cls._hydrate_registered_ontology_schema(prefix)
+                if hydrated:
+                    rows = cls._ontology_view_rows(prefix, ontology_id, limit)
+            elif prefix:
+                has_subclass = any(row.get("r", {}).get("type") == "SUBCLASS_OF" for row in rows if row.get("r"))
+                if not has_subclass:
+                    augmented = cls._augment_registered_ontology_subclass_edges(prefix)
+                    if augmented:
+                        rows = cls._ontology_view_rows(prefix, ontology_id, limit)
+            if prefix and not rows:
                 reasoning_graph = cls._reasoning_projection_graph(prefix)
-                if reasoning_graph.get("counts", {}).get("nodes", 0) > graph.get("counts", {}).get("nodes", 0):
+                if reasoning_graph.get("counts", {}).get("nodes", 0) > 0:
                     graph = reasoning_graph
-        graph["view"] = {"type": "ontology", "prefix": prefix}
-        return graph
+                    graph["view"] = {
+                        "type": "ontology",
+                        "prefix": prefix,
+                        "source": "reasoning",
+                        "limit": limit,
+                        "total_counts": total_counts,
+                    }
+                    return graph
+            graph = cls.rows_to_graph(rows)
+            graph["view"] = {
+                "type": "ontology",
+                "prefix": prefix,
+                "limit": limit,
+                "total_counts": total_counts,
+            }
+            return graph
+        except Exception as exc:  # pragma: no cover - defensive runtime fallback
+            logger.exception("Ontology graph view failed for prefix=%s", prefix)
+            fallback = cls._reasoning_projection_graph(str(prefix or ""))
+            if fallback.get("counts", {}).get("nodes", 0) > 0:
+                fallback["view"] = {"type": "ontology", "prefix": prefix, "source": "reasoning-fallback"}
+                fallback["status"] = "warning"
+                fallback["message"] = f"Ontology graph view fallback used after error: {exc}"
+                return fallback
+            return {
+                "status": "error",
+                "message": str(exc),
+                "nodes": [],
+                "relationships": [],
+                "counts": {"nodes": 0, "relationships": 0},
+                "view": {"type": "ontology", "prefix": prefix},
+            }
 
     @classmethod
     def get_contextual_subgraph(
@@ -1586,7 +1667,7 @@ RETURN count(res) AS count
     ) -> Dict[str, Any]:
         ontology_prefix = cls._resolve_ontology_prefix(ontology_prefix) if ontology_prefix else ""
         search_mode = str(search_mode or "best").strip().lower()
-        search_limit = max(1, min(int(limit), 2000))
+        search_limit = max(1, min(int(limit), _graph_node_limit()))
         raw_search = str(search or "")
         normalized_search = cls._normalize_search_term(raw_search)
         wildcard_prefix_search = "*" in raw_search
@@ -1939,7 +2020,166 @@ RETURN count(res) AS count
             "scope_applied": bool(ontology_prefix or import_id),
         }
         graph["root"] = root_node
+        if not graph.get("nodes") and ontology_prefix and not expand_neighbors:
+            schema_graph = cls._schema_contextual_search_fallback(
+                search=normalized_search,
+                ontology_prefix=ontology_prefix,
+                limit=search_limit,
+            )
+            fallback_nodes = schema_graph.get("nodes") or []
+            fallback_root = fallback_nodes[0] if fallback_nodes else None
+            schema_graph["view"] = {
+                "type": "contextual-subgraph",
+                "mode": "schema-search-results",
+                "search": raw_search,
+                "ontology_prefix": ontology_prefix or "",
+                "import_id": import_id or "",
+                "root_node_id": fallback_root.get("elementId") if fallback_root else None,
+                "scope_applied": bool(ontology_prefix or import_id),
+                "fallback": "schema",
+            }
+            schema_graph["root"] = fallback_root
+            return schema_graph
         return graph
+
+    @classmethod
+    def _schema_contextual_search_fallback(
+        cls,
+        *,
+        search: str,
+        ontology_prefix: str = "",
+        limit: int = 50,
+    ) -> Dict[str, Any]:
+        query = """
+        MATCH (seed)
+        WHERE NOT (seed:DatasheetChunk OR seed:GraphChunk)
+          AND any(label IN labels(seed) WHERE label IN $schema_node_labels)
+          AND (
+            $ontology_prefix = '' OR
+            coalesce(seed.ontology_prefix, seed.prefix, seed.source_ontology, '') = $ontology_prefix
+          )
+          AND (
+            toLower(elementId(seed)) CONTAINS $search OR
+            any(value IN [
+              properties(seed)['name'],
+              properties(seed)['title'],
+              properties(seed)['label'],
+              properties(seed)['comment'],
+              properties(seed)['definition'],
+              properties(seed)['uri'],
+              properties(seed)['concept_type'],
+              properties(seed)['element_type']
+            ] WHERE toLower(coalesce(toStringOrNull(value), '')) CONTAINS $search)
+          )
+        WITH seed,
+          CASE
+            WHEN toLower(coalesce(toStringOrNull(properties(seed)['name']), '')) = $search THEN 1200
+            WHEN toLower(coalesce(toStringOrNull(properties(seed)['label']), '')) = $search THEN 1190
+            WHEN toLower(coalesce(toStringOrNull(properties(seed)['title']), '')) = $search THEN 1180
+            WHEN toLower(coalesce(toStringOrNull(properties(seed)['uri']), '')) = $search THEN 1170
+            WHEN toLower(elementId(seed)) = $search THEN 1160
+            WHEN any(value IN [
+              properties(seed)['name'],
+              properties(seed)['title'],
+              properties(seed)['label'],
+              properties(seed)['uri']
+            ] WHERE toLower(coalesce(toStringOrNull(value), '')) STARTS WITH $search) THEN 900
+            ELSE 500
+          END AS score
+        RETURN {
+          elementId: elementId(seed),
+          labels: labels(seed),
+          properties: properties(seed),
+          can_traverse: EXISTS {
+            MATCH (seed)-[]-(candidate)
+            WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+              AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
+              AND any(label IN labels(candidate) WHERE label IN $schema_node_labels)
+          }
+        } AS n,
+        NULL AS r,
+        NULL AS m
+        ORDER BY score DESC,
+          toLower(coalesce(
+            properties(seed)['name'],
+            properties(seed)['title'],
+            properties(seed)['label'],
+            properties(seed)['uri'],
+            ''
+          )) ASC,
+          elementId(seed) ASC
+        LIMIT toInteger($limit)
+        """
+        rows = cls._run_fallback_query(
+            query,
+            {
+                "search": search,
+                "ontology_prefix": ontology_prefix or "",
+                "limit": max(1, min(int(limit or 50), _graph_node_limit())),
+                "schema_node_labels": cls.SCHEMA_NODE_LABELS,
+                "relationship_node_labels": cls.RELATIONSHIP_NODE_LABELS,
+            },
+        )
+        return cls.rows_to_graph(rows)
+
+    @classmethod
+    def _schema_traversal_fallback(
+        cls,
+        *,
+        node_id: str,
+        limit: int = 120,
+    ) -> Dict[str, Any]:
+        query = """
+        MATCH (seed)
+        WHERE elementId(seed) = $node_id
+          AND NOT (seed:DatasheetChunk OR seed:GraphChunk)
+        OPTIONAL MATCH (seed)-[rel]-(adjacent)
+        WHERE adjacent IS NULL OR (
+          NOT (adjacent:DatasheetChunk OR adjacent:GraphChunk)
+          AND NOT any(label IN labels(adjacent) WHERE label IN $relationship_node_labels)
+          AND any(label IN labels(adjacent) WHERE label IN $schema_node_labels)
+        )
+        RETURN {
+          elementId: elementId(seed),
+          labels: labels(seed),
+          properties: properties(seed),
+          can_traverse: EXISTS {
+            MATCH (seed)-[]-(candidate)
+            WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+              AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
+              AND any(label IN labels(candidate) WHERE label IN $schema_node_labels)
+          }
+        } AS n,
+        CASE WHEN rel IS NOT NULL THEN {
+          elementId: elementId(rel),
+          type: type(rel),
+          properties: properties(rel),
+          start: elementId(startNode(rel)),
+          end: elementId(endNode(rel))
+        } ELSE NULL END AS r,
+        CASE WHEN adjacent IS NOT NULL THEN {
+          elementId: elementId(adjacent),
+          labels: labels(adjacent),
+          properties: properties(adjacent),
+          can_traverse: EXISTS {
+            MATCH (adjacent)-[]-(candidate)
+            WHERE NOT (candidate:DatasheetChunk OR candidate:GraphChunk)
+              AND NOT any(label IN labels(candidate) WHERE label IN $relationship_node_labels)
+              AND any(label IN labels(candidate) WHERE label IN $schema_node_labels)
+          }
+        } ELSE NULL END AS m
+        LIMIT toInteger($limit)
+        """
+        rows = cls._run_fallback_query(
+            query,
+            {
+                "node_id": node_id,
+                "limit": max(1, min(int(limit or 120), _graph_node_limit())),
+                "schema_node_labels": cls.SCHEMA_NODE_LABELS,
+                "relationship_node_labels": cls.RELATIONSHIP_NODE_LABELS,
+            },
+        )
+        return cls.rows_to_graph(rows)
 
     @classmethod
     def get_traversal_slice(
@@ -2200,4 +2440,16 @@ RETURN count(res) AS count
             "root_node_id": node_id,
         }
         graph["root"] = root_node
+        if not graph.get("nodes") and ":" in str(node_id or ""):
+            schema_graph = cls._schema_traversal_fallback(node_id=node_id, limit=row_limit)
+            schema_root = next((node for node in schema_graph.get("nodes", []) if node.get("elementId") == node_id), None)
+            schema_graph["view"] = {
+                "type": "traversal-slice",
+                "node_id": node_id,
+                "depth": traversal_depth,
+                "root_node_id": node_id,
+                "fallback": "schema",
+            }
+            schema_graph["root"] = schema_root
+            return schema_graph
         return graph

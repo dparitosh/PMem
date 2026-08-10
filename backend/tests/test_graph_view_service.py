@@ -16,6 +16,46 @@ def test_graph_overview_does_not_reference_unbound_prefix(monkeypatch):
     assert "$prefix" not in captured["cypher"]
 
 
+def test_graph_limit_uses_configured_ceiling(monkeypatch):
+    monkeypatch.setenv("GRAPH_MAX_NODES", "750")
+    captured = {}
+
+    def fake_run(_cypher, params):
+        captured["params"] = params
+        return []
+
+    monkeypatch.setattr(
+        GraphViewService,
+        "_run",
+        staticmethod(fake_run),
+    )
+
+    graph = GraphViewService.get_graph_overview(limit=5000)
+
+    assert captured["params"]["limit"] == 750
+    assert graph["counts"] == {"nodes": 0, "relationships": 0}
+
+
+def test_graph_overview_scope_is_explicit_and_schema_view_keeps_schema_nodes(monkeypatch):
+    captured = {}
+
+    def fake_run(_cypher, params):
+        captured["params"] = params
+        return [{
+            "n": {"elementId": "class-1", "labels": ["OntologyClass"], "properties": {}},
+            "r": None,
+            "m": None,
+        }]
+
+    monkeypatch.setattr(GraphViewService, "_run", staticmethod(fake_run))
+
+    graph = GraphViewService.get_graph_overview(limit=25, scope="all")
+
+    assert captured["params"]["include_schema"] is True
+    assert graph["view"]["scope"] == "all"
+    assert graph["counts"]["nodes"] == 1
+
+
 def test_architecture_view_includes_nodes_without_same_model_neighbors(monkeypatch):
     captured = {}
 
@@ -48,6 +88,55 @@ def test_resolve_ontology_prefix_keeps_prefix_when_no_match(monkeypatch):
     monkeypatch.setattr(GraphViewService, "_run", staticmethod(lambda _cypher, _params: []))
 
     assert GraphViewService._resolve_ontology_prefix("ap242") == "ap242"
+
+
+def test_resolve_ontology_scope_uses_registry_ontology_id(monkeypatch):
+    monkeypatch.setattr(
+        "backend.Services.ontology_upload_manager.OntologyUploadManager.list_ontologies",
+        lambda: {
+            "status": "success",
+            "ontologies": [
+                {"prefix": "ap242", "ontology_prefix": "ap242", "ontology_id": "ap242_1783706910"}
+            ],
+        },
+    )
+
+    scope = GraphViewService._resolve_ontology_scope("ap242")
+
+    assert scope == {"prefix": "ap242", "ontology_id": "ap242_1783706910"}
+
+
+def test_virtual_ontology_view_keeps_live_graph_when_it_is_populated(monkeypatch):
+    monkeypatch.setattr(
+        GraphViewService,
+        "_ontology_view_rows",
+        staticmethod(
+            lambda _prefix, _ontology_id, _limit: [
+                {
+                    "n": {
+                        "elementId": "class-1",
+                        "labels": ["OntologyClass"],
+                        "properties": {"name": "Thing"},
+                    },
+                    "r": None,
+                    "m": None,
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        GraphViewService,
+        "_reasoning_projection_graph",
+        staticmethod(lambda _prefix: {"nodes": [{"elementId": "reasoning-1"}], "relationships": [], "counts": {"nodes": 1, "relationships": 0}}),
+    )
+
+    graph = GraphViewService.get_virtual_ontology_view("ap242")
+
+    assert [node["elementId"] for node in graph["nodes"]] == ["class-1"]
+    assert graph["view"]["type"] == "ontology"
+    assert graph["view"]["prefix"] == "ap242"
+    assert graph["view"]["limit"] == 750
+    assert graph["view"]["total_counts"]["nodes"] == 0
 
 
 def test_metadata_like_filter_uses_structural_signals_not_id_prefix():
@@ -447,3 +536,83 @@ def test_contextual_subgraph_uses_controlled_properties_not_dynamic_key_scan(mon
     assert "keys(seed)" not in captured["cypher"]
     assert "properties(seed)['name']" in captured["cypher"]
     assert "LIMIT toInteger($limit)" in captured["cypher"]
+
+
+def test_contextual_subgraph_falls_back_to_schema_search_when_instance_scope_is_empty(monkeypatch):
+    calls = []
+
+    def fake_run(cypher, params):
+        calls.append((cypher, params))
+        if len(calls) == 1:
+            return []
+        return [
+            {
+                "n": {
+                    "elementId": "schema-1",
+                    "labels": ["OntologyClass"],
+                    "properties": {"name": "AbsoluteOccurrence"},
+                    "can_traverse": True,
+                },
+                "r": None,
+                "m": None,
+            }
+        ]
+
+    monkeypatch.setattr(GraphViewService, "_run", staticmethod(fake_run))
+    monkeypatch.setattr(GraphViewService, "_run_fallback_query", classmethod(lambda cls, cypher, params: fake_run(cypher, params)))
+    monkeypatch.setattr(GraphViewService, "_resolve_ontology_prefix", staticmethod(lambda value: value))
+
+    graph = GraphViewService.get_contextual_subgraph(
+        search="AbsoluteOccurrence",
+        ontology_prefix="plmxml",
+        limit=25,
+        search_mode="broader",
+    )
+
+    assert len(calls) == 2
+    assert graph["nodes"][0]["elementId"] == "schema-1"
+    assert graph["view"]["fallback"] == "schema"
+    assert graph["view"]["mode"] == "schema-search-results"
+    assert graph["root"]["elementId"] == "schema-1"
+
+
+def test_traversal_slice_falls_back_to_schema_neighbors_when_instance_projection_is_empty(monkeypatch):
+    calls = []
+
+    def fake_run(cypher, params):
+        calls.append((cypher, params))
+        if len(calls) == 1:
+            return []
+        return [
+                {
+                    "n": {
+                        "elementId": "4:test:schema-root",
+                        "labels": ["OntologyClass"],
+                        "properties": {"name": "AbsoluteOccurrence"},
+                        "can_traverse": True,
+                    },
+                    "r": {
+                        "elementId": "rel-1",
+                        "type": "SUBCLASS_OF",
+                        "start": "4:test:schema-root",
+                        "end": "schema-parent",
+                        "properties": {},
+                    },
+                "m": {
+                    "elementId": "schema-parent",
+                    "labels": ["OntologyClass"],
+                    "properties": {"name": "AbsoluteOccurrenceType"},
+                    "can_traverse": True,
+                },
+            }
+        ]
+
+    monkeypatch.setattr(GraphViewService, "_run", staticmethod(fake_run))
+    monkeypatch.setattr(GraphViewService, "_run_fallback_query", classmethod(lambda cls, cypher, params: fake_run(cypher, params)))
+
+    graph = GraphViewService.get_traversal_slice(node_id="4:test:schema-root", limit=20)
+
+    assert len(calls) == 2
+    assert sorted(node["elementId"] for node in graph["nodes"]) == ["4:test:schema-root", "schema-parent"]
+    assert graph["view"]["fallback"] == "schema"
+    assert graph["root"]["elementId"] == "4:test:schema-root"

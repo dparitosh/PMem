@@ -41,7 +41,14 @@ test('renders DEPO platform landing page when home is persisted', () => {
   expect(screen.getByText(/DEPO Digital Thread Platform/i)).toBeInTheDocument();
 });
 
+test('renders the landing page for the root hash route', () => {
+  window.history.replaceState({}, '', '/#/');
+  render(<App />);
+  expect(screen.getByText(/DEPO Digital Thread Platform/i)).toBeInTheDocument();
+});
+
 test('falls back to Graph Explorer for invalid persisted navigation', async () => {
+  window.history.replaceState({}, '', '/#/graph');
   window.localStorage.setItem('depo.activePage', 'removed-page');
   render(<App />);
   expect(await screen.findByRole('heading', { name: 'Graph Explorer' })).toBeInTheDocument();
@@ -49,7 +56,7 @@ test('falls back to Graph Explorer for invalid persisted navigation', async () =
 });
 
 test('routes every application navigation item to its page boundary', async () => {
-  window.localStorage.setItem('depo.activePage', 'graph');
+  window.history.replaceState({}, '', '/#/graph');
   render(<App />);
   const routes = [
     ['Import', 'page-import'],

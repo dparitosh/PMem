@@ -61,7 +61,7 @@ async def query_resources(resource_type: str, request: Request):
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
 
 
 @router.get("/resources/{element_id:path}")
@@ -84,7 +84,7 @@ async def get_trs_descriptor():
     try:
         return OSLCTRSService.tracked_resource_set()
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
 
 
 @router.get("/trs/base")
@@ -94,7 +94,7 @@ async def get_trs_base(limit: int = Query(default=200, ge=1, le=1000)):
     try:
         return OSLCTRSService.base_resources(limit=limit)
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
 
 
 @router.get("/trs/changelog")
@@ -104,7 +104,7 @@ async def get_trs_changelog(after: int = Query(default=0, ge=0), limit: int = Qu
     try:
         return OSLCTRSService.change_log(after=after, limit=limit)
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
 
 
 @router.get("/dictionaries/{prefix}")

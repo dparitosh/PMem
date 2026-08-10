@@ -220,6 +220,22 @@ END-ISO-10303-21;
     assert stats["cad_business_object_count"] >= 6
 
 
+def test_step_xml_detection_accepts_ap242_domain_model_namespace_without_iso_marker(tmp_path: Path):
+    step_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<uos xmlns="https://standards.iso.org/iso/ts/10303/-4442/ed-5/tech/xml-schema/domain_model"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="https://standards.iso.org/iso/ts/10303/-4442/ed-5/tech/xml-schema/domain_model DomainModel.xsd">
+  <Part id="Part-1" />
+</uos>
+"""
+    path = tmp_path / "domain_model.xml"
+    path.write_text(step_xml, encoding="utf-8")
+
+    assert detect_step_format(path) == "stpx"
+    meta = parse_step_metadata(path)
+    assert meta.format == "stpx"
+
+
 def test_step_pmi_associations_and_graphic_views_are_typed(tmp_path: Path):
     step = """ISO-10303-21;
 HEADER;

@@ -6,6 +6,7 @@ import time
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Path, Request, APIRouter, Query, BackgroundTasks
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response
 from starlette.concurrency import run_in_threadpool
@@ -1218,27 +1219,6 @@ async def _stream_with_timeout(session_id: str, message: str, graph_context=None
                 pass
 
 # 🔒 MEDIUM PRIORITY: Simple API Key Authentication
-from functools import wraps
-
-ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", None)  # Optional: Require API key for sensitive endpoints
-
-def require_api_key(func):
-    """
-    Decorator to require API key for sensitive endpoints
-    Pass key via X-API-Key header: X-API-Key: your-secret-key
-    """
-    @wraps(func)
-    async def wrapper(request: Request, *args, **kwargs):
-        if ADMIN_API_KEY:
-            api_key = request.headers.get("X-API-Key")
-            if api_key != ADMIN_API_KEY:
-                logger.warning(f"Unauthorized API access attempt from {request.client.host}")
-                raise HTTPException(status_code=401, detail="Invalid or missing API key")
-        
-        return await func(request, *args, **kwargs)
-    
-    return wrapper
-
 # ✅ ERROR HANDLING: Global exception handler to prevent stack trace leakage
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -1251,8 +1231,43 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={
             "detail": "An internal server error occurred. Please contact support if the problem persists.",
-            "status": "error"
+            "status": "error",
+            "error_code": "INTERNAL_SERVER_ERROR",
+            "path": request.url.path,
         }
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Keep client errors predictable without exposing implementation details."""
+    detail = exc.detail if isinstance(exc.detail, str) else "Request failed"
+    if exc.status_code >= 500:
+        detail = "An internal server error occurred. Please try again later."
+    return JSONResponse(
+        status_code=exc.status_code,
+        headers=exc.headers,
+        content={
+            "detail": detail,
+            "status": "error",
+            "error_code": f"HTTP_{exc.status_code}",
+            "path": request.url.path,
+        },
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Return one validation shape for every API route."""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Request validation failed",
+            "status": "error",
+            "error_code": "VALIDATION_ERROR",
+            "path": request.url.path,
+            "errors": exc.errors(),
+        },
     )
 
 def safe_error(endpoint: str, error: Exception):
@@ -1811,21 +1826,30 @@ async def check_neo4j_health():
             timeout=5.0
         )
         is_connected = bool(result)
+        if not is_connected:
+            invalidate_graphvis_cache()
+            return JSONResponse(status_code=503, content={
+                "status": "unhealthy",
+                "error_code": "NEO4J_UNAVAILABLE",
+                "neo4j_connected": False,
+                "timestamp": time.time(),
+            })
         return {
-            "status": "healthy" if is_connected else "degraded",
-            "neo4j_connected": is_connected,
+            "status": "healthy",
+            "neo4j_connected": True,
             "timestamp": time.time()
         }
     except Exception as e:
         logger.warning(f"Neo4j health check failed: {type(e).__name__}: {str(e)}")
         # Invalidate cache on health check failure
         invalidate_graphvis_cache()
-        return {
+        return JSONResponse(status_code=503, content={
             "status": "unhealthy",
+            "error_code": "NEO4J_UNAVAILABLE",
             "neo4j_connected": False,
-            "error": str(e),
+            "detail": "Neo4j is unavailable.",
             "timestamp": time.time()
-        }
+        })
 
 @app.get("/graphvis")
 async def get_entire_graph():
@@ -1878,12 +1902,18 @@ async def get_entire_graph():
         logger.warning("/graphvis timed out — clearing cache and returning empty graph")
         # Clear cache on timeout to force fresh query on next attempt
         invalidate_graphvis_cache()
-        return {"results": [], "message": "Graph query timed out. Try a more specific ontology type filter."}
+        return JSONResponse(status_code=504, content={
+            "status": "error", "error_code": "GRAPH_QUERY_TIMEOUT", "results": [],
+            "message": "Graph query timed out. Try a more specific ontology type filter.",
+        })
     except Exception as e:
         logger.warning(f"/graphvis error: {type(e).__name__}: {str(e)}")
         # Clear cache on any error to prevent serving stale data
         invalidate_graphvis_cache()
-        return {"results": [], "message": "Neo4j database temporarily unavailable. Graph will display when database is connected."}
+        return JSONResponse(status_code=503, content={
+            "status": "error", "error_code": "GRAPH_SERVICE_UNAVAILABLE", "results": [],
+            "message": "Neo4j database temporarily unavailable.",
+        })
 
 
 def _empty_graph_service_response(message: str, *, status_code: int = 503) -> JSONResponse:
@@ -1900,7 +1930,7 @@ def _empty_graph_service_response(message: str, *, status_code: int = 503) -> JS
 
 
 @app.get("/api/v1/graph/view")
-async def get_graph_view(limit: int = 1000):
+async def get_graph_view(limit: int = 750, scope: str = "all"):
     """Return a visualization-ready graph payload using the official Neo4j driver."""
     try:
         from backend.Services.graph_view_service import GraphViewService
@@ -1908,7 +1938,7 @@ async def get_graph_view(limit: int = 1000):
         from Services.graph_view_service import GraphViewService
 
     try:
-        return GraphViewService.get_graph_overview(limit=limit)
+        return GraphViewService.get_graph_overview(limit=limit, scope=scope)
     except RuntimeError as exc:
         raise _graph_service_unavailable("/api/v1/graph/view", exc)
 
@@ -1933,7 +1963,7 @@ async def get_code_audit(refresh: bool = Query(default=False)):
 
 
 @app.get("/api/v1/graph/view/architecture/{prefix}")
-async def get_architecture_process_view(prefix: str = "archimate", limit: int = 1000):
+async def get_architecture_process_view(prefix: str = "archimate", limit: int = 750):
     """Return connected architecture/process model graph view, including ArchiMate imports."""
     try:
         from backend.Services.graph_view_service import GraphViewService
@@ -1955,7 +1985,7 @@ async def get_architecture_process_view(prefix: str = "archimate", limit: int = 
 
 
 @app.get("/api/v1/graph/view/ontology/{prefix}")
-async def get_virtual_ontology_view(prefix: str, limit: int = 1000):
+async def get_virtual_ontology_view(prefix: str, limit: int = 750):
     """Return a generated ontology-centric graph view without mutating base data."""
     try:
         from backend.Services.graph_view_service import GraphViewService
@@ -2553,7 +2583,7 @@ async def preview_uploaded_ontology_inference(ontology_id: str, body: dict | Non
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         safe_error("/api/v1/ontology/{ontology_id}/inference/preview", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @app.get("/api/v1/ontology/{ontology_id}/data-dictionary")
@@ -2615,7 +2645,7 @@ def get_registered_ontology_data_dictionary(ontology_id: str):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         safe_error("/api/v1/ontology/{ontology_id}/data-dictionary", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @app.get("/api/v1/ontology/{ontology_id}/mappings/{mapping_type}")
@@ -2634,7 +2664,7 @@ def get_registered_ontology_mapping_edges(ontology_id: str, mapping_type: str):
         }
     except Exception as e:
         safe_error("/api/v1/ontology/{ontology_id}/mappings/{mapping_type}", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @app.get("/ontology/registered")
@@ -2729,10 +2759,16 @@ async def get_schema_graph():
         return {"results": results or [], "layerType": "schema"}
     except asyncio.TimeoutError:
         logger.warning("/schema-graph timed out")
-        return {"results": [], "message": "Schema graph query timed out"}
+        return JSONResponse(status_code=504, content={
+            "status": "error", "error_code": "GRAPH_QUERY_TIMEOUT", "results": [],
+            "message": "Schema graph query timed out",
+        })
     except Exception as e:
         logger.warning(f"/schema-graph error: {type(e).__name__}: {str(e)}")
-        return {"results": [], "message": "Failed to fetch schema graph"}
+        return JSONResponse(status_code=503, content={
+            "status": "error", "error_code": "GRAPH_SERVICE_UNAVAILABLE", "results": [],
+            "message": "Failed to fetch schema graph",
+        })
 
 
 def fetch_instances_and_rels(prefix, class_ids=None):
@@ -2857,10 +2893,16 @@ async def get_instance_graph():
         return {"results": results or [], "layerType": "instance"}
     except asyncio.TimeoutError:
         logger.warning("/instance-graph timed out")
-        return {"results": [], "message": "Instance graph query timed out"}
+        return JSONResponse(status_code=504, content={
+            "status": "error", "error_code": "GRAPH_QUERY_TIMEOUT", "results": [],
+            "message": "Instance graph query timed out",
+        })
     except Exception as e:
         logger.warning(f"/instance-graph error: {type(e).__name__}: {str(e)}")
-        return {"results": [], "message": "Failed to fetch instance graph"}
+        return JSONResponse(status_code=503, content={
+            "status": "error", "error_code": "GRAPH_SERVICE_UNAVAILABLE", "results": [],
+            "message": "Failed to fetch instance graph",
+        })
 
 
 @app.post("/graphfilter")
@@ -4441,24 +4483,17 @@ def get_graph_metrics():
         }
     except Exception as e:
         logger.warning("graph-metrics error: %s", e)
-        return {
+        return JSONResponse(status_code=503, content={
+            "status": "error",
+            "error_code": "GRAPH_METRICS_UNAVAILABLE",
+            "detail": "Graph metrics are temporarily unavailable.",
             "total_nodes": 0,
             "total_relationships": 0,
             "node_labels": [],
             "relationship_types": [],
             "ontology_breakdown": [],
-            "ontology_kpis": {
-                "classes": 0,
-                "object_properties": 0,
-                "datatype_properties": 0,
-                "restrictions": 0,
-                "shacl_shapes": 0,
-                "individuals": 0,
-                "axiom_proxy_count": 0,
-                "class_to_property_ratio": 0,
-            },
-            "message": "Graph database temporarily unavailable.",
-        }
+            "ontology_kpis": {},
+        })
 
 
 @app.get("/ontologies/available")

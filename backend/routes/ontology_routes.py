@@ -66,10 +66,36 @@ class SkosPayloadRequest(BaseModel):
 
 class SwrlRuleRequest(BaseModel):
     """SWRL-style rule request with optional facts for application execution."""
-    rule: Dict[str, Any]
+    rule: Optional[Dict[str, Any]] = None
+    expression: Optional[str] = None
+    rule_id: Optional[str] = None
+    name: Optional[str] = None
+    version: Optional[str] = None
+    enabled: Optional[bool] = None
+    use_case: Optional[str] = None
+    body: Optional[List[Dict[str, Any]]] = None
+    head: Optional[List[Dict[str, Any]]] = None
     facts: Optional[List[Dict[str, Any]]] = None
     execution_id: Optional[str] = None
     scope_id: Optional[str] = None
+
+    def rule_payload(self) -> Dict[str, Any]:
+        if isinstance(self.rule, dict) and self.rule:
+            return self.rule
+        return {
+            key: value
+            for key, value in {
+                "expression": self.expression,
+                "rule_id": self.rule_id,
+                "name": self.name,
+                "version": self.version,
+                "enabled": self.enabled,
+                "use_case": self.use_case,
+                "body": self.body,
+                "head": self.head,
+            }.items()
+            if value is not None
+        }
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -185,7 +211,7 @@ async def validate_skos_taxonomy(request: SkosPayloadRequest):
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.exception("SKOS validation failed")
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from exc
 
 
 @router.post("/semantic/skos/search")
@@ -199,7 +225,7 @@ async def search_skos_taxonomy(request: SkosPayloadRequest):
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.exception("SKOS search failed")
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from exc
 
 
 @router.post("/semantic/skos/traverse")
@@ -222,7 +248,7 @@ async def traverse_skos_taxonomy(request: SkosPayloadRequest):
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.exception("SKOS traversal failed")
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from exc
 
 
 @router.post("/semantic/skos/storage-plan")
@@ -240,27 +266,27 @@ async def skos_storage_plan(request: SkosPayloadRequest):
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.exception("SKOS storage plan failed")
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from exc
 
 
 @router.post("/semantic/rules/validate")
 async def validate_swrl_rule(request: SwrlRuleRequest):
     """Validate a SWRL-style rule without executing or mutating Neo4j."""
     try:
-        rule = SwrlRuleService.parse_rule(request.rule)
+        rule = SwrlRuleService.parse_rule(request.rule_payload())
         return {"status": "success", "validation": SwrlRuleService.validate(rule)}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.exception("SWRL rule validation failed")
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from exc
 
 
 @router.post("/semantic/rules/execute-preview")
 async def execute_swrl_rule_preview(request: SwrlRuleRequest):
     """Execute supported SWRL-style rules in application memory only."""
     try:
-        rule = SwrlRuleService.parse_rule(request.rule)
+        rule = SwrlRuleService.parse_rule(request.rule_payload())
         facts = [
             SemanticFact(
                 subject=str(item.get("subject") or ""),
@@ -279,14 +305,14 @@ async def execute_swrl_rule_preview(request: SwrlRuleRequest):
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.exception("SWRL rule execution preview failed")
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from exc
 
 
 @router.post("/semantic/rules/materialization-plan")
 async def swrl_materialization_plan(request: SwrlRuleRequest):
     """Return parameterized Cypher for approved inferred facts with provenance."""
     try:
-        rule = SwrlRuleService.parse_rule(request.rule)
+        rule = SwrlRuleService.parse_rule(request.rule_payload())
         facts = [
             SemanticFact(
                 subject=str(item.get("subject") or ""),
@@ -316,7 +342,7 @@ async def swrl_materialization_plan(request: SwrlRuleRequest):
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.exception("SWRL materialization plan failed")
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from exc
 
 
 _INTERNAL_PROPS = {"ontology_prefix", "ontology_id", "ontology_name", "source_ontology",
@@ -699,7 +725,7 @@ async def get_generic_data_dictionary(
         raise
     except Exception as e:
         logger.exception(f"Failed to retrieve data dictionary for prefix '{prefix}'")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @router.get("/{prefix}/mappings/{source_format}")
@@ -785,7 +811,7 @@ async def get_generic_mappings(
         }
     except Exception as e:
         logger.exception(f"Failed to retrieve mappings for '{prefix}' / '{source_format}'")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @router.post("/ap239/map-entity")
@@ -824,7 +850,7 @@ async def map_entity_to_ap239(request: EntityMappingRequest):
         }
     except Exception as e:
         logger.exception("Failed to map entity to AP239")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @router.post("/{prefix}/map-entity")
@@ -867,7 +893,7 @@ async def map_entity_generic(prefix: str, request: EntityMappingRequest):
         raise
     except Exception as e:
         logger.exception("Failed to map entity (generic)")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @router.get("/ap239/domain-pipelines")
@@ -894,7 +920,7 @@ async def get_ap239_domain_pipelines():
         }
     except Exception as e:
         logger.exception("Failed to retrieve AP239 domain pipelines")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -925,7 +951,7 @@ async def get_available_domains():
         }
     except Exception as e:
         logger.exception("Failed to retrieve available domains")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @router.get("/pipelines/domain/{domain_name}")
@@ -968,7 +994,7 @@ async def get_domain_configuration(domain_name: str):
         raise
     except Exception as e:
         logger.exception(f"Failed to retrieve configuration for domain: {domain_name}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 @router.post("/pipelines/process")
@@ -1021,7 +1047,7 @@ async def process_data_through_pipeline(request: DomainPipelineRequest):
         raise
     except Exception as e:
         logger.exception(f"Failed to process data through {request.domain} pipeline")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Ontology service failed. Please try again later.") from e
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

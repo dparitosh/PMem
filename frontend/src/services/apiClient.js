@@ -149,8 +149,18 @@ apiClient.interceptors.response.use(
     const errorInfo = {
       status: error.response?.status,
       message: error.message,
+      errorCode: error.response?.data?.error_code,
+      detail: error.response?.data?.detail || error.response?.data?.message,
       url: error.config?.url,
       data: error.response?.data,
+    };
+
+    // Keep the backend's standardized error contract available to all callers.
+    error.apiError = {
+      status: errorInfo.status,
+      code: errorInfo.errorCode,
+      message: errorInfo.detail || errorInfo.message,
+      path: error.response?.data?.path,
     };
 
     if (config.debug) {
@@ -167,6 +177,10 @@ apiClient.interceptors.response.use(
       logger.warn('[API] Resource not found');
     } else if (error.response?.status === 500) {
       logger.error('[API] Server error');
+    } else if (error.response?.status === 503) {
+      logger.warn('[API] Service unavailable:', errorInfo.errorCode || errorInfo.detail);
+    } else if (error.response?.status === 504) {
+      logger.warn('[API] Service timeout:', errorInfo.errorCode || errorInfo.detail);
     }
 
     return Promise.reject(error);

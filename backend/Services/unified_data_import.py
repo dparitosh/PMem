@@ -16,158 +16,34 @@ import re
 import json
 import uuid
 import logging
+from enum import Enum
 from pathlib import Path
 from datetime import datetime
 import time
 from typing import Dict, Any, Optional, List, Tuple
 
+from .import_file_types import FileFormatDetector, FileType
+from .import_format_helpers import (
+    derive_prefix_from_namespace,
+    detect_xml_family,
+    plmxml_row_has_payload,
+)
+from .import_parser_router import route_parse_request
+from .specialized_format_parser import SpecializedFormatParser as ExtractedSpecializedFormatParser
 from .workflow_artifact_service import WorkflowArtifactService
 
-
-def _derive_prefix_from_namespace(namespace: str) -> str:
-    """Derive a short lowercase ontology prefix from an XML namespace URI.
-
-    Examples:
-      http://www.plmxml.org/Schemas/PLMXMLSchema  -> plmxml
-      http://www.omg.org/XMI                     -> xmi
-      http://www.w3.org/2001/XMLSchema            -> xsd
-    """
-    if not namespace:
-        return 'unknown'
-    _KNOWN = {
-        'plmxml.org': 'plmxml',
-        'omg.org/XMI': 'xmi',
-        'omg.org/spec/XMI': 'xmi',
-        'XMLSchema': 'xsd',
-        '22-rdf-syntax-ns': 'rdf',
-        '/owl#': 'owl',
-        '/owl/': 'owl',
-        'mbse': 'mbse',
-        'step-': 'step',
-        'AP239': 'ap239',
-        'AP242': 'ap242',
-    }
-    for pattern, prefix in _KNOWN.items():
-        if pattern in namespace:
-            return prefix
-    # Extract from URI path: last non-empty segment, strip non-alnum
-    path_parts = [p for p in namespace.rstrip('/').split('/') if p]
-    for part in reversed(path_parts):
-        cleaned = re.sub(r'[^a-z0-9]', '', part.lower())
-        if len(cleaned) >= 2:
-            return cleaned[:20]
-    # Fallback: second-level domain (e.g. 'plmxml' from 'www.plmxml.org')
-    try:
-        host = namespace.split('/')[2]  # 'www.plmxml.org'
-        domain_parts = host.split('.')
-        sld = domain_parts[-2] if len(domain_parts) >= 2 else domain_parts[0]
-        cleaned = re.sub(r'[^a-z0-9]', '', sld.lower())
-        if cleaned:
-            return cleaned[:20]
-    except Exception:
-        pass
-    return 'unknown'
-
-
-_PLMXML_METADATA_KEYS = {
-    'id',
-    'uid',
-    'name',
-    'label',
-    'description',
-    'sub_type',
-    'sub_class',
-    'type',
-    'value',
-    'text',
-    'title',
-    'namespace',
-    'ontology_prefix',
-    'source_ontology',
-    'import_id',
-}
-
-
-_PLMXML_STRUCTURAL_TAGS = {
-    'AccessIntent',
-    'AssociatedAttachment',
-    'ApplicationRef',
-    'Description',
-    'PlainText',
-    'Form',
-    'UserValue',
-}
-
-
-def _plmxml_row_has_payload(row: Dict[str, Any], tag: str = '') -> bool:
-    meaningful = 0
-    for key, value in row.items():
-        if key in {'element_type', 'id', 'name', 'label', 'description', 'sub_type', 'sub_class', 'ontology_prefix', 'source_ontology', 'semantic_role'}:
-            continue
-        if value in (None, '', [], {}):
-            continue
-        key_norm = str(key).strip().lower()
-        if key_norm in _PLMXML_METADATA_KEYS:
-            continue
-        if key_norm.endswith('ref') or key_norm.endswith('refs'):
-            continue
-        meaningful += 1
-    if meaningful:
-        return True
-    return bool(tag and tag not in _PLMXML_STRUCTURAL_TAGS and any(str(v).strip() for v in row.values()))
+logger = logging.getLogger(__name__)
 
 
 def _detect_xml_family(file_content: bytes) -> str:
-    """Detect specialized XML families before falling back to generic XML."""
-    try:
-        from .archimate_service import looks_like_archimate_xml
-        if looks_like_archimate_xml(file_content):
-            return 'archimate'
-    except Exception:
-        pass
-    head = (file_content or b'')[:8192].lower()
-    if b'<req-if' in head or b'reqif.xsd' in head or b'www.omg.org/spec/reqif' in head:
-        return 'reqif'
-    if (
-        b'3ds.com/xsd/3dxml' in head
-        or b'vpmrepreference' in head
-        or b'vpmrepinstance' in head
-        or b'3dxml' in head and b'plmxml' not in head
-    ):
-        return '3dxml'
-    if (
-        b'<plmxml' in head
-        or b'plmxmlschema' in head
-        or b'plmxml.org' in head
-    ):
-        return 'plmxml'
-    return 'xml'
-
-from enum import Enum
-
-logger = logging.getLogger(__name__)
+    """Backward-compatible XML family detector shim for legacy parser callers/tests."""
+    return detect_xml_family(file_content)
 
 # Keep write transactions moderate to reduce AuraDB timeout risk.
 # Relationship-heavy imports usually benefit from smaller batches than node writes.
 IMPORT_WRITE_BATCH_SIZE = int(os.getenv('IMPORT_WRITE_BATCH_SIZE', '250'))
 IMPORT_LINK_BATCH_SIZE = int(os.getenv('IMPORT_LINK_BATCH_SIZE', '150'))
 IMPORT_COMMIT_QUERY_TIMEOUT = int(os.getenv('IMPORT_COMMIT_QUERY_TIMEOUT', os.getenv('NEO4J_IMPORT_QUERY_TIMEOUT', '600')))
-
-class FileType(Enum):
-    CSV = 'csv'
-    EXCEL = 'excel'
-    JSON = 'json'
-    PLMXML = 'plmxml'
-    STEP = 'step'
-    EXPRESS = 'express'
-    XML = 'xml'
-    XMI = 'xmi'
-    XSD = 'xsd'
-    THREEDXML = '3dxml'
-    ARCHIMATE = 'archimate'
-    ONTOLOGY = 'ontology'
-    REQIF = 'reqif'
-
 
 class ImportStatus(Enum):
     """Status of import task"""
@@ -192,49 +68,8 @@ class ImportStage(Enum):
     VERIFY = 'verify'
 
 
-class FileFormatDetector:
-    """Detects file format and provides format utilities"""
-    
-    # Mapping of file extensions to FileType
-    _EXTENSION_MAP = {
-        '.csv': FileType.CSV,
-        '.xlsx': FileType.EXCEL,
-        '.xls': FileType.EXCEL,
-        '.json': FileType.JSON,
-        '.plmxml': FileType.PLMXML,
-        '.step': FileType.STEP,
-        '.stp': FileType.STEP,
-        '.stpx': FileType.STEP,
-        '.exp': FileType.EXPRESS,
-        '.xml': FileType.XML,
-        '.xmi': FileType.XMI,
-        '.mdxml': FileType.XMI,
-        '.xsd': FileType.XSD,
-        '.3dxml': FileType.THREEDXML,
-        '.archimate': FileType.ARCHIMATE,
-        '.owl': FileType.ONTOLOGY,
-        '.rdf': FileType.ONTOLOGY,
-        '.ttl': FileType.ONTOLOGY,
-        '.reqif': FileType.REQIF,
-        '.reqifz': FileType.REQIF,
-    }
-    
-    @classmethod
-    def detect(cls, filename: str) -> Optional[FileType]:
-        """Detect file type from filename"""
-        if not filename:
-            return None
-        
-        # Get file extension
-        _, ext = os.path.splitext(filename.lower())
-        return cls._EXTENSION_MAP.get(ext)
-    
-    @classmethod
-    def get_supported_formats(cls) -> list:
-        """Get list of supported file formats"""
-        return [f for f in cls._EXTENSION_MAP.keys() if f]
-
-
+class SpecializedFormatParser:
+    """Compatibility surface for non-tabular specialized parser entrypoints."""
 
     @staticmethod
     def parse_xmi(file_content: bytes) -> tuple[list[dict], dict]:
@@ -318,7 +153,7 @@ class FileFormatDetector:
                             break
             except Exception:
                 pass
-        _ns_prefix = _derive_prefix_from_namespace(_ns_uri) if _ns_uri else (
+        _ns_prefix = derive_prefix_from_namespace(_ns_uri) if _ns_uri else (
             'ap239' if ap239_stats.get('is_ap239') else 'xmi'
         )
 
@@ -901,47 +736,25 @@ class FileParser:
         """
         parse_options = parse_options or {}
         try:
-            if file_type == FileType.CSV:
-                return FileParser._parse_csv(file_content)
-            elif file_type == FileType.EXCEL:
-                return FileParser._parse_excel(file_content)
-            elif file_type == FileType.XMI:
-                return FileFormatDetector.parse_xmi(file_content)
-            elif file_type == FileType.XSD:
-                return FileFormatDetector.parse_xsd(file_content)
-            elif file_type == FileType.EXPRESS:
-                return FileFormatDetector.parse_express(file_content)
-            elif file_type == FileType.PLMXML:
-                return FileParser._parse_plmxml(
-                    file_content,
-                    metadata_exclusion_tags=parse_options.get('metadata_exclusion_tags'),
-                )
-            elif file_type == FileType.STEP:
-                return FileParser._parse_step(file_content)
-            elif file_type == FileType.THREEDXML:
-                return FileParser._parse_threedxml(file_content)
-            elif file_type == FileType.ARCHIMATE:
-                return FileParser._parse_archimate(file_content)
-            elif file_type == FileType.XML:
-                xml_family = _detect_xml_family(file_content)
-                if xml_family == 'archimate':
-                    return FileParser._parse_archimate(file_content)
-                if xml_family == 'reqif':
-                    return FileParser._parse_reqif(file_content)
-                if xml_family == '3dxml':
-                    return FileParser._parse_threedxml(file_content)
-                if xml_family == 'plmxml':
-                    return FileParser._parse_plmxml(
-                        file_content,
-                        metadata_exclusion_tags=parse_options.get('metadata_exclusion_tags'),
-                    )
-                return FileParser._parse_xml(file_content)
-            elif file_type == FileType.REQIF:
-                return FileParser._parse_reqif(file_content)
-            elif file_type == FileType.JSON:
-                return FileParser._parse_json(file_content)
-            else:
-                return [], {'error': f'Unsupported file type: {file_type}'}
+            return route_parse_request(
+                file_type=file_type,
+                file_content=file_content,
+                parse_options=parse_options,
+                parsers={
+                    'csv': FileParser._parse_csv,
+                    'excel': FileParser._parse_excel,
+                    'xmi': ExtractedSpecializedFormatParser.parse_xmi,
+                    'xsd': ExtractedSpecializedFormatParser.parse_xsd,
+                    'express': ExtractedSpecializedFormatParser.parse_express,
+                    'plmxml': FileParser._parse_plmxml,
+                    'step': FileParser._parse_step,
+                    '3dxml': FileParser._parse_threedxml,
+                    'archimate': FileParser._parse_archimate,
+                    'xml': FileParser._parse_xml,
+                    'reqif': FileParser._parse_reqif,
+                    'json': FileParser._parse_json,
+                },
+            )
         except Exception as e:
             logging.error(f"Error parsing {file_type.value}: {str(e)}")
             return [], {'error': str(e), 'file_type': file_type.value}
@@ -1741,7 +1554,7 @@ class FileParser:
                     'sub_type': generic.subtype,
                     'semantic_role': getattr(generic, 'semantic_role', 'entity'),
                 }
-                if getattr(generic, 'is_structural', False) or not _plmxml_row_has_payload(generic_row, generic.tag):
+                if getattr(generic, 'is_structural', False) or not plmxml_row_has_payload(generic_row, generic.tag):
                     metadata_only_skipped += 1
                     continue
                 append_row(generic_row)
@@ -1762,7 +1575,7 @@ class FileParser:
                 append_rel(rel.source_id, rel.target_id, rel.relationship_type, **(rel.properties or {}))
 
             _ns_uri = str(doc.parse_stats.get('namespace') or '')
-            _ns_prefix = _derive_prefix_from_namespace(_ns_uri)
+            _ns_prefix = derive_prefix_from_namespace(_ns_uri)
 
             columns = list(rows[0].keys()) if rows else []
             stats = {
@@ -1807,7 +1620,7 @@ class FileParser:
             root = ET.fromstring(file_content)
             # Extract namespace from root tag: {http://...}TagName
             ns_uri = root.tag[1:root.tag.index('}')] if root.tag.startswith('{') else root.get('xmlns', '')
-            ns_prefix = _derive_prefix_from_namespace(ns_uri)
+            ns_prefix = derive_prefix_from_namespace(ns_uri)
             import re as _re_xml
             rows = []
             raw_rels: List[Dict[str, Any]] = []
@@ -2195,7 +2008,7 @@ class DataTransformer:
                     '_filter_key': 'element_type',
                     '_filter_val': etype,
                 })
-                indexes.extend(FileFormatDetector._recommended_indexes_for_label(etype, merge_key, type_cols))
+                indexes.extend(SpecializedFormatParser._recommended_indexes_for_label(etype, merge_key, type_cols))
             return {'nodes': nodes, 'indexes': indexes}
 
         # ── STEP/AP242 entity typing ─────────────────────────────────────────
@@ -2233,7 +2046,7 @@ class DataTransformer:
                     '_filter_key': 'entity_type',
                     '_filter_val': entity_type,
                 })
-                indexes.extend(FileFormatDetector._recommended_indexes_for_label(entity_type, merge_key, type_cols))
+                indexes.extend(SpecializedFormatParser._recommended_indexes_for_label(entity_type, merge_key, type_cols))
             if nodes:
                 return {'nodes': nodes, 'indexes': indexes}
 
@@ -2267,7 +2080,7 @@ class DataTransformer:
                     '_filter_key': 'type',
                     '_filter_val': tval,
                 })
-                indexes.extend(FileFormatDetector._recommended_indexes_for_label(tval, merge_key, type_cols))
+                indexes.extend(SpecializedFormatParser._recommended_indexes_for_label(tval, merge_key, type_cols))
             return {'nodes': nodes, 'indexes': indexes}
 
         # ── Single-label schema (original logic, column union fix applied) ────
@@ -2280,7 +2093,7 @@ class DataTransformer:
             else str(rows[0].get('type', 'ImportedRecord')).replace(' ', '_').replace(':', '_')
         )
         nodes = [{'label': default_label, 'mergeKeys': [merge_key], 'properties': columns}]
-        indexes = FileFormatDetector._recommended_indexes_for_label(default_label, merge_key, columns)
+        indexes = SpecializedFormatParser._recommended_indexes_for_label(default_label, merge_key, columns)
         return {'nodes': nodes, 'indexes': indexes}
 
     @staticmethod
@@ -2290,12 +2103,12 @@ class DataTransformer:
         merge_keys: Optional[List[str]] = None,
     ) -> Tuple[List[str], Dict[str, Any]]:
         """Generate Cypher MERGE queries for node creation."""
-        return FileFormatDetector.transform_to_nodes(rows, node_label, merge_keys)
+        return SpecializedFormatParser.transform_to_nodes(rows, node_label, merge_keys)
 
     @staticmethod
     def create_indexes(index_defs: List[Dict[str, Any]]) -> List[str]:
         """Generate index creation queries."""
-        return FileFormatDetector.create_indexes(index_defs)
+        return SpecializedFormatParser.create_indexes(index_defs)
 
 
 # ========== Neo4j Integration ==========
@@ -2847,7 +2660,7 @@ class UnifiedDataImportService:
         if not file_type:
             raise ValueError(f"Unsupported file type. Supported: {', '.join(FileFormatDetector.get_supported_formats())}")
         if file_type == FileType.XML:
-            xml_family = _detect_xml_family(file_content)
+            xml_family = detect_xml_family(file_content)
             if xml_family == 'archimate':
                 file_type = FileType.ARCHIMATE
             elif xml_family == 'reqif':

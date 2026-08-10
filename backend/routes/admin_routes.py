@@ -23,9 +23,22 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 CLEAN_SCHEMA_CONFIRM_TOKEN = "CLEAN_NEO4J_SCHEMA"
 
 
+def _is_production_environment() -> bool:
+    """Keep destructive admin routes open only for local/non-production runs."""
+    environment = (
+        os.getenv("APP_ENV")
+        or os.getenv("ENVIRONMENT")
+        or os.getenv("DEPLOYMENT_ENV")
+        or "development"
+    ).strip().lower()
+    return environment in {"prod", "production", "stage", "staging"}
+
+
 async def require_admin_api_key(request: Request) -> None:
-    """Require an explicitly configured key for destructive admin actions."""
+    """Require a key in production; allow local development without one."""
     expected = os.getenv("ADMIN_API_KEY", "").strip()
+    if not _is_production_environment() and not expected:
+        return
     if not expected:
         raise HTTPException(status_code=503, detail="Admin API key is not configured")
     supplied = request.headers.get("X-API-Key", "")
@@ -746,16 +759,13 @@ async def get_schema_stats():
         if _is_missing_database_error(e):
             neo4j = _neo4j_datasource()
             database = neo4j.get("configured_database") or neo4j.get("active_database") or "configured database"
-            return {
-                "status": "degraded",
-                "stats": _empty_schema_stats(),
-                "database": database,
-                "database_status": "missing",
-                "message": (
+            raise HTTPException(
+                status_code=503,
+                detail=(
                     f"Neo4j is configured from {neo4j.get('configured_database_source') or 'backend/.env'} "
                     f"to use database '{database}', but that database does not exist in the running Neo4j instance."
                 ),
-            }
+            ) from e
         logger.exception("Failed to get schema stats")
         raise HTTPException(status_code=500, detail="Unable to retrieve schema statistics") from e
 

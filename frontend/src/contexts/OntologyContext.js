@@ -66,12 +66,13 @@ export const OntologyProvider = ({ children }) => {
     abortRef.current = controller;
     const request = (async () => {
       try {
+        if (mountedRef.current) setLoading(true);
         if (mountedRef.current) setError(null);
         const endpoints = [
           buildUrl(API.ontology.registered),
           buildUrl(API.graph.ontologyRegisteredRoot),
           buildUrl(API.graph.ontologiesList),
-        ];
+        ].filter((endpoint, index, all) => Boolean(endpoint) && all.indexOf(endpoint) === index);
         let payload = null;
         let lastError = null;
         for (const endpoint of endpoints) {
@@ -106,6 +107,7 @@ export const OntologyProvider = ({ children }) => {
         logger.error('[OntologyContext] Failed to fetch ontologies:', err);
         return [];
       } finally {
+        if (mountedRef.current) setLoading(false);
         requestRef.current = null;
         if (abortRef.current === controller) abortRef.current = null;
       }
@@ -118,10 +120,7 @@ export const OntologyProvider = ({ children }) => {
    * Initial fetch on mount
    */
   useEffect(() => {
-    setLoading(true);
-    fetchOntologies().finally(() => {
-      if (mountedRef.current) setLoading(false);
-    });
+    fetchOntologies();
   }, [fetchOntologies]);
 
   /**

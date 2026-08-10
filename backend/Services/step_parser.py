@@ -277,7 +277,14 @@ def detect_step_format(file_path: Path) -> str:
             text = file_path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             return "p21"
-        if "iso_10303_28" in text.lower():
+        text_lower = text.lower()
+        if (
+            "iso_10303_28" in text_lower
+            or "tech/xml-schema/domain_model" in text_lower
+            or "tech/xml-schema/bo_model" in text_lower
+            or "standards.iso.org/iso/ts/10303/" in text_lower
+            or "xmlns=\"urn:iso:std:iso:10303:" in text_lower
+        ):
             return "stpx"
     return "p21"
 

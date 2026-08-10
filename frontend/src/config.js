@@ -44,6 +44,10 @@ const resolveBackendUrl = () => {
       configured.hostname = browserHost;
       return configured.toString().replace(/\/$/, '');
     }
+    if (isLocalConfigured && browserHost && (browserHost === 'localhost' || browserHost === '127.0.0.1')) {
+      configured.hostname = browserHost;
+      return configured.toString().replace(/\/$/, '');
+    }
   } catch (_err) {
     return fallback;
   }
@@ -96,7 +100,7 @@ const GRAPH_ENDPOINTS = {
   graphOntologyView: process.env.REACT_APP_API_GRAPH_ONTOLOGY_VIEW || '/api/v1/graph/view/ontology/{prefix}',
   graphArchitectureView: process.env.REACT_APP_API_GRAPH_ARCHITECTURE_VIEW || '/api/v1/graph/view/architecture/{prefix}',
   contextualSubgraph: process.env.REACT_APP_API_CONTEXTUAL_SUBGRAPH || '/api/v1/graph/contextual-subgraph',
-  ontologiesList: process.env.REACT_APP_API_ONTOLOGIES_LIST || '/ontologies/list',
+  ontologiesList: process.env.REACT_APP_API_ONTOLOGIES_LIST || '/api/v1/ontology/registered',
   neo4jHealth: process.env.REACT_APP_API_NEO4J_HEALTH || '/health/neo4j',
   graphfilter: process.env.REACT_APP_API_GRAPHFILTER || '/graphfilter',
   graphfilterMulti: process.env.REACT_APP_API_GRAPHFILTER_MULTI || '/graphfilter-multi',
@@ -113,7 +117,7 @@ const GRAPH_ENDPOINTS = {
   ontologyStepPartByName: process.env.REACT_APP_API_ONTOLOGY_STEP_PART_BY_NAME || '/ontology/step/{part_name}',
   ontologyMbseInstances: process.env.REACT_APP_API_ONTOLOGY_MBSE_INSTANCES || '/ontology/mbse-instances',
   ontologyOptions: process.env.REACT_APP_API_ONTOLOGY_OPTIONS || '/ontology/options',
-  ontologyRegisteredRoot: process.env.REACT_APP_API_ONTOLOGY_REGISTERED_ROOT || '/ontology/registered',
+  ontologyRegisteredRoot: process.env.REACT_APP_API_ONTOLOGY_REGISTERED_ROOT || '/api/v1/ontology/registered',
 };
 
 /**
@@ -333,7 +337,7 @@ const AGENTIC_ENDPOINTS = {
  * UI Configuration
  */
 const UI_CONFIG = {
-  graphMaxNodes: parseInt(process.env.REACT_APP_GRAPH_MAX_NODES || '2000', 10),
+  graphMaxNodes: parseInt(process.env.REACT_APP_GRAPH_MAX_NODES || '750', 10),
   graphAnimationEnabled: process.env.REACT_APP_GRAPH_ANIMATION_ENABLED !== 'false',
   autoLoadGraph: process.env.REACT_APP_AUTO_LOAD_GRAPH !== 'false',
 };

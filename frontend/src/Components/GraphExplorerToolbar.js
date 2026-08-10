@@ -360,9 +360,19 @@ function GraphExplorerToolbar({
             maxWidth: '100%',
           }}
         >
-          <span style={{ fontSize: 12, fontWeight: 700, color: theme.ink }}>Current schema slice</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: theme.ink }}>{ontologySliceSummary.modeLabel || 'Current schema slice'}</span>
           <span style={{ fontSize: 12, color: theme.inkSoft }}>{ontologySliceSummary.nodeCount} nodes</span>
           <span style={{ fontSize: 12, color: theme.inkSoft }}>{ontologySliceSummary.relationshipCount} links</span>
+          {ontologySliceSummary.totalCounts && (
+            <span style={{ fontSize: 12, color: theme.primary, fontWeight: 700 }}>
+              Total ontology: {ontologySliceSummary.totalCounts.nodes} nodes / {ontologySliceSummary.totalCounts.relationships} links
+            </span>
+          )}
+          {ontologySliceSummary.isCapped && (
+            <span style={{ fontSize: 11, color: '#8a5a00', background: '#fff8e1', border: '1px solid #ffe082', borderRadius: 999, padding: '3px 8px', fontWeight: 700 }}>
+              Showing capped slice
+            </span>
+          )}
           {ontologySliceSummary.visibleSchemaLabels.map((entry) => (
             <span
               key={entry.label}
@@ -406,10 +416,26 @@ function GraphExplorerToolbar({
                     display: 'inline-block',
                   }}
                 />
-                {entry.type}: {entry.count}
+              {entry.type}: {entry.count}
               </span>
             );
           })}
+          {ontologySliceSummary.visibleFamilies?.map((entry) => (
+            <span
+              key={entry.label}
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: theme.ink,
+                background: '#f8fafc',
+                border: `1px solid ${theme.border}`,
+                borderRadius: 999,
+                padding: '3px 8px',
+              }}
+            >
+              {entry.label}: {entry.count}
+            </span>
+          ))}
         </div>
       )}
 

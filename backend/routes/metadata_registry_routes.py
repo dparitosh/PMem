@@ -137,26 +137,32 @@ def list_metadata_assets(
     domain: Optional[str] = Query(default=None, max_length=200),
     limit: int = Query(default=100, ge=1, le=1000),
 ):
-    rows = graph.query(
-        """
-        MATCH (a:MetadataAsset)
-        WHERE ($status IS NULL OR a.lifecycle_status = $status)
-          AND ($domain IS NULL OR a.domain = $domain)
-        RETURN properties(a) AS asset
-        ORDER BY a.name, a.version DESC
-        LIMIT $limit
-        """,
-        params={"status": status, "domain": domain, "limit": limit},
-    ) or []
+    try:
+        rows = graph.query(
+            """
+            MATCH (a:MetadataAsset)
+            WHERE ($status IS NULL OR a.lifecycle_status = $status)
+              AND ($domain IS NULL OR a.domain = $domain)
+            RETURN properties(a) AS asset
+            ORDER BY a.name, a.version DESC
+            LIMIT $limit
+            """,
+            params={"status": status, "domain": domain, "limit": limit},
+        ) or []
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
     return {"assets": [_row_asset(row) for row in rows], "count": len(rows)}
 
 
 @router.get("/assets/{asset_id}")
 def get_metadata_asset(asset_id: str):
-    rows = graph.query(
-        "MATCH (a:MetadataAsset {asset_id: $asset_id}) RETURN properties(a) AS asset LIMIT 1",
-        params={"asset_id": asset_id},
-    ) or []
+    try:
+        rows = graph.query(
+            "MATCH (a:MetadataAsset {asset_id: $asset_id}) RETURN properties(a) AS asset LIMIT 1",
+            params={"asset_id": asset_id},
+        ) or []
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
     if not rows:
         raise HTTPException(status_code=404, detail="Metadata asset not found")
     return _row_asset(rows[0])
@@ -203,9 +209,9 @@ def create_metadata_asset(request: MetadataAssetRequest):
     except Exception as exc:
         if "constraint" in str(exc).lower() or "already exists" in str(exc).lower():
             raise HTTPException(status_code=409, detail="Metadata asset already exists") from exc
-        raise
+        raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
     if not rows:
-        raise HTTPException(status_code=500, detail="Metadata asset could not be created")
+        raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.")
     return _row_asset(rows[0])
 
 
@@ -217,29 +223,32 @@ def update_metadata_asset(asset_id: str, request: MetadataAssetUpdateRequest):
         raise HTTPException(status_code=400, detail="At least one metadata field is required")
     if "lifecycle_status" in updates:
         raise HTTPException(status_code=400, detail="Use the lifecycle transition endpoint to change lifecycle_status")
-    rows = graph.query(
-        """
-        MATCH (a:MetadataAsset {asset_id: $asset_id})
-        WITH a, keys($updates) AS changed_fields,
-             [key IN keys($updates) | coalesce(toString(a[key]), '')] AS before_values
-        SET a += $updates, a.updated_at = $updated_at
-        WITH a, changed_fields, before_values,
-             [key IN changed_fields | coalesce(toString(a[key]), '')] AS after_values
-        CREATE (e:MetadataAuditEvent {event_id: $event_id})
-        SET e.action = 'updated', e.actor = $actor, e.comment = '',
-            e.created_at = $updated_at, e.changed_fields = changed_fields,
-            e.before_values = before_values, e.after_values = after_values
-        CREATE (a)-[:HAS_AUDIT_EVENT]->(e)
-        RETURN properties(a) AS asset
-        """,
-        params={
-            "asset_id": asset_id,
-            "updates": updates,
-            "updated_at": now,
-            "event_id": str(uuid4()),
-            "actor": str(updates.get("owner") or ""),
-        },
-    ) or []
+    try:
+        rows = graph.query(
+            """
+            MATCH (a:MetadataAsset {asset_id: $asset_id})
+            WITH a, keys($updates) AS changed_fields,
+                 [key IN keys($updates) | coalesce(toString(a[key]), '')] AS before_values
+            SET a += $updates, a.updated_at = $updated_at
+            WITH a, changed_fields, before_values,
+                 [key IN changed_fields | coalesce(toString(a[key]), '')] AS after_values
+            CREATE (e:MetadataAuditEvent {event_id: $event_id})
+            SET e.action = 'updated', e.actor = $actor, e.comment = '',
+                e.created_at = $updated_at, e.changed_fields = changed_fields,
+                e.before_values = before_values, e.after_values = after_values
+            CREATE (a)-[:HAS_AUDIT_EVENT]->(e)
+            RETURN properties(a) AS asset
+            """,
+            params={
+                "asset_id": asset_id,
+                "updates": updates,
+                "updated_at": now,
+                "event_id": str(uuid4()),
+                "actor": str(updates.get("owner") or ""),
+            },
+        ) or []
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
     if not rows:
         raise HTTPException(status_code=404, detail="Metadata asset not found")
     return _row_asset(rows[0])
@@ -254,28 +263,34 @@ def transition_metadata_asset(asset_id: str, request: LifecycleTransitionRequest
         "deprecated": ["approved"],
         "retired": ["deprecated"],
     }[request.status]
-    rows = graph.query(
-        """
-        MATCH (a:MetadataAsset {asset_id: $asset_id})
-        WHERE coalesce(a.lifecycle_status, 'draft') IN $allowed_from
-        WITH a, coalesce(a.lifecycle_status, 'draft') AS previous_status
-        SET a.lifecycle_status = $status, a.updated_at = $updated_at
-        WITH a, previous_status
-        MERGE (e:MetadataAuditEvent {event_id: $event_id})
-        SET e.action = 'lifecycle_transition', e.actor = $actor,
-            e.comment = $comment, e.status = $status, e.previous_status = previous_status,
-            e.changed_fields = ['lifecycle_status'], e.before_values = [previous_status],
-            e.after_values = [$status], e.created_at = $updated_at
-        MERGE (a)-[:HAS_AUDIT_EVENT]->(e)
-        RETURN properties(a) AS asset
-        """,
-        params={"asset_id": asset_id, "status": request.status, "allowed_from": allowed_from, "actor": request.actor, "comment": request.comment, "event_id": str(uuid4()), "updated_at": _now()},
-    ) or []
-    if not rows:
-        existing = graph.query(
-            "MATCH (a:MetadataAsset {asset_id: $asset_id}) RETURN a.lifecycle_status AS status LIMIT 1",
-            params={"asset_id": asset_id},
+    try:
+        rows = graph.query(
+            """
+            MATCH (a:MetadataAsset {asset_id: $asset_id})
+            WHERE coalesce(a.lifecycle_status, 'draft') IN $allowed_from
+            WITH a, coalesce(a.lifecycle_status, 'draft') AS previous_status
+            SET a.lifecycle_status = $status, a.updated_at = $updated_at
+            WITH a, previous_status
+            MERGE (e:MetadataAuditEvent {event_id: $event_id})
+            SET e.action = 'lifecycle_transition', e.actor = $actor,
+                e.comment = $comment, e.status = $status, e.previous_status = previous_status,
+                e.changed_fields = ['lifecycle_status'], e.before_values = [previous_status],
+                e.after_values = [$status], e.created_at = $updated_at
+            MERGE (a)-[:HAS_AUDIT_EVENT]->(e)
+            RETURN properties(a) AS asset
+            """,
+            params={"asset_id": asset_id, "status": request.status, "allowed_from": allowed_from, "actor": request.actor, "comment": request.comment, "event_id": str(uuid4()), "updated_at": _now()},
         ) or []
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
+    if not rows:
+        try:
+            existing = graph.query(
+                "MATCH (a:MetadataAsset {asset_id: $asset_id}) RETURN a.lifecycle_status AS status LIMIT 1",
+                params={"asset_id": asset_id},
+            ) or []
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
         if existing:
             raise HTTPException(status_code=409, detail=f"Invalid lifecycle transition from {existing[0].get('status') or 'draft'} to {request.status}")
         raise HTTPException(status_code=404, detail="Metadata asset not found")
@@ -284,18 +299,24 @@ def transition_metadata_asset(asset_id: str, request: LifecycleTransitionRequest
 
 @router.get("/assets/{asset_id}/history")
 def metadata_asset_history(asset_id: str, limit: int = Query(default=100, ge=1, le=500)):
-    rows = graph.query(
-        """
-        MATCH (a:MetadataAsset {asset_id: $asset_id})-[:HAS_AUDIT_EVENT]->(e:MetadataAuditEvent)
-        RETURN properties(e) AS event ORDER BY e.created_at DESC LIMIT $limit
-        """,
-        params={"asset_id": asset_id, "limit": limit},
-    ) or []
-    if not rows:
-        exists = graph.query(
-            "MATCH (a:MetadataAsset {asset_id: $asset_id}) RETURN a.asset_id AS asset_id LIMIT 1",
-            params={"asset_id": asset_id},
+    try:
+        rows = graph.query(
+            """
+            MATCH (a:MetadataAsset {asset_id: $asset_id})-[:HAS_AUDIT_EVENT]->(e:MetadataAuditEvent)
+            RETURN properties(e) AS event ORDER BY e.created_at DESC LIMIT $limit
+            """,
+            params={"asset_id": asset_id, "limit": limit},
         ) or []
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
+    if not rows:
+        try:
+            exists = graph.query(
+                "MATCH (a:MetadataAsset {asset_id: $asset_id}) RETURN a.asset_id AS asset_id LIMIT 1",
+                params={"asset_id": asset_id},
+            ) or []
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
         if not exists:
             raise HTTPException(status_code=404, detail="Metadata asset not found")
     return {"events": [dict(row.get("event") or row) for row in rows], "count": len(rows)}

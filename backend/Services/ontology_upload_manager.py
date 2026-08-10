@@ -22,8 +22,10 @@ logger = logging.getLogger(__name__)
 
 try:
     from backend.Services.ontology_identity import normalize_ontology_entry, normalize_ontology_entries
+    from backend.Services.import_format_helpers import derive_prefix_from_namespace
 except Exception:  # pragma: no cover - script mode fallback
     from Services.ontology_identity import normalize_ontology_entry, normalize_ontology_entries
+    from Services.import_format_helpers import derive_prefix_from_namespace
 
 
 class OntologyUploadManager:
@@ -65,6 +67,47 @@ class OntologyUploadManager:
         if not safe_name or safe_name in {".", ".."}:
             raise ValueError("A valid upload filename is required")
         return safe_name
+
+    @staticmethod
+    def _derive_ontology_namespace(file_content: bytes, filename: str, file_type: str) -> str:
+        """Discover the ontology URI from XSD or RDF/OWL content."""
+        if file_type == "xsd":
+            try:
+                root = ET.fromstring(file_content)
+                return str(root.attrib.get("targetNamespace") or "").strip().rstrip("#/" )
+            except Exception:
+                return ""
+        if file_type != "ontology":
+            return ""
+        try:
+            from rdflib import Graph, URIRef
+            from rdflib.namespace import OWL, RDF
+
+            graph = Graph()
+            suffix = Path(filename).suffix.lower()
+            formats = {".ttl": ["turtle", "n3"], ".nt": ["nt"], ".jsonld": ["json-ld"]}.get(
+                suffix, ["xml", "turtle", "n3"]
+            )
+            last_error = None
+            for fmt in formats:
+                try:
+                    graph.parse(data=file_content, format=fmt)
+                    last_error = None
+                    break
+                except Exception as exc:
+                    last_error = exc
+            if last_error:
+                return ""
+            ontology_subjects = list(graph.subjects(RDF.type, OWL.Ontology))
+            for subject in ontology_subjects:
+                if isinstance(subject, URIRef) and str(subject).strip():
+                    return str(subject).strip().rstrip("#/")
+            for subject, _, _ in graph:
+                if isinstance(subject, URIRef) and str(subject).strip():
+                    return str(subject).strip().rsplit("#", 1)[0].rstrip("/")
+        except Exception:
+            return ""
+        return ""
 
     @classmethod
     def _ontology_dir(cls, ontology_id: str) -> Path:
@@ -237,6 +280,12 @@ class OntologyUploadManager:
                 except Exception as ns_exc:
                     logger.debug("Could not derive XSD targetNamespace for %s: %s", filename, ns_exc)
 
+            if not source_namespace:
+                source_namespace = cls._derive_ontology_namespace(file_content, filename, file_type)
+            source_namespace = str(source_namespace or "").strip().rstrip("#/")
+            derived_prefix = derive_prefix_from_namespace(source_namespace) if source_namespace else "ontology"
+            prefix = user_prefix or derived_prefix
+
             # ── Versioning: detect existing entry for same prefix+file_type+generation_type ──
             existing = cls._find_existing(prefix, file_type, generation_type)
             version = (existing.get('version', 1) + 1) if existing else 1
@@ -278,6 +327,8 @@ class OntologyUploadManager:
             if user_prefix:
                 prefix = user_prefix
 
+            ontology_uri = source_namespace or f"urn:depo-ontology:{prefix}"
+
             # Create metadata with version info
             metadata = {
                 'ontology_id': ontology_id,
@@ -285,6 +336,7 @@ class OntologyUploadManager:
                 'prefix': prefix,
                 'ontology_prefix': prefix,
                 'namespace': source_namespace or '',
+                'ontology_uri': ontology_uri,
                 'target_namespace': source_namespace or '',
                 'file_type': file_type,
                 'generation_type': generation_type,

@@ -176,7 +176,7 @@ async def upload_ontology_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="XSD, XMI, OWL, RDF/XML, or TTL ontology file"),
     ontology_name: str = Form(..., description="Human-readable name for the ontology"),
-    prefix: str = Form(..., description="Namespace prefix"),
+    prefix: str = Form("", description="Optional namespace prefix; derived from the source namespace when omitted"),
     generation_type: str = Form(..., description="Generation type: shacl, owl, or both"),
     description: str = Form("", description="Optional ontology description"),
     schema_type: str = Form("schema", description="File classification: schema or instance")
@@ -208,9 +208,9 @@ async def upload_ontology_file(
             raise HTTPException(status_code=400, detail="ontology_name contains invalid characters. Use only letters, numbers, spaces, underscores, and dashes")
         
         # Validate prefix (1-50 chars, must start with letter, alphanumeric + underscore)
-        if not prefix or len(prefix) > 50:
-            raise HTTPException(status_code=400, detail="prefix must be 1-50 characters")
-        if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', prefix):
+        if prefix and len(prefix) > 50:
+            raise HTTPException(status_code=400, detail="prefix must be at most 50 characters")
+        if prefix and not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', prefix):
             raise HTTPException(status_code=400, detail="prefix must start with a letter and contain only alphanumeric characters and underscores")
         
         # Validate generation_type
@@ -298,9 +298,9 @@ async def upload_ontology_file(
             file_type=file_type.value,
             ontology_id=save_result['ontology_id'],
             ontology_name=ontology_name,
-            prefix=prefix,
-            source_namespace=source_namespace or None,
-            base_uri=base_uri or None,
+            prefix=save_result.get('metadata', {}).get('prefix') or prefix,
+            source_namespace=save_result.get('metadata', {}).get('namespace') or source_namespace or None,
+            base_uri=save_result.get('metadata', {}).get('ontology_uri') or base_uri or None,
             message=f"Ontology '{ontology_name}' uploaded and registered{version_msg}. Task ID: {task_id}.{neo4j_info}",
             supported_formats=FileFormatDetector.get_supported_formats(),
             storage_path=save_result['storage_path']
@@ -310,7 +310,7 @@ async def upload_ontology_file(
         raise
     except Exception as e:
         logger.error(f"Ontology upload error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Import service failed. Please try again later.") from e
 
 
 @ontology_router.get(

@@ -41,9 +41,13 @@ async def test_admin_key_is_required_for_destructive_routes(monkeypatch):
     from backend.routes.admin_routes import require_admin_api_key
 
     monkeypatch.delenv("ADMIN_API_KEY", raising=False)
+    monkeypatch.setenv("APP_ENV", "production")
     with pytest.raises(HTTPException) as exc_info:
         await require_admin_api_key(_request())
     assert exc_info.value.status_code == 503
+
+    monkeypatch.setenv("APP_ENV", "development")
+    await require_admin_api_key(_request())
 
     monkeypatch.setenv("ADMIN_API_KEY", "test-admin-key")
     with pytest.raises(HTTPException) as exc_info:

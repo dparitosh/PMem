@@ -255,6 +255,15 @@ const normalizeRelationship = (rel) => ({
 });
 
 const normalizeRawDataset = (payload) => {
+  const attachMetadata = (graph) => ({
+    ...graph,
+    counts: payload?.counts || graph?.counts,
+    view: payload?.view || graph?.view,
+    status: payload?.status,
+    message: payload?.message,
+    root: payload?.root,
+  });
+
   if (!payload) {
     return { nodes: [], links: [] };
   }
@@ -274,7 +283,7 @@ const normalizeRawDataset = (payload) => {
       })
       .map(normalizeRelationship);
 
-    return deduplicateNodesAndLinks(nodes, links);
+    return attachMetadata(deduplicateNodesAndLinks(nodes, links));
   }
 
   if (Array.isArray(payload.results)) {
@@ -333,10 +342,10 @@ const normalizeRawDataset = (payload) => {
       });
     });
 
-    return deduplicateNodesAndLinks(Array.from(nodesMap.values()), Array.from(rawLinks.values()));
+    return attachMetadata(deduplicateNodesAndLinks(Array.from(nodesMap.values()), Array.from(rawLinks.values())));
   }
 
-  return { nodes: [], links: [] };
+  return attachMetadata({ nodes: [], links: [] });
 };
 
 const collapseBridgeNodes = (nodes = [], links = [], options = {}) => {
