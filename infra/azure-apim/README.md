@@ -31,3 +31,23 @@ service URL and never stores database, OSLC, or cloud credentials in source.
 Grant the deployment identity APIM API Contributor (or an equivalent scoped
 role) before running the script. Azure CLI supports importing an API with an
 OpenAPI specification URL and backend service URL. [Microsoft Learn](https://learn.microsoft.com/en-gb/cli/azure/apim/api?view=azure-cli-latest)
+
+## Apply gateway security policies
+
+After API registration, apply a single, consistent policy to every OpenAPI and
+OData API. It validates Microsoft Entra ID bearer tokens against the supplied
+OpenID Connect document and applies a per-subscription/IP rate limit.
+
+```powershell
+.\infra\azure-apim\register-depo-policies.ps1 `
+  -SubscriptionId "<subscription-id>" `
+  -ResourceGroup "<resource-group>" `
+  -ApimServiceName "<apim-name>" `
+  -OpenIdConfigUrl "https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration" `
+  -Audience "api://<depo-api-app-id>"
+```
+
+Keep every backend private behind APIM (private endpoint/VNet integration),
+and configure APIM-to-backend mTLS or managed identity according to the target
+hosting platform. Those credentials and certificate identifiers deliberately
+remain deployment configuration, never source code.

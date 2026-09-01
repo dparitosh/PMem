@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "depo-semantica": {
+      "command": "python",
+      "args": ["-m", "semantica.mcp_server"],
+      "env": {
+        "SEMANTICA_KG_PATH": "<persisted-semantic-graph-path>"
+      }
+    }
+  }
+}

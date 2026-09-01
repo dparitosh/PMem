@@ -11,6 +11,8 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Health", "/api/v1/oslc/health", description="OSLC service health"),
         ServiceCapability("Remote catalog", "/api/v1/oslc/remote/catalog", description="Discover a configured OSLC provider catalog"),
         ServiceCapability("Remote query", "/api/v1/oslc/remote/query/{resource_type}", "POST", "Query a configured OSLC provider"),
+        ServiceCapability("Stage remote sync", "/api/v1/oslc/remote/sync/{resource_type}", "POST", "Pull and stage a remote OSLC snapshot"),
+        ServiceCapability("Stage remote sync", "/api/v1/oslc/remote/sync/{resource_type}", "POST", "Pull and stage a remote OSLC snapshot"),
         ServiceCapability("OSLC server catalog", "/oslc/catalog", description="DEPO OSLC service provider catalog"),
     ],
 ))

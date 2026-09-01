@@ -7,6 +7,7 @@ services:
     ports: ["8011:8011"]
     environment:
       ONTOLOGY_SERVICE_STORAGE: /data/ontology_service
+      SERVICE_PORT: 8011
       ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     volumes: ["ontology-data:/data/ontology_service"]
 
@@ -17,6 +18,7 @@ services:
     command: python -m uvicorn backend.graph_service.app:app --host 0.0.0.0 --port 8013
     ports: ["8013:8013"]
     environment:
+      SERVICE_PORT: 8013
       NEO4J_URI: ${NEO4J_URI:-neo4j://host.docker.internal:7687}
       NEO4J_USER: ${NEO4J_USER:-neo4j}
       NEO4J_PASS: ${NEO4J_PASS:?set NEO4J_PASS in your environment}
@@ -31,6 +33,7 @@ services:
     command: python -m uvicorn backend.ingestion_service.app:app --host 0.0.0.0 --port 8014
     ports: ["8014:8014"]
     environment:
+      SERVICE_PORT: 8014
       ONTOLOGY_SERVICE_URL: http://ontology:8011/api/v1
       GRAPH_SERVICE_URL: http://graph:8013/api/v1
       SEMANTIC_GRAPH_PROVIDER: ${SEMANTIC_GRAPH_PROVIDER:-neo4j}
@@ -46,7 +49,11 @@ services:
       ORACLE_PASSWORD: ${ORACLE_PASSWORD:-}
       ORACLE_SEMANTIC_GRAPH_MODEL: ${ORACLE_SEMANTIC_GRAPH_MODEL:-}
       ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
-    depends_on: [ontology, graph]
+    depends_on:
+      ontology:
+        condition: service_healthy
+      graph:
+        condition: service_healthy
     extra_hosts: ["host.docker.internal:host-gateway"]
 
   oslc:
@@ -56,13 +63,17 @@ services:
     command: python -m uvicorn backend.oslc_service.app:app --host 0.0.0.0 --port 8015
     ports: ["8015:8015"]
     environment:
+      SERVICE_PORT: 8015
       OSLC_BASE_URL: http://localhost:8015
+      OSLC_SYNC_STORAGE: /data/oslc_service/syncs
       NEO4J_URI: ${NEO4J_URI:-neo4j://host.docker.internal:7687}
       NEO4J_USER: ${NEO4J_USER:-neo4j}
       NEO4J_PASS: ${NEO4J_PASS:?set NEO4J_PASS in your environment}
       NEO4J_DATABASE: ${NEO4J_DATABASE:-ontology}
       ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes: ["oslc-data:/data/oslc_service"]
 
 volumes:
   ontology-data:
+  oslc-data:

@@ -50,4 +50,20 @@ def create_service_app(*, title: str, version: str, lifespan_hook: Callable[[], 
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
     )
+
+    @app.get("/healthz", include_in_schema=False)
+    def liveness() -> dict[str, str]:
+        """Process liveness probe; never depends on an external dependency."""
+        return {"status": "ok", "service": title, "version": version}
+
+    @app.get("/readyz", include_in_schema=False)
+    def readiness() -> dict[str, str]:
+        """HTTP readiness probe for orchestration.
+
+        Dependency-specific readiness remains available from each service's
+        explicit health endpoint so a slow remote graph does not restart an
+        otherwise healthy API process.
+        """
+        return {"status": "ready", "service": title, "version": version}
+
     return app

@@ -2,20 +2,13 @@
 
 FastAPI backend for the DEPO application.
 
-## What This Service Owns
+## Runtime architecture
 
-- graph APIs
-- ontology registry and browsing APIs
-- semantic workflows
-- import workflows
-- admin and cleanup APIs
-- chat / GraphRAG APIs
-- recommendations APIs
-- document upload APIs
-
-## Primary Entry Point
-
-- [backend/main.py](D:/Depo_Onto_Engine/backend/main.py)
+The target architecture is four independently deployable, OpenAPI-first
+services: ontology, graph, ingestion, and OSLC. `backend/main.py` is retained
+only as a compatibility host while the SPA is migrated; it is not the target
+for new backend features. See `backend/legacy/README.md` for the safe removal
+process.
 
 ## Start The Backend
 
@@ -28,7 +21,7 @@ From repository root:
 Or directly:
 
 ```bat
-cd D:\Depo_Onto_Engine
+cd D:\Githuv_repo\PMem
 backend\.dt_venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
@@ -65,16 +58,21 @@ executes Cypher against Neo4j; RapidMiner and Oracle profiles validate and
 retain their connection configuration until their provider-specific canonical
 graph adapters are configured.
 
+The OSLC service can pull a configured remote query into an immutable staged
+snapshot with `POST /api/v1/oslc/remote/sync/{resource_type}`. A staged
+snapshot is not published automatically: map it through a source profile and
+approve the normal ingestion quality/policy gates first.
+
 The ontology service also exposes Semantica quality and evolution APIs:
 `POST /ontologies/quality-gate`, `POST /ontologies/versions`,
 `POST /ontologies/versions/compare`, `POST /ontologies/analytics`, and
 `GET /ontologies/mcp`. The MCP endpoint returns a stdio launch contract; do
 not expose an unauthenticated MCP process over HTTP.
 
-## Important Runtime Dependencies
+## Production dependencies
 
 - Neo4j must be reachable with correct credentials
-- graph and ontology features depend on Neo4j health
+- graph publication and live graph exploration depend on Neo4j health
 - chat and document ingestion depend on the configured LLM / embedding stack
 
 ## Current Document Upload Status
@@ -86,20 +84,17 @@ They now degrade honestly when the processor or embedding runtime is unavailable
 - health will report degraded when the embedding backend is unavailable
 - upload endpoints will return a clear error instead of failing unpredictably
 
-## Recommended Customer Validation
+## Service validation
 
-- `GET /health`
-- `GET /health/neo4j`
-- `GET /docs`
-- `GET /api/v1/ontology/registered`
-- `GET /chat/health`
-- `GET /api/v1/documents/health`
+- `GET /healthz` and `GET /readyz` on every standalone service
+- `GET /openapi.json` and `GET /odata/$metadata` on every standalone service
+- service-specific health and dependency endpoints before enabling publication
+- APIM import and policy scripts in `infra/azure-apim`
 
 ## Optional Agent Memory
 
 Graph-native chat and Semantic Bridge memory can be enabled with
-`AGENT_MEMORY_ENABLED=true`. See
-[docs/AGENT_MEMORY_AUGMENTATION.md](D:/Depo_Onto_Engine/docs/AGENT_MEMORY_AUGMENTATION.md).
+`AGENT_MEMORY_ENABLED=true`. See `docs/AGENT_MEMORY_AUGMENTATION.md`.
 
 Useful checks:
 
