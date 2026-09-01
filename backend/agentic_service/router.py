@@ -1,6 +1,6 @@
 """Catalog and bounded execution for independently extensible agents/tools."""
 from __future__ import annotations
-import base64, binascii, json, os
+import base64, binascii, json, os, hmac
 from pathlib import Path
 from typing import Any
 import httpx
@@ -80,13 +80,14 @@ def _multipart(inputs: dict[str, Any]) -> tuple[dict[str, Any], dict[str, tuple[
 @router.post("/runs")
 async def run(payload: dict[str, Any]) -> dict:
     plan_result = plan(payload)
-    if plan_result["requires_approval"] and not payload.get("approved_by"):
-        raise HTTPException(status_code=409, detail="approved_by is required for a mutating agent action")
+    expected = os.getenv("AGENTIC_APPROVAL_TOKEN", "")
+    if plan_result["requires_approval"] and (not expected or not payload.get("approved_by") or not hmac.compare_digest(str(payload.get("approval_token") or ""), expected)):
+        raise HTTPException(status_code=403, detail="A valid approval_token and approved_by are required for a mutating agent action")
     tool, inputs = plan_result["tool"], dict(payload.get("inputs") or {})
     if tool.get("transport") != "openapi":
         raise HTTPException(status_code=501, detail="This transport is catalogued but not HTTP-executable")
-    path = _render(str(tool["path"]), inputs)
     try:
+        path = _render(str(tool["path"]), inputs)
         async with httpx.AsyncClient(timeout=float(os.getenv("AGENTIC_TOOL_TIMEOUT_SECONDS", "30"))) as client:
             if tool.get("input_kind") == "multipart":
                 form, files = _multipart(inputs)
@@ -97,4 +98,5 @@ async def run(payload: dict[str, Any]) -> dict:
                 response = await client.request(tool["method"], _base(tool["service"]) + path, params=inputs if tool["method"] == "GET" else None, json=None if tool["method"] == "GET" else inputs)
             response.raise_for_status()
         return {"agent_id": plan_result["agent"], "tool_id": tool["id"], "approved_by": payload.get("approved_by"), "result": response.json()}
-    except (httpx.HTTPError, ValueError) as exc: raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail=str(exc)) from exc

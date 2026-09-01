@@ -12,7 +12,7 @@ def test_catalogue_is_manifest_driven_and_mutations_require_approval():
     plan = client.post("/api/v1/plans", json={"agent_id": "ontology-governor", "tool_id": "ontology.merge.apply"})
     assert plan.status_code == 200 and plan.json()["requires_approval"] is True
     blocked = client.post("/api/v1/runs", json={"agent_id": "ontology-governor", "tool_id": "ontology.merge.apply", "inputs": {"preview_id": "x"}})
-    assert blocked.status_code == 409
+    assert blocked.status_code == 403
 
 def test_workflow_manifest_validates_steps_and_multipart_is_bounded():
     client = TestClient(app)

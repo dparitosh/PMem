@@ -9,8 +9,13 @@ services:
     build: {context: ., dockerfile: Dockerfile.backend}
     command: python -m uvicorn backend.data_product_service.app:app --host 0.0.0.0 --port 8017
     ports: ["8017:8017"]
-    environment: {SERVICE_PORT: 8017, DATA_PRODUCT_STORAGE: /data/products, DATA_PRODUCT_ALLOWED_ARTIFACT_ROOTS: /data/products, DATA_CATALOG_URL: http://catalog:8016/api/v1}
-    volumes: ["product-data:/data/products"]
+    environment:
+      SERVICE_PORT: 8017
+      DATA_PRODUCT_STORAGE: /data/products
+      DATA_PRODUCT_ALLOWED_ARTIFACT_ROOTS: /data/artifacts
+      DATA_CATALOG_URL: http://catalog:8016/api/v1
+      DATA_PRODUCT_APPROVAL_TOKEN: "${DATA_PRODUCT_APPROVAL_TOKEN:?set DATA_PRODUCT_APPROVAL_TOKEN}"
+    volumes: ["product-data:/data/products", "artifacts-data:/data/artifacts"]
     depends_on:
       catalog:
         condition: service_healthy
@@ -46,6 +51,7 @@ services:
       QIF_SERVICE_URL: http://qif:8010/api/v1
       DATA_CATALOG_URL: http://catalog:8016/api/v1
       DATA_PRODUCT_SERVICE_URL: http://data-products:8017/api/v1
+      AGENTIC_APPROVAL_TOKEN: ${AGENTIC_APPROVAL_TOKEN:?set AGENTIC_APPROVAL_TOKEN}
       ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     depends_on:
       ontology:
@@ -65,7 +71,8 @@ services:
       ONTOLOGY_SERVICE_STORAGE: /data/ontology_service
       SERVICE_PORT: 8011
       ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
-    volumes: ["ontology-data:/data/ontology_service"]
+    # Approved ontology artifacts can be copied here for data-product publication.
+    volumes: ["ontology-data:/data/ontology_service", "artifacts-data:/data/artifacts"]
 
   graph:
     build:
@@ -131,6 +138,7 @@ services:
     volumes: ["oslc-data:/data/oslc_service"]
 
 volumes:
+  artifacts-data:
   catalog-data:
   product-data:
   ontology-data:

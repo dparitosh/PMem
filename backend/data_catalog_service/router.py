@@ -12,12 +12,12 @@ def products(domain: str = "") -> dict:
     return {"products": sorted(values, key=lambda v: v["updated_at"], reverse=True), "count": len(values)}
 @router.get("/products/{product_id}")
 def product(product_id: str) -> dict:
-    value = store.all().get(product_id)
-    if not value: raise HTTPException(404, "Data product not found")
-    return value
-@router.put("/products/{product_id}")
-def register(product_id: str, payload: dict) -> dict:
+    versions = [value for value in store.all().values() if value.get("product_id") == product_id]
+    if not versions: raise HTTPException(404, "Data product not found")
+    return {"product_id": product_id, "versions": sorted(versions, key=lambda value: value["updated_at"], reverse=True)}
+@router.put("/products/{product_id}/versions/{version}")
+def register(product_id: str, version: str, payload: dict) -> dict:
     if not product_id or not payload.get("name") or not payload.get("domain") or not payload.get("owner"):
         raise HTTPException(422, "product_id, name, domain and owner are required")
-    record = {**payload, "product_id": product_id, "updated_at": datetime.now(timezone.utc).isoformat()}
-    return store.put(product_id, record)
+    record = {**payload, "product_id": product_id, "version": version, "updated_at": datetime.now(timezone.utc).isoformat()}
+    return store.put(f"{product_id}:{version}", record)
