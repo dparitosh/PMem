@@ -15,6 +15,7 @@ from fastapi import HTTPException
 
 from .agent_registry import registry
 from .ontology_builder import build_ontology_turtle, inspect_schema_set, validate_schema_set
+from .publishing import get_publisher
 
 
 def _now() -> str:
@@ -242,14 +243,9 @@ class QifTaskService:
             self._event(task, "register", "Registering ontology artifact.")
             self._write(task_id, task)
             artifact = self._task_dir(task_id) / "ontology" / f"{task['prefix']}_qif_ontology.ttl"
-            try:
-                from ..Services.ontology_upload_manager import OntologyUploadManager
-            except ImportError:
-                from Services.ontology_upload_manager import OntologyUploadManager
-            saved = OntologyUploadManager.save_ontology_file(
-                file_content=artifact.read_bytes(), filename=artifact.name,
-                ontology_name=task["ontology_name"], prefix=task["prefix"], file_type="ontology",
-                generation_type="as_is", description=task["description"], schema_type="schema",
+            saved = get_publisher().register(
+                artifact=artifact, ontology_name=task["ontology_name"],
+                prefix=task["prefix"], description=task["description"],
             )
             if saved.get("status") != "success":
                 raise RuntimeError(saved.get("error", "Unable to register ontology"))
@@ -274,13 +270,8 @@ class QifTaskService:
             raise RuntimeError("Cannot synchronize a task without a registered ontology")
         attempts = int(task.get("graph_sync", {}).get("attempts", 0)) + 1
         try:
-            try:
-                from ..Services.ontology_upload_manager import OntologyUploadManager
-                from ..core.graph import graph
-            except ImportError:
-                from Services.ontology_upload_manager import OntologyUploadManager
-                from core.graph import graph
-            sync_result = OntologyUploadManager.push_to_neo4j(ontology_id, graph)
+            artifact = self._task_dir(task_id) / "ontology" / f"{task['prefix']}_qif_ontology.ttl"
+            sync_result = get_publisher().sync_graph(ontology_id=ontology_id, artifact=artifact)
             success = sync_result.get("status") == "success"
             graph_sync = {"status": "completed" if success else "failed", "attempts": attempts, "detail": sync_result}
         except Exception as exc:
