@@ -48,6 +48,7 @@ class QifArtifact(BaseModel):
 class QifTaskResponse(BaseModel):
     task_id: str
     source: str
+    standard_id: str = "qif-3"
     ontology_name: str
     prefix: str
     description: str = ""

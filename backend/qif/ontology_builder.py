@@ -132,10 +132,16 @@ def validate_schema_set(inspection: dict, paths: Iterable[Path]) -> dict:
     if duplicate_count:
         warnings.append({"message": f"{duplicate_count} repeated term names were retained with source provenance."})
 
-    # Validate every root schema structurally without a native XMLSchema
-    # dependency. Full W3C XSD grammar compilation needs lxml/libxml2 and is
-    # intentionally outside the lean pure-Python runtime; import closure,
-    # namespace and XML well-formedness remain explicitly verified here.
+    # Compile each root schema using lxml/libxml2 when Semantica's installed
+    # runtime provides it.  This catches W3C XSD grammar violations in addition
+    # to the safe structural checks below.  The fallback keeps the service
+    # operable in deliberately minimal local environments.
+    compiler_available = False
+    try:
+        from lxml import etree as lxml_etree
+        compiler_available = True
+    except ImportError:
+        lxml_etree = None
     locally_referenced = {Path(item["reference"]).name.lower() for item in inspection.get("references", []) if not item["reference"].startswith(("http://", "https://"))}
     roots = [Path(path) for path in paths if Path(path).name.lower() not in locally_referenced] or [Path(path) for path in paths]
     schema_validated = 0
@@ -144,10 +150,15 @@ def validate_schema_set(inspection: dict, paths: Iterable[Path]) -> dict:
             document = ET.parse(root_path).getroot()
             if document.tag != f"{XS}schema":
                 raise ValueError("Root element is not xs:schema")
+            if lxml_etree is not None:
+                lxml_etree.XMLSchema(lxml_etree.parse(str(root_path)))
             schema_validated += 1
         except (OSError, ET.ParseError, ValueError) as exc:
             errors.append({"file": root_path.name, "error": f"XSD structural validation failed: {exc}"})
-    warnings.append({"message": "XSD validation is structural in the lean pure-Python runtime; use a dedicated validator for full W3C schema compilation."})
+        except Exception as exc:
+            errors.append({"file": root_path.name, "error": f"XSD grammar compilation failed: {exc}"})
+    if not compiler_available:
+        warnings.append({"message": "XSD validation is structural because lxml/libxml2 is unavailable; deploy the Semantica runtime image for full W3C grammar compilation."})
     return {
         "valid": not errors,
         "errors": errors,
@@ -158,6 +169,7 @@ def validate_schema_set(inspection: dict, paths: Iterable[Path]) -> dict:
         "namespaces": sorted(namespaces),
         "duplicate_term_groups": duplicate_count,
         "schema_documents_validated": schema_validated,
+        "xsd_grammar_compiler": "lxml/libxml2" if compiler_available else "structural-fallback",
     }
 
 

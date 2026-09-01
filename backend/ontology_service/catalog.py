@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from backend.artifact_store import artifact_store
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -43,6 +45,12 @@ class OntologyCatalog:
         artifact_dir.mkdir(parents=True, exist_ok=False)
         artifact_path = artifact_dir / safe_filename
         artifact_path.write_bytes(content)
+        shared_artifact = artifact_store.ingest(
+            artifact_path,
+            kind="ontology",
+            media_type="text/turtle" if artifact_path.suffix.lower() == ".ttl" else "application/octet-stream",
+            provenance={"ontology_id": ontology_id, "source": source},
+        )
         metadata = {
             "ontology_id": ontology_id,
             "ontology_name": str(ontology_name or prefix),
@@ -51,6 +59,7 @@ class OntologyCatalog:
             "source": source,
             "original_filename": safe_filename,
             "artifact_path": str(artifact_path),
+            "artifact_id": shared_artifact["artifact_id"],
             "created_at": _now(),
             "status": "registered",
         }

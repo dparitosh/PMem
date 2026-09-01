@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from .agent_registry import registry
 from .models import QifActionResponse, QifAgentsResponse, QifCatalogResponse, QifHealthResponse, QifTaskListResponse, QifTaskPreviewResponse, QifTaskResponse
 from .task_service import task_service
+from .standards import detect_standard, get_standard, public_standards
 
 router = APIRouter(prefix="/qif", tags=["qif"])
 _ROOT = Path(__file__).resolve().parents[2]
@@ -31,9 +32,9 @@ def _validate_metadata(name: str, prefix: str) -> None:
         raise HTTPException(status_code=422, detail="prefix must start with a letter and contain only letters, numbers, and underscores")
 
 
-def _start(paths: list[Path], name: str, prefix: str, description: str, source: str) -> dict:
+def _start(paths: list[Path], name: str, prefix: str, description: str, source: str, standard_id: str = "generic-xsd") -> dict:
     _validate_metadata(name, prefix)
-    task = task_service.create(source_paths=paths, ontology_name=name, prefix=prefix, description=description, source=source)
+    task = task_service.create(source_paths=paths, ontology_name=name, prefix=prefix, description=description, source=source, standard_id=standard_id)
     task_service.submit_prepare(task["task_id"])
     return task_service.get(task["task_id"])
 
@@ -47,6 +48,11 @@ def health() -> dict:
 def catalog() -> dict:
     files = _reference_files()
     return {"standard": "QIF 3.0", "file_count": len(files), "files": [{"name": path.name, "area": path.parent.name} for path in files]}
+
+
+@router.get("/schema-sets/standards", summary="List multi-XSD engineering-standard adapter profiles")
+def schema_set_standards() -> dict:
+    return {"standards": public_standards(), "count": len(public_standards())}
 
 
 @router.get("/agents", response_model=QifAgentsResponse, summary="List available QIF workflow agents")
@@ -66,7 +72,35 @@ def start_reference_task(ontology_name: str = Form("QIF 3.0 Ontology"), prefix: 
     sources = _reference_files()
     if not sources:
         raise HTTPException(status_code=404, detail="Bundled QIF reference schemas are unavailable")
-    return _start(sources, ontology_name, prefix, description, "bundled_reference")
+    return _start(sources, ontology_name, prefix, description, "bundled_reference", "qif-3")
+
+
+@router.post("/schema-sets/upload", response_model=QifTaskResponse, summary="Start a generic multi-XSD engineering-standard workflow")
+async def start_schema_set(
+    files: Annotated[list[UploadFile], File(description="One or more XSD files for a standard or custom schema set")],
+    ontology_name: Annotated[str, Form()], prefix: Annotated[str, Form()] = "",
+    standard_id: Annotated[str, Form()] = "auto", description: Annotated[str, Form()] = "",
+) -> dict:
+    if not files or len(files) > _MAX_FILES:
+        raise HTTPException(status_code=422, detail=f"Upload between 1 and {_MAX_FILES} XSD files")
+    filenames = [Path(item.filename or "").name for item in files]
+    selected = detect_standard(filenames) if standard_id == "auto" else standard_id
+    try: profile = get_standard(selected)
+    except ValueError as exc: raise HTTPException(422, detail=str(exc)) from exc
+    selected_prefix = prefix or profile["prefix"]
+    _validate_metadata(ontology_name, selected_prefix)
+    with TemporaryDirectory(prefix="schema_set_") as tmp:
+        root, paths, names = Path(tmp), [], set()
+        for item, filename in zip(files, filenames):
+            if not filename.lower().endswith(".xsd"):
+                raise HTTPException(422, detail=f"{filename or 'Unnamed file'} is not an XSD file")
+            if filename.lower() in names:
+                raise HTTPException(422, detail=f"Duplicate filename: {filename}")
+            content = await item.read()
+            if not content or len(content) > _MAX_FILE_BYTES:
+                raise HTTPException(422, detail=f"{filename} is empty or exceeds 10 MB")
+            path = root / filename; path.write_bytes(content); names.add(filename.lower()); paths.append(path)
+        return _start(paths, ontology_name, selected_prefix, description, "uploaded_schema_set", selected)
 
 
 @router.post("/tasks/upload", response_model=QifTaskResponse, summary="Start granular QIF workflow from multiple XSD files")
@@ -91,7 +125,7 @@ async def start_uploaded_task(files: Annotated[list[UploadFile], File(descriptio
             path.write_bytes(content)
             names.add(filename.lower())
             paths.append(path)
-        return _start(paths, ontology_name, prefix, description, "uploaded_schema_set")
+        return _start(paths, ontology_name, prefix, description, "uploaded_schema_set", "qif-3")
 
 
 @router.get("/tasks", response_model=QifTaskListResponse, summary="List recent QIF workflow tasks")

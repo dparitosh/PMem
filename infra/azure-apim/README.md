@@ -13,12 +13,16 @@ az login
   -OntologyServiceUrl "https://ontology.internal.example" `
   -GraphServiceUrl "https://graph.internal.example" `
   -IngestionServiceUrl "https://ingestion.internal.example" `
-  -OslcServiceUrl "https://oslc.internal.example"
+  -OslcServiceUrl "https://oslc.internal.example" `
+  -QifServiceUrl "https://qif.internal.example" `
+  -AgenticServiceUrl "https://agentic.internal.example" `
+  -CatalogServiceUrl "https://catalog.internal.example" `
+  -DataProductsServiceUrl "https://data-products.internal.example"
 ```
 
-Registered OpenAPI APIM paths are `/ontology`, `/graph`, `/ingestion`, and
-`/oslc`. Registered OData v4 paths are `/ontology-odata`, `/graph-odata`,
-`/ingestion-odata`, and `/oslc-odata`. Each service publishes `/odata`,
+Registered OpenAPI APIM paths include `/ontology`, `/graph`, `/ingestion`,
+`/oslc`, `/qif`, `/agentic`, `/catalog`, and `/data-products`; matching OData
+paths use the `-odata` suffix. Each service publishes `/odata`,
 `/odata/$metadata`, and a read-only `ServiceCapabilities` entity set. The
 OData catalog is intentionally a discovery contract; governed domain commands
 continue to use OpenAPI.
@@ -64,5 +68,9 @@ It verifies liveness, OpenAPI, and OData metadata before import.
   -OntologyServiceUrl "https://ontology.internal.example" `
   -GraphServiceUrl "https://graph.internal.example" `
   -IngestionServiceUrl "https://ingestion.internal.example" `
-  -OslcServiceUrl "https://oslc.internal.example"
+  -OslcServiceUrl "https://oslc.internal.example" `
+  -QifServiceUrl "https://qif.internal.example" `
+  -AgenticServiceUrl "https://agentic.internal.example" `
+  -CatalogServiceUrl "https://catalog.internal.example" `
+  -DataProductsServiceUrl "https://data-products.internal.example"
 ```

@@ -13,6 +13,8 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from backend.artifact_store import artifact_store
+
 from .agent_registry import registry
 from .ontology_builder import build_ontology_turtle, inspect_schema_set, validate_schema_set
 from .publishing import get_publisher
@@ -56,7 +58,7 @@ class QifTaskService:
     def _event(self, task: dict[str, Any], stage: str, message: str, level: str = "info") -> None:
         task.setdefault("events", []).append({"at": _now(), "stage": stage, "level": level, "message": message})
 
-    def create(self, *, source_paths: list[Path], ontology_name: str, prefix: str, description: str, source: str) -> dict[str, Any]:
+    def create(self, *, source_paths: list[Path], ontology_name: str, prefix: str, description: str, source: str, standard_id: str = "generic-xsd") -> dict[str, Any]:
         task_id = uuid.uuid4().hex
         task_dir = self._task_dir(task_id)
         source_dir = task_dir / "source"
@@ -69,6 +71,7 @@ class QifTaskService:
         task = {
             "task_id": task_id,
             "source": source,
+            "standard_id": standard_id,
             "ontology_name": ontology_name,
             "prefix": prefix,
             "description": description,
@@ -84,7 +87,7 @@ class QifTaskService:
             "artifacts": [],
             "graph_sync": {"status": "not_started"},
         }
-        self._event(task, "queued", f"Accepted {len(copied)} XSD source files.")
+        self._event(task, "queued", f"Accepted {len(copied)} XSD source files for {standard_id}.")
         self._write(task_id, task)
         return task
 
@@ -188,11 +191,11 @@ class QifTaskService:
         """Run inspect → validate → generate, leaving an approval gate before persistence."""
         try:
             task = self._update(task_id, status="running", stage="inspect", progress=10)
-            task["agent"] = "QIF_Ontology"
-            self._event(task, "inspect", "QIF_Ontology agent is inspecting XSD declarations and documentation.")
+            task["agent"] = "SchemaSet_Ontology"
+            self._event(task, "inspect", "Schema-set ontology agent is inspecting XSD declarations and documentation.")
             self._write(task_id, task)
             paths = [self._task_dir(task_id) / "source" / name for name in task["source_files"]]
-            tools = registry.resolve_tools("QIF_Ontology")
+            tools = registry.resolve_tools("SchemaSet_Ontology")
             inspection = tools["inspect_schema_set"](paths)
             if self._cancelled(task_id):
                 return
@@ -217,13 +220,17 @@ class QifTaskService:
             artifact_dir.mkdir(exist_ok=True)
             artifact_path = artifact_dir / f"{task['prefix']}_qif_ontology.ttl"
             artifact_path.write_bytes(artifact)
+            shared_artifact = artifact_store.ingest(
+                artifact_path, kind="ontology", media_type="text/turtle",
+                provenance={"qif_task_id": task_id, "prefix": task["prefix"]},
+            )
             report_dir = self._task_dir(task_id) / "reports"
             report_dir.mkdir(exist_ok=True)
             report_path = report_dir / "validation.json"
             report_path.write_text(json.dumps(validation, indent=2), encoding="utf-8")
             task = self._update(task_id, status="awaiting_approval", stage="review", progress=80, summary=summary,
                 artifacts=[
-                    {"name": artifact_path.name, "path": "ontology/" + artifact_path.name, "kind": "ontology"},
+                    {"name": artifact_path.name, "path": "ontology/" + artifact_path.name, "kind": "ontology", "artifact_id": shared_artifact["artifact_id"]},
                     {"name": report_path.name, "path": "reports/validation.json", "kind": "validation"},
                 ])
             self._event(task, "review", "Preview is ready. Approve persistence to register the ontology and synchronize the graph.")

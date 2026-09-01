@@ -6,6 +6,10 @@ param(
   [Parameter(Mandatory = $true)][string]$GraphServiceUrl,
   [Parameter(Mandatory = $true)][string]$IngestionServiceUrl,
   [Parameter(Mandatory = $true)][string]$OslcServiceUrl,
+  [Parameter(Mandatory = $true)][string]$QifServiceUrl,
+  [Parameter(Mandatory = $true)][string]$AgenticServiceUrl,
+  [Parameter(Mandatory = $true)][string]$CatalogServiceUrl,
+  [Parameter(Mandatory = $true)][string]$DataProductsServiceUrl,
   [switch]$AllowAnonymous
 )
 
@@ -22,6 +26,10 @@ Assert-HttpsUrl "OntologyServiceUrl" $OntologyServiceUrl
 Assert-HttpsUrl "GraphServiceUrl" $GraphServiceUrl
 Assert-HttpsUrl "IngestionServiceUrl" $IngestionServiceUrl
 Assert-HttpsUrl "OslcServiceUrl" $OslcServiceUrl
+Assert-HttpsUrl "QifServiceUrl" $QifServiceUrl
+Assert-HttpsUrl "AgenticServiceUrl" $AgenticServiceUrl
+Assert-HttpsUrl "CatalogServiceUrl" $CatalogServiceUrl
+Assert-HttpsUrl "DataProductsServiceUrl" $DataProductsServiceUrl
 
 function Register-DepoApi([string]$ApiId, [string]$Path, [string]$DisplayName, [string]$ServiceUrl) {
   $baseUrl = $ServiceUrl.TrimEnd('/')
@@ -62,8 +70,16 @@ Register-DepoApi "depo-ontology" "ontology" "DEPO Ontology Service" $OntologySer
 Register-DepoApi "depo-graph" "graph" "DEPO Graph Service" $GraphServiceUrl
 Register-DepoApi "depo-ingestion" "ingestion" "DEPO Ingestion Service" $IngestionServiceUrl
 Register-DepoApi "depo-oslc" "oslc" "DEPO OSLC Service" $OslcServiceUrl
+Register-DepoApi "depo-qif" "qif" "DEPO QIF Service" $QifServiceUrl
+Register-DepoApi "depo-agentic" "agentic" "DEPO Agentic Control Plane" $AgenticServiceUrl
+Register-DepoApi "depo-catalog" "catalog" "DEPO Data Catalog" $CatalogServiceUrl
+Register-DepoApi "depo-data-products" "data-products" "DEPO Data Products" $DataProductsServiceUrl
 
 Register-DepoODataApi "depo-ontology-odata" "ontology-odata" "DEPO Ontology OData" $OntologyServiceUrl
 Register-DepoODataApi "depo-graph-odata" "graph-odata" "DEPO Graph OData" $GraphServiceUrl
 Register-DepoODataApi "depo-ingestion-odata" "ingestion-odata" "DEPO Ingestion OData" $IngestionServiceUrl
 Register-DepoODataApi "depo-oslc-odata" "oslc-odata" "DEPO OSLC OData" $OslcServiceUrl
+Register-DepoODataApi "depo-qif-odata" "qif-odata" "DEPO QIF OData" $QifServiceUrl
+Register-DepoODataApi "depo-agentic-odata" "agentic-odata" "DEPO Agentic OData" $AgenticServiceUrl
+Register-DepoODataApi "depo-catalog-odata" "catalog-odata" "DEPO Data Catalog OData" $CatalogServiceUrl
+Register-DepoODataApi "depo-data-products-odata" "data-products-odata" "DEPO Data Products OData" $DataProductsServiceUrl

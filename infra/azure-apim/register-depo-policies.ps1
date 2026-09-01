@@ -25,6 +25,8 @@ function Set-DepoApiPolicy([string]$ApiId) {
       <openid-config url="$issuer" />
       <audiences><audience>$expectedAudience</audience></audiences>
     </validate-jwt>
+    <set-header name="X-DEPO-Principal-Id" exists-action="override"><value>@(context.Principal.Claims.FirstOrDefault(c => c.Type == "oid")?.Value ?? context.Principal.Identity.Name)</value></set-header>
+    <set-header name="X-DEPO-Roles" exists-action="override"><value>@(string.Join(",", context.Principal.Claims.Where(c => c.Type == "roles").Select(c => c.Value)))</value></set-header>
     <rate-limit-by-key calls="$RateLimitCalls" renewal-period="$RateLimitPeriodSeconds" counter-key="@(context.Subscription?.Key ?? context.Request.IpAddress)" />
     <set-header name="X-Content-Type-Options" exists-action="override"><value>nosniff</value></set-header>
   </inbound>
@@ -39,6 +41,6 @@ function Set-DepoApiPolicy([string]$ApiId) {
 }
 
 @(
-  "depo-ontology", "depo-graph", "depo-ingestion", "depo-oslc",
-  "depo-ontology-odata", "depo-graph-odata", "depo-ingestion-odata", "depo-oslc-odata"
+  "depo-ontology", "depo-graph", "depo-ingestion", "depo-oslc", "depo-qif", "depo-agentic", "depo-catalog", "depo-data-products",
+  "depo-ontology-odata", "depo-graph-odata", "depo-ingestion-odata", "depo-oslc-odata", "depo-qif-odata", "depo-agentic-odata", "depo-catalog-odata", "depo-data-products-odata"
 ) | ForEach-Object { Set-DepoApiPolicy $_ }

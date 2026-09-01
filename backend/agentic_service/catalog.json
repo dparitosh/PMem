@@ -6,7 +6,7 @@
     {"id": "engineering-parser", "name": "Engineering Parser", "tools": ["engineering.inspect", "profile.inspect", "profile.execute"], "approval_required": false},
     {"id": "graph-analyst", "name": "Graph Analyst", "tools": ["graph.analytics", "graph.neighborhood", "context.search", "context.where_used"], "approval_required": false},
     {"id": "oslc-link-agent", "name": "OSLC Link Agent", "tools": ["oslc.remote.catalog", "oslc.remote.query", "oslc.remote.sync"], "approval_required": false},
-    {"id": "qif-agent", "name": "QIF Digital Thread Agent", "tools": ["qif.catalog", "qif.reference.task", "qif.task.status", "qif.task.commit"], "approval_required": false},
+    {"id": "schema-set-agent", "name": "Engineering Schema-Set Agent", "tools": ["schema-set.standards", "schema-set.upload", "qif.task.status", "qif.task.commit"], "approval_required": false},
     {"id": "data-product-governor", "name": "Data Product Governor", "tools": ["data.catalog.products", "data.product.preview", "data.product.publish"], "approval_required": true}
   ],
   "tools": [
@@ -29,6 +29,8 @@
     ,{"id": "qif.reference.task", "transport": "openapi", "service": "qif", "method": "POST", "path": "/tasks/reference", "mutates": false, "input_kind": "form"}
     ,{"id": "qif.task.status", "transport": "openapi", "service": "qif", "method": "GET", "path": "/tasks/{task_id}", "mutates": false}
     ,{"id": "qif.task.commit", "transport": "openapi", "service": "qif", "method": "POST", "path": "/tasks/{task_id}/commit", "mutates": true}
+    ,{"id": "schema-set.standards", "transport": "openapi", "service": "qif", "method": "GET", "path": "/schema-sets/standards", "mutates": false}
+    ,{"id": "schema-set.upload", "transport": "openapi", "service": "qif", "method": "POST", "path": "/schema-sets/upload", "mutates": false, "input_kind": "multipart"}
     ,{"id": "data.catalog.products", "transport": "openapi", "service": "catalog", "method": "GET", "path": "/catalog/products", "mutates": false}
     ,{"id": "data.product.preview", "transport": "openapi", "service": "data_products", "method": "POST", "path": "/data-products/preview", "mutates": false}
     ,{"id": "data.product.publish", "transport": "openapi", "service": "data_products", "method": "POST", "path": "/data-products/publish", "mutates": true}

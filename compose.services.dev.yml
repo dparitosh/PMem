@@ -1,0 +1,10 @@
+# Local-only convenience override. Production services remain private behind APIM.
+services:
+  catalog: {ports: ["8016:8016"]}
+  data-products: {ports: ["8017:8017"]}
+  qif: {ports: ["8010:8010"]}
+  agentic: {ports: ["8012:8012"]}
+  ontology: {ports: ["8011:8011"]}
+  graph: {ports: ["8013:8013"]}
+  ingestion: {ports: ["8014:8014"]}
+  oslc: {ports: ["8015:8015"]}
