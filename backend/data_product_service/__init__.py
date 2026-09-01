@@ -1,0 +1,1 @@
+"""Governed data-product service."""

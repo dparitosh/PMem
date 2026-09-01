@@ -1,4 +1,16 @@
 services:
+  catalog:
+    build: {context: ., dockerfile: Dockerfile.backend}
+    command: python -m uvicorn backend.data_catalog_service.app:app --host 0.0.0.0 --port 8016
+    ports: ["8016:8016"]
+    environment: {SERVICE_PORT: 8016, DATA_CATALOG_STORAGE: /data/catalog}
+    volumes: ["catalog-data:/data/catalog"]
+  data-products:
+    build: {context: ., dockerfile: Dockerfile.backend}
+    command: python -m uvicorn backend.data_product_service.app:app --host 0.0.0.0 --port 8017
+    ports: ["8017:8017"]
+    environment: {SERVICE_PORT: 8017, DATA_PRODUCT_STORAGE: /data/products}
+    volumes: ["product-data:/data/products"]
   qif:
     build:
       context: .
@@ -114,5 +126,7 @@ services:
     volumes: ["oslc-data:/data/oslc_service"]
 
 volumes:
+  catalog-data:
+  product-data:
   ontology-data:
   oslc-data:
