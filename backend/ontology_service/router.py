@@ -6,10 +6,12 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from .catalog import catalog
 from .intelligence import SemanticIntelligence
+from .merge_service import GovernedMergeService
 from .semantica_adapter import semantica
 
 router = APIRouter(prefix="/ontologies", tags=["ontologies"])
 intelligence = SemanticIntelligence(semantica.workspace.root)
+merges = GovernedMergeService(catalog, intelligence, catalog.root)
 
 
 @router.get("/health", summary="Ontology service health")
@@ -135,6 +137,22 @@ def add_policy(payload: dict[str, Any]) -> dict:
 @router.post("/policies/evaluate", summary="Evaluate Semantica policies before a governed action")
 def evaluate_policies(payload: dict[str, Any]) -> dict:
     return intelligence.evaluate_policies(dict(payload.get("decision") or {}), list(payload.get("exception_policy_ids") or []))
+
+
+@router.post("/merges/preview", summary="Create a persistent governed ontology merge preview")
+def preview_merge(payload: dict[str, Any]) -> dict:
+    try:
+        return merges.preview(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/merges/{preview_id}/apply", summary="Apply an approved, conflict-free ontology merge")
+def apply_merge(preview_id: str, payload: dict[str, Any]) -> dict:
+    try:
+        return merges.apply(preview_id, str(payload.get("approved_by") or ""))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/mcp", summary="Get the local Semantica MCP stdio-server launch contract")

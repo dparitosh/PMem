@@ -15,6 +15,8 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Quality gate", "/api/v1/ontologies/quality-gate", "POST", "Run governed quality checks"),
         ServiceCapability("Ontology versions", "/api/v1/ontologies/versions", description="List ontology versions"),
         ServiceCapability("Policy evaluation", "/api/v1/ontologies/policies/evaluate", "POST", "Evaluate publication policies"),
+        ServiceCapability("Governed merge preview", "/api/v1/ontologies/merges/preview", "POST", "Review an ontology merge before approval"),
+        ServiceCapability("Approved ontology merge", "/api/v1/ontologies/merges/{preview_id}/apply", "POST", "Persist an approved merge with provenance"),
     ],
 ))
 app.include_router(router, prefix="/api/v1")

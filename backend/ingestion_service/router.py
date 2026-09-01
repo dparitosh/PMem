@@ -43,8 +43,11 @@ async def run_engineering_workflow(
     file: UploadFile = File(...),
     ontology_name: str = Form(""),
     prefix: str = Form(""),
-    description: str = Form(""),
-    register_ontology: bool = Form(True),
+      description: str = Form(""),
+      register_ontology: bool = Form(True),
+      publish: bool = Form(False),
+      enforce_quality: bool = Form(True),
+      policy_exception_ids: list[str] = Form([]),
 ) -> dict:
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
@@ -52,7 +55,8 @@ async def run_engineering_workflow(
     try:
         return await engineering_workflow.run(
             filename=file.filename or "source", content=content, ontology_name=ontology_name, prefix=prefix,
-            description=description, register=register_ontology, request_id=getattr(request.state, "request_id", None),
+              description=description, register=register_ontology, request_id=getattr(request.state, "request_id", None),
+              publish=publish, enforce_quality=enforce_quality, policy_exception_ids=policy_exception_ids,
         )
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=503, detail=f"Ontology service is unavailable: {exc}") from exc

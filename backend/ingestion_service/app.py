@@ -11,7 +11,7 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Source profiles", "/source-profiles", description="List reusable ingestion profiles"),
         ServiceCapability("Inspect source", "/source-profiles/inspect", "POST", "Inspect a source schema or sample"),
         ServiceCapability("Engineering schema conversion", "/schema-conversions/inspect", "POST", "Convert EXPRESS, STEP, XMI, or XSD to Turtle"),
-        ServiceCapability("Engineering workflow", "/engineering-workflows", "POST", "Convert and register through the ontology service"),
+        ServiceCapability("Engineering workflow", "/engineering-workflows", "POST", "Convert, govern, register and optionally publish an engineering ontology"),
         ServiceCapability("Execute profile", "/source-profiles/{profile_id}/workflow", "POST", "Run governed profile ingestion"),
     ],
 ))
