@@ -147,6 +147,27 @@ class OSLCService:
         }
 
     @classmethod
+    def _ontology_domains(cls) -> List[Dict[str, Any]]:
+        """Turn every registered ontology into an OSLC domain declaration."""
+        listed = OntologyUploadManager.list_ontologies()
+        if listed.get("status") != "success":
+            return []
+        domains: List[Dict[str, Any]] = []
+        for metadata in listed.get("ontologies", []):
+            ontology_id = str(metadata.get("ontology_id") or "").strip()
+            if not ontology_id:
+                continue
+            prefix = str(metadata.get("prefix") or metadata.get("ontology_prefix") or ontology_id).strip()
+            domains.append({
+                "id": f"ontology:{ontology_id}", "ontology_id": ontology_id, "prefix": prefix,
+                "title": metadata.get("ontology_name") or metadata.get("original_filename") or ontology_id,
+                "namespace": metadata.get("namespace") or metadata.get("ontology_uri") or f"urn:depo:ontology:{prefix}",
+                "description": metadata.get("description") or f"DEPO governed ontology domain '{prefix}'.",
+                "version": metadata.get("version", 1), "schema_type": metadata.get("schema_type", "schema"),
+            })
+        return domains
+
+    @classmethod
     def service_provider(cls) -> Dict[str, Any]:
         cfg = cls.config()
         query_base = f"{cfg.base_url}/oslc/query/{cls.DEFAULT_RESOURCE_TYPE}"
@@ -176,6 +197,7 @@ class OSLCService:
                     "namespace": "http://open-services.net/ns/rm#",
                     "description": "Requirement, requirement collection, and cross-domain traceability discovery profile.",
                 },
+                *cls._ontology_domains(),
             ],
             "queryCapabilities": [
                 {
@@ -216,6 +238,16 @@ class OSLCService:
                     "supportedParameters": ["oslc.where", "oslc.select", "oslc.orderBy", "oslc.searchTerms", "oslc.paging", "oslc.pageSize", "oslc.pageNum"],
                     "domains": ["oslc_rm"],
                 },
+                *[
+                    {
+                        "resourceType": f"ontology:{domain['ontology_id']}",
+                        "queryBase": query_base,
+                        "resourceShape": f"{cfg.base_url}/oslc/shapes/{domain['ontology_id']}",
+                        "supportedParameters": ["oslc.where", "oslc.select", "oslc.orderBy", "oslc.searchTerms", "oslc.paging", "oslc.pageSize", "oslc.pageNum"],
+                        "domains": [domain["id"]],
+                    }
+                    for domain in cls._ontology_domains()
+                ],
             ],
             "resourceShapes": [
                 {
@@ -232,6 +264,10 @@ class OSLCService:
                         "title": definition["title"],
                     }
                     for shape_id, definition in cls.DOMAIN_SHAPES.items()
+                ],
+                *[
+                    {"uri": f"{cfg.base_url}/oslc/shapes/{domain['ontology_id']}", "title": domain["title"]}
+                    for domain in cls._ontology_domains()
                 ],
             ],
             "domainResources": {
@@ -268,6 +304,17 @@ class OSLCService:
                     "title": "Ontology Taxonomies",
                     "uri": f"{cfg.base_url}/oslc/taxonomies",
                     "description": "Uploaded ontology taxonomy and hierarchy resources.",
+                },
+                "ontologies": {
+                    "title": "Governed Ontology Domains",
+                    "domains": {
+                        domain["id"]: {
+                            "ontologyId": domain["ontology_id"], "prefix": domain["prefix"],
+                            "shape": f"{cfg.base_url}/oslc/shapes/{domain['ontology_id']}",
+                            "queryBase": query_base, "trs": f"{cfg.base_url}/oslc/trs",
+                        }
+                        for domain in cls._ontology_domains()
+                    },
                 },
             },
         }
