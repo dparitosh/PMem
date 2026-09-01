@@ -17,6 +17,7 @@ from backend.data_ingestion import (  # temporary adapter: parser extraction is 
     load_file_from_bytes,
 )
 from backend.core.graph import query_with_timeout
+from .profiles import profiles
 import json
 import pandas as pd
 
@@ -26,6 +27,36 @@ router = APIRouter(tags=["ingestion"])
 @router.get("/ingestion/health")
 def health() -> dict:
     return {"status": "ok", "service": "ingestion", "contract": "v1"}
+
+
+@router.post("/source-profiles/inspect", summary="Inspect a schema or sample file for profile creation")
+async def inspect_source_profile(file: UploadFile = File(...)) -> dict:
+    try:
+        return profiles.inspect(filename=file.filename or "source", content=await file.read())
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Source inspection failed: {exc}") from exc
+
+
+@router.get("/source-profiles", summary="List reusable source profiles")
+def list_source_profiles() -> dict:
+    entries = profiles.list()
+    return {"profiles": entries, "count": len(entries)}
+
+
+@router.post("/source-profiles", summary="Create or version a declarative source profile")
+def save_source_profile(profile: dict) -> dict:
+    try:
+        return profiles.save(profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/source-profiles/{profile_id}/normalize", summary="Normalize one source record for the ontology service")
+def normalize_source_record(profile_id: str, record: dict) -> dict:
+    try:
+        return profiles.normalize(profile=profiles.get(profile_id), record=record)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/ingest-data", summary="Ingest tabular data through the ingestion service")
