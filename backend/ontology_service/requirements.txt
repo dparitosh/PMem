@@ -5,5 +5,5 @@ pydantic>=2.11,<3
 python-multipart>=0.0.20
 rdflib>=7.6
 pyshacl>=0.31
-# Optional ontology lifecycle and validation provider used by semantica_adapter.
-semantica>=0.5.0
+# Required ontology lifecycle, SHACL, export and evaluation engine.
+semantica==0.6.7

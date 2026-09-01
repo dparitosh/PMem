@@ -17,10 +17,8 @@ that executor without changing the HTTP contracts.
 
 ## Publishing migration
 
-`QIF_PUBLISH_MODE=legacy` is the safe default for current installations. It
-routes publishing through `backend.qif.publishing.LegacyPublisher`, the only
-remaining QIF-to-legacy adapter. Set `QIF_PUBLISH_MODE=services` after starting
-the ontology service to register new QIF artifacts through its OpenAPI endpoint.
+QIF publication has no legacy fallback. It uses the OpenAPI ontology and graph
+services, and ontology generation uses Semantica as a required dependency.
 The graph service accepts a Turtle artifact through
 `POST /api/v1/graph/ontologies/publish`. It upserts RDF resources and promotes
 `rdfs:subClassOf`, `rdfs:domain`, and `rdfs:range` to explicit graph edges for

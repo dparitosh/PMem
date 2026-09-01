@@ -4,12 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import quote
 
 from defusedxml import ElementTree as ET
 from lxml import etree
-from rdflib import Graph, Literal, Namespace, RDF, RDFS, URIRef
-from rdflib.namespace import OWL, XSD
 
 XS = "{http://www.w3.org/2001/XMLSchema}"
 
@@ -176,87 +173,10 @@ def validate_schema_set(inspection: dict, paths: Iterable[Path]) -> dict:
 
 
 def build_ontology_turtle(inspection: dict, prefix: str) -> tuple[bytes, dict]:
-    """Create a reusable RDF/OWL artifact from inspected XSD declarations."""
-    namespace = Namespace(f"https://depo.local/ontology/{quote(prefix)}#")
-    graph = Graph()
-    graph.bind(prefix, namespace)
-    ontology_uri = URIRef(f"https://depo.local/ontology/{quote(prefix)}")
-    graph.add((ontology_uri, RDF.type, OWL.Ontology))
-    graph.add((ontology_uri, RDFS.label, Literal(f"{prefix} consolidated ontology")))
+    """Create a reusable RDF/OWL artifact through the Semantica engine."""
+    try:
+        from ..ontology_service.semantica_adapter import semantica
+    except ImportError:  # pragma: no cover - standalone script mode
+        from ontology_service.semantica_adapter import semantica
+    return semantica.generate_from_xsd_inspection(inspection, prefix)
 
-    terms = inspection["terms"]
-    type_kinds = {"complex_type", "simple_type"}
-
-    def component_uri(term: SchemaTerm) -> URIRef:
-        """Keep XSD component categories and owner context distinct in RDF."""
-        namespace_key = quote(term.namespace or "no-target-namespace", safe="")
-        if term.kind == "property":
-            local_key = f"property/{quote(term.base or 'global', safe='')}/{quote(term.name, safe='')}"
-        else:
-            local_key = f"{term.kind}/{quote(term.name, safe='')}"
-        return namespace[f"{namespace_key}/{local_key}"]
-
-    # Resolve references to named XSD types before considering element classes.
-    # This prevents an element and a complexType with the same local name from
-    # being conflated in the generated ontology.
-    named_types = {
-        term.name: term for term in terms
-        if term.kind in type_kinds
-    }
-    class_terms = [term for term in terms if term.kind in {*type_kinds, "element"}]
-    class_names = {term.name for term in class_terms}
-
-    def class_uri_for(name: str) -> URIRef | None:
-        if not name:
-            return None
-        if name in named_types:
-            return component_uri(named_types[name])
-        matching_class = next((term for term in class_terms if term.name == name), None)
-        return component_uri(matching_class) if matching_class else None
-
-    for term in terms:
-        uri = component_uri(term)
-        graph.add((uri, RDFS.label, Literal(term.name)))
-        graph.add((uri, namespace.sourceFile, Literal(term.source)))
-        if term.namespace:
-            graph.add((uri, namespace.schemaNamespace, Literal(term.namespace)))
-        if term.documentation:
-            graph.add((uri, RDFS.comment, Literal(term.documentation)))
-        if term.kind in {"complex_type", "simple_type", "element"}:
-            graph.add((uri, RDF.type, OWL.Class))
-            base_uri = class_uri_for(term.base)
-            if base_uri:
-                graph.add((uri, RDFS.subClassOf, base_uri))
-            # A global element declared with a named complex/simple type is a
-            # concrete specialization of that type for navigation purposes.
-            # This retains the XSD declaration relationship in the graph.
-            if term.kind == "element":
-                declared_type_uri = class_uri_for(term.value_type)
-                if declared_type_uri and declared_type_uri != uri:
-                    graph.add((uri, RDFS.subClassOf, declared_type_uri))
-        elif term.kind == "property":
-            graph.add((uri, RDF.type, OWL.DatatypeProperty))
-            domain_uri = class_uri_for(term.base)
-            if domain_uri:
-                graph.add((uri, RDFS.domain, domain_uri))
-            range_uri = class_uri_for(term.value_type)
-            if range_uri:
-                graph.set((uri, RDF.type, OWL.ObjectProperty))
-                graph.add((uri, RDFS.range, range_uri))
-            else:
-                datatype = getattr(XSD, term.value_type, XSD.string) if term.value_type else XSD.string
-                graph.add((uri, RDFS.range, datatype))
-            graph.add((uri, namespace.minOccurs, Literal(term.min_occurs or "1")))
-            graph.add((uri, namespace.maxOccurs, Literal(term.max_occurs or "1")))
-
-    artifact = graph.serialize(format="turtle")
-    encoded = artifact.encode("utf-8") if isinstance(artifact, str) else artifact
-    summary = {
-        "files_processed": len(inspection["source_files"]),
-        "terms_created": len(terms),
-        "classes_created": len({component_uri(term) for term in class_terms}),
-        "properties_created": len({component_uri(term) for term in terms if term.kind == "property"}),
-        "references_found": len(inspection["references"]),
-        "parse_errors": inspection["errors"],
-    }
-    return encoded, summary

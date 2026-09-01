@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
@@ -18,6 +18,17 @@ def health() -> dict:
 @router.get("/capabilities", summary="Ontology generation and validation capabilities")
 def capabilities() -> dict:
     return semantica.capabilities()
+
+
+@router.post("/generate", summary="Generate, validate, evaluate and export an ontology using Semantica")
+def generate_ontology(payload: dict[str, Any]) -> dict:
+    data = payload.get("data") or {"entities": payload.get("entities", []), "relationships": payload.get("relationships", [])}
+    result = semantica.generate(
+        data=data, name=str(payload.get("name") or "GeneratedOntology"),
+        base_uri=str(payload.get("base_uri") or "https://depo.local/ontology/"),
+    )
+    return {"ontology": result["ontology"], "validation": result["validation"], "evaluation": result["evaluation"],
+            "artifacts": {name: content.decode("utf-8") for name, content in result["artifacts"].items()}}
 
 
 @router.get("", summary="List ontology artifacts registered by this service")
