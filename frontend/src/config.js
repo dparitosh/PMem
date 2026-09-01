@@ -5,6 +5,7 @@
  */
 
 const configuredBackendUrl = process.env.REACT_APP_BACKEND_URL;
+const configuredGatewayUrl = process.env.REACT_APP_API_GATEWAY_URL;
 const configuredAgenticServiceUrl = process.env.REACT_APP_AGENTIC_SERVICE_URL;
 const agenticEnabled = String(process.env.REACT_APP_AGENTIC_ENABLED || '').trim().toLowerCase() === 'true';
 const rewriteLocalhostBackend =
@@ -73,10 +74,27 @@ const baseConfig = {
   adminApiKey: process.env.REACT_APP_ADMIN_API_KEY || '',
 };
 
+const gatewayUrl = configuredGatewayUrl ? configuredGatewayUrl.replace(/\/$/, '') : '';
+const semanticServiceUrls = Object.freeze({
+  ontology: (process.env.REACT_APP_ONTOLOGY_SERVICE_URL || (gatewayUrl && `${gatewayUrl}/ontology`)).replace(/\/$/, ''),
+  graph: (process.env.REACT_APP_GRAPH_SERVICE_URL || (gatewayUrl && `${gatewayUrl}/graph`)).replace(/\/$/, ''),
+  ingestion: (process.env.REACT_APP_INGESTION_SERVICE_URL || (gatewayUrl && `${gatewayUrl}/ingestion`)).replace(/\/$/, ''),
+  oslc: (process.env.REACT_APP_OSLC_SERVICE_URL || (gatewayUrl && `${gatewayUrl}/oslc`)).replace(/\/$/, ''),
+});
+
+/** Build a URL for new standalone-service features during monolith migration. */
+export const buildSemanticServiceUrl = (service, path = '') => {
+  const baseUrl = semanticServiceUrls[service];
+  if (!baseUrl) throw new Error(`Semantic service '${service}' is not configured`);
+  return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+};
+
 // Deprecated: Keep old property for backward compatibility
 const config = {
   ...baseConfig,
   apiUrl: baseConfig.backendUrl,
+  gatewayUrl,
+  semanticServiceUrls,
 };
 
 /**

@@ -60,3 +60,16 @@ test('normalizes a trailing slash from the configured backend URL', async () => 
   vi.unstubAllEnvs();
   vi.resetModules();
 });
+
+test('uses APIM routes for opt-in standalone semantic service calls', async () => {
+  vi.stubEnv('REACT_APP_API_GATEWAY_URL', 'https://gateway.example.test/');
+  vi.resetModules();
+
+  const module = await import('./config');
+  expect(module.config.semanticServiceUrls.ontology).toBe('https://gateway.example.test/ontology');
+  expect(module.buildSemanticServiceUrl('graph', '/api/v1/graph/health'))
+    .toBe('https://gateway.example.test/graph/api/v1/graph/health');
+
+  vi.unstubAllEnvs();
+  vi.resetModules();
+});

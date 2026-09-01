@@ -16,7 +16,12 @@ router = APIRouter(tags=["ingestion"])
 
 @router.get("/ingestion/health")
 def health() -> dict:
-    return {"status": "ok", "service": "ingestion", "contract": "v1", "graph_store_provider": writer.config.provider}
+    return {"status": "ok", "service": "ingestion", "contract": "v1", "graph_store": writer.status()}
+
+
+@router.get("/ingestion/graph-store", summary="Read semantic graph-store capability and configuration requirements")
+def graph_store_status() -> dict:
+    return writer.status()
 
 
 @router.post("/source-profiles/inspect", summary="Inspect a schema or sample file for profile creation")

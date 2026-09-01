@@ -53,3 +53,16 @@ Keep every backend private behind APIM (private endpoint/VNet integration),
 and configure APIM-to-backend mTLS or managed identity according to the target
 hosting platform. Those credentials and certificate identifiers deliberately
 remain deployment configuration, never source code.
+
+## Validate service contracts before registration
+
+Run this from the same private network that APIM uses to reach the services.
+It verifies liveness, OpenAPI, and OData metadata before import.
+
+```powershell
+.\infra\azure-apim\test-depo-service-contracts.ps1 `
+  -OntologyServiceUrl "https://ontology.internal.example" `
+  -GraphServiceUrl "https://graph.internal.example" `
+  -IngestionServiceUrl "https://ingestion.internal.example" `
+  -OslcServiceUrl "https://oslc.internal.example"
+```
