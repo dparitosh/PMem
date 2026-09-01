@@ -7,11 +7,13 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from .catalog import catalog
 from .intelligence import SemanticIntelligence
 from .merge_service import GovernedMergeService
+from .business_context import BusinessContextService
 from .semantica_adapter import semantica
 
 router = APIRouter(prefix="/ontologies", tags=["ontologies"])
 intelligence = SemanticIntelligence(semantica.workspace.root)
 merges = GovernedMergeService(catalog, intelligence, catalog.root)
+business_context = BusinessContextService(catalog.root)
 
 
 @router.get("/health", summary="Ontology service health")
@@ -151,6 +153,43 @@ def preview_merge(payload: dict[str, Any]) -> dict:
 def apply_merge(preview_id: str, payload: dict[str, Any]) -> dict:
     try:
         return merges.apply(preview_id, str(payload.get("approved_by") or ""))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/business-context", summary="Get Semantica business-object context graph status")
+def business_context_summary() -> dict:
+    return business_context.summary()
+
+
+@router.post("/business-context/objects", summary="Upsert typed business objects and relationships into Semantica ContextGraph")
+def upsert_business_context(payload: dict[str, Any]) -> dict:
+    try:
+        return business_context.upsert(payload)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/business-context/objects/{object_id}", summary="Traverse contextual relationships for a business object")
+def get_business_object(object_id: str, hops: int = 2, limit: int = 200) -> dict:
+    try:
+        return business_context.get(object_id, hops=hops, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if str(exc) == "Business object not found" else 422, detail=str(exc)) from exc
+
+
+@router.get("/business-context/objects/{object_id}/where-used", summary="Find incoming business-object relationships")
+def business_object_where_used(object_id: str, limit: int = 200) -> dict:
+    try:
+        return business_context.where_used(object_id, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if str(exc) == "Business object not found" else 422, detail=str(exc)) from exc
+
+
+@router.get("/business-context/search", summary="Search persisted Semantica business context")
+def search_business_context(query: str, limit: int = 50) -> dict:
+    try:
+        return business_context.search(query, limit=limit)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

@@ -17,6 +17,7 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Policy evaluation", "/api/v1/ontologies/policies/evaluate", "POST", "Evaluate publication policies"),
         ServiceCapability("Governed merge preview", "/api/v1/ontologies/merges/preview", "POST", "Review an ontology merge before approval"),
         ServiceCapability("Approved ontology merge", "/api/v1/ontologies/merges/{preview_id}/apply", "POST", "Persist an approved merge with provenance"),
+        ServiceCapability("Business-object context", "/api/v1/ontologies/business-context", "GET", "Inspect Semantica ContextGraph business-object context"),
     ],
 ))
 app.include_router(router, prefix="/api/v1")
