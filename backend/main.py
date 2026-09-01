@@ -292,7 +292,7 @@ try:
     # from .models.schema import ChatRequest, ChatResponse, ResetRequest, TextSearchRequest, ChatWithCypherResponse
     # from .agent.memory import reset_memory
     from .models.schema import ChatRequest, ChatResponse, TextSearchRequest
-    from .data_ingestion import router as ingestion_router
+    from .ingestion_service.router import router as ingestion_router
     from .Services.unified_import_router import router as unified_import_router, ontology_router as ontology_upload_router
     from .routes.ontology_routes import router as ontology_router
     from .routes.oslc_routes import router as oslc_router
@@ -317,7 +317,7 @@ except ImportError:
 
     from backend.core.graph import graph, get_graph_schema, cleanup_graph_connection
     from backend.models.schema import ChatRequest, ChatResponse, TextSearchRequest
-    from backend.data_ingestion import router as ingestion_router
+    from backend.ingestion_service.router import router as ingestion_router
     from backend.Services.unified_import_router import router as unified_import_router, ontology_router as ontology_upload_router
     from backend.routes.ontology_routes import router as ontology_router
     from backend.routes.oslc_routes import router as oslc_router
