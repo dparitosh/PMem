@@ -22,3 +22,19 @@ async def publish_ontology(
         return publisher.publish_turtle(content=await artifact.read(), ontology_id=ontology_id, prefix=prefix)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Graph publication failed: {type(exc).__name__}: {exc}") from exc
+
+
+@router.get("/ontologies/{ontology_id}/analytics", summary="Run Semantica analytics on a live Neo4j ontology projection")
+def ontology_analytics(ontology_id: str, limit: int = 3000) -> dict:
+    try:
+        return publisher.analytics(ontology_id=ontology_id, limit=limit)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Graph analytics failed: {type(exc).__name__}: {exc}") from exc
+
+
+@router.get("/ontologies/{ontology_id}/neighborhood", summary="Get bounded semantic distance neighbors from the live ontology graph")
+def ontology_neighborhood(ontology_id: str, iri: str, max_hops: int = 3, limit: int = 200) -> dict:
+    try:
+        return publisher.neighborhood(ontology_id=ontology_id, iri=iri, max_hops=max_hops, limit=limit)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Graph neighborhood failed: {type(exc).__name__}: {exc}") from exc

@@ -8,6 +8,7 @@ from typing import Any
 from neo4j import GraphDatabase
 from rdflib import Graph, Literal
 from rdflib.namespace import OWL, RDF, RDFS
+from semantica.kg import GraphAnalyzer
 
 
 class Neo4jPublisher:
@@ -87,6 +88,42 @@ class Neo4jPublisher:
             "relationships": sum(len(rows) for rows in relationships.values()),
             "hierarchy_edges": len(relationships["SUBCLASS_OF"]),
         }
+
+    def _session_rows(self, query: str, **parameters: Any) -> list[dict[str, Any]]:
+        if not self.password:
+            raise RuntimeError("NEO4J_PASS is not configured")
+        with GraphDatabase.driver(self.uri, auth=(self.username, self.password)) as driver:
+            with driver.session(database=self.database) as session:
+                return session.run(query, parameters).data()
+
+    def projection(self, *, ontology_id: str, limit: int = 3000) -> dict[str, Any]:
+        safe_limit = max(1, min(int(limit), 10_000))
+        nodes = self._session_rows(
+            "MATCH (n:OntologyResource {ontology_id: $ontology_id}) RETURN n.iri AS id, n.label AS label, n.kind AS type LIMIT $limit",
+            ontology_id=ontology_id, limit=safe_limit,
+        )
+        edges = self._session_rows(
+            "MATCH (a:OntologyResource {ontology_id: $ontology_id})-[r]->(b:OntologyResource {ontology_id: $ontology_id}) "
+            "RETURN a.iri AS source, b.iri AS target, type(r) AS type LIMIT $limit",
+            ontology_id=ontology_id, limit=safe_limit * 4,
+        )
+        return {"nodes": nodes, "edges": edges, "ontology_id": ontology_id, "truncated": len(nodes) >= safe_limit}
+
+    def analytics(self, *, ontology_id: str, limit: int = 3000) -> dict[str, Any]:
+        projection = self.projection(ontology_id=ontology_id, limit=limit)
+        return {"ontology_id": ontology_id, "projection": projection, "analytics": GraphAnalyzer().analyze_graph(projection)}
+
+    def neighborhood(self, *, ontology_id: str, iri: str, max_hops: int = 3, limit: int = 200) -> dict[str, Any]:
+        hops, safe_limit = max(1, min(int(max_hops), 5)), max(1, min(int(limit), 1000))
+        rows = self._session_rows(
+            "MATCH (root:OntologyResource {ontology_id: $ontology_id, iri: $iri}) "
+            "MATCH path=(root)-[*1..5]-(neighbor:OntologyResource {ontology_id: $ontology_id}) "
+            "WHERE length(path) <= $hops "
+            "RETURN neighbor.iri AS iri, neighbor.label AS label, neighbor.kind AS kind, min(length(path)) AS distance "
+            "ORDER BY distance, label LIMIT $limit",
+            ontology_id=ontology_id, iri=iri, hops=hops, limit=safe_limit,
+        )
+        return {"ontology_id": ontology_id, "anchor": iri, "max_hops": hops, "neighbors": rows}
 
 
 publisher = Neo4jPublisher()
