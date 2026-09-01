@@ -189,8 +189,13 @@ class OWLGenerationService:
             inverses = sum(len(e.inverse_attributes) for e in schema.entities.values())
             metadata = {
                 "format": "EXPRESS",
+                "source_kind": "schema",
                 "schema_name": schema.name,
+                "ontology_name": schema.name,
+                "ontology_prefix": "exp",
+                "base_uri": base_uri,
                 "entity_count": len(schema.entities),
+                "entities": sorted(schema.entities),
                 "enumeration_count": len(schema.enumerations),
                 "select_type_count": len(schema.select_types),
                 "derived_attributes": derives,
@@ -212,6 +217,11 @@ class OWLGenerationService:
     def generate_owl_from_step(file_content: bytes, filename: str) -> Tuple[str, Dict[str, Any]]:
         """STEP (.stp/.step/.stpx) -> OWL2/Turtle via owl_step_engine."""
         ext = Path(filename).suffix or ".stp"
+        # STPX normally carries Part 28 XML, but external systems sometimes
+        # label a Part 21 exchange file as .stpx. Choose the parser from the
+        # payload rather than trusting the extension alone.
+        if ext.lower() == ".stpx" and file_content.lstrip().upper().startswith(b"ISO-10303-21"):
+            ext = ".stp"
         tmp_in: Optional[Path] = None
         tmp_out: Optional[Path] = None
         try:
@@ -234,7 +244,19 @@ class OWLGenerationService:
                 flat_stats = stats['stats']
             else:
                 flat_stats = stats if isinstance(stats, dict) else {}
-            metadata = {**flat_stats, "format": "STEP", "validation": report}
+            stem = Path(filename).stem or "step"
+            base_uri = f"http://depo-onto.local/step#{quote(stem, safe='')}/"
+            metadata = {
+                **flat_stats,
+                "format": "STEP",
+                "source_kind": "instance",
+                "schema_name": str(flat_stats.get("file_schema") or stem),
+                "ontology_name": stem,
+                "ontology_prefix": "step",
+                "base_uri": base_uri,
+                "entity_count": int(flat_stats.get("entity_count") or flat_stats.get("entities_processed") or 0),
+                "validation": report,
+            }
             metadata["owlready2"] = _inspect_with_owlready(ttl_str, f"step_{Path(filename).stem}")
             return ttl_str, metadata
         except Exception as e:

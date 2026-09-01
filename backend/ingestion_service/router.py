@@ -6,6 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from .profiles import profiles
 from .workflow import workflow
 from .neo4j_writer import writer
+from .schema_conversion import converter
 from .tabular import MAX_IMPORT_ROWS, MAX_UPLOAD_BYTES, constraint_query, index_query, load_table, node_query, records, relationship_query
 import json
 import httpx
@@ -22,6 +23,17 @@ def health() -> dict:
 @router.get("/ingestion/graph-store", summary="Read semantic graph-store capability and configuration requirements")
 def graph_store_status() -> dict:
     return writer.status()
+
+
+@router.post("/schema-conversions/inspect", summary="Convert EXPRESS, STEP/STP/STPX, XMI, or XSD to a normalized Turtle contract")
+async def inspect_engineering_schema(file: UploadFile = File(...)) -> dict:
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+    try:
+        return converter.convert(filename=file.filename or "source", content=content)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/source-profiles/inspect", summary="Inspect a schema or sample file for profile creation")
