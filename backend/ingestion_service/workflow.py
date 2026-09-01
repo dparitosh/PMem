@@ -17,6 +17,7 @@ class SemanticIngestionWorkflow:
 
     async def run(
         self, *, normalized: dict[str, Any], name: str, prefix: str, base_uri: str, publish: bool,
+        enforce_quality: bool = True,
         request_id: str | None = None,
     ) -> dict[str, Any]:
         if not normalized.get("entities"):
@@ -27,12 +28,24 @@ class SemanticIngestionWorkflow:
             "data": {"entities": normalized["entities"], "relationships": normalized["relationships"]},
         }
         async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
+            quality_response = await client.post(
+                f"{self.ontology_url}/ontologies/quality-gate",
+                json={"entities": normalized["entities"], "deduplicate": True},
+            )
+            quality_response.raise_for_status()
+            quality = quality_response.json()
+            if publish and enforce_quality and not quality.get("publish_recommended", False):
+                return {
+                    "status": "quality_blocked", "normalization": normalized["provenance"],
+                    "records_processed": normalized["records_processed"], "quality": quality,
+                    "message": "Publication was blocked by Semantica quality checks.",
+                }
             generated = await client.post(f"{self.ontology_url}/ontologies/generate", json=generation_payload)
             generated.raise_for_status()
             ontology = generated.json()
             result: dict[str, Any] = {
                 "status": "generated", "normalization": normalized["provenance"],
-                "records_processed": normalized["records_processed"], "ontology": ontology,
+                "records_processed": normalized["records_processed"], "quality": quality, "ontology": ontology,
             }
             if not publish:
                 return result

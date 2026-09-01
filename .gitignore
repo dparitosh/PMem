@@ -67,6 +67,7 @@ logs/
 uploads/
 ontology_uploads/
 outputs/
+data/ontology_service/
 
 # OS
 .DS_Store
