@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { replaceParams } from './config';
 
 test('encodes path parameters and replaces repeated placeholders', () => {
@@ -21,39 +22,41 @@ describe('optional agentic service configuration', () => {
     else process.env.REACT_APP_AGENTIC_ENABLED = originalEnabled;
     if (originalUrl === undefined) delete process.env.REACT_APP_AGENTIC_SERVICE_URL;
     else process.env.REACT_APP_AGENTIC_SERVICE_URL = originalUrl;
-    jest.resetModules();
+    vi.unstubAllEnvs();
+    vi.resetModules();
   });
 
-  test('keeps agentic requests disabled even when a service URL is present', () => {
-    process.env.REACT_APP_AGENTIC_ENABLED = 'false';
-    process.env.REACT_APP_AGENTIC_SERVICE_URL = 'http://127.0.0.1:8012';
-    jest.resetModules();
+  test('keeps agentic requests disabled even when a service URL is present', async () => {
+    vi.stubEnv('REACT_APP_AGENTIC_ENABLED', 'false');
+    vi.stubEnv('REACT_APP_AGENTIC_SERVICE_URL', 'http://127.0.0.1:8012');
+    vi.resetModules();
 
-    const { config } = require('./config');
+    const { config } = await import('./config');
     expect(config.agenticEnabled).toBe(false);
     expect(config.agenticServiceUrl).toBe('');
   });
 
-  test('exposes the configured service URL only when explicitly enabled', () => {
-    process.env.REACT_APP_AGENTIC_ENABLED = 'true';
-    process.env.REACT_APP_AGENTIC_SERVICE_URL = 'http://127.0.0.1:8012';
-    jest.resetModules();
+  test('exposes the configured service URL only when explicitly enabled', async () => {
+    vi.stubEnv('REACT_APP_AGENTIC_ENABLED', 'true');
+    vi.stubEnv('REACT_APP_AGENTIC_SERVICE_URL', 'http://127.0.0.1:8012');
+    vi.resetModules();
 
-    const { config } = require('./config');
+    const { config } = await import('./config');
     expect(config.agenticEnabled).toBe(true);
     expect(config.agenticServiceUrl).toBe('http://127.0.0.1:8012');
   });
 });
 
-test('normalizes a trailing slash from the configured backend URL', () => {
+test('normalizes a trailing slash from the configured backend URL', async () => {
   const original = process.env.REACT_APP_BACKEND_URL;
-  process.env.REACT_APP_BACKEND_URL = 'https://api.example.test/';
-  jest.resetModules();
+  vi.stubEnv('REACT_APP_BACKEND_URL', 'https://api.example.test/');
+  vi.resetModules();
 
-  const { config } = require('./config');
+  const { config } = await import('./config');
   expect(config.backendUrl).toBe('https://api.example.test');
 
   if (original === undefined) delete process.env.REACT_APP_BACKEND_URL;
   else process.env.REACT_APP_BACKEND_URL = original;
-  jest.resetModules();
+  vi.unstubAllEnvs();
+  vi.resetModules();
 });

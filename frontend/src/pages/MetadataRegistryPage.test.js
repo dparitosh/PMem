@@ -1,27 +1,28 @@
 import React from 'react';
+import { vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import MetadataRegistryPage from './MetadataRegistryPage';
 import { API_METHODS } from '../services/apiClient';
 
-jest.mock('../contexts/OntologyContext', () => ({
+vi.mock('../contexts/OntologyContext', () => ({
   useOntologies: () => ({
     ontologies: [{ ontology_id: 'onto-1', label: 'Fallback Ontology', prefix: 'fallback', status: 'approved' }],
     loading: false,
     error: null,
     lastUpdated: null,
-    fetchOntologies: jest.fn(),
+    fetchOntologies: vi.fn(),
   }),
 }));
 
-jest.mock('../services/apiClient', () => ({
+vi.mock('../services/apiClient', () => ({
   API_METHODS: {
     metadataRegistry: {
-      list: jest.fn(),
-      create: jest.fn(),
-      transition: jest.fn(),
+      list: vi.fn(),
+      create: vi.fn(),
+      transition: vi.fn(),
     },
     ontology: {
-      getDataDictionary: jest.fn(),
+      getDataDictionary: vi.fn(),
     },
   },
 }));

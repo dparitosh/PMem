@@ -1,0 +1,19 @@
+.ix-landing-page { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 16px; padding: 20px; background: var(--theme-color-std-background, #f4f6f8); color: var(--theme-color-std-text, #252a2e); overflow: auto; }
+.ix-landing-page__intro { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding: 8px 4px; }
+.ix-landing-page__intro h2 { margin: 10px 0 6px; font-size: 24px; line-height: 1.2; font-weight: 600; }
+.ix-landing-page__intro p { max-width: 680px; margin: 0; color: var(--theme-color-soft-text, #5a6772); font-size: 14px; line-height: 1.5; }
+.ix-landing-page__intro-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 12px; }
+.ix-landing-page__intro-actions > span { color: var(--theme-color-soft-text, #5a6772); font-size: 12px; white-space: nowrap; }
+.ix-landing-page__workspace { flex: 1 1 0; min-height: 580px; display: grid; grid-template-columns: minmax(310px, 0.34fr) minmax(0, 0.66fr); gap: 16px; }
+.ix-landing-page__insights { min-height: 0; display: grid; grid-template-rows: minmax(190px, auto) minmax(0, 1fr); gap: 16px; }
+.ix-landing-page__card, .ix-landing-page__chat { width: 100%; min-height: 0; display: block; align-self: stretch; }
+.ix-landing-page__chat { height: 100%; }
+.ix-landing-page__card ix-card-content, .ix-landing-page__chat ix-card-content { display: block; }
+.ix-landing-page__profile { overflow: auto; }
+.ix-landing-page__chat { overflow: hidden; }
+.ix-landing-page__chat ix-card-content { height: calc(100% - 48px); min-height: 0; }
+.ix-landing-page__chat ix-card-content > * { height: 100%; }
+.ix-landing-page__alert { display: flex; align-items: center; gap: 8px; color: var(--theme-color-alarm, #b42318); font-size: 13px; }
+.ix-landing-page__empty { color: var(--theme-color-soft-text, #5a6772); font-size: 13px; }
+@media (max-width: 900px) { .ix-landing-page__workspace { grid-template-columns: 1fr; min-height: auto; } .ix-landing-page__chat { min-height: 520px; } }
+@media (max-width: 640px) { .ix-landing-page { padding: 16px; } .ix-landing-page__intro { align-items: flex-start; flex-direction: column; } .ix-landing-page__intro-actions { width: 100%; justify-content: space-between; } }

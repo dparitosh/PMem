@@ -323,6 +323,21 @@ const REPORT_ENDPOINTS = {
   xsdRelational: process.env.REACT_APP_API_REPORT_XSD_RELATIONAL || '/api/v1/reports/xsd-relational',
 };
 
+const QIF_ENDPOINTS = {
+  catalog: process.env.REACT_APP_API_QIF_CATALOG || '/api/v1/qif/catalog',
+  health: process.env.REACT_APP_API_QIF_HEALTH || '/api/v1/qif/health',
+  agents: process.env.REACT_APP_API_QIF_AGENTS || '/api/v1/qif/agents',
+  startReferenceTask: process.env.REACT_APP_API_QIF_START_REFERENCE || '/api/v1/qif/tasks/reference',
+  startUploadTask: process.env.REACT_APP_API_QIF_START_UPLOAD || '/api/v1/qif/tasks/upload',
+  tasks: process.env.REACT_APP_API_QIF_TASKS || '/api/v1/qif/tasks',
+  task: process.env.REACT_APP_API_QIF_TASK || '/api/v1/qif/tasks/{task_id}',
+  preview: process.env.REACT_APP_API_QIF_PREVIEW || '/api/v1/qif/tasks/{task_id}/preview',
+  artifact: process.env.REACT_APP_API_QIF_ARTIFACT || '/api/v1/qif/tasks/{task_id}/artifacts/{artifact_path}',
+  commit: process.env.REACT_APP_API_QIF_COMMIT || '/api/v1/qif/tasks/{task_id}/commit',
+  cancel: process.env.REACT_APP_API_QIF_CANCEL || '/api/v1/qif/tasks/{task_id}/cancel',
+  retryGraph: process.env.REACT_APP_API_QIF_RETRY_GRAPH || '/api/v1/qif/tasks/{task_id}/retry-graph',
+};
+
 /** Optional ontology-agentic service endpoints. */
 const AGENTIC_ENDPOINTS = {
   health: process.env.REACT_APP_AGENTIC_HEALTH || '/health',
@@ -390,6 +405,7 @@ export const API = {
   metadataRegistry: METADATA_REGISTRY_ENDPOINTS,
   recommendations: RECOMMENDATION_ENDPOINTS,
   reports: REPORT_ENDPOINTS,
+  qif: QIF_ENDPOINTS,
   requirements: REQUIREMENTS_ENDPOINTS,
   ontologyMapper: ONTOLOGY_MAPPER_ENDPOINTS,
   modeling: MODELING_ENDPOINTS,

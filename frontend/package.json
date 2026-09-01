@@ -7,6 +7,8 @@
     "@emotion/styled": "^11.14.0",
     "@mui/material": "^7.1.1",
     "@mui/x-tree-view": "^8.5.2",
+    "@siemens/ix-icons": "^3.5.0",
+    "@siemens/ix-react": "^5.2.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^13.4.0",
@@ -21,16 +23,14 @@
     "lucide-react": "^0.510.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "dev": "react-scripts start",
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "test:unit": "react-scripts test --watchAll=false --runInBand --passWithNoTests",
-    "eject": "react-scripts eject"
+    "dev": "vite",
+    "start": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:unit": "vitest run"
   },
   "eslintConfig": {
     "extends": [
@@ -51,11 +51,15 @@
     ]
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0"
+    "@playwright/test": "^1.60.0",
+    "@vitejs/plugin-react": "^5.0.2",
+    "jsdom": "^26.1.0",
+    "vite": "^7.1.3",
+    "vitest": "^3.2.4"
   },
   "packageManager": "npm@10.8.2",
   "engines": {
-    "node": ">=20.11.0 <23",
+    "node": ">=24.0.0",
     "npm": ">=10.2.0"
   }
 }

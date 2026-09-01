@@ -1189,7 +1189,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
                   <div key={edge.id} style={{ border: `1px solid ${C.border}`, borderRadius: 6, padding: 8, background: C.bg, minWidth: 220, maxWidth: 320 }}>
                     <RelBadge type={edge.axiom} />
                     <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 5, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${edge.source} -> ${edge.target}`}>
-                      {edge.source} -> {edge.target}
+                      {edge.source}{' → '}{edge.target}
                     </div>
                   </div>
                 ))}
@@ -1210,7 +1210,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
                     </div>
                     <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 8 }}>
                       <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>Domain / Range</div>
-                      <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>{selectedPropertyRow.domain} -> {selectedPropertyRow.range}</div>
+                      <div style={{ fontSize: 12, color: C.textPrimary, marginTop: 4, lineHeight: 1.45, wordBreak: 'break-word' }}>{selectedPropertyRow.domain}{' → '}{selectedPropertyRow.range}</div>
                     </div>
                   </>
                 )}

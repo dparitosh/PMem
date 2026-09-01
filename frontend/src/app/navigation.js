@@ -1,31 +1,19 @@
-import {
-  Boxes,
-  ClipboardList,
-  Code2,
-  FileBarChart2,
-  FileText,
-  GitFork,
-  Home,
-  LayoutDashboard,
-  Network,
-  Settings,
-  Sparkles,
-  UploadCloud,
-} from 'lucide-react';
+import { ixIconName } from '../ui/ixIconRegistry';
 
 export const navigationItems = [
-  { id: 'home', label: 'Home', icon: Home },
-  { id: 'import', label: 'Import', icon: UploadCloud },
-  { id: 'ontology', label: 'Ontology Junction', icon: Network },
-  { id: 'registry', label: 'Metadata Registry', icon: ClipboardList },
-  { id: 'graph', label: 'Graph Explorer', icon: GitFork },
-  { id: 'code-audit', label: 'Code Network', icon: Code2 },
-  { id: 'modeling', label: 'Modeling', icon: LayoutDashboard },
-  { id: 'requirements', label: 'ReqIF', icon: FileText },
-  { id: 'whereused', label: 'Where Used', icon: Boxes },
-  { id: 'quality', label: 'Recommendations', icon: Sparkles },
-  { id: 'reports', label: 'Reports', icon: FileBarChart2 },
-  { id: 'admin', label: 'Admin', icon: Settings },
+  { id: 'home', label: 'Home', icon: ixIconName.home },
+  { id: 'import', label: 'Import', icon: ixIconName.cloudUpload },
+  { id: 'ontology', label: 'Ontology Junction', icon: ixIconName.assetNetwork },
+  { id: 'registry', label: 'Metadata Registry', icon: ixIconName.database },
+  { id: 'graph', label: 'Graph Explorer', icon: ixIconName.graph },
+  { id: 'code-audit', label: 'Code Network', icon: ixIconName.code },
+  { id: 'modeling', label: 'Modeling', icon: ixIconName.chartDiagram },
+  { id: 'requirements', label: 'ReqIF', icon: ixIconName.documentReference },
+  { id: 'qif', label: 'QIF', icon: ixIconName.processControl },
+  { id: 'whereused', label: 'Where Used', icon: ixIconName.listGraphics },
+  { id: 'quality', label: 'Recommendations', icon: ixIconName.auditReport },
+  { id: 'reports', label: 'Reports', icon: ixIconName.documentCode },
+  { id: 'admin', label: 'Admin', icon: ixIconName.projectSettings },
 ];
 
 export const pageAliases = {
@@ -47,6 +35,7 @@ export const pageAliases = {
   archimate: 'modeling',
   requirements: 'requirements',
   reqif: 'requirements',
+  qif: 'qif',
   recommendations: 'quality',
   admin: 'admin',
   whereused: 'whereused',

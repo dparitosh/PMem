@@ -298,6 +298,7 @@ try:
     from .routes.oslc_routes import router as oslc_router
     from .routes.threedxml_routes import router as threedxml_router
     from .routes.admin_routes import router as admin_router
+    from .qif.router import router as qif_router
     from .routes.sysml_v2_routes import router as sysml_v2_router
     from .routes.metadata_registry_routes import router as metadata_registry_router
     try:
@@ -320,6 +321,7 @@ except ImportError:
     from backend.routes.oslc_routes import router as oslc_router
     from backend.routes.threedxml_routes import router as threedxml_router
     from backend.routes.admin_routes import router as admin_router
+    from backend.qif.router import router as qif_router
     from backend.routes.sysml_v2_routes import router as sysml_v2_router
     from backend.routes.metadata_registry_routes import router as metadata_registry_router
     try:
@@ -419,6 +421,15 @@ async def lifespan(app: FastAPI):
     if _startup_flag("PREPARE_NEO4J_INDEXES_ON_STARTUP", default=True):
         index_task = asyncio.create_task(_prepare_neo4j_indexes(app))
         app.state.neo4j_index_task = index_task
+    try:
+        from .qif.task_service import task_service
+    except ImportError:
+        from backend.qif.task_service import task_service
+    try:
+        recovery = task_service.recover_pending()
+        logger.info("QIF workflow recovery: %s", recovery)
+    except Exception as exc:
+        logger.warning("QIF workflow recovery skipped: %s", exc)
     try:
         yield
     finally:
@@ -1336,6 +1347,7 @@ app.include_router(ontology_router, prefix="/api/v1", tags=["v1-ontology"])
 app.include_router(oslc_router)
 app.include_router(threedxml_router, prefix="/api/v1", tags=["v1-3dxml"])
 app.include_router(admin_router, prefix="/api/v1", tags=["v1-admin"])
+app.include_router(qif_router, prefix="/api/v1", tags=["v1-qif"])
 app.include_router(sysml_v2_router, prefix="/api/v1", tags=["v1-sysml-v2"])
 app.include_router(metadata_registry_router, prefix="/api/v1", tags=["v1-metadata-registry"])
 if documents_router is not None:

@@ -7,22 +7,13 @@ import { SchemaProvider } from './SchemaContext';
 import { OntologyProvider } from './contexts/OntologyContext';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
+import { SiemensButton } from './ui/SiemensPrimitives';
 import AppShell from './app/AppShell';
+import AppPageOutlet from './app/AppPageOutlet';
 import { normalizePage } from './app/navigation';
 import { API_METHODS } from './services/apiClient';
 
 const Chatbot = lazy(() => import('./Components/Chatbot'));
-const ImportPage = lazy(() => import('./pages/ImportPage'));
-const OntologyJunctionPage = lazy(() => import('./pages/OntologyJunctionPage'));
-const MetadataRegistryPage = lazy(() => import('./pages/MetadataRegistryPage'));
-const GraphExplorerPage = lazy(() => import('./pages/GraphExplorerPage'));
-const CodeAuditPage = lazy(() => import('./pages/CodeAuditPage'));
-const ModelWorkbenchPage = lazy(() => import('./pages/ModelWorkbenchPage'));
-const RecommendationsPage = lazy(() => import('./pages/RecommendationsPage'));
-const ReportsPage = lazy(() => import('./pages/ReportsPage'));
-const AdminPage = lazy(() => import('./pages/AdminPage'));
-const WhereUsedPage = lazy(() => import('./pages/WhereUsedPage'));
-const RequirementsPage = lazy(() => import('./pages/RequirementsPage'));
 
 
 const NAV_STORAGE_KEY = 'depo.activePage';
@@ -237,80 +228,27 @@ function App() {
     setActiveTab: handleNavigate,
   }), [data, searchResults, chatResults, visibleRelationships, showChat, toggleChat, handleNavigate]);
 
-  const renderPage = () => {
-    switch (activePage) {
-      case 'import':
-        return <ImportPage />;
-      case 'ontology':
-        return <OntologyJunctionPage />;
-      case 'registry':
-        return <MetadataRegistryPage />;
-      case 'quality':
-        return <RecommendationsPage setActiveTab={handleNavigate} />;
-      case 'reports':
-        return <ReportsPage searchResults={searchResults} chatResults={chatResults} graphData={data} />;
-      case 'admin':
-        return <AdminPage onSchemaCleaned={handleSchemaCleaned} />;
-      case 'whereused':
-        return <WhereUsedPage {...graphProps} data={data} />;
-      case 'requirements':
-        return <RequirementsPage onNavigate={handleNavigate} />;
-      case 'modeling':
-        return <ModelWorkbenchPage onNavigate={handleNavigate} />;
-      case 'graph':
-        return <GraphExplorerPage {...graphProps} />;
-      case 'code-audit':
-        return <CodeAuditPage />;
-      default:
-        return <GraphExplorerPage {...graphProps} />;
-    }
-  };
-
   return (
     <ErrorBoundary>
       <OntologyProvider>
         <SchemaProvider>
           <div hidden={page !== 'home'}>
-            <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{
-                minHeight: 82,
-                background: 'linear-gradient(135deg, #081a2f 0%, #133457 56%, #1d4f7a 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingLeft: 24,
-                paddingRight: 24,
-                boxShadow: '0 16px 36px rgba(8, 26, 47, 0.24)',
-                flexShrink: 0,
-              }}>
+            <div className="depo-landing-shell">
+              <header className="depo-landing-shell__header">
                 <div>
-                  <h1 style={{ color: 'white', margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.03em' }}>
+                  <h1 className="depo-landing-shell__title">
                     DEPO Digital Thread Platform
                   </h1>
+                  <p className="depo-landing-shell__subtitle">Ontology governance, traceability, and model intelligence in one workspace.</p>
                 </div>
-                <button
-                  onClick={() => handleNavigate('import')}
-                  style={{
-                    background: 'rgba(255,255,255,0.1)',
-                    color: '#fff',
-                    border: '1px solid rgba(154,217,226,0.3)',
-                    borderRadius: 12,
-                    padding: '10px 18px',
-                    fontSize: 13,
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                >
+                <SiemensButton onClick={() => handleNavigate('import')} variant="primary" className="depo-landing-shell__action">
                   <span>Open platform</span>
                   <ArrowRight size={14} />
-                </button>
-              </div>
-              <div style={{ flex: '1 1 0', minHeight: 0 }}>
+                </SiemensButton>
+              </header>
+              <main aria-label="Platform overview" className="depo-landing-shell__content">
                 {page === 'home' && <LandingPage setChatResults={setChatResults} onNavigate={handleNavigate} />}
-              </div>
+              </main>
             </div>
           </div>
           <div hidden={page === 'home'} style={{ minHeight: '100dvh' }}>
@@ -338,9 +276,17 @@ function App() {
               </ErrorBoundary>
             )}
             >
-              <Suspense fallback={<PageFallback />}>
-                {renderPage()}
-              </Suspense>
+              <AppPageOutlet
+                page={activePage}
+                pageContext={{
+                  data,
+                  searchResults,
+                  chatResults,
+                  graphProps,
+                  onNavigate: handleNavigate,
+                  onSchemaCleaned: handleSchemaCleaned,
+                }}
+              />
             </AppShell>
           </div>
         </SchemaProvider>

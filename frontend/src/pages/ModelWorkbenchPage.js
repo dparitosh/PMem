@@ -469,7 +469,7 @@ export default function ModelWorkbenchPage({ onNavigate }) {
     <div className="model-viewer-page">
       <header className="model-viewer-header compact-header">
         <div className="model-viewer-header-main">
-          <h1><Layers size={22} /> Modeling Viewer</h1>
+          <h2><Layers size={22} /> Modeling Viewer</h2>
           <p>Semantic ArchiMate / MBSE diagram viewer with model tree, drag, pan, and zoom.</p>
           <div className="model-viewer-tabs compact-header-tabs" role="tablist" aria-label="Model viewer modes">
             {VIEW_OPTIONS.map((view) => <button key={view.id} type="button" className={activeView === view.id ? 'active' : ''} onClick={() => { setActiveView(view.id); setQuery(''); setSelectedId(''); setActiveTreeItem(null); setActiveRepresentationId(''); }}>{view.label}</button>)}
@@ -494,7 +494,7 @@ export default function ModelWorkbenchPage({ onNavigate }) {
       {status.error && <div className="model-viewer-error"><AlertTriangle size={16} /> {status.error}</div>}
       {!status.error && dataset.message && <div className="model-viewer-note">{dataset.message}</div>}
 
-      <main className="model-viewer-layout tree-diagram semantic-viewer-layout">
+      <div className="model-viewer-layout tree-diagram semantic-viewer-layout" aria-label="Modeling workspace">
         <section className="model-viewer-panel model-viewer-elements archi-model-tree-panel">
           <div className="panel-title"><Boxes size={16} /> Model Tree</div>
           <div className="archi-model-tree">
@@ -553,7 +553,7 @@ export default function ModelWorkbenchPage({ onNavigate }) {
             {validation.length > 0 ? validation.map((issue) => <span key={issue}>{issue}</span>) : <span className="valid">No viewer-level issues found.</span>}
           </div>
         </aside>
-      </main>
+      </div>
     </div>
   );
 }

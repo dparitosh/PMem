@@ -23,6 +23,10 @@ EXCLUDED = {
 }
 SOURCE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx"}
 TEST_MARKERS = ("test_", ".test.", ".spec.", "tests/", "tests\\")
+JS_CALL_EXCLUSIONS = {
+    "if", "for", "while", "switch", "catch", "function", "return", "typeof", "import", "require",
+    "map", "filter", "reduce", "forEach", "find", "some", "every", "then", "catch", "finally",
+}
 
 
 def files() -> list[Path]:
@@ -111,6 +115,7 @@ class PythonFacts(ast.NodeVisitor):
         self.dynamic_execution: list[dict] = []
         self.current_class: list[str] = []
         self.function_depth = 0
+        self.definition_stack: list[dict] = []
 
     def visit_Import(self, node: ast.Import) -> None:
         kind = "lazy_import" if self.function_depth else "import"
@@ -122,24 +127,46 @@ class PythonFacts(ast.NodeVisitor):
 
     def _definition(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         decisions = sum(isinstance(n, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.BoolOp, ast.Match, ast.comprehension)) for n in ast.walk(node))
-        self.definitions.append({
+        definition = {
             "name": ".".join(self.current_class + [node.name]),
+            "symbol_name": node.name,
+            "kind": "function",
             "line": node.lineno,
             "end_line": getattr(node, "end_lineno", node.lineno),
             "complexity_proxy": 1 + decisions,
-        })
+            "calls": [],
+        }
+        self.definitions.append(definition)
         for dec in node.decorator_list:
             if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute) and dec.func.attr.lower() in {"get", "post", "put", "delete", "patch"}:
                 if dec.args and isinstance(dec.args[0], ast.Constant):
                     self.routes.append({"method": dec.func.attr.upper(), "path": dec.args[0].value, "line": node.lineno, "handler": node.name})
         self.function_depth += 1
+        self.definition_stack.append(definition)
         self.generic_visit(node)
+        self.definition_stack.pop()
         self.function_depth -= 1
 
     visit_FunctionDef = _definition
     visit_AsyncFunctionDef = _definition
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        bases = []
+        for base in node.bases:
+            if isinstance(base, ast.Name):
+                bases.append(base.id)
+            elif isinstance(base, ast.Attribute):
+                bases.append(base.attr)
+        self.definitions.append({
+            "name": ".".join(self.current_class + [node.name]),
+            "symbol_name": node.name,
+            "kind": "class",
+            "line": node.lineno,
+            "end_line": getattr(node, "end_lineno", node.lineno),
+            "complexity_proxy": 1,
+            "bases": bases,
+            "calls": [],
+        })
         self.current_class.append(node.name)
         self.generic_visit(node)
         self.current_class.pop()
@@ -153,9 +180,110 @@ class PythonFacts(ast.NodeVisitor):
         else:
             name = "<dynamic>"
         self.calls[name] += 1
+        if self.definition_stack and name != "<dynamic>":
+            self.definition_stack[-1]["calls"].append({"name": name, "line": node.lineno})
         if (direct_name and name in {"eval", "exec", "compile"}) or name in {"system", "Popen"}:
             self.dynamic_execution.append({"name": name, "line": node.lineno})
         self.generic_visit(node)
+
+
+def javascript_definitions(text: str) -> list[dict]:
+    """Extract top-level JavaScript/TypeScript classes and functions without a runtime parser."""
+    found: list[tuple[int, str, str, list[str]]] = []
+    class_pattern = re.compile(r"(?:export\s+default\s+|export\s+)?class\s+([A-Za-z_$][\w$]*)(?:\s+extends\s+([A-Za-z_$][\w$]*))?")
+    function_pattern = re.compile(r"(?:export\s+default\s+|export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(")
+    arrow_pattern = re.compile(r"(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:\([^\n]*?\)|[A-Za-z_$][\w$]*)\s*=>")
+    for match in class_pattern.finditer(text):
+        found.append((match.start(), match.group(1), "class", [match.group(2)] if match.group(2) else []))
+    for match in function_pattern.finditer(text):
+        found.append((match.start(), match.group(1), "function", []))
+    for match in arrow_pattern.finditer(text):
+        found.append((match.start(), match.group(1), "function", []))
+    found.sort(key=lambda item: item[0])
+
+    definitions = []
+    seen = set()
+    for index, (start, name, kind, bases) in enumerate(found):
+        if (name, kind) in seen:
+            continue
+        seen.add((name, kind))
+        end = found[index + 1][0] if index + 1 < len(found) else len(text)
+        body = text[start:end]
+        calls = []
+        if kind == "function":
+            for call in re.finditer(r"(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(", body):
+                target = call.group(1)
+                if target not in JS_CALL_EXCLUSIONS and target != name:
+                    calls.append({"name": target, "line": text.count("\n", 0, start + call.start()) + 1})
+        definitions.append({
+            "name": name,
+            "symbol_name": name,
+            "kind": kind,
+            "line": text.count("\n", 0, start) + 1,
+            "end_line": text.count("\n", 0, end) + 1,
+            "complexity_proxy": 1,
+            "bases": bases,
+            "calls": calls,
+        })
+    return definitions
+
+
+def build_hierarchy(source_files: list[Path], facts_by_file: dict[str, dict], graph: nx.DiGraph) -> dict:
+    """Build a containment tree with semantic links for the Code Network UI."""
+    workspace_id = "workspace:."
+    nodes = [{"id": workspace_id, "label": ROOT.name, "type": "workspace", "parent": None}]
+    edges = []
+    known_nodes = {workspace_id}
+
+    def ensure_directory(parts: tuple[str, ...]) -> str:
+        parent = workspace_id
+        for index in range(1, len(parts) + 1):
+            value = "/".join(parts[:index])
+            node_id = f"directory:{value}"
+            if node_id not in known_nodes:
+                known_nodes.add(node_id)
+                nodes.append({"id": node_id, "label": parts[index - 1], "type": "directory", "path": value, "parent": parent})
+                edges.append({"source": parent, "target": node_id, "kind": "contains"})
+            parent = node_id
+        return parent
+
+    symbol_by_name: dict[str, list[str]] = defaultdict(list)
+    file_id_by_path = {}
+    for path in source_files:
+        path_name = rel(path)
+        parent = ensure_directory(path.relative_to(ROOT).parts[:-1])
+        file_id = f"file:{path_name}"
+        file_id_by_path[path_name] = file_id
+        nodes.append({"id": file_id, "label": path.name, "type": "file", "path": path_name, "parent": parent, "language": path.suffix.lower()})
+        edges.append({"source": parent, "target": file_id, "kind": "contains"})
+        for definition in facts_by_file.get(path_name, {}).get("definitions", []):
+            symbol_id = f"symbol:{path_name}:{definition['line']}:{definition['symbol_name']}"
+            nodes.append({
+                "id": symbol_id, "label": definition["symbol_name"], "qualified_name": definition["name"],
+                "type": definition["kind"], "path": path_name, "line": definition["line"], "parent": file_id,
+                "calls": definition.get("calls", []), "bases": definition.get("bases", []),
+            })
+            edges.append({"source": file_id, "target": symbol_id, "kind": "contains"})
+            symbol_by_name[definition["symbol_name"]].append(symbol_id)
+
+    for source, target, attrs in graph.edges(data=True):
+        source_id, target_id = file_id_by_path.get(source), file_id_by_path.get(target)
+        if source_id and target_id:
+            edges.append({"source": source_id, "target": target_id, "kind": attrs.get("kind", "imports"), "semantic": True, "endpoints": attrs.get("endpoints", [])})
+
+    for node in nodes:
+        if node["type"] not in {"function", "class"}:
+            continue
+        for call in node.get("calls", []):
+            candidates = symbol_by_name.get(call["name"], [])
+            if len(candidates) == 1:
+                edges.append({"source": node["id"], "target": candidates[0], "kind": "calls", "semantic": True, "line": call["line"]})
+        for base in node.get("bases", []):
+            candidates = symbol_by_name.get(base, [])
+            if len(candidates) == 1:
+                edges.append({"source": node["id"], "target": candidates[0], "kind": "inherits", "semantic": True})
+
+    return {"root": workspace_id, "nodes": nodes, "edges": edges}
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
         broad = node.type is None or (isinstance(node.type, ast.Name) and node.type.id in {"Exception", "BaseException"})
@@ -170,6 +298,7 @@ class PythonFacts(ast.NodeVisitor):
 def audit() -> dict:
     source_files = files()
     known = {rel(p) for p in source_files}
+    language_counts = Counter(path.suffix.lower() or "(extensionless)" for path in source_files)
     module_map = {py_module(p): rel(p) for p in source_files if p.suffix == ".py"}
     graph = nx.DiGraph()
     findings: list[dict] = []
@@ -232,6 +361,7 @@ def audit() -> dict:
             facts_by_file[name] = {
                 "definitions": len(facts.definitions), "broad_excepts": len(facts.broad_excepts),
                 "routes": len(facts.routes), "top_calls": facts.calls.most_common(10),
+                "symbols": facts.definitions,
             }
         else:
             imports = re.findall(
@@ -261,6 +391,11 @@ def audit() -> dict:
             hooks = len(re.findall(r"\buse(?:State|Effect|Memo|Callback|Reducer|Context|Ref)\s*\(", text))
             if hooks > 25:
                 findings.append({"severity": "medium", "kind": "stateful_component_hotspot", "file": name, "line": 1, "detail": f"{hooks} React hooks"})
+            definitions = javascript_definitions(text)
+            facts_by_file[name] = {
+                "definitions": len(definitions), "broad_excepts": 0, "routes": 0, "top_calls": [],
+                "symbols": definitions,
+            }
 
         for match in re.finditer(r"https?://(?:localhost|127\.0\.0\.1)(?::\d+)?", text):
             findings.append({"severity": "low", "kind": "hardcoded_local_url", "file": name, "line": text[:match.start()].count("\n") + 1, "detail": match.group(0)})
@@ -420,13 +555,25 @@ def audit() -> dict:
             recommendations.append({"file": item["file"], "priority": item["streamline_priority"], "reasons": reasons})
 
     finding_counts = Counter((f["severity"], f["kind"]) for f in findings)
+    hierarchy_facts = {
+        name: {"definitions": item.get("symbols", [])}
+        for name, item in facts_by_file.items()
+    }
+    hierarchy = build_hierarchy(source_files, hierarchy_facts, graph)
     return {
+        "workspace": {
+            "name": ROOT.name,
+            "scope": "current workspace",
+            "scan_root": ".",
+            "supported_extensions": sorted(SOURCE_SUFFIXES),
+        },
         "summary": {
             "source_files": len(source_files), "application_files": len(app_graph), "test_files": len(test_nodes),
             "dependency_edges": graph.number_of_edges(), "module_cycles": len(cycles), "orphan_files": len(orphans),
             "backend_routes": len(backend_routes), "frontend_literal_api_calls": len(frontend_paths),
             "test_reachable_application_files": len(covered), "findings": len(findings),
         },
+        "languages": [{"extension": extension, "files": count} for extension, count in sorted(language_counts.items())],
         "finding_counts": [{"severity": s, "kind": k, "count": c} for (s, k), c in sorted(finding_counts.items())],
         "findings": sorted(findings, key=lambda f: ({"critical": 0, "high": 1, "medium": 2, "low": 3}.get(f["severity"], 9), f["file"], f.get("line", 0))),
         "graph": {
@@ -444,6 +591,7 @@ def audit() -> dict:
                 "recommendations": recommendations,
             },
         },
+        "hierarchy": hierarchy,
         "api": {"backend_routes": backend_routes, "frontend_literal_calls": frontend_paths, "frontend_configured_calls": frontend_api_refs, "backend_route_paths": sorted(route_paths), "frontend_literal_paths": sorted(normalized_frontend)},
         "stale_agentic_references": stale_refs,
         "files": facts_by_file,

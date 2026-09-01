@@ -3,6 +3,11 @@
 // expect(element).toHaveTextContent(/react/i)
 // learn more: https://github.com/testing-library/jest-dom
 import '@testing-library/jest-dom';
+import { vi } from 'vitest';
+
+// Preserve the existing Jest-shaped tests while using Vitest as the runner.
+globalThis.jest = vi;
+const jest = globalThis.jest;
 
 const mockAxios = {
   get: jest.fn(() => Promise.resolve({ data: {} })),

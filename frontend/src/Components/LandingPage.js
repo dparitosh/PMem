@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { IxBadge, IxButton, IxCard, IxCardContent, IxCardTitle } from '@siemens/ix-react';
 import { healthAPI } from '../services/apiClient';
 import Chatbot from './Chatbot';
 import ErrorBoundary from './ErrorBoundary';
 import logger from '../utils/logger';
 import { UI_COLORS } from '../styles/uiTokens';
+import './LandingPage.css';
 
 const DASHBOARD_ENABLED = true;
 
@@ -227,111 +228,40 @@ export default function LandingPage({ setChatResults, onNavigate }) {
   }
 
   return (
-    <div style={{
-      height: '100%', display: 'flex', flexDirection: 'column',
-      background: 'linear-gradient(180deg, #f3f7fb 0%, #f8fafc 100%)', overflow: 'hidden',
-    }}>
-      {/* â”€â”€ Top hero bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div style={{
-        background: 'linear-gradient(135deg, #081a2f 0%, #133457 58%, #1d4f7a 100%)',
-        color: '#fff', padding: '16px 20px',
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-        flexShrink: 0,
-        boxShadow: '0 12px 28px rgba(8, 26, 47, 0.16)',
-      }}>
+    <div className="ix-landing-page">
+      <section className="ix-landing-page__intro" aria-label="Platform overview">
         <div>
-          <div style={{ fontSize: 13, color: '#d8e6f2', maxWidth: 560, lineHeight: 1.45 }}>
-            Govern ontology assets and expose traceable product knowledge across PLM, MBSE, and manufacturing.
-          </div>
+          <IxBadge type="label" variant="info" label="Digital thread workspace" />
+          <h2>Knowledge at the point of engineering work</h2>
+          <p>Govern ontology assets and expose traceable product knowledge across PLM, MBSE, and manufacturing.</p>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {lastRefreshed && (
-            <span style={{ fontSize: 10, color: '#b8d4f0' }}>
-              Updated {lastRefreshed.toLocaleTimeString()}
-            </span>
-          )}
-          <button
-            onClick={() => { loadMetrics(); loadOntologies(); }}
-            style={{
-              background: 'rgba(255,255,255,0.08)', color: '#fff',
-              border: '1px solid rgba(154,217,226,0.3)',
-              borderRadius: 10, padding: '7px 12px', fontSize: 11, fontWeight: 800, cursor: 'pointer',
-            }}
-          >
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <RefreshCw size={12} />
-              <span>Refresh</span>
-            </span>
-          </button>
+        <div className="ix-landing-page__intro-actions">
+          {lastRefreshed && <span>Updated {lastRefreshed.toLocaleTimeString()}</span>}
+          <IxButton type="button" variant="secondary" icon="refresh" onClick={() => { loadMetrics(); loadOntologies(); }}>Refresh data</IxButton>
         </div>
-      </div>
+      </section>
 
-      {/* â”€â”€ Main body: left panel (metrics + ontologies) + right (chat) â”€ */}
-      <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', gap: 0, overflow: 'hidden' }}>
-
-        {/* Left panel */}
-        <div style={{
-          width: 380, minWidth: 300, maxWidth: 460, flexShrink: 0,
-          display: 'flex', flexDirection: 'column', gap: 0,
-          borderRight: '1px solid rgba(139, 160, 184, 0.16)',
-          background: 'rgba(255,255,255,0.84)',
-          overflow: 'hidden',
-          backdropFilter: 'blur(16px)',
-        }}>
-
-          {/* Ontology list */}
-          <div style={{ flexShrink: 0, padding: '14px 14px', borderBottom: '1px solid rgba(139, 160, 184, 0.12)' }}>
-            <SectionTitle>Ontology Registry</SectionTitle>
-            {ontologiesError ? (
-              <div role="alert" style={{ color: '#b42318', fontSize: 12, padding: 8 }}>
-                {ontologiesError}
-                <button type="button" onClick={loadOntologies} style={{ marginLeft: 8 }}>Retry</button>
-              </div>
-            ) : (
-              <OntologyList ontologies={ontologies} loading={ontologiesLoading} />
-            )}
-          </div>
-
-          {/* Ontology breakdown */}
-          <div style={{ flex: '1 1 0', minHeight: 0, overflowY: 'auto', padding: '14px' }}>
-            <SectionTitle>Graph Profile</SectionTitle>
-
-            {metricsError ? (
-              <div role="alert" style={{ color: '#b42318', fontSize: 12 }}>
-                {metricsError}
-                <button type="button" onClick={loadMetrics} style={{ marginLeft: 8 }}>Retry</button>
-              </div>
-            ) : metricsLoading ? (
-              <div style={{ color: '#888', fontSize: 12 }}>Loading metrics...</div>
-            ) : (
-              <>
-                {metrics?.ontology_breakdown?.length > 0 && (
-                  <BreakdownTable
-                    title="Nodes by Ontology / Source"
-                    rows={metrics.ontology_breakdown}
-                    colKey="ontology"
-                    colLabel="Nodes"
-                  />
-                )}
-                {!metrics?.ontology_breakdown?.length && (
-                  <BreakdownTable
-                    title="Top Node Labels"
-                    rows={metrics?.node_labels || []}
-                    colKey="label"
-                    colLabel="Count"
-                  />
-                )}
-              </>
-            )}
-          </div>
+      <div className="ix-landing-page__workspace">
+        <div className="ix-landing-page__insights">
+          <IxCard variant="outline" className="ix-landing-page__card">
+            <IxCardTitle>Ontology registry</IxCardTitle>
+            <IxCardContent>
+              {ontologiesError ? <div role="alert" className="ix-landing-page__alert">{ontologiesError}<IxButton type="button" variant="tertiary" onClick={loadOntologies}>Retry</IxButton></div> : <OntologyList ontologies={ontologies} loading={ontologiesLoading} />}
+            </IxCardContent>
+          </IxCard>
+          <IxCard variant="outline" className="ix-landing-page__card ix-landing-page__profile">
+            <IxCardTitle>Graph profile</IxCardTitle>
+            <IxCardContent>
+              {metricsError ? <div role="alert" className="ix-landing-page__alert">{metricsError}<IxButton type="button" variant="tertiary" onClick={loadMetrics}>Retry</IxButton></div> : metricsLoading ? <div className="ix-landing-page__empty">Loading graph metrics…</div> : metrics?.ontology_breakdown?.length > 0 ? <BreakdownTable title="Nodes by ontology / source" rows={metrics.ontology_breakdown} colKey="ontology" colLabel="Nodes" /> : <BreakdownTable title="Top node labels" rows={metrics?.node_labels || []} colKey="label" colLabel="Count" />}
+            </IxCardContent>
+          </IxCard>
         </div>
-
-        {/* Chat panel */}
-        <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <ErrorBoundary>
-            <Chatbot setChatResults={setChatResults} />
-          </ErrorBoundary>
-        </div>
+        <IxCard variant="outline" className="ix-landing-page__chat">
+          <IxCardTitle>Knowledge companion</IxCardTitle>
+          <IxCardContent>
+            <ErrorBoundary><Chatbot setChatResults={setChatResults} /></ErrorBoundary>
+          </IxCardContent>
+        </IxCard>
       </div>
     </div>
   );

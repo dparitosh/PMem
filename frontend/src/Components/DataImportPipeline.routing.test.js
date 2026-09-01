@@ -1,5 +1,6 @@
 import React from 'react';
 import { act } from 'react';
+import { vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import DataImportPipeline from './DataImportPipeline';
 
@@ -7,7 +8,7 @@ const mockOntologyContextValue = {
   ontologies: [],
 };
 
-jest.mock('../config', () => ({
+vi.mock('../config', () => ({
   API: {
     import: {
       upload: '/api/v1/import/upload',
@@ -33,7 +34,7 @@ jest.mock('../config', () => ({
   replaceParams: (endpoint, params = {}) => Object.keys(params).reduce((result, key) => result.replace(`{${key}}`, params[key]), endpoint),
 }));
 
-jest.mock('../contexts/OntologyContext', () => ({
+vi.mock('../contexts/OntologyContext', () => ({
   useOntologies: () => mockOntologyContextValue,
 }));
 
@@ -51,7 +52,7 @@ const renderPipeline = async () => {
   return result;
 };
 
-jest.mock('../services/apiClient', () => ({
+vi.mock('../services/apiClient', () => ({
   API_METHODS: {
     ontology: {
       listRegistered: (...args) => mockListRegistered(...args),

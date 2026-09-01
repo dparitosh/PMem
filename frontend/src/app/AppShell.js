@@ -1,5 +1,6 @@
 import React from 'react';
 import { MessageSquare } from 'lucide-react';
+import { SiemensBadge, SiemensButton, SiemensNavigationIcon } from '../ui/SiemensPrimitives';
 import { navigationItems, pageLabel } from './navigation';
 import './AppShell.css';
 
@@ -24,21 +25,22 @@ export default function AppShell({
           </div>
         </div>
         {navigationItems.map((item) => {
-          const Icon = item.icon;
           const active = item.id === activePage;
           return (
-            <button
+            <SiemensButton
               key={item.id}
               type="button"
+              variant={active ? 'primary' : 'tertiary'}
+              alignment="start"
               className={`depo-rail__button ${active ? 'is-active' : ''}`}
               title={item.label}
               aria-label={item.label}
               aria-current={active ? 'page' : undefined}
               onClick={() => (item.id === 'home' ? onHome() : onPageChange(item.id))}
             >
-              <Icon size={16} />
+              <SiemensNavigationIcon className="depo-rail__icon" name={item.icon} size="16" aria-hidden="true" />
               <span>{item.label}</span>
-            </button>
+            </SiemensButton>
           );
         })}
       </nav>
@@ -46,18 +48,24 @@ export default function AppShell({
       <header className="depo-topbar">
         <div className="depo-topbar__title">
           <nav className="depo-breadcrumb" aria-label="Breadcrumb">
-            <button type="button" onClick={onHome}>Home</button>
+            <SiemensButton type="button" variant="tertiary" onClick={onHome}>Home</SiemensButton>
             <span aria-hidden="true">/</span>
             <span>{pageLabel(activePage)}</span>
           </nav>
           <h1>{pageLabel(activePage)}</h1>
         </div>
         <div className="depo-topbar__actions">
-          <span className={`depo-status depo-status--${serviceStatus}`} role="status" aria-live="polite">
-            {serviceStatus === 'online' ? 'Online' : serviceStatus === 'offline' ? 'Unavailable' : 'Checking'}
-          </span>
-          <button
+          <SiemensBadge
+            className={`depo-status depo-status--${serviceStatus}`}
+            type="label"
+            variant={serviceStatus === 'online' ? 'success' : serviceStatus === 'offline' ? 'alarm' : 'neutral'}
+            label={serviceStatus === 'online' ? 'Online' : serviceStatus === 'offline' ? 'Unavailable' : 'Checking'}
+            role="status"
+            aria-live="polite"
+          />
+          <SiemensButton
             type="button"
+            variant="tertiary"
             className="depo-icon-button"
             title="Toggle chat"
             aria-label="Toggle chat"
@@ -66,7 +74,7 @@ export default function AppShell({
             onClick={onToggleChat}
           >
             <MessageSquare size={16} fill={showChat ? '#eef5fb' : 'none'} />
-          </button>
+          </SiemensButton>
         </div>
       </header>
 

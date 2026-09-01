@@ -320,6 +320,34 @@ export const ontologyAPI = {
   get3dxmlFormats: () => apiClient.get(buildUrl(API.ontology.threeDxmlFormats)),
 };
 
+export const qifAPI = {
+  catalog: () => apiClient.get(buildUrl(API.qif.catalog)),
+  health: () => apiClient.get(buildUrl(API.qif.health)),
+  agents: () => apiClient.get(buildUrl(API.qif.agents)),
+  startReferenceTask: (metadata = {}) => {
+    const formData = new FormData();
+    Object.entries(metadata).forEach(([key, value]) => formData.append(key, value));
+    return apiClient.post(buildUrl(API.qif.startReferenceTask), formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 });
+  },
+  startUploadTask: (files, metadata = {}) => {
+    const formData = new FormData();
+    Array.from(files).forEach((file) => formData.append('files', file));
+    Object.entries(metadata).forEach(([key, value]) => formData.append(key, value));
+    return apiClient.post(buildUrl(API.qif.startUploadTask), formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 });
+  },
+  listTasks: () => apiClient.get(buildUrl(API.qif.tasks)),
+  getTask: (taskId) => apiClient.get(buildUrl(replaceParams(API.qif.task, { task_id: taskId }))),
+  getPreview: (taskId) => apiClient.get(buildUrl(replaceParams(API.qif.preview, { task_id: taskId }))),
+  artifactUrl: (taskId, artifactPath) =>
+    buildUrl(replaceParams(API.qif.artifact, {
+      task_id: taskId,
+      artifact_path: artifactPath,
+    }, { pathParams: ['artifact_path'] })),
+  commit: (taskId) => apiClient.post(buildUrl(replaceParams(API.qif.commit, { task_id: taskId }))),
+  cancel: (taskId) => apiClient.post(buildUrl(replaceParams(API.qif.cancel, { task_id: taskId }))),
+  retryGraph: (taskId) => apiClient.post(buildUrl(replaceParams(API.qif.retryGraph, { task_id: taskId }))),
+};
+
 // ========== DATA IMPORT ENDPOINTS ==========
 export const importAPI = {
   upload: (file, metadata = {}) => {
@@ -513,6 +541,7 @@ export const API_METHODS = {
   schema: schemaAPI,
   chat: chatAPI,
   ontology: ontologyAPI,
+  qif: qifAPI,
   import: importAPI,
   workflow: workflowAPI,
   ingestion: ingestionAPI,
