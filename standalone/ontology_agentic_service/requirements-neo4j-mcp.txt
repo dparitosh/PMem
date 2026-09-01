@@ -1,2 +1,0 @@
--r requirements-ontology.txt
-llama-index-tools-mcp>=0.4.3,<0.5

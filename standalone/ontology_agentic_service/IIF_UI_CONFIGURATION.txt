@@ -106,8 +106,8 @@ Keep these disabled until their dependencies/configuration are ready:
   ONTOLOGY_EXTERNAL_API_ENABLED=false
   NEO4J_MCP_ENABLED=false
 
-Owlready2 is imported only when owlready2_analyze runs. Install requirements-owlready2.txt before
-calling it. Neo4j MCP needs requirements-neo4j-mcp.txt only when enabled.
+Owlready2 analysis is not part of the lean supported runtime. Neo4j MCP uses
+the repository's backend/requirements.txt and must still be explicitly configured.
 
 NON-TOOL ERRORS SEEN IN iif_log.txt
 -----------------------------------

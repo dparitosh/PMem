@@ -51,13 +51,10 @@ docker compose -f compose.services.yml up --build
 
 ## Dependencies
 
-`requirements.microservices.txt` is the minimal container runtime manifest.
-It contains only API, RDF/Semantica, Neo4j, XML, HTTP, and pure-Python XLSX
-support. The Docker image installs this manifest.
-
-`requirements.txt` is the broad compatibility/development bundle for the
-legacy host and optional chat, OCR, document, and notebook features; do not
-use it for standalone microservice deployment.
+`requirements.txt` is the single lean runtime manifest used for local
+development and the Docker image. It contains only API, RDF/Semantica, Neo4j,
+XML, HTTP, and pure-Python XLSX support. Optional chat, OCR, document, and
+notebook integrations are not part of the supported service runtime.
 
 Use `POST /api/v1/source-profiles/{profile_id}/workflow` on the ingestion
 service to run `normalize → generate/validate → publish`. Set `publish=true`

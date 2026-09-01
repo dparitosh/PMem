@@ -1,4 +1,0 @@
--r requirements-ontology.txt
-fastapi>=0.116,<1
-python-multipart>=0.0.20,<1
-PyYAML>=6,<7

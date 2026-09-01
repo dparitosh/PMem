@@ -37,8 +37,8 @@ This separation prevents local ontology functions from silently depending on an 
 INSTALL INTO IIF
 ----------------
 1. Do not start this folder as an application.
-2. Install requirements-ontology.txt into the Python environment used to run IIF.
-3. If needed, separately install requirements-owlready2.txt and/or requirements-neo4j-mcp.txt.
+2. Install ../../backend/requirements.txt into the Python environment used to run IIF.
+3. Optional tools use the same supported runtime; do not install per-feature manifests.
 4. Copy the YAML and Python files under AgentsRegistry/Agents, CodedTools, and MCPTools into the
    matching IIF directories. No package marker files are included or replaced.
 5. Restart IIF so its registry loader discovers the four YAML agent definitions.
@@ -107,15 +107,11 @@ OWLREADY2 REASONING
 -------------------
 Owlready2 structural loading is local. HermiT/Pellet reasoning additionally needs a working Java
 runtime. Imported ontologies must be resolvable locally because remote imports are disabled.
-Install requirements-owlready2.txt only when the Owlready2 tool will be used.
+Use ../../backend/requirements.txt for every supported tool.
 
 DEPENDENCY SETS
 ---------------
-requirements-ontology.txt     required local RDFLib/FunctionTool runtime
-requirements-owlready2.txt    optional Owlready2 analysis and reasoning
-requirements-neo4j-mcp.txt    optional Neo4j MCP discovery
-requirements-depo-adapter.txt optional existing-Depo-frontend FastAPI router
-requirements-test.txt         test-only PyYAML and pytest dependencies
+../../backend/requirements.txt single supported runtime and test manifest
 
 EXISTING DEPO FRONTEND ADAPTER
 ------------------------------
@@ -130,7 +126,7 @@ FastAPIAdapter/depo_compat_router.py is a router factory, not a standalone serve
 
 Install it into an IIF-exported FastAPI package:
 1. Copy the FastAPIAdapter directory into the exported package root.
-2. Install requirements-depo-adapter.txt in the exported package environment.
+2. Install ../../backend/requirements.txt in the exported package environment.
 3. In the exported package main.py, after app is created, add:
 
      from FastAPIAdapter import create_depo_compat_router
@@ -166,7 +162,7 @@ the adapter security after adding frontend support.
 TESTING
 -------
 From this folder:
-  python -m pip install -r requirements-test.txt
+  python -m pip install -r ../../backend/requirements.txt
   python -m pytest -q
 
 Validate against IIF's registry contract without starting IIF:
