@@ -1,4 +1,23 @@
 services:
+  agentic:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    command: python -m uvicorn backend.agentic_service.app:app --host 0.0.0.0 --port 8012
+    ports: ["8012:8012"]
+    environment:
+      SERVICE_PORT: 8012
+      ONTOLOGY_SERVICE_URL: http://ontology:8011/api/v1
+      GRAPH_SERVICE_URL: http://graph:8013/api/v1
+      INGESTION_SERVICE_URL: http://ingestion:8014/api/v1
+      OSLC_SERVICE_URL: http://oslc:8015/api/v1
+      ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+    depends_on:
+      ontology:
+        condition: service_healthy
+      ingestion:
+        condition: service_healthy
+
   ontology:
     build:
       context: .

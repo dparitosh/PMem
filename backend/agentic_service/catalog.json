@@ -1,0 +1,20 @@
+{
+  "agents": [
+    {"id": "ontology-intake", "name": "Ontology Intake", "tools": ["engineering.inspect", "ontology.generate"], "approval_required": false},
+    {"id": "context-analyst", "name": "Business Context Analyst", "tools": ["context.upsert", "context.search", "context.where_used"], "approval_required": false},
+    {"id": "ontology-governor", "name": "Ontology Governor", "tools": ["ontology.merge.preview", "ontology.merge.apply", "engineering.publish"], "approval_required": true}
+  ],
+  "tools": [
+    {"id": "ontology.generate", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/generate", "mutates": false},
+    {"id": "ontology.merge.preview", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/merges/preview", "mutates": false},
+    {"id": "ontology.merge.apply", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/merges/{preview_id}/apply", "mutates": true},
+    {"id": "context.upsert", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/business-context/objects", "mutates": true},
+    {"id": "context.search", "transport": "openapi", "service": "ontology", "method": "GET", "path": "/ontologies/business-context/search", "mutates": false},
+    {"id": "context.where_used", "transport": "openapi", "service": "ontology", "method": "GET", "path": "/ontologies/business-context/objects/{object_id}/where-used", "mutates": false},
+    {"id": "engineering.inspect", "transport": "openapi", "service": "ingestion", "method": "POST", "path": "/schema-conversions/inspect", "mutates": false, "input_kind": "multipart"},
+    {"id": "engineering.publish", "transport": "openapi", "service": "ingestion", "method": "POST", "path": "/engineering-workflows", "mutates": true, "input_kind": "multipart"}
+  ],
+  "mcp_servers": [
+    {"id": "semantica", "transport": "stdio", "command": "python", "args": ["-m", "semantica.mcp_server"], "environment": ["SEMANTICA_KG_PATH"], "operations": ["ontology", "reasoning", "validation"]}
+  ]
+}
