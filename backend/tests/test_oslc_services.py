@@ -69,6 +69,26 @@ def test_service_provider_advertises_am_and_rm_domain_capabilities(monkeypatch):
     assert provider["domainResources"]["oslc_rm"]["queryBase"].endswith("/oslc/query/requirements")
 
 
+def test_ontology_domain_query_is_scoped_to_registered_ontology(monkeypatch):
+    monkeypatch.setattr(
+        OntologyUploadManager,
+        "list_ontologies",
+        classmethod(lambda cls: {"status": "success", "ontologies": [{
+            "ontology_id": "qif-fixed", "prefix": "qif", "ontology_name": "QIF Fixed",
+        }]}),
+    )
+
+    scope = OSLCService._ontology_domain_scope("ontology:qif-fixed")
+    query, query_params = OSLCService._build_resource_query(
+        OSLCQueryParameters(), OSLCService.DEFAULT_RESOURCE_TYPE, scope,
+    )
+
+    assert scope == {"ontology_id": "qif-fixed", "prefix": "qif"}
+    assert "n.ontology_id" in query
+    assert query_params["ontology_id"] == "qif-fixed"
+    assert query_params["ontology_prefix"] == "qif"
+
+
 def test_am_and_rm_query_predicates_are_domain_specific():
     requirement_query, _ = OSLCService._build_resource_query(
         OSLCQueryParameters(), OSLCService.RM_REQUIREMENT_TYPE

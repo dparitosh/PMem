@@ -20,6 +20,7 @@ from backend.core.graph import query_with_timeout
 from .profiles import profiles
 import json
 import pandas as pd
+from defusedxml import ElementTree as ET
 
 router = APIRouter(tags=["ingestion"])
 
@@ -57,6 +58,29 @@ def normalize_source_record(profile_id: str, record: dict) -> dict:
         return profiles.normalize(profile=profiles.get(profile_id), record=record)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/source-profiles/{profile_id}/execute", summary="Normalize a JSON, JSON-LD, or XML batch with a reusable profile")
+async def execute_source_profile(profile_id: str, file: UploadFile = File(...)) -> dict:
+    """Produce the canonical entity payload consumed by the ontology service.
+
+    This endpoint deliberately normalizes only; persistence remains an explicit
+    downstream ontology/graph operation so uploads cannot mutate the graph by
+    surprise.
+    """
+    try:
+        content = await file.read()
+        if len(content) > _MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+        return profiles.normalize_batch(
+            profile=profiles.get(profile_id), filename=file.filename or "source", content=content,
+        )
+    except HTTPException:
+        raise
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError, ET.ParseError) as exc:
+        raise HTTPException(status_code=422, detail=f"Profile execution failed: {exc}") from exc
 
 
 @router.post("/ingest-data", summary="Ingest tabular data through the ingestion service")

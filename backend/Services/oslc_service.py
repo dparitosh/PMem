@@ -1002,23 +1002,47 @@ class OSLCService:
 
     @classmethod
     def query_resources(cls, resource_type: str, params: OSLCQueryParameters) -> Dict[str, Any]:
-        normalized_resource_type = str(resource_type or "").strip().lower()
-        if normalized_resource_type not in cls.SUPPORTED_RESOURCE_TYPES:
+        requested_resource_type = str(resource_type or "").strip()
+        normalized_resource_type = requested_resource_type.lower()
+        ontology_scope = cls._ontology_domain_scope(requested_resource_type)
+        if ontology_scope:
+            query_resource_type = cls.DEFAULT_RESOURCE_TYPE
+        elif normalized_resource_type in cls.SUPPORTED_RESOURCE_TYPES:
+            query_resource_type = normalized_resource_type
+        else:
             raise ValueError(f"Unsupported OSLC resource type: {resource_type}")
         cfg = cls.config()
-        rows = GraphViewService._run(*cls._build_resource_query(params, normalized_resource_type))
-        total_rows = GraphViewService._run(*cls._build_count_query(params, normalized_resource_type))
+        rows = GraphViewService._run(*cls._build_resource_query(params, query_resource_type, ontology_scope))
+        total_rows = GraphViewService._run(*cls._build_count_query(params, query_resource_type, ontology_scope))
         total_count = int(total_rows[0].get("count", 0)) if total_rows else 0
-        members = [cls._row_to_resource_payload(row, params.select, normalized_resource_type) for row in rows]
+        response_resource_type = requested_resource_type if ontology_scope else query_resource_type
+        members = [cls._row_to_resource_payload(row, params.select, response_resource_type) for row in rows]
         return {
-            "uri": f"{cfg.base_url}/oslc/query/{normalized_resource_type}",
+            "uri": f"{cfg.base_url}/oslc/query/{response_resource_type}",
             "type": "oslc:QueryResult",
-            "resourceType": normalized_resource_type,
+            "resourceType": response_resource_type,
             "oslc:totalCount": total_count,
             "page": params.page_num,
             "pageSize": params.page_size,
             "members": members,
         }
+
+    @classmethod
+    def _ontology_domain_scope(cls, resource_type: str) -> Optional[Dict[str, str]]:
+        """Return the persisted ontology scope represented by ``ontology:<id>``.
+
+        OSLC providers may advertise many ontology domains.  Resolving the id
+        against the registry before building Cypher keeps those advertised
+        query capabilities real and prevents arbitrary prefix filtering.
+        """
+        prefix, separator, ontology_id = str(resource_type or "").partition(":")
+        if prefix.lower() != "ontology" or not separator or not ontology_id.strip():
+            return None
+        requested_id = ontology_id.strip()
+        for domain in cls._ontology_domains():
+            if domain["ontology_id"] == requested_id:
+                return {"ontology_id": requested_id, "prefix": domain["prefix"]}
+        return None
 
     @classmethod
     def get_resource(cls, element_id: str) -> Optional[Dict[str, Any]]:
@@ -1056,7 +1080,12 @@ class OSLCService:
         return cls._resource_detail_payload(rows[0])
 
     @classmethod
-    def _build_resource_query(cls, params: OSLCQueryParameters, resource_type: str = DEFAULT_RESOURCE_TYPE):
+    def _build_resource_query(
+        cls,
+        params: OSLCQueryParameters,
+        resource_type: str = DEFAULT_RESOURCE_TYPE,
+        ontology_scope: Optional[Dict[str, str]] = None,
+    ):
         where_clauses = ["NOT (n:DatasheetChunk OR n:GraphChunk)"]
         domain_predicate = cls._resource_type_predicate(resource_type)
         if domain_predicate:
@@ -1065,6 +1094,12 @@ class OSLCService:
             "skip": (params.page_num - 1) * params.page_size,
             "limit": params.page_size,
         }
+        if ontology_scope:
+            where_clauses.append(
+                "(toString(coalesce(n.ontology_id, '')) = $ontology_id "
+                "OR toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix)"
+            )
+            cypher_params.update({"ontology_id": ontology_scope["ontology_id"], "ontology_prefix": ontology_scope["prefix"]})
 
         for index, condition in enumerate(params.where):
             where_clauses.append(cls._condition_to_cypher(condition, index, cypher_params))
@@ -1103,12 +1138,23 @@ class OSLCService:
         return cypher, cypher_params
 
     @classmethod
-    def _build_count_query(cls, params: OSLCQueryParameters, resource_type: str = DEFAULT_RESOURCE_TYPE):
+    def _build_count_query(
+        cls,
+        params: OSLCQueryParameters,
+        resource_type: str = DEFAULT_RESOURCE_TYPE,
+        ontology_scope: Optional[Dict[str, str]] = None,
+    ):
         where_clauses = ["NOT (n:DatasheetChunk OR n:GraphChunk)"]
         domain_predicate = cls._resource_type_predicate(resource_type)
         if domain_predicate:
             where_clauses.append(domain_predicate)
         cypher_params: Dict[str, Any] = {}
+        if ontology_scope:
+            where_clauses.append(
+                "(toString(coalesce(n.ontology_id, '')) = $ontology_id "
+                "OR toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix)"
+            )
+            cypher_params.update({"ontology_id": ontology_scope["ontology_id"], "ontology_prefix": ontology_scope["prefix"]})
         for index, condition in enumerate(params.where):
             where_clauses.append(cls._condition_to_cypher(condition, index, cypher_params))
         search_predicates = []
