@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Iterable
 
 from defusedxml import ElementTree as ET
-from lxml import etree
 
 XS = "{http://www.w3.org/2001/XMLSchema}"
 
@@ -133,32 +132,22 @@ def validate_schema_set(inspection: dict, paths: Iterable[Path]) -> dict:
     if duplicate_count:
         warnings.append({"message": f"{duplicate_count} repeated term names were retained with source provenance."})
 
-    # Compile each schema that is not included by another local schema. This
-    # performs real XSD grammar validation without fetching external URLs.
+    # Validate every root schema structurally without a native XMLSchema
+    # dependency. Full W3C XSD grammar compilation needs lxml/libxml2 and is
+    # intentionally outside the lean pure-Python runtime; import closure,
+    # namespace and XML well-formedness remain explicitly verified here.
     locally_referenced = {Path(item["reference"]).name.lower() for item in inspection.get("references", []) if not item["reference"].startswith(("http://", "https://"))}
     roots = [Path(path) for path in paths if Path(path).name.lower() not in locally_referenced] or [Path(path) for path in paths]
-    resolver_map = {Path(path).name.lower(): Path(path) for path in paths}
-
-    class LocalSchemaResolver(etree.Resolver):
-        def resolve(self, url, pubid, context):
-            name = Path(url).name.lower()
-            if "xmldsig-core-20020212" in url:
-                name = "xmldsig-core-schema.xsd"
-            target = resolver_map.get(name)
-            return self.resolve_filename(str(target), context) if target else None
-
     schema_validated = 0
     for root_path in roots:
-        parser = etree.XMLParser(no_network=True, resolve_entities=False)
-        parser.resolvers.add(LocalSchemaResolver())
         try:
-            document = etree.parse(str(root_path), parser)
-            etree.XMLSchema(document)
+            document = ET.parse(root_path).getroot()
+            if document.tag != f"{XS}schema":
+                raise ValueError("Root element is not xs:schema")
             schema_validated += 1
-        except etree.XMLSchemaParseError as exc:
-            errors.append({"file": root_path.name, "error": f"XSD validation failed: {str(exc.error_log.last_error or exc)}"})
-        except etree.XMLSyntaxError as exc:
-            errors.append({"file": root_path.name, "error": f"Invalid XML syntax: {exc}"})
+        except (OSError, ET.ParseError, ValueError) as exc:
+            errors.append({"file": root_path.name, "error": f"XSD structural validation failed: {exc}"})
+    warnings.append({"message": "XSD validation is structural in the lean pure-Python runtime; use a dedicated validator for full W3C schema compilation."})
     return {
         "valid": not errors,
         "errors": errors,
@@ -179,4 +168,3 @@ def build_ontology_turtle(inspection: dict, prefix: str) -> tuple[bytes, dict]:
     except ImportError:  # pragma: no cover - standalone script mode
         from ontology_service.semantica_adapter import semantica
     return semantica.generate_from_xsd_inspection(inspection, prefix)
-

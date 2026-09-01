@@ -1,4 +1,21 @@
 services:
+  qif:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    command: python -m uvicorn backend.qif.app:app --host 0.0.0.0 --port 8010
+    ports: ["8010:8010"]
+    environment:
+      SERVICE_PORT: 8010
+      ONTOLOGY_SERVICE_URL: http://ontology:8011/api/v1
+      GRAPH_SERVICE_URL: http://graph:8013/api/v1
+      ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+    depends_on:
+      ontology:
+        condition: service_healthy
+      graph:
+        condition: service_healthy
+
   agentic:
     build:
       context: .
@@ -11,11 +28,14 @@ services:
       GRAPH_SERVICE_URL: http://graph:8013/api/v1
       INGESTION_SERVICE_URL: http://ingestion:8014/api/v1
       OSLC_SERVICE_URL: http://oslc:8015/api/v1
+      QIF_SERVICE_URL: http://qif:8010/api/v1
       ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     depends_on:
       ontology:
         condition: service_healthy
       ingestion:
+        condition: service_healthy
+      qif:
         condition: service_healthy
 
   ontology:
