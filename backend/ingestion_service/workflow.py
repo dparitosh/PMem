@@ -17,7 +17,7 @@ class SemanticIngestionWorkflow:
 
     async def run(
         self, *, normalized: dict[str, Any], name: str, prefix: str, base_uri: str, publish: bool,
-        enforce_quality: bool = True,
+        enforce_quality: bool = True, policy_exception_ids: list[str] | None = None,
         request_id: str | None = None,
     ) -> dict[str, Any]:
         if not normalized.get("entities"):
@@ -28,6 +28,14 @@ class SemanticIngestionWorkflow:
             "data": {"entities": normalized["entities"], "relationships": normalized["relationships"]},
         }
         async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
+            policy_response = await client.post(
+                f"{self.ontology_url}/ontologies/policies/evaluate",
+                json={"decision": {"outcome": "approved", "confidence": 1.0, "decision_maker": "ingestion-service", "reasoning": f"Publish {name}"}, "exception_policy_ids": policy_exception_ids or []},
+            )
+            policy_response.raise_for_status()
+            policy = policy_response.json()
+            if publish and not policy.get("compliant", False):
+                return {"status": "policy_blocked", "normalization": normalized["provenance"], "records_processed": normalized["records_processed"], "policy": policy, "message": "Publication was blocked by Semantica policy checks."}
             quality_response = await client.post(
                 f"{self.ontology_url}/ontologies/quality-gate",
                 json={"entities": normalized["entities"], "deduplicate": True},
@@ -45,7 +53,7 @@ class SemanticIngestionWorkflow:
             ontology = generated.json()
             result: dict[str, Any] = {
                 "status": "generated", "normalization": normalized["provenance"],
-                "records_processed": normalized["records_processed"], "quality": quality, "ontology": ontology,
+                "records_processed": normalized["records_processed"], "policy": policy, "quality": quality, "ontology": ontology,
             }
             if not publish:
                 return result

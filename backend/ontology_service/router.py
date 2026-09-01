@@ -119,6 +119,24 @@ def graph_analytics(payload: dict[str, Any]) -> dict:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.get("/policies", summary="List persisted Semantica decision policies")
+def list_policies() -> dict:
+    return {"policies": intelligence._policies()}
+
+
+@router.post("/policies", summary="Create or update a Semantica decision policy")
+def add_policy(payload: dict[str, Any]) -> dict:
+    try:
+        return intelligence.add_policy(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/policies/evaluate", summary="Evaluate Semantica policies before a governed action")
+def evaluate_policies(payload: dict[str, Any]) -> dict:
+    return intelligence.evaluate_policies(dict(payload.get("decision") or {}), list(payload.get("exception_policy_ids") or []))
+
+
 @router.get("/mcp", summary="Get the local Semantica MCP stdio-server launch contract")
 def mcp_contract() -> dict:
     return {

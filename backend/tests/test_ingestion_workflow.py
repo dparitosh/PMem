@@ -27,6 +27,8 @@ class _Client:
 
     async def post(self, url, **kwargs):
         self.calls.append((url, kwargs))
+        if url.endswith("/ontologies/policies/evaluate"):
+            return _Response({"compliant": True, "checks": []})
         if url.endswith("/ontologies/quality-gate"):
             return _Response({"publish_recommended": True, "duplicates": [], "conflicts": []})
         if url.endswith("/ontologies/generate"):
@@ -46,7 +48,7 @@ async def test_workflow_generates_and_optionally_publishes(monkeypatch):
 
     assert result["status"] == "published"
     assert result["graph_publication"]["resources"] == 2
-    assert [call[0] for call in client.calls] == ["http://ontology/api/v1/ontologies/quality-gate", "http://ontology/api/v1/ontologies/generate", "http://graph/api/v1/graph/ontologies/publish"]
+    assert [call[0] for call in client.calls] == ["http://ontology/api/v1/ontologies/policies/evaluate", "http://ontology/api/v1/ontologies/quality-gate", "http://ontology/api/v1/ontologies/generate", "http://graph/api/v1/graph/ontologies/publish"]
 
 
 @pytest.mark.asyncio
@@ -54,6 +56,8 @@ async def test_workflow_blocks_unapproved_publication(monkeypatch):
     class _BlockedClient(_Client):
         async def post(self, url, **kwargs):
             self.calls.append((url, kwargs))
+            if url.endswith("/ontologies/policies/evaluate"):
+                return _Response({"compliant": True, "checks": []})
             return _Response({"publish_recommended": False, "duplicates": [{"id": "duplicate"}]})
 
     client = _BlockedClient()
@@ -65,7 +69,7 @@ async def test_workflow_blocks_unapproved_publication(monkeypatch):
     )
 
     assert result["status"] == "quality_blocked"
-    assert len(client.calls) == 1
+    assert len(client.calls) == 2
 
 
 def test_graph_store_configuration_selects_explicit_provider(monkeypatch):

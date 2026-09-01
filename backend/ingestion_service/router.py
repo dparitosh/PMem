@@ -82,6 +82,7 @@ async def run_source_profile_workflow(
     base_uri: str = Form("https://depo.local/ontology/"),
     publish: bool = Form(False),
     enforce_quality: bool = Form(True),
+    policy_exception_ids: str = Form("[]"),
 ) -> dict:
     """Run normalize → Semantica generate/validate → optional graph publish.
 
@@ -101,6 +102,7 @@ async def run_source_profile_workflow(
             base_uri=base_uri,
             publish=publish,
             enforce_quality=enforce_quality,
+            policy_exception_ids=list(json.loads(policy_exception_ids)),
             request_id=getattr(request.state, "request_id", None),
         )
     except HTTPException:
