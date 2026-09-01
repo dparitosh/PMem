@@ -5,9 +5,11 @@ from typing import Annotated, Any
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from .catalog import catalog
+from .intelligence import SemanticIntelligence
 from .semantica_adapter import semantica
 
 router = APIRouter(prefix="/ontologies", tags=["ontologies"])
+intelligence = SemanticIntelligence(semantica.workspace.root)
 
 
 @router.get("/health", summary="Ontology service health")
@@ -74,6 +76,56 @@ def reason(payload: dict[str, Any]) -> dict:
         return {"inferences": semantica.workspace.reason(facts=list(payload.get("facts", [])), rules=list(payload.get("rules", [])))}
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/quality-gate", summary="Run Semantica deduplication and conflict checks before publication")
+def quality_gate(payload: dict[str, Any]) -> dict:
+    try:
+        return intelligence.quality_gate(
+            entities=list(payload.get("entities", [])), deduplicate=bool(payload.get("deduplicate", True)),
+            conflict_property=payload.get("conflict_property"), merge_strategy=str(payload.get("merge_strategy", "keep_most_complete")),
+        )
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/versions", summary="Create a native Semantica ontology version snapshot")
+def create_version(payload: dict[str, Any]) -> dict:
+    try:
+        ontology = payload.get("ontology") or semantica.workspace.get(str(payload["version_id"]))
+        return intelligence.create_version(ontology=ontology, label=str(payload["label"]), author=str(payload.get("author", "system@depo.local")), description=str(payload.get("description", "")))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/versions", summary="List native Semantica ontology version snapshots")
+def list_versions() -> dict:
+    return {"versions": intelligence.list_versions()}
+
+
+@router.post("/versions/compare", summary="Compare two native Semantica ontology versions")
+def compare_versions(payload: dict[str, str]) -> dict:
+    try:
+        return intelligence.compare_versions(payload["older"], payload["newer"])
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/analytics", summary="Run Semantica graph analytics on a supplied canonical graph")
+def graph_analytics(payload: dict[str, Any]) -> dict:
+    try:
+        return intelligence.analytics(payload.get("graph") or payload)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/mcp", summary="Get the local Semantica MCP stdio-server launch contract")
+def mcp_contract() -> dict:
+    return {
+        "transport": "stdio", "command": "python", "args": ["-m", "semantica.mcp_server"],
+        "environment": {"SEMANTICA_KG_PATH": "<optional persisted Semantica graph path>"},
+        "note": "Configure this command in an MCP client; it is intentionally not exposed as an unauthenticated HTTP endpoint.",
+    }
 
 
 @router.get("", summary="List ontology artifacts registered by this service")

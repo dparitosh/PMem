@@ -59,6 +59,12 @@ Use `POST /api/v1/source-profiles/{profile_id}/workflow` on the ingestion
 service to run `normalize → generate/validate → publish`. Set `publish=true`
 only when the generated ontology is approved for Neo4j publication.
 
+The ontology service also exposes Semantica quality and evolution APIs:
+`POST /ontologies/quality-gate`, `POST /ontologies/versions`,
+`POST /ontologies/versions/compare`, `POST /ontologies/analytics`, and
+`GET /ontologies/mcp`. The MCP endpoint returns a stdio launch contract; do
+not expose an unauthenticated MCP process over HTTP.
+
 ## Important Runtime Dependencies
 
 - Neo4j must be reachable with correct credentials

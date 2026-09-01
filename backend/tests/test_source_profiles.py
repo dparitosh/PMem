@@ -1,4 +1,5 @@
 from backend.ingestion_service.profiles import SourceProfileStore
+from backend.ontology_service.intelligence import SemanticIntelligence
 from backend.ontology_service.semantica_adapter import SemanticWorkspace
 
 
@@ -52,3 +53,17 @@ def test_semantic_workspace_persists_versions_and_alignments(tmp_path):
 
     assert restored.get(version_id)["name"] == "Parts"
     assert restored.alignments[0]["storage"] == "semantic_workspace"
+
+
+def test_semantica_quality_and_native_version_services(tmp_path):
+    intelligence = SemanticIntelligence(tmp_path)
+    quality = intelligence.quality_gate(
+        entities=[{"id": "1", "name": "Pump", "type": "Part"}, {"id": "2", "name": "Pump", "type": "Part"}],
+        deduplicate=True, conflict_property=None,
+    )
+    version = intelligence.create_version(ontology={"classes": []}, label="v1", author="qa@depo.local", description="baseline")
+
+    assert quality["duplicates"][0]["similarity_score"] == 0.9
+    assert quality["publish_recommended"] is False
+    assert version["label"] == "v1"
+    assert intelligence.list_versions()[0]["version_id"] == "v1"
