@@ -23,7 +23,7 @@ class Catalog:
         raise ValueError(f"Unknown {kind[:-1]}: {identifier}")
 
 catalog = Catalog()
-_services = {"ontology": "ONTOLOGY_SERVICE_URL", "graph": "GRAPH_SERVICE_URL", "ingestion": "INGESTION_SERVICE_URL", "oslc": "OSLC_SERVICE_URL"}
+_services = {"ontology": "ONTOLOGY_SERVICE_URL", "graph": "GRAPH_SERVICE_URL", "ingestion": "INGESTION_SERVICE_URL", "oslc": "OSLC_SERVICE_URL", "qif": "QIF_SERVICE_URL"}
 
 def _base(service: str) -> str:
     key = _services.get(service)
@@ -91,6 +91,8 @@ async def run(payload: dict[str, Any]) -> dict:
             if tool.get("input_kind") == "multipart":
                 form, files = _multipart(inputs)
                 response = await client.request(tool["method"], _base(tool["service"]) + path, data=form, files=files)
+            elif tool.get("input_kind") == "form":
+                response = await client.request(tool["method"], _base(tool["service"]) + path, data=inputs)
             else:
                 response = await client.request(tool["method"], _base(tool["service"]) + path, params=inputs if tool["method"] == "GET" else None, json=None if tool["method"] == "GET" else inputs)
             response.raise_for_status()

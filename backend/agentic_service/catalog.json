@@ -2,7 +2,11 @@
   "agents": [
     {"id": "ontology-intake", "name": "Ontology Intake", "tools": ["engineering.inspect", "ontology.generate"], "approval_required": false},
     {"id": "context-analyst", "name": "Business Context Analyst", "tools": ["context.upsert", "context.search", "context.where_used"], "approval_required": false},
-    {"id": "ontology-governor", "name": "Ontology Governor", "tools": ["ontology.merge.preview", "ontology.merge.apply", "engineering.publish"], "approval_required": true}
+    {"id": "ontology-governor", "name": "Ontology Governor", "tools": ["ontology.merge.preview", "ontology.merge.apply", "engineering.publish"], "approval_required": true},
+    {"id": "engineering-parser", "name": "Engineering Parser", "tools": ["engineering.inspect", "profile.inspect", "profile.execute"], "approval_required": false},
+    {"id": "graph-analyst", "name": "Graph Analyst", "tools": ["graph.analytics", "graph.neighborhood", "context.search", "context.where_used"], "approval_required": false},
+    {"id": "oslc-link-agent", "name": "OSLC Link Agent", "tools": ["oslc.remote.catalog", "oslc.remote.query", "oslc.remote.sync"], "approval_required": false},
+    {"id": "qif-agent", "name": "QIF Digital Thread Agent", "tools": ["qif.catalog", "qif.reference.task", "qif.task.status", "qif.task.commit"], "approval_required": false}
   ],
   "tools": [
     {"id": "ontology.generate", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/generate", "mutates": false},
@@ -13,6 +17,17 @@
     {"id": "context.where_used", "transport": "openapi", "service": "ontology", "method": "GET", "path": "/ontologies/business-context/objects/{object_id}/where-used", "mutates": false},
     {"id": "engineering.inspect", "transport": "openapi", "service": "ingestion", "method": "POST", "path": "/schema-conversions/inspect", "mutates": false, "input_kind": "multipart"},
     {"id": "engineering.publish", "transport": "openapi", "service": "ingestion", "method": "POST", "path": "/engineering-workflows", "mutates": true, "input_kind": "multipart"}
+    ,{"id": "profile.inspect", "transport": "openapi", "service": "ingestion", "method": "POST", "path": "/source-profiles/inspect", "mutates": false, "input_kind": "multipart"}
+    ,{"id": "profile.execute", "transport": "openapi", "service": "ingestion", "method": "POST", "path": "/source-profiles/{profile_id}/execute", "mutates": false, "input_kind": "multipart"}
+    ,{"id": "graph.analytics", "transport": "openapi", "service": "graph", "method": "GET", "path": "/graph/ontologies/{ontology_id}/analytics", "mutates": false}
+    ,{"id": "graph.neighborhood", "transport": "openapi", "service": "graph", "method": "GET", "path": "/graph/ontologies/{ontology_id}/neighborhood", "mutates": false}
+    ,{"id": "oslc.remote.catalog", "transport": "openapi", "service": "oslc", "method": "GET", "path": "/remote/catalog", "mutates": false}
+    ,{"id": "oslc.remote.query", "transport": "openapi", "service": "oslc", "method": "POST", "path": "/remote/query/{resource_type}", "mutates": false}
+    ,{"id": "oslc.remote.sync", "transport": "openapi", "service": "oslc", "method": "POST", "path": "/remote/sync/{resource_type}", "mutates": true}
+    ,{"id": "qif.catalog", "transport": "openapi", "service": "qif", "method": "GET", "path": "/catalog", "mutates": false}
+    ,{"id": "qif.reference.task", "transport": "openapi", "service": "qif", "method": "POST", "path": "/tasks/reference", "mutates": false, "input_kind": "form"}
+    ,{"id": "qif.task.status", "transport": "openapi", "service": "qif", "method": "GET", "path": "/tasks/{task_id}", "mutates": false}
+    ,{"id": "qif.task.commit", "transport": "openapi", "service": "qif", "method": "POST", "path": "/tasks/{task_id}/commit", "mutates": true}
   ],
   "mcp_servers": [
     {"id": "semantica", "transport": "stdio", "command": "python", "args": ["-m", "semantica.mcp_server"], "environment": ["SEMANTICA_KG_PATH"], "operations": ["ontology", "reasoning", "validation"]}
