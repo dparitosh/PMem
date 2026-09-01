@@ -16,5 +16,15 @@
   ],
   "mcp_servers": [
     {"id": "semantica", "transport": "stdio", "command": "python", "args": ["-m", "semantica.mcp_server"], "environment": ["SEMANTICA_KG_PATH"], "operations": ["ontology", "reasoning", "validation"]}
+  ],
+  "workflows": [
+    {"id": "engineering-governed-publish", "name": "Engineering schema to governed ontology", "steps": [
+      {"agent_id": "ontology-intake", "tool_id": "engineering.inspect"},
+      {"agent_id": "ontology-governor", "tool_id": "engineering.publish", "approval_required": true}
+    ]},
+    {"id": "business-context-enrichment", "name": "Business object context enrichment", "steps": [
+      {"agent_id": "context-analyst", "tool_id": "context.upsert"},
+      {"agent_id": "context-analyst", "tool_id": "context.where_used"}
+    ]}
   ]
 }

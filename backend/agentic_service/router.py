@@ -1,6 +1,6 @@
 """Catalog and bounded execution for independently extensible agents/tools."""
 from __future__ import annotations
-import json, os
+import base64, binascii, json, os
 from pathlib import Path
 from typing import Any
 import httpx
@@ -14,8 +14,8 @@ class Catalog:
         self.path = Path(configured) if configured else Path(__file__).with_name("catalog.json")
     def read(self) -> dict[str, Any]:
         data = json.loads(self.path.read_text(encoding="utf-8"))
-        if not all(isinstance(data.get(key), list) for key in ("agents", "tools", "mcp_servers")):
-            raise ValueError("Catalog must define agents, tools, and mcp_servers lists")
+        if not all(isinstance(data.get(key), list) for key in ("agents", "tools", "mcp_servers", "workflows")):
+            raise ValueError("Catalog must define agents, tools, mcp_servers, and workflows lists")
         return data
     def item(self, kind: str, identifier: str) -> dict[str, Any]:
         for value in self.read()[kind]:
@@ -41,6 +41,8 @@ def agents() -> dict: return {"agents": catalog.read()["agents"]}
 def tools() -> dict: return {"tools": catalog.read()["tools"]}
 @router.get("/mcp-servers")
 def mcp_servers() -> dict: return {"mcp_servers": catalog.read()["mcp_servers"]}
+@router.get("/workflows")
+def workflows() -> dict: return {"workflows": catalog.read()["workflows"]}
 
 @router.post("/plans")
 def plan(payload: dict[str, Any]) -> dict:
@@ -51,6 +53,30 @@ def plan(payload: dict[str, Any]) -> dict:
         return {"valid": True, "agent": agent["id"], "tool": tool, "requires_approval": requires_approval}
     except (KeyError, ValueError) as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+@router.post("/workflow-plans")
+def workflow_plan(payload: dict[str, Any]) -> dict:
+    try:
+        workflow = catalog.item("workflows", str(payload["workflow_id"]))
+        steps = []
+        for index, step in enumerate(workflow.get("steps", []), start=1):
+            result = plan(step)
+            steps.append({"sequence": index, **result, "requires_approval": bool(result["requires_approval"] or step.get("approval_required"))})
+        if not steps: raise ValueError("Workflow has no steps")
+        return {"valid": True, "workflow": workflow["id"], "steps": steps}
+    except (KeyError, ValueError) as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+def _multipart(inputs: dict[str, Any]) -> tuple[dict[str, Any], dict[str, tuple[str, bytes, str]]]:
+    upload = dict(inputs.get("file") or {})
+    encoded = str(upload.get("content_base64") or "")
+    if not upload.get("filename") or not encoded:
+        raise ValueError("Multipart tools require inputs.file.filename and inputs.file.content_base64")
+    try: content = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error) as exc: raise ValueError("file.content_base64 must be valid base64") from exc
+    if len(content) > int(os.getenv("AGENTIC_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024))):
+        raise ValueError("Agent file exceeds AGENTIC_MAX_UPLOAD_BYTES")
+    form = dict(inputs.get("form") or {})
+    return form, {"file": (str(upload["filename"]), content, str(upload.get("content_type") or "application/octet-stream"))}
+
 @router.post("/runs")
 async def run(payload: dict[str, Any]) -> dict:
     plan_result = plan(payload)
@@ -59,12 +85,14 @@ async def run(payload: dict[str, Any]) -> dict:
     tool, inputs = plan_result["tool"], dict(payload.get("inputs") or {})
     if tool.get("transport") != "openapi":
         raise HTTPException(status_code=501, detail="This transport is catalogued but not HTTP-executable")
-    if tool.get("input_kind") == "multipart":
-        raise HTTPException(status_code=422, detail="Use the declared OpenAPI operation for multipart file tools; the agent runner accepts JSON tools only")
     path = _render(str(tool["path"]), inputs)
     try:
         async with httpx.AsyncClient(timeout=float(os.getenv("AGENTIC_TOOL_TIMEOUT_SECONDS", "30"))) as client:
-            response = await client.request(tool["method"], _base(tool["service"]) + path, params=inputs if tool["method"] == "GET" else None, json=None if tool["method"] == "GET" else inputs)
+            if tool.get("input_kind") == "multipart":
+                form, files = _multipart(inputs)
+                response = await client.request(tool["method"], _base(tool["service"]) + path, data=form, files=files)
+            else:
+                response = await client.request(tool["method"], _base(tool["service"]) + path, params=inputs if tool["method"] == "GET" else None, json=None if tool["method"] == "GET" else inputs)
             response.raise_for_status()
         return {"agent_id": plan_result["agent"], "tool_id": tool["id"], "approved_by": payload.get("approved_by"), "result": response.json()}
     except (httpx.HTTPError, ValueError) as exc: raise HTTPException(status_code=503, detail=str(exc)) from exc
