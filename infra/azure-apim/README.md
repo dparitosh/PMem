@@ -13,8 +13,7 @@ az login
   -OntologyServiceUrl "https://ontology.internal.example" `
   -GraphServiceUrl "https://graph.internal.example" `
   -IngestionServiceUrl "https://ingestion.internal.example" `
-  -OslcServiceUrl "https://oslc.internal.example" `
-  -RequireSubscription
+  -OslcServiceUrl "https://oslc.internal.example"
 ```
 
 Registered OpenAPI APIM paths are `/ontology`, `/graph`, `/ingestion`, and
@@ -27,6 +26,9 @@ continue to use OpenAPI.
 The script imports OpenAPI through Azure CLI and uses Azure Resource Manager's
 native `odata-link` API import for OData metadata. It sets an APIM backend
 service URL and never stores database, OSLC, or cloud credentials in source.
+HTTPS service URLs and APIM subscriptions are required by default. Only pass
+`-AllowAnonymous` for a deliberately bearer-token-only or private-gateway
+deployment.
 
 Grant the deployment identity APIM API Contributor (or an equivalent scoped
 role) before running the script. Azure CLI supports importing an API with an

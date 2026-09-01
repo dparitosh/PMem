@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 
 import httpx
@@ -26,6 +27,8 @@ class OSLCClient:
         return self._request("oslc/catalog")
 
     def query(self, resource_type: str, parameters: dict[str, Any]) -> dict[str, Any]:
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", resource_type):
+            raise ValueError("resource_type must start with a letter and contain only letters, digits, '_' or '-'")
         return self._request(f"oslc/query/{resource_type}", parameters)
 
 

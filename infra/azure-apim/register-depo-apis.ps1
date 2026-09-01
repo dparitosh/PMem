@@ -6,14 +6,26 @@ param(
   [Parameter(Mandatory = $true)][string]$GraphServiceUrl,
   [Parameter(Mandatory = $true)][string]$IngestionServiceUrl,
   [Parameter(Mandatory = $true)][string]$OslcServiceUrl,
-  [switch]$RequireSubscription
+  [switch]$AllowAnonymous
 )
 
 $ErrorActionPreference = "Stop"
 
+function Assert-HttpsUrl([string]$Name, [string]$Value) {
+  $uri = $null
+  if (-not [Uri]::TryCreate($Value, [UriKind]::Absolute, [ref]$uri) -or $uri.Scheme -ne "https") {
+    throw "$Name must be an absolute HTTPS URL."
+  }
+}
+
+Assert-HttpsUrl "OntologyServiceUrl" $OntologyServiceUrl
+Assert-HttpsUrl "GraphServiceUrl" $GraphServiceUrl
+Assert-HttpsUrl "IngestionServiceUrl" $IngestionServiceUrl
+Assert-HttpsUrl "OslcServiceUrl" $OslcServiceUrl
+
 function Register-DepoApi([string]$ApiId, [string]$Path, [string]$DisplayName, [string]$ServiceUrl) {
   $baseUrl = $ServiceUrl.TrimEnd('/')
-  $subscriptionRequired = if ($RequireSubscription) { "true" } else { "false" }
+  $subscriptionRequired = if ($AllowAnonymous) { "false" } else { "true" }
   az apim api import `
     --resource-group $ResourceGroup `
     --service-name $ApimServiceName `
@@ -29,7 +41,7 @@ function Register-DepoApi([string]$ApiId, [string]$Path, [string]$DisplayName, [
 
 function Register-DepoODataApi([string]$ApiId, [string]$Path, [string]$DisplayName, [string]$ServiceUrl) {
   $baseUrl = $ServiceUrl.TrimEnd('/')
-  $subscriptionRequired = [bool]$RequireSubscription
+  $subscriptionRequired = -not [bool]$AllowAnonymous
   $body = @{
     properties = @{
       type = "odata"

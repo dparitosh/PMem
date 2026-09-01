@@ -23,7 +23,10 @@ class OSLCSyncStore:
         self.root = Path(os.getenv("OSLC_SYNC_STORAGE", "data/oslc_service/syncs"))
 
     def _path(self, sync_id: str) -> Path:
-        return self.root / f"{sync_id}.json"
+        try:
+            return self.root / f"{uuid.UUID(sync_id)}.json"
+        except (AttributeError, ValueError) as exc:
+            raise ValueError("sync_id must be a UUID") from exc
 
     def create(self, *, resource_type: str, parameters: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -58,7 +61,10 @@ class OSLCSyncStore:
         return sorted(entries, key=lambda item: str(item.get("created_at", "")), reverse=True)
 
     def get(self, sync_id: str) -> dict[str, Any] | None:
-        path = self._path(sync_id)
+        try:
+            path = self._path(sync_id)
+        except ValueError:
+            return None
         if not path.exists():
             return None
         return json.loads(path.read_text(encoding="utf-8"))

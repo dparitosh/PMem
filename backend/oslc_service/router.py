@@ -28,6 +28,7 @@ def remote_query(resource_type: str, parameters: dict) -> dict:
     try: return client.query(resource_type, parameters)
     except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail=f"Remote OSLC query unavailable: {exc}") from exc
     except RuntimeError as exc: raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/remote/sync/{resource_type}", summary="Pull and stage a remote OSLC query snapshot")
@@ -36,6 +37,7 @@ def pull_remote_sync(resource_type: str, parameters: dict) -> dict:
         return synchronizer.pull(resource_type, parameters)
     except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail=f"Remote OSLC sync unavailable: {exc}") from exc
     except RuntimeError as exc: raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/remote/sync", summary="List staged OSLC pull snapshots")
