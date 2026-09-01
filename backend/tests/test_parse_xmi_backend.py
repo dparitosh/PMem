@@ -1,14 +1,13 @@
 from pathlib import Path
-import pytest
 from backend.Services.unified_data_import import FileParser, FileType
 
 
 def test_parse_xmi():
-    # Path to a sample XMI file (should exist in your test environment)
-    sample_xmi_path = Path("C:/Users/895428/Depo/import_master/output/xmi/SugarPlantMBSE.quality.json")
-    # Skip the test if the sample file is not present in this environment
-    if not sample_xmi_path.exists():
-        pytest.skip("Sample XMI file not available in this environment")
+    sample_xmi_path = (
+        Path(__file__).resolve().parents[2]
+        / "data/domain_models/product_life_cycle_support/Domain_model_4439_XMI/STEPlib/Application_protocols/AP239/AP239.xmi"
+    )
+    assert sample_xmi_path.exists(), "The repository-owned AP239 XMI fixture is required for this parser contract test"
 
     with open(sample_xmi_path, "rb") as f:
         file_content = f.read()
