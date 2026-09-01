@@ -6,10 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.data_ingestion import (
-    create_node_import_query,
-    create_relationship_import_query,
-)
+from backend.ingestion_service.tabular import node_query, relationship_query
 from backend.main import ONTOLOGY_DIR, app
 from data_product_package.builder import DataProductBuilder
 from data_product_package.models import ArtifactSpec, DataProductSpec
@@ -46,14 +43,14 @@ def test_standalone_ontology_service_contract() -> None:
 
 
 def test_ingestion_merge_query_is_valid_and_identifiers_are_restricted() -> None:
-    query = create_node_import_query("Part", ["part_id", "name"], ["part_id"])
+    query = node_query("Part", ["part_id", "name"], ["part_id"])
 
     assert "MERGE (n:`Part` {`part_id`: row.`part_id`})" in query
     assert "n.`part_id` = row.`part_id`" in query
     with pytest.raises(ValueError, match="Invalid node label"):
-        create_node_import_query("Part`) DETACH DELETE n //", ["name"], [])
+        node_query("Part`) DETACH DELETE n //", ["name"], [])
     with pytest.raises(ValueError, match="Invalid relationship type"):
-        create_relationship_import_query("LINKS]->() //", "Part", "Part", "id", "id")
+        relationship_query("LINKS]->() //", "Part", "Part", "id", "id")
 
 
 def test_oslc_client_requires_a_preconfigured_remote_base(monkeypatch) -> None:

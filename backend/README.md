@@ -59,6 +59,12 @@ Use `POST /api/v1/source-profiles/{profile_id}/workflow` on the ingestion
 service to run `normalize → generate/validate → publish`. Set `publish=true`
 only when the generated ontology is approved for Neo4j publication.
 
+Set `SEMANTIC_GRAPH_PROVIDER=neo4j` (default), `rapidminer`, or `oracle` to
+make the selected graph-store profile explicit. The current tabular writer
+executes Cypher against Neo4j; RapidMiner and Oracle profiles validate and
+retain their connection configuration until their provider-specific canonical
+graph adapters are configured.
+
 The ontology service also exposes Semantica quality and evolution APIs:
 `POST /ontologies/quality-gate`, `POST /ontologies/versions`,
 `POST /ontologies/versions/compare`, `POST /ontologies/analytics`, and

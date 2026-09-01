@@ -1,26 +1,13 @@
-"""Compatibility-first ingestion boundary.
-
-The existing SPA contract remains `/api/v1/ingest-data`; implementation moves
-behind this router before parsers and graph writes are extracted in turn.
-"""
+"""Standalone ingestion service retaining the existing SPA contract."""
 from __future__ import annotations
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
-from backend.data_ingestion import (  # temporary adapter: parser extraction is phase two
-    _MAX_IMPORT_ROWS,
-    _MAX_UPLOAD_BYTES,
-    create_constraint_query,
-    create_index_query,
-    create_node_import_query,
-    create_relationship_import_query,
-    load_file_from_bytes,
-)
-from backend.core.graph import query_with_timeout
 from .profiles import profiles
 from .workflow import workflow
+from .neo4j_writer import writer
+from .tabular import MAX_IMPORT_ROWS, MAX_UPLOAD_BYTES, constraint_query, index_query, load_table, node_query, records, relationship_query
 import json
-import pandas as pd
 import httpx
 from defusedxml import ElementTree as ET
 
@@ -29,7 +16,7 @@ router = APIRouter(tags=["ingestion"])
 
 @router.get("/ingestion/health")
 def health() -> dict:
-    return {"status": "ok", "service": "ingestion", "contract": "v1"}
+    return {"status": "ok", "service": "ingestion", "contract": "v1", "graph_store_provider": writer.config.provider}
 
 
 @router.post("/source-profiles/inspect", summary="Inspect a schema or sample file for profile creation")
@@ -72,7 +59,7 @@ async def execute_source_profile(profile_id: str, file: UploadFile = File(...)) 
     """
     try:
         content = await file.read()
-        if len(content) > _MAX_UPLOAD_BYTES:
+        if len(content) > MAX_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
         return profiles.normalize_batch(
             profile=profiles.get(profile_id), filename=file.filename or "source", content=content,
@@ -103,7 +90,7 @@ async def run_source_profile_workflow(
     try:
         profile = profiles.get(profile_id)
         content = await file.read()
-        if len(content) > _MAX_UPLOAD_BYTES:
+        if len(content) > MAX_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
         normalized = profiles.normalize_batch(profile=profile, filename=file.filename or "source", content=content)
         selected_prefix = prefix or str(profile.get("prefix") or profile_id)
@@ -136,22 +123,22 @@ async def ingest_data(
         if not all(isinstance(item, list) for item in (node_defs, rel_defs, index_defs, constraint_defs)):
             raise ValueError("All ingestion configuration fields must be JSON arrays")
         content = await file.read()
-        if len(content) > _MAX_UPLOAD_BYTES:
+        if len(content) > MAX_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
-        dataframe = load_file_from_bytes(content, file.filename or "")
-        if len(dataframe.index) > _MAX_IMPORT_ROWS:
+        dataframe = load_table(content, file.filename or "")
+        if len(dataframe.index) > MAX_IMPORT_ROWS:
             raise HTTPException(status_code=413, detail="Import exceeds the 100,000 row limit")
-        rows = dataframe.where(pd.notnull(dataframe), None).to_dict("records")
+        rows = records(dataframe)
         statements = [
-            *(create_index_query(item["type"], item["name"], item["label"], item["properties"]) for item in index_defs),
-            *(create_constraint_query(item["type"], item["name"], item["label"], item["properties"]) for item in constraint_defs),
-            *(create_node_import_query(item["label"], item["properties"], item.get("mergeKeys", [])) for item in node_defs if item.get("label") and item.get("properties")),
-            *(create_relationship_import_query(item["type"], item["fromLabel"], item["toLabel"], item["fromProperty"], item["toProperty"]) for item in rel_defs if item.get("type") and item.get("fromLabel") and item.get("toLabel")),
+            *(index_query(item["type"], item["name"], item["label"], item["properties"]) for item in index_defs),
+            *(constraint_query(item["type"], item["name"], item["label"], item["properties"]) for item in constraint_defs),
+            *(node_query(item["label"], item["properties"], item.get("mergeKeys", [])) for item in node_defs if item.get("label") and item.get("properties")),
+            *(relationship_query(item["type"], item["fromLabel"], item["toLabel"], item["fromProperty"], item["toProperty"]) for item in rel_defs if item.get("type") and item.get("fromLabel") and item.get("toLabel")),
         ]
         results = []
         for statement in filter(None, statements):
             try:
-                query_with_timeout(statement, params={"rows": rows} if "UNWIND" in statement else None)
+                writer.execute(statement, parameters={"rows": rows} if "UNWIND" in statement else None)
                 results.append({"status": "success"})
             except Exception as exc:
                 results.append({"status": "error", "error": str(exc)})

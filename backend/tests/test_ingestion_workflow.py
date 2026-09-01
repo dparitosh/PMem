@@ -1,6 +1,7 @@
 import pytest
 
 from backend.ingestion_service.workflow import SemanticIngestionWorkflow
+from backend.ingestion_service.neo4j_writer import GraphStoreConfig
 
 
 class _Response:
@@ -65,3 +66,16 @@ async def test_workflow_blocks_unapproved_publication(monkeypatch):
 
     assert result["status"] == "quality_blocked"
     assert len(client.calls) == 1
+
+
+def test_graph_store_configuration_selects_explicit_provider(monkeypatch):
+    monkeypatch.setenv("SEMANTIC_GRAPH_PROVIDER", "oracle")
+    monkeypatch.setenv("ORACLE_SEMANTIC_GRAPH_DSN", "oracle.example.test/service")
+    monkeypatch.setenv("ORACLE_USER", "semantic")
+    monkeypatch.setenv("ORACLE_PASSWORD", "secret")
+    monkeypatch.setenv("ORACLE_SEMANTIC_GRAPH_MODEL", "DEPO_ONTOLOGY")
+
+    config = GraphStoreConfig.from_env()
+
+    assert config.provider == "oracle"
+    assert config.database == "DEPO_ONTOLOGY"
