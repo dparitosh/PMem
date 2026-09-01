@@ -10,6 +10,8 @@ from rdflib import Graph, Literal, Namespace, RDF, RDFS, URIRef
 from rdflib.namespace import OWL, XSD
 from semantica import __version__ as SEMANTICA_VERSION
 from semantica.ontology import OntologyEngine
+from semantica.ontology import NamespaceManager
+from semantica.reasoning import Reasoner
 
 
 def _result_dict(value: Any) -> dict[str, Any]:
@@ -47,7 +49,8 @@ class SemanticaAdapter:
             engine.export_owl(ontology, str(owl_path), format="xml")
             engine.export_owl(ontology, str(jsonld_path), format="json-ld")
             engine.export_shacl(ontology, str(shacl_path), format="turtle")
-            return {"ontology": ontology, "validation": validation, "evaluation": evaluation,
+            version_id = self.workspace.store(ontology)
+            return {"ontology": ontology, "version_id": version_id, "validation": validation, "evaluation": evaluation,
                     "artifacts": {"turtle": ttl_path.read_bytes(), "owl_xml": owl_path.read_bytes(),
                                   "json_ld": jsonld_path.read_bytes(), "shacl": shacl_path.read_bytes()}}
 
@@ -95,6 +98,40 @@ class SemanticaAdapter:
                    "references_found": len(inspection["references"]), "parse_errors": inspection["errors"],
                    "validation": generated["validation"], "evaluation": generated["evaluation"]}
         return (artifact.encode("utf-8") if isinstance(artifact, str) else artifact), summary
+
+    def __init__(self) -> None:
+        self.workspace = SemanticWorkspace()
+
+
+class SemanticWorkspace:
+    """In-memory semantic control plane; persistence can be added without changing APIs."""
+    def __init__(self) -> None:
+        self.engine = OntologyEngine(base_uri="https://depo.local/ontology/", min_occurrences=1)
+        self.namespaces = NamespaceManager(base_uri="https://depo.local/ontology/")
+        self.ontologies: dict[str, dict[str, Any]] = {}
+        self.alignments: list[dict[str, str]] = []
+
+    def store(self, ontology: dict[str, Any]) -> str:
+        version_id = f"{ontology.get('name', 'ontology')}:{len(self.ontologies) + 1}"
+        self.ontologies[version_id] = ontology
+        return version_id
+
+    def get(self, version_id: str) -> dict[str, Any]:
+        if version_id not in self.ontologies:
+            raise KeyError(f"Unknown ontology version '{version_id}'")
+        return self.ontologies[version_id]
+
+    def validate_graph(self, *, data_graph: str, ontology: dict[str, Any]) -> dict[str, Any]:
+        return _result_dict(self.engine.validate_graph(data_graph, ontology=ontology, data_graph_format="turtle"))
+
+    def reason(self, *, facts: list[Any], rules: list[str]) -> list[dict[str, Any]]:
+        results = Reasoner().infer_with_results(facts, rules)
+        return [_result_dict(item) for item in results]
+
+    def align(self, *, source_uri: str, target_uri: str, predicate: str) -> dict[str, str]:
+        record = {"source_uri": source_uri, "target_uri": target_uri, "predicate": predicate, "storage": "service_workspace"}
+        self.alignments.append(record)
+        return record
 
 
 semantica = SemanticaAdapter()
