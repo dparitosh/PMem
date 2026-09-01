@@ -5,7 +5,7 @@ behind this router before parsers and graph writes are extracted in turn.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 from backend.data_ingestion import (  # temporary adapter: parser extraction is phase two
     _MAX_IMPORT_ROWS,
@@ -18,8 +18,10 @@ from backend.data_ingestion import (  # temporary adapter: parser extraction is 
 )
 from backend.core.graph import query_with_timeout
 from .profiles import profiles
+from .workflow import workflow
 import json
 import pandas as pd
+import httpx
 from defusedxml import ElementTree as ET
 
 router = APIRouter(tags=["ingestion"])
@@ -81,6 +83,45 @@ async def execute_source_profile(profile_id: str, file: UploadFile = File(...)) 
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except (UnicodeDecodeError, ValueError, json.JSONDecodeError, ET.ParseError) as exc:
         raise HTTPException(status_code=422, detail=f"Profile execution failed: {exc}") from exc
+
+
+@router.post("/source-profiles/{profile_id}/workflow", summary="Generate and optionally publish an ontology from a source profile batch")
+async def run_source_profile_workflow(
+    request: Request,
+    profile_id: str,
+    file: UploadFile = File(...),
+    ontology_name: str = Form(""),
+    prefix: str = Form(""),
+    base_uri: str = Form("https://depo.local/ontology/"),
+    publish: bool = Form(False),
+) -> dict:
+    """Run normalize → Semantica generate/validate → optional graph publish.
+
+    ``publish`` is deliberately opt-in because it changes the governed graph.
+    """
+    try:
+        profile = profiles.get(profile_id)
+        content = await file.read()
+        if len(content) > _MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+        normalized = profiles.normalize_batch(profile=profile, filename=file.filename or "source", content=content)
+        selected_prefix = prefix or str(profile.get("prefix") or profile_id)
+        return await workflow.run(
+            normalized=normalized,
+            name=ontology_name or str(profile.get("name") or profile_id),
+            prefix=selected_prefix,
+            base_uri=base_uri,
+            publish=publish,
+            request_id=getattr(request.state, "request_id", None),
+        )
+    except HTTPException:
+        raise
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError, ET.ParseError) as exc:
+        raise HTTPException(status_code=422, detail=f"Profile workflow failed: {exc}") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail=f"Dependent semantic service is unavailable: {exc}") from exc
 
 
 @router.post("/ingest-data", summary="Ingest tabular data through the ingestion service")

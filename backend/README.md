@@ -39,6 +39,26 @@ backend\.dt_venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 -
 - Swagger: `http://localhost:8000/docs`
 - OpenAPI JSON: `http://localhost:8000/openapi.json`
 
+## Independent semantic services
+
+The backend can also run as four HTTP services without Redis or Celery:
+
+```powershell
+$env:NEO4J_PASS = "<your Neo4j password>"
+docker compose -f compose.services.yml up --build
+```
+
+| Service | Port | Responsibility |
+| --- | ---: | --- |
+| Ontology | 8011 | Semantica generation, SHACL validation, ontology catalog and alignment records |
+| Graph | 8013 | Governed Neo4j ontology publication |
+| Ingestion | 8014 | Source-profile normalization and explicit semantic workflow orchestration |
+| OSLC | 8015 | OSLC provider, shapes, TRS, domain discovery and remote OSLC client |
+
+Use `POST /api/v1/source-profiles/{profile_id}/workflow` on the ingestion
+service to run `normalize → generate/validate → publish`. Set `publish=true`
+only when the generated ontology is approved for Neo4j publication.
+
 ## Important Runtime Dependencies
 
 - Neo4j must be reachable with correct credentials

@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 import tempfile
+import json
+import os
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -104,16 +108,43 @@ class SemanticaAdapter:
 
 
 class SemanticWorkspace:
-    """In-memory semantic control plane; persistence can be added without changing APIs."""
-    def __init__(self) -> None:
+    """File-backed semantic control plane for versions and cross-ontology links."""
+    def __init__(self, root: Path | None = None) -> None:
         self.engine = OntologyEngine(base_uri="https://depo.local/ontology/", min_occurrences=1)
         self.namespaces = NamespaceManager(base_uri="https://depo.local/ontology/")
-        self.ontologies: dict[str, dict[str, Any]] = {}
-        self.alignments: list[dict[str, str]] = []
+        configured = os.getenv("ONTOLOGY_SERVICE_STORAGE")
+        self.root = root or (Path(configured) if configured else Path(__file__).resolve().parents[2] / "data" / "ontology_service")
+        self.workspace_path = self.root / "semantic_workspace.json"
+        self.root.mkdir(parents=True, exist_ok=True)
+        state = self._load()
+        self.ontologies: dict[str, dict[str, Any]] = state["ontologies"]
+        self.alignments: list[dict[str, str]] = state["alignments"]
+
+    def _load(self) -> dict[str, Any]:
+        if not self.workspace_path.exists():
+            return {"ontologies": {}, "alignments": []}
+        try:
+            state = json.loads(self.workspace_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"Semantic workspace is unreadable: {exc}") from exc
+        if not isinstance(state, dict):
+            raise RuntimeError("Semantic workspace has an invalid structure")
+        return {
+            "ontologies": state.get("ontologies", {}) if isinstance(state.get("ontologies", {}), dict) else {},
+            "alignments": state.get("alignments", []) if isinstance(state.get("alignments", []), list) else [],
+        }
+
+    def _save(self) -> None:
+        payload = {"ontologies": self.ontologies, "alignments": self.alignments}
+        temporary = self.workspace_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+        temporary.replace(self.workspace_path)
 
     def store(self, ontology: dict[str, Any]) -> str:
-        version_id = f"{ontology.get('name', 'ontology')}:{len(self.ontologies) + 1}"
+        name = re.sub(r"[^A-Za-z0-9_-]+", "-", str(ontology.get("name", "ontology"))).strip("-").lower() or "ontology"
+        version_id = f"{name}:{len(self.ontologies) + 1}"
         self.ontologies[version_id] = ontology
+        self._save()
         return version_id
 
     def get(self, version_id: str) -> dict[str, Any]:
@@ -129,8 +160,12 @@ class SemanticWorkspace:
         return [_result_dict(item) for item in results]
 
     def align(self, *, source_uri: str, target_uri: str, predicate: str) -> dict[str, str]:
-        record = {"source_uri": source_uri, "target_uri": target_uri, "predicate": predicate, "storage": "service_workspace"}
+        record = {
+            "source_uri": source_uri, "target_uri": target_uri, "predicate": predicate,
+            "storage": "semantic_workspace", "created_at": datetime.now(timezone.utc).isoformat(),
+        }
         self.alignments.append(record)
+        self._save()
         return record
 
 

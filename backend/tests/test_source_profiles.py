@@ -1,4 +1,5 @@
 from backend.ingestion_service.profiles import SourceProfileStore
+from backend.ontology_service.semantica_adapter import SemanticWorkspace
 
 
 def _store(tmp_path):
@@ -40,3 +41,14 @@ def test_xml_profile_executes_child_records_and_versions_updates(tmp_path):
     assert profile["version"] == 2
     assert [item["id"] for item in result["entities"]] == ["R-1", "R-2"]
     assert result["entities"][0]["title"] == "Safe stop"
+
+
+def test_semantic_workspace_persists_versions_and_alignments(tmp_path):
+    workspace = SemanticWorkspace(root=tmp_path)
+    version_id = workspace.store({"name": "Parts", "classes": []})
+    workspace.align(source_uri="urn:source:part", target_uri="urn:target:part", predicate="skos:exactMatch")
+
+    restored = SemanticWorkspace(root=tmp_path)
+
+    assert restored.get(version_id)["name"] == "Parts"
+    assert restored.alignments[0]["storage"] == "semantic_workspace"
