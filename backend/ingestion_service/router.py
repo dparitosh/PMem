@@ -172,10 +172,10 @@ async def ingest_data(
         content = await file.read()
         if len(content) > MAX_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
-        dataframe = load_table(content, file.filename or "")
-        if len(dataframe.index) > MAX_IMPORT_ROWS:
+        table = load_table(content, file.filename or "")
+        if len(table) > MAX_IMPORT_ROWS:
             raise HTTPException(status_code=413, detail="Import exceeds the 100,000 row limit")
-        rows = records(dataframe)
+        rows = records(table)
         statements = [
             *(index_query(item["type"], item["name"], item["label"], item["properties"]) for item in index_defs),
             *(constraint_query(item["type"], item["name"], item["label"], item["properties"]) for item in constraint_defs),

@@ -4,8 +4,8 @@ FastAPI backend for the DEPO application.
 
 ## Runtime architecture
 
-The target architecture is four independently deployable, OpenAPI-first
-services: ontology, graph, ingestion, and OSLC. `backend/main.py` is retained
+The target architecture is independently deployable, OpenAPI-first semantic
+services plus the agentic control plane. `backend/main.py` is retained
 only as a compatibility host while the SPA is migrated; it is not the target
 for new backend features. See `backend/legacy/README.md` for the safe removal
 process.
@@ -47,6 +47,17 @@ docker compose -f compose.services.yml up --build
 | Graph | 8013 | Governed Neo4j ontology publication |
 | Ingestion | 8014 | Source-profile normalization and explicit semantic workflow orchestration |
 | OSLC | 8015 | OSLC provider, shapes, TRS, domain discovery and remote OSLC client |
+| Agentic control plane | 8012 | Manifest-driven agents, tools, workflows and MCP contracts |
+
+## Dependencies
+
+`requirements.microservices.txt` is the minimal container runtime manifest.
+It contains only API, RDF/Semantica, Neo4j, XML, HTTP, and pure-Python XLSX
+support. The Docker image installs this manifest.
+
+`requirements.txt` is the broad compatibility/development bundle for the
+legacy host and optional chat, OCR, document, and notebook features; do not
+use it for standalone microservice deployment.
 
 Use `POST /api/v1/source-profiles/{profile_id}/workflow` on the ingestion
 service to run `normalize → generate/validate → publish`. Set `publish=true`

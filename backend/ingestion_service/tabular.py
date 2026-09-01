@@ -1,11 +1,10 @@
 """Validated CSV/Excel parsing and Cypher planning owned by ingestion."""
 from __future__ import annotations
 
+import csv
 import io
 import re
 from typing import Any
-
-import pandas as pd
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -25,16 +24,38 @@ def _properties(values: list[str], field: str = "property") -> list[str]:
     return [_identifier(value, field) for value in values]
 
 
-def load_table(content: bytes, filename: str) -> pd.DataFrame:
+def load_table(content: bytes, filename: str) -> list[dict[str, Any]]:
+    """Read bounded CSV/XLSX records without pandas/numpy.
+
+    CSV uses the standard library and XLSX uses openpyxl (pure Python).  The
+    obsolete binary ``.xls`` format is intentionally excluded from the lean
+    microservice image; convert it to XLSX before ingestion.
+    """
     suffix = str(filename or "").lower()
     if suffix.endswith(".csv"):
-        frame = pd.read_csv(io.BytesIO(content))
-    elif suffix.endswith((".xlsx", ".xls")):
-        frame = pd.read_excel(io.BytesIO(content))
+        reader = csv.DictReader(io.TextIOWrapper(io.BytesIO(content), encoding="utf-8-sig", newline=""))
+        rows = [{str(key or "").strip(): _clean(value) for key, value in row.items()} for row in reader]
+    elif suffix.endswith(".xlsx"):
+        from openpyxl import load_workbook
+        workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        sheet = workbook.active
+        values = sheet.iter_rows(values_only=True)
+        headers = [str(value or "").strip() for value in next(values, ())]
+        if not headers or any(not header for header in headers):
+            raise ValueError("XLSX requires a non-empty header row")
+        rows = [{headers[index]: _clean(value) for index, value in enumerate(record)} for record in values]
+        workbook.close()
+    elif suffix.endswith(".xls"):
+        raise ValueError("Legacy XLS is not supported by the lean runtime; convert it to XLSX")
     else:
-        raise ValueError("Unsupported tabular file type; use CSV, XLS, or XLSX")
-    frame.columns = [str(column).strip() for column in frame.columns]
-    return frame.replace(["", "NaN", "nan", "null", "NULL"], pd.NA).dropna(how="all")
+        raise ValueError("Unsupported tabular file type; use CSV or XLSX")
+    return [row for row in rows if any(value is not None for value in row.values())]
+
+
+def _clean(value: Any) -> Any:
+    if value is None or (isinstance(value, str) and value.strip().lower() in {"", "nan", "null"}):
+        return None
+    return value
 
 
 def node_query(label: str, properties: list[str], merge_keys: list[str]) -> str:
@@ -89,5 +110,5 @@ def constraint_query(constraint_type: str, name: str, label: str, properties: li
     return ""
 
 
-def records(frame: pd.DataFrame) -> list[dict[str, Any]]:
-    return frame.where(pd.notnull(frame), None).to_dict("records")
+def records(table: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return table
