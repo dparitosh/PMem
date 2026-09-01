@@ -7,6 +7,7 @@ from .profiles import profiles
 from .workflow import workflow
 from .neo4j_writer import writer
 from .schema_conversion import converter
+from .engineering_workflow import workflow as engineering_workflow
 from .tabular import MAX_IMPORT_ROWS, MAX_UPLOAD_BYTES, constraint_query, index_query, load_table, node_query, records, relationship_query
 import json
 import httpx
@@ -32,6 +33,29 @@ async def inspect_engineering_schema(file: UploadFile = File(...)) -> dict:
         raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
     try:
         return converter.convert(filename=file.filename or "source", content=content)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/engineering-workflows", summary="Convert and register an engineering ontology through service boundaries")
+async def run_engineering_workflow(
+    request: Request,
+    file: UploadFile = File(...),
+    ontology_name: str = Form(""),
+    prefix: str = Form(""),
+    description: str = Form(""),
+    register_ontology: bool = Form(True),
+) -> dict:
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+    try:
+        return await engineering_workflow.run(
+            filename=file.filename or "source", content=content, ontology_name=ontology_name, prefix=prefix,
+            description=description, register=register_ontology, request_id=getattr(request.state, "request_id", None),
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail=f"Ontology service is unavailable: {exc}") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
