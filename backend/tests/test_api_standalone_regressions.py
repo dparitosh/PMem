@@ -13,12 +13,8 @@ from backend.data_ingestion import (
 from backend.main import ONTOLOGY_DIR, app
 from data_product_package.builder import DataProductBuilder
 from data_product_package.models import ArtifactSpec, DataProductSpec
-from ontology_agentic.api_clients.depo_client import (
-    DepoApiClient,
-    DepoApiError,
-    DepoBinaryResponse,
-)
-from app.main import app as standalone_app
+from backend.ontology_service.app import app as standalone_app
+from backend.oslc_service.client import OSLCClient
 
 
 def test_backend_package_import_exposes_unique_openapi_operations() -> None:
@@ -35,18 +31,18 @@ def test_backend_package_import_exposes_unique_openapi_operations() -> None:
     assert ONTOLOGY_DIR == Path(__file__).resolve().parents[2] / "frontend" / "public" / "Ontology"
 
 
-def test_standalone_http_adapter_contract() -> None:
+def test_standalone_ontology_service_contract() -> None:
     client = TestClient(standalone_app)
 
-    health = client.get("/health")
-    tools = client.get("/api/v1/tools")
-    invalid_import = client.post("/api/v1/openapi/import", json={"document": []})
+    health = client.get("/api/v1/ontologies/health")
+    capabilities = client.get("/api/v1/ontologies/capabilities")
+    mcp = client.get("/api/v1/ontologies/mcp")
 
     assert health.status_code == 200
-    assert health.json()["service"] == "ontology-agentic-service"
-    assert tools.status_code == 200
-    assert isinstance(tools.json()["tools"], list)
-    assert invalid_import.status_code == 400
+    assert health.json()["service"] == "ontology"
+    assert capabilities.status_code == 200
+    assert capabilities.json()["provider"] == "Semantica"
+    assert mcp.json()["transport"] == "stdio"
 
 
 def test_ingestion_merge_query_is_valid_and_identifiers_are_restricted() -> None:
@@ -60,41 +56,12 @@ def test_ingestion_merge_query_is_valid_and_identifiers_are_restricted() -> None
         create_relationship_import_query("LINKS]->() //", "Part", "Part", "id", "id")
 
 
-def test_depo_client_encodes_path_segments_and_validates_configuration(monkeypatch) -> None:
-    client = DepoApiClient("https://depo.example.test", timeout_seconds=5)
-    captured = {}
+def test_oslc_client_requires_a_preconfigured_remote_base(monkeypatch) -> None:
+    monkeypatch.delenv("OSLC_REMOTE_BASE_URL", raising=False)
+    client = OSLCClient()
 
-    def fake_request(method, path, data=None):
-        captured["path"] = path
-        return {}
-
-    monkeypatch.setattr(client, "_request_json", fake_request)
-    client.oslc_resource("requirement/a b")
-
-    assert captured["path"].startswith("/oslc/resources/requirement%2Fa%20b?")
-    with pytest.raises(DepoApiError, match="absolute HTTP"):
-        DepoApiClient("file:///tmp/socket")
-    with pytest.raises(DepoApiError, match="greater than zero"):
-        DepoApiClient("https://depo.example.test", timeout_seconds=0)
-
-
-def test_depo_download_cannot_escape_output_directory(tmp_path, monkeypatch) -> None:
-    client = DepoApiClient("https://depo.example.test")
-    monkeypatch.setattr(
-        client,
-        "export_import_owl",
-        lambda *_args, **_kwargs: DepoBinaryResponse(
-            filename="../../outside.ttl",
-            media_type="text/turtle",
-            body=b"ontology",
-            download_url="https://depo.example.test/export",
-        ),
-    )
-
-    result = client.download_import_owl_export("task-1", tmp_path / "downloads")
-
-    assert Path(result["saved_to"]) == (tmp_path / "downloads" / "outside.ttl").resolve()
-    assert not (tmp_path / "outside.ttl").exists()
+    with pytest.raises(RuntimeError, match="not configured"):
+        client.discover()
 
 
 def test_data_product_builder_handles_case_insensitive_artifact_collisions(tmp_path) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 
 class FileType(Enum):
@@ -83,3 +83,15 @@ class FileFormatDetector:
         from .unified_data_import import SpecializedFormatParser
 
         return SpecializedFormatParser.parse_rdf(file_content, filename)
+
+    @staticmethod
+    def _recommended_indexes_for_label(label: str, merge_key: str, properties: list[str]) -> list[dict[str, Any]]:
+        """Return the canonical import-index plan without duplicating its policy.
+
+        Import format detection is the public schema-planning boundary.  The
+        implementation remains with the importer because it owns the Neo4j
+        index conventions; a lazy import avoids the detector/importer cycle.
+        """
+        from .unified_data_import import SpecializedFormatParser
+
+        return SpecializedFormatParser._recommended_indexes_for_label(label, merge_key, properties)

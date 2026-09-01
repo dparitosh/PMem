@@ -105,7 +105,7 @@ def build_xsd_relational_report(xsd_path: Path) -> Dict[str, Any]:
         return table_by_name[name]
 
     def add_column(table: Dict[str, Any], name: str, kind: str, xsd_type: str,
-                   element: ET.Element, resolved_type: str = "") -> None:
+                   element: ET.Element, resolved_type: str = "", include_in_summary: bool = True) -> None:
         row = {"name": name, "source_kind": kind, "xsd_type": xsd_type or "untyped",
                "qname": xsd_type or "",
                "resolved_type": resolved_type or _local(xsd_type) or "untyped",
@@ -118,7 +118,8 @@ def build_xsd_relational_report(xsd_path: Path) -> Dict[str, Any]:
             row["foreign_key_target"] = "(xs:key/xs:ID target)"
         row["table"] = table["name"]
         table["columns"].append(row)
-        columns.append(row)
+        if include_in_summary:
+            columns.append(row)
         if row["is_primary_key_candidate"]:
             table["primary_key_candidates"].append(name)
         if row["is_foreign_key_candidate"]:
@@ -127,7 +128,7 @@ def build_xsd_relational_report(xsd_path: Path) -> Dict[str, Any]:
                 "source": "XSD IDREF type",
             })
 
-    def map_type(type_node: ET.Element, table_name: str) -> None:
+    def map_type(type_node: ET.Element, table_name: str, nested: bool = False) -> None:
         table = ensure_table(table_name, "complexType")
         for element in _owned(type_node, f"{XSD}element"):
             name = element.get("name") or _local(element.get("ref", ""))
@@ -138,7 +139,7 @@ def build_xsd_relational_report(xsd_path: Path) -> Dict[str, Any]:
             inline = element.find(f"{XSD}complexType")
             is_complex = inline is not None or target in complex_types
             if not is_complex:
-                add_column(table, name, "element", xsd_type or ("inline:simple" if element.find(f"{XSD}simpleType") is not None else ""), element)
+                add_column(table, name, "element", xsd_type or ("inline:simple" if element.find(f"{XSD}simpleType") is not None else ""), element, include_in_summary=not nested)
                 continue
             child_name = table_name + "__" + name if inline is not None else target
             child = ensure_table(child_name, "anonymous complexType" if inline is not None else "complexType reference")
@@ -170,11 +171,11 @@ def build_xsd_relational_report(xsd_path: Path) -> Dict[str, Any]:
                 })
             table["relationships"].append(rel)
             if inline is not None:
-                map_type(inline, child_name)
+                map_type(inline, child_name, nested=True)
         for attribute in _owned(type_node, f"{XSD}attribute"):
             name = attribute.get("name") or _local(attribute.get("ref", ""))
             if name:
-                add_column(table, name, "attribute", attribute.get("type", ""), attribute)
+                add_column(table, name, "attribute", attribute.get("type", ""), attribute, include_in_summary=not nested)
 
     for name, type_node in complex_types.items():
         map_type(type_node, name)
