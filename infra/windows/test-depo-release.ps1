@@ -1,0 +1,45 @@
+param(
+  [string]$EnvFile = ".env.local",
+  [switch]$Production,
+  [switch]$Bootstrap
+)
+
+$ErrorActionPreference = "Stop"
+if ($Production -and $Bootstrap) { throw 'Choose either -Production or -Bootstrap, not both.' }
+$root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$path = Join-Path $root $EnvFile
+if (-not (Test-Path $path)) { throw "Missing $EnvFile. Copy .env.postgres.example and configure customer secrets." }
+
+$values = @{}
+Get-Content $path | ForEach-Object {
+  if ($_ -match '^\s*([^#=]+)=(.*)$') { $values[$matches[1].Trim()] = $matches[2].Trim() }
+}
+
+$required = @('DEPO_DATABASE_URL', 'DEPO_DATABASE_SCHEMA')
+if ($Production) {
+  $required += @('ALLOWED_ORIGINS', 'AUTH_MODE', 'OSLC_BASE_URL')
+  if ($values['AUTH_MODE'] -ne 'entra') { throw 'Production requires AUTH_MODE=entra behind Azure API Management.' }
+  if ($values['ALLOWED_ORIGINS'] -match 'localhost|127\.0\.0\.1') { throw 'Production ALLOWED_ORIGINS must use the customer HTTPS frontend URL.' }
+  if ($values['OSLC_BASE_URL'] -notmatch '^https://') { throw 'Production OSLC_BASE_URL must be an HTTPS customer URL.' }
+}
+if ($Bootstrap) {
+  $required += @('AUTH_MODE', 'NEO4J_URI', 'NEO4J_USER', 'NEO4J_PASS', 'NEO4J_DATABASE')
+  if ($values['AUTH_MODE'] -notin @('token', 'entra')) { throw 'Bootstrap requires AUTH_MODE=token or AUTH_MODE=entra. Disabled authentication is local-only.' }
+}
+foreach ($name in $required) { if (-not $values[$name]) { throw "Missing required setting: $name" } }
+if ($Production -and $values['DEPO_DATABASE_URL'] -match 'postgres:tcs12345|@127\.0\.0\.1') { throw 'Replace the local PostgreSQL administrator connection with a customer-managed least-privilege application account.' }
+
+$env:DEPO_DATABASE_URL = $values['DEPO_DATABASE_URL']
+$env:DEPO_DATABASE_SCHEMA = $values['DEPO_DATABASE_SCHEMA']
+$python = Join-Path $root 'backend\.dt_venv\Scripts\python.exe'
+& $python -c "from backend.mesh_store import PostgresRegistry; PostgresRegistry('release_preflight').put('checked', {'ok': True}); print('PostgreSQL migration check passed.')"
+if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL migration preflight failed.' }
+if ($Production) {
+  & (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') -EnvFile $EnvFile -Production
+  if ($LASTEXITCODE -ne 0) { throw 'Neo4j production preflight failed.' }
+}
+if ($Bootstrap) {
+  & (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') -EnvFile $EnvFile -Bootstrap
+  if ($LASTEXITCODE -ne 0) { throw 'Neo4j bootstrap preflight failed.' }
+}
+Write-Host 'DEPO release preflight passed.'

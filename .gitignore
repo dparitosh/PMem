@@ -89,3 +89,5 @@ external/
 # Local audit/runtime artifacts
 audit-shots/
 _restore_ingest/
+data/artifacts/
+.release-test-tmp/

@@ -4,7 +4,7 @@ Date: 2026-06-25
 
 ## 1. Deliverables
 
-### A. Main DEPO application
+### A. DEPO application platform
 
 Purpose:
 - Digital thread exploration
@@ -13,91 +13,71 @@ Purpose:
 - Graph explorer
 - Recommendations, reports, chat, and import workflows
 
-Main runtime pieces:
-- Frontend: React app on port `3000`
-- Backend: FastAPI app on port `8000`
-- Neo4j: customer-managed graph database
+Runtime pieces:
+- Frontend: React SPA
+- PostgreSQL: customer-managed control-plane and durable runtime state
+- Neo4j: customer-managed semantic graph database
+- DEPO services: schema sets (`8010`), ontology (`8011`), agentic (`8012`),
+  graph (`8013`), ingestion (`8014`), OSLC (`8015`), catalog (`8016`), and
+  data products (`8017`)
+- Azure API Management: the only public ingress, with TLS and Entra validation
 
-### B. Standalone ontology agentic service
-
-Location:
-- `standalone/ontology_agentic_service/`
+### B. Ontology and agentic capability
 
 Purpose:
 - ontology review
 - ontology export
 - semantic workflow orchestration
-- DEPO backend API orchestration for ontology-centric automations
+- DEPO API orchestration for ontology-centric automations
 
-Default runtime:
-- FastAPI app on port `8012`
+The agentic API runs as a DEPO service on port `8012` and is not a separate
+customer deployment by default.
 
 ## 2. Release Readiness Summary
 
 ### Main application
 
-Ready to release with the following notes:
-- core graph, ontology, semantic bridge, import, and chat surfaces are present
-- startup scripts exist and support LAN / IP-based usage
-- backend OpenAPI docs are available at `/docs` when backend is running
+The platform is a release candidate only after the customer-specific production
+preflight, API gateway registration, and target-environment smoke tests pass.
 
 Residual caution:
 - document upload depends on embedder runtime availability in the target environment
 - graph-heavy workflows remain dependent on Neo4j health and correct environment configuration
 
-### Standalone ontology agentic service
-
-Ready to release as a separate companion service.
-
-Best positioning:
-- automation-facing ontology microservice
-- not a replacement for the main DEPO UI
+The agentic capability is an automation-facing microservice, not a replacement
+for the DEPO UI.
 
 ## 3. Customer Startup Instructions
 
-### Main app startup
+### Platform startup
 
-From repository root:
+From repository root, after configuring the customer `.env.local`:
 
-```bat
-cd D:\Depo_Onto_Engine
-.\start_backend.bat
-.\start_frontend.bat
+```powershell
+cd D:\Githuv_repo\PMem
+powershell -ExecutionPolicy Bypass -File .\infra\windows\test-depo-release.ps1 -Production
+powershell -ExecutionPolicy Bypass -File .\infra\windows\start-depo-services.ps1 -SkipPostgres
 ```
 
 Notes:
-- Use `start_backend.bat` and `start_frontend.bat` directly. There is no combined root `start.bat`.
-- `start_backend.bat` binds the API to `0.0.0.0` by default and prints the LAN-facing `/docs` and `/openapi.json` URLs.
-- `start_frontend.bat` injects `REACT_APP_BACKEND_URL` for the current run, which is the safest path for VM or LAN-based testing.
+- PostgreSQL is independently managed; use `-SkipPostgres` for a customer-managed instance.
+- DEPO services should bind only to a private interface. Azure API Management
+  exposes approved OpenAPI/OData surfaces externally.
+- Build and host the frontend with the customer API gateway URL; do not expose
+  development ports directly to users.
 
 Useful URLs:
-- Frontend UI: `http://<host>:3000`
-- Backend docs: `http://<host>:8000/docs`
-- Backend OpenAPI JSON: `http://<host>:8000/openapi.json`
-
-### Standalone service startup
-
-```bat
-cd D:\Depo_Onto_Engine\standalone\ontology_agentic_service
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python start_service.py
-```
-
-Useful URLs:
-- Standalone docs: `http://<host>:8012/docs`
-- Standalone OpenAPI JSON: `http://<host>:8012/openapi.json`
+- External UI/API URLs are the customer Azure API Management and frontend
+  hostnames, not direct localhost service ports.
 
 ## 4. Required Environment Configuration
 
 ### Main app
 
-Backend requires:
-- Neo4j URI
-- Neo4j username
-- Neo4j password
-- Neo4j database name
+Platform requires:
+- PostgreSQL application connection URL using a least-privilege role
+- Neo4j URI, username, password, and database name
+- Entra authentication configuration and Azure API Management registration
 - LLM / embedding configuration if chat and document ingestion are required
 - `ALLOWED_ORIGINS` must include the actual frontend URL used by the customer, for example `http://<vm-ip>:3000`
 - Large XMI/import settings should be reviewed for customer data size:
@@ -110,13 +90,6 @@ Backend requires:
 Frontend requires:
 - backend base URL when accessed by LAN IP / VM IP / DNS
 - `REACT_APP_BACKEND_URL` should point to the backend host visible from the browser, for example `http://<vm-ip>:8000`
-
-### Standalone service
-
-Optional but recommended:
-- `ONTOLOGY_AGENTIC_DEPO_API_BASE_URL`
-- `ONTOLOGY_AGENTIC_DEPO_API_TIMEOUT_SECONDS`
-- `ONTOLOGY_AGENTIC_DEPO_API_TOKEN` when applicable
 
 ### Optional SysML v2 API connector
 
@@ -139,12 +112,15 @@ See `docs/sysml-v2-api-client-audit.md` before committing to this integration in
 
 ### Must pass before handoff
 - [ ] Backend starts successfully
-- [ ] Frontend starts successfully
+- [ ] All eight DEPO services start successfully
+- [ ] PostgreSQL `depo_schema_migrations` is current and a backup/restore has been verified
+- [ ] `test-depo-release.ps1 -Production` passes
+- [ ] Frontend production build and gateway-hosted UI load successfully
 - [ ] Neo4j health endpoint returns success
 - [ ] Backend `/docs` loads
 - [ ] Backend `/openapi.json` loads
 - [ ] Frontend can load main pages without startup errors
-- [ ] Standalone ontology service starts and `/docs` loads
+- [ ] Azure API Management validates Entra tokens and routes only approved APIs
 
 ### Strongly recommended before production use
 - [ ] Replace any local development secrets in `backend/.env` with customer-managed secrets

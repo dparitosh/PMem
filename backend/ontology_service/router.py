@@ -9,6 +9,7 @@ from .intelligence import SemanticIntelligence
 from .merge_service import GovernedMergeService
 from .business_context import BusinessContextService
 from .semantica_adapter import semantica
+from backend.Services.ontology_upload_manager import OntologyUploadManager
 
 router = APIRouter(prefix="/ontologies", tags=["ontologies"])
 intelligence = SemanticIntelligence(semantica.workspace.root)
@@ -71,7 +72,7 @@ def create_alignment(payload: dict[str, str]) -> dict:
 
 @router.get("/alignments", summary="List ontology alignments")
 def list_alignments() -> dict:
-    return {"alignments": semantica.workspace.alignments}
+    return {"alignments": semantica.workspace.list_alignments()}
 
 
 @router.post("/reason", summary="Run explainable Semantica rule inference")
@@ -207,6 +208,36 @@ def mcp_contract() -> dict:
 def list_ontologies() -> dict:
     ontologies = catalog.list()
     return {"ontologies": ontologies, "count": len(ontologies)}
+
+
+@router.post("/migrations/legacy", summary="Adopt legacy ingestion artifacts into the native ontology catalog")
+def migrate_legacy_ontologies(payload: dict[str, Any]) -> dict:
+    """Perform an additive, idempotent catalog migration for named standards."""
+    ontology_ids = [str(value).strip() for value in payload.get("ontology_ids", []) if str(value).strip()]
+    if not ontology_ids:
+        raise HTTPException(status_code=422, detail="ontology_ids must contain at least one registered ontology ID")
+    migrated: list[dict[str, Any]] = []
+    for ontology_id in ontology_ids:
+        result = OntologyUploadManager.get_ontology(ontology_id)
+        metadata = result.get("metadata") if result.get("status") == "success" else None
+        content = OntologyUploadManager.get_file_for_reuse(ontology_id)
+        if not metadata or content is None:
+            raise HTTPException(status_code=404, detail=f"Legacy ontology artifact not found: {ontology_id}")
+        migrated.append(catalog.adopt_legacy(
+            ontology_id=ontology_id,
+            content=content,
+            filename=str(metadata.get("file_name") or metadata.get("filename") or metadata.get("file_path") or f"{ontology_id}.artifact"),
+            ontology_name=str(metadata.get("ontology_name") or ontology_id),
+            prefix=str(metadata.get("prefix") or "ontology"),
+            description=str(metadata.get("description") or ""),
+            extra_metadata={
+                "legacy_source": "ingestion",
+                "legacy_file_type": metadata.get("file_type"),
+                "legacy_generation_type": metadata.get("generation_type"),
+                "legacy_uploaded_at": metadata.get("uploaded_at"),
+            },
+        ))
+    return {"status": "success", "migrated": migrated, "count": len(migrated)}
 
 
 @router.get("/{ontology_id}", summary="Read ontology artifact metadata")

@@ -1,19 +1,29 @@
-.ix-landing-page { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 16px; padding: 20px; background: var(--theme-color-std-background, #f4f6f8); color: var(--theme-color-std-text, #252a2e); overflow: auto; }
-.ix-landing-page__intro { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding: 8px 4px; }
-.ix-landing-page__intro h2 { margin: 10px 0 6px; font-size: 24px; line-height: 1.2; font-weight: 600; }
+.ix-landing-page { min-height: 0; display: flex; flex-direction: column; gap: 24px; padding: 8px; background: transparent; color: var(--theme-color-std-text, #252a2e); }
+.ix-landing-page__intro { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding: 0; }
+.ix-landing-page__intro h2 { margin: 12px 0 6px; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: 0; }
 .ix-landing-page__intro p { max-width: 680px; margin: 0; color: var(--theme-color-soft-text, #5a6772); font-size: 14px; line-height: 1.5; }
 .ix-landing-page__intro-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 12px; }
 .ix-landing-page__intro-actions > span { color: var(--theme-color-soft-text, #5a6772); font-size: 12px; white-space: nowrap; }
-.ix-landing-page__workspace { flex: 1 1 0; min-height: 580px; display: grid; grid-template-columns: minmax(310px, 0.34fr) minmax(0, 0.66fr); gap: 16px; }
-.ix-landing-page__insights { min-height: 0; display: grid; grid-template-rows: minmax(190px, auto) minmax(0, 1fr); gap: 16px; }
-.ix-landing-page__card, .ix-landing-page__chat { width: 100%; min-height: 0; display: block; align-self: stretch; }
-.ix-landing-page__chat { height: 100%; }
+.ix-landing-page__workspace { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, 2fr); gap: 16px; width: 100%; }
+.ix-landing-page__workspace > ix-col { display: block; width: auto !important; max-width: none !important; }
+.ix-landing-page__insights { min-height: 0; display: grid; grid-template-rows: auto auto; gap: 16px; }
+.ix-landing-page__card, .ix-landing-page__chat { width: 100%; min-height: 0; display: block; align-self: stretch; border-radius: 0; box-shadow: none; }
+.ix-landing-page__registry { height: 270px; }
+.ix-landing-page__registry ix-card-content { overflow: auto; }
+.ix-landing-page__chat { height: 460px; }
 .ix-landing-page__card ix-card-content, .ix-landing-page__chat ix-card-content { display: block; }
 .ix-landing-page__profile { overflow: auto; }
 .ix-landing-page__chat { overflow: hidden; }
 .ix-landing-page__chat ix-card-content { height: calc(100% - 48px); min-height: 0; }
-.ix-landing-page__chat ix-card-content > * { height: 100%; }
+.ix-landing-page__chat ix-card-content > * { width: 100%; height: 100%; }
 .ix-landing-page__alert { display: flex; align-items: center; gap: 8px; color: var(--theme-color-alarm, #b42318); font-size: 13px; }
 .ix-landing-page__empty { color: var(--theme-color-soft-text, #5a6772); font-size: 13px; }
+.ix-landing-page__empty-state { display: grid; gap: 4px; padding: 8px 0; color: var(--theme-color-soft-text, #5a6772); font-size: 13px; }
+.ix-landing-page__empty-state strong { color: var(--theme-color-std-text, #252a2e); }
+.ix-landing-page__metric-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.ix-landing-page__metric-row > div { display: grid; gap: 2px; padding: 8px 0; border-left: 0; border-bottom: 1px solid var(--theme-color-weak-bdr, #d9e2ec); background: transparent; }
+.ix-landing-page__metric-row strong { font-size: 18px; line-height: 1.1; }
+.ix-landing-page__metric-row span, .ix-landing-page__projection-note { color: var(--theme-color-soft-text, #5a6772); font-size: 12px; }
+.ix-landing-page__projection-note { margin: -4px 0 10px; }
 @media (max-width: 900px) { .ix-landing-page__workspace { grid-template-columns: 1fr; min-height: auto; } .ix-landing-page__chat { min-height: 520px; } }
 @media (max-width: 640px) { .ix-landing-page { padding: 16px; } .ix-landing-page__intro { align-items: flex-start; flex-direction: column; } .ix-landing-page__intro-actions { width: 100%; justify-content: space-between; } }

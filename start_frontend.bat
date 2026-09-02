@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
-:: Frontend Service Startup Script
+:: Frontend Service Startup Script (Vite)
 :: Usage: .\start_frontend.bat [port] [backend_url] [host]
 :: Examples:
 ::   .\start_frontend.bat
@@ -79,8 +79,8 @@ if not exist "frontend\node_modules" (
     exit /b 1
 )
 
-if not exist "frontend\node_modules\react-scripts\bin\react-scripts.js" (
-    echo [ERROR] Local react-scripts not found in frontend\node_modules.
+if not exist "frontend\node_modules\.bin\vite.cmd" (
+    echo [ERROR] Local Vite executable not found in frontend\node_modules.
     echo [INFO] Run: cd frontend ^&^& npm install
     exit /b 1
 )
@@ -90,11 +90,10 @@ set "PORT=%PORT%"
 set "HOST=%HOST%"
 set "FRONTEND_HOST=%HOST%"
 set "FRONTEND_PORT=%PORT%"
-set "REACT_APP_BACKEND_URL=%BACKEND_URL%"
+set "VITE_BACKEND_URL=%BACKEND_URL%"
 set "BROWSER=none"
-set "FAST_REFRESH=true"
 
-call "node_modules\.bin\react-scripts.cmd" start
+call npm.cmd run dev -- --host %HOST% --port %PORT%
 if errorlevel 1 (
     echo [ERROR] Frontend dev server failed to start.
     exit /b 1

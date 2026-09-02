@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { apiClient } from '../services/apiClient';
-import { API, buildUrl } from '../config';
+import { buildUrl } from '../config';
 import logger from '../utils/logger';
 
 /**
@@ -68,18 +68,22 @@ export const OntologyProvider = ({ children }) => {
       try {
         if (mountedRef.current) setLoading(true);
         if (mountedRef.current) setError(null);
+        // Prefer the native ontology catalog, then retain the ingestion-owned
+        // registry as a read-only bridge for already-published ontologies.
+        // This prevents existing QIF/AP242 artifacts from disappearing while
+        // their catalog migration is completed.
         const endpoints = [
-          buildUrl(API.ontology.registered),
-          buildUrl(API.graph.ontologyRegisteredRoot),
-          buildUrl(API.graph.ontologiesList),
-        ].filter((endpoint, index, all) => Boolean(endpoint) && all.indexOf(endpoint) === index);
+          buildUrl('/api/v1/ontologies'),
+          buildUrl('/api/v1/ontology/registered'),
+        ];
         let payload = null;
         let lastError = null;
         for (const endpoint of endpoints) {
           try {
             const response = await apiClient.get(endpoint, { signal: controller.signal });
             payload = response?.data || null;
-            if (payload) break;
+            const rows = payload?.ontologies || payload?.items || payload?.results || payload?.data?.ontologies || payload?.data?.items || [];
+            if (Array.isArray(rows) && rows.length) break;
           } catch (err) {
             lastError = err;
           }

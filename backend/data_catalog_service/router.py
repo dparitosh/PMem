@@ -4,15 +4,14 @@ import os
 import hmac
 import re
 from datetime import datetime, timezone
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi import Header
 
-from backend.mesh_store import SqliteRegistry
+from backend.mesh_store import PostgresRegistry
 
 router = APIRouter(prefix="/catalog", tags=["data-catalog"])
-store = SqliteRegistry(Path(os.getenv("DATA_CATALOG_STORAGE", Path(__file__).resolve().parents[2] / "data" / "catalog")) / "products")
+store = PostgresRegistry("catalog_products")
 
 
 def _now() -> str:

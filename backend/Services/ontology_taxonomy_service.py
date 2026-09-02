@@ -114,7 +114,14 @@ class OntologyTaxonomyService:
         if not parsed.get("nodes") and parsed.get("source") != "rdf_parse_error":
             parsed = OntologyTaxonomyService._text_terms(meta, source_file_path)
 
-        reasoning_summary = OntologyTaxonomyService._cached_reasoning(file_path_str, mtime, size, prefix).get("summary", {})
+        # RDFLib already supplies the typed graph structure for RDF/OWL/Turtle.
+        # Avoid a second Owlready load here: large AP242 MIM artifacts otherwise
+        # block the browse request while no additional taxonomy data is gained.
+        reasoning_summary = (
+            {}
+            if parsed.get("source") == "rdf"
+            else OntologyTaxonomyService._cached_reasoning(file_path_str, mtime, size, prefix).get("summary", {})
+        )
         return {
             "ontology_id": ontology_id,
             "ontology_name": ontology_name,
@@ -138,9 +145,13 @@ class OntologyTaxonomyService:
     @staticmethod
     def _semantic_context(ontology_identifier: str) -> Dict[str, Any]:
         meta = OntologyTaxonomyService._resolve_metadata(ontology_identifier)
-        source_file_path = Path(meta.get("file_path", ""))
-        semantic_file_path = Path(meta.get("owl_file_path") or meta.get("file_path", ""))
-        if not str(meta.get("file_path") or "").strip() or not source_file_path.is_file():
+        # Engineering workflows register generated RDF/Turtle as ``artifact_path``;
+        # older upload flows use ``file_path``. Both are first-class ontology
+        # sources and must produce the same typed taxonomy.
+        source_path = meta.get("file_path") or meta.get("artifact_path") or ""
+        source_file_path = Path(source_path)
+        semantic_file_path = Path(meta.get("owl_file_path") or meta.get("artifact_path") or source_path)
+        if not str(source_path).strip() or not source_file_path.is_file():
             raise ValueError(f"Ontology file is missing: {ontology_identifier}")
         if not semantic_file_path.is_file():
             semantic_file_path = source_file_path
@@ -155,6 +166,31 @@ class OntologyTaxonomyService:
 
     @staticmethod
     def _resolve_metadata(identifier: str) -> Dict[str, Any]:
+        # Newer engineering conversions (including AP242 EXPRESS -> Turtle)
+        # are registered in the ontology-service catalog, not the legacy
+        # upload manager.  Resolve those artifacts first so their RDF/OWL
+        # semantics are preserved instead of falling back to a dictionary.
+        try:
+            from backend.ontology_service.catalog import catalog as ontology_catalog
+
+            native = ontology_catalog.get(identifier)
+            if native is not None:
+                return native
+
+            lookup = str(identifier or "").strip().lower()
+            for meta in ontology_catalog.list():
+                candidates = {
+                    str(meta.get("ontology_id") or "").lower(),
+                    str(meta.get("prefix") or "").lower(),
+                    str(meta.get("ontology_prefix") or "").lower(),
+                }
+                if lookup in candidates:
+                    return meta
+        except Exception:
+            # The legacy registry remains a supported source when the native
+            # catalog is unavailable during a staged migration.
+            pass
+
         direct = OntologyUploadManager.get_ontology(identifier)
         if direct.get("status") == "success":
             return direct["metadata"]
@@ -182,10 +218,6 @@ class OntologyTaxonomyService:
             return None
 
         prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
-        owlready_result = OwlreadyOntologyRuntime.extract_taxonomy(file_path, prefix)
-        if owlready_result and owlready_result.get("nodes"):
-            return owlready_result
-
         graph = Graph()
         parsed_ok = False
         parse_errors: List[str] = []
@@ -210,7 +242,9 @@ class OntologyTaxonomyService:
             }
 
         class_uris: Set[URIRef] = set()
+        property_uris: Dict[URIRef, str] = {}
         hierarchy_edges: List[Tuple[URIRef, URIRef, str]] = []
+        property_edges: List[Tuple[URIRef, URIRef, str]] = []
 
         for subject in graph.subjects(RDF.type, OWL.Class):
             if isinstance(subject, URIRef):
@@ -226,6 +260,27 @@ class OntologyTaxonomyService:
                 class_uris.add(subject)
                 class_uris.add(parent)
                 hierarchy_edges.append((subject, parent, "subClassOf"))
+
+        property_types = (
+            (OWL.ObjectProperty, "rdf-object-property"),
+            (OWL.DatatypeProperty, "rdf-datatype-property"),
+            (OWL.AnnotationProperty, "rdf-annotation-property"),
+            (RDF.Property, "rdf-property"),
+        )
+        for property_type, source in property_types:
+            for subject in graph.subjects(RDF.type, property_type):
+                if isinstance(subject, URIRef):
+                    property_uris.setdefault(subject, source)
+        for subject, domain in graph.subject_objects(RDFS.domain):
+            if isinstance(subject, URIRef) and isinstance(domain, URIRef):
+                property_uris.setdefault(subject, "rdf-property")
+                class_uris.add(domain)
+                property_edges.append((subject, domain, "DOMAIN"))
+        for subject, range_value in graph.subject_objects(RDFS.range):
+            if isinstance(subject, URIRef) and isinstance(range_value, URIRef):
+                property_uris.setdefault(subject, "rdf-property")
+                class_uris.add(range_value)
+                property_edges.append((subject, range_value, "RANGE"))
         for subject, parent in graph.subject_objects(SKOS.broader):
             if isinstance(subject, URIRef) and isinstance(parent, URIRef):
                 class_uris.add(subject)
@@ -237,7 +292,8 @@ class OntologyTaxonomyService:
                 class_uris.add(parent)
                 hierarchy_edges.append((subject, parent, "narrower"))
 
-        base_id_counts = Counter(_term_id(prefix, uri) for uri in class_uris)
+        node_uris = set(class_uris) | set(property_uris)
+        base_id_counts = Counter(_term_id(prefix, uri) for uri in node_uris)
         duplicate_ids = {term_id for term_id, count in base_id_counts.items() if count > 1}
         nodes = [
             {
@@ -246,9 +302,9 @@ class OntologyTaxonomyService:
                 "label": _label(graph, uri),
                 "definition": _definition(graph, uri),
                 "ontology_prefix": prefix,
-                "source": "rdf",
+                "source": property_uris.get(uri, "rdf-class"),
             }
-            for uri in sorted(class_uris, key=lambda item: str(item))
+            for uri in sorted(node_uris, key=lambda item: str(item))
         ]
         node_by_uri = {node["uri"]: node for node in nodes}
         edges = [
@@ -262,6 +318,17 @@ class OntologyTaxonomyService:
             for child, parent, edge_type in hierarchy_edges
             if str(child) in node_by_uri and str(parent) in node_by_uri
         ]
+        edges.extend(
+            {
+                "source_term": node_by_uri[str(subject)]["term_id"],
+                "source_label": node_by_uri[str(subject)]["label"],
+                "target_term": node_by_uri[str(target)]["term_id"],
+                "target_label": node_by_uri[str(target)]["label"],
+                "mapping_type": edge_type,
+            }
+            for subject, target, edge_type in property_edges
+            if str(subject) in node_by_uri and str(target) in node_by_uri
+        )
 
         return {
             "source": "rdf",

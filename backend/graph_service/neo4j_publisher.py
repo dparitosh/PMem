@@ -109,6 +109,150 @@ class Neo4jPublisher:
         )
         return {"nodes": nodes, "edges": edges, "ontology_id": ontology_id, "truncated": len(nodes) >= safe_limit}
 
+    @staticmethod
+    def _explorer_payload(*, nodes: list[dict[str, Any]], edges: list[dict[str, Any]], view: dict[str, Any]) -> dict[str, Any]:
+        """Adapt Neo4j projection rows to the stable Graph Explorer contract.
+
+        The browser deliberately receives one shape regardless of graph-store
+        provider.  Keeping this adapter in the graph service avoids the old
+        port-8000 proxy and lets an API gateway expose this endpoint directly.
+        """
+        explorer_nodes = [
+            {
+                "elementId": str(node["id"]),
+                "labels": [str(node.get("type") or "resource")],
+                "properties": {
+                    "iri": str(node["id"]),
+                    "label": str(node.get("label") or node["id"]),
+                    "kind": str(node.get("type") or "resource"),
+                    **({"ontology_id": node["ontology_id"]} if node.get("ontology_id") else {}),
+                },
+                "can_traverse": True,
+            }
+            for node in nodes
+        ]
+        explorer_edges = [
+            {
+                "elementId": f"{edge['source']}::{edge.get('type') or 'RELATED_TO'}::{edge['target']}",
+                "start": str(edge["source"]),
+                "end": str(edge["target"]),
+                "type": str(edge.get("type") or "RELATED_TO"),
+                "properties": {"raw_type": str(edge.get("type") or "RELATED_TO")},
+            }
+            for edge in edges
+        ]
+        return {
+            "nodes": explorer_nodes,
+            "relationships": explorer_edges,
+            "counts": {"nodes": len(explorer_nodes), "relationships": len(explorer_edges)},
+            "view": view,
+        }
+
+    def overview(self, *, limit: int = 900) -> dict[str, Any]:
+        safe_limit = max(1, min(int(limit), 10_000))
+        nodes = self._session_rows(
+            "MATCH (n:OntologyResource) RETURN n.iri AS id, n.label AS label, n.kind AS type, n.ontology_id AS ontology_id "
+            "ORDER BY n.ontology_id, n.label LIMIT $limit",
+            limit=safe_limit,
+        )
+        # Existing ontologies created before the standalone graph service use
+        # the domain labels below.  Read them directly when no published
+        # OntologyResource projection exists; this is intentionally read-only
+        # and avoids forcing a destructive graph migration merely to browse an
+        # already-ingested ontology.
+        if not nodes:
+            return self._legacy_overview(limit=safe_limit)
+        edges = self._session_rows(
+            "MATCH (a:OntologyResource)-[r]->(b:OntologyResource) "
+            "WHERE a.ontology_id = b.ontology_id "
+            "RETURN a.iri AS source, b.iri AS target, type(r) AS type LIMIT $limit",
+            limit=safe_limit * 4,
+        )
+        return self._explorer_payload(
+            nodes=nodes,
+            edges=edges,
+            view={"type": "overview", "limit": safe_limit, "truncated": len(nodes) >= safe_limit},
+        )
+
+    def _legacy_overview(self, *, limit: int) -> dict[str, Any]:
+        nodes = self._session_rows(
+            "MATCH (n) WHERE n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty "
+            "RETURN elementId(n) AS id, coalesce(n.name, n.label, n.uri) AS label, "
+            "coalesce(n.concept_type, head(labels(n)), 'resource') AS type, "
+            "n.source_ontology AS ontology_id "
+            "ORDER BY coalesce(n.name, n.label, n.uri) LIMIT $limit",
+            limit=limit,
+        )
+        ids = [node["id"] for node in nodes]
+        edges = [] if not ids else self._session_rows(
+            "MATCH (a)-[r]->(b) "
+            "WHERE elementId(a) IN $ids AND elementId(b) IN $ids "
+            "RETURN elementId(a) AS source, elementId(b) AS target, type(r) AS type LIMIT $limit",
+            ids=ids, limit=limit * 4,
+        )
+        return self._explorer_payload(
+            nodes=nodes,
+            edges=edges,
+            view={"type": "overview", "source": "existing_ontology", "limit": limit, "truncated": len(nodes) >= limit},
+        )
+
+    def explorer_projection(self, *, ontology_id: str, limit: int = 900) -> dict[str, Any]:
+        projection = self.projection(ontology_id=ontology_id, limit=limit)
+        return self._explorer_payload(
+            nodes=projection["nodes"],
+            edges=projection["edges"],
+            view={"type": "ontology", "ontology_id": ontology_id, "limit": min(max(int(limit), 1), 10_000), "truncated": projection["truncated"]},
+        )
+
+    def traversal(self, *, iri: str, depth: int = 1, limit: int = 200) -> dict[str, Any]:
+        hops, safe_limit = max(1, min(int(depth), 5)), max(1, min(int(limit), 1_000))
+        nodes = self._session_rows(
+            "MATCH (root:OntologyResource {iri: $iri}) "
+            "OPTIONAL MATCH path=(root)-[*0..5]-(neighbor:OntologyResource) "
+            "WHERE length(path) <= $hops AND neighbor.ontology_id = root.ontology_id "
+            "WITH root, collect(DISTINCT neighbor)[..$limit] AS neighbors "
+            "UNWIND CASE WHEN size(neighbors) = 0 THEN [root] ELSE neighbors END AS node "
+            "RETURN DISTINCT node.iri AS id, node.label AS label, node.kind AS type, node.ontology_id AS ontology_id",
+            iri=iri, hops=hops, limit=safe_limit,
+        )
+        if not nodes:
+            return self._legacy_traversal(node_id=iri, depth=hops, limit=safe_limit)
+        ids = [node["id"] for node in nodes]
+        edges = [] if not ids else self._session_rows(
+            "MATCH (a:OntologyResource)-[r]->(b:OntologyResource) "
+            "WHERE a.iri IN $ids AND b.iri IN $ids AND a.ontology_id = b.ontology_id "
+            "RETURN a.iri AS source, b.iri AS target, type(r) AS type LIMIT $limit",
+            ids=ids, limit=safe_limit * 4,
+        )
+        return self._explorer_payload(
+            nodes=nodes,
+            edges=edges,
+            view={"type": "traversal", "root_node_id": iri, "depth": hops, "limit": safe_limit},
+        )
+
+    def _legacy_traversal(self, *, node_id: str, depth: int, limit: int) -> dict[str, Any]:
+        nodes = self._session_rows(
+            "MATCH (root) WHERE elementId(root) = $node_id "
+            "OPTIONAL MATCH path=(root)-[*0..5]-(neighbor) "
+            "WHERE length(path) <= $depth "
+            "WITH root, collect(DISTINCT neighbor)[..$limit] AS neighbors "
+            "UNWIND CASE WHEN size(neighbors) = 0 THEN [root] ELSE neighbors END AS node "
+            "RETURN DISTINCT elementId(node) AS id, coalesce(node.name, node.label, node.uri) AS label, "
+            "coalesce(node.concept_type, head(labels(node)), 'resource') AS type, node.source_ontology AS ontology_id",
+            node_id=node_id, depth=depth, limit=limit,
+        )
+        ids = [node["id"] for node in nodes]
+        edges = [] if not ids else self._session_rows(
+            "MATCH (a)-[r]->(b) WHERE elementId(a) IN $ids AND elementId(b) IN $ids "
+            "RETURN elementId(a) AS source, elementId(b) AS target, type(r) AS type LIMIT $limit",
+            ids=ids, limit=limit * 4,
+        )
+        return self._explorer_payload(
+            nodes=nodes,
+            edges=edges,
+            view={"type": "traversal", "source": "existing_ontology", "root_node_id": node_id, "depth": depth, "limit": limit},
+        )
+
     def analytics(self, *, ontology_id: str, limit: int = 3000) -> dict[str, Any]:
         projection = self.projection(ontology_id=ontology_id, limit=limit)
         return {"ontology_id": ontology_id, "projection": projection, "analytics": GraphAnalyzer().analyze_graph(projection)}

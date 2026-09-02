@@ -11,3 +11,5 @@ def test_smrlv12_ap242_reference_is_complete_and_convertible():
     assert result["valid"] is True
     assert len(result["assets"]["mim_long_form"]["sha256"]) == 64
     assert result["conversion"]["statistics"]["entity_count"] >= 2000
+    assert result["xsd_conversions"]["bom_xsd"]["adapter"] == "ap242-business-object-model-xsd"
+    assert result["xsd_conversions"]["domain_xsd"]["adapter"] == "ap242-domain-model-xsd"

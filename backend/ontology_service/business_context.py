@@ -2,23 +2,36 @@
 from __future__ import annotations
 
 import re
+import json
+import tempfile
 from pathlib import Path
 from typing import Any
 
 from semantica.context import ContextGraph
+from backend.mesh_store import PostgresRegistry
 
 
 _ID = re.compile(r"^[A-Za-z][A-Za-z0-9._:/#-]{0,255}$")
 
 
 class BusinessContextService:
-    """Own the domain context graph, not a second hand-built graph engine."""
+    """Own Semantica ContextGraph state in PostgreSQL, not local JSON files."""
+    _STATE_KEY = "context_graph"
 
-    def __init__(self, root: Path) -> None:
-        self.path = root / "business_context_graph.json"
+    def __init__(self, root: Path, registry: Any | None = None) -> None:
+        self.registry = registry or PostgresRegistry("ontology_business_context")
         self.graph = ContextGraph(advanced_analytics=True)
-        if self.path.exists():
-            self.graph.load_from_file(self.path)
+        state = self.registry.get(self._STATE_KEY)
+        legacy_path = root / "business_context_graph.json"
+        if state is None and legacy_path.is_file():
+            try:
+                state = json.loads(legacy_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise RuntimeError(f"Legacy business context is unreadable: {exc}") from exc
+            if isinstance(state, dict):
+                self.registry.put(self._STATE_KEY, state)
+        if state:
+            self._load(state)
 
     def upsert(self, payload: dict[str, Any]) -> dict[str, Any]:
         nodes = list(payload.get("nodes") or [])
@@ -40,7 +53,7 @@ class BusinessContextService:
                 "context": self.summary()}
 
     def summary(self) -> dict[str, Any]:
-        return {"engine": "Semantica ContextGraph", "persistence": str(self.path), **self.graph.stats()}
+        return {"engine": "Semantica ContextGraph", "persistence": "postgres", **self.graph.stats()}
 
     def get(self, object_id: str, hops: int = 2, limit: int = 200) -> dict[str, Any]:
         self._validate_id(object_id)
@@ -63,9 +76,22 @@ class BusinessContextService:
         return {"query": query, "results": self.graph.query(query, limit=max(1, min(limit, 200)))}
 
     def _save(self) -> None:
-        temporary = self.path.with_suffix(".tmp")
-        self.graph.save_to_file(temporary)
-        temporary.replace(self.path)
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as stream:
+            temporary = Path(stream.name)
+        try:
+            self.graph.save_to_file(temporary)
+            self.registry.put(self._STATE_KEY, json.loads(temporary.read_text(encoding="utf-8")))
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def _load(self, state: dict[str, Any]) -> None:
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as stream:
+            json.dump(state, stream)
+            temporary = Path(stream.name)
+        try:
+            self.graph.load_from_file(temporary)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     @staticmethod
     def _validate_id(value: str) -> None:

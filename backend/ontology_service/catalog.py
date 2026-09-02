@@ -67,6 +67,73 @@ class OntologyCatalog:
         (artifact_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
         return metadata
 
+    def adopt_legacy(
+        self,
+        *,
+        ontology_id: str,
+        content: bytes,
+        filename: str,
+        ontology_name: str,
+        prefix: str,
+        description: str = "",
+        extra_metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Adopt a legacy-ingestion artifact without changing its stable ID.
+
+        The operation is additive and idempotent: the original ingestion
+        record remains available for rollback while the native catalog becomes
+        the canonical discovery boundary.
+        """
+        stable_id = _safe_token(ontology_id, field="ontology_id")
+        existing = self.get(stable_id)
+        if not content:
+            raise ValueError("A legacy ontology artifact is required")
+        normalized_prefix = _safe_token(prefix, field="prefix")
+        safe_filename = Path(filename or "ontology.artifact").name
+        if existing is not None:
+            # Early migrations did not preserve the original suffix.  Repair
+            # that metadata idempotently so catalog consumers can negotiate
+            # the correct artifact media type.
+            if existing.get("source") != "legacy_ingestion_migration" or existing.get("original_filename") == safe_filename:
+                return existing
+            artifact_dir = self.root / stable_id
+            artifact_path = artifact_dir / safe_filename
+            artifact_path.write_bytes(content)
+            shared_artifact = artifact_store.ingest(
+                artifact_path,
+                kind="ontology",
+                media_type="text/turtle" if artifact_path.suffix.lower() == ".ttl" else "application/octet-stream",
+                provenance={"ontology_id": stable_id, "source": "legacy_ingestion_migration"},
+            )
+            existing.update({"original_filename": safe_filename, "artifact_path": str(artifact_path), "artifact_id": shared_artifact["artifact_id"]})
+            (artifact_dir / "metadata.json").write_text(json.dumps(existing, indent=2), encoding="utf-8")
+            return existing
+        artifact_dir = self.root / stable_id
+        artifact_dir.mkdir(parents=True, exist_ok=False)
+        artifact_path = artifact_dir / safe_filename
+        artifact_path.write_bytes(content)
+        shared_artifact = artifact_store.ingest(
+            artifact_path,
+            kind="ontology",
+            media_type="text/turtle" if artifact_path.suffix.lower() == ".ttl" else "application/octet-stream",
+            provenance={"ontology_id": stable_id, "source": "legacy_ingestion_migration"},
+        )
+        metadata = {
+            "ontology_id": stable_id,
+            "ontology_name": str(ontology_name or normalized_prefix),
+            "prefix": normalized_prefix,
+            "description": str(description or ""),
+            "source": "legacy_ingestion_migration",
+            "original_filename": safe_filename,
+            "artifact_path": str(artifact_path),
+            "artifact_id": shared_artifact["artifact_id"],
+            "created_at": _now(),
+            "status": "registered",
+        }
+        metadata.update(extra_metadata or {})
+        (artifact_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        return metadata
+
     def get(self, ontology_id: str) -> dict[str, Any] | None:
         metadata_path = self.root / ontology_id / "metadata.json"
         if not metadata_path.exists():
@@ -82,10 +149,21 @@ class OntologyCatalog:
             raise ValueError(f"Ontology artifact is missing: {ontology_id}")
         return metadata, path.read_bytes()
 
+    def mark_superseded(self, *, ontology_id: str, successor_id: str) -> dict[str, Any]:
+        """Retire an accidental or replaced catalog version without deleting it."""
+        metadata = self.get(ontology_id)
+        if metadata is None:
+            raise ValueError(f"Ontology artifact not found: {ontology_id}")
+        metadata.update({"status": "superseded", "superseded_by": _safe_token(successor_id, field="successor_id"), "superseded_at": _now()})
+        (self.root / ontology_id / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        return metadata
+
     def list(self) -> list[dict[str, Any]]:
         entries = []
         for metadata_path in self.root.glob("*/metadata.json"):
-            entries.append(json.loads(metadata_path.read_text(encoding="utf-8")))
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if metadata.get("status") != "superseded":
+                entries.append(metadata)
         return sorted(entries, key=lambda item: item["created_at"], reverse=True)
 
 

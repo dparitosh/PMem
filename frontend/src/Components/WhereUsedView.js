@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import '../App.css';
 import { API, buildUrl } from '../config';
 import { apiClient, API_METHODS } from '../services/apiClient';
+import { graphApi } from '../services/graphApi';
 import { useSchema } from '../SchemaContext';
 import DataGridWidget from '../widgets/DataGridWidget';
 import logger from '../utils/logger';
@@ -210,7 +211,7 @@ const WhereUsedView = ({
             setGraphLoading(true);
             setGraphError('');
             try {
-                const response = await apiClient.get(buildUrl(API.graph.graphView), { params: { limit: 1200 }, signal: controller.signal });
+                const response = await graphApi.getOverview(1200, controller.signal);
                 const normalized = normalizeGraphDatasetShared(response.data);
                 if (!cancelled) setFallbackGraphData(normalized);
             } catch (error) {
@@ -230,7 +231,7 @@ const WhereUsedView = ({
         expansionAbortRef.current?.abort();
     }, []);
     
-    // Unified search using same backend logic as GraphHEB (POST /graphfilter)
+    // Search the bounded standalone graph projection used by Graph Explorer.
     const handleSearch = async () => {
         const term = searchTerm.trim();
         if (!term) return;
@@ -240,21 +241,7 @@ const WhereUsedView = ({
         setIsSearching(true);
         setSearchError(null);
         try {
-            const response = await apiClient.post(buildUrl(API.graph.graphfilter), { search: term.toLowerCase() }, { signal: controller.signal });
-            if (controller.signal.aborted) return;
-            const records = response.data?.results || [];
-            const nodesMap = new Map();
-
-            records.forEach(record => {
-                [record['n'], record['m']].forEach((rawNode) => {
-                    const hydrated = hydrateGraphNode(rawNode);
-                    if (!hydrated?.elementId) return;
-                    const existing = nodesMap.get(hydrated.elementId);
-                    nodesMap.set(hydrated.elementId, existing ? { ...existing, ...hydrated } : hydrated);
-                });
-            });
-
-            const nodes = Array.from(nodesMap.values())
+            const nodes = (effectiveGraphData?.nodes || [])
                 .map((node) => ({ node, score: scoreNodeMatch(node, term) }))
                 .filter(({ score }) => score > 0)
                 .sort((a, b) => b.score - a.score)
@@ -327,7 +314,7 @@ const WhereUsedView = ({
                 visited.add(currentNodeId);
 
                 try {
-                    const resp = await API_METHODS.graph.traverse(currentNodeId, { signal: controller.signal });
+                    const resp = await graphApi.getTraversal(currentNodeId, 1, controller.signal);
                     if (controller.signal.aborted) return;
                     const records = resp.data?.results || [];
                     const normalizedTraversal = records.length ? null : normalizeGraphDatasetShared(resp.data);

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import tempfile
+import dataclasses
 import json
+import uuid
 import os
 import re
 from datetime import datetime, timezone
@@ -12,10 +14,17 @@ from urllib.parse import quote
 
 from rdflib import Graph, Literal, Namespace, RDF, RDFS, URIRef
 from rdflib.namespace import OWL, XSD
-from semantica import __version__ as SEMANTICA_VERSION
-from semantica.ontology import OntologyEngine
-from semantica.ontology import NamespaceManager
-from semantica.reasoning import Reasoner
+from backend.mesh_store import PostgresRegistry
+
+try:
+    from semantica import __version__ as SEMANTICA_VERSION
+    from semantica.ontology import OntologyEngine
+    from semantica.ontology import NamespaceManager
+    from semantica.reasoning import Reasoner
+except ModuleNotFoundError as exc:  # pragma: no cover - startup guard
+    raise RuntimeError(
+        "Semantica is required for the ontology service. Install backend/requirements.txt before starting DEPO."
+    ) from exc
 
 
 def _result_dict(value: Any) -> dict[str, Any]:
@@ -24,6 +33,21 @@ def _result_dict(value: Any) -> dict[str, Any]:
     if hasattr(value, "__dict__"):
         return dict(value.__dict__)
     return {"value": value}
+
+
+def _json_value(value: Any) -> Any:
+    """Convert Semantica model values into the JSONB control-plane contract."""
+    if hasattr(value, "model_dump"):
+        return _json_value(value.model_dump())
+    if dataclasses.is_dataclass(value):
+        return _json_value(dataclasses.asdict(value))
+    if isinstance(value, dict):
+        return {str(key): _json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_value(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
 
 
 class SemanticaAdapter:
@@ -108,49 +132,81 @@ class SemanticaAdapter:
 
 
 class SemanticWorkspace:
-    """File-backed semantic control plane for versions and cross-ontology links."""
-    def __init__(self, root: Path | None = None) -> None:
+    """PostgreSQL-backed semantic control plane for versions and cross-ontology links."""
+    _STATE_KEY = "workspace"
+    _ONTOLOGY_PREFIX = "ontology:"
+    _ALIGNMENT_PREFIX = "alignment:"
+
+    def __init__(self, root: Path | None = None, registry: Any | None = None) -> None:
         self.engine = OntologyEngine(base_uri="https://depo.local/ontology/", min_occurrences=1)
         self.namespaces = NamespaceManager(base_uri="https://depo.local/ontology/")
-        configured = os.getenv("ONTOLOGY_SERVICE_STORAGE")
-        self.root = root or (Path(configured) if configured else Path(__file__).resolve().parents[2] / "data" / "ontology_service")
-        self.workspace_path = self.root / "semantic_workspace.json"
-        self.root.mkdir(parents=True, exist_ok=True)
-        state = self._load()
-        self.ontologies: dict[str, dict[str, Any]] = state["ontologies"]
-        self.alignments: list[dict[str, str]] = state["alignments"]
+        # root remains a compatibility argument for callers that use it as a
+        # Semantica artifact root; persistent control-plane state is PostgreSQL.
+        self.root = root or Path(os.getenv("ONTOLOGY_SERVICE_STORAGE") or Path(__file__).resolve().parents[2] / "data" / "ontology_service")
+        self.registry = registry or PostgresRegistry("ontology_semantic_workspace")
+        self.legacy_workspace_path = self.root / "semantic_workspace.json"
+        self.ontologies: dict[str, dict[str, Any]] = {}
+        self.alignments: list[dict[str, str]] = []
+        self._loaded = False
 
-    def _load(self) -> dict[str, Any]:
-        if not self.workspace_path.exists():
-            return {"ontologies": {}, "alignments": []}
-        try:
-            state = json.loads(self.workspace_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise RuntimeError(f"Semantic workspace is unreadable: {exc}") from exc
-        if not isinstance(state, dict):
+    def _ensure_loaded(self) -> None:
+        if self._loaded:
+            return
+        self._migrate_legacy_state()
+        self._refresh()
+        self._loaded = True
+
+    def _migrate_legacy_state(self) -> None:
+        state = self.registry.get(self._STATE_KEY)
+        if state is None and self.legacy_workspace_path.is_file():
+            try:
+                candidate = json.loads(self.legacy_workspace_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise RuntimeError(f"Legacy semantic workspace is unreadable: {exc}") from exc
+            if isinstance(candidate, dict):
+                self.registry.put(self._STATE_KEY, _json_value(candidate))
+                state = candidate
+        if state is not None and not isinstance(state, dict):
             raise RuntimeError("Semantic workspace has an invalid structure")
-        return {
-            "ontologies": state.get("ontologies", {}) if isinstance(state.get("ontologies", {}), dict) else {},
-            "alignments": state.get("alignments", []) if isinstance(state.get("alignments", []), list) else [],
-        }
+        if not isinstance(state, dict) or state.get("migrated"):
+            return
+        values: dict[str, dict[str, Any]] = {}
+        for version_id, ontology in state.get("ontologies", {}).items():
+            if isinstance(ontology, dict):
+                values[f"{self._ONTOLOGY_PREFIX}{version_id}"] = _json_value(ontology)
+        for index, alignment in enumerate(state.get("alignments", [])):
+            if isinstance(alignment, dict):
+                values[f"{self._ALIGNMENT_PREFIX}{uuid.uuid4().hex}"] = _json_value(alignment)
+        if values:
+            self.registry.put_many(values)
+        self.registry.put(self._STATE_KEY, {"migrated": True})
 
-    def _save(self) -> None:
-        payload = {"ontologies": self.ontologies, "alignments": self.alignments}
-        temporary = self.workspace_path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-        temporary.replace(self.workspace_path)
+    def _refresh(self) -> None:
+        values = self.registry.all()
+        self.ontologies = {
+            key.removeprefix(self._ONTOLOGY_PREFIX): value
+            for key, value in values.items()
+            if key.startswith(self._ONTOLOGY_PREFIX) and isinstance(value, dict)
+        }
+        self.alignments = [
+            value for key, value in values.items()
+            if key.startswith(self._ALIGNMENT_PREFIX) and isinstance(value, dict)
+        ]
 
     def store(self, ontology: dict[str, Any]) -> str:
+        self._ensure_loaded()
         name = re.sub(r"[^A-Za-z0-9_-]+", "-", str(ontology.get("name", "ontology"))).strip("-").lower() or "ontology"
-        version_id = f"{name}:{len(self.ontologies) + 1}"
-        self.ontologies[version_id] = ontology
-        self._save()
+        version_id = f"{name}:{uuid.uuid4().hex}"
+        self.registry.put(f"{self._ONTOLOGY_PREFIX}{version_id}", _json_value(ontology))
+        self._refresh()
         return version_id
 
     def get(self, version_id: str) -> dict[str, Any]:
-        if version_id not in self.ontologies:
+        self._ensure_loaded()
+        ontology = self.registry.get(f"{self._ONTOLOGY_PREFIX}{version_id}")
+        if ontology is None:
             raise KeyError(f"Unknown ontology version '{version_id}'")
-        return self.ontologies[version_id]
+        return ontology
 
     def validate_graph(self, *, data_graph: str, ontology: dict[str, Any]) -> dict[str, Any]:
         return _result_dict(self.engine.validate_graph(data_graph, ontology=ontology, data_graph_format="turtle"))
@@ -160,13 +216,18 @@ class SemanticWorkspace:
         return [_result_dict(item) for item in results]
 
     def align(self, *, source_uri: str, target_uri: str, predicate: str) -> dict[str, str]:
+        self._ensure_loaded()
         record = {
             "source_uri": source_uri, "target_uri": target_uri, "predicate": predicate,
-            "storage": "semantic_workspace", "created_at": datetime.now(timezone.utc).isoformat(),
+            "storage": "postgres", "created_at": datetime.now(timezone.utc).isoformat(),
         }
-        self.alignments.append(record)
-        self._save()
+        self.registry.put(f"{self._ALIGNMENT_PREFIX}{uuid.uuid4().hex}", record)
+        self._refresh()
         return record
+
+    def list_alignments(self) -> list[dict[str, str]]:
+        self._ensure_loaded()
+        return list(self.alignments)
 
 
 semantica = SemanticaAdapter()

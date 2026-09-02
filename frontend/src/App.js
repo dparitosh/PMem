@@ -6,12 +6,10 @@ import LandingPage from './Components/LandingPage';
 import { SchemaProvider } from './SchemaContext';
 import { OntologyProvider } from './contexts/OntologyContext';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowRight } from 'lucide-react';
-import { SiemensButton } from './ui/SiemensPrimitives';
 import AppShell from './app/AppShell';
 import AppPageOutlet from './app/AppPageOutlet';
 import { normalizePage } from './app/navigation';
-import { API_METHODS } from './services/apiClient';
+import { platformAPI } from './services/apiClient';
 
 const Chatbot = lazy(() => import('./Components/Chatbot'));
 
@@ -112,7 +110,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (page === 'home') return undefined;
     let active = true;
     let inFlight = false;
     let currentController = null;
@@ -129,28 +126,11 @@ function App() {
       const controller = new AbortController();
       currentController = controller;
       try {
-        const healthChecks = [
-          () => API_METHODS.health.ready({ signal: controller.signal, timeout: 5000 }),
-          () => API_METHODS.health.check({ signal: controller.signal, timeout: 5000 }),
-          () => API_METHODS.ontology.listRegistered({ signal: controller.signal, timeout: 8000 }),
-        ];
-        let lastError = null;
-        let healthy = false;
-        for (const runCheck of healthChecks) {
-          try {
-            await runCheck();
-            healthy = true;
-            break;
-          } catch (error) {
-            if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') {
-              throw error;
-            }
-            lastError = error;
-          }
-        }
-        if (!healthy && lastError) throw lastError;
+        const health = await platformAPI.coreHealth({ signal: controller.signal, timeout: 5000 });
+        const onlineCount = Object.values(health).filter(Boolean).length;
+        if (!onlineCount) throw new Error('All required DEPO services are unavailable.');
         if (active) {
-          setServiceStatus('online');
+          setServiceStatus(onlineCount === Object.keys(health).length ? 'online' : 'degraded');
           retryDelayMs = 30000;
           consecutiveFailures = 0;
         }
@@ -177,10 +157,6 @@ function App() {
       currentController?.abort();
     };
   }, [page]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') window.dispatchEvent(new Event('resize'));
-  }, [activePage, showChat]);
 
   useEffect(() => {
     if (!showChat || typeof window === 'undefined') return undefined;
@@ -232,28 +208,9 @@ function App() {
     <ErrorBoundary>
       <OntologyProvider>
         <SchemaProvider>
-          <div hidden={page !== 'home'}>
-            <div className="depo-landing-shell">
-              <header className="depo-landing-shell__header">
-                <div>
-                  <h1 className="depo-landing-shell__title">
-                    DEPO Digital Thread Platform
-                  </h1>
-                  <p className="depo-landing-shell__subtitle">Ontology governance, traceability, and model intelligence in one workspace.</p>
-                </div>
-                <SiemensButton onClick={() => handleNavigate('import')} variant="primary" className="depo-landing-shell__action">
-                  <span>Open platform</span>
-                  <ArrowRight size={14} />
-                </SiemensButton>
-              </header>
-              <main aria-label="Platform overview" className="depo-landing-shell__content">
-                {page === 'home' && <LandingPage setChatResults={setChatResults} onNavigate={handleNavigate} />}
-              </main>
-            </div>
-          </div>
-          <div hidden={page === 'home'} style={{ minHeight: '100dvh' }}>
+          <div style={{ minHeight: '100dvh' }}>
             <AppShell
-            activePage={activePage}
+            activePage={page === 'home' ? 'home' : activePage}
             onPageChange={handleNavigate}
             onHome={() => {
               pushPageLocation('home');
@@ -276,17 +233,21 @@ function App() {
               </ErrorBoundary>
             )}
             >
-              <AppPageOutlet
-                page={activePage}
-                pageContext={{
-                  data,
-                  searchResults,
-                  chatResults,
-                  graphProps,
-                  onNavigate: handleNavigate,
-                  onSchemaCleaned: handleSchemaCleaned,
-                }}
-              />
+              {page === 'home' ? (
+                <LandingPage setChatResults={setChatResults} onNavigate={handleNavigate} />
+              ) : (
+                <AppPageOutlet
+                  page={activePage}
+                  pageContext={{
+                    data,
+                    searchResults,
+                    chatResults,
+                    graphProps,
+                    onNavigate: handleNavigate,
+                    onSchemaCleaned: handleSchemaCleaned,
+                  }}
+                />
+              )}
             </AppShell>
           </div>
         </SchemaProvider>

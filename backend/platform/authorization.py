@@ -1,9 +1,4 @@
-"""Gateway-verified approval identity.
-
-In production APIM/Entra mode, the gateway injects the signed-principal header
-after validating the bearer token.  Development mode deliberately retains the
-token mechanism so local service tests do not need an identity provider.
-"""
+"""Gateway and token-based approval identity with loopback-only demo bypass."""
 from __future__ import annotations
 
 import base64
@@ -15,7 +10,13 @@ from fastapi import HTTPException, Request
 
 
 def approval_identity(request: Request, payload: dict[str, Any], *, token_env: str) -> str:
-    if os.getenv("AUTH_MODE", "development").lower() != "entra":
+    mode = os.getenv("AUTH_MODE", "token").lower()
+    if mode == "disabled":
+        client_host = request.client.host if request.client else ""
+        if os.getenv("DEPO_ALLOW_INSECURE_LOCAL_AUTH", "").lower() != "true" or client_host not in {"127.0.0.1", "::1"}:
+            raise HTTPException(403, "Disabled authentication is allowed only for an explicitly enabled loopback-only process")
+        return str(payload.get("approved_by") or "local-development")
+    if mode != "entra":
         expected = os.getenv(token_env, "")
         if expected and payload.get("approved_by") and payload.get("approval_token") == expected:
             return str(payload["approved_by"])

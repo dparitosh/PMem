@@ -6,6 +6,7 @@ import agenticAPI from '../services/agenticApi';
 import KpiStrip from '../widgets/KpiStrip';
 import RegistryWidget from '../widgets/RegistryWidget';
 import { widgetCardStyle, widgetColors } from '../widgets/widgetStyles';
+import ServiceIntegrationPanel from '../Components/ServiceIntegrationPanel';
 
 const routeColumns = [
   { field: 'method', width: 100 },
@@ -251,6 +252,8 @@ export default function AdminPage({ onSchemaCleaned }) {
           {error}
         </div>
       )}
+
+      <ServiceIntegrationPanel />
 
       <KpiStrip
         items={[

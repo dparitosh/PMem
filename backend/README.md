@@ -38,7 +38,9 @@ The backend can also run as four HTTP services without Redis or Celery:
 
 ```powershell
 $env:NEO4J_PASS = "<your Neo4j password>"
-docker compose -f compose.services.yml up --build
+# Configure PostgreSQL once (no Docker runtime):
+$env:DEPO_DATABASE_URL = "postgresql://<user>:<password>@<host>:<port>/<database>"
+python -m uvicorn backend.data_catalog_service.app:app --host 127.0.0.1 --port 8016
 ```
 
 | Service | Port | Responsibility |

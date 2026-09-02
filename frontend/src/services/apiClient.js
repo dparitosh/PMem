@@ -5,7 +5,7 @@
  */
 
 import axios from 'axios';
-import { config, API, buildUrl, replaceParams } from '../config';
+import { config, API, buildSemanticServiceUrl, buildUrl, replaceParams } from '../config';
 import logger from '../utils/logger';
 import agenticAPI from './agenticApi';
 
@@ -79,13 +79,30 @@ function isTransientNetworkError(error) {
   );
 }
 
+function isStandaloneServiceRequest(url) {
+  if (!url || typeof url !== 'string') return false;
+  return Object.values(config.semanticServiceUrls || {}).some((serviceUrl) =>
+    serviceUrl && (url === serviceUrl || url.startsWith(`${serviceUrl}/`))
+  );
+}
+
 /**
  * Request interceptor - Log requests in debug mode
  */
 apiClient.interceptors.request.use(
   (requestConfig) => {
+    // Older feature modules pass a relative path directly to Axios.  Resolve
+    // it here as well as in buildUrl() so every caller reaches its owning
+    // microservice during the monolith-to-services transition.
+    if (typeof requestConfig.url === 'string' && requestConfig.url.startsWith('/')) {
+      requestConfig.url = buildUrl(requestConfig.url);
+      requestConfig.baseURL = undefined;
+    }
     const sessionId = getClientSessionId();
-    if (sessionId) {
+    // X-Session-ID belongs to the legacy chat/aggregate service.  Sending it
+    // to independent OpenAPI services creates an unnecessary CORS preflight
+    // and violates their intentionally narrow request-header contract.
+    if (sessionId && !isStandaloneServiceRequest(requestConfig.url)) {
       requestConfig.headers = requestConfig.headers || {};
       requestConfig.headers['X-Session-ID'] = sessionId;
     }
@@ -199,21 +216,6 @@ export const healthAPI = {
   ontologiesAvailable: () => apiClient.get(buildUrl(API.health.ontologiesAvailable)),
 };
 
-// ========== GRAPH ENDPOINTS ==========
-export const graphAPI = {
-  getGraph: () => apiClient.get(buildUrl(API.graph.graphvis)),
-  filterGraph: (searchTerm) => 
-    apiClient.post(buildUrl(API.graph.graphfilter), { search: searchTerm }),
-  filterMulti: (filters) => 
-    apiClient.post(buildUrl(API.graph.graphfilterMulti), filters),
-  traverse: (nodeId, options = {}) =>
-    apiClient.get(buildUrl(replaceParams(API.graph.graphtraverseNode, { node_id: nodeId })), options),
-  getSchemaGraph: () => apiClient.get(buildUrl(API.graph.schemaGraph)),
-  getInstanceGraph: () => apiClient.get(buildUrl(API.graph.instanceGraph)),
-  getOntologyInstances: (ontologyId, params = {}) =>
-    apiClient.get(buildUrl(replaceParams(API.graph.ontologyInstances, { ontology: ontologyId })), { params }),
-};
-
 // ========== SCHEMA ENDPOINTS ==========
 export const schemaAPI = {
   getSchema: () => apiClient.get(buildUrl(API.schema.schema)),
@@ -318,6 +320,42 @@ export const ontologyAPI = {
   get3dxmlStatus: (taskId) =>
     apiClient.get(buildUrl(replaceParams(API.ontology.threeDxmlStatus, { task_id: taskId }))),
   get3dxmlFormats: () => apiClient.get(buildUrl(API.ontology.threeDxmlFormats)),
+};
+
+// Health checks use the published contracts of the independently deployable
+// services.  They intentionally do not rely on the retired port-8000
+// aggregate API, so the shell can accurately report a direct or APIM-backed
+// deployment.
+const SERVICE_HEALTH_ENDPOINTS = Object.freeze({
+  qif: '/api/v1/qif/health',
+  ontology: '/api/v1/ontologies/health',
+  agentic: '/healthz',
+  graph: '/api/v1/graph/health',
+  ingestion: '/api/v1/ingestion/health',
+  oslc: '/api/v1/oslc/health',
+  catalog: '/healthz',
+  dataProducts: '/healthz',
+});
+
+function isUsableHealthResponse(response) {
+  const status = String(response?.data?.status || '').toLowerCase();
+  return !['not_configured', 'offline', 'unavailable', 'error', 'failed'].includes(status);
+}
+
+export const platformAPI = {
+  health: (service, options = {}) => {
+    const path = SERVICE_HEALTH_ENDPOINTS[service];
+    if (!path) throw new Error(`Unknown DEPO service '${service}'`);
+    return apiClient.get(buildSemanticServiceUrl(service, path), options);
+  },
+  coreHealth: async (options = {}) => {
+    const services = ['ontology', 'graph', 'ingestion', 'qif'];
+    const checks = await Promise.allSettled(services.map((service) => platformAPI.health(service, options)));
+    return services.reduce((result, service, index) => {
+      result[service] = checks[index].status === 'fulfilled' && isUsableHealthResponse(checks[index].value);
+      return result;
+    }, {});
+  },
 };
 
 export const qifAPI = {
@@ -537,7 +575,6 @@ export const recommendationsAPI = {
  */
 export const API_METHODS = {
   health: healthAPI,
-  graph: graphAPI,
   schema: schemaAPI,
   chat: chatAPI,
   ontology: ontologyAPI,

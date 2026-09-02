@@ -1,13 +1,17 @@
 """Standalone ingestion service retaining the existing SPA contract."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import Response
 
 from .profiles import profiles
 from .workflow import workflow
 from .neo4j_writer import writer
 from .schema_conversion import converter
 from .engineering_workflow import workflow as engineering_workflow
+from .ap242_mbd import ap242_mbd
 from .tabular import MAX_IMPORT_ROWS, MAX_UPLOAD_BYTES, constraint_query, index_query, load_table, node_query, records, relationship_query
 import json
 import httpx
@@ -26,6 +30,28 @@ def graph_store_status() -> dict:
     return writer.status()
 
 
+@router.get("/import/formats", summary="List tracked import formats supported by the ingestion boundary")
+def import_formats() -> dict:
+    return {
+        "formats": [
+            "csv", "json", "jsonld", "xml", "xsd", "xmi", "reqif", "step", "stp", "stpx",
+            "ttl", "owl", "rdf", "plmxml", "3dxml",
+        ],
+        "service": "ingestion",
+    }
+
+
+@router.get("/import/tasks", summary="List retained import tasks")
+def import_tasks() -> dict:
+    """Expose persisted task history used by Import and Ontology Junction."""
+    try:
+        from backend.Services.unified_data_import import UnifiedDataImportService
+        tasks = UnifiedDataImportService.list_tasks()
+        return {"total_tasks": len(tasks), "tasks": tasks}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Import task registry is unavailable: {type(exc).__name__}") from exc
+
+
 @router.post("/schema-conversions/inspect", summary="Convert EXPRESS, STEP/STP/STPX, XMI, or XSD to a normalized Turtle contract")
 async def inspect_engineering_schema(file: UploadFile = File(...)) -> dict:
     content = await file.read()
@@ -35,6 +61,45 @@ async def inspect_engineering_schema(file: UploadFile = File(...)) -> dict:
         return converter.convert(filename=file.filename or "source", content=content)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/ap242/inspect", summary="Inspect AP242 XSD schemas, EXPRESS schemas, or STEP instance files")
+async def inspect_ap242(file: UploadFile = File(...)) -> dict:
+    """Use explicit AP242 adapters; schema publication remains governed and opt-in."""
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+    try:
+        result = converter.convert(filename=file.filename or "source", content=content)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result.get("standard") != "ap242":
+        raise HTTPException(status_code=422, detail="The uploaded file is not identifiable as an AP242 XSD, EXPRESS, or STEP representation")
+    return result
+
+
+@router.post("/ap242/mbd/extract", summary="Extract AP242 MBD product, geometry, PMI, and presentation mappings")
+async def extract_ap242_mbd(file: UploadFile = File(...)) -> dict:
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+    try:
+        return ap242_mbd.extract(filename=file.filename or "source.stp", content=content)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/ap242/mbd/export-part28", summary="Losslessly export an AP242 Part-28 XML source")
+async def export_ap242_part28(file: UploadFile = File(...)) -> Response:
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+    try:
+        exported = ap242_mbd.export_part28(filename=file.filename or "source.stpx", content=content)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    name = Path(file.filename or "ap242_exchange.stpx").stem + ".stpx"
+    return Response(content=exported, media_type="application/xml", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @router.post("/engineering-workflows", summary="Convert and register an engineering ontology through service boundaries")

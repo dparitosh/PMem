@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import StreamingResponse
 from backend.platform.authorization import approval_identity
-from backend.mesh_store import SqliteRegistry
+from backend.mesh_store import PostgresRegistry
 
 router = APIRouter(prefix="/api/v1", tags=["agentic-control-plane"])
 
@@ -26,7 +28,7 @@ class Catalog:
         raise ValueError(f"Unknown {kind[:-1]}: {identifier}")
 
 catalog = Catalog()
-workflow_store = SqliteRegistry(Path(os.getenv("AGENTIC_WORKFLOW_STORAGE", Path(__file__).resolve().parents[2] / "data" / "agentic")) / "workflow_runs")
+workflow_store = PostgresRegistry("agentic_workflow_runs")
 _services = {"ontology": "ONTOLOGY_SERVICE_URL", "graph": "GRAPH_SERVICE_URL", "ingestion": "INGESTION_SERVICE_URL", "oslc": "OSLC_SERVICE_URL", "qif": "QIF_SERVICE_URL", "catalog": "DATA_CATALOG_URL", "data_products": "DATA_PRODUCT_SERVICE_URL"}
 
 def _base(service: str) -> str:
@@ -47,6 +49,64 @@ def tools() -> dict: return {"tools": catalog.read()["tools"]}
 def mcp_servers() -> dict: return {"mcp_servers": catalog.read()["mcp_servers"]}
 @router.get("/workflows")
 def workflows() -> dict: return {"workflows": catalog.read()["workflows"]}
+
+
+@router.get("/workflows/options")
+def workflow_options() -> dict:
+    """Retain the SPA's semantic-workflow picker on the control-plane API."""
+    from backend.Services.workflow_registry import get_workflow_options
+    return {"workflows": get_workflow_options()}
+
+
+@router.post("/workflows/execute")
+def execute_semantic_workflow(payload: dict[str, Any]) -> dict:
+    """Execute a governed semantic workflow without routing through the legacy monolith."""
+    workflow_id = str(payload.get("workflow_id") or "").strip()
+    if not workflow_id:
+        raise HTTPException(status_code=422, detail="workflow_id is required")
+    try:
+        from backend.Services.semantic_workflow_service import SemanticWorkflowService
+        return SemanticWorkflowService.execute(workflow_id, dict(payload.get("payload") or {}))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+_COMPANION_PROMPTS = [
+    "Show MBSE to EBOM traceability for the Variable Speed Drive",
+    "Compare EBOM and MBOM for 5 HP MOTOR ASSEMBLY",
+    "Show the bill of process for MOTOR COVER",
+    "Show requirements linked to the Variable Speed Drive",
+    "Analyse change impact if ROTOR SHAFT tolerance is modified",
+]
+
+
+def _companion_response(message: str) -> str:
+    """Provide a bounded, available-first companion response until an approved LLM tool is configured."""
+    query = " ".join(str(message or "").split())
+    if not query:
+        return "Enter an engineering question to begin."
+    return (
+        f"I received: {query}.\\n\\n"
+        "The knowledge companion is connected to the DEPO agentic control plane. "
+        "For an evidence-backed result, select an ontology and inspect its relationships in Graph Explorer, "
+        "or run the relevant governed workflow from Import."
+    )
+
+
+@router.get("/chat/sample-queries")
+def companion_sample_queries() -> dict:
+    return {"queries": _COMPANION_PROMPTS, "data_available": True, "mode": "guided"}
+
+
+@router.post("/chat-stream")
+async def companion_stream(payload: dict[str, Any]) -> StreamingResponse:
+    answer = _companion_response(str(payload.get("message") or ""))
+
+    async def events():
+        yield f"data: {json.dumps({'token': answer})}\\n\\n"
+        yield "data: {\"done\": true}\\n\\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream")
 
 @router.post("/plans")
 def plan(payload: dict[str, Any]) -> dict:
@@ -197,3 +257,25 @@ async def validate_openapi_catalog() -> dict:
     except (ValueError, httpx.HTTPError) as exc:
         raise HTTPException(503, f"Unable to validate live OpenAPI contracts: {exc}") from exc
     return {"valid": not errors, "errors": errors, "services": sorted(documents)}
+
+
+@router.get("/code-audit", summary="Generate or read the bounded repository dependency graph")
+async def code_audit(refresh: bool = False) -> dict:
+    """Expose code-network analysis from the agentic control plane.
+
+    The audit is read-only and is deliberately kept with the extensible tool
+    catalog rather than the retired aggregate application.
+    """
+    try:
+        from tools.code_graph_audit import OUTPUT, audit
+
+        if refresh or not OUTPUT.exists():
+            report = await run_in_threadpool(audit)
+            OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+            OUTPUT.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+        else:
+            report = json.loads(OUTPUT.read_text(encoding="utf-8"))
+        report["generated_at"] = OUTPUT.stat().st_mtime
+        return report
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Code audit generation failed: {type(exc).__name__}") from exc

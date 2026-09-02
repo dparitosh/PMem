@@ -19,7 +19,7 @@ import {
   getLinkEndpointId,
 } from '../utils/graphUtils';
 import { buildUrl, replaceParams, API } from '../config';
-import { apiClient } from '../services/apiClient';
+import { apiClient, platformAPI } from '../services/apiClient';
 import { graphApi } from '../services/graphApi';
 import { buildTooltipHeader } from './tooltipBuilder';
 import GraphExplorerToolbar from './GraphExplorerToolbar';
@@ -930,38 +930,15 @@ const GraphHEB = ({
       if (!names || names.length === 0) return;
       setSearchLoading(true);
       try {
-        const response = await apiClient.post(API.graph.graphfilterMulti, { names }, { signal: abortController.signal });
+        const response = await graphApi.getOverview(DEFAULT_GRAPH_OVERVIEW_LIMIT, abortController.signal);
         if (!isComponentMountedRef.current) return;
-        const results = response.data?.results || [];
-
-        const nodesMap = new Map();
-        const rawLinks = new Map();
-
-        results.forEach(record => {
-          const n = record['n'];
-          const r = record['r'];
-          const m = record['m'];
-
-          if (n) {
-            const id = n.elementId;
-            if (!nodesMap.has(id)) {
-              nodesMap.set(id, { ...n.properties, elementId: id, labels: n.labels || ['Node'], label: n.labels?.[0] || 'Node' });
-            }
-          }
-          if (r && m) {
-            const mid = m.elementId;
-            if (!nodesMap.has(mid)) {
-              nodesMap.set(mid, { ...m.properties, elementId: mid, labels: m.labels || ['Node'], label: m.labels?.[0] || 'Node' });
-            }
-            if (!rawLinks.has(r.elementId)) {
-              rawLinks.set(r.elementId, { elementId: r.elementId, source: r.start, target: r.end, type: r.type, properties: r.properties });
-            }
-          }
-        });
-
-        const nodes = Array.from(nodesMap.values());
+        const overview = normalizeGraphDataset(response.data);
+        const requestedNames = new Set(names.map((name) => normalizeSearchTerm(name)).filter(Boolean));
+        const nodes = overview.nodes.filter((node) => requestedNames.has(normalizeSearchTerm(
+          node?.properties?.label || node?.label || node?.elementId
+        )));
         const nodeIds = new Set(nodes.map(n => n.elementId));
-        const links = Array.from(rawLinks.values()).filter((l) => {
+        const links = overview.links.filter((l) => {
           const sourceId = getLinkEndpointId(l.source);
           const targetId = getLinkEndpointId(l.target);
           return nodeIds.has(sourceId) && nodeIds.has(targetId);
@@ -1001,7 +978,7 @@ const GraphHEB = ({
       abortController.abort();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiClient]);
+  }, []);
 
   // ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ Chat Results ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ Graph: extract entity names from chat response and load/highlight them ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬
   React.useEffect(() => {
@@ -2225,9 +2202,9 @@ const getPrimaryNodeLabel = useCallback((d) => {
     const checkHealth = async () => {
       controller = new AbortController();
       try {
-        const response = await apiClient.get(API.graph.neo4jHealth, { signal: controller.signal });
+        const response = await platformAPI.health('graph', { signal: controller.signal });
         if (!active) return;
-        const connected = response.data?.neo4j_connected === true;
+        const connected = response.data?.status === 'ok';
         const previousConnected = lastNeo4jConnectedRef.current;
         lastNeo4jConnectedRef.current = connected;
 
@@ -2243,10 +2220,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         ) {
           // Connection was restored but graph is empty - trigger refresh
           logger.data('Neo4j reconnected, refreshing graph...');
-          const graphResponse = await apiClient.get(API.graph.graphView, {
-            params: { limit: DEFAULT_GRAPH_OVERVIEW_LIMIT },
-            signal: controller.signal,
-          });
+          const graphResponse = await graphApi.getOverview(DEFAULT_GRAPH_OVERVIEW_LIMIT, controller.signal);
           if (!active) return;
           const dataSet = normalizeGraphDataset(graphResponse.data);
           if (dataSet.nodes.length > 0) {
@@ -2495,21 +2469,13 @@ const getPrimaryNodeLabel = useCallback((d) => {
     setOntologyGraphMessage('');
     try {
       let response;
-      if (ontologyType === 'step' && partName && partName !== 'ALL') {
-        const endpointPath = replaceParams(API.graph.ontologyStepPart, { part: partName });
-        response = await apiClient.get(endpointPath);
-      } else if (ontologyType.endsWith('_instances')) {
-        // pattern: 'ap242_instances' -> call instances endpoint for 'ap242'
-        const base = ontologyType.replace(/_instances$/, '');
-        response = await apiClient.get(
-          buildUrl(replaceParams(API.graph.ontologyInstances, { ontology: base })),
-          { params: { include_rels: true, limit: 1000 } }
-        );
-      } else if (ontologyType === 'mbse_instances') {
-        response = await apiClient.get(API.graph.ontologyMbseInstances);
-      } else {
-        response = await graphApi.getOntologyGraph(ontologyType, DEFAULT_ONTOLOGY_VIEW_LIMIT);
-      }
+      // Instance and STEP views are projections of their ontology.  The
+      // standalone service provides one typed projection contract instead of
+      // several legacy, proxy-only graph endpoints.
+      const ontologyId = ontologyType.endsWith('_instances')
+        ? ontologyType.replace(/_instances$/, '')
+        : ontologyType;
+      response = await graphApi.getOntologyGraph(ontologyId, DEFAULT_ONTOLOGY_VIEW_LIMIT);
       const dataSet = normalizeGraphDataset(response.data);
       if (requestId !== graphScopeRequestIdRef.current) return;
       if (dataSet.nodes.length > 0) {

@@ -3,6 +3,28 @@
   box-sizing: border-box;
 }
 
+/* Official IX starter application frame overrides. */
+.depo-app-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 2px;
+  background: var(--theme-color-primary, #005f9e);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.depo-ix-content { position: relative; }
+.depo-ix-page { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.depo-ix-page__body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 2rem 2rem; }
+.depo-ix-drawer { position: absolute; top: 0; right: 0; bottom: 0; z-index: 10; width: min(360px, 100%); background: var(--theme-color-std-background, #ffffff); border-left: 1px solid var(--theme-color-weak-bdr, #d9e2ec); box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12); }
+.depo-ix-drawer[hidden] { display: none; }
+
+@media (max-width: 720px) {
+  .depo-ix-page__body { padding: 0 1rem 1rem; }
+}
+
 .depo-shell {
   --depo-ink-950: #111827;
   --depo-ink-900: #182332;
@@ -24,18 +46,14 @@
   display: grid;
   grid-template-columns: 208px minmax(0, 1fr);
   grid-template-rows: 64px minmax(0, 1fr);
-  background:
-    linear-gradient(135deg, rgba(0, 140, 149, 0.08), transparent 36%),
-    linear-gradient(180deg, #f5f7fa 0%, #eef3f7 100%);
+  background: var(--theme-color-std-background, #f4f6f8);
   color: var(--depo-slate-900);
   overflow: hidden;
 }
 
 .depo-rail {
   grid-row: 1 / span 2;
-  background:
-    linear-gradient(180deg, rgba(0, 114, 188, 0.12), transparent 26%),
-    linear-gradient(180deg, var(--depo-ink-950) 0%, var(--depo-ink-900) 56%, #202a31 100%);
+  background: #132b42;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
@@ -59,16 +77,15 @@
 .depo-rail__brand-mark {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: 4px;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  background:
-    linear-gradient(135deg, var(--depo-blue-600), var(--depo-teal-500) 58%, var(--depo-amber-500));
+  background: var(--theme-color-primary, #005f9e);
   color: #ffffff;
   font-size: 18px;
   font-weight: 900;
-  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.24);
+  box-shadow: none;
 }
 
 .depo-rail__brand-text {
@@ -109,7 +126,7 @@
   justify-content: flex-start;
   gap: 10px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 2px;
   background: transparent;
   color: #c6d3df;
   box-shadow: none;
@@ -137,28 +154,26 @@
 
 .depo-rail__button:hover,
 .depo-rail__button.is-active {
-  background: rgba(255, 255, 255, 0.94);
-  color: var(--depo-blue-700);
-  border-color: rgba(0, 140, 149, 0.24);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
+  background: var(--theme-color-primary, #005f9e);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .depo-rail__button:hover::part(button),
 .depo-rail__button.is-active::part(button) {
-  background: rgba(255, 255, 255, 0.94);
-  color: var(--depo-blue-700);
-  border-color: rgba(0, 140, 149, 0.24);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
+  background: var(--theme-color-primary, #005f9e);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .depo-rail__button.is-active {
-  box-shadow:
-    inset 3px 0 0 var(--depo-amber-500),
-    0 10px 22px rgba(0, 0, 0, 0.18);
+  box-shadow: inset 3px 0 0 #ffffff;
 }
 
 .depo-rail__button.is-active::part(button) {
-  box-shadow: inset 3px 0 0 var(--depo-amber-500), 0 10px 22px rgba(0, 0, 0, 0.18);
+  box-shadow: inset 3px 0 0 #ffffff;
 }
 
 .depo-rail__button:focus-visible,
@@ -176,9 +191,8 @@
   align-items: center;
   gap: 12px;
   padding: 10px 18px;
-  background: rgba(248, 251, 253, 0.92);
-  border-bottom: 1px solid rgba(139, 160, 184, 0.18);
-  backdrop-filter: blur(12px);
+  background: var(--theme-color-std-background, #ffffff);
+  border-bottom: 1px solid var(--theme-color-weak-bdr, #d9e2ec);
 }
 
 .depo-topbar__title {

@@ -41,7 +41,9 @@ def create_service_app(*, title: str, version: str, lifespan_hook: Callable[[], 
             async with lifespan_hook():
                 yield
 
+    # APIM registration is standardized on OpenAPI 3.0.x across all DEPO services.
     app = FastAPI(title=title, version=version, lifespan=lifespan)
+    app.openapi_version = "3.0.3"
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(
         CORSMiddleware,

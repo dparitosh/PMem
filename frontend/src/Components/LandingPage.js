@@ -1,18 +1,27 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { IxBadge, IxButton, IxCard, IxCardContent, IxCardTitle } from '@siemens/ix-react';
-import { healthAPI } from '../services/apiClient';
-import Chatbot from './Chatbot';
+import React, { lazy, Suspense, useState, useEffect, useCallback } from 'react';
+import { IxBadge, IxButton, IxCard, IxCardContent, IxCardTitle, IxCol, IxLayoutGrid } from '@siemens/ix-react';
+import { apiClient, platformAPI } from '../services/apiClient';
+import { buildUrl } from '../config';
+import { graphApi } from '../services/graphApi';
 import ErrorBoundary from './ErrorBoundary';
 import logger from '../utils/logger';
 import { UI_COLORS } from '../styles/uiTokens';
 import './LandingPage.css';
 
 const DASHBOARD_ENABLED = true;
+const Chatbot = lazy(() => import('./Chatbot'));
 
 // â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function fmt(n) {
   if (n == null) return '-';
   return Number(n).toLocaleString();
+}
+
+function ontologyTypeLabel(ontology) {
+  if (ontology.type) return ontology.type;
+  if (ontology.source === 'engineering-conversion:express') return 'EXPRESS schema';
+  if (ontology.source === 'legacy_ingestion_migration') return 'Ontology';
+  return 'Ontology';
 }
 
 function SectionTitle({ children }) {
@@ -40,7 +49,7 @@ function OntologyList({ ontologies, loading }) {
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
-          <tr style={{ background: UI_COLORS.primary, color: '#fff' }}>
+          <tr style={{ background: '#f4f6f8', color: '#252a2e', borderBottom: '1px solid #cfd8e3' }}>
             {['Name', 'Type', 'Uses', 'Last Used'].map(h => (
               <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600 }}>{h}</th>
             ))}
@@ -49,18 +58,20 @@ function OntologyList({ ontologies, loading }) {
         <tbody>
           {ontologies.map((o, i) => (
             <tr key={o.id || i} style={{ background: i % 2 === 0 ? '#f8f9fa' : '#fff' }}>
-              <td style={{ padding: '6px 10px', fontWeight: 600, color: UI_COLORS.primary }}>{o.name || o.id}</td>
+              <td style={{ padding: '6px 10px', fontWeight: 600, color: UI_COLORS.primary }}>
+                {o.name || o.ontology_name || o.prefix || o.id || o.ontology_id}
+              </td>
               <td style={{ padding: '6px 10px' }}>
                 <span style={{
                   background: UI_COLORS.primaryLight, color: UI_COLORS.primary,
                   borderRadius: 4, padding: '2px 7px', fontSize: 11, fontWeight: 600,
                 }}>
-                  {(o.type || 'ontology').toUpperCase()}
+                  {ontologyTypeLabel(o).toUpperCase()}
                 </span>
               </td>
               <td style={{ padding: '6px 10px', color: '#444' }}>{fmt(o.usageCount)}</td>
               <td style={{ padding: '6px 10px', color: '#777' }}>
-                {o.lastUsed ? new Date(o.lastUsed).toLocaleDateString() : '-'}
+                {o.lastUsed || o.created_at ? new Date(o.lastUsed || o.created_at).toLocaleDateString() : '-'}
               </td>
             </tr>
           ))}
@@ -72,7 +83,14 @@ function OntologyList({ ontologies, loading }) {
 
 // â”€â”€â”€ Metrics breakdown tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function BreakdownTable({ title, rows, colKey, colLabel = 'Count' }) {
-  if (!rows || !rows.length) return null;
+  if (!rows || !rows.length) {
+    return (
+      <div className="ix-landing-page__empty-state">
+        <strong>{title}</strong>
+        <span>No published graph data is available yet.</span>
+      </div>
+    );
+  }
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: '#333', marginBottom: 4 }}>{title}</div>
@@ -132,18 +150,30 @@ export default function LandingPage({ setChatResults, onNavigate }) {
     setMetricsLoading(true);
     setMetricsError('');
     try {
-      const response = await healthAPI.graphMetrics();
-      setMetrics(response?.data ?? {
-        total_nodes: 0,
-        total_relationships: 0,
-        node_labels: [],
-        relationship_types: [],
-        ontology_breakdown: [],
-        ontology_kpis: {},
+      const response = await platformAPI.health('graph');
+      const graphStatus = String(response?.data?.status || '').toLowerCase();
+      if (graphStatus === 'not_configured') {
+        setMetricsError('Graph storage is not configured. Configure the graph service to display graph metrics.');
+      }
+      const overviewResponse = await graphApi.getOverview(200);
+      const graph = overviewResponse?.data || {};
+      const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+      const relationships = Array.isArray(graph.relationships) ? graph.relationships : [];
+      const countBy = (values, getKey) => Object.entries(values.reduce((counts, value) => {
+        const key = getKey(value) || 'Unclassified';
+        counts[key] = (counts[key] || 0) + 1;
+        return counts;
+      }, {})).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count);
+      setMetrics({
+        total_nodes: graph.counts?.nodes ?? nodes.length,
+        total_relationships: graph.counts?.relationships ?? relationships.length,
+        node_labels: countBy(nodes, (node) => node.properties?.kind || node.labels?.[0]),
+        relationship_types: countBy(relationships, (relationship) => relationship.type),
+        ontology_breakdown: countBy(nodes, (node) => node.properties?.ontology_id).map(({ label, count }) => ({ ontology: label, node_count: count })),
+        truncated: Boolean(graph.view?.truncated),
       });
       setLastRefreshed(new Date());
     } catch (error) {
-      logger.error('Failed to load metrics:', error);
       setMetricsError('Graph metrics are currently unavailable.');
       setMetrics({
         total_nodes: 0,
@@ -162,8 +192,8 @@ export default function LandingPage({ setChatResults, onNavigate }) {
     setOntologiesLoading(true);
     setOntologiesError('');
     try {
-      const response = await healthAPI.ontologiesAvailable();
-      setOntologies(response?.data?.ontologies || []);
+      const response = await apiClient.get(buildUrl('/api/v1/ontologies'));
+      setOntologies(response?.data?.ontologies || response?.data?.items || []);
     } catch (error) {
       logger.error('Failed to load ontologies:', error);
       setOntologiesError('Ontology registry is currently unavailable.');
@@ -241,9 +271,10 @@ export default function LandingPage({ setChatResults, onNavigate }) {
         </div>
       </section>
 
-      <div className="ix-landing-page__workspace">
-        <div className="ix-landing-page__insights">
-          <IxCard variant="outline" className="ix-landing-page__card">
+      <IxLayoutGrid className="ix-landing-page__workspace" columns={12} gap="16" noMargin>
+        <IxCol size={4} sizeMd={12}>
+          <div className="ix-landing-page__insights">
+          <IxCard variant="outline" className="ix-landing-page__card ix-landing-page__registry">
             <IxCardTitle>Ontology registry</IxCardTitle>
             <IxCardContent>
               {ontologiesError ? <div role="alert" className="ix-landing-page__alert">{ontologiesError}<IxButton type="button" variant="tertiary" onClick={loadOntologies}>Retry</IxButton></div> : <OntologyList ontologies={ontologies} loading={ontologiesLoading} />}
@@ -252,17 +283,31 @@ export default function LandingPage({ setChatResults, onNavigate }) {
           <IxCard variant="outline" className="ix-landing-page__card ix-landing-page__profile">
             <IxCardTitle>Graph profile</IxCardTitle>
             <IxCardContent>
-              {metricsError ? <div role="alert" className="ix-landing-page__alert">{metricsError}<IxButton type="button" variant="tertiary" onClick={loadMetrics}>Retry</IxButton></div> : metricsLoading ? <div className="ix-landing-page__empty">Loading graph metrics…</div> : metrics?.ontology_breakdown?.length > 0 ? <BreakdownTable title="Nodes by ontology / source" rows={metrics.ontology_breakdown} colKey="ontology" colLabel="Nodes" /> : <BreakdownTable title="Top node labels" rows={metrics?.node_labels || []} colKey="label" colLabel="Count" />}
+              {metricsError ? <div role="alert" className="ix-landing-page__alert">{metricsError}<IxButton type="button" variant="tertiary" onClick={loadMetrics}>Retry</IxButton></div> : metricsLoading ? <div className="ix-landing-page__empty">Loading graph metrics…</div> : <>
+                <div className="ix-landing-page__metric-row" aria-label="Published graph counts">
+                  <div><strong>{fmt(metrics?.total_nodes)}</strong><span>nodes</span></div>
+                  <div><strong>{fmt(metrics?.total_relationships)}</strong><span>relationships</span></div>
+                </div>
+                {metrics?.truncated && <div className="ix-landing-page__projection-note">Counts reflect the current bounded graph projection.</div>}
+                {metrics?.ontology_breakdown?.length > 0 ? <BreakdownTable title="Nodes by ontology / source" rows={metrics.ontology_breakdown} colKey="ontology" colLabel="Nodes" /> : <BreakdownTable title="Top node labels" rows={metrics?.node_labels || []} colKey="label" colLabel="Count" />}
+              </>}
             </IxCardContent>
           </IxCard>
-        </div>
-        <IxCard variant="outline" className="ix-landing-page__chat">
+          </div>
+        </IxCol>
+        <IxCol size={8} sizeMd={12}>
+          <IxCard variant="outline" className="ix-landing-page__chat">
           <IxCardTitle>Knowledge companion</IxCardTitle>
           <IxCardContent>
-            <ErrorBoundary><Chatbot setChatResults={setChatResults} /></ErrorBoundary>
+            <ErrorBoundary>
+              <Suspense fallback={<div className="depo-muted">Loading Knowledge Companion…</div>}>
+                <Chatbot setChatResults={setChatResults} />
+              </Suspense>
+            </ErrorBoundary>
           </IxCardContent>
-        </IxCard>
-      </div>
+          </IxCard>
+        </IxCol>
+      </IxLayoutGrid>
     </div>
   );
 }

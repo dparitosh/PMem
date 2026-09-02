@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles } from 'lucide-react';
+import { IxChatInput } from '@siemens/ix-react';
 import '../CSS/chat.css';
 import { API, buildUrl, config } from '../config';
 import { validateChatInput, ValidationError } from '../utils/validation';
@@ -444,6 +445,8 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
     return (
         <div style={{ 
             height: '100%',
+            width: '100%',
+            boxSizing: 'border-box',
             position: 'relative',
             display: 'flex',
             flexDirection: 'column',
@@ -451,16 +454,17 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             backgroundColor: 'white',
             overflow: 'hidden'
         }}>
-            {/* Chat header */}
+            {/* Compact session utility row; the surrounding IX card owns the panel title. */}
             <div style={{
-                background: 'linear-gradient(135deg,#005a9c 0%,#1a6fb5 100%)',
-                color: '#fff', padding: '8px 14px',
+                background: 'var(--theme-color-std-background, #f4f6f8)',
+                color: 'var(--theme-color-std-text, #252a2e)', padding: '8px 14px',
+                borderBottom: '1px solid var(--theme-color-weak-bdr, #d9e2ec)',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 flexShrink: 0,
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Sparkles size={14} />
-                    <span style={{ fontSize: 15, fontWeight: 700 }}>Knowledge Companion</span>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>Guided engineering queries</span>
                     {chatMessages.length > 0 && (
                         <span style={{
                             background: 'rgba(255,255,255,0.2)', borderRadius: 10,
@@ -600,54 +604,17 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                     </div>
                 )}
 
-                {/* Input Area */}
-                <div style={{
-                    padding: '6px 8px',
-                    borderTop: '1px solid #ddd',
-                    display: 'flex',
-                    gap: '6px',
-                    background: '#fff',
-                }}>
-                    <input
-                        type='text'
+                <div style={{ padding: '8px', borderTop: '1px solid var(--theme-color-weak-bdr, #d9e2ec)', background: '#fff' }}>
+                    <IxChatInput
                         value={question}
-                        onChange={(e) => setQuestion(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                handleAsk();
-                            }
-                        }}
-                        placeholder='Ask about parts, traceability, CAD structure, change impact...'
-                        aria-label="Chat question"
-                        style={{
-                            flex: 1,
-                            padding: '7px 10px',
-                            border: '1px solid #ddd',
-                            borderRadius: '6px',
-                            fontSize: '12px',
-                            fontFamily: 'inherit'
-                        }}
                         disabled={requestActive}
+                        state={requestActive ? 'processing' : 'input'}
+                        placeholder="Ask about parts, traceability, CAD structure, or change impact..."
+                        textareaLabel="Chat question"
+                        disclaimer="AI-generated content may require engineering review."
+                        onValueChange={(event) => setQuestion(event.detail)}
+                        onPromptSubmit={(event) => handleAsk(event.detail)}
                     />
-                    <button
-                        type="button"
-                        onClick={() => handleAsk()}
-                        aria-label="Send chat question"
-                        disabled={requestActive || !question.trim()}
-                        style={{
-                            padding: '7px 16px',
-                            backgroundColor: requestActive || !question.trim() ? '#ccc' : CHAT_COLORS.primary,
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '6px',
-                            cursor: requestActive || !question.trim() ? 'not-allowed' : 'pointer',
-                            fontSize: '12px',
-                            fontWeight: 600
-                        }}
-                    >
-                        {requestActive ? 'Sending...' : 'Send'}
-                    </button>
                 </div>
             </div>
         </div>

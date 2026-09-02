@@ -1,10 +1,12 @@
 from pathlib import Path
 
 from backend.ontology_service.business_context import BusinessContextService
+from backend.mesh_store import InMemoryRegistry
 
 
 def test_business_context_persists_objects_and_where_used(tmp_path: Path):
-    service = BusinessContextService(tmp_path)
+    registry = InMemoryRegistry()
+    service = BusinessContextService(tmp_path, registry=registry)
     outcome = service.upsert({
         "nodes": [
             {"id": "part:wheel", "type": "Part", "name": "Wheel", "ontology_class": "ex:Part", "source_artifact": "step:assembly.stp"},
@@ -16,4 +18,4 @@ def test_business_context_persists_objects_and_where_used(tmp_path: Path):
     assert outcome["context"]["node_count"] == 2
     assert service.get("assembly:bike")["neighbors"][0]["id"] == "part:wheel"
     assert service.where_used("part:wheel")["used_by"][0]["type"] == "HAS_PART"
-    assert BusinessContextService(tmp_path).search("Wheel")["results"]
+    assert BusinessContextService(tmp_path, registry=registry).search("Wheel")["results"]

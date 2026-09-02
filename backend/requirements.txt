@@ -1,6 +1,6 @@
 # DEPO supported runtime dependencies.
-# This is intentionally the single dependency manifest for local development,
-# Docker, and independently deployable services. Optional integrations are
+# This is intentionally the single dependency manifest for local development
+# and independently deployable services. Optional integrations are
 # configured at runtime; do not add notebook, OCR, LLM, or test stacks here.
 fastapi>=0.116,<1
 uvicorn[standard]>=0.35,<1
@@ -13,5 +13,8 @@ rdflib>=7.6,<8
 semantica==0.6.7
 openpyxl>=3.1,<4
 PyYAML>=6,<7
+loguru>=0.7,<1
+python-dotenv>=1.0,<2
 pytest>=8,<9
 pytest-asyncio>=1,<2
+psycopg[binary]>=3.2,<4

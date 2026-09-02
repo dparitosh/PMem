@@ -33,7 +33,7 @@ class AP242ReferenceValidator:
         self.root = root or (Path(configured) if configured else Path("D:/Githuv_repo/smrlv12"))
         self.converter = converter or EngineeringSchemaConverter()
 
-    def validate(self, *, convert_mim: bool = True) -> dict:
+    def validate(self, *, convert_mim: bool = True, convert_xsd: bool = True) -> dict:
         assets = {name: self.root / relative for name, relative in _REQUIRED.items()}
         missing = [name for name, path in assets.items() if not path.is_file()]
         if missing:
@@ -43,4 +43,17 @@ class AP242ReferenceValidator:
         if convert_mim:
             conversion = self.converter.convert(filename=assets["mim_long_form"].name, content=assets["mim_long_form"].read_bytes())
             result["conversion"] = {"format": conversion["format"], "ontology_name": conversion["ontology"]["name"], "prefix": conversion["ontology"]["prefix"], "turtle_bytes": len(conversion["ontology"]["turtle"].encode("utf-8")), "statistics": conversion["statistics"]}
+        if convert_xsd:
+            xsd_conversions = {}
+            for asset_name in ("bom_xsd", "domain_xsd"):
+                conversion = self.converter.convert(filename=assets[asset_name].name, content=assets[asset_name].read_bytes())
+                xsd_conversions[asset_name] = {
+                    "format": conversion["format"],
+                    "adapter": conversion.get("adapter"),
+                    "ontology_name": conversion["ontology"]["name"],
+                    "prefix": conversion["ontology"]["prefix"],
+                    "turtle_bytes": len(conversion["ontology"]["turtle"].encode("utf-8")),
+                    "statistics": conversion["statistics"],
+                }
+            result["xsd_conversions"] = xsd_conversions
         return result

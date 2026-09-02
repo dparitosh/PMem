@@ -1,4 +1,5 @@
 from backend.ingestion_service.schema_conversion import converter
+from rdflib import Graph
 
 
 EXPRESS = b"""SCHEMA demo; ENTITY Part; identifier : STRING; END_ENTITY; END_SCHEMA;"""
@@ -16,6 +17,7 @@ def test_express_and_step_share_the_normalized_conversion_contract():
         assert {"name", "prefix", "base_uri", "turtle"} <= set(result["ontology"])
         assert result["ontology"]["turtle"].strip()
     assert express["source_kind"] == "schema"
+    Graph().parse(data=express["ontology"]["turtle"], format="turtle")
     assert step["source_kind"] == "instance"
 
 

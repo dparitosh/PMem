@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { replaceParams } from './config';
+import { buildUrl, getServiceForPath, replaceParams } from './config';
 
 test('encodes path parameters and replaces repeated placeholders', () => {
   expect(replaceParams('/ontology/{id}/links/{id}', { id: 'domain model/a' }))
@@ -61,15 +61,14 @@ test('normalizes a trailing slash from the configured backend URL', async () => 
   vi.resetModules();
 });
 
-test('uses APIM routes for opt-in standalone semantic service calls', async () => {
-  vi.stubEnv('REACT_APP_API_GATEWAY_URL', 'https://gateway.example.test/');
-  vi.resetModules();
+test('routes published service contracts to their owning local service', () => {
+  expect(getServiceForPath('/api/v1/qif/catalog')).toBe('qif');
+  expect(getServiceForPath('/api/v1/ontologies/capabilities')).toBe('ontology');
+  expect(getServiceForPath('/api/v1/ap242/inspect')).toBe('ingestion');
+  expect(getServiceForPath('/api/v1/oslc/health')).toBe('oslc');
+  expect(buildUrl('/api/v1/qif/catalog')).toContain(':8010/api/v1/qif/catalog');
+});
 
-  const module = await import('./config');
-  expect(module.config.semanticServiceUrls.ontology).toBe('https://gateway.example.test/ontology');
-  expect(module.buildSemanticServiceUrl('graph', '/api/v1/graph/health'))
-    .toBe('https://gateway.example.test/graph/api/v1/graph/health');
-
-  vi.unstubAllEnvs();
-  vi.resetModules();
+test('uses direct service roots when an API gateway is not configured', () => {
+  expect(buildUrl('/api/v1/graph/health')).toContain(':8013/api/v1/graph/health');
 });

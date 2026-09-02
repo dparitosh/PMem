@@ -1,6 +1,7 @@
 from backend.ingestion_service.profiles import SourceProfileStore
 from backend.ontology_service.intelligence import SemanticIntelligence
 from backend.ontology_service.semantica_adapter import SemanticWorkspace
+from backend.mesh_store import InMemoryRegistry
 
 
 def _store(tmp_path):
@@ -45,18 +46,20 @@ def test_xml_profile_executes_child_records_and_versions_updates(tmp_path):
 
 
 def test_semantic_workspace_persists_versions_and_alignments(tmp_path):
-    workspace = SemanticWorkspace(root=tmp_path)
+    registry = InMemoryRegistry()
+    workspace = SemanticWorkspace(root=tmp_path, registry=registry)
     version_id = workspace.store({"name": "Parts", "classes": []})
     workspace.align(source_uri="urn:source:part", target_uri="urn:target:part", predicate="skos:exactMatch")
 
-    restored = SemanticWorkspace(root=tmp_path)
+    restored = SemanticWorkspace(root=tmp_path, registry=registry)
 
     assert restored.get(version_id)["name"] == "Parts"
-    assert restored.alignments[0]["storage"] == "semantic_workspace"
+    assert restored.alignments[0]["storage"] == "postgres"
 
 
 def test_semantica_quality_and_native_version_services(tmp_path):
-    intelligence = SemanticIntelligence(tmp_path)
+    registry = InMemoryRegistry()
+    intelligence = SemanticIntelligence(tmp_path, registry=registry)
     quality = intelligence.quality_gate(
         entities=[{"id": "1", "name": "Pump", "type": "Part"}, {"id": "2", "name": "Pump", "type": "Part"}],
         deduplicate=True, conflict_property=None,
@@ -67,3 +70,5 @@ def test_semantica_quality_and_native_version_services(tmp_path):
     assert quality["publish_recommended"] is False
     assert version["label"] == "v1"
     assert intelligence.list_versions()[0]["version_id"] == "v1"
+    restored = SemanticIntelligence(tmp_path, registry=registry)
+    assert restored.list_versions()[0]["version_id"] == "v1"

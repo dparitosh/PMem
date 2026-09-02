@@ -4,12 +4,25 @@
  * This allows easy switching between environments without code changes
  */
 
-const configuredBackendUrl = process.env.REACT_APP_BACKEND_URL;
-const configuredGatewayUrl = process.env.REACT_APP_API_GATEWAY_URL;
-const configuredAgenticServiceUrl = process.env.REACT_APP_AGENTIC_SERVICE_URL;
-const agenticEnabled = String(process.env.REACT_APP_AGENTIC_ENABLED || '').trim().toLowerCase() === 'true';
+// `import.meta.env` is Vite's supported browser-safe configuration surface.
+// Keep the process fallback for Vitest and any remaining CRA-compatible test
+// harnesses; it must not be the primary runtime source in the browser.
+const viteEnv = import.meta.env || {};
+const processEnv = typeof process !== 'undefined' && process.env ? process.env : {};
+const setting = (name) => {
+  const viteValues = [viteEnv[`VITE_${name}`], viteEnv[`REACT_APP_${name}`]];
+  const processValues = [processEnv[`VITE_${name}`], processEnv[`REACT_APP_${name}`]];
+  // Vitest stubs process.env at runtime; production Vite configuration is
+  // compiled into import.meta.env and takes precedence in the browser.
+  const values = viteEnv.MODE === 'test' ? [...processValues, ...viteValues] : [...viteValues, ...processValues];
+  return values.find((value) => value !== undefined && value !== '') || '';
+};
+const configuredBackendUrl = setting('BACKEND_URL');
+const configuredGatewayUrl = setting('API_GATEWAY_URL');
+const configuredAgenticServiceUrl = setting('AGENTIC_SERVICE_URL');
+const agenticEnabled = String(setting('AGENTIC_ENABLED')).trim().toLowerCase() === 'true';
 const rewriteLocalhostBackend =
-  String(process.env.REACT_APP_REWRITE_LOCALHOST_BACKEND || '').trim().toLowerCase() === 'true';
+  String(setting('REWRITE_LOCALHOST_BACKEND')).trim().toLowerCase() === 'true';
 
 const resolveLocalServiceUrl = (configuredUrl, fallbackPort) => {
   if (!configuredUrl) return '';
@@ -30,14 +43,19 @@ const resolveLocalServiceUrl = (configuredUrl, fallbackPort) => {
 };
 
 const resolveBackendUrl = () => {
-  const fallbackHost = typeof window !== 'undefined' && window.location?.hostname
-    ? window.location.hostname
-    : '127.0.0.1';
-  const fallback = `http://${fallbackHost}:8000`;
+  // The standalone deployment has no aggregate service.  Keep an accidental
+  // unowned request same-origin rather than silently targeting retired :8000.
+  const fallback = '';
   if (!configuredBackendUrl) return fallback;
 
   try {
     const configured = new URL(configuredBackendUrl);
+    // Port 8000 belonged to the retired aggregate application. Existing local
+    // .env files may still contain it, so never let it override the explicit
+    // service topology or generate opaque connection-refused browser errors.
+    if ((configured.hostname === 'localhost' || configured.hostname === '127.0.0.1') && configured.port === '8000') {
+      return fallback;
+    }
     const browserHost = typeof window !== 'undefined' ? window.location?.hostname : '';
     const isLocalConfigured = configured.hostname === 'localhost' || configured.hostname === '127.0.0.1';
     const isRemoteBrowser = browserHost && browserHost !== 'localhost' && browserHost !== '127.0.0.1';
@@ -63,23 +81,38 @@ const baseConfig = {
   agenticServiceUrl: agenticEnabled
     ? resolveLocalServiceUrl(configuredAgenticServiceUrl, 8012)
     : '',
-  apiVersion: process.env.REACT_APP_API_VERSION || 'v1',
-  environment: process.env.REACT_APP_ENV || 'development',
-  debug: process.env.REACT_APP_DEBUG === 'true',
-  logLevel: process.env.REACT_APP_LOG_LEVEL || 'info',
-  requestTimeout: parseInt(process.env.REACT_APP_REQUEST_TIMEOUT || '300000', 10),
-  chatStreamTimeout: parseInt(process.env.REACT_APP_CHAT_STREAM_TIMEOUT || '900000', 10),
+  apiVersion: setting('API_VERSION') || 'v1',
+  environment: setting('ENV') || 'development',
+  debug: setting('DEBUG') === 'true',
+  logLevel: setting('LOG_LEVEL') || 'info',
+  requestTimeout: parseInt(setting('REQUEST_TIMEOUT') || '300000', 10),
+  chatStreamTimeout: parseInt(setting('CHAT_STREAM_TIMEOUT') || '900000', 10),
   // This key is intentionally opt-in. It is visible to browser users and is
   // appropriate only for a trusted internal admin deployment.
-  adminApiKey: process.env.REACT_APP_ADMIN_API_KEY || '',
+  adminApiKey: setting('ADMIN_API_KEY'),
 };
 
 const gatewayUrl = configuredGatewayUrl ? configuredGatewayUrl.replace(/\/$/, '') : '';
+const browserHost = typeof window !== 'undefined' && window.location?.hostname
+  ? window.location.hostname
+  : '127.0.0.1';
+const localServiceUrl = (port) => `http://${browserHost}:${port}`;
+const configuredServiceUrl = (name, port, gatewayPath) => (
+  setting(`${name.toUpperCase()}_SERVICE_URL`) || (gatewayUrl ? `${gatewayUrl}${gatewayPath}` : localServiceUrl(port))
+).replace(/\/$/, '');
+
+// Service ownership is explicit.  An API gateway can replace these URLs as a
+// single deployment concern; direct developer mode talks to the same service
+// contracts on their local ports.
 const semanticServiceUrls = Object.freeze({
-  ontology: (process.env.REACT_APP_ONTOLOGY_SERVICE_URL || (gatewayUrl && `${gatewayUrl}/ontology`)).replace(/\/$/, ''),
-  graph: (process.env.REACT_APP_GRAPH_SERVICE_URL || (gatewayUrl && `${gatewayUrl}/graph`)).replace(/\/$/, ''),
-  ingestion: (process.env.REACT_APP_INGESTION_SERVICE_URL || (gatewayUrl && `${gatewayUrl}/ingestion`)).replace(/\/$/, ''),
-  oslc: (process.env.REACT_APP_OSLC_SERVICE_URL || (gatewayUrl && `${gatewayUrl}/oslc`)).replace(/\/$/, ''),
+  qif: configuredServiceUrl('qif', 8010, '/qif'),
+  ontology: configuredServiceUrl('ontology', 8011, '/ontology'),
+  agentic: configuredServiceUrl('agentic', 8012, '/agentic'),
+  graph: configuredServiceUrl('graph', 8013, '/graph'),
+  ingestion: configuredServiceUrl('ingestion', 8014, '/ingestion'),
+  oslc: configuredServiceUrl('oslc', 8015, '/oslc'),
+  catalog: configuredServiceUrl('catalog', 8016, '/catalog'),
+  dataProducts: configuredServiceUrl('data_product', 8017, '/data-products'),
 });
 
 /** Build a URL for new standalone-service features during monolith migration. */
@@ -87,6 +120,30 @@ export const buildSemanticServiceUrl = (service, path = '') => {
   const baseUrl = semanticServiceUrls[service];
   if (!baseUrl) throw new Error(`Semantic service '${service}' is not configured`);
   return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+};
+
+const SERVICE_PATHS = [
+  ['qif', /^\/api\/v1\/qif(?:\/|$)/],
+  ['ontology', /^\/api\/v1\/ontologies(?:\/|$)/],
+  ['ontology', /^\/api\/v1\/modeling(?:\/|$)/],
+  ['ontology', /^\/api\/v1\/admin(?:\/|$)/],
+  ['ontology', /^\/api\/v1\/metadata-registry(?:\/|$)/],
+  ['graph', /^\/api\/v1\/graph(?:\/|$)/],
+  ['graph', /^\/api\/v1\/requirements(?:\/|$)/],
+  ['ingestion', /^\/api\/v1\/(?:ingestion|ingest-data|ap242|schema-conversions|source-profiles|engineering-workflows)(?:\/|$)/],
+  ['ingestion', /^\/api\/v1\/import(?:\/|$)/],
+  ['ingestion', /^\/api\/v1\/ontology(?:\/|$)/],
+  ['oslc', /^(?:\/api\/v1\/oslc|\/oslc)(?:\/|$)/],
+  ['catalog', /^\/api\/v1\/catalog\/products(?:\/|$)/],
+  ['dataProducts', /^\/api\/v1\/data-products(?:\/|$)/],
+  ['agentic', /^\/api\/v1\/(?:agents|tools|mcp-servers|workflows|plans|runs|workflow-runs|catalog\/validate|chat)(?:\/|$)/],
+  ['agentic', /^\/api\/v1\/code-audit(?:\/|$)/],
+  ['graph', /^\/recommendations(?:\/|$)/],
+];
+
+export const getServiceForPath = (endpoint = '') => {
+  if (typeof endpoint !== 'string' || !endpoint.startsWith('/')) return null;
+  return SERVICE_PATHS.find(([, pattern]) => pattern.test(endpoint))?.[0] || null;
 };
 
 // Deprecated: Keep old property for backward compatibility
@@ -109,36 +166,6 @@ const HEALTH_ENDPOINTS = {
 };
 
 /**
- * Graph Visualization Endpoints
- */
-const GRAPH_ENDPOINTS = {
-  graphvis: process.env.REACT_APP_API_GRAPHVIS || '/graphvis',
-  graphvisByOntology: process.env.REACT_APP_API_GRAPHVIS_BY_ONTOLOGY || '/graphvis/by-ontology/{prefix}',
-  graphView: process.env.REACT_APP_API_GRAPH_VIEW || '/api/v1/graph/view',
-  graphOntologyView: process.env.REACT_APP_API_GRAPH_ONTOLOGY_VIEW || '/api/v1/graph/view/ontology/{prefix}',
-  graphArchitectureView: process.env.REACT_APP_API_GRAPH_ARCHITECTURE_VIEW || '/api/v1/graph/view/architecture/{prefix}',
-  contextualSubgraph: process.env.REACT_APP_API_CONTEXTUAL_SUBGRAPH || '/api/v1/graph/contextual-subgraph',
-  ontologiesList: process.env.REACT_APP_API_ONTOLOGIES_LIST || '/api/v1/ontology/registered',
-  neo4jHealth: process.env.REACT_APP_API_NEO4J_HEALTH || '/health/neo4j',
-  graphfilter: process.env.REACT_APP_API_GRAPHFILTER || '/graphfilter',
-  graphfilterMulti: process.env.REACT_APP_API_GRAPHFILTER_MULTI || '/graphfilter-multi',
-  graphtraverseNode: process.env.REACT_APP_API_GRAPHTRAVERSE_NODE || '/graphtraverse/{node_id}',
-  comparativeSearch: process.env.REACT_APP_API_COMPARATIVE_SEARCH || '/comparative-search',
-  schemaGraph: process.env.REACT_APP_API_SCHEMA_GRAPH || '/schema-graph',
-  instanceGraph: process.env.REACT_APP_API_INSTANCE_GRAPH || '/instance-graph',
-  stepParts: process.env.REACT_APP_API_STEP_PARTS || '/ontology/step/parts',
-  ontologyGraph: process.env.REACT_APP_API_ONTOLOGY_GRAPH || '/ontology/{ontology}',
-  ontologyGraphByType: process.env.REACT_APP_API_ONTOLOGY_GRAPH_BY_TYPE || '/ontology/{ontology_type}',
-  ontologyInstances: process.env.REACT_APP_API_ONTOLOGY_INSTANCES || '/ontology/{ontology}/instances',
-  ontologyInstancesByType: process.env.REACT_APP_API_ONTOLOGY_INSTANCES_BY_TYPE || '/ontology/{ontology_type}/instances',
-  ontologyStepPart: process.env.REACT_APP_API_ONTOLOGY_STEP_PART || '/ontology/step/{part}',
-  ontologyStepPartByName: process.env.REACT_APP_API_ONTOLOGY_STEP_PART_BY_NAME || '/ontology/step/{part_name}',
-  ontologyMbseInstances: process.env.REACT_APP_API_ONTOLOGY_MBSE_INSTANCES || '/ontology/mbse-instances',
-  ontologyOptions: process.env.REACT_APP_API_ONTOLOGY_OPTIONS || '/ontology/options',
-  ontologyRegisteredRoot: process.env.REACT_APP_API_ONTOLOGY_REGISTERED_ROOT || '/api/v1/ontology/registered',
-};
-
-/**
  * Schema & Metadata Endpoints
  */
 const SCHEMA_ENDPOINTS = {
@@ -152,15 +179,17 @@ const SCHEMA_ENDPOINTS = {
  * Chat & Conversation Endpoints
  */
 const CHAT_ENDPOINTS = {
-  chat: process.env.REACT_APP_API_CHAT || '/chat',
-  chatStream: process.env.REACT_APP_API_CHAT_STREAM || '/chat-stream',
-  validate: process.env.REACT_APP_API_CHAT_VALIDATE || '/chat/validate',
-  jobs: process.env.REACT_APP_API_CHAT_JOBS || '/chat/jobs',
-  jobStatus: process.env.REACT_APP_API_CHAT_JOB_STATUS || '/chat/jobs/{job_id}',
-  health: process.env.REACT_APP_API_CHAT_HEALTH || '/chat/health',
-  status: process.env.REACT_APP_API_CHAT_STATUS || '/chat/status',
-  capabilities: process.env.REACT_APP_API_CHAT_CAPABILITIES || '/chat/capabilities',
-  sampleQueries: process.env.REACT_APP_API_CHAT_SAMPLE_QUERIES || '/chat/sample-queries',
+  // Knowledge Companion belongs to the agentic control plane.  Keeping its
+  // contract under /api/v1 prevents the SPA from reviving the retired :8000 API.
+  chat: process.env.REACT_APP_API_CHAT || '/api/v1/chat',
+  chatStream: process.env.REACT_APP_API_CHAT_STREAM || '/api/v1/chat-stream',
+  validate: process.env.REACT_APP_API_CHAT_VALIDATE || '/api/v1/chat/validate',
+  jobs: process.env.REACT_APP_API_CHAT_JOBS || '/api/v1/chat/jobs',
+  jobStatus: process.env.REACT_APP_API_CHAT_JOB_STATUS || '/api/v1/chat/jobs/{job_id}',
+  health: process.env.REACT_APP_API_CHAT_HEALTH || '/api/v1/chat/health',
+  status: process.env.REACT_APP_API_CHAT_STATUS || '/api/v1/chat/status',
+  capabilities: process.env.REACT_APP_API_CHAT_CAPABILITIES || '/api/v1/chat/capabilities',
+  sampleQueries: process.env.REACT_APP_API_CHAT_SAMPLE_QUERIES || '/api/v1/chat/sample-queries',
 };
 
 /**
@@ -385,6 +414,8 @@ export const buildUrl = (endpoint) => {
   if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
     return endpoint;
   }
+  const service = getServiceForPath(endpoint);
+  if (service) return buildSemanticServiceUrl(service, endpoint);
   return `${config.backendUrl}${endpoint}`;
 };
 
@@ -411,7 +442,6 @@ export const replaceParams = (endpoint, params, options = {}) => {
  */
 export const API = {
   health: HEALTH_ENDPOINTS,
-  graph: GRAPH_ENDPOINTS,
   schema: SCHEMA_ENDPOINTS,
   chat: CHAT_ENDPOINTS,
   ontology: ONTOLOGY_ENDPOINTS,
@@ -451,9 +481,10 @@ if (baseConfig.debug) {
 }
 
 // Validate required configuration
-if (!configuredBackendUrl && baseConfig.environment !== 'test') {
+const isTestRuntime = viteEnv.MODE === 'test' || processEnv.NODE_ENV === 'test';
+if (!configuredBackendUrl && baseConfig.environment !== 'test' && !isTestRuntime) {
   // eslint-disable-next-line no-console
-  console.warn('[CONFIG] Missing REACT_APP_BACKEND_URL. Using browser host with backend port 8000.');
+  console.warn('[CONFIG] Missing BACKEND_URL. Explicit standalone-service routes remain available; unowned legacy routes are disabled.');
 }
 
 export default config;

@@ -4,7 +4,10 @@ Run: python -m uvicorn backend.ontology_service.app:app --port 8011
 """
 from backend.platform.service_runtime import create_service_app
 from backend.platform.odata import ServiceCapability, create_odata_catalog_router
+from backend.routes.admin_routes import router as admin_router
+from backend.routes.metadata_registry_routes import router as metadata_registry_router
 from .router import router
+from .modeling_router import router as modeling_router
 
 app = create_service_app(title="DEPO Ontology Service", version="1.0.0")
 app.include_router(create_odata_catalog_router(
@@ -17,7 +20,14 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Policy evaluation", "/api/v1/ontologies/policies/evaluate", "POST", "Evaluate publication policies"),
         ServiceCapability("Governed merge preview", "/api/v1/ontologies/merges/preview", "POST", "Review an ontology merge before approval"),
         ServiceCapability("Approved ontology merge", "/api/v1/ontologies/merges/{preview_id}/apply", "POST", "Persist an approved merge with provenance"),
+        ServiceCapability("Legacy catalog migration", "/api/v1/ontologies/migrations/legacy", "POST", "Adopt named legacy ingestion artifacts with stable IDs"),
         ServiceCapability("Business-object context", "/api/v1/ontologies/business-context", "GET", "Inspect Semantica ContextGraph business-object context"),
     ],
 ))
 app.include_router(router, prefix="/api/v1")
+app.include_router(modeling_router, prefix="/api/v1")
+# The operational registry and its guarded maintenance actions own ontology
+# graph administration.  Hosting them here prevents the frontend from falling
+# back to the retired aggregate service on port 8000.
+app.include_router(admin_router, prefix="/api/v1")
+app.include_router(metadata_registry_router, prefix="/api/v1")

@@ -955,6 +955,22 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
   })).filter((row) => row.id), [reasoning, refLabel, taxonomy, termIdFromRef]);
 
   const objectPropertyRows = useMemo(() => {
+    // Preserve every declared RDF property.  Domain/range triples enrich a
+    // property, but are optional in OWL and must not decide whether the
+    // property appears in the ontology browser.
+    const declaredById = new Map(
+      visibleNodes
+        .filter((node) => String(node.source || '').includes('property'))
+        .map((node) => [node.term_id, {
+          id: node.term_id,
+          property: node.label || String(node.term_id || '').split(':').pop(),
+          prefix: node.ontology_prefix || '',
+          kind: String(node.source || '').includes('datatype') ? 'DatatypeProperty' : 'ObjectProperty',
+          domain: 'Not declared',
+          range: 'Not declared',
+          axiomCount: 0,
+        }]),
+    );
     const byProperty = new Map();
     edgeRows.forEach((edge) => {
       if (!['DOMAIN', 'RANGE', 'domain', 'range', 'predicate', 'property_of'].includes(edge.axiom)) return;
@@ -973,25 +989,18 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
       if (String(edge.axiom).toUpperCase() === 'DOMAIN') row.domain.push(edge.target);
       if (String(edge.axiom).toUpperCase() === 'RANGE') row.range.push(edge.target);
     });
-    const rowsFromEdges = Array.from(byProperty.values()).map((row) => ({
-      ...row,
-      domain: row.domain.join(', ') || 'Not declared',
-      range: row.range.join(', ') || 'Not declared',
-      kind: 'Property',
-    }));
+    Array.from(byProperty.values()).forEach((row) => {
+      const declared = declaredById.get(row.id);
+      declaredById.set(row.id, {
+        ...(declared || {}),
+        ...row,
+        kind: declared?.kind || 'Property',
+        domain: row.domain.join(', ') || 'Not declared',
+        range: row.range.join(', ') || 'Not declared',
+      });
+    });
     if (reasoningPropertyRows.length) return reasoningPropertyRows;
-    if (rowsFromEdges.length) return rowsFromEdges;
-    return visibleNodes
-      .filter((node) => String(node.source || '').includes('property'))
-      .map((node) => ({
-        id: node.term_id,
-        property: node.label || String(node.term_id || '').split(':').pop(),
-        prefix: node.ontology_prefix || '',
-        kind: String(node.source || '').includes('datatype') ? 'DatatypeProperty' : 'ObjectProperty',
-        domain: 'Not declared',
-        range: 'Not declared',
-        axiomCount: 0,
-      }));
+    return Array.from(declaredById.values());
   }, [edgeRows, reasoningPropertyRows, visibleNodes]);
 
   const selectedPropertyRow = useMemo(() => {
@@ -1573,7 +1582,10 @@ export default function OntologyMapper() {
     }
 
     const nextValue = selectedOption.value || rawValue;
-    const nextApi = selectedOption.prefix || selectedOption.ontologyKey || selectedOption.value || rawValue;
+    // API contracts use the immutable registry id. The human-facing prefix is
+    // not unique across versions and caused AP242 to resolve to an empty
+    // taxonomy even when its registered ontology was available.
+    const nextApi = selectedOption.value || selectedOption.ontologyKey || selectedOption.prefix || rawValue;
     setSelectedMapping(nextValue);
     setSelectedOntologyApi(nextApi);
     if (selectedOption.type) {
@@ -1743,7 +1755,7 @@ export default function OntologyMapper() {
         return;
       }
 
-      const selectedOntologyKey = selectedOption.prefix || selectedOption.ontologyKey || selectedOption.value || '';
+      const selectedOntologyKey = selectedOption.value || selectedOption.ontologyKey || selectedOption.prefix || '';
       if (selectedOption.value !== selectedMapping) {
         setSelectedMapping(selectedOption.value);
       }

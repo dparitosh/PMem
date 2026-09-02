@@ -10,14 +10,14 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from backend.artifact_store import ArtifactStore
-from backend.mesh_store import SqliteRegistry
+from backend.mesh_store import PostgresRegistry
 from backend.platform.authorization import approval_identity
 from .packaging import build_package
 
 router = APIRouter(prefix="/data-products", tags=["data-products"])
 root = Path(os.getenv("DATA_PRODUCT_STORAGE", Path(__file__).resolve().parents[2] / "data" / "products"))
-store = SqliteRegistry(root / "products")
-approval_store = SqliteRegistry(root / "approvals")
+store = PostgresRegistry("data_products")
+approval_store = PostgresRegistry("data_product_approvals")
 artifact_store = ArtifactStore()
 
 

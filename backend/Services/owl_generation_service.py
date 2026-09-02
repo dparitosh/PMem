@@ -184,7 +184,19 @@ class OWLGenerationService:
             from .express_parser import parse_express, emit_owl_ttl
             schema = parse_express(tmp_path)
             base_uri = f"http://depo-onto.local/exp#{schema.name}/"
-            owl_ttl = emit_owl_ttl(schema, base_uri=base_uri, prefix="exp", source_path=tmp_path)
+            # ``emit_owl_ttl`` deliberately produces a reusable body fragment.
+            # Service consumers receive a complete Turtle document, however,
+            # so the standard vocabulary prefixes must be declared here.
+            prefixes = "\n".join((
+                "@prefix owl: <http://www.w3.org/2002/07/owl#> .",
+                "@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .",
+                "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .",
+                "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
+                "@prefix sh: <http://www.w3.org/ns/shacl#> .",
+                "@prefix skos: <http://www.w3.org/2004/02/skos/core#> .",
+                "",
+            ))
+            owl_ttl = prefixes + emit_owl_ttl(schema, base_uri=base_uri, prefix="exp", source_path=tmp_path)
             derives = sum(len(e.derived_attributes) for e in schema.entities.values())
             inverses = sum(len(e.inverse_attributes) for e in schema.entities.values())
             metadata = {

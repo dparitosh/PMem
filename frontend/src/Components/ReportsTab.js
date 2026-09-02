@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { API, buildUrl } from '../config';
 import { apiClient } from '../services/apiClient';
+import { graphApi } from '../services/graphApi';
 import { normalizeGraphDataset as normalizeGraphDatasetShared } from '../utils/graphUtils';
 import { useOntologies } from '../contexts/OntologyContext';
 import KpiStrip from '../widgets/KpiStrip';
@@ -360,7 +361,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
       setGraphLoading(true);
       setGraphError('');
       try {
-        const response = await apiClient.get(buildUrl(API.graph.graphView), { params: { limit: 1200 }, signal: controller.signal });
+        const response = await graphApi.getOverview(1200, controller.signal);
         const normalized = normalizeGraphDatasetShared(response.data);
         if (!cancelled) setFallbackGraphData(normalized);
       } catch (error) {

@@ -152,7 +152,7 @@ class OntologyConfig:
 
     # ── Output ────────────────────────────────────────────────────────────────
     output_ttl:       str  = ""
-    output_owl:       str  = ""   # RDF/XML (.owl) — derived from output_ttl if empty
+    output_owl:       str  = ""   # RDF/XML (.owl) is emitted only when explicitly requested.
 
     # ── Derived helpers ───────────────────────────────────────────────────────
 
@@ -1365,15 +1365,14 @@ def convert_xsd_to_owl(cfg: OntologyConfig) -> Path:
 
     build_bridge_pairs(g, cfg)
 
-    # Derive OWL (RDF/XML) path from TTL path if not explicitly configured
-    owl_path = (
-        Path(cfg.output_owl) if cfg.output_owl
-        else output_path.with_suffix(".owl")
-    )
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
     g.serialize(destination=str(output_path), format="turtle")
-    g.serialize(destination=str(owl_path), format="xml")
+    # RDF/XML is expensive for large standards such as AP242.  The service
+    # contract publishes Turtle, so generate RDF/XML only for an explicit
+    # caller request instead of doubling routine conversion cost.
+    owl_path = Path(cfg.output_owl) if cfg.output_owl else None
+    if owl_path is not None:
+        g.serialize(destination=str(owl_path), format="xml")
 
     triple_count = len(g)
     class_count  = sum(1 for _ in g.triples((None, RDF.type, OWL.Class)))
@@ -1390,7 +1389,8 @@ def convert_xsd_to_owl(cfg: OntologyConfig) -> Path:
     if missing:
         logger.warning("Missing schema targets: %s", ', '.join(missing))
     logger.info("Output TTL: %s", output_path)
-    logger.info("Output OWL: %s", owl_path)
+    if owl_path is not None:
+        logger.info("Output OWL: %s", owl_path)
     logger.info("%s", '=' * 60)
     return output_path
 
