@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from contextlib import contextmanager
 from typing import Any
 
 from backend.postgres_migrations import apply_migrations
+from backend.platform.postgres_schema import initialise_schema
 
 
 class PostgresRegistry:
@@ -24,13 +24,9 @@ class PostgresRegistry:
     @contextmanager
     def _connect(self):
         import psycopg
-        schema = os.getenv("DEPO_DATABASE_SCHEMA", "semantic")
-        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,62}", schema):
-            raise RuntimeError("DEPO_DATABASE_SCHEMA must be a valid PostgreSQL identifier")
         with psycopg.connect(self.database_url, autocommit=True) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-                cursor.execute(f'SET search_path TO "{schema}", public')
+                initialise_schema(cursor)
             apply_migrations(connection)
             yield connection
 
@@ -53,6 +49,19 @@ class PostgresRegistry:
             cursor.executemany("INSERT INTO depo_registry(namespace, key, value) VALUES (%s, %s, %s::jsonb) ON CONFLICT(namespace, key) DO UPDATE SET value=excluded.value, updated_at=now()", [(self.namespace, key, json.dumps(value)) for key, value in values.items()])
         return values
 
+    @contextmanager
+    def advisory_lock(self, key: str):
+        """Hold a PostgreSQL session lock for one cross-process operation."""
+        lock_name = f"{self.namespace}:{key}"
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT pg_try_advisory_lock(hashtextextended(%s, 0))", (lock_name,))
+            acquired = bool(cursor.fetchone()[0])
+            try:
+                yield acquired
+            finally:
+                if acquired:
+                    cursor.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 0))", (lock_name,))
+
 
 class InMemoryRegistry:
     """Test double only; never selected by service configuration."""
@@ -61,3 +70,6 @@ class InMemoryRegistry:
     def get(self, key: str) -> dict[str, Any] | None: return self.values.get(key)
     def put(self, key: str, value: dict[str, Any]) -> dict[str, Any]: self.values[key] = value; return value
     def put_many(self, values: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]: self.values.update(values); return values
+    @contextmanager
+    def advisory_lock(self, key: str):
+        yield True

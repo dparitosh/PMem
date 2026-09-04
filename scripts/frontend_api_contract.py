@@ -34,12 +34,13 @@ def _endpoint_defaults(block: str) -> set[str]:
 def classify_contract() -> dict[str, Any]:
     config_text = CONFIG_PATH.read_text(encoding="utf-8")
     configured = _endpoint_defaults(config_text)
-    agentic_match = re.search(
-        r"const AGENTIC_ENDPOINTS\s*=\s*\{(?P<body>.*?)\n\};",
-        config_text,
-        flags=re.DOTALL,
-    )
-    external = _endpoint_defaults(agentic_match.group("body")) if agentic_match else set()
+    def named_block(name: str) -> set[str]:
+        match = re.search(rf"const {name}\s*=\s*\{{(?P<body>.*?)\n\}};", config_text, flags=re.DOTALL)
+        return _endpoint_defaults(match.group("body")) if match else set()
+
+    # These are intentionally owned by standalone agentic service, rather
+    # than the retired aggregate application represented by backend.main.
+    external = named_block("AGENTIC_ENDPOINTS") | named_block("CHAT_ENDPOINTS")
 
     from backend.main import app
 

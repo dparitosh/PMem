@@ -44,6 +44,7 @@ def test_pdf_native_text_falls_back_to_optional_ocr(monkeypatch, tmp_path) -> No
 
 def test_document_job_writes_durable_result_and_proposal_artifacts(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(WorkflowArtifactService, "ARTIFACT_ROOT", tmp_path / "artifacts")
+    monkeypatch.setenv("ARTIFACT_STORAGE", str(tmp_path / "content-addressed"))
     task_id = "document-job-1"
     WorkflowArtifactService.ensure_task(task_id, "document.unstructured")
     DocumentJobService._write_state(task_id, {
@@ -69,6 +70,9 @@ def test_document_job_writes_durable_result_and_proposal_artifacts(monkeypatch, 
     paths = {artifact["path"] for artifact in manifest["artifacts"]}
     assert "reports/processing_result.json" in paths
     assert "reports/semantic_proposals.json" in paths
+    assert "reports/unstructured_evidence.json" in paths
+    assert "reports/unstructured_quality.json" in paths
+    assert status["result"]["evidence_artifact_id"].startswith("sha256:")
     assert all(artifact["sha256"] for artifact in manifest["artifacts"])
 
 
@@ -97,6 +101,7 @@ def test_document_job_cancel_is_durable(monkeypatch, tmp_path) -> None:
 
 def test_document_job_api_retains_source_before_submission(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(WorkflowArtifactService, "ARTIFACT_ROOT", tmp_path / "artifacts")
+    monkeypatch.setenv("ARTIFACT_STORAGE", str(tmp_path / "content-addressed"))
     monkeypatch.setattr(documents_api, "TEMP_UPLOAD_DIR", str(tmp_path / "temp"))
     monkeypatch.setattr(documents_api, "_require_document_processor", lambda: {"available": True})
     captured = {}
@@ -125,4 +130,16 @@ def test_document_job_api_retains_source_before_submission(monkeypatch, tmp_path
     assert retained.is_file()
     assert retained.read_bytes().startswith(b"REQ-1")
     assert captured["source_artifacts"][0]["sha256"]
+    assert captured["source_artifacts"][0]["artifact_id"].startswith("sha256:")
+
+
+def test_direct_document_indexing_routes_are_retired() -> None:
+    app = FastAPI()
+    app.include_router(documents_api.router, prefix="/api/v1")
+    client = TestClient(app)
+
+    response = client.post("/api/v1/documents/upload", files={"files": ("requirements.txt", b"REQ-1", "text/plain")})
+
+    assert response.status_code == 410
+    assert "retired" in response.json()["detail"]
 

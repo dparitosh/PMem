@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from backend.artifact_store import ArtifactStore
 from backend.mesh_store import PostgresRegistry
 from backend.platform.authorization import approval_identity
+from backend.platform.semantic_registry import release_reference, resolve_approved_release
 from .packaging import build_package
 
 router = APIRouter(prefix="/data-products", tags=["data-products"])
@@ -42,15 +43,38 @@ def _artifact_records(payload: dict) -> tuple[list[tuple[dict, Path]], list[str]
     return records, errors
 
 
+def _semantic_release_errors(payload: dict) -> list[str]:
+    releases = payload.get("semantic_releases")
+    if not isinstance(releases, list) or not releases:
+        return ["at least one approved semantic_releases entry is required"]
+    errors: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for index, release in enumerate(releases):
+        if not isinstance(release, dict):
+            errors.append(f"semantic_releases[{index}] must be an object")
+            continue
+        try:
+            reference = release_reference(release)
+        except ValueError as exc:
+            errors.append(f"semantic_releases[{index}] {exc}")
+            continue
+        asset_id, version = reference["asset_id"], reference["version"]
+        if (asset_id, version) in seen:
+            errors.append(f"semantic_releases[{index}] duplicates {asset_id}@{version}")
+        else:
+            seen.add((asset_id, version))
+    return errors
+
+
 def _validate(payload: dict) -> tuple[list[tuple[dict, Path]], list[str]]:
     required = ("product_id", "name", "version", "domain", "owner", "classification", "steward", "lifecycle_state")
     errors = [f"{name} is required" for name in required if not payload.get(name)]
     artifacts, artifact_errors = _artifact_records(payload)
-    return artifacts, errors + artifact_errors
+    return artifacts, errors + artifact_errors + _semantic_release_errors(payload)
 
 
 def _catalog_payload(record: dict) -> dict:
-    fields = ("name", "domain", "owner", "version", "classification", "steward", "sla", "quality_status", "lifecycle_state", "sources", "ontologies", "manifest")
+    fields = ("name", "domain", "owner", "version", "classification", "steward", "sla", "quality_status", "lifecycle_state", "sources", "ontologies", "semantic_releases", "manifest")
     return {field: record.get(field) for field in fields} | {"product_url": f"/api/v1/data-products/{record['product_id']}:{record['version']}"}
 
 
@@ -102,8 +126,14 @@ async def publish(payload: dict, request: Request) -> dict:
         return existing
     if existing and existing.get("status") == "published":
         raise HTTPException(409, "A published product version is immutable; publish a new version")
+    try:
+        semantic_releases = [await resolve_approved_release(release) for release in payload["semantic_releases"]]
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, detail=str(exc)) from exc
     package = build_package(output_root=root, payload=payload, artifacts=artifacts)
-    record = {**payload, "artifacts": [metadata for metadata, _ in artifacts], "manifest": package["manifest"], "package_storage": {"zip_path": str(package["zip_path"]), "package_dir": str(package["package_dir"])}, "status": "pending_catalog_registration", "catalog_attempts": 0, "published_at": _now()}
+    record = {**payload, "semantic_releases": semantic_releases, "artifacts": [metadata for metadata, _ in artifacts], "manifest": package["manifest"], "package_storage": {"zip_path": str(package["zip_path"]), "package_dir": str(package["package_dir"])}, "status": "pending_catalog_registration", "catalog_attempts": 0, "published_at": _now()}
     store.put(key, record)
     approval_store.put(f"{key}:{record['published_at']}", {"product": key, "approved_by": approver, "approved_at": _now()})
     return store.put(key, await _register_catalog(record))

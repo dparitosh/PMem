@@ -1,0 +1,20 @@
+{
+  "manifest_version": "1.0",
+  "description": "Authoritative standalone DEPO service inventory for deployment automation.",
+  "services": [
+    {"id": "schema-sets", "display_name": "Engineering Schema-Set Service", "module": "backend.qif.app:app", "port": 8010, "apim_path": "qif"},
+    {"id": "ontology", "display_name": "Ontology Service", "module": "backend.ontology_service.app:app", "port": 8011, "apim_path": "ontology"},
+    {"id": "agentic", "display_name": "Agentic Control Plane", "module": "backend.agentic_service.app:app", "port": 8012, "apim_path": "agentic"},
+    {"id": "graph", "display_name": "Graph Service", "module": "backend.graph_service.app:app", "port": 8013, "apim_path": "graph"},
+    {"id": "ingestion", "display_name": "Ingestion Service", "module": "backend.ingestion_service.app:app", "port": 8014, "apim_path": "ingestion"},
+    {"id": "oslc", "display_name": "OSLC Service", "module": "backend.oslc_service.app:app", "port": 8015, "apim_path": "oslc"},
+    {"id": "catalog", "display_name": "Data Catalog Service", "module": "backend.data_catalog_service.app:app", "port": 8016, "apim_path": "catalog"},
+    {"id": "data-products", "display_name": "Data Product Service", "module": "backend.data_product_service.app:app", "port": 8017, "apim_path": "data-products"},
+    {"id": "ceim", "display_name": "CEIM Service", "module": "backend.ceim_service.app:app", "port": 8018, "apim_path": "ceim"},
+    {"id": "data-pipeline", "display_name": "Data Pipeline Service", "module": "backend.data_pipeline_service.app:app", "port": 8019, "apim_path": "data-pipeline"}
+  ],
+  "workers": [
+    {"id": "data-product-outbox", "module": "backend.data_product_service.worker", "responsibility": "Durable catalog-registration outbox"}
+  ],
+  "contract_endpoints": ["/healthz", "/readyz", "/openapi.json", "/odata/$metadata"]
+}

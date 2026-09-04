@@ -113,6 +113,7 @@ const semanticServiceUrls = Object.freeze({
   oslc: configuredServiceUrl('oslc', 8015, '/oslc'),
   catalog: configuredServiceUrl('catalog', 8016, '/catalog'),
   dataProducts: configuredServiceUrl('data_product', 8017, '/data-products'),
+  dataPipeline: configuredServiceUrl('data_pipeline', 8019, '/pipeline'),
 });
 
 /** Build a URL for new standalone-service features during monolith migration. */
@@ -136,6 +137,7 @@ const SERVICE_PATHS = [
   ['oslc', /^(?:\/api\/v1\/oslc|\/oslc)(?:\/|$)/],
   ['catalog', /^\/api\/v1\/catalog\/products(?:\/|$)/],
   ['dataProducts', /^\/api\/v1\/data-products(?:\/|$)/],
+  ['dataPipeline', /^\/api\/v1\/pipeline(?:\/|$)/],
   ['agentic', /^\/api\/v1\/(?:agents|tools|mcp-servers|workflows|plans|runs|workflow-runs|catalog\/validate|chat)(?:\/|$)/],
   ['agentic', /^\/api\/v1\/code-audit(?:\/|$)/],
   ['graph', /^\/recommendations(?:\/|$)/],

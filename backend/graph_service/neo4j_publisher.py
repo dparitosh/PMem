@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
+import re
 from typing import Any
 
 from neo4j import GraphDatabase
 from rdflib import Graph, Literal
 from rdflib.namespace import OWL, RDF, RDFS
 from semantica.kg import GraphAnalyzer
+from . import query_repository as cypher
 
 
 class Neo4jPublisher:
@@ -99,12 +101,11 @@ class Neo4jPublisher:
     def projection(self, *, ontology_id: str, limit: int = 3000) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 10_000))
         nodes = self._session_rows(
-            "MATCH (n:OntologyResource {ontology_id: $ontology_id}) RETURN n.iri AS id, n.label AS label, n.kind AS type LIMIT $limit",
+            cypher.ONTOLOGY_PROJECTION_NODES,
             ontology_id=ontology_id, limit=safe_limit,
         )
         edges = self._session_rows(
-            "MATCH (a:OntologyResource {ontology_id: $ontology_id})-[r]->(b:OntologyResource {ontology_id: $ontology_id}) "
-            "RETURN a.iri AS source, b.iri AS target, type(r) AS type LIMIT $limit",
+            cypher.ONTOLOGY_PROJECTION_EDGES,
             ontology_id=ontology_id, limit=safe_limit * 4,
         )
         return {"nodes": nodes, "edges": edges, "ontology_id": ontology_id, "truncated": len(nodes) >= safe_limit}
@@ -126,6 +127,7 @@ class Neo4jPublisher:
                     "label": str(node.get("label") or node["id"]),
                     "kind": str(node.get("type") or "resource"),
                     **({"ontology_id": node["ontology_id"]} if node.get("ontology_id") else {}),
+                    **({"search_score": int(node["score"])} if node.get("score") is not None else {}),
                 },
                 "can_traverse": True,
             }
@@ -174,6 +176,20 @@ class Neo4jPublisher:
             view={"type": "overview", "limit": safe_limit, "truncated": len(nodes) >= safe_limit},
         )
 
+    def search(self, *, query: str, limit: int = 50) -> dict[str, Any]:
+        stop_words = {"and", "the", "for", "from", "show", "with", "relationship", "relationships"}
+        terms = sorted({token for token in re.findall(r"[a-z0-9]+", str(query).lower()) if len(token) >= 3 and token not in stop_words})
+        if not terms:
+            raise ValueError("query must contain at least one searchable term")
+        safe_limit = max(1, min(int(limit), 200))
+        nodes = self._session_rows(cypher.ONTOLOGY_SEARCH_NODES, terms=terms, limit=safe_limit)
+        ids = [node["id"] for node in nodes]
+        edges = [] if not ids else self._session_rows(cypher.ONTOLOGY_TRAVERSAL_EDGES, ids=ids, limit=safe_limit * 4)
+        return self._explorer_payload(
+            nodes=nodes, edges=edges,
+            view={"type": "search", "query": query, "terms": terms, "limit": safe_limit, "truncated": len(nodes) >= safe_limit},
+        )
+
     def _legacy_overview(self, *, limit: int) -> dict[str, Any]:
         nodes = self._session_rows(
             "MATCH (n) WHERE n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty "
@@ -207,21 +223,14 @@ class Neo4jPublisher:
     def traversal(self, *, iri: str, depth: int = 1, limit: int = 200) -> dict[str, Any]:
         hops, safe_limit = max(1, min(int(depth), 5)), max(1, min(int(limit), 1_000))
         nodes = self._session_rows(
-            "MATCH (root:OntologyResource {iri: $iri}) "
-            "OPTIONAL MATCH path=(root)-[*0..5]-(neighbor:OntologyResource) "
-            "WHERE length(path) <= $hops AND neighbor.ontology_id = root.ontology_id "
-            "WITH root, collect(DISTINCT neighbor)[..$limit] AS neighbors "
-            "UNWIND CASE WHEN size(neighbors) = 0 THEN [root] ELSE neighbors END AS node "
-            "RETURN DISTINCT node.iri AS id, node.label AS label, node.kind AS type, node.ontology_id AS ontology_id",
+            cypher.ONTOLOGY_TRAVERSAL_NODES,
             iri=iri, hops=hops, limit=safe_limit,
         )
         if not nodes:
             return self._legacy_traversal(node_id=iri, depth=hops, limit=safe_limit)
         ids = [node["id"] for node in nodes]
         edges = [] if not ids else self._session_rows(
-            "MATCH (a:OntologyResource)-[r]->(b:OntologyResource) "
-            "WHERE a.iri IN $ids AND b.iri IN $ids AND a.ontology_id = b.ontology_id "
-            "RETURN a.iri AS source, b.iri AS target, type(r) AS type LIMIT $limit",
+            cypher.ONTOLOGY_TRAVERSAL_EDGES,
             ids=ids, limit=safe_limit * 4,
         )
         return self._explorer_payload(

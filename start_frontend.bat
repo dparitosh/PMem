@@ -51,25 +51,25 @@ echo.
 
 where node >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Node.js not found. Please install Node.js 20 LTS or newer.
+    echo [ERROR] Node.js 24 or newer is required.
     exit /b 1
 )
 
 for /f "usebackq delims=" %%N in (`node -p "process.versions.node.split('.')[0]"`) do set "NODE_MAJOR=%%N"
 if "!NODE_MAJOR!"=="" (
-    echo [ERROR] Unable to detect Node.js version. Please install Node.js 20 LTS or newer.
+    echo [ERROR] Unable to detect Node.js version. Please install Node.js 24 or newer.
     exit /b 1
 )
-if !NODE_MAJOR! LSS 20 (
-    echo [ERROR] Node.js 20 LTS or newer is required. Detected Node.js major version !NODE_MAJOR!.
-    echo [INFO] Install Node.js 20 LTS, then run: cd frontend ^&^& npm install
+if !NODE_MAJOR! LSS 24 (
+    echo [ERROR] Node.js 24 or newer is required. Detected Node.js major version !NODE_MAJOR!.
+    echo [INFO] Install Node.js 24 or newer, then run: cd frontend ^&^& npm ci
     exit /b 1
 )
 echo [INFO] Node.js major version !NODE_MAJOR! detected.
 
 where npm >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] npm not found. Please install Node.js 20 LTS or newer.
+    echo [ERROR] npm not found. Please install Node.js 24 or newer.
     exit /b 1
 )
 

@@ -91,3 +91,10 @@ audit-shots/
 _restore_ingest/
 data/artifacts/
 .release-test-tmp/
+
+# Local Codex presentation/build intermediates (final decks belong in deliverables/)
+.codex-build/
+.codex-pptx-build/
+*.pptx.inspect.ndjson
+DEPO_Component_Interaction_Architecture/
+Semantic_Integration_Lambda_Architecture/

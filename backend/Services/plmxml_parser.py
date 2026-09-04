@@ -391,6 +391,15 @@ _DEFAULT_METADATA_EXCLUSION_TAGS = frozenset({
     "UserData",
 })
 
+# XPDMXML/3DEXPERIENCE exports encode important ProductInst values as child
+# elements rather than attributes.  Retain these small leaf elements until the
+# owning entity has been processed; all other unneeded elements remain cleared
+# during streaming parse for bounded memory use.
+_PARENT_PAYLOAD_TAGS = frozenset({
+    "ID", "Name", "Description", "RevisionName", "RevisionIndex", "Instancing",
+    "Owned", "ChildOrder", "RelativeTransformation3D", "Rotation3D", "Translation3D",
+})
+
 
 def _resolve_metadata_exclusion_tags(metadata_exclusion_tags: List[str] | None = None) -> set[str]:
     configured = set(_DEFAULT_METADATA_EXCLUSION_TAGS)
@@ -443,6 +452,16 @@ def _parse_time_required(attrs: Dict[str, str]) -> float | None:
         return None
 
 
+def _direct_child_texts(element: ET.Element) -> Dict[str, str]:
+    """Expose attribute-less vendor export values on their owning entity."""
+    values: Dict[str, str] = {}
+    for child in list(element):
+        text = " ".join(part.strip() for part in child.itertext() if part and part.strip())
+        if text:
+            values.setdefault(_local_name(child.tag), text)
+    return values
+
+
 def parse_plmxml_file(file_path: Path, metadata_exclusion_tags: List[str] | None = None) -> PlmxmlDocument:
     start_time = time.perf_counter()
     context, using_lxml = _iterparse(file_path)
@@ -483,7 +502,7 @@ def parse_plmxml_file(file_path: Path, metadata_exclusion_tags: List[str] | None
 
         if not elem_id:
             if tag in {
-                "ProductInstance", "Occurrence", "ProductOccurrence",
+                "ProductInstance", "ProductInst", "Occurrence", "ProductOccurrence",
                 "ProcessInstance", "ProcessOccurrence",
                 "Relationship", "Rel",
                 "GeneralRelation", "TraceabilityRelation",
@@ -494,9 +513,9 @@ def parse_plmxml_file(file_path: Path, metadata_exclusion_tags: List[str] | None
                 attrs["id"] = elem_id
             else:
                 skipped_elements += 1
-                if tag not in {"Description", "PlainText", "ApplicationRef", "UserValue", "UserData"}:
+                if tag not in {"Description", "PlainText", "ApplicationRef", "UserValue", "UserData", *_PARENT_PAYLOAD_TAGS}:
                     logger.debug("PLMXML skipped element without identifier: tag=%s file=%s", tag, file_path.name)
-                if tag not in {"Description", "PlainText", "ApplicationRef", "UserValue", "UserData"}:
+                if tag not in {"Description", "PlainText", "ApplicationRef", "UserValue", "UserData", *_PARENT_PAYLOAD_TAGS}:
                     _clear_element(elem, using_lxml)
                 continue
 
@@ -508,6 +527,10 @@ def parse_plmxml_file(file_path: Path, metadata_exclusion_tags: List[str] | None
         if attrs.get("uid"):
             alias_to_primary[attrs["uid"]] = elem_id
         alias_to_primary[elem_id] = elem_id
+        # Attribute-first exports remain untouched; child texts fill only
+        # absent fields for XPDMXML-style Product and ProductInst records.
+        for key, value in _direct_child_texts(elem).items():
+            attrs.setdefault(key, value)
 
         if tag not in {"Relationship", "Rel"}:
             for ref_key, ref_value in _reference_values(attrs):
@@ -517,10 +540,10 @@ def parse_plmxml_file(file_path: Path, metadata_exclusion_tags: List[str] | None
         if tag in {"Part", "PartRevision", "PartMaster", "Product", "ProductRevision"}:
             doc.parts[elem_id] = PlmxmlPart(
                 id=elem_id,
-                name=attrs.get("name", ""),
-                part_number=attrs.get("partNumber", attrs.get("number", attrs.get("itemId", ""))),
-                revision=attrs.get("revision", attrs.get("revisionId", "")),
-                description=attrs.get("description", ""),
+                name=attrs.get("name", attrs.get("Name", "")),
+                part_number=attrs.get("partNumber", attrs.get("number", attrs.get("itemId", attrs.get("ID", "")))),
+                revision=attrs.get("revision", attrs.get("revisionId", attrs.get("RevisionIndex", ""))),
+                description=attrs.get("description", attrs.get("Description", "")),
                 part_type=attrs.get("partType", attrs.get("subType", tag)),
                 master_ref=attrs.get("masterRef", attrs.get("baseRef", attrs.get("productRef", ""))),
                 user_data_refs=_parse_refs(attrs.get("userDataRefs", "")),
@@ -536,14 +559,14 @@ def parse_plmxml_file(file_path: Path, metadata_exclusion_tags: List[str] | None
                 structure_type=attrs.get("structureType", attrs.get("type", "")),
                 properties=attrs,
             )
-        elif tag in {"ProductInstance", "Occurrence", "ProductOccurrence"}:
+        elif tag in {"ProductInstance", "ProductInst", "Occurrence", "ProductOccurrence"}:
             doc.product_instances.append(
                 PlmxmlProductInstance(
                     id=elem_id,
-                    name=attrs.get("name", ""),
-                    part_ref=attrs.get("partRef", attrs.get("instancedRef", attrs.get("productRef", ""))),
+                    name=attrs.get("name", attrs.get("Name", "")),
+                    part_ref=attrs.get("partRef", attrs.get("instancedRef", attrs.get("productRef", attrs.get("Instancing", "")))),
                     transform_ref=attrs.get("transformRef", ""),
-                    parent_ref=attrs.get("parentRef", ""),
+                    parent_ref=attrs.get("parentRef", attrs.get("Owned", "")),
                     quantity=_parse_quantity(attrs),
                     occurrence_refs=_parse_refs(attrs.get("occurrenceRefs", attrs.get("childRefs", ""))),
                     user_data_refs=_parse_refs(attrs.get("userDataRefs", "")),

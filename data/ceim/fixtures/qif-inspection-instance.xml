@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Representative QIF 3.0-style inspection instance for CEIM adapter tests. -->
+<QIFDocument xmlns="http://qifstandards.org/xsd/qif3">
+  <ProductDefinition>
+    <Part id="PART-100" name="Rotor" />
+  </ProductDefinition>
+  <InspectionPlanning>
+    <InspectionPlan id="PLAN-100" name="Rotor inspection" />
+  </InspectionPlanning>
+  <InspectionResults>
+    <MeasurementResults id="RESULT-100" name="Rotor diameter" status="accepted" inspectionPlanId="PLAN-100" />
+  </InspectionResults>
+</QIFDocument>

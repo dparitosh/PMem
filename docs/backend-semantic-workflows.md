@@ -23,11 +23,7 @@ Confirm these are ready:
 
 Use:
 
-`D:\Depo_Onto_Engine\backend\scripts\run_semantic_workflow.py`
-
-Windows launcher:
-
-`D:\Depo_Onto_Engine\run_semantic_workflow.bat`
+`D:\Githuv_repo\PMem\backend\scripts\run_semantic_workflow.py`
 
 Run from repo root:
 
@@ -35,11 +31,6 @@ Run from repo root:
 backend\.dt_venv\Scripts\python.exe backend\scripts\run_semantic_workflow.py --help
 ```
 
-Or with the batch launcher:
-
-```powershell
-.\run_semantic_workflow.bat --help
-```
 
 ## 1. Link imported instances to ontology
 
@@ -49,9 +40,6 @@ Dry run only, no Neo4j mutation:
 backend\.dt_venv\Scripts\python.exe backend\scripts\run_semantic_workflow.py instance-link --ontology-id plmxmlpdm_1781143225 --import-task-id 6636daef-9b03-4d97-9dbd-c085722984f4
 ```
 
-```powershell
-.\run_semantic_workflow.bat instance-link --ontology-id plmxmlpdm_1781143225 --import-task-id 6636daef-9b03-4d97-9dbd-c085722984f4
-```
 
 Apply approved links:
 
@@ -76,9 +64,6 @@ This workflow now prefers type-based signals and avoids auto-linking weak generi
 backend\.dt_venv\Scripts\python.exe backend\scripts\run_semantic_workflow.py ontology-merge --source-ontology-id mbseout_1781143722 --target-ontology-id plmxmlpdm_1781143225
 ```
 
-```powershell
-.\run_semantic_workflow.bat ontology-merge --source-ontology-id mbseout_1781143722 --target-ontology-id plmxmlpdm_1781143225
-```
 
 What to review:
 

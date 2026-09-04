@@ -1,7 +1,8 @@
 @echo off
 setlocal enabledelayedexpansion
 
-:: DEPO stack startup script.
+:: Legacy development convenience script. Customer/bootstrap deployments use
+:: infra\deployment\invoke-depo-lifecycle.ps1 and the production frontend host.
 :: Starts backend and frontend as separate service windows using the same
 :: optional service-boundaries.env manifest.
 
@@ -11,6 +12,10 @@ echo.
 echo ================================================================================
 echo   DEPO SERVICE STACK STARTUP
 echo ================================================================================
+echo.
+echo [NOTICE] This script starts the legacy compatibility host for development.
+echo [NOTICE] For the supported microservice deployment, run:
+echo powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local
 echo.
 if exist "service-boundaries.env" (
     echo   Runtime manifest: service-boundaries.env

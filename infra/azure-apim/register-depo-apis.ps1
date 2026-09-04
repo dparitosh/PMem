@@ -10,10 +10,16 @@ param(
   [Parameter(Mandatory = $true)][string]$AgenticServiceUrl,
   [Parameter(Mandatory = $true)][string]$CatalogServiceUrl,
   [Parameter(Mandatory = $true)][string]$DataProductsServiceUrl,
+  [Parameter(Mandatory = $true)][string]$CeimServiceUrl,
+  [Parameter(Mandatory = $true)][string]$DataPipelineServiceUrl,
   [switch]$AllowAnonymous
 )
 
 $ErrorActionPreference = "Stop"
+$root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$manifestPath = Join-Path $root "infra\deployment\services.json"
+if (-not (Test-Path $manifestPath)) { throw "Deployment service manifest was not found: $manifestPath" }
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 
 function Assert-HttpsUrl([string]$Name, [string]$Value) {
   $uri = $null
@@ -30,6 +36,8 @@ Assert-HttpsUrl "QifServiceUrl" $QifServiceUrl
 Assert-HttpsUrl "AgenticServiceUrl" $AgenticServiceUrl
 Assert-HttpsUrl "CatalogServiceUrl" $CatalogServiceUrl
 Assert-HttpsUrl "DataProductsServiceUrl" $DataProductsServiceUrl
+Assert-HttpsUrl "CeimServiceUrl" $CeimServiceUrl
+Assert-HttpsUrl "DataPipelineServiceUrl" $DataPipelineServiceUrl
 
 function Register-DepoApi([string]$ApiId, [string]$Path, [string]$DisplayName, [string]$ServiceUrl) {
   $baseUrl = $ServiceUrl.TrimEnd('/')
@@ -66,20 +74,10 @@ function Register-DepoODataApi([string]$ApiId, [string]$Path, [string]$DisplayNa
   az rest --method put --uri $uri --body $body --only-show-errors
 }
 
-Register-DepoApi "depo-ontology" "ontology" "DEPO Ontology Service" $OntologyServiceUrl
-Register-DepoApi "depo-graph" "graph" "DEPO Graph Service" $GraphServiceUrl
-Register-DepoApi "depo-ingestion" "ingestion" "DEPO Ingestion Service" $IngestionServiceUrl
-Register-DepoApi "depo-oslc" "oslc" "DEPO OSLC Service" $OslcServiceUrl
-Register-DepoApi "depo-qif" "qif" "DEPO QIF Service" $QifServiceUrl
-Register-DepoApi "depo-agentic" "agentic" "DEPO Agentic Control Plane" $AgenticServiceUrl
-Register-DepoApi "depo-catalog" "catalog" "DEPO Data Catalog" $CatalogServiceUrl
-Register-DepoApi "depo-data-products" "data-products" "DEPO Data Products" $DataProductsServiceUrl
-
-Register-DepoODataApi "depo-ontology-odata" "ontology-odata" "DEPO Ontology OData" $OntologyServiceUrl
-Register-DepoODataApi "depo-graph-odata" "graph-odata" "DEPO Graph OData" $GraphServiceUrl
-Register-DepoODataApi "depo-ingestion-odata" "ingestion-odata" "DEPO Ingestion OData" $IngestionServiceUrl
-Register-DepoODataApi "depo-oslc-odata" "oslc-odata" "DEPO OSLC OData" $OslcServiceUrl
-Register-DepoODataApi "depo-qif-odata" "qif-odata" "DEPO QIF OData" $QifServiceUrl
-Register-DepoODataApi "depo-agentic-odata" "agentic-odata" "DEPO Agentic OData" $AgenticServiceUrl
-Register-DepoODataApi "depo-catalog-odata" "catalog-odata" "DEPO Data Catalog OData" $CatalogServiceUrl
-Register-DepoODataApi "depo-data-products-odata" "data-products-odata" "DEPO Data Products OData" $DataProductsServiceUrl
+$urls = @{ 'schema-sets'=$QifServiceUrl; ontology=$OntologyServiceUrl; agentic=$AgenticServiceUrl; graph=$GraphServiceUrl; ingestion=$IngestionServiceUrl; oslc=$OslcServiceUrl; catalog=$CatalogServiceUrl; 'data-products'=$DataProductsServiceUrl; ceim=$CeimServiceUrl; 'data-pipeline'=$DataPipelineServiceUrl }
+foreach ($service in $manifest.services) {
+  $url = $urls[$service.id]
+  if (-not $url) { throw "Missing APIM service URL for $($service.id)." }
+  Register-DepoApi "depo-$($service.id)" $service.apim_path $service.display_name $url
+  Register-DepoODataApi "depo-$($service.id)-odata" "$($service.apim_path)-odata" "$($service.display_name) OData" $url
+}

@@ -26,3 +26,22 @@ def test_tool_is_rejected_when_not_allowlisted_for_agent():
     client = TestClient(app)
     response = client.post("/api/v1/plans", json={"agent_id": "ontology-intake", "tool_id": "context.upsert"})
     assert response.status_code == 422
+
+
+def test_companion_returns_bounded_graph_evidence(monkeypatch):
+    async def grounded(message):
+        return {"status": "grounded", "answerable": True, "response": "Grounded graph matches: Product.", "evidence": [{"evidence_type": "graph_resource", "resource_id": "urn:product", "label": "Product", "source": "graph"}], "sources": ["graph"], "retrieval": {"nodes_examined": 1, "relationships_examined": 0, "truncated": False}}
+    monkeypatch.setattr("backend.agentic_service.router.companion.ask", grounded)
+    response = TestClient(app).post("/api/v1/chat", json={"message": "Show product"})
+    assert response.status_code == 200
+    assert response.json()["answerable"] is True
+    assert response.json()["evidence"][0]["resource_id"] == "urn:product"
+
+
+def test_companion_fails_closed_when_graph_is_unavailable(monkeypatch):
+    async def unavailable(message):
+        raise RuntimeError("Knowledge graph retrieval is unavailable; no answer was generated")
+    monkeypatch.setattr("backend.agentic_service.router.companion.ask", unavailable)
+    response = TestClient(app).post("/api/v1/chat", json={"message": "Invent an answer"})
+    assert response.status_code == 503
+    assert "no answer was generated" in response.json()["detail"]

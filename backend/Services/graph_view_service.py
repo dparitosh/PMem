@@ -278,25 +278,6 @@ class GraphViewService:
             return {"prefix": token, "ontology_id": token}
 
         try:
-            resolved_rows = cls._run(
-                """
-                MATCH (o)
-                WHERE o.ontology_id = $token OR o.ontology_prefix = $token OR o.prefix = $token
-                RETURN coalesce(o.ontology_prefix, o.prefix, $token) AS prefix,
-                       coalesce(o.ontology_id, o.ontology_prefix, o.prefix, $token) AS ontology_id
-                LIMIT 1
-                """,
-                {"token": token},
-            ) or []
-        except Exception:
-            resolved_rows = []
-
-        if resolved_rows:
-            prefix = str(resolved_rows[0].get("prefix") or token).strip()
-            ontology_id = str(resolved_rows[0].get("ontology_id") or prefix or token).strip()
-            return {"prefix": prefix or token, "ontology_id": ontology_id or prefix or token}
-
-        try:
             from backend.Services.ontology_upload_manager import OntologyUploadManager
         except Exception:
             from Services.ontology_upload_manager import OntologyUploadManager
@@ -313,6 +294,26 @@ class GraphViewService:
                 ontology_id = str(meta.get("ontology_id") or prefix).strip()
                 if token_l in {prefix.lower(), ontology_id.lower()}:
                     return {"prefix": prefix or token, "ontology_id": ontology_id or prefix or token}
+
+        # The registry is authoritative when it knows the requested ontology;
+        # graph metadata can contain retained versions from earlier imports.
+        try:
+            resolved_rows = cls._run(
+                """
+                MATCH (o)
+                WHERE o.ontology_id = $token OR o.ontology_prefix = $token OR o.prefix = $token
+                RETURN coalesce(o.ontology_prefix, o.prefix, $token) AS prefix,
+                       coalesce(o.ontology_id, o.ontology_prefix, o.prefix, $token) AS ontology_id
+                LIMIT 1
+                """,
+                {"token": token},
+            ) or []
+        except Exception:
+            resolved_rows = []
+        if resolved_rows:
+            prefix = str(resolved_rows[0].get("prefix") or token).strip()
+            ontology_id = str(resolved_rows[0].get("ontology_id") or prefix or token).strip()
+            return {"prefix": prefix or token, "ontology_id": ontology_id or prefix or token}
 
         return {"prefix": token, "ontology_id": token}
 

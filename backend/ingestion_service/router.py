@@ -12,6 +12,7 @@ from .neo4j_writer import writer
 from .schema_conversion import converter
 from .engineering_workflow import workflow as engineering_workflow
 from .ap242_mbd import ap242_mbd
+from .ap242_reference import AP242ReferenceValidator
 from .tabular import MAX_IMPORT_ROWS, MAX_UPLOAD_BYTES, constraint_query, index_query, load_table, node_query, records, relationship_query
 import json
 import httpx
@@ -76,6 +77,21 @@ async def inspect_ap242(file: UploadFile = File(...)) -> dict:
     if result.get("standard") != "ap242":
         raise HTTPException(status_code=422, detail="The uploaded file is not identifiable as an AP242 XSD, EXPRESS, or STEP representation")
     return result
+
+
+@router.get("/ap242/reference/validation", summary="Validate the configured AP242 reference model and its semantic conversion")
+def validate_ap242_reference() -> dict:
+    """Validate the configured AP242 source without publishing or changing graph data.
+
+    The reference location is controlled exclusively through
+    ``AP242_REFERENCE_ROOT``.  This prevents the API from becoming an arbitrary
+    local-path reader while making the standard-source evidence repeatable for
+    deployment verification.
+    """
+    try:
+        return AP242ReferenceValidator().validate()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/ap242/mbd/extract", summary="Extract AP242 MBD product, geometry, PMI, and presentation mappings")

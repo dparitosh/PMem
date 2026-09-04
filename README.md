@@ -1,71 +1,40 @@
-# DEPO Release Package
+# DEPO Semantic Digital Thread
 
-This repository contains two deliverables that can be released together to the customer:
+DEPO is a governed semantic integration platform for engineering data. It
+connects standards, source artifacts, CEIM canonical mappings, quality rules,
+data products and a Neo4j-backed knowledge graph through controlled publication.
 
-1. **Main DEPO application**
-   - React frontend in `frontend/`
-   - FastAPI backend in `backend/`
-   - Neo4j-backed graph, ontology, import, semantic bridge, chat, and reports workflows
+## Supported deployment topology
 
-2. **Standalone Ontology Agentic Service**
-   - Located in `standalone/ontology_agentic_service/`
-   - Separate ontology workflow microservice with its own API
-   - Can orchestrate selected DEPO backend APIs without depending on the DEPO frontend
+The supported runtime is a React/Vite frontend, ten independently deployable
+FastAPI services, one durable data-product outbox worker, PostgreSQL control
+plane, artifact storage and a customer-managed graph database. The legacy
+`backend/main.py` host remains only for controlled frontend migration and is
+not the production deployment target.
 
-## Recommended Release Positioning
+The authoritative service inventory is
+[infra/deployment/services.json](infra/deployment/services.json).
 
-- Release the **main DEPO application** as the primary customer application.
-- Release the **standalone ontology agentic service** as a companion service for ontology-centric workflows, automation, and API-driven orchestration.
+## Installation and release
 
-## Runtime Boundary Model
+Use the single maintained deployment guide:
 
-The repository is intended to run as separate service boundaries, not as one monolith:
+[infra/deployment/README.md](infra/deployment/README.md)
 
-- **Frontend**: React app on port `3000`
-- **Backend API**: FastAPI on port `8000`
-- **Neo4j**: external graph database
-- **Ollama / LLM services**: external model runtime
+It covers configuration generation, security profiles, service startup,
+OpenAPI/OData validation, Spark opt-in, shutdown and production preflight.
 
-Use the checked-in launcher scripts to start each service with its own host/port and environment variables. That is the supported no-Docker deployment model.
+## Architecture references
 
-For one-file deployment control, copy [`service-boundaries.env.example`](D:/Depo_Onto_Engine/service-boundaries.env.example) to `service-boundaries.env` and edit the runtime hosts, ports, and external service URIs for the target machine.
+- [Semantic Integration and Lambda Pipeline](docs/SEMANTIC_INTEGRATION_LAMBDA_PIPELINE.md)
+- [Semantic Governance Contract](docs/SEMANTIC_GOVERNANCE_CONTRACT.md)
+- [Delivery Tracker](docs/ACCELERATED_DELIVERY_TRACKER.md)
+- [Customer Deployment Runbook](docs/DEPLOYMENT_RUNBOOK.md)
 
-Use [`start_services.bat`](D:/Depo_Onto_Engine/start_services.bat) and [`stop_services.bat`](D:/Depo_Onto_Engine/stop_services.bat) for the normal operator workflow. Use the individual backend/frontend launchers only when debugging a single service.
+## Development notes
 
-## Customer-Facing Release Documents
-
-- [Release guide](D:/Depo_Onto_Engine/docs/release-guide.md)
-- [Backend semantic workflows](D:/Depo_Onto_Engine/docs/backend-semantic-workflows.md)
-- [Semantic Bridge and Teamcenter notes](D:/Depo_Onto_Engine/docs/semantic-bridge-change-impact-and-teamcenter.md)
-- [Standalone ontology agentic service README](D:/Depo_Onto_Engine/standalone/ontology_agentic_service/README.md)
-
-## Quick Start
-
-### Runtime Prerequisite
-
-Use Node.js 20 LTS with npm 10 for the React frontend. The root `.nvmrc` / `.node-version` files and `frontend/package.json` all target Node 20. After upgrading Node.js, run `cd frontend && npm install && npm run build`.
-
-### Main app
-
-```bat
-cd D:\Depo_Onto_Engine
-.\start_services.bat
-```
-
-### Standalone ontology service
-
-```bat
-cd D:\Depo_Onto_Engine\standalone\ontology_agentic_service
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python start_service.py
-```
-
-## Current Release Caveat
-
-The unstructured document pipeline is now wired into the backend API surface, but document upload remains dependent on a working embedding runtime in the customer environment.
-
-That means:
-- ontology, graph, import, semantic bridge, and API surfaces are releaseable
-- document upload should be treated as environment-dependent unless the target runtime has the required LLM/embedder stack available
+- Frontend: Node.js 24+ and npm 10+, run `npm ci` then `npm run build` in
+  `frontend`.
+- Backend: use the project Python runtime under `backend/.dt_venv`.
+- No Docker, Redis or Celery runtime is required.
+- Do not store customer secrets in source control. `.env.local` is gitignored.

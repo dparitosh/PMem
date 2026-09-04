@@ -386,6 +386,18 @@ export const qifAPI = {
   retryGraph: (taskId) => apiClient.post(buildUrl(replaceParams(API.qif.retryGraph, { task_id: taskId }))),
 };
 
+// ========== DATA-PIPELINE MONITORING ENDPOINTS ==========
+// The Data Flow page uses only read operations plus an explicit replay action.
+// Telemetry describes processing-job execution; it is not application usage
+// telemetry and does not grant graph write authority.
+export const dataPipelineAPI = {
+  health: () => apiClient.get(buildUrl('/api/v1/pipeline/health')),
+  telemetry: () => apiClient.get(buildUrl('/api/v1/pipeline/telemetry')),
+  definitions: () => apiClient.get(buildUrl('/api/v1/pipeline/jobs/definitions')),
+  runs: (limit = 100) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/runs'), { params: { limit } }),
+  replay: (runId) => apiClient.post(buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}/replay`)),
+};
+
 // ========== DATA IMPORT ENDPOINTS ==========
 export const importAPI = {
   upload: (file, metadata = {}) => {
@@ -579,6 +591,7 @@ export const API_METHODS = {
   chat: chatAPI,
   ontology: ontologyAPI,
   qif: qifAPI,
+  dataPipeline: dataPipelineAPI,
   import: importAPI,
   workflow: workflowAPI,
   ingestion: ingestionAPI,

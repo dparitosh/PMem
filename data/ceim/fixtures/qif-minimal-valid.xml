@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Minimal schema-valid QIF 3.0 document used only for XSD validation. -->
+<QIFDocument xmlns="http://qifstandards.org/xsd/qif3" versionQIF="3.0.0" idMax="1">
+  <QPId>fd43400a-29bf-4ec6-b96c-e2f846eb6ff6</QPId>
+</QIFDocument>

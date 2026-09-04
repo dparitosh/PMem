@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from backend.artifact_store import ArtifactStore
+
 from .document_processor import DocumentProcessingCancelled, process_documents_batch
 from .workflow_artifact_service import WorkflowArtifactService
 
@@ -160,6 +162,8 @@ class DocumentJobService:
                 cancel_check=lambda: cls._cancel_requested(task_id, event),
                 progress_callback=progress,
                 include_semantic_proposals=True,
+                publish_index=False,
+                include_chunk_content=True,
             )
             if cls._cancel_requested(task_id, event):
                 raise DocumentProcessingCancelled("Document processing was cancelled")
@@ -170,6 +174,41 @@ class DocumentJobService:
                 "processing_result.json",
                 result,
                 "document_processing_result",
+            )
+            evidence_documents = []
+            for source, item in zip(source_artifacts := (cls._read_state(task_id) or {}).get("source_artifacts", []), result.get("processing_results", [])):
+                if item.get("status") != "success":
+                    continue
+                evidence_documents.append({
+                    "artifact_id": source.get("artifact_id"),
+                    "document_id": item.get("document_id"),
+                    "content_hash": item.get("content_hash"),
+                    "file_type": item.get("file_type"),
+                    "chunks": item.get("evidence_chunks", []),
+                    "semantic_proposals": item.get("semantic_proposals", {}),
+                })
+            quality_report = {
+                "quality_profile": "unstructured-evidence-v1",
+                "total_documents": len(retained_paths),
+                "accepted_documents": len(evidence_documents),
+                "rejected_documents": int((result.get("summary") or {}).get("failed_processing") or 0),
+                "rules": ["artifact.content-addressed", "format.extractable", "chunk.provenance", "semantic-proposals.review-required"],
+                "publication": "not_attempted; evidence requires CEIM normalization and approved publication",
+            }
+            WorkflowArtifactService.write_json(task_id, "reports", "unstructured_evidence.json", {
+                "contract": "unstructured-evidence-batch-v1",
+                "documents": evidence_documents,
+                "quality_report": quality_report,
+            }, "unstructured_evidence_batch")
+            WorkflowArtifactService.write_json(task_id, "reports", "unstructured_quality.json", quality_report, "unstructured_quality_report")
+            evidence_path = WorkflowArtifactService.resolve_artifact_path(task_id, "reports/unstructured_evidence.json")
+            if evidence_path is None:
+                raise RuntimeError("Unstructured evidence artifact could not be resolved")
+            evidence_artifact = ArtifactStore().ingest(
+                evidence_path,
+                kind="unstructured-evidence-batch",
+                media_type="application/json",
+                provenance={"workflow_id": "document.unstructured", "task_id": task_id, "contract": "unstructured-evidence-batch-v1"},
             )
             proposals = [
                 item.get("semantic_proposals")
@@ -199,7 +238,9 @@ class DocumentJobService:
                 stage="complete",
                 progress=100,
                 completed_at=cls._now(),
-                result={"summary": summary, "processing_results": public_results},
+                result={"summary": summary, "processing_results": public_results, "quality_report": quality_report,
+                        "evidence_artifact_id": evidence_artifact["artifact_id"],
+                        "output_contract": "unstructured-evidence-batch-v1", "graph_publication": "not_attempted"},
                 error="",
             )
         except DocumentProcessingCancelled as exc:

@@ -349,6 +349,7 @@ async def submit_document_job(
     try:
         from .document_job_service import DocumentJobService
         from .workflow_artifact_service import WorkflowArtifactService
+        from backend.artifact_store import ArtifactStore
 
         saved_uploads: list[tuple[UploadFile, str]] = []
         for upload in files:
@@ -361,6 +362,7 @@ async def submit_document_job(
         WorkflowArtifactService.ensure_task(task_id, "document.unstructured")
         retained_paths: list[str] = []
         source_artifacts: list[dict[str, Any]] = []
+        canonical_store = ArtifactStore()
         for position, (upload, temporary_path) in enumerate(saved_uploads, start=1):
             artifact = WorkflowArtifactService.copy_file(
                 task_id,
@@ -374,7 +376,13 @@ async def submit_document_job(
             if retained is None:
                 raise RuntimeError("Retained source artifact could not be resolved")
             retained_paths.append(str(retained))
-            source_artifacts.append(artifact)
+            canonical = canonical_store.ingest(
+                retained,
+                kind="unstructured-document",
+                media_type=str(upload.content_type or artifact.get("mime_type") or "application/octet-stream"),
+                provenance={"workflow_id": "document.unstructured", "task_id": task_id, "original_filename": upload.filename or "", "position": position},
+            )
+            source_artifacts.append({**artifact, "artifact_id": canonical["artifact_id"], "canonical_artifact": canonical})
         state = DocumentJobService.submit(
             retained_paths,
             source_artifacts,
@@ -475,13 +483,13 @@ async def get_supported_formats_endpoint():
         logger.error(f"Error fetching supported formats: {e}")
         raise HTTPException(status_code=500, detail="Unable to retrieve supported document formats") from e
 
-@router.post("/upload", response_model=DocumentUploadResponse)
+@router.post("/upload", response_model=DocumentUploadResponse, deprecated=True)
 async def upload_documents(
     files: List[UploadFile] = File(...),
     index_name: Optional[str] = Form(None)
 ):
     """
-    Upload and process multiple documents.
+    Retired: direct upload and indexing are no longer permitted.
     
     The endpoint automatically detects file format and processes accordingly:
     - **PDF**: Extracts page text
@@ -489,7 +497,8 @@ async def upload_documents(
     - **PowerPoint**: Extracts slide text
     - **Text/Markdown/HTML**: Extracts textual content
     
-    All documents are stored as embeddings in Neo4j for later retrieval.
+    Use ``POST /documents/jobs``; it retains immutable evidence and requires
+    CEIM/Data Product/Graph Publication approval before any serving write.
     
     Args:
         files: Multiple document files to upload (can be mixed formats)
@@ -510,6 +519,11 @@ async def upload_documents(
           -F "files=@presentation.pptx"
         ```
     """
+    raise HTTPException(
+        status_code=410,
+        detail="Direct document indexing is retired. Submit /api/v1/documents/jobs so extraction produces governed evidence before CEIM/Data Product/Graph Publication.",
+    )
+
     temp_dir = None
     
     try:
@@ -596,13 +610,13 @@ async def upload_documents(
         except Exception:
             pass
 
-@router.post("/upload-single", response_model=DocumentUploadResponse)
+@router.post("/upload-single", response_model=DocumentUploadResponse, deprecated=True)
 async def upload_single_document(
     file: UploadFile = File(...),
     index_name: Optional[str] = Form(None)
 ):
     """
-    Upload and process a single document
+    Retired: direct upload and indexing are no longer permitted.
     
     Convenience endpoint for uploading one document at a time.
     
@@ -613,6 +627,11 @@ async def upload_single_document(
     Returns:
         DocumentUploadResponse with processing status
     """
+    raise HTTPException(
+        status_code=410,
+        detail="Direct document indexing is retired. Submit /api/v1/documents/jobs so extraction produces governed evidence before CEIM/Data Product/Graph Publication.",
+    )
+
     temp_dir = None
     
     try:

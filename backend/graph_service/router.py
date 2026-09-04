@@ -32,6 +32,16 @@ def overview(limit: int = 900) -> dict:
         raise HTTPException(status_code=503, detail=f"Graph overview failed: {type(exc).__name__}: {exc}") from exc
 
 
+@router.get("/search", summary="Search graph resources with bounded parameterized ranking")
+def search(query: str, limit: int = 50) -> dict:
+    try:
+        return publisher.search(query=query, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Graph search failed: {type(exc).__name__}: {exc}") from exc
+
+
 @router.get("/ontologies/{ontology_id}/projection", summary="Get an explorer-ready ontology projection")
 def ontology_projection(ontology_id: str, limit: int = 900) -> dict:
     try:

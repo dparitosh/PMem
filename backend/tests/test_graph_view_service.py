@@ -107,6 +107,7 @@ def test_resolve_ontology_scope_uses_registry_ontology_id(monkeypatch):
 
 
 def test_virtual_ontology_view_keeps_live_graph_when_it_is_populated(monkeypatch):
+    monkeypatch.setattr(GraphViewService, "_ontology_total_counts", classmethod(lambda _cls, _prefix, _ontology_id: {"nodes": 0, "relationships": 0, "classes": 0, "object_properties": 0, "datatype_properties": 0}))
     monkeypatch.setattr(
         GraphViewService,
         "_ontology_view_rows",

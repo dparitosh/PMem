@@ -6,10 +6,16 @@ param(
   [Parameter(Mandatory = $true)][string]$QifServiceUrl,
   [Parameter(Mandatory = $true)][string]$AgenticServiceUrl,
   [Parameter(Mandatory = $true)][string]$CatalogServiceUrl,
-  [Parameter(Mandatory = $true)][string]$DataProductsServiceUrl
+  [Parameter(Mandatory = $true)][string]$DataProductsServiceUrl,
+  [Parameter(Mandatory = $true)][string]$CeimServiceUrl,
+  [Parameter(Mandatory = $true)][string]$DataPipelineServiceUrl
 )
 
 $ErrorActionPreference = "Stop"
+$root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$manifestPath = Join-Path $root "infra\deployment\services.json"
+if (-not (Test-Path $manifestPath)) { throw "Deployment service manifest was not found: $manifestPath" }
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 
 function Test-DepoService([string]$Name, [string]$ServiceUrl) {
   $baseUrl = $ServiceUrl.TrimEnd('/')
@@ -20,11 +26,5 @@ function Test-DepoService([string]$Name, [string]$ServiceUrl) {
   Write-Host "$Name service contract is reachable."
 }
 
-Test-DepoService "Ontology" $OntologyServiceUrl
-Test-DepoService "Graph" $GraphServiceUrl
-Test-DepoService "Ingestion" $IngestionServiceUrl
-Test-DepoService "OSLC" $OslcServiceUrl
-Test-DepoService "QIF" $QifServiceUrl
-Test-DepoService "Agentic" $AgenticServiceUrl
-Test-DepoService "Catalog" $CatalogServiceUrl
-Test-DepoService "Data Products" $DataProductsServiceUrl
+$urls = @{ 'schema-sets'=$QifServiceUrl; ontology=$OntologyServiceUrl; agentic=$AgenticServiceUrl; graph=$GraphServiceUrl; ingestion=$IngestionServiceUrl; oslc=$OslcServiceUrl; catalog=$CatalogServiceUrl; 'data-products'=$DataProductsServiceUrl; ceim=$CeimServiceUrl; 'data-pipeline'=$DataPipelineServiceUrl }
+foreach ($service in $manifest.services) { Test-DepoService $service.display_name $urls[$service.id] }

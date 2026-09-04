@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+import re
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query
@@ -14,6 +15,8 @@ except ImportError:
 
 router = APIRouter(prefix="/metadata-registry", tags=["metadata-registry"])
 LIFECYCLE_STATUSES = {"draft", "in_review", "approved", "deprecated", "retired"}
+COMPATIBILITY_STATUSES = {"compatible", "breaking", "unknown"}
+SEMVER_PATTERN = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?")
 
 
 def _normalize_lifecycle_status(value: str) -> str:
@@ -21,6 +24,20 @@ def _normalize_lifecycle_status(value: str) -> str:
     if status not in LIFECYCLE_STATUSES:
         raise ValueError("Unsupported lifecycle status")
     return status
+
+
+def _normalize_compatibility_status(value: str) -> str:
+    status = str(value or "").strip().lower()
+    if status not in COMPATIBILITY_STATUSES:
+        raise ValueError("Unsupported compatibility status")
+    return status
+
+
+def _validate_namespace_uri(value: str) -> str:
+    uri = str(value or "").strip()
+    if uri and not (uri.startswith(("http://", "https://", "urn:"))):
+        raise ValueError("namespace_uri must use an http(s) or urn URI")
+    return uri
 
 
 class MetadataAssetRequest(BaseModel):
@@ -34,6 +51,13 @@ class MetadataAssetRequest(BaseModel):
     source_system: str = Field(default="", max_length=200)
     lifecycle_status: str = Field(default="draft", max_length=50)
     version: str = Field(default="1.0.0", max_length=50)
+    persistent_id: str = Field(default="", max_length=500)
+    namespace_uri: str = Field(default="", max_length=2000)
+    namespace_prefix: str = Field(default="", max_length=100)
+    compatibility_status: str = Field(default="unknown", max_length=50)
+    replaces_asset_id: str = Field(default="", max_length=200)
+    deprecation_reason: str = Field(default="", max_length=5000)
+    approval_evidence: str = Field(default="", max_length=2000)
     effective_from: str = Field(default="", max_length=50)
     effective_to: str = Field(default="", max_length=50)
     ontology_uri: str = Field(default="", max_length=2000)
@@ -43,6 +67,23 @@ class MetadataAssetRequest(BaseModel):
     @classmethod
     def validate_lifecycle_status(cls, value: str) -> str:
         return _normalize_lifecycle_status(value)
+
+    @field_validator("version")
+    @classmethod
+    def validate_semantic_version(cls, value: str) -> str:
+        if not SEMVER_PATTERN.fullmatch(str(value or "")):
+            raise ValueError("version must use semantic versioning, e.g. 1.2.3")
+        return value
+
+    @field_validator("compatibility_status")
+    @classmethod
+    def validate_compatibility_status(cls, value: str) -> str:
+        return _normalize_compatibility_status(value)
+
+    @field_validator("namespace_uri")
+    @classmethod
+    def validate_namespace_uri(cls, value: str) -> str:
+        return _validate_namespace_uri(value)
 
     @field_validator("effective_from", "effective_to")
     @classmethod
@@ -66,6 +107,14 @@ class MetadataAssetRequest(BaseModel):
                 raise ValueError("effective_to cannot precede effective_from")
         return self
 
+    @model_validator(mode="after")
+    def validate_governance_fields(self):
+        if self.lifecycle_status == "approved" and (not self.steward or not self.approval_evidence):
+            raise ValueError("approved assets require steward and approval_evidence")
+        if self.lifecycle_status in {"deprecated", "retired"} and not self.deprecation_reason:
+            raise ValueError("deprecated or retired assets require deprecation_reason")
+        return self
+
 
 class MetadataAssetUpdateRequest(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=300)
@@ -77,6 +126,13 @@ class MetadataAssetUpdateRequest(BaseModel):
     source_system: Optional[str] = Field(default=None, max_length=200)
     lifecycle_status: Optional[str] = Field(default=None, max_length=50)
     version: Optional[str] = Field(default=None, max_length=50)
+    persistent_id: Optional[str] = Field(default=None, max_length=500)
+    namespace_uri: Optional[str] = Field(default=None, max_length=2000)
+    namespace_prefix: Optional[str] = Field(default=None, max_length=100)
+    compatibility_status: Optional[str] = Field(default=None, max_length=50)
+    replaces_asset_id: Optional[str] = Field(default=None, max_length=200)
+    deprecation_reason: Optional[str] = Field(default=None, max_length=5000)
+    approval_evidence: Optional[str] = Field(default=None, max_length=2000)
     effective_from: Optional[str] = Field(default=None, max_length=50)
     effective_to: Optional[str] = Field(default=None, max_length=50)
     ontology_uri: Optional[str] = Field(default=None, max_length=2000)
@@ -86,6 +142,23 @@ class MetadataAssetUpdateRequest(BaseModel):
     @classmethod
     def validate_lifecycle_status(cls, value: Optional[str]) -> Optional[str]:
         return None if value is None else _normalize_lifecycle_status(value)
+
+    @field_validator("version")
+    @classmethod
+    def validate_semantic_version(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not SEMVER_PATTERN.fullmatch(str(value or "")):
+            raise ValueError("version must use semantic versioning, e.g. 1.2.3")
+        return value
+
+    @field_validator("compatibility_status")
+    @classmethod
+    def validate_compatibility_status(cls, value: Optional[str]) -> Optional[str]:
+        return None if value is None else _normalize_compatibility_status(value)
+
+    @field_validator("namespace_uri")
+    @classmethod
+    def validate_namespace_uri(cls, value: Optional[str]) -> Optional[str]:
+        return None if value is None else _validate_namespace_uri(value)
 
     @field_validator("effective_from", "effective_to")
     @classmethod
@@ -116,11 +189,23 @@ class LifecycleTransitionRequest(BaseModel):
     status: str = Field(min_length=1, max_length=50)
     actor: str = Field(default="", max_length=200)
     comment: str = Field(default="", max_length=5000)
+    approval_evidence: str = Field(default="", max_length=2000)
+    deprecation_reason: str = Field(default="", max_length=5000)
 
     @field_validator("status")
     @classmethod
     def validate_status(cls, value: str) -> str:
         return _normalize_lifecycle_status(value)
+
+    @model_validator(mode="after")
+    def validate_transition_evidence(self):
+        if not self.actor:
+            raise ValueError("lifecycle transitions require actor")
+        if self.status == "approved" and not self.approval_evidence:
+            raise ValueError("approved transition requires approval_evidence")
+        if self.status in {"deprecated", "retired"} and not self.deprecation_reason:
+            raise ValueError("deprecated or retired transition requires deprecation_reason")
+        return self
 
 
 def _now() -> str:
@@ -177,7 +262,11 @@ def _asset_mutation_query(action: str) -> str:
             a.source_system = $source_system, a.lifecycle_status = $lifecycle_status,
             a.version = $version, a.effective_from = $effective_from,
             a.effective_to = $effective_to, a.ontology_uri = $ontology_uri,
-            a.implementation_ref = $implementation_ref, a.updated_at = $updated_at
+            a.implementation_ref = $implementation_ref, a.persistent_id = $persistent_id,
+            a.namespace_uri = $namespace_uri, a.namespace_prefix = $namespace_prefix,
+            a.compatibility_status = $compatibility_status, a.replaces_asset_id = $replaces_asset_id,
+            a.deprecation_reason = $deprecation_reason, a.approval_evidence = $approval_evidence,
+            a.updated_at = $updated_at
         WITH a
         MERGE (e:MetadataAuditEvent {{event_id: $event_id}})
         SET e.action = '{action}', e.actor = $actor, e.comment = $comment, e.created_at = $updated_at
@@ -197,7 +286,8 @@ def _ensure_metadata_constraints() -> None:
 def create_metadata_asset(request: MetadataAssetRequest):
     now = _now()
     payload = request.model_dump()
-    payload.update({"asset_id": request.asset_id or str(uuid4()), "created_at": now, "updated_at": now, "event_id": str(uuid4()), "actor": request.owner, "comment": ""})
+    asset_id = request.asset_id or str(uuid4())
+    payload.update({"asset_id": asset_id, "persistent_id": request.persistent_id or asset_id, "created_at": now, "updated_at": now, "event_id": str(uuid4()), "actor": request.owner, "comment": ""})
     _ensure_metadata_constraints()
     create_query = _asset_mutation_query("created").replace(
         "MERGE (a:MetadataAsset {asset_id: $asset_id})\n        ON CREATE SET a.created_at = $created_at",
@@ -258,7 +348,7 @@ def update_metadata_asset(asset_id: str, request: MetadataAssetUpdateRequest):
 def transition_metadata_asset(asset_id: str, request: LifecycleTransitionRequest):
     allowed_from = {
         "draft": ["in_review"],
-        "in_review": ["draft"],
+        "in_review": ["draft", "approved"],
         "approved": ["in_review"],
         "deprecated": ["approved"],
         "retired": ["deprecated"],
@@ -269,17 +359,20 @@ def transition_metadata_asset(asset_id: str, request: LifecycleTransitionRequest
             MATCH (a:MetadataAsset {asset_id: $asset_id})
             WHERE coalesce(a.lifecycle_status, 'draft') IN $allowed_from
             WITH a, coalesce(a.lifecycle_status, 'draft') AS previous_status
-            SET a.lifecycle_status = $status, a.updated_at = $updated_at
+            SET a.lifecycle_status = $status, a.updated_at = $updated_at,
+                a.approval_evidence = CASE WHEN $approval_evidence <> '' THEN $approval_evidence ELSE a.approval_evidence END,
+                a.deprecation_reason = CASE WHEN $deprecation_reason <> '' THEN $deprecation_reason ELSE a.deprecation_reason END
             WITH a, previous_status
             MERGE (e:MetadataAuditEvent {event_id: $event_id})
             SET e.action = 'lifecycle_transition', e.actor = $actor,
                 e.comment = $comment, e.status = $status, e.previous_status = previous_status,
+                e.approval_evidence = $approval_evidence, e.deprecation_reason = $deprecation_reason,
                 e.changed_fields = ['lifecycle_status'], e.before_values = [previous_status],
                 e.after_values = [$status], e.created_at = $updated_at
             MERGE (a)-[:HAS_AUDIT_EVENT]->(e)
             RETURN properties(a) AS asset
             """,
-            params={"asset_id": asset_id, "status": request.status, "allowed_from": allowed_from, "actor": request.actor, "comment": request.comment, "event_id": str(uuid4()), "updated_at": _now()},
+            params={"asset_id": asset_id, "status": request.status, "allowed_from": allowed_from, "actor": request.actor, "comment": request.comment, "approval_evidence": request.approval_evidence, "deprecation_reason": request.deprecation_reason, "event_id": str(uuid4()), "updated_at": _now()},
         ) or []
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc

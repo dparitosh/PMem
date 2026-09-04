@@ -55,6 +55,10 @@ def test_metadata_dates_and_lifecycle_values_are_validated():
         metadata_registry_routes.LifecycleTransitionRequest(status="anything-goes")
     with pytest.raises(ValueError):
         metadata_registry_routes.MetadataAssetRequest(name="Invalid status", lifecycle_status="anything-goes")
+    with pytest.raises(ValueError, match="semantic versioning"):
+        metadata_registry_routes.MetadataAssetRequest(name="Invalid version", version="v1")
+    with pytest.raises(ValueError, match="approval_evidence"):
+        metadata_registry_routes.MetadataAssetRequest(name="Unproven release", lifecycle_status="approved", steward="steward")
 
 
 def test_metadata_patch_cannot_bypass_lifecycle_transition(monkeypatch):
@@ -85,7 +89,26 @@ def test_metadata_lifecycle_transition_keeps_previous_status_for_audit(monkeypat
     assert "WITH a, previous_status" in transition_cypher
     assert "e.previous_status = previous_status" in transition_cypher
     transition_params = next(params for cypher, params in recorder.calls if "lifecycle_transition" in cypher)
-    assert transition_params["allowed_from"] == ["draft"]
+    assert transition_params["allowed_from"] == ["draft", "approved"]
+
+
+def test_metadata_approval_transition_requires_and_records_evidence(monkeypatch):
+    recorder = _RecordingGraph()
+    monkeypatch.setattr(metadata_registry_routes, "graph", recorder)
+
+    with pytest.raises(ValueError, match="approval_evidence"):
+        metadata_registry_routes.LifecycleTransitionRequest(status="approved", actor="steward")
+
+    metadata_registry_routes.transition_metadata_asset(
+        "asset-1",
+        metadata_registry_routes.LifecycleTransitionRequest(
+            status="approved", actor="steward", approval_evidence="review://CAB-123"
+        ),
+    )
+    transition_cypher, transition_params = next((cypher, params) for cypher, params in recorder.calls if "lifecycle_transition" in cypher)
+    assert "e.approval_evidence = $approval_evidence" in transition_cypher
+    assert transition_params["allowed_from"] == ["in_review"]
+    assert transition_params["approval_evidence"] == "review://CAB-123"
 
 
 def test_ontology_registry_uses_unique_ids_and_contains_uploaded_filename(monkeypatch, tmp_path):

@@ -211,7 +211,7 @@ If the import is structural only:
 
 Import task snapshots are written here:
 
-`D:\Depo_Onto_Engine\uploads\.import_tasks`
+`D:\Githuv_repo\PMem\uploads\.import_tasks`
 
 Useful files:
 

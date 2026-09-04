@@ -5,6 +5,9 @@ import hashlib
 import os
 from pathlib import Path
 
+from rdflib import Graph
+from rdflib.namespace import OWL, RDF, RDFS
+
 from .schema_conversion import EngineeringSchemaConverter
 
 
@@ -27,6 +30,26 @@ def _digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _semantic_summary(turtle: str) -> dict[str, int]:
+    """Measure RDF structures needed for a navigable AP242 ontology.
+
+    Entity counts alone prove an EXPRESS parser ran; they do not prove that the
+    output retained hierarchy or property semantics.  These checks are kept at
+    the reference boundary so regression tests cover the supplied standard.
+    """
+    graph = Graph().parse(data=turtle, format="turtle")
+    classes = set(graph.subjects(RDF.type, OWL.Class)) | set(graph.subjects(RDF.type, RDFS.Class))
+    properties = set(graph.subjects(RDF.type, OWL.ObjectProperty)) | set(graph.subjects(RDF.type, OWL.DatatypeProperty))
+    return {
+        "triple_count": len(graph),
+        "class_count": len(classes),
+        "property_count": len(properties),
+        "subclass_axiom_count": len(list(graph.triples((None, RDFS.subClassOf, None)))),
+        "domain_axiom_count": len(list(graph.triples((None, RDFS.domain, None)))),
+        "range_axiom_count": len(list(graph.triples((None, RDFS.range, None)))),
+    }
+
+
 class AP242ReferenceValidator:
     def __init__(self, root: Path | None = None, converter: EngineeringSchemaConverter | None = None) -> None:
         configured = os.getenv("AP242_REFERENCE_ROOT", "")
@@ -42,7 +65,7 @@ class AP242ReferenceValidator:
         result = {"reference_root": str(self.root.resolve()), "valid": True, "assets": manifest}
         if convert_mim:
             conversion = self.converter.convert(filename=assets["mim_long_form"].name, content=assets["mim_long_form"].read_bytes())
-            result["conversion"] = {"format": conversion["format"], "ontology_name": conversion["ontology"]["name"], "prefix": conversion["ontology"]["prefix"], "turtle_bytes": len(conversion["ontology"]["turtle"].encode("utf-8")), "statistics": conversion["statistics"]}
+            result["conversion"] = {"format": conversion["format"], "ontology_name": conversion["ontology"]["name"], "prefix": conversion["ontology"]["prefix"], "turtle_bytes": len(conversion["ontology"]["turtle"].encode("utf-8")), "statistics": conversion["statistics"], "semantic_summary": _semantic_summary(conversion["ontology"]["turtle"])}
         if convert_xsd:
             xsd_conversions = {}
             for asset_name in ("bom_xsd", "domain_xsd"):
@@ -54,6 +77,7 @@ class AP242ReferenceValidator:
                     "prefix": conversion["ontology"]["prefix"],
                     "turtle_bytes": len(conversion["ontology"]["turtle"].encode("utf-8")),
                     "statistics": conversion["statistics"],
+                    "semantic_summary": _semantic_summary(conversion["ontology"]["turtle"]),
                 }
             result["xsd_conversions"] = xsd_conversions
         return result

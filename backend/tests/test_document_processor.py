@@ -68,6 +68,21 @@ def test_process_documents_batch_with_monkeypatched_backend(monkeypatch, tmp_pat
     assert 'path' not in result['processing_results'][0]
 
 
+def test_governed_extraction_returns_evidence_without_embedding_or_graph_write(monkeypatch, tmp_path):
+    sample = tmp_path / 'requirement.txt'
+    sample.write_text('REQ-112 The pump shall maintain 3000 rpm.', encoding='utf-8')
+    monkeypatch.setattr(processor, '_upsert_datasheet_chunks', lambda rows: pytest.fail('governed extraction must not write the graph'))
+    monkeypatch.setattr(processor, '_embed_texts', lambda *args, **kwargs: pytest.fail('governed extraction must not generate embeddings'))
+
+    result = processor.process_documents_batch([str(sample)], publish_index=False, include_chunk_content=True)
+
+    document = result['processing_results'][0]
+    assert document['status'] == 'success'
+    assert document['index_status'] == 'not_requested'
+    assert document['evidence_chunks'][0]['chunk_id'] == 'chunk_0001'
+    assert document['semantic_proposals']['requires_human_approval'] is True
+
+
 def test_process_documents_rejects_embedding_count_mismatch(monkeypatch, tmp_path):
     sample = tmp_path / 'requirements.txt'
     sample.write_text('Requirement content', encoding='utf-8')

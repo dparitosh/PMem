@@ -5,6 +5,8 @@ def test_chat_memory_trims_to_limit(monkeypatch):
     monkeypatch.setattr(memory_module, "CHAT_SESSION_MESSAGE_LIMIT", 6)
     memory_module.chat_sessions.clear()
     memory_module.chat_session_timestamps.clear()
+    monkeypatch.setattr(memory_module, "load_chat_messages", lambda *_args: [])
+    monkeypatch.setattr(memory_module, "replace_chat_messages", lambda *_args: None)
 
     session = memory_module.get_memory("demo-session")
     for idx in range(6):
@@ -21,6 +23,7 @@ def test_chat_memory_prunes_expired_sessions(monkeypatch):
     monkeypatch.setattr(memory_module, "CHAT_SESSION_TTL_SECONDS", 1)
     memory_module.chat_sessions.clear()
     memory_module.chat_session_timestamps.clear()
+    monkeypatch.setattr(memory_module, "load_chat_messages", lambda *_args: [])
     memory_module.chat_sessions["old-session"] = []
     memory_module.chat_session_timestamps["old-session"] = 0
 

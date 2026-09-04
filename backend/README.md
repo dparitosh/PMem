@@ -34,7 +34,8 @@ backend\.dt_venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 -
 
 ## Independent semantic services
 
-The backend can also run as four HTTP services without Redis or Celery:
+The target deployment runs as ten independently deployable HTTP services plus
+one durable outbox worker, without Redis, Celery, or Docker:
 
 ```powershell
 $env:NEO4J_PASS = "<your Neo4j password>"
@@ -50,11 +51,16 @@ python -m uvicorn backend.data_catalog_service.app:app --host 127.0.0.1 --port 8
 | Ingestion | 8014 | Source-profile normalization and explicit semantic workflow orchestration |
 | OSLC | 8015 | OSLC provider, shapes, TRS, domain discovery and remote OSLC client |
 | Agentic control plane | 8012 | Manifest-driven agents, tools, workflows and MCP contracts |
+| Engineering schema sets | 8010 | QIF and multi-schema-set validation and workflow boundary |
+| Data Catalog | 8016 | Governed product discovery, registration and artifact retention |
+| Data Products | 8017 | Immutable product packages, manifests and catalog outbox reconciliation |
+| CEIM | 8018 | Canonical mapping, validation, provenance and approved publication requests |
+| Data Pipeline | 8019 | Versioned Spark jobs, immutable partitions, telemetry and replay |
 
 ## Dependencies
 
 `requirements.txt` is the single lean runtime manifest used for local
-development and the Docker image. It contains only API, RDF/Semantica, Neo4j,
+development and direct process-managed deployments. It contains only API, RDF/Semantica, Neo4j,
 XML, HTTP, and pure-Python XLSX support. Optional chat, OCR, document, and
 notebook integrations are not part of the supported service runtime.
 

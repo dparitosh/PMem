@@ -21,8 +21,22 @@ class BusinessContextService:
     def __init__(self, root: Path, registry: Any | None = None) -> None:
         self.registry = registry or PostgresRegistry("ontology_business_context")
         self.graph = ContextGraph(advanced_analytics=True)
-        state = self.registry.get(self._STATE_KEY)
-        legacy_path = root / "business_context_graph.json"
+        self.root = root
+        self._loaded = False
+        self._persistence_error = ""
+
+    def _load_persisted_state(self, *, require_persistence: bool = False) -> None:
+        """Load state lazily so OpenAPI/service startup has no database side effect."""
+        if self._loaded:
+            return
+        try:
+            state = self.registry.get(self._STATE_KEY)
+        except RuntimeError as exc:
+            self._persistence_error = str(exc)
+            if require_persistence:
+                raise
+            return
+        legacy_path = self.root / "business_context_graph.json"
         if state is None and legacy_path.is_file():
             try:
                 state = json.loads(legacy_path.read_text(encoding="utf-8"))
@@ -32,8 +46,10 @@ class BusinessContextService:
                 self.registry.put(self._STATE_KEY, state)
         if state:
             self._load(state)
+        self._loaded = True
 
     def upsert(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self._load_persisted_state(require_persistence=True)
         nodes = list(payload.get("nodes") or [])
         edges = list(payload.get("relationships") or payload.get("edges") or [])
         if not nodes and not edges:
@@ -53,9 +69,16 @@ class BusinessContextService:
                 "context": self.summary()}
 
     def summary(self) -> dict[str, Any]:
-        return {"engine": "Semantica ContextGraph", "persistence": "postgres", **self.graph.stats()}
+        self._load_persisted_state()
+        return {
+            "engine": "Semantica ContextGraph",
+            "persistence": "postgres" if not self._persistence_error else "unavailable",
+            "persistence_error": self._persistence_error or None,
+            **self.graph.stats(),
+        }
 
     def get(self, object_id: str, hops: int = 2, limit: int = 200) -> dict[str, Any]:
+        self._load_persisted_state()
         self._validate_id(object_id)
         node = self.graph.find_node(object_id)
         if node is None:
@@ -63,6 +86,7 @@ class BusinessContextService:
         return {"node": node, "neighbors": self.graph.get_neighbor_distances(object_id, hops=max(1, min(hops, 8)))[:limit]}
 
     def where_used(self, object_id: str, limit: int = 200) -> dict[str, Any]:
+        self._load_persisted_state()
         self._validate_id(object_id)
         if not self.graph.has_node(object_id):
             raise ValueError("Business object not found")
@@ -70,6 +94,7 @@ class BusinessContextService:
         return {"object_id": object_id, "used_by": incoming, "count": len(incoming)}
 
     def search(self, query: str, limit: int = 50) -> dict[str, Any]:
+        self._load_persisted_state()
         query = str(query or "").strip()
         if not query:
             raise ValueError("query is required")

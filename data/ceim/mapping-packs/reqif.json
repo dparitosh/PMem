@@ -1,0 +1,8 @@
+{
+  "id": "reqif-core", "version": "0.1.0", "ceim_version": "0.1.0",
+  "entities": {
+    "SPEC-OBJECT": {"ceim_type": "Requirement", "properties": {"LONG-NAME": "name", "DESC": "description", "$source_id": "external_id"}},
+    "SPECIFICATION": {"ceim_type": "Document", "properties": {"LONG-NAME": "name", "$source_id": "external_id"}}
+  },
+  "relationships": {"SPEC-RELATION": {"relationship": "TRACE_TO"}}
+}

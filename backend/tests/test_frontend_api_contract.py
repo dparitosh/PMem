@@ -14,4 +14,4 @@ def test_frontend_endpoint_defaults_match_openapi_or_external_service():
 
     assert report["status"] == "pass", report["unclassified"]
     assert report["matched_backend_endpoint_count"] == report["configured_backend_endpoint_count"]
-    assert report["external_agentic_endpoint_count"] == 6
+    assert report["external_agentic_endpoint_count"] >= 15

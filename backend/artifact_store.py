@@ -45,6 +45,27 @@ class ArtifactStore:
             metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
         return json.loads(metadata_path.read_text(encoding="utf-8"))
 
+    def ingest_bytes(self, content: bytes, *, filename: str, kind: str = "artifact", media_type: str = "application/octet-stream", provenance: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Atomically retain a small control-plane payload as immutable content.
+
+        Large sources must still use :meth:`ingest` to stream a file. This
+        helper is for bounded JSON job inputs and manifests only.
+        """
+        digest = hashlib.sha256(content).hexdigest()
+        artifact_id = f"sha256:{digest}"
+        directory = self.root / "sha256" / digest
+        target, metadata_path = directory / "content", directory / "metadata.json"
+        if not target.exists():
+            directory.mkdir(parents=True, exist_ok=True)
+            temporary = directory / ".content.tmp"
+            temporary.write_bytes(content)
+            os.replace(temporary, target)
+            metadata = {"artifact_id": artifact_id, "sha256": digest, "size": len(content),
+                        "filename": filename, "kind": kind, "media_type": media_type,
+                        "created_at": datetime.now(timezone.utc).isoformat(), "provenance": provenance or {}}
+            metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        return json.loads(metadata_path.read_text(encoding="utf-8"))
+
     def resolve(self, artifact_id: str) -> tuple[dict[str, Any], Path]:
         if not artifact_id.startswith("sha256:") or len(artifact_id) != 71:
             raise ValueError("artifact_id must be a sha256 content address")
@@ -56,6 +77,19 @@ class ArtifactStore:
         if self._digest(content) != artifact_id.split(":", 1)[1]:
             raise ValueError("artifact content no longer matches its immutable artifact_id")
         return metadata, content
+
+    def purge(self, artifact_id: str) -> dict[str, Any]:
+        """Delete one verified artifact; callers must retain external audit evidence."""
+        metadata, content = self.resolve(artifact_id)
+        directory = content.parent.resolve()
+        expected = (self.root.resolve() / "sha256" / artifact_id.split(":", 1)[1]).resolve()
+        if directory != expected:
+            raise ValueError("artifact path is outside the content-addressed store")
+        metadata_path = directory / "metadata.json"
+        content.unlink()
+        metadata_path.unlink()
+        directory.rmdir()
+        return {"artifact_id": artifact_id, "bytes_deleted": int(metadata.get("size") or 0)}
 
 
 artifact_store = ArtifactStore()

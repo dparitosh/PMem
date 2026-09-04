@@ -1,0 +1,13 @@
+{
+  "id": "ap242-core", "version": "0.1.0", "ceim_version": "0.1.0",
+  "entities": {
+    "product_definition": {"ceim_type": "Product", "properties": {"name": "name", "description": "description", "$source_id": "external_id"}},
+    "product_definition_formation": {"ceim_type": "ProductRevision", "properties": {"$source_id": "external_id", "description": "description"}},
+    "next_assembly_usage_occurrence": {"ceim_type": "Assembly", "properties": {"$source_id": "external_id", "name": "name"}},
+    "shape_aspect": {"ceim_type": "Part", "properties": {"name": "name", "description": "description"}}
+  },
+  "relationships": {
+    "next_assembly_usage_occurrence": {"relationship": "HAS_PART"},
+    "product_definition_relationship": {"relationship": "DERIVED_FROM"}
+  }
+}

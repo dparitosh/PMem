@@ -21,8 +21,8 @@ The central message is:
 2. Start the application stack:
 
 ```powershell
-cd D:\Depo_Onto_Engine
-.\start_services.bat
+cd D:\Githuv_repo\PMem
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local
 ```
 
 3. Open `http://localhost:3000/`.
@@ -30,9 +30,9 @@ cd D:\Depo_Onto_Engine
 
 ```text
 Frontend:  http://localhost:3000/
-Backend:   http://localhost:8000/health
-Neo4j:     http://localhost:8000/health/neo4j
-Agentic:   http://localhost:8012/health
+Graph:     http://localhost:8013/healthz
+Ontology:  http://localhost:8011/healthz
+Agentic:   http://localhost:8012/healthz
 ```
 
 5. Use a clean demo database or a dedicated `demo` import identifier. Do not use **Clean Neo4j Schema** during a customer presentation unless the database is explicitly disposable.

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+import httpx
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 from .catalog import catalog
 from .intelligence import SemanticIntelligence
@@ -10,6 +12,8 @@ from .merge_service import GovernedMergeService
 from .business_context import BusinessContextService
 from .semantica_adapter import semantica
 from backend.Services.ontology_upload_manager import OntologyUploadManager
+from backend.platform.authorization import approval_identity
+from .vocabulary_service import vocabularies
 
 router = APIRouter(prefix="/ontologies", tags=["ontologies"])
 intelligence = SemanticIntelligence(semantica.workspace.root)
@@ -169,6 +173,8 @@ def upsert_business_context(payload: dict[str, Any]) -> dict:
         return business_context.upsert(payload)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/business-context/objects/{object_id}", summary="Traverse contextual relationships for a business object")
@@ -202,6 +208,71 @@ def mcp_contract() -> dict:
         "environment": {"SEMANTICA_KG_PATH": "<optional persisted Semantica graph path>"},
         "note": "Configure this command in an MCP client; it is intentionally not exposed as an unauthenticated HTTP endpoint.",
     }
+
+
+@router.get("/vocabularies", summary="List versioned governed SKOS vocabularies")
+def list_vocabularies() -> dict[str, Any]:
+    records = vocabularies.list()
+    return {"vocabularies": records, "count": len(records)}
+
+
+@router.post("/vocabularies", status_code=201, summary="Create an immutable draft SKOS vocabulary release")
+def create_vocabulary(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    actor = approval_identity(request, payload, token_env="VOCABULARY_APPROVAL_TOKEN")
+    try:
+        return vocabularies.create(payload, actor)
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/vocabularies/{scheme_id}/{version}", summary="Read one governed SKOS vocabulary release")
+def get_vocabulary(scheme_id: str, version: str) -> dict[str, Any]:
+    record = vocabularies.get(scheme_id, version)
+    if not record:
+        raise HTTPException(status_code=404, detail="Vocabulary release was not found")
+    return record
+
+
+@router.post("/vocabularies/{scheme_id}/{version}/transition", summary="Review or approve a SKOS vocabulary release")
+def transition_vocabulary(scheme_id: str, version: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    actor = approval_identity(request, payload, token_env="VOCABULARY_APPROVAL_TOKEN")
+    try:
+        return vocabularies.transition(scheme_id, version, str(payload.get("target") or ""), actor, str(payload.get("reason") or ""))
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/vocabularies/{scheme_id}/{version}/publish", summary="Publish an approved SKOS vocabulary through the graph service")
+async def publish_vocabulary(scheme_id: str, version: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    actor = approval_identity(request, payload, token_env="VOCABULARY_APPROVAL_TOKEN")
+    record = vocabularies.get(scheme_id, version)
+    if not record:
+        raise HTTPException(status_code=404, detail="Vocabulary release was not found")
+    if record.get("publication_status") == "published":
+        return record
+    if record.get("lifecycle_status") != "approved":
+        raise HTTPException(status_code=409, detail="Only an approved vocabulary can be published")
+    artifact, content = vocabularies.publication_artifact(record)
+    graph_url = os.getenv("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1").rstrip("/")
+    graph_root = graph_url if graph_url.endswith("/api/v1") else f"{graph_url}/api/v1"
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{graph_root}/graph/ontologies/publish",
+                data={"ontology_id": f"skos-{scheme_id}-{version.replace('.', '-')}", "prefix": "skos"},
+                files={"artifact": (artifact["filename"], content, "text/turtle")},
+            )
+        if response.is_error:
+            raise RuntimeError(f"Graph service returned HTTP {response.status_code}")
+        return vocabularies.mark_published(record, actor, artifact, dict(response.json()))
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail=f"Vocabulary publication is unavailable: {type(exc).__name__}") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("", summary="List ontology artifacts registered by this service")

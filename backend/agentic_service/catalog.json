@@ -7,7 +7,9 @@
     {"id": "graph-analyst", "name": "Graph Analyst", "tools": ["graph.analytics", "graph.neighborhood", "context.search", "context.where_used"], "approval_required": false},
     {"id": "oslc-link-agent", "name": "OSLC Link Agent", "tools": ["oslc.remote.catalog", "oslc.remote.query", "oslc.remote.sync"], "approval_required": false},
     {"id": "schema-set-agent", "name": "Engineering Schema-Set Agent", "tools": ["schema-set.standards", "schema-set.upload", "qif.task.status", "qif.task.commit"], "approval_required": false},
-    {"id": "data-product-governor", "name": "Data Product Governor", "tools": ["data.catalog.products", "data.product.preview", "data.product.publish"], "approval_required": true}
+    {"id": "data-product-governor", "name": "Data Product Governor", "tools": ["data.catalog.products", "data.product.preview", "data.product.publish"], "approval_required": true},
+    {"id": "ceim-mapper", "name": "CEIM Mapper", "tools": ["ceim.contract", "ceim.normalize.batch"], "approval_required": false},
+    {"id": "data-quality-monitor", "name": "Data Quality Monitor", "tools": ["pipeline.telemetry", "pipeline.transform"], "approval_required": false}
   ],
   "tools": [
     {"id": "ontology.generate", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/generate", "mutates": false},
@@ -22,18 +24,22 @@
     ,{"id": "profile.execute", "transport": "openapi", "service": "ingestion", "method": "POST", "path": "/source-profiles/{profile_id}/execute", "mutates": false, "input_kind": "multipart"}
     ,{"id": "graph.analytics", "transport": "openapi", "service": "graph", "method": "GET", "path": "/graph/ontologies/{ontology_id}/analytics", "mutates": false}
     ,{"id": "graph.neighborhood", "transport": "openapi", "service": "graph", "method": "GET", "path": "/graph/ontologies/{ontology_id}/neighborhood", "mutates": false}
-    ,{"id": "oslc.remote.catalog", "transport": "openapi", "service": "oslc", "method": "GET", "path": "/remote/catalog", "mutates": false}
-    ,{"id": "oslc.remote.query", "transport": "openapi", "service": "oslc", "method": "POST", "path": "/remote/query/{resource_type}", "mutates": false}
-    ,{"id": "oslc.remote.sync", "transport": "openapi", "service": "oslc", "method": "POST", "path": "/remote/sync/{resource_type}", "mutates": true}
-    ,{"id": "qif.catalog", "transport": "openapi", "service": "qif", "method": "GET", "path": "/catalog", "mutates": false}
-    ,{"id": "qif.reference.task", "transport": "openapi", "service": "qif", "method": "POST", "path": "/tasks/reference", "mutates": false, "input_kind": "form"}
-    ,{"id": "qif.task.status", "transport": "openapi", "service": "qif", "method": "GET", "path": "/tasks/{task_id}", "mutates": false}
-    ,{"id": "qif.task.commit", "transport": "openapi", "service": "qif", "method": "POST", "path": "/tasks/{task_id}/commit", "mutates": true}
-    ,{"id": "schema-set.standards", "transport": "openapi", "service": "qif", "method": "GET", "path": "/schema-sets/standards", "mutates": false}
-    ,{"id": "schema-set.upload", "transport": "openapi", "service": "qif", "method": "POST", "path": "/schema-sets/upload", "mutates": false, "input_kind": "multipart"}
+    ,{"id": "oslc.remote.catalog", "transport": "openapi", "service": "oslc", "method": "GET", "path": "/oslc/remote/catalog", "mutates": false}
+    ,{"id": "oslc.remote.query", "transport": "openapi", "service": "oslc", "method": "POST", "path": "/oslc/remote/query/{resource_type}", "mutates": false}
+    ,{"id": "oslc.remote.sync", "transport": "openapi", "service": "oslc", "method": "POST", "path": "/oslc/remote/sync/{resource_type}", "mutates": true}
+    ,{"id": "qif.catalog", "transport": "openapi", "service": "qif", "method": "GET", "path": "/qif/catalog", "mutates": false}
+    ,{"id": "qif.reference.task", "transport": "openapi", "service": "qif", "method": "POST", "path": "/qif/tasks/reference", "mutates": false, "input_kind": "form"}
+    ,{"id": "qif.task.status", "transport": "openapi", "service": "qif", "method": "GET", "path": "/qif/tasks/{task_id}", "mutates": false}
+    ,{"id": "qif.task.commit", "transport": "openapi", "service": "qif", "method": "POST", "path": "/qif/tasks/{task_id}/commit", "mutates": true}
+    ,{"id": "schema-set.standards", "transport": "openapi", "service": "qif", "method": "GET", "path": "/qif/schema-sets/standards", "mutates": false}
+    ,{"id": "schema-set.upload", "transport": "openapi", "service": "qif", "method": "POST", "path": "/qif/schema-sets/upload", "mutates": false, "input_kind": "multipart"}
     ,{"id": "data.catalog.products", "transport": "openapi", "service": "catalog", "method": "GET", "path": "/catalog/products", "mutates": false}
     ,{"id": "data.product.preview", "transport": "openapi", "service": "data_products", "method": "POST", "path": "/data-products/preview", "mutates": false}
     ,{"id": "data.product.publish", "transport": "openapi", "service": "data_products", "method": "POST", "path": "/data-products/publish", "mutates": true}
+    ,{"id": "ceim.contract", "transport": "openapi", "service": "ceim", "method": "GET", "path": "/ceim/contract", "mutates": false}
+    ,{"id": "ceim.normalize.batch", "transport": "openapi", "service": "ceim", "method": "POST", "path": "/ceim/normalize/batch", "mutates": false}
+    ,{"id": "pipeline.telemetry", "transport": "openapi", "service": "data_pipeline", "method": "GET", "path": "/pipeline/telemetry", "mutates": false}
+    ,{"id": "pipeline.transform", "transport": "openapi", "service": "data_pipeline", "method": "POST", "path": "/pipeline/jobs/transform", "mutates": false}
   ],
   "mcp_servers": [
     {"id": "semantica", "transport": "stdio", "command": "python", "args": ["-m", "semantica.mcp_server"], "environment": ["SEMANTICA_KG_PATH"], "operations": ["ontology", "reasoning", "validation"]}

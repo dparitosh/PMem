@@ -524,14 +524,23 @@ def process_documents_batch(
     cancel_check=None,
     progress_callback=None,
     include_semantic_proposals: bool = True,
+    publish_index: bool = True,
+    include_chunk_content: bool = False,
 ) -> dict[str, Any]:
+    """Extract unstructured evidence, optionally publishing retrieval chunks.
+
+    Extraction is deliberately separable from index publication. Governed data
+    jobs use ``publish_index=False`` so document text and semantic proposals
+    become reviewable evidence before any graph or vector mutation occurs.
+    The legacy upload endpoint retains the previous opt-in indexing behaviour.
+    """
     normalized_index_name = str(index_name or DATASHEET_INDEX_NAME).strip()
     if normalized_index_name != DATASHEET_INDEX_NAME:
         raise ValueError(
             f"Unsupported document index '{normalized_index_name}'; configured index is '{DATASHEET_INDEX_NAME}'"
         )
     status = runtime_status()
-    if not status["embedder_available"]:
+    if publish_index and not status["embedder_available"]:
         raise RuntimeError("Document processing requires a working embedding backend")
 
     results: list[dict[str, Any]] = []
@@ -549,9 +558,11 @@ def process_documents_batch(
             if not chunk_records:
                 raise ValueError(f"No chunks could be created for document: {extracted['filename']}")
             chunks = [record["content"] for record in chunk_records]
-            if progress_callback:
-                progress_callback("embed", {"file": extracted["filename"], "chunks": len(chunks)})
-            chunk_embeddings = _validated_embeddings(chunks, _embed_texts(chunks, cancel_check=cancel_check))
+            chunk_embeddings: list[list[float]] = []
+            if publish_index:
+                if progress_callback:
+                    progress_callback("embed", {"file": extracted["filename"], "chunks": len(chunks)})
+                chunk_embeddings = _validated_embeddings(chunks, _embed_texts(chunks, cancel_check=cancel_check))
             content_hash = _hash_text(extracted["text"])
             document_id = _hash_text(f"{extracted['filename'].casefold()}\0{content_hash}")
             source_uri = f"document://{document_id}"
@@ -561,8 +572,9 @@ def process_documents_batch(
                 else {"entities": [], "entity_count": 0, "requires_human_approval": True, "committed": False}
             )
             rows = []
-            for idx, (chunk_record, embedding) in enumerate(zip(chunk_records, chunk_embeddings), start=1):
-                rows.append({
+            evidence_chunks = []
+            for idx, chunk_record in enumerate(chunk_records, start=1):
+                row = {
                     "document_id": document_id,
                     "source": source_uri,
                     "filename": extracted["filename"],
@@ -573,14 +585,30 @@ def process_documents_batch(
                     "content": chunk_record["content"],
                     "char_start": chunk_record["char_start"],
                     "char_end": chunk_record["char_end"],
-                    "embedding": embedding,
                     "content_hash": content_hash,
-                })
+                }
+                if publish_index:
+                    row["embedding"] = chunk_embeddings[idx - 1]
+                rows.append(row)
+                evidence_chunks.append({key: value for key, value in row.items() if key != "embedding"})
+            for proposal in semantic_proposals.get("entities", []):
+                source_text = str(proposal.get("source_text") or "")
+                matched = next((chunk for chunk in evidence_chunks if source_text and source_text in str(chunk.get("content") or "")), None)
+                if matched is not None:
+                    proposal["evidence"] = {
+                        "chunk_id": matched["chunk_id"],
+                        "char_start": matched["char_start"],
+                        "char_end": matched["char_end"],
+                        "content_hash": content_hash,
+                    }
+                else:
+                    proposal["evidence"] = {"chunk_id": None, "content_hash": content_hash, "citation_status": "needs_review"}
             if cancel_check and cancel_check():
                 raise DocumentProcessingCancelled("Document processing was cancelled")
-            if progress_callback:
-                progress_callback("index", {"file": extracted["filename"], "chunks": len(rows)})
-            _upsert_datasheet_chunks(rows)
+            if publish_index:
+                if progress_callback:
+                    progress_callback("index", {"file": extracted["filename"], "chunks": len(rows)})
+                _upsert_datasheet_chunks(rows)
             results.append({
                 "file": extracted["filename"],
                 "document_id": document_id,
@@ -588,9 +616,11 @@ def process_documents_batch(
                 "file_type": extracted["file_type"],
                 "status": "success",
                 "chunks_created": len(rows),
-                "index_name": normalized_index_name,
+                "index_name": normalized_index_name if publish_index else None,
+                "index_status": "published" if publish_index else "not_requested",
                 "content_hash": content_hash,
                 "semantic_proposals": semantic_proposals,
+                "evidence_chunks": evidence_chunks if include_chunk_content else [],
             })
             success_count += 1
         except DocumentProcessingCancelled:

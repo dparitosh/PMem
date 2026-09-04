@@ -15,6 +15,7 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Inspect source", "/source-profiles/inspect", "POST", "Inspect a source schema or sample"),
         ServiceCapability("Engineering schema conversion", "/schema-conversions/inspect", "POST", "Convert EXPRESS, STEP, XMI, or XSD to Turtle"),
         ServiceCapability("AP242 inspection", "/ap242/inspect", "POST", "Classify AP242 XSD ontology schemas, EXPRESS schemas, or STEP instances"),
+        ServiceCapability("AP242 reference validation", "/ap242/reference/validation", description="Validate configured AP242 EXPRESS and XSD reference assets without publishing"),
         ServiceCapability("AP242 MBD extraction", "/ap242/mbd/extract", "POST", "Extract traceable product, geometry, PMI, and presentation mappings"),
         ServiceCapability("AP242 Part-28 export", "/ap242/mbd/export-part28", "POST", "Losslessly re-export an already supplied AP242 Part-28 XML source"),
         ServiceCapability("Engineering workflow", "/engineering-workflows", "POST", "Convert, govern, register and optionally publish an engineering ontology"),

@@ -1,0 +1,27 @@
+{
+  "id": "qif-core", "version": "0.1.0", "ceim_version": "0.1.0",
+  "entities": {
+    "Part": {"ceim_type": "Part", "properties": {"$source_id": "external_id", "name": "name", "source_kind": "source_kind"}},
+    "MeasurementResults": {"ceim_type": "QualityMeasurement", "properties": {"$source_id": "external_id", "name": "name", "status": "status"}},
+    "InspectionPlan": {"ceim_type": "Test", "properties": {"$source_id": "external_id", "name": "name"}},
+    "FeatureDefinition": {"ceim_type": "Feature", "properties": {"$source_id": "external_id", "name": "name", "source_kind": "source_kind"}},
+    "FeatureNominal": {"ceim_type": "Feature", "properties": {"$source_id": "external_id", "name": "name", "source_kind": "source_kind"}},
+    "CharacteristicDefinition": {"ceim_type": "Characteristic", "properties": {"$source_id": "external_id", "name": "name", "source_kind": "source_kind"}},
+    "CharacteristicNominal": {"ceim_type": "Characteristic", "properties": {"$source_id": "external_id", "name": "name", "source_kind": "source_kind"}},
+    "DatumDefinition": {"ceim_type": "Datum", "properties": {"$source_id": "external_id", "name": "name", "source_kind": "source_kind"}},
+    "DatumReferenceFrame": {"ceim_type": "DatumReferenceFrame", "properties": {"$source_id": "external_id", "name": "name", "source_kind": "source_kind"}},
+    "PMIDisplay": {"ceim_type": "PMIAnnotation", "properties": {"$source_id": "external_id", "name": "name", "source_kind": "source_kind"}},
+    "AnnotationView": {"ceim_type": "PMIAnnotation", "properties": {"$source_id": "external_id", "name": "name", "source_kind": "source_kind"}},
+    "Body": {"ceim_type": "GeometryBody", "properties": {"$source_id": "external_id", "name": "name", "source_kind": "source_kind"}}
+  },
+  "relationships": {
+    "MeasurementResults": {"relationship": "VALIDATED_BY"},
+    "FeatureNominal": {"relationship": "REALIZES"},
+    "CharacteristicNominal": {"relationship": "REALIZES"},
+    "PartFeatureNominal": {"relationship": "HAS_FEATURE"},
+    "PartCharacteristicNominal": {"relationship": "HAS_CHARACTERISTIC"},
+    "PartDatumDefinition": {"relationship": "USES_DATUM"},
+    "PartDatumReferenceFrame": {"relationship": "USES_REFERENCE_FRAME"},
+    "PartBody": {"relationship": "HAS_GEOMETRY"}
+  }
+}

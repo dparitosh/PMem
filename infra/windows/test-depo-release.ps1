@@ -1,11 +1,13 @@
 param(
   [string]$EnvFile = ".env.local",
   [switch]$Production,
-  [switch]$Bootstrap
+  [switch]$Bootstrap,
+  [switch]$LocalInsecureDemo
 )
 
 $ErrorActionPreference = "Stop"
 if ($Production -and $Bootstrap) { throw 'Choose either -Production or -Bootstrap, not both.' }
+if ($LocalInsecureDemo -and -not $Bootstrap) { throw 'Local insecure demo requires -Bootstrap.' }
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $path = Join-Path $root $EnvFile
 if (-not (Test-Path $path)) { throw "Missing $EnvFile. Copy .env.postgres.example and configure customer secrets." }
@@ -24,7 +26,11 @@ if ($Production) {
 }
 if ($Bootstrap) {
   $required += @('AUTH_MODE', 'NEO4J_URI', 'NEO4J_USER', 'NEO4J_PASS', 'NEO4J_DATABASE')
-  if ($values['AUTH_MODE'] -notin @('token', 'entra')) { throw 'Bootstrap requires AUTH_MODE=token or AUTH_MODE=entra. Disabled authentication is local-only.' }
+  if ($values['AUTH_MODE'] -notin @('token', 'entra', 'disabled')) { throw 'Bootstrap requires AUTH_MODE=token, AUTH_MODE=entra or a loopback-only disabled-auth demo.' }
+  if ($values['AUTH_MODE'] -eq 'disabled') {
+    if (-not $LocalInsecureDemo) { throw 'AUTH_MODE=disabled requires -LocalInsecureDemo.' }
+    if ($values['DEPO_ALLOW_INSECURE_LOCAL_AUTH'] -ne 'true' -or $values['DEPO_SERVICE_HOST'] -notin @('127.0.0.1', 'localhost', '::1')) { throw 'Disabled authentication requires DEPO_ALLOW_INSECURE_LOCAL_AUTH=true and DEPO_SERVICE_HOST=127.0.0.1, localhost or ::1.' }
+  } elseif ($LocalInsecureDemo) { throw '-LocalInsecureDemo requires AUTH_MODE=disabled.' }
 }
 foreach ($name in $required) { if (-not $values[$name]) { throw "Missing required setting: $name" } }
 if ($Production -and $values['DEPO_DATABASE_URL'] -match 'postgres:tcs12345|@127\.0\.0\.1') { throw 'Replace the local PostgreSQL administrator connection with a customer-managed least-privilege application account.' }

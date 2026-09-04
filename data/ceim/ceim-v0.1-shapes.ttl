@@ -1,0 +1,10 @@
+@prefix ceim: <https://depo.example.org/ceim/0.1/> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+
+ceim:CanonicalEntityShape a sh:NodeShape ;
+  sh:targetClass ceim:Product, ceim:ProductRevision, ceim:Part, ceim:Assembly,
+    ceim:Requirement, ceim:QualityMeasurement, ceim:Document, ceim:Change,
+    ceim:Configuration, ceim:Test, ceim:Process, ceim:Resource, ceim:Feature,
+    ceim:Characteristic, ceim:Datum, ceim:DatumReferenceFrame,
+    ceim:PMIAnnotation, ceim:GeometryBody ;
+  sh:property [ sh:path ceim:externalId ; sh:minCount 1 ; sh:maxCount 1 ; sh:message "Every CEIM entity requires exactly one source-derived externalId." ] .

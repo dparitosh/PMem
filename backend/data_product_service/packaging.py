@@ -39,7 +39,8 @@ def build_package(*, output_root: Path, payload: dict, artifacts: list[tuple[dic
             "domain": payload["domain"], "owner": payload["owner"], "description": payload.get("description", ""),
             "classification": payload.get("classification", "internal"), "steward": payload.get("steward", payload["owner"]),
             "sla": payload.get("sla", {}), "quality_status": payload.get("quality_status", "not_assessed"),
-            "sources": payload.get("sources", []), "ontologies": payload.get("ontologies", []), "artifacts": records,
+            "sources": payload.get("sources", []), "ontologies": payload.get("ontologies", []),
+            "semantic_releases": payload.get("semantic_releases", []), "artifacts": records,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         (package_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")

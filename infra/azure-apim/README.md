@@ -17,11 +17,14 @@ az login
   -QifServiceUrl "https://qif.internal.example" `
   -AgenticServiceUrl "https://agentic.internal.example" `
   -CatalogServiceUrl "https://catalog.internal.example" `
-  -DataProductsServiceUrl "https://data-products.internal.example"
+  -DataProductsServiceUrl "https://data-products.internal.example" `
+  -CeimServiceUrl "https://ceim.internal.example" `
+  -DataPipelineServiceUrl "https://data-pipeline.internal.example"
 ```
 
 Registered OpenAPI APIM paths include `/ontology`, `/graph`, `/ingestion`,
-`/oslc`, `/qif`, `/agentic`, `/catalog`, and `/data-products`; matching OData
+`/oslc`, `/qif`, `/agentic`, `/catalog`, `/data-products`, `/ceim`, and
+`/data-pipeline`; matching OData
 paths use the `-odata` suffix. Each service publishes `/odata`,
 `/odata/$metadata`, and a read-only `ServiceCapabilities` entity set. The
 OData catalog is intentionally a discovery contract; governed domain commands
@@ -72,5 +75,7 @@ It verifies liveness, OpenAPI, and OData metadata before import.
   -QifServiceUrl "https://qif.internal.example" `
   -AgenticServiceUrl "https://agentic.internal.example" `
   -CatalogServiceUrl "https://catalog.internal.example" `
-  -DataProductsServiceUrl "https://data-products.internal.example"
+  -DataProductsServiceUrl "https://data-products.internal.example" `
+  -CeimServiceUrl "https://ceim.internal.example" `
+  -DataPipelineServiceUrl "https://data-pipeline.internal.example"
 ```

@@ -234,6 +234,9 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             let buffer = '';
             let streamCompleted = false;
             let streamFailed = false;
+            let responseEvidence = [];
+            let responseSources = [];
+            let responseAnswerable = null;
 
             logger.data('Sending chat request:', validated);
 
@@ -287,6 +290,13 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                         setChatMessages(prev => prev.map(m =>
                             m.id === assistantId ? { ...m, text: accumulated } : m
                         ));
+                    } else if (Array.isArray(parsed.evidence)) {
+                        responseEvidence = parsed.evidence;
+                        responseSources = Array.isArray(parsed.sources) ? parsed.sources : [];
+                        responseAnswerable = parsed.answerable;
+                        setChatMessages(prev => prev.map(m =>
+                            m.id === assistantId ? { ...m, evidence: responseEvidence, sources: responseSources, answerable: responseAnswerable } : m
+                        ));
                     } else if (parsed.status) {
                         setStatusLabel(parsed.status);
                     } else if (parsed.done) {
@@ -304,7 +314,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                         ));
                         setStatusLabel(null);
                         setShowSpinner(false);
-                        if (!streamFailed && setChatResults) setChatResults([{ query: validated, response: accumulated, timestamp: new Date().toISOString() }]);
+                        if (!streamFailed && setChatResults) setChatResults([{ query: validated, response: accumulated, evidence: responseEvidence, sources: responseSources, answerable: responseAnswerable, timestamp: new Date().toISOString() }]);
                     } else if (parsed.error) {
                         streamCompleted = true;
                         streamFailed = true;
@@ -336,7 +346,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                 setStatusLabel(null);
                 setShowSpinner(false);
                 if (setChatResults) {
-                    setChatResults([{ query: validated, response: accumulated, timestamp: new Date().toISOString() }]);
+                    setChatResults([{ query: validated, response: accumulated, evidence: responseEvidence, sources: responseSources, answerable: responseAnswerable, timestamp: new Date().toISOString() }]);
                 }
             } else if (!streamCompleted) {
                 throw new Error('The chat stream ended without a response.');
@@ -464,7 +474,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Sparkles size={14} />
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>Guided engineering queries</span>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>Evidence-grounded engineering queries</span>
                     {chatMessages.length > 0 && (
                         <span style={{
                             background: 'rgba(255,255,255,0.2)', borderRadius: 10,
@@ -575,7 +585,22 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                                     }}
                                 >
                                     {msg.role === 'assistant' ? (
-                                        <div dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.text) }} />
+                                        <>
+                                            <div dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.text) }} />
+                                            {Array.isArray(msg.evidence) && msg.evidence.length > 0 && (
+                                                <details style={{ marginTop: 8 }}>
+                                                    <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Evidence ({msg.evidence.length})</summary>
+                                                    <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                                                        {msg.evidence.slice(0, 12).map((item, index) => (
+                                                            <li key={`${item.resource_id || item.source_id || 'evidence'}-${index}`}>
+                                                                {item.label || `${item.source_id} ${item.relationship || ''} ${item.target_id}`}
+                                                                {item.ontology_id ? ` (${item.ontology_id})` : ''}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </details>
+                                            )}
+                                        </>
                                     ) : (
                                         msg.text
                                     )}

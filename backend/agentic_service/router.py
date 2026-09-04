@@ -1,6 +1,7 @@
 """Catalog and bounded execution for independently extensible agents/tools."""
 from __future__ import annotations
 import base64, binascii, json, os
+from uuid import uuid4
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from backend.platform.authorization import approval_identity
 from backend.mesh_store import PostgresRegistry
+from .companion import companion
 
 router = APIRouter(prefix="/api/v1", tags=["agentic-control-plane"])
 
@@ -29,7 +31,8 @@ class Catalog:
 
 catalog = Catalog()
 workflow_store = PostgresRegistry("agentic_workflow_runs")
-_services = {"ontology": "ONTOLOGY_SERVICE_URL", "graph": "GRAPH_SERVICE_URL", "ingestion": "INGESTION_SERVICE_URL", "oslc": "OSLC_SERVICE_URL", "qif": "QIF_SERVICE_URL", "catalog": "DATA_CATALOG_URL", "data_products": "DATA_PRODUCT_SERVICE_URL"}
+companion_job_store = PostgresRegistry("agentic_companion_jobs")
+_services = {"ontology": "ONTOLOGY_SERVICE_URL", "graph": "GRAPH_SERVICE_URL", "ingestion": "INGESTION_SERVICE_URL", "oslc": "OSLC_SERVICE_URL", "qif": "QIF_SERVICE_URL", "catalog": "DATA_CATALOG_URL", "data_products": "DATA_PRODUCT_SERVICE_URL", "ceim": "CEIM_SERVICE_URL", "data_pipeline": "DATA_PIPELINE_SERVICE_URL"}
 
 def _base(service: str) -> str:
     key = _services.get(service)
@@ -80,30 +83,66 @@ _COMPANION_PROMPTS = [
 ]
 
 
-def _companion_response(message: str) -> str:
-    """Provide a bounded, available-first companion response until an approved LLM tool is configured."""
-    query = " ".join(str(message or "").split())
-    if not query:
-        return "Enter an engineering question to begin."
-    return (
-        f"I received: {query}.\\n\\n"
-        "The knowledge companion is connected to the DEPO agentic control plane. "
-        "For an evidence-backed result, select an ontology and inspect its relationships in Graph Explorer, "
-        "or run the relevant governed workflow from Import."
-    )
-
-
 @router.get("/chat/sample-queries")
 def companion_sample_queries() -> dict:
-    return {"queries": _COMPANION_PROMPTS, "data_available": True, "mode": "guided"}
+    return {"queries": _COMPANION_PROMPTS, "data_available": True, "mode": "evidence-grounded"}
+
+
+@router.post("/chat/validate")
+def companion_validate(payload: dict[str, Any]) -> dict:
+    message = " ".join(str(payload.get("message") or "").split())
+    if not message:
+        raise HTTPException(status_code=422, detail="message is required")
+    return {"status": "ok", "valid": True, "session_id": payload.get("session_id"), "graph_context_present": bool(payload.get("graph_context"))}
+
+
+@router.post("/chat")
+async def companion_chat(payload: dict[str, Any]) -> dict:
+    message = " ".join(str(payload.get("message") or "").split())
+    if not message:
+        raise HTTPException(status_code=422, detail="message is required")
+    try:
+        result = await companion.ask(message)
+        return {"session_id": str(payload.get("session_id") or uuid4()), **result, "mode": "evidence-grounded"}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/chat/jobs", status_code=202)
+async def companion_job(payload: dict[str, Any]) -> dict:
+    response = await companion_chat(payload)
+    job_id = f"companion-{uuid4()}"
+    record = {"job_id": job_id, "status": "completed", "session_id": response["session_id"], "response": response["response"], "answerable": response["answerable"], "evidence": response["evidence"], "sources": response["sources"], "created_at": _now(), "finished_at": _now()}
+    companion_job_store.put(job_id, record)
+    return {"status": "accepted", "job_id": job_id, "poll_endpoint": f"/api/v1/chat/jobs/{job_id}", "session_id": response["session_id"]}
+
+
+@router.get("/chat/jobs/{job_id}")
+def companion_job_status(job_id: str) -> dict:
+    record = companion_job_store.get(job_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Chat job not found")
+    return record
+
+
+@router.get("/chat/health")
+@router.get("/chat/status")
+def companion_health() -> dict:
+    return {"status": "ok", "service": "knowledge-companion", "mode": "evidence-grounded", "streaming": True, "fail_closed": True}
+
+
+@router.get("/chat/capabilities")
+def companion_capabilities() -> dict:
+    return {"name": "knowledge-companion", "mode": "evidence-grounded", "operations": ["validate", "ask", "stream", "job", "sample-queries"], "evidence_required": True}
 
 
 @router.post("/chat-stream")
 async def companion_stream(payload: dict[str, Any]) -> StreamingResponse:
-    answer = _companion_response(str(payload.get("message") or ""))
+    response = await companion_chat(payload)
 
     async def events():
-        yield f"data: {json.dumps({'token': answer})}\\n\\n"
+        yield f"data: {json.dumps({'token': response['response']})}\\n\\n"
+        yield f"data: {json.dumps({'evidence': response['evidence'], 'sources': response['sources'], 'answerable': response['answerable']})}\\n\\n"
         yield "data: {\"done\": true}\\n\\n"
 
     return StreamingResponse(events(), media_type="text/event-stream")

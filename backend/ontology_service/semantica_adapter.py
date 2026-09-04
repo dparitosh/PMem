@@ -65,7 +65,7 @@ class SemanticaAdapter:
     def _engine(base_uri: str) -> OntologyEngine:
         return OntologyEngine(base_uri=base_uri.rstrip("#/") + "/", min_occurrences=1)
 
-    def generate(self, *, data: dict[str, Any], name: str, base_uri: str) -> dict[str, Any]:
+    def generate(self, *, data: dict[str, Any], name: str, base_uri: str, persist: bool = True) -> dict[str, Any]:
         engine = self._engine(base_uri)
         ontology = engine.from_data(data, name=name, build_hierarchy=True, validate=True)
         validation = _result_dict(engine.validate(ontology))
@@ -77,7 +77,9 @@ class SemanticaAdapter:
             engine.export_owl(ontology, str(owl_path), format="xml")
             engine.export_owl(ontology, str(jsonld_path), format="json-ld")
             engine.export_shacl(ontology, str(shacl_path), format="turtle")
-            version_id = self.workspace.store(ontology)
+            # A review preview is intentionally ephemeral.  Persisting it here
+            # would make an unapproved XSD upload a durable ontology version.
+            version_id = self.workspace.store(ontology) if persist else None
             return {"ontology": ontology, "version_id": version_id, "validation": validation, "evaluation": evaluation,
                     "artifacts": {"turtle": ttl_path.read_bytes(), "owl_xml": owl_path.read_bytes(),
                                   "json_ld": jsonld_path.read_bytes(), "shacl": shacl_path.read_bytes()}}
@@ -93,7 +95,10 @@ class SemanticaAdapter:
                     for term in class_terms]
         relationships = [{"source": term.name, "target": term.base, "type": "extends"}
                          for term in class_terms if term.base in known_names]
-        generated = self.generate(data={"entities": entities, "relationships": relationships}, name=f"{prefix} QIF ontology", base_uri=namespace)
+        generated = self.generate(
+            data={"entities": entities, "relationships": relationships},
+            name=f"{prefix} QIF ontology", base_uri=namespace, persist=False,
+        )
         graph = Graph()
         graph.parse(data=generated["artifacts"]["turtle"], format="turtle")
         depo = Namespace(namespace.rstrip("/") + "#")

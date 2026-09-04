@@ -5,10 +5,12 @@ import hmac
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi import Header
 
 from backend.mesh_store import PostgresRegistry
+from backend.platform.authorization import approval_identity
+from .artifact_retention import retention
 
 router = APIRouter(prefix="/catalog", tags=["data-catalog"])
 store = PostgresRegistry("catalog_products")
@@ -68,3 +70,41 @@ def register(product_id: str, version: str, payload: dict, x_depo_service_token:
     latest_version = max(candidates, key=lambda value: _semver(value["version"]))["version"] if candidates else None
     store.put_many({key: record, f"{product_id}:latest": {"product_id": product_id, "latest_version": latest_version, "updated_at": record["updated_at"]}})
     return record
+
+
+@router.get("/artifacts/retention", summary="List artifact retention and tier policies")
+def retention_policies() -> dict:
+    policies = retention.policies()
+    return {"policies": policies, "count": len(policies)}
+
+
+@router.get("/artifacts/retention/due", summary="List artifacts eligible for approved purge")
+def retention_due() -> dict:
+    records = retention.due()
+    return {"artifacts": records, "count": len(records)}
+
+
+@router.get("/artifacts/{artifact_id:path}/retention/history", summary="Read immutable retention and purge evidence")
+def retention_history(artifact_id: str) -> dict:
+    events = retention.history(artifact_id)
+    return {"artifact_id": artifact_id, "events": events, "count": len(events)}
+
+
+@router.post("/artifacts/{artifact_id:path}/retention", summary="Register or update an approved artifact retention policy")
+def register_retention(artifact_id: str, payload: dict, request: Request) -> dict:
+    actor = approval_identity(request, payload, token_env="ARTIFACT_RETENTION_APPROVAL_TOKEN")
+    try:
+        return retention.register(artifact_id, payload, actor)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.post("/artifacts/{artifact_id:path}/purge", summary="Purge one expired artifact and retain a durable tombstone")
+def purge_artifact(artifact_id: str, payload: dict, request: Request) -> dict:
+    actor = approval_identity(request, payload, token_env="ARTIFACT_RETENTION_APPROVAL_TOKEN")
+    try:
+        return retention.purge(artifact_id, actor, str(payload.get("reason") or ""))
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
