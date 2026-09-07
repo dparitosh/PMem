@@ -8,6 +8,7 @@ pack and adapter.
 from __future__ import annotations
 
 from typing import Any
+import json
 
 from defusedxml import ElementTree as ET
 
@@ -20,8 +21,8 @@ def _local_name(tag: object) -> str:
 
 def _first_text(element: Any, name: str) -> str:
     for child in element.iter():
-        if _local_name(child.tag) == name and child.text:
-            return child.text.strip()
+        if _local_name(child.tag) == name:
+            return "".join(child.itertext()).strip()
     return ""
 
 
@@ -51,6 +52,7 @@ def reqif_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) -> 
                 record={"source_type": "SPEC-OBJECT", "source_id": source_id, "attributes": {
                     "LONG-NAME": str(element.attrib.get("LONG-NAME") or source_id),
                     "DESC": str(element.attrib.get("DESC") or ""),
+                    "VALUES": json.dumps([ET.tostring(child, encoding="unicode") for child in element if _local_name(child.tag) == "VALUES"]),
                 }},
             ))
             known_ids.add(source_id)
@@ -66,6 +68,18 @@ def reqif_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) -> 
             counts["specifications"] += 1
 
     for element in root.iter():
+        if _local_name(element.tag) == "SPECIFICATION":
+            def visit(node, parent_id):
+                for child in node:
+                    if _local_name(child.tag) == "SPEC-HIERARCHY":
+                        object_id = _first_text(child, "OBJECT")
+                        if object_id not in known_ids:
+                            raise ValueError("ReqIF hierarchy refers to an unknown requirement")
+                        relationships.append(active_contract.normalize_relationship(standard="reqif", record={"source_type": "CONTAINS", "source_id": parent_id, "target_id": object_id}))
+                        visit(child, object_id)
+                    else:
+                        visit(child, parent_id)
+            visit(element, element.get("IDENTIFIER", ""))
         if _local_name(element.tag) != "SPEC-RELATION":
             continue
         source_id = _first_text(element, "SOURCE")

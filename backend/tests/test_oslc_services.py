@@ -62,11 +62,21 @@ def test_service_provider_advertises_am_and_rm_domain_capabilities(monkeypatch):
 
     domains = {item["id"] for item in provider["domains"]}
     capabilities = {item["resourceType"]: item for item in provider["queryCapabilities"]}
-    assert {"oslc_am", "oslc_rm"}.issubset(domains)
+    assert {"oslc_am", "oslc_rm", "oslc_cm", "oslc_qm"}.issubset(domains)
     assert capabilities["architecture-resources"]["resourceTypeUri"] == OSLCService.AM_TYPE_URI
     assert capabilities["requirements"]["resourceTypeUri"] == OSLCService.RM_REQUIREMENT_URI
     assert capabilities["requirement-collections"]["resourceTypeUri"] == OSLCService.RM_COLLECTION_URI
     assert provider["domainResources"]["oslc_rm"]["queryBase"].endswith("/oslc/query/requirements")
+    assert capabilities["change-requests"]["resourceTypeUri"] == OSLCService.CM_CHANGE_REQUEST_URI
+    assert capabilities["test-results"]["resourceTypeUri"] == OSLCService.QM_TEST_RESULT_URI
+    assert set(provider["oslc:domain"]) == {
+        "http://open-services.net/ns/am#",
+        "http://open-services.net/ns/rm#",
+        "http://open-services.net/ns/cm#",
+        "http://open-services.net/ns/qm#",
+    }
+    assert {service["domain"] for service in provider["services"]} == set(provider["oslc:domain"])
+    assert all(service["queryCapabilities"] for service in provider["services"])
 
 
 def test_ontology_domain_query_is_scoped_to_registered_ontology(monkeypatch):
@@ -106,6 +116,16 @@ def test_am_and_rm_query_predicates_are_domain_specific():
     assert "AND NOT (any(lbl IN labels(n)" in architecture_query
 
 
+def test_cm_and_qm_query_predicates_are_domain_specific():
+    change_query, _ = OSLCService._build_resource_query(OSLCQueryParameters(), OSLCService.CM_CHANGE_REQUEST_TYPE)
+    result_query, _ = OSLCService._build_resource_query(OSLCQueryParameters(), OSLCService.QM_TEST_RESULT_TYPE)
+    case_query, _ = OSLCService._build_count_query(OSLCQueryParameters(), OSLCService.QM_TEST_CASE_TYPE)
+
+    assert "changerequest" in change_query
+    assert "testresult" in result_query
+    assert "testcase" in case_query
+
+
 def test_domain_shapes_publish_am_and_rm_vocabulary(monkeypatch):
     monkeypatch.setenv("OSLC_BASE_URL", "https://example.test")
     monkeypatch.setattr(
@@ -123,6 +143,17 @@ def test_domain_shapes_publish_am_and_rm_vocabulary(monkeypatch):
     assert requirement_shape["describes"] == [OSLCService.RM_REQUIREMENT_URI]
     assert collection_shape["describes"] == [OSLCService.RM_COLLECTION_URI]
     assert {"architecture-resources", "requirements", "requirement-collections"}.issubset(listed_ids)
+    assert requirement_shape["properties"][0]["propertyDefinition"] == "http://purl.org/dc/terms/title"
+
+
+def test_unknown_shape_is_not_resolved_from_an_arbitrary_path(monkeypatch):
+    monkeypatch.setattr(
+        OntologyUploadManager,
+        "list_ontologies",
+        classmethod(lambda cls: {"status": "success", "ontologies": []}),
+    )
+    with pytest.raises(ValueError, match="Unknown OSLC resource shape"):
+        OSLCService.resource_shape("not-registered")
 
 
 @pytest.mark.parametrize(

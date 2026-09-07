@@ -114,6 +114,7 @@ class CEIMContract:
         """Create a deterministic RDF projection suitable for SHACL and graph publication."""
         graph = Graph()
         ceim, prov = Namespace(self.namespace), Namespace("http://www.w3.org/ns/prov#")
+        boc = Namespace("https://depo.example.org/ontology/bill-of-characteristics/1.0/")
         normalized_entities = []
         for entity in entities:
             normalized, changes = normalize_record(entity)
@@ -133,6 +134,16 @@ class CEIMContract:
             uri = URIRef(f"{self.namespace}entity/{quote(entity_id, safe='')}")
             entity_uris[entity_id] = uri
             graph.add((uri, RDF.type, ceim[entity_type]))
+            source_standard = str(provenance.get("source_standard") or "").lower()
+            source_type = str(provenance.get("source_type") or "")
+            boc_type = {
+                ("qif", "CharacteristicDefinition"): boc.Characteristic,
+                ("qif", "CharacteristicNominal"): boc.NominalCharacteristic,
+                ("ap242", "dimension"): boc.DimensionalCharacteristic,
+                ("ap242", "geometric_tolerance"): boc.TolerancedCharacteristic,
+            }.get((source_standard, source_type))
+            if boc_type is not None:
+                graph.add((uri, RDF.type, boc_type))
             for key, value in dict(entity.get("properties") or {}).items():
                 if value not in (None, ""):
                     graph.add((uri, ceim[self._predicate_name(str(key))], Literal(value)))

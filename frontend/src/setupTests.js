@@ -9,6 +9,21 @@ import { vi } from 'vitest';
 globalThis.jest = vi;
 const jest = globalThis.jest;
 
+// Siemens IX web components rely on browser APIs that JSDOM intentionally
+// does not implement. Small no-op test doubles allow component tests to
+// exercise DEPO behaviour without masking an IX component initialization
+// failure as an unhandled rejection.
+if (!globalThis.ResizeObserver) {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+if (globalThis.ElementInternals?.prototype && !globalThis.ElementInternals.prototype.setFormValue) {
+  globalThis.ElementInternals.prototype.setFormValue = () => {};
+}
+
 const mockAxios = {
   get: jest.fn(() => Promise.resolve({ data: {} })),
   post: jest.fn(() => Promise.resolve({ data: {} })),

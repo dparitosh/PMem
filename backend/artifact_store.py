@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import shutil
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -42,7 +43,9 @@ class ArtifactStore:
             metadata = {"artifact_id": artifact_id, "sha256": digest, "size": target.stat().st_size,
                         "filename": source.name, "kind": kind, "media_type": media_type,
                         "created_at": datetime.now(timezone.utc).isoformat(), "provenance": provenance or {}}
-            metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+            metadata_tmp = directory / f".metadata.{uuid.uuid4().hex}.tmp"
+            metadata_tmp.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+            os.replace(metadata_tmp, metadata_path)
         return json.loads(metadata_path.read_text(encoding="utf-8"))
 
     def ingest_bytes(self, content: bytes, *, filename: str, kind: str = "artifact", media_type: str = "application/octet-stream", provenance: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -57,13 +60,15 @@ class ArtifactStore:
         target, metadata_path = directory / "content", directory / "metadata.json"
         if not target.exists():
             directory.mkdir(parents=True, exist_ok=True)
-            temporary = directory / ".content.tmp"
+            temporary = directory / f".content.{uuid.uuid4().hex}.tmp"
             temporary.write_bytes(content)
             os.replace(temporary, target)
             metadata = {"artifact_id": artifact_id, "sha256": digest, "size": len(content),
                         "filename": filename, "kind": kind, "media_type": media_type,
                         "created_at": datetime.now(timezone.utc).isoformat(), "provenance": provenance or {}}
-            metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+            metadata_tmp = directory / f".metadata.{uuid.uuid4().hex}.tmp"
+            metadata_tmp.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+            os.replace(metadata_tmp, metadata_path)
         return json.loads(metadata_path.read_text(encoding="utf-8"))
 
     def resolve(self, artifact_id: str) -> tuple[dict[str, Any], Path]:

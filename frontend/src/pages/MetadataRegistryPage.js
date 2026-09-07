@@ -233,36 +233,6 @@ export default function MetadataRegistryPage() {
     }
   };
 
-  const ontologyTable = entries.length > 0 && (
-    <div style={{ overflowX: 'auto' }}>
-      <table className="depo-table">
-        <thead>
-          <tr>
-            <th>Source / ontology</th>
-            <th>Prefix</th>
-            <th>Namespace</th>
-            <th>Implementation</th>
-            <th>Lifecycle</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((entry) => (
-            <tr key={entry.ontology_id || entry.value || entry.prefix}>
-              <td>
-                <strong>{entry.label || entry.ontology_id || entry.prefix}</strong>
-                <small style={{ display: 'block', color: '#697586', marginTop: 3 }}>{entry.type || 'Ontology source'}</small>
-              </td>
-              <td><code>{entry.prefix || '—'}</code></td>
-              <td style={{ maxWidth: 320, wordBreak: 'break-word' }}>{entry.namespace || '—'}</td>
-              <td>{entry.graph_available ? `${entry.node_count || 0} nodes · ${entry.relationship_count || 0} links` : 'Not projected'}</td>
-              <td><span style={{ color: statusTone(entry.status), fontWeight: 700 }}>{statusLabel(entry.status)}</span></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-
   return (
     <div className="depo-page" style={{ display: 'grid', gap: 12 }}>
       <section className="depo-panel">
@@ -331,7 +301,6 @@ export default function MetadataRegistryPage() {
                 visibleRegistryAssets={visibleRegistryAssets}
                 registryAssets={registryAssets}
                 entries={entries}
-                ontologiesTable={ontologyTable}
                 transitionHandler={transitionHandler}
                 transitioningAssetIds={transitioningAssetIds}
                 lastUpdated={lastUpdated}

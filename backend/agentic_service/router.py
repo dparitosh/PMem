@@ -12,6 +12,8 @@ from fastapi.responses import StreamingResponse
 from backend.platform.authorization import approval_identity
 from backend.mesh_store import PostgresRegistry
 from .companion import companion
+from .oslc_graph_rag import oslc_graph_rag
+from .dt_requirements_adapter import assess_manifest
 
 router = APIRouter(prefix="/api/v1", tags=["agentic-control-plane"])
 
@@ -32,7 +34,7 @@ class Catalog:
 catalog = Catalog()
 workflow_store = PostgresRegistry("agentic_workflow_runs")
 companion_job_store = PostgresRegistry("agentic_companion_jobs")
-_services = {"ontology": "ONTOLOGY_SERVICE_URL", "graph": "GRAPH_SERVICE_URL", "ingestion": "INGESTION_SERVICE_URL", "oslc": "OSLC_SERVICE_URL", "qif": "QIF_SERVICE_URL", "catalog": "DATA_CATALOG_URL", "data_products": "DATA_PRODUCT_SERVICE_URL", "ceim": "CEIM_SERVICE_URL", "data_pipeline": "DATA_PIPELINE_SERVICE_URL"}
+_services = {"agentic": "AGENTIC_SERVICE_URL", "ontology": "ONTOLOGY_SERVICE_URL", "graph": "GRAPH_SERVICE_URL", "ingestion": "INGESTION_SERVICE_URL", "oslc": "OSLC_SERVICE_URL", "qif": "QIF_SERVICE_URL", "catalog": "DATA_CATALOG_URL", "data_products": "DATA_PRODUCT_SERVICE_URL", "ceim": "CEIM_SERVICE_URL", "data_pipeline": "DATA_PIPELINE_SERVICE_URL"}
 
 def _base(service: str) -> str:
     key = _services.get(service)
@@ -52,6 +54,30 @@ def tools() -> dict: return {"tools": catalog.read()["tools"]}
 def mcp_servers() -> dict: return {"mcp_servers": catalog.read()["mcp_servers"]}
 @router.get("/workflows")
 def workflows() -> dict: return {"workflows": catalog.read()["workflows"]}
+
+
+@router.post("/integrations/dt-requirements-design/compatibility")
+def dt_requirements_design_compatibility(payload: dict[str, Any]) -> dict:
+    """Check an external DT Requirements Design manifest against PMem tools."""
+    manifest = payload.get("manifest") if isinstance(payload.get("manifest"), dict) else payload
+    if not isinstance(manifest, dict):
+        raise HTTPException(status_code=422, detail="manifest must be an object")
+    return assess_manifest(manifest, catalog.read())
+
+
+@router.post("/oslc/graph-rag")
+async def oslc_graph_rag_route(payload: dict[str, Any]) -> dict:
+    """OSLC-governed, read-only retrieval for agent context."""
+    try:
+        return await oslc_graph_rag.retrieve(
+            str(payload.get("query") or ""),
+            str(payload.get("resource_type") or "resources"),
+            int(payload.get("limit") or 10),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/workflows/options")

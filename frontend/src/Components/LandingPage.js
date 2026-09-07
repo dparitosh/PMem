@@ -137,6 +137,11 @@ function BreakdownTable({ title, rows, colKey, colLabel = 'Count' }) {
 }
 
 // â”€â”€â”€ Main landing page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const responsePayload = (response) => {
+  const value = response?.data ?? response ?? {};
+  return value?.data && typeof value.data === 'object' && !Array.isArray(value.data) ? value.data : value;
+};
+
 export default function LandingPage({ setChatResults, onNavigate }) {
   const [metrics, setMetrics] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
@@ -151,12 +156,12 @@ export default function LandingPage({ setChatResults, onNavigate }) {
     setMetricsError('');
     try {
       const response = await platformAPI.health('graph');
-      const graphStatus = String(response?.data?.status || '').toLowerCase();
+      const graphStatus = String(responsePayload(response).status || '').toLowerCase();
       if (graphStatus === 'not_configured') {
         setMetricsError('Graph storage is not configured. Configure the graph service to display graph metrics.');
       }
       const overviewResponse = await graphApi.getOverview(200);
-      const graph = overviewResponse?.data || {};
+      const graph = responsePayload(overviewResponse);
       const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
       const relationships = Array.isArray(graph.relationships) ? graph.relationships : [];
       const countBy = (values, getKey) => Object.entries(values.reduce((counts, value) => {
@@ -193,7 +198,8 @@ export default function LandingPage({ setChatResults, onNavigate }) {
     setOntologiesError('');
     try {
       const response = await apiClient.get(buildUrl('/api/v1/ontologies'));
-      setOntologies(response?.data?.ontologies || response?.data?.items || []);
+      const payload = responsePayload(response);
+      setOntologies(payload.ontologies || payload.items || payload.results || []);
     } catch (error) {
       logger.error('Failed to load ontologies:', error);
       setOntologiesError('Ontology registry is currently unavailable.');

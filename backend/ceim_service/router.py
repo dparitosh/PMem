@@ -14,6 +14,7 @@ from backend.ceim.contract import contract
 from backend.ceim.resolution import analyze_entities, resolution_registry
 from backend.ceim.qif_adapter import qif_to_ceim_batch, validate_qif_instance
 from backend.ceim.reqif_adapter import reqif_to_ceim_batch
+from backend.ceim.plmxml_adapter import plmxml_to_ceim_batch
 from backend.platform.authorization import approval_identity
 from backend.platform.semantic_registry import resolve_approved_release
 
@@ -149,6 +150,24 @@ async def normalize_qif(file: UploadFile = File(...)) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.post("/adapters/plmxml/normalize", summary="Extract a Teamcenter PLMXML instance into a non-persisted CEIM batch")
+async def normalize_plmxml(file: UploadFile = File(...)) -> dict[str, Any]:
+    content = await file.read()
+    if len(content) > MAX_SOURCE_BYTES:
+        raise HTTPException(status_code=413, detail="PLMXML upload exceeds the 25 MiB limit")
+    try:
+        source = ArtifactStore().ingest_bytes(
+            content, filename=file.filename or "source.plmxml", kind="source-plmxml",
+            media_type=file.content_type or "application/xml", provenance={"adapter": "plmxml-ceim-v1"},
+        )
+        return {
+            **plmxml_to_ceim_batch(content), "source_artifact_id": source["artifact_id"],
+            "representation": "normalized-ceim-v1", "ceim_version": contract.version,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.post("/adapters/qif/validate", summary="Validate a QIF 3.0 instance against the bundled document XSD")
 async def validate_qif(file: UploadFile = File(...)) -> dict[str, Any]:
     content = await file.read()
@@ -181,6 +200,7 @@ async def _publish_to_graph(*, turtle: str, ontology_id: str, prefix: str) -> di
             f"{graph_api_root}/graph/ontologies/publish",
             data={"ontology_id": ontology_id, "prefix": prefix},
             files={"artifact": (f"{ontology_id}.ttl", turtle.encode("utf-8"), "text/turtle")},
+            headers={"Authorization": f"Bearer {os.environ['GRAPH_PUBLICATION_TOKEN']}"} if os.getenv("GRAPH_PUBLICATION_TOKEN") else {},
         )
     if response.is_error:
         raise httpx.HTTPStatusError(

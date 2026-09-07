@@ -1,11 +1,31 @@
 import React, { useMemo } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
+import {
+  ClientSideRowModelModule,
+  ColumnAutoSizeModule,
+  ModuleRegistry,
+  NumberFilterModule,
+  PaginationModule,
+  QuickFilterModule,
+  TextFilterModule,
+  TooltipModule,
+} from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
 import { widgetCardStyle, widgetColors } from './widgetStyles';
 
-ModuleRegistry.registerModules([AllCommunityModule]);
+// Register only the table capabilities this shared widget exposes.  The
+// previous AllCommunityModule pulled editing, infinite/server row models,
+// export and other unused features into every lazy page that renders a grid.
+ModuleRegistry.registerModules([
+  ClientSideRowModelModule,
+  ColumnAutoSizeModule,
+  NumberFilterModule,
+  PaginationModule,
+  QuickFilterModule,
+  TextFilterModule,
+  TooltipModule,
+]);
 
 export default function DataGridWidget({
   title,

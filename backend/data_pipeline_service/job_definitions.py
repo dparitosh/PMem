@@ -11,20 +11,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from backend.mesh_store import PostgresRegistry
+from .handlers import registry as handler_registry
 
 
 store = PostgresRegistry("data_job_definitions")
 _ID = re.compile(r"[a-z][a-z0-9-]{2,62}$")
 _SEMVER = re.compile(r"\d+\.\d+\.\d+$")
-JOB_CONTRACTS = {
-    "interactive-quality-summary": ("quality-records-v1", "quality-summary-v1"),
-    "normalize-ceim": ("source-ceim-batch-v1", "normalized-ceim-batch-v1"),
-    "validate-semantic-batch": ("source-ceim-batch-v1", "semantic-validation-report-v1"),
-    "validate-unstructured-evidence": ("unstructured-evidence-batch-v1", "validated-unstructured-evidence-v1"),
-    "enrich-document-evidence": ("unstructured-evidence-batch-v1", "document-graph-proposal-v1"),
-    "rdf-quality-statistics": ("rdf-artifact-v1", "rdf-quality-report-v1"),
-    "rdf-deduplicate-serialize": ("rdf-artifact-v1", "canonical-ntriples-v1"),
-}
+JOB_CONTRACTS = handler_registry.contracts()
 SUPPORTED_JOB_TYPES = set(JOB_CONTRACTS)
 SUPPORTED_QUALITY_PROFILES = {"semantic-core-v1", "unstructured-evidence-v1"}
 
@@ -75,8 +68,8 @@ def validate_definition(payload: dict[str, Any]) -> list[str]:
     version = str(payload.get("version") or "")
     if version and not _SEMVER.fullmatch(version):
         errors.append("version must be semantic version major.minor.patch")
-    if payload.get("job_type") not in SUPPORTED_JOB_TYPES:
-        errors.append(f"job_type must be one of: {', '.join(sorted(SUPPORTED_JOB_TYPES))}")
+    if payload.get("job_type") not in handler_registry.contracts():
+        errors.append(f"job_type must be one of: {', '.join(sorted(handler_registry.contracts()))}")
     if payload.get("quality_profile") not in SUPPORTED_QUALITY_PROFILES:
         errors.append(f"quality_profile must be one of: {', '.join(sorted(SUPPORTED_QUALITY_PROFILES))}")
     if "enabled" in payload and not isinstance(payload["enabled"], bool):
@@ -95,7 +88,7 @@ def create(payload: dict[str, Any]) -> dict[str, Any]:
     errors = validate_definition(payload)
     if errors:
         raise ValueError("; ".join(errors))
-    input_contract, output_contract = JOB_CONTRACTS[payload["job_type"]]
+    input_contract, output_contract = handler_registry.contracts()[payload["job_type"]]
     record = {
         "job_id": payload["job_id"],
         "name": payload["name"],

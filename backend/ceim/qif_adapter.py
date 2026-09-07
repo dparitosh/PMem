@@ -30,6 +30,22 @@ def _attribute(element: Any, *names: str) -> str:
     return ""
 
 
+def _semantic_value(element: Any, *names: str) -> str:
+    """Return an explicitly named QIF scalar without guessing its meaning.
+
+    QIF characteristic values are commonly nested below their nominal record.
+    We only read a named leaf, preserving the lexical representation and unit
+    rather than coercing a possibly qualified value to a number.
+    """
+    wanted = {name.lower() for name in names}
+    for child in element.iter():
+        if _local_name(child.tag).lower() in wanted and not list(child):
+            value = (child.text or "").strip()
+            if value:
+                return value
+    return ""
+
+
 @lru_cache(maxsize=1)
 def _qif_schema(schema_path: str) -> Any:
     """Compile the bundled QIF document schema without fetching its W3C import."""
@@ -127,6 +143,13 @@ def qif_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) -> di
             "status": _attribute(element, "status", "state", "disposition"),
             "source_kind": original_type,
         }
+        if source_type in {"CharacteristicDefinition", "CharacteristicNominal"}:
+            attributes.update({
+                "nominal_value": _semantic_value(element, "NominalValue", "ValueNominal", "DecimalValue"),
+                "lower_limit": _semantic_value(element, "LowerLimit", "LowerTolerance"),
+                "upper_limit": _semantic_value(element, "UpperLimit", "UpperTolerance"),
+                "unit": _semantic_value(element, "Unit", "Units", "UnitLabel"),
+            })
         entities.append(active_contract.normalize_entity(
             standard="qif",
             record={"source_type": source_type, "source_id": source_id, "attributes": attributes},

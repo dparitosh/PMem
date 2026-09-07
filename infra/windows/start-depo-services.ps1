@@ -115,7 +115,9 @@ foreach ($service in $services) {
   }
   # A healthy process may have lost its PID file (for example after a manual
   # recovery); never create a competing listener in that case.
-  if ($service.Port -and $portListening) { continue }
+  if ($service.Port -and $portListening) {
+    throw "Port $($service.Port) for '$($service.Name)' is already in use by an untracked process; refusing to start a competing service. Stop the owner or remove the stale listener and retry."
+  }
   $arguments = if ($service.Port) { "-m uvicorn $($service.Module) --host $BindHost --port $($service.Port)" } else { "-m $($service.Module)" }
   $stdout = Join-Path $stateDir "$($service.Name).out.log"
   $stderr = Join-Path $stateDir "$($service.Name).err.log"

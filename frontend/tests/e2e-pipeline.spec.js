@@ -1,13 +1,14 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * E2E Integration Tests with Clean Neo4j Schema
+ * E2E Integration Tests against an explicitly configured test environment.
  * Tests complete data pipeline: Upload → Parse → Map → Neo4j Store → Query
  */
 
 // Configuration
 const BASE_URL = 'http://localhost:3000';
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = process.env.DEPO_E2E_ONTOLOGY_URL || 'http://localhost:8011/api/v1';
+const ALLOW_SCHEMA_RESET = process.env.DEPO_E2E_ALLOW_SCHEMA_RESET === 'true';
 
 // Test data
 const TEST_PLMXML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -24,7 +25,12 @@ const TEST_PLMXML = `<?xml version="1.0" encoding="UTF-8"?>
 
 // Helper functions
 async function cleanNeo4jSchema() {
-  /**Clean database before test*/
+  // Never reset a graph merely because an E2E suite was started. A dedicated
+  // disposable test database and this explicit opt-in are both required.
+  if (!ALLOW_SCHEMA_RESET) {
+    console.log('Schema reset skipped; set DEPO_E2E_ALLOW_SCHEMA_RESET=true only for a disposable test graph.');
+    return;
+  }
   try {
     const response = await fetch(`${API_BASE}/admin/clean-schema`, {
       method: 'POST',

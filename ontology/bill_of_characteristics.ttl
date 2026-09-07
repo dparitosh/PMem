@@ -1,0 +1,29 @@
+@prefix boc: <https://depo.example.org/ontology/bill-of-characteristics/1.0/> .
+@prefix ceim: <https://depo.example.org/ceim/0.1/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<https://depo.example.org/ontology/bill-of-characteristics/1.0/> a owl:Ontology ;
+  rdfs:label "Bill of Characteristics Ontology" ;
+  owl:versionInfo "1.0.0" .
+
+boc:BillOfCharacteristics a owl:Class ; rdfs:subClassOf ceim:Document ; rdfs:label "Bill of Characteristics" .
+boc:Characteristic a owl:Class ; rdfs:subClassOf ceim:Characteristic ; rdfs:label "Characteristic" .
+boc:DimensionalCharacteristic a owl:Class ; rdfs:subClassOf boc:Characteristic .
+boc:TolerancedCharacteristic a owl:Class ; rdfs:subClassOf boc:Characteristic .
+boc:NominalCharacteristic a owl:Class ; rdfs:subClassOf boc:Characteristic .
+boc:DatumCharacteristic a owl:Class ; rdfs:subClassOf boc:Characteristic .
+
+boc:hasCharacteristic a owl:ObjectProperty ; rdfs:domain boc:BillOfCharacteristics ; rdfs:range boc:Characteristic .
+boc:appliesToFeature a owl:ObjectProperty ; rdfs:domain boc:Characteristic ; rdfs:range ceim:Feature .
+boc:usesDatum a owl:ObjectProperty ; rdfs:domain boc:Characteristic ; rdfs:range ceim:Datum .
+boc:usesDatumReferenceFrame a owl:ObjectProperty ; rdfs:domain boc:Characteristic ; rdfs:range ceim:DatumReferenceFrame .
+boc:specifiedForPart a owl:ObjectProperty ; rdfs:domain boc:BillOfCharacteristics ; rdfs:range ceim:Part .
+boc:verifiedBy a owl:ObjectProperty ; rdfs:domain boc:Characteristic ; rdfs:range ceim:QualityMeasurement .
+
+boc:nominalValue a owl:DatatypeProperty ; rdfs:domain boc:Characteristic ; rdfs:range xsd:decimal .
+boc:upperLimit a owl:DatatypeProperty ; rdfs:domain boc:Characteristic ; rdfs:range xsd:decimal .
+boc:lowerLimit a owl:DatatypeProperty ; rdfs:domain boc:Characteristic ; rdfs:range xsd:decimal .
+boc:toleranceValue a owl:DatatypeProperty ; rdfs:domain boc:TolerancedCharacteristic ; rdfs:range xsd:decimal .
+boc:unit a owl:DatatypeProperty ; rdfs:domain boc:Characteristic ; rdfs:range xsd:string .

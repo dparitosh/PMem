@@ -14,6 +14,7 @@ from backend.platform.authorization import approval_identity
 from . import job_definitions
 from . import run_records
 from .runner import SparkUnavailable, runner
+from .handlers import registry as handler_registry
 
 
 router = APIRouter(prefix="/pipeline", tags=["data-pipeline"])
@@ -70,19 +71,10 @@ def execute_configured_job(definition: dict[str, Any], payload: dict[str, Any], 
             run_records.failed(run, "The request standard is not allowed by this data-job definition")
             raise ValueError("The request standard is not allowed by this data-job definition")
     try:
-        if definition["job_type"] == "interactive-quality-summary":
-            result = runner.transform_quality_summary(payload, correlation_id=correlation_id)
-        elif definition["job_type"] == "validate-unstructured-evidence":
-            result = runner.validate_unstructured_evidence(payload, correlation_id=correlation_id)
-        elif definition["job_type"] == "enrich-document-evidence":
-            result = runner.enrich_document_evidence(payload, correlation_id=correlation_id)
-        elif definition["job_type"] == "rdf-quality-statistics":
-            result = runner.rdf_quality_statistics(payload, correlation_id=correlation_id)
-        elif definition["job_type"] == "rdf-deduplicate-serialize":
-            result = runner.rdf_deduplicate_serialize(payload, correlation_id=correlation_id)
-        else:
-            result = runner.normalize_ceim_batch(payload, correlation_id=correlation_id, validate=definition["job_type"] == "validate-semantic-batch")
-    except (SparkUnavailable, ValueError) as exc:
+        result = handler_registry.get(definition["job_type"]).execute(
+            runner, payload, correlation_id=correlation_id,
+        )
+    except Exception as exc:
         run_records.failed(run, str(exc))
         raise
     persisted = run_records.complete(run, result)
@@ -244,6 +236,9 @@ async def publish_job_run(run_id: str, payload: dict[str, Any], request: Request
             key: value for key, value in request.headers.items()
             if key.lower() in {"x-ms-client-principal", "x-depo-principal-id", "x-depo-roles"}
         }
+        publication_token = os.getenv("GRAPH_PUBLICATION_TOKEN", "").strip()
+        if publication_token:
+            forwarded_headers["Authorization"] = f"Bearer {publication_token}"
         async with httpx.AsyncClient(timeout=90.0) as client:
             response = await client.post(f"{ceim_root}/ceim/publications/graph", json=publication_payload, headers=forwarded_headers)
         if response.is_error:

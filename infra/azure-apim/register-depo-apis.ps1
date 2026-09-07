@@ -75,6 +75,8 @@ function Register-DepoODataApi([string]$ApiId, [string]$Path, [string]$DisplayNa
 }
 
 $urls = @{ 'schema-sets'=$QifServiceUrl; ontology=$OntologyServiceUrl; agentic=$AgenticServiceUrl; graph=$GraphServiceUrl; ingestion=$IngestionServiceUrl; oslc=$OslcServiceUrl; catalog=$CatalogServiceUrl; 'data-products'=$DataProductsServiceUrl; ceim=$CeimServiceUrl; 'data-pipeline'=$DataPipelineServiceUrl }
+# Keep the generated IDs stable for APIM policies and subscriptions.
+# Examples: "depo-ontology-odata" and "depo-oslc-odata".
 foreach ($service in $manifest.services) {
   $url = $urls[$service.id]
   if (-not $url) { throw "Missing APIM service URL for $($service.id)." }

@@ -4,10 +4,23 @@ from __future__ import annotations
 import csv
 import io
 import re
+import os
 from typing import Any
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
-MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+def _positive_setting(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be an integer") from exc
+    if value <= 0:
+        raise RuntimeError(f"{name} must be positive")
+    return value
+
+
+# CAD/PLM instance files can be substantially larger than tabular imports.
+# Keep one governed limit, configurable per deployment rather than hardcoded.
+MAX_UPLOAD_BYTES = _positive_setting("DEPO_MAX_INGEST_BYTES", 500 * 1024 * 1024)
 MAX_IMPORT_ROWS = 100_000
 
 

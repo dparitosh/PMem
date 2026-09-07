@@ -13,7 +13,7 @@ import {
 import OntologyMetadataForm from './OntologyMetadataForm';
 import { API_METHODS, apiClient, getClientSessionId, setClientSessionId } from '../services/apiClient';
 import { useOntologies } from '../contexts/OntologyContext';
-import { API, buildUrl, replaceParams } from '../config';
+import { API, buildUrl, replaceParams, config } from '../config';
 import {
   backendToFrontendStage,
   buildWorkflowStages,
@@ -43,6 +43,19 @@ import { UI_COLORS as C } from '../styles/uiTokens';
 const IMPORT_JOBS_STORAGE_KEY = 'depo.import.jobs.v2';
 const IMPORT_ONTOLOGIES_CACHE_KEY = 'depo.import.ontologies.v1';
 const PRIMARY_WORKFLOW_IDS = new Set(['instance.import', 'ontology.create', 'architecture.archimate', 'document.unstructured', 'instance.link']);
+
+function governedSourceProfile(filename) {
+  const extension = getFileExtensionFromName(filename).toLowerCase();
+  const profiles = {
+    '.stp': { profile: 'ap242-step-mbd', sourceSystem: 'CAD' },
+    '.step': { profile: 'ap242-step-mbd', sourceSystem: 'CAD' },
+    '.stpx': { profile: 'ap242-step-mbd', sourceSystem: 'CAD' },
+    '.reqif': { profile: 'reqif', sourceSystem: 'Requirements management' },
+    '.qif': { profile: 'qif', sourceSystem: 'Quality management' },
+    '.plmxml': { profile: 'plmxml', sourceSystem: 'PLM' },
+  };
+  return profiles[extension] || null;
+}
 
 export default function DataImportPipeline() {
   const [files, setFiles] = useState([]);
@@ -762,10 +775,43 @@ export default function DataImportPipeline() {
     }
 
     const fileId = file.fileId;
+    const governedProfile = workflow?.id === 'instance.import' ? governedSourceProfile(file.name) : null;
 
     try {
       const formData = new FormData();
       formData.append('file', file.fileObj);
+
+      // Instance standards use the governed ingestion boundary. It retains the
+      // source artifact, invokes the approved common data job, and returns a
+      // durable run id for Data Flow. Schema/unprofiled files continue through
+      // the existing tracked workflow, where an explicit profile is required.
+      if (governedProfile) {
+        formData.append('profile', governedProfile.profile);
+        formData.append('source_system', governedProfile.sourceSystem);
+        setStartedFiles(prev => new Set([...prev, fileId]));
+        setPipelineStatus(prev => ({ ...prev, [fileId]: { stage: 'upload', progress: 5, message: 'Retaining governed source artifact…' } }));
+        const response = await apiClient.post(buildUrl(API.import.governed), formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }, timeout: getImportTimeoutMs(),
+        });
+        const result = response.data || response;
+        const runId = result?.run_manifest?.run_id;
+        setPipelineStatus(prev => ({
+          ...prev,
+          [fileId]: {
+            // A governed data-job run is deliberately not a legacy import
+            // task. Keeping it out of taskId prevents preview/commit/export
+            // controls from invoking the legacy direct-to-graph endpoints.
+            ...(prev[fileId] || {}), dataJobRunId: runId, governedImport: true,
+            stage: 'complete', backendStage: 'completed', status: 'completed', progress: 100,
+            message: `${String(result.standard || '').toUpperCase()} validated by governed data job. Open Data Flow for lineage and replay.`,
+            stats: result.source_summary || {}, sourceStandard: result.standard, sourceArtifactId: result.source_artifact_id,
+          },
+        }));
+        setStartedFiles(prev => {
+          const next = new Set(prev); next.delete(fileId); return next;
+        });
+        return;
+      }
 
       const policy = getAlignmentPolicy(file.name);
       let ontologyToUse = getOntologyForFile(file.name);
@@ -1261,7 +1307,11 @@ export default function DataImportPipeline() {
       headers: {
         'Content-Type': 'application/json',
         ...(activeSessionId ? { 'X-Session-ID': activeSessionId } : {}),
+        ...(config.apiToken ? { Authorization: `Bearer ${config.apiToken}` } : {}),
       },
+      body: JSON.stringify({
+        ...(config.apiToken ? { approved_by: config.apiActor, approval_token: config.apiToken } : {}),
+      }),
       signal: commitController.signal,
     })
       .then(async commitRes => {
@@ -3166,6 +3216,25 @@ export default function DataImportPipeline() {
                         disabled
                       >
                         <RefreshCw size={12} /> Processing
+                      </button>
+                    )}
+                    {status.governedImport && status.dataJobRunId && !status.error && (
+                      <button
+                        type="button"
+                        onClick={() => { window.location.hash = `#/data-flow/${encodeURIComponent(status.dataJobRunId)}`; }}
+                        style={{
+                          padding: '6px 10px',
+                          background: '#fff',
+                          color: C.primary,
+                          border: `1px solid ${C.primary}`,
+                          borderRadius: '4px',
+                          fontSize: '10px',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                        }}
+                        title={`Open durable run ${status.dataJobRunId} in Data Flow`}
+                      >
+                        View Data Flow
                       </button>
                     )}
                     {(isStarted || !!status.taskId)

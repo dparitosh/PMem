@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
@@ -13,12 +14,37 @@ from .schema_conversion import converter
 from .engineering_workflow import workflow as engineering_workflow
 from .ap242_mbd import ap242_mbd
 from .ap242_reference import AP242ReferenceValidator
+from .governed_import import governed_import, profile_for_filename
 from .tabular import MAX_IMPORT_ROWS, MAX_UPLOAD_BYTES, constraint_query, index_query, load_table, node_query, records, relationship_query
 import json
 import httpx
 from defusedxml import ElementTree as ET
 
 router = APIRouter(tags=["ingestion"])
+
+
+@router.post("/sysml-v2/import-commit", summary="Import the configured SysML v2 commit into an approved data job")
+async def import_sysml_commit(request: Request, payload: dict) -> dict:
+    from backend.platform.authorization import approval_identity
+    from .sysml_repository import read_snapshot
+    approval_identity(request, payload, token_env="DATA_JOB_EXECUTION_TOKEN")
+    try:
+        snapshot = await read_snapshot()
+        content = json.dumps(snapshot).encode("utf-8")
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, "Repository snapshot exceeds ingestion upload limit")
+        result = await governed_import.run_job(
+            filename="sysml-v2-snapshot.json", content=content, profile="sysml-v2",
+            job_id=str(payload.get("job_id") or "semantic-source-validation"),
+            job_version=str(payload.get("job_version") or "1.0.0"),
+            source_system=f"sysml-v2:{snapshot['project_id']}:{snapshot['commit_id']}",
+            request_id=getattr(request.state, "request_id", ""),
+        )
+        return {**result, "project_id": snapshot["project_id"], "commit_id": snapshot["commit_id"]}
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except (httpx.HTTPError, RuntimeError) as exc:
+        raise HTTPException(503, "Repository or data pipeline unavailable") from exc
 
 
 @router.get("/ingestion/health")
@@ -42,6 +68,42 @@ def import_formats() -> dict:
     }
 
 
+@router.get("/governed-import/profiles", summary="Resolve the governed instance-import profile for a filename")
+def governed_import_profile(filename: str) -> dict:
+    try:
+        return {"filename": filename, "profile": profile_for_filename(filename)}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/governed-import", summary="Retain, normalize, and run an approved semantic data job for an engineering instance")
+async def run_governed_import(
+    request: Request, file: UploadFile = File(...), profile: str = Form("auto"),
+    job_id: str = Form("semantic-source-validation"), job_version: str = Form("1.0.0"),
+    source_system: str = Form(""),
+) -> dict:
+    """Route STEP/AP242, ReqIF, QIF, and PLMXML imports into Data Flow.
+
+    The selected job must already be approved.  Importing never publishes to
+    Neo4j; publication remains an explicit canonical approval action.
+    """
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
+    try:
+        return await governed_import.run_job(
+            filename=file.filename or "source", content=content, profile=profile,
+            job_id=job_id, job_version=job_version, source_system=source_system,
+            request_id=getattr(request.state, "request_id", ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=503, detail="Data pipeline service is unavailable") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get("/import/tasks", summary="List retained import tasks")
 def import_tasks() -> dict:
     """Expose persisted task history used by Import and Ontology Junction."""
@@ -57,7 +119,7 @@ def import_tasks() -> dict:
 async def inspect_engineering_schema(file: UploadFile = File(...)) -> dict:
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+        raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
     try:
         return converter.convert(filename=file.filename or "source", content=content)
     except ValueError as exc:
@@ -69,7 +131,7 @@ async def inspect_ap242(file: UploadFile = File(...)) -> dict:
     """Use explicit AP242 adapters; schema publication remains governed and opt-in."""
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+        raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
     try:
         result = converter.convert(filename=file.filename or "source", content=content)
     except ValueError as exc:
@@ -98,7 +160,7 @@ def validate_ap242_reference() -> dict:
 async def extract_ap242_mbd(file: UploadFile = File(...)) -> dict:
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+        raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
     try:
         return ap242_mbd.extract(filename=file.filename or "source.stp", content=content)
     except ValueError as exc:
@@ -109,7 +171,7 @@ async def extract_ap242_mbd(file: UploadFile = File(...)) -> dict:
 async def export_ap242_part28(file: UploadFile = File(...)) -> Response:
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+        raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
     try:
         exported = ap242_mbd.export_part28(filename=file.filename or "source.stpx", content=content)
     except ValueError as exc:
@@ -132,7 +194,7 @@ async def run_engineering_workflow(
 ) -> dict:
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+        raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
     try:
         return await engineering_workflow.run(
             filename=file.filename or "source", content=content, ontology_name=ontology_name, prefix=prefix,
@@ -186,7 +248,7 @@ async def execute_source_profile(profile_id: str, file: UploadFile = File(...)) 
     try:
         content = await file.read()
         if len(content) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+            raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
         return profiles.normalize_batch(
             profile=profiles.get(profile_id), filename=file.filename or "source", content=content,
         )
@@ -218,7 +280,7 @@ async def run_source_profile_workflow(
         profile = profiles.get(profile_id)
         content = await file.read()
         if len(content) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+            raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
         normalized = profiles.normalize_batch(profile=profile, filename=file.filename or "source", content=content)
         selected_prefix = prefix or str(profile.get("prefix") or profile_id)
         return await workflow.run(
@@ -243,16 +305,22 @@ async def run_source_profile_workflow(
 
 @router.post("/ingest-data", summary="Ingest tabular data through the ingestion service")
 async def ingest_data(
-    file: UploadFile = File(...), nodeDefinitions: str = Form(...), relationshipDefinitions: str = Form(...),
+    request: Request, file: UploadFile = File(...), nodeDefinitions: str = Form(...), relationshipDefinitions: str = Form(...),
     indexes: str = Form(...), constraints: str = Form(...),
 ) -> dict:
+    # Retain this legacy direct-Cypher shape only for controlled migration.
+    # New clients must use governed-import and the canonical publication path.
+    if os.getenv("DEPO_ALLOW_DIRECT_TABULAR_WRITES", "false").lower() != "true":
+        raise HTTPException(status_code=409, detail="Direct tabular writes are disabled; submit the source through governed-import")
+    from backend.platform.authorization import service_write_identity
+    service_write_identity(request, token_env="INGESTION_WRITE_TOKEN", default_actor="ingestion-service")
     try:
         node_defs, rel_defs, index_defs, constraint_defs = [json.loads(item) for item in (nodeDefinitions, relationshipDefinitions, indexes, constraints)]
         if not all(isinstance(item, list) for item in (node_defs, rel_defs, index_defs, constraint_defs)):
             raise ValueError("All ingestion configuration fields must be JSON arrays")
         content = await file.read()
         if len(content) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail="Upload exceeds the 25 MiB ingestion limit")
+            raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
         table = load_table(content, file.filename or "")
         if len(table) > MAX_IMPORT_ROWS:
             raise HTTPException(status_code=413, detail="Import exceeds the 100,000 row limit")

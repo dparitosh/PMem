@@ -395,14 +395,24 @@ def test_completed_run_records_partition_and_gated_checkpoint_evidence(monkeypat
         "input_contract": "quality-records-v1",
     }
     record = run_records.start(definition, {
-        "records": [{"source_standard": "QIF", "canonical_concept": "Part"}],
+        "records": [{"source_standard": "PLMXML", "canonical_concept": "Part"}],
+        "source_system": "Teamcenter",
         "checkpoint": {"offset": 10}, "next_checkpoint": {"offset": 11},
     }, correlation_id="checkpoint-test")
     completed = run_records.complete(record, {
         "status": "completed", "quality": {"accepted_records": 1},
+        "standard": "plmxml",
+        "mapping": "sha256:" + "b" * 64,
+        "validation": {"conforms": True},
         "partition_artifacts": {"accepted": "sha256:" + "a" * 64, "rejected": None},
     })
     output = completed["output_manifest"]
+    assert completed["source_standard"] == "plmxml"
+    assert completed["source_system"] == "Teamcenter"
+    assert output["source_standard"] == "plmxml"
+    assert output["source_system"] == "Teamcenter"
+    assert output["mapping_digest"].startswith("sha256:")
+    assert output["validation_status"] == "conforms"
     assert output["checkpoint_candidate"] == {"offset": 11}
     assert output["checkpoint_state"] == "awaiting_approved_publication"
     assert output["partition_artifacts"]["accepted"].startswith("sha256:")

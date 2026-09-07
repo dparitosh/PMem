@@ -8,6 +8,23 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+// The gateway returns the OpenAPI response body directly, while the local
+// development proxy can preserve one compatibility envelope.  Keeping that
+// difference at this boundary prevents a healthy Data Flow page from looking
+// empty merely because the deployment route changed.
+function responsePayload(response) {
+  const body = response?.data ?? response;
+  return body?.data && typeof body.data === 'object' && !Array.isArray(body.data)
+    ? body.data
+    : body;
+}
+
+function requestedRunId() {
+  if (typeof window === 'undefined') return '';
+  const parts = String(window.location.hash || '').split('?')[0].split('/');
+  return parts[2] ? decodeURIComponent(parts[2]) : '';
+}
+
 function displayTime(value) {
   if (!value) return '—';
   const date = new Date(value);
@@ -27,6 +44,10 @@ function qualityStatus(run) {
   if (run?.status === 'failed') return 'failed';
   if (countFor(run, 'records_rejected') > 0 || countFor(run, 'rejected_records') > 0) return 'warning';
   return run?.status || 'completed';
+}
+
+function sourceStandard(run) {
+  return run?.source_standard || run?.output_manifest?.source_standard || 'Not recorded';
 }
 
 function Status({ value }) {
@@ -61,12 +82,22 @@ export default function DataFlowPage() {
       const successes = [healthResult, telemetryResult, runsResult, definitionsResult]
         .filter((result) => result.status === 'fulfilled');
       if (!successes.length) throw healthResult.reason || new Error('Data pipeline service is unavailable.');
-      setHealth(healthResult.status === 'fulfilled' ? healthResult.value.data : null);
-      setTelemetry(telemetryResult.status === 'fulfilled' ? telemetryResult.value.data : null);
-      const nextRuns = runsResult.status === 'fulfilled' ? asArray(runsResult.value.data?.runs) : [];
+      const healthPayload = healthResult.status === 'fulfilled' ? responsePayload(healthResult.value) : null;
+      const telemetryPayload = telemetryResult.status === 'fulfilled' ? responsePayload(telemetryResult.value) : null;
+      const runsPayload = runsResult.status === 'fulfilled' ? responsePayload(runsResult.value) : null;
+      const definitionsPayload = definitionsResult.status === 'fulfilled' ? responsePayload(definitionsResult.value) : null;
+      setHealth(healthPayload);
+      setTelemetry(telemetryPayload);
+      const nextRuns = asArray(runsPayload?.runs);
       setRuns(nextRuns);
-      setDefinitions(definitionsResult.status === 'fulfilled' ? asArray(definitionsResult.value.data?.definitions) : []);
-      setSelectedRun((current) => nextRuns.find((run) => run.run_id === current?.run_id) || nextRuns[0] || null);
+      setDefinitions(asArray(definitionsPayload?.definitions));
+      const requestedId = requestedRunId();
+      setSelectedRun((current) =>
+        nextRuns.find((run) => run.run_id === requestedId)
+        || nextRuns.find((run) => run.run_id === current?.run_id)
+        || nextRuns[0]
+        || null
+      );
       const failure = [healthResult, telemetryResult, runsResult, definitionsResult]
         .find((result) => result.status === 'rejected');
       if (failure) setError('Some processing-job evidence is temporarily unavailable. Showing the available data.');
@@ -87,7 +118,7 @@ export default function DataFlowPage() {
   const visibleRuns = useMemo(() => {
     const term = filter.trim().toLowerCase();
     if (!term) return runs;
-    return runs.filter((run) => [run.job_id, run.job_type, run.status, run.correlation_id]
+    return runs.filter((run) => [run.job_id, run.job_type, run.status, run.correlation_id, sourceStandard(run)]
       .some((value) => String(value || '').toLowerCase().includes(term)));
   }, [filter, runs]);
 
@@ -142,21 +173,22 @@ export default function DataFlowPage() {
         <article className="data-flow-card data-flow-card--runs">
           <div className="data-flow-card__heading">
             <div><h2>Processing-job runs</h2><p>Durable run manifests, quality outcome, and replay status.</p></div>
-            <label className="data-flow-filter">Filter<input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Job, type, status…" /></label>
+            <label className="data-flow-filter">Filter<input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Job, source, type, status…" /></label>
           </div>
           {loading ? <div className="data-flow-empty"><ix-spinner size="medium" /> Loading job evidence…</div> : (
             <div className="data-flow-table-wrap">
               <table className="data-flow-table">
-                <thead><tr><th>Job</th><th>Started</th><th>Quality</th><th>Status</th><th aria-label="Actions" /></tr></thead>
+                <thead><tr><th>Job</th><th>Source</th><th>Started</th><th>Quality</th><th>Status</th><th aria-label="Actions" /></tr></thead>
                 <tbody>
                   {visibleRuns.map((run) => <tr key={run.run_id} className={selectedRun?.run_id === run.run_id ? 'is-selected' : ''}>
                     <td><button className="data-flow-link" type="button" onClick={() => setSelectedRun(run)}>{run.job_id || run.job_type || 'Unnamed job'}</button><small>{run.job_version || '—'} · {run.job_type || 'processing job'}</small></td>
+                    <td><span className="data-flow-source">{sourceStandard(run)}</span></td>
                     <td>{displayTime(run.started_at)}</td>
                     <td>{countFor(run, 'accepted_records')} accepted · {countFor(run, 'rejected_records')} rejected</td>
                     <td><Status value={qualityStatus(run)} /></td>
                     <td><button className="data-flow-replay" type="button" onClick={() => replay(run)} disabled={replayingId === run.run_id || run.status === 'running'}>{replayingId === run.run_id ? 'Replaying…' : 'Replay'}</button></td>
                   </tr>)}
-                  {!visibleRuns.length && <tr><td colSpan="5" className="data-flow-empty">No durable job runs match the current filter.</td></tr>}
+                  {!visibleRuns.length && <tr><td colSpan="6" className="data-flow-empty">No durable job runs match the current filter.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -168,6 +200,8 @@ export default function DataFlowPage() {
           {selectedRun ? <>
             <dl className="data-flow-evidence">
               <dt>Run ID</dt><dd>{selectedRun.run_id}</dd>
+              <dt>Source standard</dt><dd>{sourceStandard(selectedRun)}</dd>
+              <dt>Source system</dt><dd>{selectedRun.source_system || selectedRun.output_manifest?.source_system || 'Not recorded'}</dd>
               <dt>Input manifest</dt><dd>{selectedRun.input_manifest?.record_count ?? 0} record(s), {selectedRun.input_manifest?.artifact_ids?.length ?? 0} retained artifact(s)</dd>
               <dt>Quality profile</dt><dd>{selectedRun.job_type || '—'} / {qualityStatus(selectedRun)}</dd>
               <dt>Checkpoint</dt><dd>{selectedRun.checkpoint ? JSON.stringify(selectedRun.checkpoint) : 'No watermark/checkpoint recorded'}</dd>
@@ -175,6 +209,8 @@ export default function DataFlowPage() {
               <dt>Executed by</dt><dd>{selectedRun.executed_by || 'Legacy run / identity not recorded'}</dd>
               <dt>Replay lineage</dt><dd>{selectedRun.replay_of || 'Original execution'}</dd>
               <dt>Output evidence</dt><dd>{selectedRun.output_manifest?.contract || 'Pending output manifest'}</dd>
+              <dt>Mapping evidence</dt><dd>{selectedRun.output_manifest?.mapping_digest || 'Not applicable or not recorded'}</dd>
+              <dt>Validation</dt><dd>{selectedRun.output_manifest?.validation_status || 'Not applicable or pending'}</dd>
             </dl>
             <p className="data-flow-help">Replay reuses the retained immutable input; publication still remains subject to the canonical approval boundary.</p>
           </> : <div className="data-flow-empty">Select a run to inspect its input, quality, lineage, checkpoint, and output evidence.</div>}

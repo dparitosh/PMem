@@ -10,6 +10,30 @@ from typing import Any
 from fastapi import HTTPException, Request
 
 
+def service_write_identity(request: Request, *, token_env: str, default_actor: str) -> str:
+    """Authorize service-to-service write calls using a bearer token.
+
+    Multipart endpoints cannot carry the JSON approval fields used by
+    :func:`approval_identity`, so publication boundaries use this explicit
+    header contract instead.
+    """
+    mode = os.getenv("AUTH_MODE", "token").lower()
+    if mode == "disabled":
+        client_host = request.client.host if request.client else ""
+        if os.getenv("DEPO_ALLOW_INSECURE_LOCAL_AUTH", "").lower() != "true" or client_host not in {"127.0.0.1", "::1"}:
+            raise HTTPException(403, "Disabled authentication is allowed only for an explicitly enabled loopback-only process")
+        return default_actor
+    if mode == "entra":
+        # Gateway identity is still required in enterprise mode.
+        return approval_identity(request, {}, token_env=token_env)
+    expected = os.getenv(token_env, "").strip()
+    authorization = request.headers.get("authorization", "")
+    supplied = authorization[7:] if authorization.lower().startswith("bearer ") else ""
+    if not expected or not supplied or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(403, "A valid service write token is required")
+    return request.headers.get("x-depo-principal-id", default_actor)
+
+
 def approval_identity(request: Request, payload: dict[str, Any], *, token_env: str) -> str:
     mode = os.getenv("AUTH_MODE", "token").lower()
     if mode == "disabled":

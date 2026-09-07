@@ -64,7 +64,6 @@ export default function RegistryAssetsSection({
   visibleRegistryAssets,
   registryAssets,
   entries,
-  ontologiesTable,
   transitionHandler,
   transitioningAssetIds,
   lastUpdated,
@@ -93,16 +92,8 @@ export default function RegistryAssetsSection({
       {error && !registryLoaded && <div className="depo-alert depo-alert--warning">Live registry unavailable: {error}</div>}
       {!loading && registryLoaded && !visibleRegistryAssets.length && <div className="depo-empty">{registryAssets.length ? 'No governed assets match this search.' : 'No governed metadata assets are registered yet.'}</div>}
       {!loading && !registryLoaded && !entries.length && <div className="depo-empty">No registry entries match this search.</div>}
-      {registryLoaded ? <GovernedAssetsTable assets={visibleRegistryAssets} transitioningAssetIds={transitioningAssetIds} onTransition={transitionHandler} /> : ontologiesTable}
-      {registryLoaded && ontologiesTable && (
-        <section style={{ marginTop: 12 }} aria-label="Registered ontology sources">
-          <div className="depo-panel__title" style={{ fontSize: 14, marginBottom: 6 }}>Registered ontology sources</div>
-          <div className="depo-panel__meta" style={{ marginBottom: 8 }}>
-            These sources are available for browsing and dictionary inspection. Create a governed asset above when ownership, stewardship, and lifecycle approval are required.
-          </div>
-          {ontologiesTable}
-        </section>
-      )}
+      {registryLoaded ? <GovernedAssetsTable assets={visibleRegistryAssets} transitioningAssetIds={transitioningAssetIds} onTransition={transitionHandler} /> : null}
+      {!registryLoaded && entries.length > 0 && <div className="depo-empty">The governed registry is unavailable. Ontology sources remain available from the Data Dictionary tab.</div>}
       <div className="depo-panel__meta">
         This page is the governance boundary. Use Ontology Junction for OWL/RDF structure and Semantic Bridge for mappings. Registry editing, approvals, and version history will use dedicated registry APIs rather than adding more controls to Ontology Junction.
         {lastUpdated && ` Last refreshed ${lastUpdated.toLocaleTimeString()}.`}

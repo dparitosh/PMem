@@ -17,6 +17,7 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Entity resolution cases", "/api/v1/ceim/entity-resolution/cases", description="Review durable duplicate/conflicting CEIM entity cases"),
         ServiceCapability("Resolve entity case", "/api/v1/ceim/entity-resolution/cases/{case_id}/resolve", "POST", "Record a steward-approved entity resolution strategy"),
         ServiceCapability("ReqIF adapter", "/api/v1/ceim/adapters/reqif/normalize", "POST", "Extract a ReqIF instance into a non-persisted CEIM batch"),
+        ServiceCapability("PLMXML adapter", "/api/v1/ceim/adapters/plmxml/normalize", "POST", "Extract a Teamcenter PLMXML instance into a non-persisted CEIM batch"),
         ServiceCapability("QIF adapter", "/api/v1/ceim/adapters/qif/normalize", "POST", "Extract a declared QIF instance into a non-persisted CEIM batch"),
         ServiceCapability("QIF XSD validation", "/api/v1/ceim/adapters/qif/validate", "POST", "Validate a QIF 3.0 instance against the bundled document XSD"),
         ServiceCapability("Validate CEIM batch", "/api/v1/ceim/validate/batch", "POST", "Validate normalized entities and relationships using CEIM SHACL"),

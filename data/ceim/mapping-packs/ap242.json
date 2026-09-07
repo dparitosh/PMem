@@ -3,8 +3,17 @@
   "entities": {
     "product_definition": {"ceim_type": "Product", "properties": {"name": "name", "description": "description", "$source_id": "external_id"}},
     "product_definition_formation": {"ceim_type": "ProductRevision", "properties": {"$source_id": "external_id", "description": "description"}},
+    "shape_aspect": {"ceim_type": "Part", "properties": {"name": "name", "description": "description"}},
     "next_assembly_usage_occurrence": {"ceim_type": "Assembly", "properties": {"$source_id": "external_id", "name": "name"}},
-    "shape_aspect": {"ceim_type": "Part", "properties": {"name": "name", "description": "description"}}
+    "shape_representation": {"ceim_type": "GeometryBody", "properties": {"$source_id": "external_id", "name": "name", "description": "description"}},
+    "topology_entity": {"ceim_type": "GeometryBody", "properties": {"$source_id": "external_id", "name": "name"}},
+    "geometry_body": {"ceim_type": "GeometryBody", "properties": {"$source_id": "external_id", "name": "name"}},
+    "geometric_tolerance": {"ceim_type": "Characteristic", "properties": {"$source_id": "external_id", "name": "name", "description": "description", "tolerance_value": "tolerance_value", "unit": "unit", "datum_references": "datum_references", "toleranced_feature_references": "toleranced_feature_references"}},
+    "datum": {"ceim_type": "Datum", "properties": {"$source_id": "external_id", "name": "name"}},
+    "dimension": {"ceim_type": "Characteristic", "properties": {"$source_id": "external_id", "name": "name", "description": "description", "nominal_value": "nominal_value", "lower_limit": "lower_limit", "upper_limit": "upper_limit", "unit": "unit", "toleranced_feature_references": "toleranced_feature_references"}},
+    "annotation": {"ceim_type": "PMIAnnotation", "properties": {"$source_id": "external_id", "name": "name", "description": "description"}},
+    "graphic_presentation": {"ceim_type": "PMIAnnotation", "properties": {"$source_id": "external_id"}},
+    "saved_view": {"ceim_type": "PMIAnnotation", "properties": {"$source_id": "external_id", "name": "name"}}
   },
   "relationships": {
     "next_assembly_usage_occurrence": {"relationship": "HAS_PART"},

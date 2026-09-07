@@ -4,7 +4,7 @@
     {"id": "context-analyst", "name": "Business Context Analyst", "tools": ["context.upsert", "context.search", "context.where_used"], "approval_required": false},
     {"id": "ontology-governor", "name": "Ontology Governor", "tools": ["ontology.merge.preview", "ontology.merge.apply", "engineering.publish"], "approval_required": true},
     {"id": "engineering-parser", "name": "Engineering Parser", "tools": ["engineering.inspect", "profile.inspect", "profile.execute"], "approval_required": false},
-    {"id": "graph-analyst", "name": "Graph Analyst", "tools": ["graph.analytics", "graph.neighborhood", "context.search", "context.where_used"], "approval_required": false},
+    {"id": "graph-analyst", "name": "Graph Analyst", "tools": ["graph.analytics", "graph.neighborhood", "context.search", "context.where_used", "oslc.graph_rag"], "approval_required": false},
     {"id": "oslc-link-agent", "name": "OSLC Link Agent", "tools": ["oslc.remote.catalog", "oslc.remote.query", "oslc.remote.sync"], "approval_required": false},
     {"id": "schema-set-agent", "name": "Engineering Schema-Set Agent", "tools": ["schema-set.standards", "schema-set.upload", "qif.task.status", "qif.task.commit"], "approval_required": false},
     {"id": "data-product-governor", "name": "Data Product Governor", "tools": ["data.catalog.products", "data.product.preview", "data.product.publish"], "approval_required": true},
@@ -12,6 +12,7 @@
     {"id": "data-quality-monitor", "name": "Data Quality Monitor", "tools": ["pipeline.telemetry", "pipeline.transform"], "approval_required": false}
   ],
   "tools": [
+    {"id": "oslc.graph_rag", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/oslc/graph-rag", "mutates": false},
     {"id": "ontology.generate", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/generate", "mutates": false},
     {"id": "ontology.merge.preview", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/merges/preview", "mutates": false},
     {"id": "ontology.merge.apply", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/merges/{preview_id}/apply", "mutates": true},

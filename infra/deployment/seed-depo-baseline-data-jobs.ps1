@@ -1,0 +1,36 @@
+param(
+  [string]$EnvFile = ".env.local",
+  [string]$ManifestPath = "",
+  [string]$PipelineBaseUrl = ""
+)
+
+$ErrorActionPreference = "Stop"
+$root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$envPath = if ([System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
+if (-not (Test-Path $envPath)) { throw "Missing environment file: $envPath" }
+$settings = @{}
+Get-Content -LiteralPath $envPath | ForEach-Object {
+  if ($_ -match '^\s*([^#=]+)=(.*)$') { $settings[$matches[1].Trim()] = $matches[2].Trim() }
+}
+if (-not $PipelineBaseUrl) {
+  $hostName = if ($settings.DEPO_SERVICE_HOST) { $settings.DEPO_SERVICE_HOST } else { "127.0.0.1" }
+  $PipelineBaseUrl = "http://${hostName}:8019/api/v1/pipeline"
+}
+$manifestFile = if ($ManifestPath) { $ManifestPath } else { Join-Path $PSScriptRoot "baseline-data-jobs.json" }
+$definitions = (Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json).definitions
+$headers = @{}
+if ($settings.DATA_PIPELINE_SERVICE_TOKEN) { $headers.Authorization = "Bearer $($settings.DATA_PIPELINE_SERVICE_TOKEN)" }
+foreach ($definition in $definitions) {
+  $key = "$($definition.job_id)/$($definition.version)"
+  try { $current = Invoke-RestMethod -Uri "$PipelineBaseUrl/jobs/definitions/$key" -Headers $headers -TimeoutSec 20 }
+  catch {
+    if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) {
+      $current = Invoke-RestMethod -Method Post -Uri "$PipelineBaseUrl/jobs/definitions" -Headers $headers -ContentType "application/json" -Body ($definition | ConvertTo-Json -Depth 8) -TimeoutSec 20
+    } else { throw }
+  }
+  if ($current.lifecycle_state -ne "approved") {
+    $approval = @{ approved_by = if ($settings.DEPLOYMENT_BASELINE_APPROVER) { $settings.DEPLOYMENT_BASELINE_APPROVER } else { "deployment-baseline" }; approval_token = $settings.DATA_JOB_APPROVAL_TOKEN }
+    $current = Invoke-RestMethod -Method Post -Uri "$PipelineBaseUrl/jobs/definitions/$key/approve" -Headers $headers -ContentType "application/json" -Body ($approval | ConvertTo-Json) -TimeoutSec 20
+  }
+  Write-Host "Baseline data job ready: $($current.job_id):$($current.version) [$($current.lifecycle_state)]"
+}

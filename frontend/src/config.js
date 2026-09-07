@@ -90,6 +90,10 @@ const baseConfig = {
   // This key is intentionally opt-in. It is visible to browser users and is
   // appropriate only for a trusted internal admin deployment.
   adminApiKey: setting('ADMIN_API_KEY'),
+  // Optional only for trusted internal/token deployments. Never commit this
+  // value; production Entra deployments should leave it empty.
+  apiToken: setting('API_TOKEN'),
+  apiActor: setting('API_ACTOR') || 'ui-user',
 };
 
 const gatewayUrl = configuredGatewayUrl ? configuredGatewayUrl.replace(/\/$/, '') : '';
@@ -252,6 +256,7 @@ const IMPORT_ENDPOINTS = {
   ollamaQuery: process.env.REACT_APP_API_IMPORT_OLLAMA_QUERY || '/api/v1/import/ollama/query',
   ollamaHealth: process.env.REACT_APP_API_IMPORT_OLLAMA_HEALTH || '/api/v1/import/ollama/health',
   tasks: process.env.REACT_APP_API_IMPORT_TASKS || '/api/v1/import/tasks',
+  governed: process.env.REACT_APP_API_GOVERNED_IMPORT || '/api/v1/governed-import',
   uploadDataImport: process.env.REACT_APP_API_DATA_IMPORT_UPLOAD || '/data-import/upload',
   statusDataImport: process.env.REACT_APP_API_DATA_IMPORT_STATUS || '/data-import/status/{task_id}',
   previewDataImport: process.env.REACT_APP_API_DATA_IMPORT_PREVIEW || '/data-import/preview/{task_id}',

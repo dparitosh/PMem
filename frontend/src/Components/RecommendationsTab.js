@@ -1251,7 +1251,10 @@ const RadialImpactGraph = ({ data }) => {
           .on('mouseover', function(event) {
             d3.select(this).attr('r', 9).attr('stroke-width', 2);
             radialTip
-              .html(`<strong>${name}</strong><br/><span style="opacity:.7">${ring.label}</span>`)
+              // Names come from graph/import data. Use D3 text binding rather
+              // than HTML interpolation so a source value cannot execute.
+              .text(`${name}\n${ring.label}`)
+              .style('white-space', 'pre-line')
               .style('left', (event.pageX + 12) + 'px')
               .style('top', (event.pageY - 28) + 'px')
               .style('opacity', '1');

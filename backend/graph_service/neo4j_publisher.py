@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 from datetime import datetime, timezone
 import re
 from typing import Any
@@ -47,9 +48,17 @@ class Neo4jPublisher:
             str(subject) for subject in rdf_graph.subjects(RDF.type, OWL.ObjectProperty)
         } | {str(subject) for subject in rdf_graph.subjects(RDF.type, OWL.DatatypeProperty)}
         resource_iris = {str(value) for triple in rdf_graph for value in (triple[0], triple[2]) if not isinstance(value, Literal)}
+        literal_properties: dict[str, dict[str, list[dict[str, Any]]]] = {}
+        for subject, predicate, value in rdf_graph:
+            if isinstance(value, Literal):
+                literal_properties.setdefault(str(subject), {}).setdefault(str(predicate), []).append({
+                    "value": str(value), "datatype": str(value.datatype) if value.datatype else None,
+                    "language": value.language,
+                })
         resources = [
             {"iri": iri, "label": labels.get(iri, iri.rsplit("/", 1)[-1].rsplit("#", 1)[-1]),
-             "kind": "class" if iri in class_iris else "property" if iri in property_iris else "resource"}
+             "kind": "class" if iri in class_iris else "property" if iri in property_iris else "resource",
+             "rdf_properties": json.dumps(literal_properties.get(iri, {}), sort_keys=True)}
             for iri in resource_iris
         ]
         relationships: dict[str, list[dict[str, str]]] = {"SUBCLASS_OF": [], "DOMAIN": [], "RANGE": [], "SEMANTIC_RELATION": []}
@@ -64,7 +73,8 @@ class Neo4jPublisher:
         resource_query = """
         UNWIND $rows AS row
         MERGE (node:OntologyResource {ontology_id: $ontology_id, iri: row.iri})
-        SET node.prefix = $prefix, node.label = row.label, node.kind = row.kind, node.updated_at = $updated_at
+        SET node.prefix = $prefix, node.label = row.label, node.kind = row.kind,
+            node.rdf_properties = row.rdf_properties, node.updated_at = $updated_at
         """
         relation_queries = {
             "SUBCLASS_OF": "MERGE (source)-[edge:SUBCLASS_OF {ontology_id: $ontology_id}]->(target) SET edge.predicate = row.predicate",
@@ -72,19 +82,22 @@ class Neo4jPublisher:
             "RANGE": "MERGE (source)-[edge:RANGE {ontology_id: $ontology_id}]->(target) SET edge.predicate = row.predicate",
             "SEMANTIC_RELATION": "MERGE (source)-[edge:SEMANTIC_RELATION {ontology_id: $ontology_id, predicate: row.predicate}]->(target)",
         }
+        def publish_transaction(tx):
+            tx.run(resource_query, rows=resources, ontology_id=ontology_id, prefix=prefix, updated_at=now).consume()
+            for relation_type, rows in relationships.items():
+                if not rows:
+                    continue
+                query = f"""
+                UNWIND $rows AS row
+                MATCH (source:OntologyResource {{ontology_id: $ontology_id, iri: row.source}})
+                MATCH (target:OntologyResource {{ontology_id: $ontology_id, iri: row.target}})
+                {relation_queries[relation_type]}
+                """
+                tx.run(query, rows=rows, ontology_id=ontology_id).consume()
+
         with GraphDatabase.driver(self.uri, auth=(self.username, self.password)) as driver:
             with driver.session(database=self.database) as session:
-                session.run(resource_query, rows=resources, ontology_id=ontology_id, prefix=prefix, updated_at=now).consume()
-                for relation_type, rows in relationships.items():
-                    if not rows:
-                        continue
-                    query = f"""
-                    UNWIND $rows AS row
-                    MATCH (source:OntologyResource {{ontology_id: $ontology_id, iri: row.source}})
-                    MATCH (target:OntologyResource {{ontology_id: $ontology_id, iri: row.target}})
-                    {relation_queries[relation_type]}
-                    """
-                    session.run(query, rows=rows, ontology_id=ontology_id).consume()
+                session.execute_write(publish_transaction)
         return {
             "status": "success", "ontology_id": ontology_id, "resources": len(resources),
             "relationships": sum(len(rows) for rows in relationships.values()),

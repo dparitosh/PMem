@@ -49,6 +49,19 @@ def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id
     raw_payload = dict(payload)
     replay_of = str(raw_payload.pop("replay_of", "") or "") or None
     executed_by = str(raw_payload.pop("execution_actor", "") or "") or None
+    source_standard = str(payload.get("standard") or payload.get("source_standard") or "").strip().lower() or None
+    if source_standard is None:
+        records = payload.get("records")
+        if isinstance(records, list):
+            standards = {
+                str(item.get("source_standard") or "").strip().lower()
+                for item in records if isinstance(item, dict) and item.get("source_standard")
+            }
+            # A mixed-standard batch must remain visibly mixed instead of being
+            # mislabeled as whichever record happened to be first.
+            if len(standards) == 1:
+                source_standard = standards.pop()
+    source_system = str(payload.get("source_system") or "").strip() or None
     supplied_artifact_ids = payload.get("artifact_ids") or []
     if not isinstance(supplied_artifact_ids, list) or any(not isinstance(item, str) or not item.strip() for item in supplied_artifact_ids):
         raise ValueError("artifact_ids must be a list of non-empty artifact identifiers")
@@ -68,6 +81,8 @@ def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id
         "correlation_id": correlation_id,
         "replay_of": replay_of,
         "executed_by": executed_by,
+        "source_standard": source_standard,
+        "source_system": source_system,
         "started_at": _now(),
         "input_manifest": {
             "contract": definition["input_contract"],
@@ -112,6 +127,15 @@ def complete(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
         "counts": dict(result.get("counts") or result.get("quality") or {}),
         "partition_artifacts": dict(result.get("partition_artifacts") or {}),
     }
+    source_standard = result.get("standard") or record.get("source_standard")
+    if source_standard:
+        output["source_standard"] = str(source_standard)
+    if record.get("source_system"):
+        output["source_system"] = record["source_system"]
+    if result.get("mapping"):
+        output["mapping_digest"] = result["mapping"]
+    if isinstance(result.get("validation"), dict):
+        output["validation_status"] = "conforms" if result["validation"].get("conforms") else "nonconformant"
     retained_payload = replay_payload(record)
     next_checkpoint = retained_payload.get("next_checkpoint")
     if next_checkpoint is not None:

@@ -1,0 +1,23 @@
+{
+  "assets": [
+    {
+      "asset_id": "boc-core",
+      "name": "Bill of Characteristics core ontology",
+      "definition": "Cross-standard characteristic, nominal, tolerance, datum, and provenance semantics for QIF and AP242 mappings.",
+      "asset_type": "Ontology",
+      "domain": "Engineering",
+      "owner": "semantic-platform",
+      "steward": "semantic-platform",
+      "source_system": "DEPO baseline",
+      "lifecycle_status": "approved",
+      "version": "1.0.0",
+      "persistent_id": "urn:depo:semantic-asset:boc-core",
+      "namespace_uri": "https://depo.example.org/ontology/bill-of-characteristics/1.0/",
+      "namespace_prefix": "boc",
+      "compatibility_status": "compatible",
+      "approval_evidence": "version-controlled baseline-semantic-assets.json",
+      "ontology_uri": "https://depo.example.org/ontology/bill-of-characteristics/1.0/",
+      "implementation_ref": "ontology/bill_of_characteristics.ttl; ontology/qif_ap242_boc_alignment.ttl"
+    }
+  ]
+}

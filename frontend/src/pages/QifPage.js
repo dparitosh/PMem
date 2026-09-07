@@ -14,6 +14,16 @@ function detailOf(error) {
   return typeof detail === 'string' ? detail : detail?.message || error.message || 'The QIF workflow could not be completed.';
 }
 
+// Service contracts may be returned directly by a gateway or wrapped in an
+// Axios `data` envelope. Normalize once so pages never appear blank merely
+// because the transport envelope changed.
+function payloadOf(response) {
+  const value = response?.data ?? response ?? {};
+  return value?.data && typeof value.data === 'object' && !Array.isArray(value.data)
+    ? value.data
+    : value;
+}
+
 function statusLabel(status) {
   return String(status || 'unknown').replaceAll('_', ' ');
 }
@@ -40,12 +50,13 @@ export default function QifPage({ workflowMode = false }) {
   const [actionBusy, setActionBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const refreshHistory = useCallback(() => qifAPI.listTasks().then((response) => setHistory(response.data?.tasks || [])).catch(() => {}), []);
+  const refreshHistory = useCallback(() => qifAPI.listTasks().then((response) => setHistory(payloadOf(response).tasks || [])).catch((requestError) => { setError(detailOf(requestError)); }), []);
   const refreshTask = useCallback(async (taskId) => {
     const response = await qifAPI.getTask(taskId);
-    setTask(response.data);
-    setHistory((items) => items.map((item) => item.task_id === taskId ? { ...item, ...response.data } : item));
-    return response.data;
+    const value = payloadOf(response);
+    setTask(value);
+    setHistory((items) => items.map((item) => item.task_id === taskId ? { ...item, ...value } : item));
+    return value;
   }, []);
 
   useEffect(() => {
@@ -54,15 +65,15 @@ export default function QifPage({ workflowMode = false }) {
       try {
         const [catalogResponse, agentResponse, taskResponse] = await Promise.all([qifAPI.catalog(), qifAPI.agents(), qifAPI.listTasks()]);
         if (!active) return;
-        const tasks = taskResponse.data?.tasks || [];
-        setCatalog(catalogResponse.data);
-        setAgents(agentResponse.data?.agents || []);
+        const tasks = payloadOf(taskResponse).tasks || [];
+        setCatalog(payloadOf(catalogResponse));
+        setAgents(payloadOf(agentResponse).agents || []);
         setHistory(tasks);
         // Make the page immediately useful: restore the latest run and its
         // results instead of leaving a blank workspace after a refresh.
         if (tasks[0]?.task_id) {
           const taskResponse = await qifAPI.getTask(tasks[0].task_id);
-          if (active) setTask(taskResponse.data);
+          if (active) setTask(payloadOf(taskResponse));
         }
       } catch (_requestError) {
         if (active) setError('The QIF service is unavailable. Start the backend and refresh this page.');
@@ -87,7 +98,7 @@ export default function QifPage({ workflowMode = false }) {
       const response = source === 'reference'
         ? await qifAPI.startReferenceTask(metadata)
         : await qifAPI.startUploadTask(files, metadata);
-      await refreshTask(response.data.task_id);
+      await refreshTask(payloadOf(response).task_id);
       await refreshHistory();
     } catch (requestError) { setError(detailOf(requestError)); }
     finally { setActionBusy(false); }
@@ -100,7 +111,7 @@ export default function QifPage({ workflowMode = false }) {
   };
   const cancel = async () => {
     setActionBusy(true); setError('');
-    try { const response = await qifAPI.cancel(task.task_id); setTask(response.data); await refreshHistory(); }
+    try { const response = await qifAPI.cancel(task.task_id); setTask(payloadOf(response)); await refreshHistory(); }
     catch (requestError) { setError(detailOf(requestError)); }
     finally { setActionBusy(false); }
   };
@@ -114,8 +125,8 @@ export default function QifPage({ workflowMode = false }) {
     setActionBusy(true); setError('');
     try {
       const [catalogResponse, agentResponse] = await Promise.all([qifAPI.catalog(), qifAPI.agents()]);
-      setCatalog(catalogResponse.data);
-      setAgents(agentResponse.data?.agents || []);
+      setCatalog(payloadOf(catalogResponse));
+      setAgents(payloadOf(agentResponse).agents || []);
       await refreshHistory();
       if (task?.task_id) await refreshTask(task.task_id);
     } catch (requestError) { setError(detailOf(requestError)); }
@@ -200,7 +211,7 @@ export default function QifPage({ workflowMode = false }) {
       {workflowMode && task && <section style={{ ...panelStyle, marginTop: 14 }} aria-label="Selected QIF task details">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}><div><div className="depo-panel__title">2. Task progress</div><div className="depo-panel__meta">Task {task.task_id} · {task.source_files?.length || 0} source files</div></div><strong role="status" aria-live="polite" style={{ textTransform: 'capitalize' }}>{statusLabel(task.status)}</strong></div>
         <div className="qif-progress" role="progressbar" aria-label="QIF task progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={task.progress || 0}><div style={{ width: `${task.progress || 0}%`, background: task.status === 'failed' ? '#c73e1d' : '#008c95' }} /></div>
-        <div className="qif-stage-grid">{['inspect', 'validate', 'generate', 'review', 'register', 'graph_sync'].map((stage) => <div key={stage} className={task.stage.startsWith(stage) ? 'is-current' : ''}>{stage.replace('_', ' ')}</div>)}</div>
+        <div className="qif-stage-grid">{['inspect', 'validate', 'generate', 'review', 'register', 'graph_sync'].map((stage) => <div key={stage} className={String(task.stage || '').startsWith(stage) ? 'is-current' : ''}>{stage.replace('_', ' ')}</div>)}</div>
         <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6 }}>{task.source_files?.map((file) => <div key={file} style={{ padding: '6px 8px', background: '#f7f9fb', fontSize: 12 }}><CheckCircle2 size={13} /> {file}</div>)}</div>
         {workflowMode && task.status === 'awaiting_approval' && <div style={{ marginTop: 14, display: 'flex', gap: 8 }}><button type="button" className="depo-action-button" disabled={actionBusy} onClick={commit}><CheckCircle2 size={15} /> Approve and publish ontology</button><button type="button" className="depo-action-button" disabled={actionBusy} onClick={cancel} style={{ background: '#fff', color: '#8a1c0b', borderColor: '#c73e1d' }}><X size={15} /> Cancel</button></div>}
         {workflowMode && !terminal.has(task.status) && <button type="button" className="depo-action-button" disabled={actionBusy} onClick={cancel} style={{ marginTop: 14, background: '#fff', color: '#8a1c0b', borderColor: '#c73e1d' }}><X size={15} /> Cancel task</button>}

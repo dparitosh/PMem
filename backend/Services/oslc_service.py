@@ -53,15 +53,24 @@ class OSLCService:
     AM_RESOURCE_TYPE = "architecture-resources"
     RM_REQUIREMENT_TYPE = "requirements"
     RM_COLLECTION_TYPE = "requirement-collections"
+    CM_CHANGE_REQUEST_TYPE = "change-requests"
+    QM_TEST_RESULT_TYPE = "test-results"
+    QM_TEST_CASE_TYPE = "test-cases"
     SUPPORTED_RESOURCE_TYPES = {
         DEFAULT_RESOURCE_TYPE,
         AM_RESOURCE_TYPE,
         RM_REQUIREMENT_TYPE,
         RM_COLLECTION_TYPE,
+        CM_CHANGE_REQUEST_TYPE,
+        QM_TEST_RESULT_TYPE,
+        QM_TEST_CASE_TYPE,
     }
     AM_TYPE_URI = "http://open-services.net/ns/am#Resource"
     RM_REQUIREMENT_URI = "http://open-services.net/ns/rm#Requirement"
     RM_COLLECTION_URI = "http://open-services.net/ns/rm#RequirementCollection"
+    CM_CHANGE_REQUEST_URI = "http://open-services.net/ns/cm#ChangeRequest"
+    QM_TEST_RESULT_URI = "http://open-services.net/ns/qm#TestResult"
+    QM_TEST_CASE_URI = "http://open-services.net/ns/qm#TestCase"
     DOMAIN_SHAPES = {
         AM_RESOURCE_TYPE: {
             "title": "OSLC AM Architecture Resource Shape",
@@ -97,6 +106,38 @@ class OSLCService:
                 {"name": "dcterms:identifier", "occurs": "zero-or-one", "valueType": "oslc:LiteralValue"},
                 {"name": "oslc:serviceProvider", "occurs": "exactly-one", "valueType": "oslc:Resource"},
                 {"name": "oslc_rm:uses", "occurs": "zero-or-many", "valueType": "oslc:Resource"},
+            ],
+        },
+        CM_CHANGE_REQUEST_TYPE: {
+            "title": "OSLC CM Change Request Shape", "domain": "oslc_cm",
+            "describes": [CM_CHANGE_REQUEST_URI],
+            "properties": [
+                {"name": "dcterms:title", "occurs": "exactly-one", "valueType": "oslc:LiteralValue"},
+                {"name": "dcterms:description", "occurs": "zero-or-one", "valueType": "oslc:LiteralValue"},
+                {"name": "oslc_cm:status", "occurs": "zero-or-one", "valueType": "oslc:LiteralValue"},
+                {"name": "oslc:serviceProvider", "occurs": "exactly-one", "valueType": "oslc:Resource"},
+                {"name": "dcterms:relation", "occurs": "zero-or-many", "valueType": "oslc:Resource"},
+            ],
+        },
+        QM_TEST_RESULT_TYPE: {
+            "title": "OSLC QM Test Result Shape", "domain": "oslc_qm",
+            "describes": [QM_TEST_RESULT_URI],
+            "properties": [
+                {"name": "dcterms:title", "occurs": "exactly-one", "valueType": "oslc:LiteralValue"},
+                {"name": "dcterms:description", "occurs": "zero-or-one", "valueType": "oslc:LiteralValue"},
+                {"name": "oslc_qm:status", "occurs": "zero-or-one", "valueType": "oslc:LiteralValue"},
+                {"name": "oslc:serviceProvider", "occurs": "exactly-one", "valueType": "oslc:Resource"},
+                {"name": "dcterms:relation", "occurs": "zero-or-many", "valueType": "oslc:Resource"},
+            ],
+        },
+        QM_TEST_CASE_TYPE: {
+            "title": "OSLC QM Test Case Shape", "domain": "oslc_qm",
+            "describes": [QM_TEST_CASE_URI],
+            "properties": [
+                {"name": "dcterms:title", "occurs": "exactly-one", "valueType": "oslc:LiteralValue"},
+                {"name": "dcterms:description", "occurs": "zero-or-one", "valueType": "oslc:LiteralValue"},
+                {"name": "oslc:serviceProvider", "occurs": "exactly-one", "valueType": "oslc:Resource"},
+                {"name": "dcterms:relation", "occurs": "zero-or-many", "valueType": "oslc:Resource"},
             ],
         },
     }
@@ -174,10 +215,40 @@ class OSLCService:
         am_query_base = f"{cfg.base_url}/oslc/query/{cls.AM_RESOURCE_TYPE}"
         rm_query_base = f"{cfg.base_url}/oslc/query/{cls.RM_REQUIREMENT_TYPE}"
         rm_collection_query_base = f"{cfg.base_url}/oslc/query/{cls.RM_COLLECTION_TYPE}"
+        # Keep the legacy flattened fields below for existing clients, but also
+        # publish the OSLC Core service shape.  Consumers should discover
+        # capabilities through ``services`` and ``oslc:domain``.
+        canonical_domains = [
+            "http://open-services.net/ns/am#",
+            "http://open-services.net/ns/rm#",
+            "http://open-services.net/ns/cm#",
+            "http://open-services.net/ns/qm#",
+        ]
         return {
             "uri": f"{cfg.base_url}/oslc/providers/{cfg.provider_id}",
             "type": "oslc:ServiceProvider",
             "title": cfg.provider_title,
+            "oslc:domain": canonical_domains,
+            "services": [{
+                "domain": service_domain,
+                "queryCapabilities": [{
+                    "resourceType": resource_type,
+                    "queryBase": query_base,
+                    "resourceShape": f"{cfg.base_url}/oslc/shapes/{resource_type}",
+                } for capability_domain, resource_type, query_base in [
+                    ("http://open-services.net/ns/am#", cls.AM_RESOURCE_TYPE, am_query_base),
+                    ("http://open-services.net/ns/rm#", cls.RM_REQUIREMENT_TYPE, rm_query_base),
+                    ("http://open-services.net/ns/rm#", cls.RM_COLLECTION_TYPE, rm_collection_query_base),
+                    ("http://open-services.net/ns/cm#", cls.CM_CHANGE_REQUEST_TYPE, f"{cfg.base_url}/oslc/query/{cls.CM_CHANGE_REQUEST_TYPE}"),
+                    ("http://open-services.net/ns/qm#", cls.QM_TEST_RESULT_TYPE, f"{cfg.base_url}/oslc/query/{cls.QM_TEST_RESULT_TYPE}"),
+                    ("http://open-services.net/ns/qm#", cls.QM_TEST_CASE_TYPE, f"{cfg.base_url}/oslc/query/{cls.QM_TEST_CASE_TYPE}"),
+                ] if capability_domain == service_domain],
+                "resourceShapes": [
+                    f"{cfg.base_url}/oslc/shapes/{cls.AM_RESOURCE_TYPE}",
+                    f"{cfg.base_url}/oslc/shapes/{cls.RM_REQUIREMENT_TYPE}",
+                    f"{cfg.base_url}/oslc/shapes/{cls.RM_COLLECTION_TYPE}",
+                ],
+            } for service_domain in canonical_domains],
             "domains": [
                 {
                     "id": "ap242",
@@ -196,6 +267,16 @@ class OSLCService:
                     "title": "OSLC Requirements Management",
                     "namespace": "http://open-services.net/ns/rm#",
                     "description": "Requirement, requirement collection, and cross-domain traceability discovery profile.",
+                },
+                {
+                    "id": "oslc_cm", "title": "OSLC Change Management",
+                    "namespace": "http://open-services.net/ns/cm#",
+                    "description": "Read-only change request and traceability discovery profile.",
+                },
+                {
+                    "id": "oslc_qm", "title": "OSLC Quality Management",
+                    "namespace": "http://open-services.net/ns/qm#",
+                    "description": "Read-only test case and test result discovery profile.",
                 },
                 *cls._ontology_domains(),
             ],
@@ -238,6 +319,21 @@ class OSLCService:
                     "supportedParameters": ["oslc.where", "oslc.select", "oslc.orderBy", "oslc.searchTerms", "oslc.paging", "oslc.pageSize", "oslc.pageNum"],
                     "domains": ["oslc_rm"],
                 },
+                *[
+                    {
+                        "resourceType": resource_type,
+                        "resourceTypeUri": resource_uri,
+                        "queryBase": f"{cfg.base_url}/oslc/query/{resource_type}",
+                        "resourceShape": f"{cfg.base_url}/oslc/shapes/{resource_type}",
+                        "supportedParameters": ["oslc.where", "oslc.select", "oslc.orderBy", "oslc.searchTerms", "oslc.paging", "oslc.pageSize", "oslc.pageNum"],
+                        "domains": [domain],
+                    }
+                    for domain, resource_type, resource_uri in [
+                        ("oslc_cm", cls.CM_CHANGE_REQUEST_TYPE, cls.CM_CHANGE_REQUEST_URI),
+                        ("oslc_qm", cls.QM_TEST_RESULT_TYPE, cls.QM_TEST_RESULT_URI),
+                        ("oslc_qm", cls.QM_TEST_CASE_TYPE, cls.QM_TEST_CASE_URI),
+                    ]
+                ],
                 *[
                     {
                         "resourceType": f"ontology:{domain['ontology_id']}",
@@ -294,6 +390,26 @@ class OSLCService:
                     "collectionShape": f"{cfg.base_url}/oslc/shapes/{cls.RM_COLLECTION_TYPE}",
                     "trs": f"{cfg.base_url}/oslc/trs",
                     "description": "Requirement, requirement collection, and lifecycle traceability discovery profile.",
+                },
+                "oslc_cm": {
+                    "title": "OSLC CM Change Resources",
+                    "queryBase": f"{cfg.base_url}/oslc/query/{cls.CM_CHANGE_REQUEST_TYPE}",
+                    "shape": f"{cfg.base_url}/oslc/shapes/{cls.CM_CHANGE_REQUEST_TYPE}",
+                    "trs": f"{cfg.base_url}/oslc/trs",
+                    "description": "Change request and lifecycle traceability discovery profile.",
+                },
+                "oslc_qm": {
+                    "title": "OSLC QM Test Resources",
+                    "queryBases": {
+                        "testResults": f"{cfg.base_url}/oslc/query/{cls.QM_TEST_RESULT_TYPE}",
+                        "testCases": f"{cfg.base_url}/oslc/query/{cls.QM_TEST_CASE_TYPE}",
+                    },
+                    "shapes": {
+                        "testResults": f"{cfg.base_url}/oslc/shapes/{cls.QM_TEST_RESULT_TYPE}",
+                        "testCases": f"{cfg.base_url}/oslc/shapes/{cls.QM_TEST_CASE_TYPE}",
+                    },
+                    "trs": f"{cfg.base_url}/oslc/trs",
+                    "description": "Test case and test result discovery profile.",
                 },
                 "dictionaries": {
                     "title": "Ontology Data Dictionaries",
@@ -581,6 +697,26 @@ class OSLCService:
             "occurs": "zero-or-many",
         }
 
+    @staticmethod
+    def _canonical_property_descriptor(property_descriptor: Dict[str, Any]) -> Dict[str, Any]:
+        """Add OSLC Resource Shape vocabulary while retaining legacy fields."""
+        descriptor = dict(property_descriptor)
+        name = str(descriptor.get("name") or "").strip()
+        property_uri = descriptor.get("uri") or {
+            "dcterms:title": "http://purl.org/dc/terms/title",
+            "dcterms:description": "http://purl.org/dc/terms/description",
+            "dcterms:identifier": "http://purl.org/dc/terms/identifier",
+            "dcterms:relation": "http://purl.org/dc/terms/relation",
+            "oslc:serviceProvider": "http://open-services.net/ns/core#serviceProvider",
+            "oslc_rm:uses": "http://open-services.net/ns/rm#uses",
+            "oslc_cm:status": "http://open-services.net/ns/cm#status",
+            "oslc_qm:status": "http://open-services.net/ns/qm#status",
+        }.get(name)
+        if property_uri:
+            descriptor["uri"] = property_uri
+            descriptor["propertyDefinition"] = property_uri
+        return descriptor
+
 
     @classmethod
     def list_shapes(cls) -> Dict[str, Any]:
@@ -636,9 +772,20 @@ class OSLCService:
                 "title": definition["title"],
                 "domain": definition["domain"],
                 "describes": list(definition["describes"]),
-                "properties": [dict(item) for item in definition["properties"]],
+                "properties": [cls._canonical_property_descriptor(item) for item in definition["properties"]],
                 "source": "oslc-domain-profile",
             }
+
+        # Do not let an arbitrary path token trigger ontology inspection.  A
+        # shape must be one of the advertised built-ins, AP242, or a registered
+        # ontology domain.
+        registered_ids = {
+            str(item.get("ontology_id") or "").strip()
+            for item in (OntologyUploadManager.list_ontologies().get("ontologies") or [])
+            if item.get("ontology_id")
+        }
+        if normalized_shape_id != "ap242" and normalized_shape_id not in registered_ids:
+            raise ValueError(f"Unknown OSLC resource shape: {normalized_shape_id}")
 
         context = OntologyReasoningService.semantic_context(normalized_shape_id)
         reasoning = OntologyReasoningService.inspect_context(context)
@@ -1188,12 +1335,37 @@ class OSLCService:
             "toLower(coalesce(toString(n.element_type), toString(n.entity_type), '')) IN "
             "['specification', 'requirementcollection'])"
         )
+        change_request = (
+            "(any(lbl IN labels(n) WHERE toLower(lbl) IN "
+            "['changerequest', 'change_request', 'oslcchangerequest']) OR "
+            "toLower(coalesce(toString(n.semantic_role), '')) IN ['change_request', 'change'] OR "
+            "toLower(coalesce(toString(n.element_type), toString(n.entity_type), '')) IN "
+            "['changerequest', 'change_request', 'change'])"
+        )
+        test_result = (
+            "(any(lbl IN labels(n) WHERE toLower(lbl) IN "
+            "['testresult', 'test_result', 'oslctestresult']) OR "
+            "toLower(coalesce(toString(n.semantic_role), '')) = 'test_result' OR "
+            "toLower(coalesce(toString(n.element_type), toString(n.entity_type), '')) = 'testresult')"
+        )
+        test_case = (
+            "(any(lbl IN labels(n) WHERE toLower(lbl) IN "
+            "['testcase', 'test_case', 'oslctestcase']) OR "
+            "toLower(coalesce(toString(n.semantic_role), '')) = 'test_case' OR "
+            "toLower(coalesce(toString(n.element_type), toString(n.entity_type), '')) = 'testcase')"
+        )
         if normalized == cls.DEFAULT_RESOURCE_TYPE:
             return ""
         if normalized == cls.RM_REQUIREMENT_TYPE:
             return requirement
         if normalized == cls.RM_COLLECTION_TYPE:
             return collection
+        if normalized == cls.CM_CHANGE_REQUEST_TYPE:
+            return change_request
+        if normalized == cls.QM_TEST_RESULT_TYPE:
+            return test_result
+        if normalized == cls.QM_TEST_CASE_TYPE:
+            return test_case
         if normalized == cls.AM_RESOURCE_TYPE:
             architecture = (
                 "(n:ModelElement OR any(lbl IN labels(n) WHERE toLower(lbl) IN "
@@ -1295,6 +1467,24 @@ class OSLCService:
             or lowered["entity_type"] in {"specification", "requirementcollection"}
         ):
             return [cls.RM_COLLECTION_URI]
+        if (
+            lowered_labels.intersection({"changerequest", "change_request", "oslcchangerequest"})
+            or lowered["semantic_role"] in {"change", "change_request"}
+            or lowered["element_type"] in {"change", "changerequest", "change_request"}
+        ):
+            return [cls.CM_CHANGE_REQUEST_URI]
+        if (
+            lowered_labels.intersection({"testresult", "test_result", "oslctestresult"})
+            or lowered["semantic_role"] == "test_result"
+            or lowered["element_type"] == "testresult"
+        ):
+            return [cls.QM_TEST_RESULT_URI]
+        if (
+            lowered_labels.intersection({"testcase", "test_case", "oslctestcase"})
+            or lowered["semantic_role"] == "test_case"
+            or lowered["element_type"] == "testcase"
+        ):
+            return [cls.QM_TEST_CASE_URI]
         architecture_labels = {
             "modelelement", "system", "subsystem", "component", "interface", "function", "capability",
             "operationalactivity", "performer", "package", "project", "usecase", "actor", "activity",
@@ -1317,6 +1507,9 @@ class OSLCService:
             cls.AM_RESOURCE_TYPE: [cls.AM_TYPE_URI],
             cls.RM_REQUIREMENT_TYPE: [cls.RM_REQUIREMENT_URI],
             cls.RM_COLLECTION_TYPE: [cls.RM_COLLECTION_URI],
+            cls.CM_CHANGE_REQUEST_TYPE: [cls.CM_CHANGE_REQUEST_URI],
+            cls.QM_TEST_RESULT_TYPE: [cls.QM_TEST_RESULT_URI],
+            cls.QM_TEST_CASE_TYPE: [cls.QM_TEST_CASE_URI],
         }.get(normalized)
         return explicit or cls.resource_domain_types(labels, properties)
 
@@ -1326,6 +1519,9 @@ class OSLCService:
             cls.AM_TYPE_URI: cls.AM_RESOURCE_TYPE,
             cls.RM_REQUIREMENT_URI: cls.RM_REQUIREMENT_TYPE,
             cls.RM_COLLECTION_URI: cls.RM_COLLECTION_TYPE,
+            cls.CM_CHANGE_REQUEST_URI: cls.CM_CHANGE_REQUEST_TYPE,
+            cls.QM_TEST_RESULT_URI: cls.QM_TEST_RESULT_TYPE,
+            cls.QM_TEST_CASE_URI: cls.QM_TEST_CASE_TYPE,
         }
         shape_id = next((type_to_shape[item] for item in type_uris if item in type_to_shape), None)
         return f"{cls.config().base_url}/oslc/shapes/{shape_id}" if shape_id else None

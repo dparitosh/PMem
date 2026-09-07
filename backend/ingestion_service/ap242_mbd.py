@@ -14,6 +14,7 @@ from typing import Any
 
 from backend.Services.ap242_domain_model import describe_ap242_domain_model
 from backend.Services.step_parser import parse_step_with_pmi
+from backend.parsers.ap242_identity import is_ap242
 
 
 class AP242MbdExchangeService:
@@ -98,8 +99,7 @@ class AP242MbdExchangeService:
 
     @staticmethod
     def _is_ap242(file_schema: str | None, namespace: str, content: bytes) -> bool:
-        marker = (file_schema or "").lower() + " " + (namespace or "").lower() + " " + content[:32_768].decode("utf-8", errors="ignore").lower()
-        return "ap242" in marker or "managed_model_based_3d_engineering" in marker or "10303/-4442" in marker
+        return is_ap242(file_schema, namespace, content)
 
     @staticmethod
     def _cad_candidate(item: Any, domain_type: str) -> dict[str, Any]:

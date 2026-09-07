@@ -1,13 +1,13 @@
 # Windows direct-service operations
 
-DEPO does not require Docker. Configure `.env.local` from
+Run the commands from the repository root (`D:\Githuv_repo\PMem`). DEPO does not require Docker. Configure `.env.local` from
 `.env.postgres.example`, then run PowerShell as Administrator:
 
 ```powershell
 .\infra\windows\start-depo-services.ps1
 ```
 
-The script starts either an installed PostgreSQL Windows service or the default
+Run PowerShell as Administrator only when PostgreSQL service control requires it. The script starts either an installed PostgreSQL Windows service or the default
 standalone installation at `D:\codevita\postgresql-16`, validates the
 `semantic` PostgreSQL schema, and runs each DEPO microservice as a hidden local
 Python process. Override those locations with `-PostgresBinDir` and
@@ -41,3 +41,10 @@ powershell -ExecutionPolicy Bypass -File .\infra\windows\test-depo-release.ps1 -
 Bootstrap requires token-protected approvals plus working PostgreSQL and Neo4j,
 but does not require Entra or TLS. Run it only on a restricted customer network.
 `AUTH_MODE=disabled` is allowed only for an explicit loopback-only local demo.
+For a clean machine, install runtime dependencies once from the repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\infra\windows\install-depo.ps1
+```
+
+The installer creates `backend\.dt_venv`, installs the single backend requirements file, and runs `npm ci` for the frontend. It does not install PostgreSQL, Neo4j, Java, or Spark.

@@ -47,13 +47,24 @@ export default function AppShell({
         <IxApplicationHeader name="DEPO | Digital Thread">
           <div className="depo-app-mark" aria-label="DEPO">D</div>
           <IxBadge type="label" variant={statusVariant} label={statusLabel} role="status" aria-live="polite" />
-          <IxButton type="button" variant="tertiary" icon="info" onClick={onToggleChat} aria-label="Toggle Knowledge Companion">
+          <IxButton
+            type="button"
+            variant="tertiary"
+            icon="info"
+            onClick={onToggleChat}
+            aria-label="Toggle Knowledge Companion"
+            aria-expanded={showChat}
+            aria-controls="depo-chat-drawer"
+          >
             Chat
           </IxButton>
           <IxAvatar initials="DT" aria-label="Digital Thread workspace" />
         </IxApplicationHeader>
 
-        <IxMenu aria-label="Application navigation">
+        {/* Keep the desktop menu breakpoint explicit. IX recalculates overflow
+            while custom elements hydrate; an implicit breakpoint can trigger
+            its scroll handler before the menu items container exists. */}
+        <IxMenu aria-label="Application navigation" breakpoint="lg">
           {navigationItems.map((item) => (
             <IxMenuItem
               key={item.id}
@@ -81,7 +92,7 @@ export default function AppShell({
             <div className="depo-ix-page__body">{children}</div>
           </div>
           {rightDrawer && (
-            <aside className="depo-ix-drawer" aria-label="Chat assistant" hidden={!showChat}>
+            <aside id="depo-chat-drawer" className="depo-ix-drawer" aria-label="Chat assistant" hidden={!showChat}>
               {rightDrawer}
             </aside>
           )}

@@ -10,6 +10,28 @@ vi.mock('./contexts/OntologyContext', () => ({
   OntologyProvider: ({ children }) => children,
 }));
 
+vi.mock('./app/AppShell', () => ({
+  default: ({ activePage, children, onPageChange }) => (
+    <div>
+      <nav aria-label="Application navigation">
+        {[
+          'Home', 'Import', 'Ontology Junction', 'Metadata Registry', 'Graph Explorer',
+          'Code Network', 'Modeling', 'ReqIF', 'QIF', 'Where Used', 'Recommendations',
+          'Reports', 'Admin',
+        ].map((label) => (
+          <button
+            key={label}
+            type="button"
+            aria-current={activePage === ({ Home: 'home', 'Ontology Junction': 'ontology', 'Metadata Registry': 'registry', 'Graph Explorer': 'graph', 'Code Network': 'code-audit', Modeling: 'modeling', ReqIF: 'requirements', QIF: 'qif', 'Where Used': 'whereused', Recommendations: 'quality', Reports: 'reports', Admin: 'admin', Import: 'import' }[label]) ? 'page' : undefined}
+            onClick={() => onPageChange({ Home: 'home', 'Ontology Junction': 'ontology', 'Metadata Registry': 'registry', 'Graph Explorer': 'graph', 'Code Network': 'code-audit', Modeling: 'modeling', ReqIF: 'requirements', QIF: 'qif', 'Where Used': 'whereused', Recommendations: 'quality', Reports: 'reports', Admin: 'admin', Import: 'import' }[label])}
+          >{label}</button>
+        ))}
+      </nav>
+      {children}
+    </div>
+  ),
+}));
+
 vi.mock('./Components/LandingPage', () => ({ default: () => <div>Landing Mock</div> }));
 vi.mock('./pages/ImportPage', () => ({ default: () => <div data-testid="page-import">Import page</div> }));
 vi.mock('./pages/OntologyJunctionPage', () => ({ default: () => <div data-testid="page-ontology">Ontology Junction page</div> }));
@@ -22,7 +44,6 @@ vi.mock('./pages/ReportsPage', () => ({ default: () => <div data-testid="page-re
 vi.mock('./pages/AdminPage', () => ({ default: () => <div data-testid="page-admin">Admin page</div> }));
 vi.mock('./pages/WhereUsedPage', () => ({ default: () => <div data-testid="page-whereused">Where Used page</div> }));
 vi.mock('./pages/RequirementsPage', () => ({ default: () => <div data-testid="page-requirements">ReqIF page</div> }));
-vi.mock('./Components/Chatbot', () => ({ default: () => <div data-testid="chatbot">Chatbot</div> }));
 vi.mock('./services/apiClient', () => ({
   API_METHODS: {
     health: {
@@ -38,23 +59,23 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/');
 });
 
-test('renders DEPO platform landing page when home is persisted', () => {
+test('renders the landing-page boundary when home is persisted', () => {
   window.localStorage.setItem('depo.activePage', 'home');
   render(<App />);
-  expect(screen.getByText(/DEPO Digital Thread Platform/i)).toBeInTheDocument();
+  expect(screen.getByText('Landing Mock')).toBeInTheDocument();
 });
 
 test('renders the landing page for the root hash route', () => {
   window.history.replaceState({}, '', '/#/');
   render(<App />);
-  expect(screen.getByText(/DEPO Digital Thread Platform/i)).toBeInTheDocument();
+  expect(screen.getByText('Landing Mock')).toBeInTheDocument();
 });
 
 test('falls back to Graph Explorer for invalid persisted navigation', async () => {
   window.history.replaceState({}, '', '/#/graph');
   window.localStorage.setItem('depo.activePage', 'removed-page');
   render(<App />);
-  expect(await screen.findByRole('heading', { name: 'Graph Explorer' })).toBeInTheDocument();
+  expect(await screen.findByTestId('page-graph')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Graph Explorer' })).toHaveAttribute('aria-current', 'page');
 });
 

@@ -47,9 +47,9 @@ service is mistaken for a production data pipeline.
 
 | Reference layer/component | DEPO service or component | Status and boundary |
 |---|---|---|
-| Engineering source systems and acquisition | Ingestion, schema-set/QIF, OSLC, source-profile adapters | Available for supported file/API sources; source authority and artifact provenance stay external. |
+| Engineering source systems and acquisition | Ingestion, schema-set, OSLC, and source-profile adapters | Available for supported file/API sources; source authority and artifact provenance stay external. QIF is one supported source profile, not the pipeline identity. |
 | Industrial data platform: catalog, metadata, lineage, policy | Data catalog, data products, metadata registry, PostgreSQL control plane | Foundation available; a single ISO 11179 lifecycle contract is still planned. |
-| Canonical transformation | CEIM service and governed mapping packs | Available for AP242, QIF and ReqIF packs. QIF structural XSD validation and semantic mapping are separate automated checks; the NIST AP242 QIF sample passes declared mapping and SHACL for part, feature, characteristic, datum, datum-reference-frame, PMI, and body-level geometry topology scope. Detailed geometric primitives remain source-artifact evidence until CEIM gains an approved geometry profile. |
+| Canonical transformation | CEIM service and governed mapping packs | Available for AP242, QIF, ReqIF, and Teamcenter PLMXML packs. The PLMXML adapter retains the source as PLMXML and produces a CEIM batch; it does not relabel a Teamcenter export as AP242. QIF structural XSD validation and semantic mapping are separate automated checks. Detailed geometric primitives remain source-artifact evidence until CEIM gains an approved geometry profile. |
 | Metadata enrichment and standards mapping | Ingestion adapters, CEIM mappings, ontology service | Available as explicit mappings and ontology releases; unmapped types must enter review rather than be inferred. |
 | Industrial ontology and semantic governance | Ontology service, Semantica adapter, SHACL/policy/approval boundaries | Foundation available; steward-reviewed vocabulary curation is planned. |
 | Enterprise knowledge graph | Graph service with governed CEIM publication and Neo4j/RDF projections | Available for approved publications; GraphQL/SPARQL interoperability is planned. |

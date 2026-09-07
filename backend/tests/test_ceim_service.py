@@ -21,9 +21,11 @@ def test_ceim_graph_client_accepts_a_service_api_root(monkeypatch):
         async def __aexit__(self, *args): return False
         async def post(self, url, **kwargs):
             captured["url"] = url
+            captured["headers"] = kwargs.get("headers")
             return Response()
 
     monkeypatch.setenv("GRAPH_SERVICE_URL", "http://graph.internal:8013/api/v1")
+    monkeypatch.setenv("GRAPH_PUBLICATION_TOKEN", "test-service-token")
     monkeypatch.setattr("backend.ceim_service.router.httpx.AsyncClient", lambda timeout: Client())
 
     import asyncio
@@ -31,6 +33,7 @@ def test_ceim_graph_client_accepts_a_service_api_root(monkeypatch):
 
     assert result["status"] == "success"
     assert captured["url"] == "http://graph.internal:8013/api/v1/graph/ontologies/publish"
+    assert captured["headers"] == {"Authorization": "Bearer test-service-token"}
 
 
 def test_ceim_service_exposes_contract_and_normalizes_qif_entity():
