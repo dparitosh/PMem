@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator, Callable
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -29,6 +30,41 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 def allowed_origins() -> list[str]:
     configured = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
     return [origin.strip() for origin in configured.split(",") if origin.strip()]
+
+
+def configured_dependency_status() -> dict[str, dict[str, str]]:
+    """Perform small, bounded checks for configured shared dependencies.
+
+    The checks intentionally only run when their connection configuration is
+    present.  This keeps a service that does not own a dependency deployable,
+    while preventing a configured but unavailable PostgreSQL/Neo4j plane from
+    being advertised as ready.
+    """
+    status: dict[str, dict[str, str]] = {}
+    database_url = os.getenv("DEPO_DATABASE_URL") or os.getenv("DATABASE_URL")
+    if database_url:
+        try:
+            import psycopg
+            with psycopg.connect(database_url, connect_timeout=3) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+            status["postgres"] = {"status": "ready"}
+        except Exception as exc:
+            status["postgres"] = {"status": "unavailable", "reason": type(exc).__name__}
+    neo4j_uri = os.getenv("NEO4J_URI")
+    if neo4j_uri:
+        try:
+            from neo4j import GraphDatabase
+            with GraphDatabase.driver(
+                neo4j_uri,
+                auth=(os.getenv("NEO4J_USER", ""), os.getenv("NEO4J_PASS", "")),
+                connection_timeout=3,
+            ) as driver:
+                driver.verify_connectivity()
+            status["neo4j"] = {"status": "ready"}
+        except Exception as exc:
+            status["neo4j"] = {"status": "unavailable", "reason": type(exc).__name__}
+    return status
 
 
 def create_service_app(*, title: str, version: str, lifespan_hook: Callable[[], AsyncIterator[None]] | None = None) -> FastAPI:
@@ -59,13 +95,15 @@ def create_service_app(*, title: str, version: str, lifespan_hook: Callable[[], 
         return {"status": "ok", "service": title, "version": version}
 
     @app.get("/readyz", include_in_schema=False)
-    def readiness() -> dict[str, str]:
-        """HTTP readiness probe for orchestration.
-
-        Dependency-specific readiness remains available from each service's
-        explicit health endpoint so a slow remote graph does not restart an
-        otherwise healthy API process.
-        """
-        return {"status": "ready", "service": title, "version": version}
+    def readiness() -> JSONResponse:
+        dependencies = configured_dependency_status()
+        unavailable = [name for name, item in dependencies.items() if item["status"] != "ready"]
+        body = {
+            "status": "not_ready" if unavailable else "ready",
+            "service": title,
+            "version": version,
+            "dependencies": dependencies,
+        }
+        return JSONResponse(status_code=503 if unavailable else 200, content=body)
 
     return app

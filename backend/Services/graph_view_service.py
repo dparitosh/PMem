@@ -541,10 +541,7 @@ class GraphViewService:
     @classmethod
     def _reasoning_projection_graph(cls, prefix: str) -> Dict[str, Any]:
         try:
-            try:
-                from backend.Services.ontology_reasoning_service import OntologyReasoningService
-            except Exception:
-                from Services.ontology_reasoning_service import OntologyReasoningService
+            from backend.ontology_service.domain.reasoning import OntologyReasoningService
 
             reasoning = OntologyReasoningService.get_reasoning(prefix)
         except Exception as exc:  # pragma: no cover - defensive runtime fallback

@@ -22,7 +22,6 @@ _MANUAL_LIVE_TESTS = [
     "test_ontology_corrected.py",
     "test_ontology_creation.py",
     "test_ontology_e2e.py",
-    "test_ontology_final_report.py",
     "test_ontology_upload.py",
     "tests_comprehensive.py",
 ]
@@ -33,3 +32,19 @@ collect_ignore = (
     if os.getenv("RUN_MANUAL_INTEGRATION_TESTS") == "1"
     else _MANUAL_LIVE_TESTS
 )
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Always release test-created Spark JVMs before the CI Python process exits.
+
+    Spark is optional in DEPO, but a locally initialized JVM can otherwise keep
+    pytest alive after its final assertion. This is test infrastructure only;
+    production shutdown remains owned by the data-pipeline service lifespan.
+    """
+    try:
+        from backend.data_pipeline_service.runner import runner
+        runner.shutdown()
+    except Exception:
+        # A Spark import/runtime may be intentionally absent from a unit-test
+        # environment. Never turn test cleanup into a false failure.
+        pass

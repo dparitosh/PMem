@@ -41,6 +41,16 @@ class PostgresRegistry:
             row = cursor.fetchone()
             return row[0] if row else None
 
+    def page_keys(self, offset: int, limit: int) -> tuple[int, list[str]]:
+        """Page identifiers without loading every manifest into process memory."""
+        if offset < 0 or not 1 <= limit <= 200:
+            raise ValueError("Invalid registry page")
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM depo_registry WHERE namespace = %s AND right(key, 7) <> ':latest'", (self.namespace,))
+            total = cursor.fetchone()[0]
+            cursor.execute("SELECT key FROM depo_registry WHERE namespace = %s AND right(key, 7) <> ':latest' ORDER BY key LIMIT %s OFFSET %s", (self.namespace, limit, offset))
+            return total, [row[0] for row in cursor.fetchall()]
+
     def put(self, key: str, value: dict[str, Any]) -> dict[str, Any]:
         return self.put_many({key: value})[key]
 

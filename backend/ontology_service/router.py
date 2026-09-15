@@ -37,9 +37,12 @@ def generate_ontology(payload: dict[str, Any]) -> dict:
     result = semantica.generate(
         data=data, name=str(payload.get("name") or "GeneratedOntology"),
         base_uri=str(payload.get("base_uri") or "https://depo.local/ontology/"),
+        persist=False,
     )
     return {"ontology": result["ontology"], "validation": result["validation"], "evaluation": result["evaluation"],
-            "version_id": result["version_id"], "artifacts": {name: content.decode("utf-8") for name, content in result["artifacts"].items()}}
+            "version_id": result["version_id"], "lifecycle_status": "draft_preview",
+            "next_action": "Register the reviewed RDF/OWL artifact, then transition it through in_review and approved.",
+            "artifacts": {name: content.decode("utf-8") for name, content in result["artifacts"].items()}}
 
 
 @router.post("/validate-graph", summary="Validate Turtle graph data against a Semantica-generated SHACL ontology")
@@ -334,3 +337,19 @@ async def register_ontology(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/{ontology_id}/transition", summary="Submit, approve, deprecate, or retire a syntax-validated ontology artifact")
+def transition_ontology(ontology_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    actor = approval_identity(request, payload, token_env="ONTOLOGY_APPROVAL_TOKEN")
+    try:
+        return catalog.transition(
+            ontology_id=ontology_id,
+            target=str(payload.get("target") or ""),
+            actor=actor,
+            reason=str(payload.get("reason") or ""),
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

@@ -124,7 +124,7 @@ def _detect_deployment_type(uri: str) -> Neo4jDeploymentType:
 
 
 def _load_environment() -> None:
-    """Load environment variables from backend/.env as the runtime source of truth."""
+    """Load legacy defaults without replacing deployment-injected settings."""
     project_root = Path(__file__).resolve().parents[2]
     possible_paths = [
         project_root / "backend" / ".env",
@@ -137,7 +137,7 @@ def _load_environment() -> None:
     
     for env_path in possible_paths:
         if env_path.exists():
-            load_dotenv(env_path, override=True)
+            load_dotenv(env_path, override=False)
             logger.debug(f"Loaded environment from {env_path}")
             return
     

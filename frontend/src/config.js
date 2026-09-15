@@ -117,7 +117,7 @@ const semanticServiceUrls = Object.freeze({
   oslc: configuredServiceUrl('oslc', 8015, '/oslc'),
   catalog: configuredServiceUrl('catalog', 8016, '/catalog'),
   dataProducts: configuredServiceUrl('data_product', 8017, '/data-products'),
-  dataPipeline: configuredServiceUrl('data_pipeline', 8019, '/pipeline'),
+  dataPipeline: configuredServiceUrl('data_pipeline', 8019, '/data-pipeline'),
 });
 
 /** Build a URL for new standalone-service features during monolith migration. */
@@ -133,11 +133,18 @@ const SERVICE_PATHS = [
   ['ontology', /^\/api\/v1\/modeling(?:\/|$)/],
   ['ontology', /^\/api\/v1\/admin(?:\/|$)/],
   ['ontology', /^\/api\/v1\/metadata-registry(?:\/|$)/],
+  // Retained ingestion-owned artifact registry.  Keep these narrow routes
+  // ahead of the semantic workbench compatibility namespace below.
+  ['ingestion', /^\/api\/v1\/ontology\/(?:upload|registered|merge|cleanup-old-xsd)(?:\/|$)/],
+  ['ingestion', /^\/api\/v1\/ontology\/[^/]+\/(?:taxonomy|reason|inference\/preview|export)(?:\/|$)/],
+  ['ingestion', /^\/api\/v1\/ontology\/[^/]+$/],
+  // The workbench contract is owned by the ontology service. XSD/XML source
+  // profiles remain under ingestion; this namespace is semantic workbench only.
+  ['ontology', /^\/api\/v1\/ontology(?:\/|$)/],
   ['graph', /^\/api\/v1\/graph(?:\/|$)/],
   ['graph', /^\/api\/v1\/requirements(?:\/|$)/],
   ['ingestion', /^\/api\/v1\/(?:ingestion|ingest-data|ap242|schema-conversions|source-profiles|engineering-workflows)(?:\/|$)/],
   ['ingestion', /^\/api\/v1\/import(?:\/|$)/],
-  ['ingestion', /^\/api\/v1\/ontology(?:\/|$)/],
   ['oslc', /^(?:\/api\/v1\/oslc|\/oslc)(?:\/|$)/],
   ['catalog', /^\/api\/v1\/catalog\/products(?:\/|$)/],
   ['dataProducts', /^\/api\/v1\/data-products(?:\/|$)/],

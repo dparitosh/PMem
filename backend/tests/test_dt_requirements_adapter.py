@@ -23,5 +23,12 @@ def test_dt_requirements_manifest_reports_oslc_and_missing_capabilities():
 def test_empty_manifest_is_safe_and_deterministic():
     report = assess_manifest({}, {"agents": [], "tools": []})
 
-    assert report["status"] == "compatible"
+    assert report["status"] == "invalid"
     assert report["mappings"] == []
+
+
+def test_unknown_agent_is_not_compatible():
+    report = assess_manifest({"sequence": [{"agent": "unknown"}]}, {"tools": []})
+    assert report["status"] == "partial"
+    assert report["mappings"][0]["status"] == "unmapped"
+    assert report["execution_verified"] is False

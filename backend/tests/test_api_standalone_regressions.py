@@ -34,12 +34,14 @@ def test_standalone_ontology_service_contract() -> None:
     health = client.get("/api/v1/ontologies/health")
     capabilities = client.get("/api/v1/ontologies/capabilities")
     mcp = client.get("/api/v1/ontologies/mcp")
+    legacy_domains = client.get("/api/v1/ontology/pipelines/domains")
 
     assert health.status_code == 200
     assert health.json()["service"] == "ontology"
     assert capabilities.status_code == 200
     assert capabilities.json()["provider"] == "Semantica"
     assert mcp.json()["transport"] == "stdio"
+    assert legacy_domains.status_code == 200
 
 
 def test_ingestion_merge_query_is_valid_and_identifiers_are_restricted() -> None:

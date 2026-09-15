@@ -283,7 +283,7 @@ Refactor from:
 
 - `backend/Services/ontology_mapping_service.py`
 - `backend/Services/ontology_mapper_service.py`
-- `backend/Services/ontology_reasoning_service.py`
+- `backend/ontology_service/domain/reasoning.py`
 - `backend/Services/swrl_reasoning_service.py`
 
 ### 5.3 Traceability Service Group

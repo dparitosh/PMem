@@ -77,6 +77,8 @@ def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id
         "job_id": definition["job_id"],
         "job_version": definition["version"],
         "job_type": definition["job_type"],
+        "quality_profile": definition.get("quality_profile"),
+        "quality_profile": definition.get("quality_profile"),
         "status": "running",
         "correlation_id": correlation_id,
         "replay_of": replay_of,
@@ -120,8 +122,19 @@ def complete(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
         media_type="application/json",
         provenance={"run_id": record["run_id"], "job_id": record["job_id"], "job_version": record["job_version"], "correlation_id": record.get("correlation_id")},
     )
+    contracts = {
+        "normalize-ceim": "normalized-ceim-batch-v1",
+        "data-quality-assessment": "data-quality-report-v1",
+        "schema-analytics-product": "schema-analytics-data-product-draft-v1",
+        "validate-semantic-batch": "semantic-validation-report-v1",
+        "normalize-unstructured-ceim": "semantic-validation-report-v1",
+        "validate-unstructured-evidence": "validated-unstructured-evidence-v1",
+        "enrich-document-evidence": "document-graph-proposal-v1",
+        "rdf-quality-statistics": "rdf-quality-report-v1",
+        "rdf-deduplicate-serialize": "canonical-ntriples-v1",
+    }
     output = {
-        "contract": "semantic-validation-report-v1" if record["job_type"] == "validate-semantic-batch" else "normalized-ceim-batch-v1" if record["job_type"] == "normalize-ceim" else "validated-unstructured-evidence-v1" if record["job_type"] == "validate-unstructured-evidence" else "document-graph-proposal-v1" if record["job_type"] == "enrich-document-evidence" else "rdf-quality-report-v1" if record["job_type"] == "rdf-quality-statistics" else "canonical-ntriples-v1" if record["job_type"] == "rdf-deduplicate-serialize" else "quality-summary-v1",
+        "contract": contracts.get(record["job_type"], "quality-summary-v1"),
         "result_digest": _digest(result),
         "result_artifact_id": result_artifact["artifact_id"],
         "counts": dict(result.get("counts") or result.get("quality") or {}),
@@ -136,6 +149,14 @@ def complete(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
         output["mapping_digest"] = result["mapping"]
     if isinstance(result.get("validation"), dict):
         output["validation_status"] = "conforms" if result["validation"].get("conforms") else "nonconformant"
+    if isinstance(result.get("data_product_draft"), dict):
+        draft = result["data_product_draft"]
+        output["data_product_draft"] = {
+            "contract": draft.get("contract"), "name": draft.get("name"),
+            "artifacts": list(draft.get("artifacts") or []),
+            "quality_status": draft.get("quality_status"),
+            "publication_requirements": list(draft.get("publication_requirements") or []),
+        }
     retained_payload = replay_payload(record)
     next_checkpoint = retained_payload.get("next_checkpoint")
     if next_checkpoint is not None:
@@ -195,6 +216,10 @@ def telemetry_summary(*, limit: int = 100) -> dict[str, Any]:
         return next((int(values[name]) for name in names if values.get(name) is not None), 0)
 
     return {
+        "scope": "recent_runs",
+        "limit": limit,
+        "scope": "recent_runs",
+        "limit": limit,
         "runs": len(runs),
         "completed_runs": sum(1 for run in runs if run.get("status") == "completed"),
         "failed_runs": sum(1 for run in runs if run.get("status") == "failed"),

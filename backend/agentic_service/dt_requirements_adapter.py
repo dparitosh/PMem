@@ -35,6 +35,7 @@ def assess_manifest(manifest: dict[str, Any], catalog: dict[str, Any]) -> dict[s
         if not isinstance(step, dict) or not step.get("agent"):
             continue
         agent_name = str(step["agent"])
+        known = _key(agent_name) in AGENT_CAPABILITY_MAP
         required = AGENT_CAPABILITY_MAP.get(_key(agent_name), [])
         unresolved = [tool_id for tool_id in required if tool_id not in available]
         mappings.append({
@@ -43,11 +44,12 @@ def assess_manifest(manifest: dict[str, Any], catalog: dict[str, Any]) -> dict[s
             "required_tools": required,
             "available_tools": [tool_id for tool_id in required if tool_id in available],
             "missing_tools": unresolved,
-            "status": "compatible" if not unresolved else "missing_capability",
+            "status": "unmapped" if not known else ("compatible" if not unresolved else "missing_capability"),
         })
         missing.extend(unresolved)
     return {
-        "status": "compatible" if not missing else "partial",
+        "status": "invalid" if not mappings else ("partial" if missing or any(m["status"] == "unmapped" for m in mappings) else "compatible"),
+        "execution_verified": False,
         "workflow_id": manifest.get("name") or manifest.get("entry_agent") or "external-workflow",
         "entry_agent": manifest.get("entry_agent"),
         "mappings": mappings,

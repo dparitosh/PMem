@@ -77,7 +77,9 @@ def inspect_schema_set(paths: Iterable[Path]) -> dict:
                     terms.append(SchemaTerm(
                         name=_local_name(name), kind="property", source=path.name, namespace=target_namespace,
                         documentation=_documentation(node), base=owner_name,
-                        value_type=_local_name(node.get("type", "")), min_occurs=node.get("minOccurs", "1"), max_occurs=node.get("maxOccurs", "1"),
+                        value_type=_local_name(node.get("type", "")),
+                        min_occurs=("1" if node.get("use") == "required" else "0") if node.tag == f"{XS}attribute" else node.get("minOccurs", "1"),
+                        max_occurs=("0" if node.get("use") == "prohibited" else "1") if node.tag == f"{XS}attribute" else node.get("maxOccurs", "1"),
                     ))
 
     # Child properties with the same local name remain distinct when they belong
@@ -151,7 +153,17 @@ def validate_schema_set(inspection: dict, paths: Iterable[Path]) -> dict:
             if document.tag != f"{XS}schema":
                 raise ValueError("Root element is not xs:schema")
             if lxml_etree is not None:
-                lxml_etree.XMLSchema(lxml_etree.parse(str(root_path)))
+                class BundledResolver(lxml_etree.Resolver):
+                    def resolve(self, url, public_id, context):
+                        from urllib.parse import urlsplit
+                        matches = by_name.get(Path(urlsplit(url).path).name.lower(), [])
+                        if len(matches) == 1:
+                            return self.resolve_filename(str(matches[0].resolve()), context)
+                        raise OSError(f"Schema dependency is not uniquely bundled: {url}")
+
+                parser = lxml_etree.XMLParser(no_network=True, resolve_entities=False, load_dtd=False)
+                parser.resolvers.add(BundledResolver())
+                lxml_etree.XMLSchema(lxml_etree.parse(str(root_path), parser))
             schema_validated += 1
         except (OSError, ET.ParseError, ValueError) as exc:
             errors.append({"file": root_path.name, "error": f"XSD structural validation failed: {exc}"})

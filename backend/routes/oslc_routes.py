@@ -14,7 +14,9 @@ router = APIRouter(prefix="/oslc", tags=["OSLC"])
 async def get_service_provider_catalog():
     if not OSLCService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
-    return OSLCService.service_provider_catalog()
+    result = OSLCService.service_provider_catalog()
+    result["lifecycleProvider"] = OSLCService.config().base_url + "/oslc/lifecycle"
+    return result
 
 
 @router.get("/providers/{provider_id}")

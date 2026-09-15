@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from backend.Services.owlready_runtime import OwlreadyOntologyRuntime
-from backend.Services.ontology_taxonomy_service import OntologyTaxonomyService
+from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
 from backend.Services.ontology_validator import OntologyValidator
 
 

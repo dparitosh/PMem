@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from backend.Services.semantic_workflow_service import SemanticWorkflowService
-from backend.Services.ontology_reasoning_service import OntologyReasoningService
+from backend.ontology_service.domain.reasoning import OntologyReasoningService
 
 
 

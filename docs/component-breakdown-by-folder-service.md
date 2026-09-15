@@ -212,7 +212,7 @@ Current ownership map:
   - SWRL parsing, validation, execution preview
 - `semantic_taxonomy_service.py`
   - SKOS / taxonomy support
-- `ontology_reasoning_service.py`
+- `backend/ontology_service/domain/reasoning.py`
   - ontology reasoning and fallback dictionary generation
 - `ontology_mapper_service.py`
   - legacy seed mapper and ontology mapping support

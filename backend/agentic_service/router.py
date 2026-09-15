@@ -14,6 +14,8 @@ from backend.mesh_store import PostgresRegistry
 from .companion import companion
 from .oslc_graph_rag import oslc_graph_rag
 from .dt_requirements_adapter import assess_manifest
+from .dt_gateway import execute_current_plan
+from .dt_bindings import extend_catalog, capabilities as dt_capabilities
 
 router = APIRouter(prefix="/api/v1", tags=["agentic-control-plane"])
 
@@ -25,7 +27,7 @@ class Catalog:
         data = json.loads(self.path.read_text(encoding="utf-8"))
         if not all(isinstance(data.get(key), list) for key in ("agents", "tools", "mcp_servers", "workflows")):
             raise ValueError("Catalog must define agents, tools, mcp_servers, and workflows lists")
-        return data
+        return extend_catalog(data)
     def item(self, kind: str, identifier: str) -> dict[str, Any]:
         for value in self.read()[kind]:
             if value.get("id") == identifier: return value
@@ -33,6 +35,7 @@ class Catalog:
 
 catalog = Catalog()
 workflow_store = PostgresRegistry("agentic_workflow_runs")
+dt_run_store = PostgresRegistry("dt_agent_runs")
 companion_job_store = PostgresRegistry("agentic_companion_jobs")
 _services = {"agentic": "AGENTIC_SERVICE_URL", "ontology": "ONTOLOGY_SERVICE_URL", "graph": "GRAPH_SERVICE_URL", "ingestion": "INGESTION_SERVICE_URL", "oslc": "OSLC_SERVICE_URL", "qif": "QIF_SERVICE_URL", "catalog": "DATA_CATALOG_URL", "data_products": "DATA_PRODUCT_SERVICE_URL", "ceim": "CEIM_SERVICE_URL", "data_pipeline": "DATA_PIPELINE_SERVICE_URL"}
 
@@ -63,6 +66,45 @@ def dt_requirements_design_compatibility(payload: dict[str, Any]) -> dict:
     if not isinstance(manifest, dict):
         raise HTTPException(status_code=422, detail="manifest must be an object")
     return assess_manifest(manifest, catalog.read())
+
+
+@router.get("/integrations/dt-requirements-design/capabilities")
+def dt_capability_bindings() -> dict:
+    return dt_capabilities()
+
+
+@router.post("/integrations/dt-requirements-design/runs")
+async def dt_run(payload: dict[str, Any], request: Request) -> dict:
+    actor = approval_identity(request, payload, token_env="AGENTIC_APPROVAL_TOKEN")
+    if payload.get("execution_scope") != "current_plan" or payload.get("workflow_id"):
+        raise HTTPException(422, "DT supports only explicit execution_scope=current_plan, not workflow selection")
+    run_id = str(uuid4())
+    record = {"run_id": run_id, "status": "dispatching", "approved_by": actor,
+              "execution_scope": "current_plan", "started_at": _now()}
+    dt_run_store.put(run_id, record)
+    try:
+        record["result"] = await execute_current_plan(
+            str(payload.get("query") or ""), str(payload.get("email") or ""), run_id)
+        # A returned response may request human input; it is not release approval.
+        record["status"] = "response_received"
+    except ValueError:
+        record["status"] = "rejected"
+        record["error"] = "Invalid gateway configuration, input or upstream application response"
+    except httpx.HTTPError:
+        record["status"] = "dispatch_uncertain"
+        record["error"] = "Gateway request failed; inspect DT before retrying"
+    record["finished_at"] = _now()
+    return dt_run_store.put(run_id, record)
+
+
+@router.get("/integrations/dt-requirements-design/runs/{run_id}")
+def dt_run_status(run_id: str, request: Request) -> dict:
+    from backend.platform.authorization import service_write_identity
+    service_write_identity(request, token_env="AGENTIC_APPROVAL_TOKEN", default_actor="dt-agent")
+    record = dt_run_store.get(run_id)
+    if not record:
+        raise HTTPException(404, "DT run not found")
+    return record
 
 
 @router.post("/oslc/graph-rag")
@@ -251,7 +293,12 @@ async def run(payload: dict[str, Any], request: Request) -> dict:
             else:
                 response = await client.request(tool["method"], _base(tool["service"]) + path, params=inputs if tool["method"] == "GET" else None, json=None if tool["method"] == "GET" else inputs)
             response.raise_for_status()
-        return {"agent_id": plan_result["agent"], "tool_id": tool["id"], "approved_by": approved_by, "result": response.json()}
+        if tool["id"] == "ontology.export":
+            result = {"content_base64": base64.b64encode(response.content).decode("ascii"),
+                      "content_type": response.headers.get("content-type", "application/octet-stream")}
+        else:
+            result = response.json()
+        return {"agent_id": plan_result["agent"], "tool_id": tool["id"], "approved_by": approved_by, "result": result}
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
     except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail=str(exc)) from exc
 

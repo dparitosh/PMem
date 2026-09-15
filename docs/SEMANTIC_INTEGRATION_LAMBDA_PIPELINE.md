@@ -210,6 +210,58 @@ job definition, issues scoped input/output locations, records the run state,
 and invokes the approved CEIM/graph publication API. Spark does not receive
 graph credentials or bypass service boundaries.
 
+### Structured and unstructured consistency
+
+Both source classes use the same governed lifecycle and may not create a
+parallel document-only graph:
+
+```text
+structured source:   artifact → parser → source CEIM batch → SHACL → catalog → approved publication
+unstructured source: artifact → evidence/chunks → document proposal → source CEIM batch → SHACL → catalog → approved publication
+```
+
+The unstructured bridge is the versioned `unstructured-evidence` mapping pack.
+It maps `Document` to CEIM `Document`, `DocumentChunk` to CEIM `Resource`, and
+the evidence containment link to CEIM `HAS_PART`. Raw chunk text stays only in
+the content-addressed evidence artifact; the graph carries stable identifiers,
+content digests, provenance and the approved semantic projection. Therefore
+unstructured enrichment cannot bypass CEIM, SHACL, data-product lineage or the
+canonical publication API.
+
+`POST /api/v1/pipeline/workflows/document-evidence/run` executes that
+unstructured path as a fixed workflow chain. Callers select approved, enabled
+versions of the validation, enrichment and CEIM-normalization job definitions;
+the service transfers only the retained proposal artifact between stages. A
+quality warning halts the chain. A completed workflow still requires the
+separate canonical publication approval for its accepted semantic run.
+
+### Data-quality job
+
+`data-quality-assessment` is an independent, source-neutral governed job—not
+a dashboard calculation. It accepts `quality-records-v1` and produces a
+retained `data-quality-report-v1` with accepted and rejected partitions plus
+completeness, validity, uniqueness and provenance evidence. It requires each
+record to declare a source identity and source artifact. The Data Flow page
+shows the number of configured quality/validation jobs and the selected run's
+quality profile.
+
+### Serialized schema analytics product
+
+Engineering schema conversion now retains three linked immutable artifacts:
+the source schema, its Turtle serialization, and a `schema-analytics-profile-v1`
+report. The conversion response includes a `schema-analytics-data-product-v1`
+draft containing those artifact references and the required approvals. It is
+not auto-published: a steward must first approve the semantic release, then
+submit the explicit Data Product API request. This keeps schema analytics
+discoverable and reproducible without allowing an XSD upload to silently
+create a catalog release or graph mutation.
+
+The retained schema may then be supplied to the approved
+`schema-analytics-product` data job. That Spark-backed job emits a durable
+`schema-analytics-data-product-draft-v1` run manifest, metrics series and the
+three artifact references. This makes schema analytics visible in Data Flow
+alongside other jobs while preserving the separate Data Product approval gate.
+
 ### Implemented configuration boundary
 
 `/api/v1/pipeline/jobs/definitions` is the current configuration API. A

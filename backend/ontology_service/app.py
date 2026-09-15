@@ -6,6 +6,7 @@ from backend.platform.service_runtime import create_service_app
 from backend.platform.odata import ServiceCapability, create_odata_catalog_router
 from backend.routes.admin_routes import router as admin_router
 from backend.routes.metadata_registry_routes import router as metadata_registry_router
+from backend.routes.ontology_routes import router as legacy_ontology_router
 from .router import router
 from .modeling_router import router as modeling_router
 
@@ -21,6 +22,8 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Governed merge preview", "/api/v1/ontologies/merges/preview", "POST", "Review an ontology merge before approval"),
         ServiceCapability("Approved ontology merge", "/api/v1/ontologies/merges/{preview_id}/apply", "POST", "Persist an approved merge with provenance"),
         ServiceCapability("Legacy catalog migration", "/api/v1/ontologies/migrations/legacy", "POST", "Adopt named legacy ingestion artifacts with stable IDs"),
+        ServiceCapability("Register ontology artifact", "/api/v1/ontologies/register", "POST", "Syntax-validate and register a draft RDF/OWL artifact"),
+        ServiceCapability("Ontology lifecycle", "/api/v1/ontologies/{ontology_id}/transition", "POST", "Move a draft ontology through review, approval, deprecation, or retirement"),
         ServiceCapability("Business-object context", "/api/v1/ontologies/business-context", "GET", "Inspect Semantica ContextGraph business-object context"),
         ServiceCapability("Semantic metadata registry", "/api/v1/metadata-registry/assets", "GET", "Discover governed semantic assets and releases"),
         ServiceCapability("Register semantic asset", "/api/v1/metadata-registry/assets", "POST", "Create a draft governed semantic asset"),
@@ -30,6 +33,11 @@ app.include_router(create_odata_catalog_router(
 ))
 app.include_router(router, prefix="/api/v1")
 app.include_router(modeling_router, prefix="/api/v1")
+# The SPA still has a substantial, tested ontology-workbench surface on the
+# historical `/api/v1/ontology/*` contract. Host that compatibility contract
+# in the ontology service (rather than letting calls fall through to the
+# retired aggregate application) while new lifecycle APIs use `/ontologies`.
+app.include_router(legacy_ontology_router, prefix="/api/v1")
 # The operational registry and its guarded maintenance actions own ontology
 # graph administration.  Hosting them here prevents the frontend from falling
 # back to the retired aggregate service on port 8000.

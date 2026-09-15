@@ -118,7 +118,7 @@ foreach ($service in $services) {
   if ($service.Port -and $portListening) {
     throw "Port $($service.Port) for '$($service.Name)' is already in use by an untracked process; refusing to start a competing service. Stop the owner or remove the stale listener and retry."
   }
-  $arguments = if ($service.Port) { "-m uvicorn $($service.Module) --host $BindHost --port $($service.Port)" } else { "-m $($service.Module)" }
+  $arguments = if ($service.Port) { "-m uvicorn $($service.Module) --host $BindHost --port $($service.Port) --no-proxy-headers" } else { "-m $($service.Module)" }
   $stdout = Join-Path $stateDir "$($service.Name).out.log"
   $stderr = Join-Path $stateDir "$($service.Name).err.log"
   $process = Start-Process -FilePath $python -ArgumentList $arguments -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
@@ -130,7 +130,9 @@ foreach ($service in $services | Where-Object { $_.Port }) {
   $ready = $false
   do {
     try {
-      $response = Invoke-WebRequest -UseBasicParsing "http://${BindHost}:$($service.Port)/healthz" -TimeoutSec 3
+      # Liveness means a Python process exists; readiness also verifies every
+      # configured shared dependency before a service is announced usable.
+      $response = Invoke-WebRequest -UseBasicParsing "http://${BindHost}:$($service.Port)/readyz" -TimeoutSec 5
       $ready = $response.StatusCode -eq 200
     } catch {
       Start-Sleep -Milliseconds 500

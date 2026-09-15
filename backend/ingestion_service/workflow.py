@@ -60,15 +60,15 @@ class SemanticIngestionWorkflow:
             turtle = ontology.get("artifacts", {}).get("turtle")
             if not turtle:
                 raise RuntimeError("Ontology service did not return a Turtle artifact")
-            version_id = str(ontology.get("version_id") or "")
-            published = await client.post(
-                f"{self.graph_url}/graph/ontologies/publish",
-                data={"ontology_id": version_id, "prefix": prefix},
+            registered = await client.post(
+                f"{self.ontology_url}/ontologies/register",
+                data={"ontology_name": name, "prefix": prefix, "source": "source-profile-workflow"},
                 files={"artifact": (f"{prefix}.ttl", turtle.encode("utf-8"), "text/turtle")},
             )
-            published.raise_for_status()
-            result["status"] = "published"
-            result["graph_publication"] = published.json()
+            registered.raise_for_status()
+            result["status"] = "awaiting_approval"
+            result["registered_ontology"] = registered.json()
+            result["message"] = "Draft registered. Review and approval are required before graph publication."
             return result
 
 

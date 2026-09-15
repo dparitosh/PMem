@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .ontology_reasoning_service import OntologyReasoningService
+from backend.ontology_service.domain.reasoning import OntologyReasoningService
 from .ontology_upload_manager import OntologyUploadManager
 from .unified_data_import import UnifiedDataImportService
 from .workflow_artifact_service import WorkflowArtifactService
@@ -1003,7 +1003,7 @@ class SemanticWorkflowService:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)
         task_id = cls._new_task("taxonomy.generate", meta.get("original_filename", ""))
-        from .ontology_taxonomy_service import OntologyTaxonomyService
+        from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
 
         extracted = OntologyTaxonomyService.get_taxonomy(ontology_id)
         nodes = extracted.get("nodes") or []

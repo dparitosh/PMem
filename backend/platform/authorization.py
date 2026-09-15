@@ -10,6 +10,24 @@ from typing import Any
 from fastapi import HTTPException, Request
 
 
+def _require_trusted_gateway(request: Request) -> None:
+    """Make header-based Entra identity safe only behind a known gateway hop.
+
+    APIM validates the JWT; services receive its normalized principal header.
+    Accepting that header from an arbitrary network client would permit identity
+    spoofing, so production must explicitly allow-list the gateway addresses.
+    """
+    configured = {
+        item.strip() for item in os.getenv("DEPO_TRUSTED_GATEWAY_IPS", "").split(",")
+        if item.strip()
+    }
+    client_host = request.client.host if request.client else ""
+    if not configured:
+        raise HTTPException(503, "Entra gateway trust is not configured")
+    if client_host not in configured:
+        raise HTTPException(403, "Request did not originate from a trusted API gateway")
+
+
 def service_write_identity(request: Request, *, token_env: str, default_actor: str) -> str:
     """Authorize service-to-service write calls using a bearer token.
 
@@ -25,6 +43,7 @@ def service_write_identity(request: Request, *, token_env: str, default_actor: s
         return default_actor
     if mode == "entra":
         # Gateway identity is still required in enterprise mode.
+        _require_trusted_gateway(request)
         return approval_identity(request, {}, token_env=token_env)
     expected = os.getenv(token_env, "").strip()
     authorization = request.headers.get("authorization", "")
@@ -46,6 +65,7 @@ def approval_identity(request: Request, payload: dict[str, Any], *, token_env: s
         if expected and payload.get("approved_by") and payload.get("approval_token") == expected:
             return str(payload["approved_by"])
         raise HTTPException(403, "A valid approval token and approver are required")
+    _require_trusted_gateway(request)
     encoded = request.headers.get("x-ms-client-principal", "")
     principal: dict[str, Any] = {}
     if encoded:
@@ -75,8 +95,9 @@ def graph_read_identity(request: Request) -> str:
         authorization = request.headers.get("authorization", "")
         supplied = authorization[7:] if authorization.lower().startswith("bearer ") else ""
         if expected and hmac.compare_digest(supplied, expected):
-            return request.headers.get("x-depo-principal-id", "token-reader")
+            return "token-reader"
         raise HTTPException(403, "A valid graph read token is required")
+    _require_trusted_gateway(request)
     encoded = request.headers.get("x-ms-client-principal", "")
     try:
         principal = json.loads(base64.b64decode(encoded).decode("utf-8")) if encoded else {}

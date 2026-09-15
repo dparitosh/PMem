@@ -2,7 +2,7 @@
   "agents": [
     {"id": "ontology-intake", "name": "Ontology Intake", "tools": ["engineering.inspect", "ontology.generate"], "approval_required": false},
     {"id": "context-analyst", "name": "Business Context Analyst", "tools": ["context.upsert", "context.search", "context.where_used"], "approval_required": false},
-    {"id": "ontology-governor", "name": "Ontology Governor", "tools": ["ontology.merge.preview", "ontology.merge.apply", "engineering.publish"], "approval_required": true},
+    {"id": "ontology-governor", "name": "Ontology Governor", "tools": ["ontology.register", "ontology.transition", "ontology.export", "ontology.merge.preview", "ontology.merge.apply", "engineering.publish"], "approval_required": true},
     {"id": "engineering-parser", "name": "Engineering Parser", "tools": ["engineering.inspect", "profile.inspect", "profile.execute"], "approval_required": false},
     {"id": "graph-analyst", "name": "Graph Analyst", "tools": ["graph.analytics", "graph.neighborhood", "context.search", "context.where_used", "oslc.graph_rag"], "approval_required": false},
     {"id": "oslc-link-agent", "name": "OSLC Link Agent", "tools": ["oslc.remote.catalog", "oslc.remote.query", "oslc.remote.sync"], "approval_required": false},
@@ -12,6 +12,9 @@
     {"id": "data-quality-monitor", "name": "Data Quality Monitor", "tools": ["pipeline.telemetry", "pipeline.transform"], "approval_required": false}
   ],
   "tools": [
+    {"id": "ontology.register", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/register", "mutates": true, "input_kind": "multipart"},
+    {"id": "ontology.transition", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/{ontology_id}/transition", "mutates": true},
+    {"id": "ontology.export", "transport": "openapi", "service": "ingestion", "method": "GET", "path": "/ontology/{ontology_id}/export", "mutates": false},
     {"id": "oslc.graph_rag", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/oslc/graph-rag", "mutates": false},
     {"id": "ontology.generate", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/generate", "mutates": false},
     {"id": "ontology.merge.preview", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/merges/preview", "mutates": false},

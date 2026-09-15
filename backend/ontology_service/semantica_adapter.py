@@ -65,7 +65,7 @@ class SemanticaAdapter:
     def _engine(base_uri: str) -> OntologyEngine:
         return OntologyEngine(base_uri=base_uri.rstrip("#/") + "/", min_occurrences=1)
 
-    def generate(self, *, data: dict[str, Any], name: str, base_uri: str, persist: bool = True) -> dict[str, Any]:
+    def generate(self, *, data: dict[str, Any], name: str, base_uri: str, persist: bool = False) -> dict[str, Any]:
         engine = self._engine(base_uri)
         ontology = engine.from_data(data, name=name, build_hierarchy=True, validate=True)
         validation = _result_dict(engine.validate(ontology))
@@ -90,6 +90,8 @@ class SemanticaAdapter:
         terms = inspection["terms"]
         class_terms = [term for term in terms if term.kind in {"complex_type", "simple_type", "element"}]
         known_names = {term.name for term in class_terms}
+        complex_names = {term.name for term in terms if term.kind == "complex_type"}
+        simple_bases = {term.name: term.base for term in terms if term.kind == "simple_type"}
         entities = [{"id": f"{term.kind}:{term.name}", "type": term.name, "name": term.name,
                      "source_file": term.source, "schema_namespace": term.namespace or "", "documentation": term.documentation or ""}
                     for term in class_terms]
@@ -117,19 +119,32 @@ class SemanticaAdapter:
             if parent: graph.add((uri, RDFS.subClassOf, class_uris[parent]))
         for term in (term for term in terms if term.kind == "property"):
             uri = depo[f"property/{quote(term.base or 'global', safe='')}/{quote(term.name, safe='')}" ]
-            graph.add((uri, RDF.type, OWL.DatatypeProperty)); graph.set((uri, RDFS.label, Literal(term.name)))
+            graph.set((uri, RDFS.label, Literal(term.name)))
             graph.set((uri, depo.sourceFile, Literal(term.source)))
             if term.base in class_uris: graph.add((uri, RDFS.domain, class_uris[term.base]))
-            if term.value_type in class_uris:
+            if term.value_type in complex_names:
                 graph.add((uri, RDF.type, OWL.ObjectProperty)); graph.add((uri, RDFS.range, class_uris[term.value_type]))
-            else: graph.add((uri, RDFS.range, getattr(XSD, term.value_type, XSD.string) if term.value_type else XSD.string))
+            else:
+                graph.add((uri, RDF.type, OWL.DatatypeProperty))
+                datatype = term.value_type
+                visited = set()
+                while datatype in simple_bases and datatype not in visited:
+                    visited.add(datatype)
+                    datatype = simple_bases[datatype]
+                # Custom simple types may carry facets: only project the base
+                # datatype here, without claiming facet equivalence.
+                if datatype and datatype in XSD:
+                    graph.add((uri, RDFS.range, XSD[datatype]))
             graph.add((uri, depo.minOccurs, Literal(term.min_occurs or "1"))); graph.add((uri, depo.maxOccurs, Literal(term.max_occurs or "1")))
         artifact = graph.serialize(format="turtle")
         summary = {"engine": "Semantica", "engine_version": SEMANTICA_VERSION,
                    "files_processed": len(inspection["source_files"]), "terms_created": len(terms),
                    "classes_created": len(class_terms), "properties_created": sum(term.kind == "property" for term in terms),
                    "references_found": len(inspection["references"]), "parse_errors": inspection["errors"],
-                   "validation": generated["validation"], "evaluation": generated["evaluation"]}
+                   "validation": generated["validation"], "evaluation": generated["evaluation"],
+                   "semantic_completeness": "partial",
+                   "limitations": ["XSD facets, choices, groups, identity constraints and QName scope require complete mapping before semantic equivalence can be claimed"],
+                   "validation_scope": "Semantica validation precedes XSD projection; not final ontology conformance"}
         return (artifact.encode("utf-8") if isinstance(artifact, str) else artifact), summary
 
     def __init__(self) -> None:

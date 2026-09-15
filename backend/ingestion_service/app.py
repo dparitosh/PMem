@@ -2,7 +2,7 @@
 from backend.platform.service_runtime import create_service_app
 from backend.platform.odata import ServiceCapability, create_odata_catalog_router
 from .router import router
-from .ontology_browser_router import router as ontology_browser_router
+from .api.ontology_browser import router as ontology_browser_router
 from backend.Services.unified_import_router import ontology_router as compatibility_ontology_router
 from backend.Services.unified_import_router import router as compatibility_import_router
 
@@ -13,7 +13,7 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Health", "/ingestion/health", description="Ingestion service health"),
         ServiceCapability("Source profiles", "/source-profiles", description="List reusable ingestion profiles"),
         ServiceCapability("Inspect source", "/source-profiles/inspect", "POST", "Inspect a source schema or sample"),
-        ServiceCapability("Engineering schema conversion", "/schema-conversions/inspect", "POST", "Convert EXPRESS, STEP, XMI, or XSD to Turtle"),
+        ServiceCapability("Engineering schema conversion", "/schema-conversions/inspect", "POST", "Convert EXPRESS, STEP, XMI, or XSD to Turtle and retain a schema-analytics data-product draft"),
         ServiceCapability("AP242 inspection", "/ap242/inspect", "POST", "Classify AP242 XSD ontology schemas, EXPRESS schemas, or STEP instances"),
         ServiceCapability("AP242 reference validation", "/ap242/reference/validation", description="Validate configured AP242 EXPRESS and XSD reference assets without publishing"),
         ServiceCapability("AP242 MBD extraction", "/ap242/mbd/extract", "POST", "Extract traceable product, geometry, PMI, and presentation mappings"),

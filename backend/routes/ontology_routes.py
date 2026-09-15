@@ -353,7 +353,7 @@ _INTERNAL_PROPS = {"ontology_prefix", "ontology_id", "ontology_name", "source_on
 def _owlready_data_dictionary(prefix: str) -> Optional[Dict[str, Any]]:
     """Build dictionary from uploaded OWL semantics when Neo4j projection is empty."""
     try:
-        from ..Services.ontology_reasoning_service import OntologyReasoningService
+        from backend.ontology_service.domain.reasoning import OntologyReasoningService
 
         reasoning = OntologyReasoningService.get_reasoning(prefix)
     except Exception as exc:

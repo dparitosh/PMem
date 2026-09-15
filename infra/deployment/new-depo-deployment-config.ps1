@@ -32,4 +32,7 @@ if ($AuthMode -eq "disabled") {
   $content = $content -replace '(?m)^ALLOWED_ORIGINS=.*$', 'ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000'
 }
 Set-Content -LiteralPath $target -Value $content -NoNewline
+if ([IO.Path]::GetFileName($target) -eq '.env.local') {
+  & (Join-Path $PSScriptRoot 'set-depo-admin-key.ps1') -EnvFile $OutputPath
+}
 Write-Host "Created $target with generated bootstrap secrets. Set database and graph credentials before starting services. Secrets were not printed."

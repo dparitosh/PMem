@@ -28,7 +28,8 @@ class KnowledgeCompanion:
         endpoint = f"{self._graph_root()}/graph/search"
         try:
             async with httpx.AsyncClient(timeout=float(os.getenv("COMPANION_RETRIEVAL_TIMEOUT_SECONDS", "15"))) as client:
-                response = await client.get(endpoint, params={"query": query, "limit": min(self.max_nodes, 200)})
+                headers = {"Authorization": f"Bearer {os.environ['GRAPH_READ_TOKEN']}"} if os.getenv("GRAPH_READ_TOKEN") else {}
+                response = await client.get(endpoint, params={"query": query, "limit": min(self.max_nodes, 200)}, headers=headers)
                 response.raise_for_status()
         except httpx.HTTPError as exc:
             raise RuntimeError("Knowledge graph retrieval is unavailable; no answer was generated") from exc

@@ -1,15 +1,59 @@
-"""Read-only browser endpoints for ontologies registered by ingestion."""
+"""HTTP browsing and export contracts for registered ingestion artifacts."""
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 import os
 from neo4j import GraphDatabase
+from fastapi.responses import Response
+from rdflib import Graph
 
-from backend.Services.ontology_reasoning_service import OntologyReasoningService
-from backend.Services.ontology_taxonomy_service import OntologyTaxonomyService
+from backend.ontology_service.domain.reasoning import OntologyReasoningService
+from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
 from backend.Services.ontology_upload_manager import OntologyUploadManager
 
 router = APIRouter(prefix="/ontology", tags=["ontology-browser"])
+
+
+@router.get("/{ontology_id}/export")
+def export_ontology(ontology_id: str, format: str = "ttl") -> Response:
+    formats = {"ttl": ("turtle", "text/turtle"), "rdf": ("xml", "application/rdf+xml"), "owl": ("xml", "application/rdf+xml"), "jsonld": ("json-ld", "application/ld+json")}
+    if format not in formats:
+        raise HTTPException(422, "Supported export formats: ttl, rdf, owl, jsonld")
+    try:
+        context = OntologyReasoningService.semantic_context(ontology_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    path = context["file_path"]
+    content = path.read_bytes()
+    graph = None
+    for syntax in (["turtle"] if path.suffix.lower() == ".ttl" else ["xml", "turtle"]):
+        try:
+            candidate = Graph()
+            candidate.parse(data=content, format=syntax)
+            graph = candidate
+            break
+        except Exception:
+            continue
+    if graph is None:
+        raise HTTPException(422, "No valid RDF/OWL artifact is available for export")
+    syntax, media_type = formats[format]
+    return Response(graph.serialize(format=syntax), media_type=media_type, headers={"Content-Disposition": f'attachment; filename="ontology.{format}"'})
+
+
+@router.get("/{ontology_id}/reason")
+def reasoning(ontology_id: str) -> dict:
+    try:
+        return OntologyTaxonomyService.get_reasoning(_resolve_ontology_id(ontology_id))
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.post("/{ontology_id}/inference/preview")
+def preview_inferences(ontology_id: str, body: dict | None = None) -> dict:
+    try:
+        return OntologyReasoningService.preview_inferences(_resolve_ontology_id(ontology_id), body or {})
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 def _resolve_ontology_id(ontology_id: str) -> str:

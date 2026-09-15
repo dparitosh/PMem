@@ -19,7 +19,11 @@ _ID = re.compile(r"[a-z][a-z0-9-]{2,62}$")
 _SEMVER = re.compile(r"\d+\.\d+\.\d+$")
 JOB_CONTRACTS = handler_registry.contracts()
 SUPPORTED_JOB_TYPES = set(JOB_CONTRACTS)
-SUPPORTED_QUALITY_PROFILES = {"semantic-core-v1", "unstructured-evidence-v1"}
+SUPPORTED_QUALITY_PROFILES = {"semantic-core-v1", "unstructured-evidence-v1", "data-quality-core-v1", "schema-analytics-v1"}
+REQUIRED_QUALITY_PROFILES = {
+    "data-quality-assessment": "data-quality-core-v1",
+    "schema-analytics-product": "schema-analytics-v1",
+}
 
 
 def _schedule_errors(schedule: Any) -> list[str]:
@@ -72,13 +76,16 @@ def validate_definition(payload: dict[str, Any]) -> list[str]:
         errors.append(f"job_type must be one of: {', '.join(sorted(handler_registry.contracts()))}")
     if payload.get("quality_profile") not in SUPPORTED_QUALITY_PROFILES:
         errors.append(f"quality_profile must be one of: {', '.join(sorted(SUPPORTED_QUALITY_PROFILES))}")
+    required_profile = REQUIRED_QUALITY_PROFILES.get(payload.get("job_type"))
+    if required_profile and payload.get("quality_profile") != required_profile:
+        errors.append(f"job_type {payload.get('job_type')} requires quality_profile {required_profile}")
     if "enabled" in payload and not isinstance(payload["enabled"], bool):
         errors.append("enabled must be a boolean")
     if payload.get("schedule") is not None:
         errors.append("schedule is configured after the first retained run through the schedule endpoint")
     errors.extend(_retry_errors(payload.get("retry_policy")))
     standards = payload.get("allowed_standards", [])
-    if payload.get("job_type") in {"normalize-ceim", "validate-semantic-batch"}:
+    if payload.get("job_type") in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim"}:
         if not isinstance(standards, list) or not standards or any(not isinstance(item, str) or not item.strip() for item in standards):
             errors.append("allowed_standards must be a non-empty list for CEIM jobs")
     return errors

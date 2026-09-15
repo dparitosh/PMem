@@ -26,6 +26,9 @@ OpenAPI/OData validation, Spark opt-in, shutdown and production preflight.
 
 ## Architecture references
 
+- [Service and API catalog](docs/architecture/SERVICE_CATALOG.md)
+- [Documentation and repository map](docs/README.md)
+
 - [Semantic Integration and Lambda Pipeline](docs/SEMANTIC_INTEGRATION_LAMBDA_PIPELINE.md)
 - [Semantic Governance Contract](docs/SEMANTIC_GOVERNANCE_CONTRACT.md)
 - [Delivery Tracker](docs/ACCELERATED_DELIVERY_TRACKER.md)

@@ -4,6 +4,7 @@ param(
   [ValidateSet("Bootstrap", "Production")][string]$Profile = "Bootstrap",
   [switch]$LocalInsecureDemo,
   [switch]$EnableSpark,
+  [switch]$EnableNeo4jSparkConnector,
   [switch]$EnablePipelineScheduler,
   [switch]$SkipBaselineProvisioning,
   [string]$PostgresBinDir = "",
@@ -20,6 +21,10 @@ switch ($Action) {
     if ($PostgresDataDir) { $startParameters.PostgresDataDir = $PostgresDataDir }
     if ($SkipPostgres) { $startParameters.SkipPostgres = $true }
     if ($EnableSpark) { $startParameters.EnableSpark = $true }
+    if ($EnableNeo4jSparkConnector) {
+      if (-not $EnableSpark) { throw '-EnableNeo4jSparkConnector requires -EnableSpark.' }
+      $startParameters.EnableNeo4jSparkConnector = $true
+    }
     if ($EnablePipelineScheduler) { $startParameters.EnablePipelineScheduler = $true }
     & (Join-Path $root "infra\windows\start-depo-services.ps1") @startParameters
     & (Join-Path $PSScriptRoot "test-depo-deployment.ps1") -EnvFile $EnvFile -Profile $Profile

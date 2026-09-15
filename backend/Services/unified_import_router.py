@@ -273,20 +273,7 @@ async def upload_ontology_file(
         #  which blocks the event loop and causes client-side timeouts for large XSD/XMI files)
         task_id = save_result['ontology_id']
 
-        # Push entities to Neo4j in the background so the response is returned immediately
-        def _push_to_neo4j_background(ontology_id: str, schema_type_param: str = "schema") -> None:
-            try:
-                from ..core.graph import graph as _graph
-                push_result = OntologyUploadManager.push_to_neo4j(ontology_id, _graph, schema_type=schema_type_param)
-                if push_result['status'] == 'success':
-                    logger.info(f"Neo4j push (background): {push_result['nodes_merged']} nodes for {ontology_id}")
-                else:
-                    logger.warning(f"Neo4j push skipped (background): {push_result.get('error')}")
-            except Exception as e:
-                logger.warning(f"Neo4j push failed (background) for {ontology_id}: {e}")
-
-        background_tasks.add_task(_push_to_neo4j_background, save_result['ontology_id'], schema_type or "schema")
-        neo4j_info = " Neo4j indexing started in background."
+        neo4j_info = " Source retained. Graph publication requires the governed semantic approval workflow."
 
         version = save_result.get('version', 1)
         is_new_version = save_result.get('is_new_version', False)

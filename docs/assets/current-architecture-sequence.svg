@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1060" viewBox="0 0 1500 1060" role="img" aria-labelledby="title description">
+  <title id="title">PMem governed semantic data flow sequence</title>
+  <desc id="description">Sequence diagram showing the engineering user, frontend, gateway, ingestion, pipeline, execution plane, CEIM, graph publication, Neo4j, and agentic retrieval. The data product and catalog path is separate and explicit.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="#006487"/></marker>
+    <marker id="optional-arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="#b78200"/></marker>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; fill: #152a3a; }
+      .heading { font-size: 24px; font-weight: 700; } .sub { font-size: 14px; fill: #496273; }
+      .actor { fill: #f7fafc; stroke: #7897a8; stroke-width: 1.25; } .actor-primary { fill: #e2f2f8; stroke: #006487; stroke-width: 1.5; }
+      .actor-text { font-size: 14px; font-weight: 700; } .life { stroke: #9eb5c4; stroke-width: 1.2; stroke-dasharray: 5 5; }
+      .message { stroke: #006487; stroke-width: 1.8; fill: none; marker-end: url(#arrow); } .return { stroke: #496273; stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; marker-end: url(#arrow); }
+      .optional { stroke: #b78200; stroke-width: 1.8; stroke-dasharray: 6 4; fill: none; marker-end: url(#optional-arrow); }
+      .message-text { font-size: 13px; } .phase { fill: #eaf5f8; stroke: #b9d9e5; stroke-width: 1; } .phase-text { font-size: 14px; font-weight: 700; fill: #006487; }
+      .alt { fill: #fffaf0; stroke: #b78200; stroke-width: 1; stroke-dasharray: 6 4; } .alt-text { font-size: 13px; font-weight: 700; fill: #765500; }
+      .note { fill: #f5f7f8; stroke: #c7d2d9; stroke-width: 1; } .note-text { font-size: 12px; fill: #496273; }
+    </style>
+  </defs>
+  <rect width="1500" height="1060" fill="#ffffff"/>
+  <text x="42" y="42" class="heading">PMem — current governed semantic data flow sequence</text>
+  <text x="42" y="66" class="sub">Solid arrows are implemented run/publication paths. Amber dashed arrows are the separate, explicit data-product lifecycle.</text>
+
+  <g>
+    <rect x="38" y="92" width="110" height="46" rx="5" class="actor"/><text x="93" y="120" class="actor-text" text-anchor="middle">User</text>
+    <rect x="188" y="92" width="110" height="46" rx="5" class="actor"/><text x="243" y="113" class="actor-text" text-anchor="middle">Siemens IX</text><text x="243" y="128" class="sub" text-anchor="middle">SPA</text>
+    <rect x="338" y="92" width="110" height="46" rx="5" class="actor"/><text x="393" y="120" class="actor-text" text-anchor="middle">Gateway</text>
+    <rect x="488" y="92" width="110" height="46" rx="5" class="actor-primary"/><text x="543" y="113" class="actor-text" text-anchor="middle">Ingestion</text><text x="543" y="128" class="sub" text-anchor="middle">service</text>
+    <rect x="638" y="92" width="110" height="46" rx="5" class="actor-primary"/><text x="693" y="113" class="actor-text" text-anchor="middle">Pipeline</text><text x="693" y="128" class="sub" text-anchor="middle">service</text>
+    <rect x="788" y="92" width="110" height="46" rx="5" class="actor-primary"/><text x="843" y="113" class="actor-text" text-anchor="middle">PySpark</text><text x="843" y="128" class="sub" text-anchor="middle">execution</text>
+    <rect x="938" y="92" width="110" height="46" rx="5" class="actor-primary"/><text x="993" y="113" class="actor-text" text-anchor="middle">CEIM</text><text x="993" y="128" class="sub" text-anchor="middle">service</text>
+    <rect x="1088" y="92" width="110" height="46" rx="5" class="actor-primary"/><text x="1143" y="113" class="actor-text" text-anchor="middle">Graph</text><text x="1143" y="128" class="sub" text-anchor="middle">publication</text>
+    <rect x="1238" y="92" width="110" height="46" rx="5" class="actor"/><text x="1293" y="113" class="actor-text" text-anchor="middle">Neo4j</text><text x="1293" y="128" class="sub" text-anchor="middle">graph</text>
+    <rect x="1380" y="92" width="100" height="46" rx="5" class="actor"/><text x="1430" y="113" class="actor-text" text-anchor="middle">Agentic</text><text x="1430" y="128" class="sub" text-anchor="middle">service</text>
+  </g>
+  <g class="life"><path d="M93 138V1008M243 138V1008M393 138V1008M543 138V1008M693 138V1008M843 138V1008M993 138V1008M1143 138V1008M1293 138V1008M1430 138V1008"/></g>
+
+  <rect x="35" y="165" width="1430" height="34" rx="4" class="phase"/><text x="54" y="187" class="phase-text">1. Governed ingestion and quality processing</text>
+  <path d="M93 225H243" class="message"/><text x="168" y="218" class="message-text" text-anchor="middle">select source, profile, mapping</text>
+  <path d="M243 258H393" class="message"/><text x="318" y="251" class="message-text" text-anchor="middle">submit import</text>
+  <path d="M393 291H543" class="message"/><text x="468" y="284" class="message-text" text-anchor="middle">upload/register source</text>
+  <path d="M543 324H693" class="message"/><text x="618" y="317" class="message-text" text-anchor="middle">artifact + approved job reference</text>
+  <path d="M693 357H843" class="message"/><text x="768" y="350" class="message-text" text-anchor="middle">batch profile: execute transform</text>
+  <path d="M843 390H693" class="return"/><text x="768" y="383" class="message-text" text-anchor="middle">normalized records + quality evidence</text>
+  <path d="M693 423H693" class="message"/><text x="707" y="417" class="message-text">retain run, partitions and checkpoint</text>
+
+  <rect x="610" y="448" width="500" height="118" rx="5" class="alt"/>
+  <text x="625" y="471" class="alt-text">ALT quality or semantic validation fails</text>
+  <path d="M693 495H543" class="return"/><text x="618" y="488" class="message-text" text-anchor="middle">retained rejected partition / evidence</text>
+  <path d="M693 530H243" class="return"/><text x="468" y="523" class="message-text" text-anchor="middle">quarantine and review status; no graph mutation</text>
+
+  <rect x="35" y="592" width="1430" height="34" rx="4" class="phase"/><text x="54" y="614" class="phase-text">2. Explicit steward-approved publication</text>
+  <path d="M93 651H243" class="message"/><text x="168" y="644" class="message-text" text-anchor="middle">approve accepted run</text>
+  <path d="M243 684H393" class="message"/><text x="318" y="677" class="message-text" text-anchor="middle">publication request</text>
+  <path d="M393 717H693" class="message"/><text x="543" y="710" class="message-text" text-anchor="middle">publish retained accepted semantic partition</text>
+  <path d="M693 750H993" class="message"/><text x="843" y="743" class="message-text" text-anchor="middle">canonical batch + approval</text>
+  <path d="M993 783H1143" class="message"/><text x="1068" y="776" class="message-text" text-anchor="middle">validated RDF projection</text>
+  <path d="M1143 816H1293" class="message"/><text x="1218" y="809" class="message-text" text-anchor="middle">only canonical graph mutation</text>
+  <path d="M1293 849H693" class="return"/><text x="993" y="842" class="message-text" text-anchor="middle">publication evidence; pipeline advances checkpoint</text>
+
+  <rect x="35" y="875" width="1430" height="34" rx="4" class="phase"/><text x="54" y="897" class="phase-text">3. Evidence-grounded read-only retrieval</text>
+  <path d="M243 936H1430" class="message"/><text x="836" y="929" class="message-text" text-anchor="middle">engineering question / graph context request</text>
+  <path d="M1430 969H1143" class="message"/><text x="1286" y="962" class="message-text" text-anchor="middle">bounded graph search / traversal</text>
+  <path d="M1143 1002H1293" class="message"/><text x="1218" y="995" class="message-text" text-anchor="middle">parameterized read</text>
+  <rect x="36" y="1017" width="700" height="30" rx="4" class="note"/>
+  <text x="48" y="1037" class="note-text">PostgreSQL control plane: approved job definitions, run manifests, quality/lineage evidence, checkpoints, speed events, product approvals and catalog versions.</text>
+  <text x="760" y="1037" class="note-text">Separate lifecycle: Data product service packages approved immutable artifacts and explicitly registers versioned metadata with Data catalog; pipeline publication does not do this automatically.</text>
+</svg>

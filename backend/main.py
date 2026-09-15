@@ -2541,7 +2541,7 @@ async def debug_ontology(ontology_id: str):
 async def get_uploaded_ontology_taxonomy(ontology_id: str):
     """Return extracted taxonomy terms and hierarchy links for an uploaded ontology."""
     try:
-        from backend.Services.ontology_taxonomy_service import OntologyTaxonomyService
+        from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
 
         return OntologyTaxonomyService.get_taxonomy(ontology_id)
     except ValueError as e:
@@ -2566,7 +2566,7 @@ async def get_uploaded_ontology_taxonomy(ontology_id: str):
 async def get_uploaded_ontology_reasoning(ontology_id: str):
     """Return cached Owlready2-backed classes, properties, individuals, and diagnostics."""
     try:
-        from backend.Services.ontology_taxonomy_service import OntologyTaxonomyService
+        from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
 
         return OntologyTaxonomyService.get_reasoning(ontology_id)
     except ValueError as e:
@@ -2594,7 +2594,7 @@ async def get_uploaded_ontology_reasoning(ontology_id: str):
 async def preview_uploaded_ontology_inference(ontology_id: str, body: dict | None = None):
     """Preview selectable ontology inferences without mutating Neo4j."""
     try:
-        from backend.Services.ontology_reasoning_service import OntologyReasoningService
+        from backend.ontology_service.domain.reasoning import OntologyReasoningService
 
         return OntologyReasoningService.preview_inferences(ontology_id, body or {})
     except ValueError as e:
@@ -2607,10 +2607,7 @@ async def preview_uploaded_ontology_inference(ontology_id: str, body: dict | Non
 @app.get("/api/v1/ontology/{ontology_id}/data-dictionary")
 def get_registered_ontology_data_dictionary(ontology_id: str):
     """Return a generic ontology data dictionary for any registered ontology id or prefix."""
-    try:
-        from backend.Services.ontology_reasoning_service import OntologyReasoningService
-    except ImportError:
-        from Services.ontology_reasoning_service import OntologyReasoningService
+    from backend.ontology_service.domain.reasoning import OntologyReasoningService
     try:
         reasoning = OntologyReasoningService.get_reasoning(ontology_id)
 
@@ -2670,7 +2667,7 @@ def get_registered_ontology_data_dictionary(ontology_id: str):
 def get_registered_ontology_mapping_edges(ontology_id: str, mapping_type: str):
     """Return mapping edges for a registered ontology; empty is valid for OWL-only ontologies."""
     try:
-        from backend.Services.ontology_reasoning_service import OntologyReasoningService
+        from backend.ontology_service.domain.reasoning import OntologyReasoningService
         resolved = OntologyReasoningService.resolve_ontology_id(ontology_id) or ontology_id
         return {
             "status": "success",

@@ -58,6 +58,24 @@ def transform(payload: dict[str, Any], request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.post("/workflows/document-evidence/run", summary="Run the governed document evidence to CEIM workflow")
+def run_document_evidence_workflow(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    """Execute the fixed unstructured workflow with approved job versions."""
+    actor, payload = _authorize_execution(request, payload)
+    try:
+        return execute_document_evidence_workflow(
+            payload, correlation_id=getattr(request.state, "request_id", ""), actor=actor,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except SparkUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise _registry_error(exc) from exc
+
+
 def _registry_error(exc: RuntimeError) -> HTTPException:
     return HTTPException(status_code=503, detail=f"Data-job control plane is unavailable: {exc}")
 
@@ -65,7 +83,7 @@ def _registry_error(exc: RuntimeError) -> HTTPException:
 def execute_configured_job(definition: dict[str, Any], payload: dict[str, Any], correlation_id: str) -> dict[str, Any]:
     """Shared bounded dispatcher for OpenAPI requests and scheduled retries."""
     run = run_records.start(definition, payload, correlation_id=correlation_id)
-    if definition["job_type"] in {"normalize-ceim", "validate-semantic-batch"}:
+    if definition["job_type"] in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim"}:
         standard = str(payload.get("standard") or "").strip().lower()
         if standard not in definition.get("allowed_standards", []):
             run_records.failed(run, "The request standard is not allowed by this data-job definition")
@@ -79,6 +97,71 @@ def execute_configured_job(definition: dict[str, Any], payload: dict[str, Any], 
         raise
     persisted = run_records.complete(run, result)
     return {**result, "configured_job": {field: definition[field] for field in ("job_id", "name", "version", "job_type", "quality_profile", "owner")}, "run_manifest": persisted}
+
+
+def _approved_definition(reference: Any) -> dict[str, Any]:
+    """Resolve one workflow stage to an approved, enabled job definition."""
+    if not isinstance(reference, dict):
+        raise ValueError("Each workflow stage must contain a job_id and version")
+    job_id, version = str(reference.get("job_id") or ""), str(reference.get("version") or "")
+    definition = job_definitions.get(job_id, version)
+    if not definition:
+        raise LookupError(f"Workflow job definition was not found: {job_id}:{version}")
+    if definition.get("lifecycle_state") != "approved" or not definition.get("enabled"):
+        raise ValueError(f"Workflow stage is not approved and enabled: {job_id}:{version}")
+    return definition
+
+
+def execute_document_evidence_workflow(payload: dict[str, Any], *, correlation_id: str, actor: str) -> dict[str, Any]:
+    """Run the governed unstructured path with explicit artifact hand-offs.
+
+    This small, fixed topology is intentional: documents are quality checked,
+    structurally enriched, then mapped and semantically validated.  It does
+    not accept arbitrary executable code or client-provided topology.  Every
+    stage is an approved versioned job and raw document text remains in the
+    immutable evidence artifact rather than the graph projection.
+    """
+    stages = payload.get("stages")
+    if not isinstance(stages, dict):
+        raise ValueError("stages must provide validation, enrichment, and normalization job references")
+    expected = {
+        "validation": "validate-unstructured-evidence",
+        "enrichment": "enrich-document-evidence",
+        "normalization": "normalize-unstructured-ceim",
+    }
+    definitions = {name: _approved_definition(stages.get(name)) for name in expected}
+    for name, job_type in expected.items():
+        if definitions[name]["job_type"] != job_type:
+            raise ValueError(f"Workflow stage {name} must use job type {job_type}")
+
+    source = {
+        key: value for key, value in payload.items()
+        if key in {"documents", "evidence_artifact_id", "artifact_ids", "source_system", "checkpoint", "next_checkpoint"}
+    }
+    source["execution_actor"] = actor
+    validation = execute_configured_job(definitions["validation"], source, correlation_id)
+    if validation.get("status") != "completed":
+        return {"workflow": "document-evidence-to-ceim-v1", "status": "quality_warning", "stages": {"validation": validation}, "publication": "blocked; review unstructured evidence quality"}
+
+    enrichment = execute_configured_job(definitions["enrichment"], source, correlation_id)
+    if enrichment.get("status") != "completed":
+        return {"workflow": "document-evidence-to-ceim-v1", "status": "quality_warning", "stages": {"validation": validation, "enrichment": enrichment}, "publication": "blocked; review document enrichment quality"}
+    proposal_artifact_id = str(((enrichment.get("run_manifest") or {}).get("output_manifest") or {}).get("partition_artifacts", {}).get("accepted") or "")
+    if not proposal_artifact_id:
+        raise RuntimeError("Document enrichment did not retain an accepted proposal artifact")
+
+    normalization = execute_configured_job(
+        definitions["normalization"],
+        {"proposal_artifact_id": proposal_artifact_id, "standard": "unstructured-evidence", "execution_actor": actor},
+        correlation_id,
+    )
+    state = "completed" if normalization.get("status") == "completed" else "quality_warning"
+    return {
+        "workflow": "document-evidence-to-ceim-v1", "status": state,
+        "stages": {"validation": validation, "enrichment": enrichment, "normalization": normalization},
+        "accepted_semantic_run_id": (normalization.get("run_manifest") or {}).get("run_id"),
+        "publication": "not_attempted; publish the accepted semantic run through the canonical approval endpoint",
+    }
 
 
 @router.get("/jobs/definitions", summary="List durable, versioned data-job definitions")
@@ -217,7 +300,7 @@ async def publish_job_run(run_id: str, payload: dict[str, Any], request: Request
         output = dict(record.get("output_manifest") or {})
         if output.get("checkpoint_state") == "advanced":
             return record
-        if record.get("status") != "completed" or record.get("job_type") not in {"normalize-ceim", "validate-semantic-batch"}:
+        if record.get("status") != "completed" or record.get("job_type") not in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim"}:
             raise ValueError("Only a completed semantic batch can be published")
         artifact_id = str((output.get("partition_artifacts") or {}).get("accepted") or "")
         metadata, path = ArtifactStore().resolve(artifact_id)

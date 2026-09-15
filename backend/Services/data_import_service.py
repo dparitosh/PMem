@@ -55,14 +55,17 @@ except (ImportError, ModuleNotFoundError) as xmi_err:
 
 # ✅ AP239 & Multi-Domain Pipeline Integration
 try:
-    from Services.ap239_mapper_service import AP239MapperService, AP239DomainPipeline  # noqa: F401
+    # Prefer package-relative imports.  The historical absolute imports only
+    # work when ``backend`` has been injected into sys.path, which made a
+    # normal ASGI/package launch incorrectly report these capabilities absent.
+    from .ap239_mapper_service import AP239MapperService, AP239DomainPipeline  # noqa: F401
     AP239_AVAILABLE = True
 except (ImportError, ModuleNotFoundError) as ap239_err:
     AP239_AVAILABLE = False
     logger.debug(f"AP239 Mapper unavailable: {ap239_err}")
 
 try:
-    from Services.multi_domain_pipeline_controller import MultiDomainPipelineController, IndustryDomain, DomainPipelineConfig  # noqa: F401
+    from .multi_domain_pipeline_controller import MultiDomainPipelineController, IndustryDomain, DomainPipelineConfig  # noqa: F401
     MULTI_DOMAIN_AVAILABLE = True
 except (ImportError, ModuleNotFoundError) as multi_err:
     MULTI_DOMAIN_AVAILABLE = False

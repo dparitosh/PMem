@@ -11,6 +11,7 @@ from fastapi import Header
 from backend.mesh_store import PostgresRegistry
 from backend.platform.authorization import approval_identity
 from .artifact_retention import retention
+from .product_contract import validate_revision, validate_registration
 
 router = APIRouter(prefix="/catalog", tags=["data-catalog"])
 store = PostgresRegistry("catalog_products")
@@ -20,10 +21,14 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _semver(value: str) -> tuple[int, int, int, str]:
-    match = re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?", value)
+def _semver(value: str) -> tuple:
+    match = re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?", value)
     if not match: raise ValueError("version must use semantic versioning, e.g. 1.2.3")
-    return int(match.group(1)), int(match.group(2)), int(match.group(3)), match.group(4) or "~"
+    identifiers = (match.group(4) or "").split(".") if match.group(4) else []
+    if any(item.isdigit() and len(item) > 1 and item.startswith("0") for item in identifiers):
+        raise ValueError("Numeric prerelease identifiers must not contain leading zeros")
+    prerelease = tuple((0, int(item)) if item.isdigit() else (1, item) for item in identifiers)
+    return int(match.group(1)), int(match.group(2)), int(match.group(3)), not bool(identifiers), prerelease
 
 
 def _internal(token: str | None) -> None:
@@ -52,6 +57,19 @@ def product(product_id: str) -> dict:
 @router.put("/products/{product_id}/versions/{version}")
 def register(product_id: str, version: str, payload: dict, x_depo_service_token: str | None = Header(default=None)) -> dict:
     _internal(x_depo_service_token)
+    # Serialize versions of the same product so latest-version selection and
+    # immutable-content checks cannot race across service processes.
+    with store.advisory_lock(f"catalog-product:{product_id}") as acquired:
+        if not acquired:
+            raise HTTPException(409, "Product registration is in progress; retry")
+        return _register_version(product_id, version, payload)
+
+
+def _register_version(product_id: str, version: str, payload: dict) -> dict:
+    try:
+        validate_registration(payload)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     required = ("name", "domain", "owner", "lifecycle_state", "classification", "steward")
     missing = [name for name in required if not payload.get(name)]
     try: _semver(version)
@@ -60,9 +78,11 @@ def register(product_id: str, version: str, payload: dict, x_depo_service_token:
         raise HTTPException(422, f"product_id, version and {', '.join(missing)} are required")
     key = f"{product_id}:{version}"
     existing = store.get(key)
-    immutable = ("name", "domain", "owner")
-    if existing and {name: existing.get(name) for name in immutable} != {name: payload.get(name) for name in immutable}:
-        raise HTTPException(409, "A cataloged product version is immutable")
+    if existing:
+        try:
+            validate_revision(existing, payload)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
     record = {**payload, "product_id": product_id, "version": version, "updated_at": _now()}
     candidates = [value for item_key, value in store.all().items() if item_key.startswith(f"{product_id}:") and not item_key.endswith(":latest") and item_key != key and value.get("lifecycle_state") != "revoked"]
     if record.get("lifecycle_state") != "revoked":

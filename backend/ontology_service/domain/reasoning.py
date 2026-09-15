@@ -12,8 +12,8 @@ import copy
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
-from .ontology_upload_manager import OntologyUploadManager
-from .owlready_runtime import OwlreadyOntologyRuntime
+from backend.Services.ontology_upload_manager import OntologyUploadManager
+from backend.Services.owlready_runtime import OwlreadyOntologyRuntime
 
 
 class OntologyReasoningService:

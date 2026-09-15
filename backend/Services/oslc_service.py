@@ -18,8 +18,8 @@ from rdflib import Graph
 from rdflib.namespace import RDF, RDFS, SH
 
 from .graph_view_service import GraphViewService
-from .ontology_reasoning_service import OntologyReasoningService
-from .ontology_taxonomy_service import OntologyTaxonomyService
+from backend.ontology_service.domain.reasoning import OntologyReasoningService
+from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
 from .ontology_upload_manager import OntologyUploadManager
 from .oslc_query_service import OSLCCondition, OSLCQueryParameters
 

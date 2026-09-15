@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { dataPipelineAPI } from '../services/apiClient';
 import './DataFlowPage.css';
 
@@ -67,8 +67,13 @@ export default function DataFlowPage() {
   const [error, setError] = useState('');
   const [replayError, setReplayError] = useState('');
   const [replayingId, setReplayingId] = useState('');
+  const loadSequence = useRef(0);
+  const loadInFlight = useRef(false);
 
   const load = useCallback(async ({ initial = false } = {}) => {
+    if (loadInFlight.current) return;
+    loadInFlight.current = true;
+    const sequence = ++loadSequence.current;
     if (initial) setLoading(true);
     else setRefreshing(true);
     setError('');
@@ -79,6 +84,7 @@ export default function DataFlowPage() {
         dataPipelineAPI.runs(100),
         dataPipelineAPI.definitions(),
       ]);
+      if (sequence !== loadSequence.current) return;
       const successes = [healthResult, telemetryResult, runsResult, definitionsResult]
         .filter((result) => result.status === 'fulfilled');
       if (!successes.length) throw healthResult.reason || new Error('Data pipeline service is unavailable.');
@@ -102,17 +108,25 @@ export default function DataFlowPage() {
         .find((result) => result.status === 'rejected');
       if (failure) setError('Some processing-job evidence is temporarily unavailable. Showing the available data.');
     } catch (loadError) {
+      if (sequence !== loadSequence.current) return;
       setError(loadError?.response?.data?.detail || loadError?.message || 'Unable to load data-job telemetry.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (sequence === loadSequence.current) {
+        loadInFlight.current = false;
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     load({ initial: true });
     const interval = window.setInterval(() => load(), REFRESH_INTERVAL_MS);
-    return () => window.clearInterval(interval);
+    return () => {
+      window.clearInterval(interval);
+      loadSequence.current += 1;
+      loadInFlight.current = false;
+    };
   }, [load]);
 
   const visibleRuns = useMemo(() => {
@@ -128,6 +142,10 @@ export default function DataFlowPage() {
     accepted: runs.reduce((sum, run) => sum + countFor(run, 'accepted_records'), 0),
     rejected: runs.reduce((sum, run) => sum + countFor(run, 'rejected_records'), 0),
   }), [runs]);
+  const qualityJobCount = useMemo(
+    () => definitions.filter((definition) => /quality|validate/.test(String(definition.job_type || ''))).length,
+    [definitions],
+  );
 
   const replay = async (run) => {
     setReplayingId(run.run_id);
@@ -163,12 +181,14 @@ export default function DataFlowPage() {
 
       <div className="data-flow-kpis" aria-label="Data-job telemetry summary">
         <article><span>Configured jobs</span><strong>{definitions.length}</strong></article>
-        <article><span>Durable runs</span><strong>{durableTotals.runs || totals.runs || 0}</strong></article>
-        <article><span>Accepted records</span><strong>{durableTotals.accepted || totals.records_accepted || 0}</strong></article>
-        <article><span>Rejected records</span><strong>{durableTotals.rejected || totals.records_rejected || 0}</strong></article>
+        <article><span>Quality jobs</span><strong>{qualityJobCount}</strong></article>
+        <article><span>Durable runs</span><strong>{totals.runs ?? durableTotals.runs}</strong></article>
+        <article><span>Accepted records</span><strong>{totals.records_accepted ?? durableTotals.accepted}</strong></article>
+        <article><span>Rejected records</span><strong>{totals.records_rejected ?? durableTotals.rejected}</strong></article>
         <article><span>Scheduler</span><strong className="data-flow-kpi-state">{telemetry?.scheduler?.running ? 'Running' : telemetry?.scheduler?.enabled ? 'Stopped' : 'Disabled'}</strong></article>
       </div>
 
+      <p>Run and record totals cover the latest {totals.limit ?? 100} runs, not lifetime history.</p>
       <div className="data-flow-grid">
         <article className="data-flow-card data-flow-card--runs">
           <div className="data-flow-card__heading">
@@ -203,7 +223,7 @@ export default function DataFlowPage() {
               <dt>Source standard</dt><dd>{sourceStandard(selectedRun)}</dd>
               <dt>Source system</dt><dd>{selectedRun.source_system || selectedRun.output_manifest?.source_system || 'Not recorded'}</dd>
               <dt>Input manifest</dt><dd>{selectedRun.input_manifest?.record_count ?? 0} record(s), {selectedRun.input_manifest?.artifact_ids?.length ?? 0} retained artifact(s)</dd>
-              <dt>Quality profile</dt><dd>{selectedRun.job_type || '—'} / {qualityStatus(selectedRun)}</dd>
+              <dt>Quality profile</dt><dd>{selectedRun.quality_profile || selectedRun.job_type || '—'} / {qualityStatus(selectedRun)}</dd>
               <dt>Checkpoint</dt><dd>{selectedRun.checkpoint ? JSON.stringify(selectedRun.checkpoint) : 'No watermark/checkpoint recorded'}</dd>
               <dt>Lineage</dt><dd>{selectedRun.correlation_id || 'No correlation identifier recorded'}</dd>
               <dt>Executed by</dt><dd>{selectedRun.executed_by || 'Legacy run / identity not recorded'}</dd>
@@ -211,6 +231,10 @@ export default function DataFlowPage() {
               <dt>Output evidence</dt><dd>{selectedRun.output_manifest?.contract || 'Pending output manifest'}</dd>
               <dt>Mapping evidence</dt><dd>{selectedRun.output_manifest?.mapping_digest || 'Not applicable or not recorded'}</dd>
               <dt>Validation</dt><dd>{selectedRun.output_manifest?.validation_status || 'Not applicable or pending'}</dd>
+              {selectedRun.output_manifest?.data_product_draft && <>
+                <dt>Data product draft</dt><dd>{selectedRun.output_manifest.data_product_draft.contract || 'Draft available'} · {selectedRun.output_manifest.data_product_draft.artifacts?.length || 0} retained artifacts</dd>
+                <dt>Product approval</dt><dd>{selectedRun.output_manifest.data_product_draft.publication_requirements?.join('; ') || 'Awaiting data-product approval'}</dd>
+              </>}
             </dl>
             <p className="data-flow-help">Replay reuses the retained immutable input; publication still remains subject to the canonical approval boundary.</p>
           </> : <div className="data-flow-empty">Select a run to inspect its input, quality, lineage, checkpoint, and output evidence.</div>}

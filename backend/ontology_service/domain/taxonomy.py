@@ -18,9 +18,9 @@ from xml.etree import ElementTree as ET
 from rdflib import Graph, URIRef
 from rdflib.namespace import OWL, RDF, RDFS, SKOS
 
-from .owlready_runtime import OwlreadyOntologyRuntime
-from .ontology_reasoning_service import OntologyReasoningService
-from .ontology_upload_manager import OntologyUploadManager
+from backend.Services.owlready_runtime import OwlreadyOntologyRuntime
+from .reasoning import OntologyReasoningService
+from backend.Services.ontology_upload_manager import OntologyUploadManager
 
 
 RDF_FORMAT_BY_EXT = {

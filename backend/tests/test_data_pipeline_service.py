@@ -53,6 +53,86 @@ def test_input_quality_gate_rejects_explicitly_invalid_records_without_spark():
     assert rejected[0]["rule"] == "validation_status.not_invalid"
 
 
+def test_data_quality_job_emits_governed_evidence_for_each_quality_dimension(monkeypatch):
+    class FakeRow:
+        def __init__(self, value): self.value = value
+        def asDict(self): return self.value
+    class FakeFrame:
+        def groupBy(self, *_): return self
+        def count(self): return self
+        def orderBy(self, *_): return self
+        def collect(self): return [FakeRow({"source_standard": "AP242", "canonical_concept": "Part", "validation_status": "valid", "count": 1})]
+    class FakeSpark:
+        def createDataFrame(self, _): return FakeFrame()
+    runner = SparkJobRunner()
+    monkeypatch.setattr(runner, "_spark_session", lambda: FakeSpark())
+
+    result = runner.assess_data_quality({"records": [
+        {"source_standard": "AP242", "canonical_concept": "Part", "source_id": "part-1", "artifact_id": "sha256:" + "a" * 64},
+        {"source_standard": "AP242", "canonical_concept": "Part", "source_id": "part-1", "artifact_id": "sha256:" + "a" * 64},
+        {"source_standard": "ReqIF", "canonical_concept": "Requirement", "source_id": "req-1"},
+    ]}, correlation_id="quality-test")
+
+    assert result["job_type"] == "data-quality-assessment"
+    assert result["output_contract"] == "data-quality-report-v1"
+    assert result["quality"]["accepted_records"] == 1
+    assert result["quality"]["rejected_records"] == 2
+    assert result["quality"]["uniqueness"] < 1
+    assert result["quality"]["provenance"] < 1
+    assert result["partition_artifacts"]["accepted"]
+
+
+def test_data_quality_job_definition_is_an_explicit_governed_job(monkeypatch):
+    monkeypatch.setattr("backend.data_pipeline_service.job_definitions.store", InMemoryRegistry())
+    response = TestClient(app).post("/api/v1/pipeline/jobs/definitions", json={
+        "job_id": "engineering-data-quality",
+        "name": "Engineering data quality",
+        "version": "1.0.0",
+        "owner": "data-governance",
+        "job_type": "data-quality-assessment",
+        "quality_profile": "data-quality-core-v1",
+    })
+    assert response.status_code == 201
+    assert response.json()["output_contract"] == "data-quality-report-v1"
+
+
+def test_schema_analytics_is_a_retained_spark_data_job(monkeypatch):
+    class FakeRow:
+        def __init__(self, value): self.value = value
+        def asDict(self): return self.value
+    class FakeFrame:
+        def orderBy(self, *_): return self
+        def collect(self): return [FakeRow({"metric": "classes", "value": 4})]
+    class FakeSpark:
+        def createDataFrame(self, _): return FakeFrame()
+    source = __import__("backend.artifact_store", fromlist=["ArtifactStore"]).ArtifactStore().ingest_bytes(
+        b'<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"/>', filename="model.xsd", kind="engineering-schema-source", media_type="application/xml"
+    )
+    monkeypatch.setattr("backend.ingestion_service.schema_conversion.converter.convert", lambda **_: {
+        "format": "XSD", "source_kind": "schema", "statistics": {"classes": 4},
+        "schema_validation": {"errors": []},
+        "artifacts": {"source": source["artifact_id"], "serialization": "sha256:" + "b" * 64, "analytics_profile": "sha256:" + "c" * 64},
+        "data_product_draft": {"contract": "schema-analytics-data-product-v1", "artifacts": [source["artifact_id"], "sha256:" + "b" * 64, "sha256:" + "c" * 64], "quality_status": "validated"},
+    })
+    runner = SparkJobRunner()
+    monkeypatch.setattr(runner, "_spark_session", lambda: FakeSpark())
+
+    result = runner.build_schema_analytics_product({"artifact_id": source["artifact_id"]}, correlation_id="schema-product")
+
+    assert result["job_type"] == "schema-analytics-product"
+    assert result["output_contract"] == "schema-analytics-data-product-draft-v1"
+    assert result["data_product_draft"]["contract"] == "schema-analytics-data-product-v1"
+    assert result["counts"]["retained_artifacts"] == 3
+
+
+def test_schema_analytics_rejects_non_schema_artifacts(monkeypatch):
+    source = __import__("backend.artifact_store", fromlist=["ArtifactStore"]).ArtifactStore().ingest_bytes(
+        b"not a schema", filename="notes.txt", kind="unstructured-document", media_type="text/plain"
+    )
+    with pytest.raises(ValueError, match="engineering-schema-source"):
+        SparkJobRunner().build_schema_analytics_product({"artifact_id": source["artifact_id"]}, correlation_id="bad-schema")
+
+
 def test_neo4j_connector_rejects_an_unsupported_spark_runtime(tmp_path, monkeypatch):
     (tmp_path / "RELEASE").write_text("Spark 4.2.0 built for Hadoop", encoding="utf-8")
     monkeypatch.setenv("DEPO_SPARK_NEO4J_PACKAGE", "org.neo4j.connectors:spark:6.0.0-s_2.13")
@@ -203,6 +283,71 @@ def test_document_enrichment_job_creates_a_provenance_preserving_graph_proposal(
     assert proposal["documents"][0]["chunks"][0]["content"] == "Motor cover"
     assert proposal["documents"][0]["chunks"][0]["content_digest"].startswith("sha256:")
     assert proposal["publication"].startswith("not_attempted")
+
+
+def test_unstructured_proposal_uses_the_same_ceim_validation_contract(monkeypatch):
+    class FakeRow:
+        def __init__(self, value): self.value = value
+        def asDict(self): return self.value
+    class FakeFrame:
+        def groupBy(self, *_): return self
+        def count(self): return self
+        def orderBy(self, *_): return self
+        def collect(self): return [FakeRow({"ceim_type": "Document", "count": 1})]
+    class FakeSpark:
+        def createDataFrame(self, _): return FakeFrame()
+
+    proposal = {
+        "contract": "document-graph-proposal-v1",
+        "nodes": [
+            {"id": "document:spec-1", "type": "Document", "document_id": "spec-1", "artifact_id": "sha256:" + "a" * 64, "media_type": "text/plain"},
+            {"id": "document-chunk:spec-1:1", "type": "DocumentChunk", "document_id": "spec-1", "chunk_id": "1", "ordinal": 0, "content_digest": "sha256:" + "b" * 64},
+        ],
+        "relationships": [{"type": "HAS_CHUNK", "source": "document:spec-1", "target": "document-chunk:spec-1:1"}],
+    }
+    artifact = __import__("backend.artifact_store", fromlist=["ArtifactStore"]).ArtifactStore().ingest_bytes(
+        __import__("json").dumps(proposal).encode("utf-8"), filename="document-proposal.json", kind="document-graph-proposal", media_type="application/json"
+    )
+    runner = SparkJobRunner()
+    monkeypatch.setattr(runner, "_spark_session", lambda: FakeSpark())
+
+    result = runner.normalize_unstructured_ceim({"proposal_artifact_id": artifact["artifact_id"]}, correlation_id="unstructured-ceim")
+
+    assert result["job_type"] == "normalize-unstructured-ceim"
+    assert result["input_contract"] == "document-graph-proposal-v1"
+    assert result["validation"]["conforms"] is True
+    assert result["partition_artifacts"]["accepted"]
+
+
+def test_document_evidence_workflow_uses_approved_stages_and_artifact_handoffs(monkeypatch):
+    from backend.data_pipeline_service import router
+
+    definitions = {
+        ("document-validate", "1.0.0"): {"job_id": "document-validate", "version": "1.0.0", "job_type": "validate-unstructured-evidence", "lifecycle_state": "approved", "enabled": True},
+        ("document-enrich", "1.0.0"): {"job_id": "document-enrich", "version": "1.0.0", "job_type": "enrich-document-evidence", "lifecycle_state": "approved", "enabled": True},
+        ("document-normalize", "1.0.0"): {"job_id": "document-normalize", "version": "1.0.0", "job_type": "normalize-unstructured-ceim", "lifecycle_state": "approved", "enabled": True},
+    }
+    monkeypatch.setattr(router.job_definitions, "get", lambda job_id, version: definitions.get((job_id, version)))
+    calls = []
+    def execute(definition, payload, correlation_id):
+        calls.append((definition["job_type"], payload))
+        accepted = "sha256:" + ("a" if definition["job_type"] == "enrich-document-evidence" else "b") * 64
+        return {"status": "completed", "run_manifest": {"run_id": f"{definition['job_id']}-run", "output_manifest": {"partition_artifacts": {"accepted": accepted}}}}
+    monkeypatch.setattr(router, "execute_configured_job", execute)
+
+    result = router.execute_document_evidence_workflow({
+        "documents": [{"document_id": "d1"}],
+        "stages": {
+            "validation": {"job_id": "document-validate", "version": "1.0.0"},
+            "enrichment": {"job_id": "document-enrich", "version": "1.0.0"},
+            "normalization": {"job_id": "document-normalize", "version": "1.0.0"},
+        },
+    }, correlation_id="workflow-test", actor="pipeline-steward")
+
+    assert result["status"] == "completed"
+    assert [job_type for job_type, _ in calls] == ["validate-unstructured-evidence", "enrich-document-evidence", "normalize-unstructured-ceim"]
+    assert calls[-1][1]["proposal_artifact_id"] == "sha256:" + "a" * 64
+    assert calls[-1][1]["standard"] == "unstructured-evidence"
 
 
 def test_configured_document_enrichment_job_uses_governed_run_surface(monkeypatch):

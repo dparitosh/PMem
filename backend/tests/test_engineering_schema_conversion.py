@@ -1,4 +1,5 @@
 from backend.ingestion_service.schema_conversion import converter
+from backend.artifact_store import ArtifactStore
 from rdflib import Graph
 
 
@@ -24,3 +25,14 @@ def test_express_and_step_share_the_normalized_conversion_contract():
 def test_step_extensions_share_one_converter():
     for filename in ("demo.stp", "demo.step", "demo.stpx"):
         assert converter.convert(filename=filename, content=STEP)["format"] == "STEP"
+
+
+def test_schema_serialization_retains_an_analytics_product_draft(monkeypatch, tmp_path):
+    monkeypatch.setenv("ARTIFACT_STORAGE", str(tmp_path / "artifacts"))
+    result = converter.convert(filename="demo.xsd", content=b'''<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:test"><xs:element name="Part" type="xs:string"/></xs:schema>''')
+
+    assert set(result["artifacts"]) == {"source", "serialization", "analytics_profile"}
+    assert result["data_product_draft"]["contract"] == "schema-analytics-data-product-v1"
+    assert result["data_product_draft"]["artifacts"] == list(result["artifacts"].values())
+    metadata, _ = ArtifactStore().resolve(result["artifacts"]["analytics_profile"])
+    assert metadata["kind"] == "schema-analytics-profile"

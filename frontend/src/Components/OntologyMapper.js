@@ -2549,7 +2549,7 @@ export default function OntologyMapper() {
         <div style={{ display: 'grid', gap: '6px', justifySelf: 'end', width: '100%', maxWidth: 460 }}>
           {mappingOptionsError && (
             <div style={{ color: C.red, fontSize: '12px', padding: '8px 12px', background: '#FFE5E5', border: `1px solid ${C.red}`, borderRadius: '6px' }}>
-              Ã¢Å¡Â Ã¯Â¸Â {mappingOptionsError}
+              {mappingOptionsError}
             </div>
           )}
 
@@ -2564,7 +2564,7 @@ export default function OntologyMapper() {
                 disabled={mappingOptions.length === 0}
                 style={{ minWidth: '320px', padding: '6px 10px', background: C.surface, border: `1px solid ${mappingOptionsError ? C.red : C.borderDark}`, color: C.textPrimary, borderRadius: '5px', fontWeight: 600, fontSize: '12px', cursor: mappingOptions.length === 0 ? 'not-allowed' : 'pointer', opacity: mappingOptions.length === 0 ? 0.6 : 1 }}
               >
-                <option value="">{mappingOptions.length === 0 ? 'Ã¢â‚¬â€ No ontologies loaded Ã¢â‚¬â€' : 'Ã¢â‚¬â€ Select ontology Ã¢â‚¬â€'}</option>
+                <option value="">{mappingOptions.length === 0 ? 'No ontologies loaded' : 'Select ontology'}</option>
                 {Array.from(new Map(mappingOptions.map(o => [o.prefix, o])).values()).map((o, idx) => (
                   <option key={o.value || `mapping-${idx}`} value={o.value}>
                     {o.label}{o.usageCount ? ` (used ${o.usageCount}x)` : ''}

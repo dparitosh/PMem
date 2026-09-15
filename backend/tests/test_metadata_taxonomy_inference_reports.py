@@ -6,8 +6,8 @@ from rdflib.namespace import OWL, RDFS, XSD
 
 from backend.routes import metadata_registry_routes
 from backend.Services.ontology_quality_guard import assess_ontology_quality
-from backend.Services.ontology_reasoning_service import OntologyReasoningService
-from backend.Services.ontology_taxonomy_service import OntologyTaxonomyService
+from backend.ontology_service.domain.reasoning import OntologyReasoningService
+from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
 from backend.Services.ontology_upload_manager import OntologyUploadManager
 from backend.Services.semantic_taxonomy_service import SemanticTaxonomyService, normalize_skos_payload
 from backend.Services.shacl_service import ShaclValidationService, validate as pyshacl_validate

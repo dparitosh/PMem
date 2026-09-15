@@ -3,11 +3,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
 from defusedxml import ElementTree as ET
+
+from backend.mesh_store import PostgresRegistry
 
 
 def _now() -> str:
@@ -15,9 +19,46 @@ def _now() -> str:
 
 
 class SourceProfileStore:
-    def __init__(self) -> None:
-        self.root = Path(__file__).resolve().parents[2] / "data" / "source_profiles"
+    """Versioned profile control-plane repository.
+
+    PostgreSQL is the source of truth when configured. The JSON files are an
+    artifact/recovery mirror and allow an explicitly unconfigured local demo.
+    """
+
+    def __init__(self, root: Path | None = None, registry: Any | None = None) -> None:
+        self.root = root or Path(os.getenv("SOURCE_PROFILE_STORAGE") or Path(__file__).resolve().parents[2] / "data" / "source_profiles")
         self.root.mkdir(parents=True, exist_ok=True)
+        self.registry = registry or PostgresRegistry("ingestion_source_profiles")
+
+    @property
+    def _postgres_enabled(self) -> bool:
+        return bool(os.getenv("DEPO_DATABASE_URL") or os.getenv("DATABASE_URL"))
+
+    @staticmethod
+    def _validate_id(profile_id: str) -> str:
+        if not re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_-]{0,127}", profile_id):
+            raise ValueError("profile_id must start with a letter and contain only letters, digits, underscores or hyphens")
+        if profile_id.upper() in {"CON", "PRN", "AUX", "NUL", *[f"COM{i}" for i in range(1, 10)], *[f"LPT{i}" for i in range(1, 10)]}:
+            raise ValueError("profile_id is a reserved filename")
+        return profile_id
+
+    @staticmethod
+    def _version_key(profile_id: str, version: int) -> str:
+        return f"profile:{profile_id}:v{version}"
+
+    @staticmethod
+    def _current_key(profile_id: str) -> str:
+        return f"profile:{profile_id}:current"
+
+    def _save(self, profile: dict[str, Any]) -> dict[str, Any]:
+        self._validate_id(str(profile["profile_id"]))
+        if self._postgres_enabled:
+            self.registry.put_many({
+                self._version_key(profile["profile_id"], int(profile["version"])): profile,
+                self._current_key(profile["profile_id"]): profile,
+            })
+        (self.root / f"{profile['profile_id']}.json").write_text(json.dumps(profile, indent=2), encoding="utf-8")
+        return profile
 
     def inspect(self, *, filename: str, content: bytes) -> dict[str, Any]:
         suffix = Path(filename).suffix.lower()
@@ -42,10 +83,17 @@ class SourceProfileStore:
         profile_id = str(profile.get("profile_id") or profile.get("name", "")).strip().replace(" ", "-").lower()
         if not profile_id:
             raise ValueError("profile_id or name is required")
-        existing = self.root / f"{profile_id}.json"
-        current_version = 0
-        if existing.exists():
-            current_version = int(json.loads(existing.read_text(encoding="utf-8")).get("version", 0))
+        self._validate_id(profile_id)
+        if self._postgres_enabled:
+            with self.registry.advisory_lock(f"version:{profile_id}") as acquired:
+                if not acquired:
+                    raise ValueError("Source profile is being updated; retry the request")
+                return self._save_next_version(profile, profile_id)
+        return self._save_next_version(profile, profile_id)
+
+    def _save_next_version(self, profile: dict[str, Any], profile_id: str) -> dict[str, Any]:
+        current = self.get(profile_id, required=False)
+        current_version = int((current or {}).get("version", 0))
         requested_version = int(profile.get("version", 0))
         profile = {
             **profile,
@@ -53,16 +101,39 @@ class SourceProfileStore:
             "version": max(current_version + 1, requested_version or 1),
             "updated_at": _now(),
         }
-        (self.root / f"{profile_id}.json").write_text(json.dumps(profile, indent=2), encoding="utf-8")
-        return profile
+        return self._save(profile)
 
-    def get(self, profile_id: str) -> dict[str, Any]:
+    def get(self, profile_id: str, *, required: bool = True) -> dict[str, Any] | None:
+        self._validate_id(profile_id)
+        if self._postgres_enabled:
+            profile = self.registry.get(self._current_key(profile_id))
+            if profile is not None:
+                return profile
         path = self.root / f"{profile_id}.json"
-        if not path.exists(): raise KeyError("Source profile not found")
-        return json.loads(path.read_text(encoding="utf-8"))
+        if path.exists():
+            profile = json.loads(path.read_text(encoding="utf-8"))
+            if self._postgres_enabled:
+                self._save(profile)
+            return profile
+        if required:
+            raise KeyError("Source profile not found")
+        return None
 
     def list(self) -> list[dict[str, Any]]:
-        return [json.loads(path.read_text(encoding="utf-8")) for path in self.root.glob("*.json")]
+        entries = []
+        if self._postgres_enabled:
+            entries = [
+                value for key, value in self.registry.all().items()
+                if key.startswith("profile:") and key.endswith(":current") and isinstance(value, dict)
+            ]
+        known = {str(item.get("profile_id") or "") for item in entries}
+        for path in self.root.glob("*.json"):
+            profile = json.loads(path.read_text(encoding="utf-8"))
+            if str(profile.get("profile_id") or "") not in known:
+                if self._postgres_enabled:
+                    self._save(profile)
+                entries.append(profile)
+        return sorted(entries, key=lambda item: str(item.get("profile_id") or ""))
 
     def normalize(self, *, profile: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
         mapping = profile.get("mapping", {})

@@ -30,6 +30,56 @@ not upgrade these system dependencies automatically.
 
 ## Pipeline execution configuration
 
+### Spark runtime and smoke test
+
+Use Spark 4.1.2 (Scala 2.13), Java 21, and the application Python runtime.
+Install the official Spark binary distribution and a trusted Java distribution
+on the execution host. The application installer does not download them.
+Verify vendor checksums/signatures before extracting; provision the Windows
+Hadoop helper from your approved runtime source, not an unverified executable.
+Merge needed settings from `.env.spark.example` into `.env.local`; the example
+file is not loaded automatically and its blank credentials must not replace
+your configured graph credentials. Set `DEPO_SPARK_HOME`, `DEPO_JAVA_HOME`,
+`DEPO_HADOOP_HOME`, `DEPO_SPARK_OUTPUT_ROOT`, and `DEPO_SPARK_MASTER` for the host.
+
+```powershell
+# In a fresh shell, specify paths explicitly (the smoke script does not load .env.local).
+$env:HADOOP_HOME = 'D:\DEPO\runtime\hadoop'
+$env:PATH = "$env:HADOOP_HOME\bin;$env:PATH"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-spark.ps1 -SparkHome D:\DEPO\runtime\spark-4.1.2-bin-hadoop3 -JavaHome D:\DEPO\runtime\jdk-21\jdk-21.0.12.1+1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local -EnableSpark -EnablePipelineScheduler -EnableNeo4jSparkConnector
+```
+
+The connector switch requires Spark. Connector dependency resolution needs
+access to an approved Maven repository/cache. Omit the connector switch when
+graph reads through Spark are not needed. API health alone does not prove a
+Spark job executed: `configured` means runtime files exist, `initialized` means
+a session exists, and `unavailable` means required runtime files are missing.
+Use smoke-job output and durable run/quality evidence for execution acceptance.
+
+### Frontend integration and startup
+
+The backend lifecycle script does not start a web server. After dependency
+installation, configure browser-safe service URLs/origins in `frontend/.env.local`.
+For local testing, the pipeline defaults to `http://127.0.0.1:8019`; gateway
+deployments use `VITE_API_GATEWAY_URL` or an explicit
+`VITE_DATA_PIPELINE_SERVICE_URL`. Never embed an admin key in frontend settings.
+
+```powershell
+# Separate terminal, from the repository root:
+cd frontend
+npm.cmd run build
+if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' }
+npm.cmd run dev -- --host 127.0.0.1 --port 3000
+```
+
+Open `http://127.0.0.1:3000/#/data-flow` and verify health, definitions, run
+details, quality and lineage. Replay additionally requires an authorized
+execution identity through the gateway. This command is for local development;
+customer deployments must serve `frontend/dist` with their managed static web
+server and configured HTTPS/gateway authentication. Stop the local web server
+with Ctrl+C. Do not expose Vite's development server as the customer web server.
+
 Enable Spark with `-EnableSpark` on the lifecycle Start command after installing
 the supported Spark/Java runtime. Use `-EnablePipelineScheduler` to enable
 scheduled replay; this is separate from HTTP job execution. Configure

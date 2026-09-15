@@ -1,5 +1,85 @@
 # DEPO Focused Delivery Tracker
 
+## Pre-push review — 2026-09-15
+
+- Added default-deny lifecycle resource grants, denied unauthorized collection
+  enumeration, and removed spoofable bootstrap reader identity headers.
+- Verification: 47 focused contracts, OSLC, gateway trust and DT compatibility
+  tests passed. Two rdflib deprecation warnings remain.
+- Release status: development checkpoint, NOT production certification.
+- Open implementation: lifecycle TRS, governed mutation contracts, external DT
+  coded-tool binding, comprehensive content negotiation and service credential
+  propagation. Customer acceptance must cover authentication, installation,
+  restart/recovery and live database/workflow behavior.
+
+## OSLC lifecycle extension — 2026-09-15
+
+- Follow-up verified: 29 OSLC tests passed. Individual lifecycle resources support
+  explicit JSON, Turtle, RDF/XML and JSON-LD Accept types, representation ETags,
+  and Vary: Accept. Collection/shape responses remain JSON.
+- Replaced full-manifest disclosure with allowlisted scalar summaries and added
+  property definitions for those fields. Full evidence needs a separately governed
+  access contract. Registry identifiers are paged in PostgreSQL rather than memory.
+- Not complete: per-resource authorization, collection RDF representations, full
+  Accept negotiation, lifecycle TRS, approved mutation contracts and DT binding.
+  The earlier pending list below is historical; database-side paging and individual
+  resource serialization are now implemented, not live interoperability-certified.
+
+- Added authenticated read-only `/oslc/lifecycle` discovery, shapes, paged
+  job definitions, job-run evidence and catalog product-version resources.
+- Added ETag/If-None-Match conditional reads and catalog discovery link.
+- Fixed outbound client support for bounded `ontology:<id>` query identifiers.
+- Verification: two focused HTTP/client tests passed.
+- Remaining: these JSON endpoints are PMem extensions, not certified OSLC domains.
+  RDF negotiation, complete evidence property shapes, database-side pagination,
+  per-resource access policy, governed mutation/If-Match contracts, DT client
+  bindings, TRS lifecycle events and live interoperability are still open.
+
+## DT agent integration — 2026-09-15
+
+- Added explicit PMem tool allowlists for all 12 ontology roles and a capability
+  discovery endpoint. Includes approved-job execution, run quality/lineage evidence,
+  product versions and schema-analytics job discovery. Six focused tests pass.
+- Export tool now returns a typed base64 artifact instead of attempting JSON parsing.
+- These are PMem bindings, not deployment verification. Downstream service credentials,
+  external OSLC client bindings and live execution remain pending.
+
+- Implemented approval-gated PMem-to-DT current-plan gateway dispatch, correlated
+  PostgreSQL run evidence and protected status retrieval.
+- Fixed empty/unknown-agent compatibility false positives. Five focused tests pass.
+- Deployment contract: `docs/architecture/DT_AGENT_INTEGRATION.md`.
+- Still open: DT coded-tool bindings back to PMem, workflow-specific dispatch,
+  authenticated session ownership, gateway provisioning and live acceptance.
+  Existing release tasks below remain open; this is not full agent integration.
+
+## Repository restructuring verification — 2026-09-15
+
+- Moved ontology reasoning and taxonomy into `backend/ontology_service/domain`;
+  migrated callers in ingestion, OSLC, graph views, semantic workflows and tests.
+- Ingestion browser/export adapters reside in `backend/ingestion_service/api`.
+- Current service/API catalog: `docs/architecture/SERVICE_CATALOG.md`.
+- Removed obsolete monolith documentation, an excluded live report script and
+  unused background graph-write code. Existing customer artifacts are retained.
+- Verification: focused contracts, ontology runtime and semantic workflow tests:
+  28 passed, four skipped. Skips are not conformance evidence.
+- Added catalog/deployment consistency and retired-import regression checks.
+- Remaining: shared upload/runtime dependencies in `backend/Services` still need
+  migration before that folder can be retired; full release acceptance is open.
+
+## Spark installation verification — 2026-09-11
+
+- Verified locally: Spark 4.1.2 with Java 21 and application Python workers;
+  deterministic DataFrame count/sort smoke test passes, including four synthetic
+  AP242/QIF/ReqIF/PLMXML rows. This is not ontology or source-file conformance.
+- Fixed: smoke script provisions its Hadoop environment, validates the helper,
+  defaults to supported Spark, disables the unnecessary Spark web UI, asserts
+  results and stops its session in a finally block.
+- Regression verification: 23 pipeline/readiness tests passed. Live execution
+  evidence: `logs/spark-smoke-validation.log` (local runtime log, not committed).
+- Still pending: live Neo4j connector read, authenticated UI replay, real PLMXML
+  schema/instance end-to-end validation and customer-environment acceptance.
+  Spark 4.2 remains outside the configured connector compatibility range.
+
 ## MBSE continuation
 
 - Implemented: governed SysML v1 XMI and v2 JSON profiles; ReqIF nested references and hierarchy retention.

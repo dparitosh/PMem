@@ -106,8 +106,18 @@ class SparkJobRunner:
 
     def health(self) -> dict[str, Any]:
         spark_home, java_home = self._runtime_paths()
+        runtime_present = (
+            (java_home / "bin" / ("java.exe" if os.name == "nt" else "java")).is_file()
+            and (spark_home / "python" / "lib" / "pyspark.zip").is_file()
+            and bool(list((spark_home / "python" / "lib").glob("py4j-*-src.zip")))
+        )
+        status = "disabled" if not self._enabled() else (
+            "unavailable" if not runtime_present else "initialized" if self._spark is not None else "configured"
+        )
         return {
-            "status": "ok" if self._enabled() else "disabled",
+            "status": status,
+            "runtime_files_present": runtime_present,
+            "execution_verified": False,
             "execution_mode": "bounded_preview",
             "spark_enabled": self._enabled(),
             "spark_initialized": self._spark is not None,
@@ -239,6 +249,119 @@ class SparkJobRunner:
                 "x_axis": [f"{row['source_standard']}:{row['canonical_concept']}" for row in rows],
                 "series": [{"name": row["validation_status"], "value": row["count"], "source_standard": row["source_standard"], "canonical_concept": row["canonical_concept"]} for row in rows],
             },
+        }
+        self._runs.appendleft(result)
+        return result
+
+    def assess_data_quality(self, payload: dict[str, Any], *, correlation_id: str) -> dict[str, Any]:
+        """Execute the reusable completeness, validity, uniqueness and provenance gate.
+
+        Unlike the dashboard's interactive summary, this is a versioned data
+        job.  It emits retained accepted/rejected partitions and a quality
+        evidence report that upstream workflows can use as a blocking gate.
+        It remains source/format-neutral: AP242, PLMXML, ReqIF, QIF and
+        document-derived records use the same contract.
+        """
+        records = payload.get("records")
+        if not isinstance(records, list) or not records:
+            raise ValueError("records must be a non-empty JSON array")
+        if len(records) > self.max_records:
+            raise ValueError(f"records exceeds the maximum of {self.max_records}")
+
+        enriched: list[dict[str, Any]] = []
+        rejections: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for index, record in enumerate(records):
+            if not isinstance(record, dict):
+                rejections.append({"index": index, "rule": "record.object", "dimension": "validity", "message": "Record must be an object"})
+                continue
+            source_id = str(record.get("source_id") or record.get("external_id") or "").strip()
+            provenance = record.get("provenance")
+            artifact_id = str(record.get("artifact_id") or (provenance or {}).get("artifact_id") or "").strip() if isinstance(provenance, dict) else str(record.get("artifact_id") or "").strip()
+            if not source_id:
+                rejections.append({"index": index, "rule": "identity.required", "dimension": "completeness", "message": "source_id or external_id is required"})
+                continue
+            if not artifact_id:
+                rejections.append({"index": index, "rule": "provenance.artifact", "dimension": "provenance", "message": "artifact_id or provenance.artifact_id is required"})
+                continue
+            if source_id in seen_ids:
+                rejections.append({"index": index, "rule": "identity.unique", "dimension": "uniqueness", "message": "source_id must be unique within a batch"})
+                continue
+            seen_ids.add(source_id)
+            enriched.append({**record, "source_id": source_id, "artifact_id": artifact_id})
+
+        accepted, validity_rejections = self._validate_records(enriched)
+        rejections.extend([{**item, "dimension": "validity"} for item in validity_rejections])
+        if not accepted:
+            raise ValueError("No records passed the data quality contract")
+        started = time.perf_counter()
+        with self._lock:
+            spark = self._spark_session()
+            rows = [row.asDict() for row in spark.createDataFrame(accepted).groupBy("source_standard", "canonical_concept", "validation_status").count().orderBy("source_standard", "canonical_concept", "validation_status").collect()]
+        job_id = str(uuid.uuid4())
+        accepted_artifact = self._retain_json_artifact(accepted, filename=f"{job_id}-accepted-quality.json", kind="accepted-data-quality-partition", correlation_id=correlation_id)
+        rejected_artifact = self._retain_json_artifact(rejections, filename=f"{job_id}-rejected-quality.json", kind="rejected-data-quality-partition", correlation_id=correlation_id) if rejections else None
+        quality = {
+            "quality_profile": "data-quality-core-v1",
+            "input_records": len(records), "accepted_records": len(accepted), "rejected_records": len(rejections),
+            "completeness": round((len(records) - len([item for item in rejections if item.get("dimension") == "completeness"])) / len(records), 4),
+            "validity": round((len(records) - len([item for item in rejections if item.get("dimension") == "validity"])) / len(records), 4),
+            "uniqueness": round((len(records) - len([item for item in rejections if item.get("dimension") == "uniqueness"])) / len(records), 4),
+            "provenance": round((len(records) - len([item for item in rejections if item.get("dimension") == "provenance"])) / len(records), 4),
+            "quality_gate": "passed" if not rejections else "warning",
+            "rejections": rejections[:100],
+        }
+        result = {
+            "job_id": job_id, "job_type": "data-quality-assessment", "status": "completed" if not rejections else "quality_warning",
+            "correlation_id": correlation_id, "completed_at": self._now(), "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            "output_contract": "data-quality-report-v1", "quality": quality, "series": rows,
+            "partition_artifacts": {"accepted": accepted_artifact, "rejected": rejected_artifact},
+            "publication": "not_attempted; quality assessment never publishes graph changes",
+        }
+        self._runs.appendleft(result)
+        return result
+
+    def build_schema_analytics_product(self, payload: dict[str, Any], *, correlation_id: str) -> dict[str, Any]:
+        """Create a governed analytics-product draft from a retained schema.
+
+        The input must already be a content-addressed schema artifact. The
+        converter retains the XSD/EXPRESS source, Turtle serialization and
+        analytics profile. Spark contributes the scalable aggregate view while
+        publication remains an explicit Data Product API approval action.
+        """
+        artifact_id = str(payload.get("artifact_id") or "").strip()
+        if not artifact_id:
+            raise ValueError("artifact_id is required")
+        metadata, source = ArtifactStore().resolve(artifact_id)
+        filename = str(metadata.get("filename") or "schema.xsd")
+        if metadata.get("kind") != "engineering-schema-source":
+            raise ValueError("artifact_id must reference an engineering-schema-source artifact")
+        if Path(filename).suffix.lower() not in {".xsd", ".exp", ".xmi"}:
+            raise ValueError("schema analytics supports retained .xsd, .exp, or .xmi schema artifacts")
+        content = source.read_bytes()
+        from backend.ingestion_service.schema_conversion import converter
+        converted = converter.convert(filename=filename, content=content)
+        draft = dict(converted.get("data_product_draft") or {})
+        if draft.get("contract") != "schema-analytics-data-product-v1":
+            raise ValueError("Schema conversion did not return an analytics data-product draft")
+        started = time.perf_counter()
+        stats = dict(converted.get("statistics") or {})
+        rows = [{"metric": str(key), "value": value if isinstance(value, (int, float, str, bool)) else json.dumps(value, sort_keys=True, default=str)} for key, value in stats.items()]
+        if not rows:
+            rows = [{"metric": "schema_artifacts", "value": len(draft.get("artifacts") or [])}]
+        with self._lock:
+            spark = self._spark_session()
+            series = [row.asDict() for row in spark.createDataFrame(rows).orderBy("metric").collect()]
+        result = {
+            "job_id": str(uuid.uuid4()), "job_type": "schema-analytics-product", "status": "completed",
+            "correlation_id": correlation_id, "completed_at": self._now(), "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+            "input_contract": "engineering-schema-artifact-v1", "output_contract": "schema-analytics-data-product-draft-v1",
+            "source_artifact_id": artifact_id, "schema_format": converted.get("format"), "source_kind": converted.get("source_kind"),
+            "counts": {"analytics_metrics": len(series), "retained_artifacts": len(draft.get("artifacts") or [])},
+            "quality": {"quality_profile": "schema-analytics-v1", "schema_validation": converted.get("schema_validation"), "quality_status": draft.get("quality_status")},
+            "data_product_draft": draft, "partition_artifacts": {"accepted": str((converted.get("artifacts") or {}).get("analytics_profile") or ""), "rejected": None},
+            "series": series,
+            "publication": "not_attempted; submit the returned data-product draft to the Data Product API after semantic-release and steward approval",
         }
         self._runs.appendleft(result)
         return result
@@ -509,6 +632,69 @@ class SparkJobRunner:
             "publication": proposal["publication"],
         }
         self._runs.appendleft(result)
+        return result
+
+    def normalize_unstructured_ceim(self, payload: dict[str, Any], *, correlation_id: str) -> dict[str, Any]:
+        """Map an evidence-first document proposal through the CEIM contract.
+
+        Unstructured content remains immutable source evidence.  This method
+        publishes no graph mutation: it turns only the deterministic Document,
+        DocumentChunk and HAS_CHUNK proposal shapes into an explicit, versioned
+        CEIM batch and applies the same semantic validation used by structured
+        engineering sources.
+        """
+        artifact_id = str(payload.get("proposal_artifact_id") or "")
+        if not artifact_id:
+            raise ValueError("proposal_artifact_id is required")
+        metadata, path = ArtifactStore().resolve(artifact_id)
+        if metadata.get("kind") != "document-graph-proposal":
+            raise ValueError("proposal_artifact_id must reference a document graph proposal")
+        try:
+            proposal = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError("proposal_artifact_id does not contain a valid document graph proposal") from exc
+        if proposal.get("contract") != "document-graph-proposal-v1":
+            raise ValueError("proposal artifact must use document-graph-proposal-v1")
+
+        entities: list[dict[str, Any]] = []
+        for node in proposal.get("nodes") or []:
+            if not isinstance(node, dict):
+                continue
+            node_type = str(node.get("type") or "")
+            node_id = str(node.get("id") or "")
+            if node_type not in {"Document", "DocumentChunk"} or not node_id:
+                continue
+            attributes = {
+                key: value for key, value in node.items()
+                if key not in {"id", "type", "provenance", "chunks", "content"} and value not in (None, "")
+            }
+            # Raw chunk text remains in the retained source/proposal artifact;
+            # the CEIM graph carries only a digest and evidence identity.
+            if node_type == "DocumentChunk":
+                attributes["content_digest"] = str(node.get("content_digest") or "")
+            entities.append({"source_type": node_type, "source_id": node_id, "attributes": attributes})
+        relationships = [
+            {"source_type": "HAS_CHUNK", "source_id": edge["source"], "target_id": edge["target"]}
+            for edge in proposal.get("relationships") or []
+            if isinstance(edge, dict) and edge.get("type") == "HAS_CHUNK" and edge.get("source") and edge.get("target")
+        ]
+        if not entities:
+            raise ValueError("Document graph proposal has no CEIM-mappable evidence nodes")
+
+        result = self.normalize_ceim_batch(
+            {
+                "standard": "unstructured-evidence",
+                "representation": "source-records-v1",
+                "entities": entities,
+                "relationships": relationships,
+            },
+            correlation_id=correlation_id,
+            validate=True,
+        )
+        result["job_type"] = "normalize-unstructured-ceim"
+        result["input_contract"] = "document-graph-proposal-v1"
+        result["evidence_artifact_id"] = artifact_id
+        result["publication"] = "not_attempted; CEIM graph publication requires a separate approved request"
         return result
 
     def rdf_quality_statistics(self, payload: dict[str, Any], *, correlation_id: str) -> dict[str, Any]:
