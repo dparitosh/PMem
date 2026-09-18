@@ -55,6 +55,11 @@ class CEIMContract:
         for source_type, mapping in relationships.items():
             if not str(source_type).strip() or not isinstance(mapping, dict) or mapping.get("relationship") not in self.relationship_types:
                 raise ValueError(f"CEIM mapping pack {identifier} has invalid relationship mapping: {source_type}")
+        for rule in pack.get("reference_rules", []):
+            if not isinstance(rule, dict) or not all(str(rule.get(key) or "").strip() for key in ("source_type", "attribute", "relationship_source_type")):
+                raise ValueError(f"CEIM mapping pack {identifier} has an invalid structural reference rule")
+            if rule["source_type"] not in entities or rule["relationship_source_type"] not in relationships:
+                raise ValueError(f"CEIM mapping pack {identifier} references an undeclared entity or relationship mapping")
 
     def normalize_entity(self, *, standard: str, record: dict[str, Any]) -> dict[str, Any]:
         record, normalization = normalize_record(record)
@@ -102,8 +107,37 @@ class CEIMContract:
             "source_id": f"{standard.lower()}:{source_id}",
             "relationship": mapping["relationship"],
             "target_id": f"{standard.lower()}:{target_id}",
-            "provenance": {"ceim_version": self.version, "mapping_pack": pack["id"], "mapping_version": pack["version"], "mapping_digest": pack["digest"], "source_standard": standard, "source_type": source_type, "normalization": normalization},
+            "provenance": {
+                "ceim_version": self.version, "mapping_pack": pack["id"],
+                "mapping_version": pack["version"], "mapping_digest": pack["digest"],
+                "source_standard": standard, "source_type": source_type,
+                # Structural adapters declare the exact source field (for
+                # example parentRef or rootRefs) that asserted this edge.
+                "source_key": str(record.get("source_key") or f"mapping:{source_type}"),
+                "normalization": normalization,
+            },
         }
+
+    def validate_mapping_evidence(
+        self, *, standard: str, entities: list[dict[str, Any]], relationships: list[dict[str, Any]],
+    ) -> dict[str, str]:
+        """Reject normalized records produced by a different mapping release.
+
+        A retained batch is reproducible only when its mapping evidence still
+        matches the governed pack selected for the run.  This deliberately
+        prevents a replay from silently publishing assertions produced by an
+        obsolete or mixed mapping pack.
+        """
+        pack = self.mapping_pack(standard)
+        expected = {"mapping_pack": str(pack["id"]), "mapping_version": str(pack["version"]), "mapping_digest": str(pack["digest"])}
+        for record in [*entities, *relationships]:
+            provenance = record.get("provenance") if isinstance(record, dict) else None
+            if not isinstance(provenance, dict):
+                raise ValueError("Normalized CEIM input requires mapping provenance for every record")
+            for key, value in expected.items():
+                if str(provenance.get(key) or "") != value:
+                    raise ValueError(f"Normalized CEIM input {key} does not match the active governed mapping pack")
+        return expected
 
     @staticmethod
     def _predicate_name(value: str) -> str:
@@ -167,7 +201,11 @@ class CEIMContract:
             provenance["normalization"] = [*list(provenance.get("normalization") or []), *relationship_changes]
             assertion = URIRef(f"urn:depo:assertion:{hashlib.sha256(f'{source_id}|{relation}|{target_id}|{json.dumps(provenance, sort_keys=True, default=str)}'.encode()).hexdigest()}")
             source = URIRef(f"urn:depo:source:{quote(str(provenance.get('source_standard') or 'unknown'), safe='')}:{quote(str(provenance.get('source_type') or relation), safe='')}")
+            graph.add((assertion, RDF.type, RDF.Statement))
             graph.add((assertion, RDF.subject, entity_uris[source_id])); graph.add((assertion, RDF.predicate, predicate)); graph.add((assertion, RDF.object, entity_uris[target_id])); graph.add((assertion, prov.wasDerivedFrom, source))
+            graph.add((assertion, ceim.sourceStandard, Literal(str(provenance.get("source_standard") or "unknown"))))
+            graph.add((assertion, ceim.sourceType, Literal(str(provenance.get("source_type") or relation))))
+            graph.add((assertion, ceim.sourceKey, Literal(str(provenance.get("source_key") or f"mapping:{provenance.get('source_type') or relation}"))))
         if decision:
             decision_id = hashlib.sha256(json.dumps(decision, sort_keys=True, default=str).encode()).hexdigest()
             activity = URIRef(f"urn:depo:activity:publication:{decision_id}")

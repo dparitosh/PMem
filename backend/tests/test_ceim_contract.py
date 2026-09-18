@@ -15,6 +15,17 @@ def test_ap242_entity_normalization_keeps_mapping_provenance():
     assert entity["provenance"]["mapping_pack"] == "ap242-core"
 
 
+def test_normalized_batch_rejects_stale_or_mixed_mapping_evidence():
+    entity = contract.normalize_entity(
+        standard="ap242",
+        record={"source_type": "product_definition", "source_id": "PD-1", "attributes": {"name": "Motor cover"}},
+    )
+    assert contract.validate_mapping_evidence(standard="ap242", entities=[entity], relationships=[])["mapping_pack"] == "ap242-core"
+    entity["provenance"]["mapping_version"] = "obsolete"
+    with pytest.raises(ValueError, match="mapping_version"):
+        contract.validate_mapping_evidence(standard="ap242", entities=[entity], relationships=[])
+
+
 def test_unknown_source_type_is_rejected_instead_of_guessed():
     with pytest.raises(ValueError, match="No CEIM entity mapping"):
         contract.normalize_entity(standard="qif", record={"source_type": "Unknown", "source_id": "1"})
@@ -28,6 +39,20 @@ def test_ceim_projection_retains_external_id_and_passes_shapes():
     report = contract.validate_projection(entities=[entity], relationships=[])
     assert report["conforms"] is True
     assert report["triple_count"] >= 2
+    assert report["shape_summary"]["node_shapes"] >= 2
+    assert report["shape_summary"]["property_shapes"] >= 1
+
+
+def test_relationship_projection_retains_declared_source_key():
+    entity = contract.normalize_entity(
+        standard="reqif",
+        record={"source_type": "SPEC-OBJECT", "source_id": "REQ-1", "attributes": {"LONG-NAME": "Torque"}},
+    )
+    relationship = contract.normalize_relationship(
+        standard="reqif", record={"source_type": "SPEC-RELATION", "source_id": "REQ-1", "target_id": "REQ-1"},
+    )
+    assert relationship["provenance"]["source_key"] == "mapping:SPEC-RELATION"
+    assert "sourceKey" in contract.turtle_projection(entities=[entity], relationships=[relationship])
 
 
 def test_source_normalization_records_text_date_and_number_evidence():

@@ -31,7 +31,7 @@ class Neo4jPublisher:
         except Exception as exc:
             return {"status": "unavailable", "database": self.database, "detail": f"{type(exc).__name__}: {exc}"}
 
-    def publish_turtle(self, *, content: bytes, ontology_id: str, prefix: str) -> dict[str, Any]:
+    def publish_turtle(self, *, content: bytes, ontology_id: str, prefix: str, publication_id: str | None = None) -> dict[str, Any]:
         """Upsert an ontology's RDF resources and hierarchy into Neo4j.
 
         The model retains original RDF predicates and additionally promotes
@@ -61,8 +61,25 @@ class Neo4jPublisher:
              "rdf_properties": json.dumps(literal_properties.get(iri, {}), sort_keys=True)}
             for iri in resource_iris
         ]
-        relationships: dict[str, list[dict[str, str]]] = {"SUBCLASS_OF": [], "DOMAIN": [], "RANGE": [], "SEMANTIC_RELATION": []}
-        special_predicates = {str(RDFS.subClassOf): "SUBCLASS_OF", str(RDFS.domain): "DOMAIN", str(RDFS.range): "RANGE"}
+        ceim_relationships = {
+            "hasPart": "HAS_PART", "hasGeometry": "HAS_GEOMETRY", "hasFeature": "HAS_FEATURE",
+            "hasCharacteristic": "HAS_CHARACTERISTIC", "usesDatum": "USES_DATUM",
+            "usesReferenceFrame": "USES_REFERENCE_FRAME", "realizes": "REALIZES",
+            "satisfies": "SATISFIES", "traceTo": "TRACE_TO", "derivedFrom": "DERIVED_FROM",
+            "verifiedBy": "VERIFIED_BY", "validatedBy": "VALIDATED_BY", "impacts": "IMPACTS",
+            "produces": "PRODUCES", "consumes": "CONSUMES",
+        }
+        relationships: dict[str, list[dict[str, str]]] = {
+            "SUBCLASS_OF": [], "DOMAIN": [], "RANGE": [], "SEMANTIC_RELATION": [],
+        }
+        relationships.update({relationship: [] for relationship in ceim_relationships.values()})
+        # Preserve arbitrary RDF predicates as SEMANTIC_RELATION, but promote
+        # CEIM containment and engineering-structure links for graph traversal.
+        ceim = "https://depo.example.org/ceim/0.1/"
+        special_predicates = {
+            str(RDFS.subClassOf): "SUBCLASS_OF", str(RDFS.domain): "DOMAIN", str(RDFS.range): "RANGE",
+            **{f"{ceim}{predicate}": relationship for predicate, relationship in ceim_relationships.items()},
+        }
         for subject, predicate, obj in rdf_graph:
             if isinstance(obj, Literal):
                 continue
@@ -70,6 +87,7 @@ class Neo4jPublisher:
             relationships[relation_type].append({"source": str(subject), "target": str(obj), "predicate": str(predicate)})
 
         now = datetime.now(timezone.utc).isoformat()
+        publication_id = str(publication_id or "").strip() or None
         resource_query = """
         UNWIND $rows AS row
         MERGE (node:OntologyResource {ontology_id: $ontology_id, iri: row.iri})
@@ -82,6 +100,10 @@ class Neo4jPublisher:
             "RANGE": "MERGE (source)-[edge:RANGE {ontology_id: $ontology_id}]->(target) SET edge.predicate = row.predicate",
             "SEMANTIC_RELATION": "MERGE (source)-[edge:SEMANTIC_RELATION {ontology_id: $ontology_id, predicate: row.predicate}]->(target)",
         }
+        relation_queries.update({
+            relationship: f"MERGE (source)-[edge:{relationship} {{ontology_id: $ontology_id}}]->(target) SET edge.predicate = row.predicate"
+            for relationship in ceim_relationships.values()
+        })
         def publish_transaction(tx):
             tx.run(resource_query, rows=resources, ontology_id=ontology_id, prefix=prefix, updated_at=now).consume()
             for relation_type, rows in relationships.items():
@@ -94,6 +116,19 @@ class Neo4jPublisher:
                 {relation_queries[relation_type]}
                 """
                 tx.run(query, rows=rows, ontology_id=ontology_id).consume()
+            if publication_id:
+                tx.run(
+                    """
+                    MERGE (receipt:OntologyPublication {ontology_id: $ontology_id, publication_id: $publication_id})
+                    SET receipt.prefix = $prefix, receipt.resources = $resources,
+                        receipt.relationships = $relationships, receipt.hierarchy_edges = $hierarchy_edges,
+                        receipt.status = 'published', receipt.published_at = $published_at
+                    """,
+                    ontology_id=ontology_id, publication_id=publication_id, prefix=prefix,
+                    resources=len(resources), relationships=sum(len(rows) for rows in relationships.values()),
+                    hierarchy_edges=len(relationships["SUBCLASS_OF"]) + len(relationships["HAS_PART"]),
+                    published_at=now,
+                ).consume()
 
         with GraphDatabase.driver(self.uri, auth=(self.username, self.password)) as driver:
             with driver.session(database=self.database) as session:
@@ -101,8 +136,20 @@ class Neo4jPublisher:
         return {
             "status": "success", "ontology_id": ontology_id, "resources": len(resources),
             "relationships": sum(len(rows) for rows in relationships.values()),
-            "hierarchy_edges": len(relationships["SUBCLASS_OF"]),
+            "hierarchy_edges": len(relationships["SUBCLASS_OF"]) + len(relationships["HAS_PART"]),
+            "publication_id": publication_id,
         }
+
+    def publication_receipt(self, *, ontology_id: str, publication_id: str) -> dict[str, Any] | None:
+        rows = self._session_rows(
+            """
+            MATCH (receipt:OntologyPublication {ontology_id: $ontology_id, publication_id: $publication_id})
+            RETURN receipt { .ontology_id, .publication_id, .prefix, .resources, .relationships,
+                             .hierarchy_edges, .status, .published_at } AS receipt
+            """,
+            ontology_id=ontology_id, publication_id=publication_id,
+        )
+        return dict(rows[0]["receipt"]) if rows else None
 
     def _session_rows(self, query: str, **parameters: Any) -> list[dict[str, Any]]:
         if not self.password:
@@ -277,7 +324,11 @@ class Neo4jPublisher:
 
     def analytics(self, *, ontology_id: str, limit: int = 3000) -> dict[str, Any]:
         projection = self.projection(ontology_id=ontology_id, limit=limit)
-        return {"ontology_id": ontology_id, "projection": projection, "analytics": GraphAnalyzer().analyze_graph(projection)}
+        return {"ontology_id": ontology_id, "projection": projection,
+                "scope": {"type": "bounded_projection", "requested_limit": limit,
+                          "whole_graph_verified": False,
+                          "warning": "Rankings and communities describe this projection, not necessarily the whole ontology"},
+                "analytics": GraphAnalyzer().analyze_graph(projection)}
 
     def neighborhood(self, *, ontology_id: str, iri: str, max_hops: int = 3, limit: int = 200) -> dict[str, Any]:
         hops, safe_limit = max(1, min(int(max_hops), 5)), max(1, min(int(limit), 1000))

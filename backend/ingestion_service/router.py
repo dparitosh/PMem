@@ -25,7 +25,7 @@ router = APIRouter(tags=["ingestion"])
 
 @router.post("/sysml-v2/import-commit", summary="Import the configured SysML v2 commit into an approved data job")
 async def import_sysml_commit(request: Request, payload: dict) -> dict:
-    from backend.platform.authorization import approval_identity
+    from backend.depo_platform.authorization import approval_identity
     from .sysml_repository import read_snapshot
     approval_identity(request, payload, token_env="DATA_JOB_EXECUTION_TOKEN")
     try:
@@ -312,7 +312,7 @@ async def ingest_data(
     # New clients must use governed-import and the canonical publication path.
     if os.getenv("DEPO_ALLOW_DIRECT_TABULAR_WRITES", "false").lower() != "true":
         raise HTTPException(status_code=409, detail="Direct tabular writes are disabled; submit the source through governed-import")
-    from backend.platform.authorization import service_write_identity
+    from backend.depo_platform.authorization import service_write_identity
     service_write_identity(request, token_env="INGESTION_WRITE_TOKEN", default_actor="ingestion-service")
     try:
         node_defs, rel_defs, index_defs, constraint_defs = [json.loads(item) for item in (nodeDefinitions, relationshipDefinitions, indexes, constraints)]

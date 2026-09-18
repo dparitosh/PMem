@@ -1,6 +1,6 @@
 """Run with: python -m uvicorn backend.ceim_service.app:app --port 8018."""
-from backend.platform.odata import ServiceCapability, create_odata_catalog_router
-from backend.platform.service_runtime import create_service_app
+from backend.depo_platform.odata import ServiceCapability, create_odata_catalog_router
+from backend.depo_platform.service_runtime import create_service_app
 
 from .router import router
 

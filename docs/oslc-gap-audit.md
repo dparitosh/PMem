@@ -75,6 +75,7 @@ Required environment settings before customer registration:
 ```env
 OSLC_ENABLED=true
 OSLC_TRS_ENABLED=true
+OSLC_TRS_STORE=postgres
 OSLC_BASE_URL=http://<depo-host>:8000
 OSLC_PROVIDER_ID=depo
 OSLC_PROVIDER_TITLE=DEPO Semantic Platform
@@ -173,7 +174,9 @@ Implemented:
 Partial:
 
 - OSLC Query 3.0 supports a conservative subset only: simple `and` filters, select, orderBy, searchTerms, and paging.
-- TRS is file-backed and lightweight. It now uses atomic writes and cross-process locking, but is not a distributed or enterprise persistence implementation.
+- TRS events use the PostgreSQL control plane by default with advisory locking,
+  preserving one ordered change log across service instances. Explicit
+  `OSLC_TRS_STORE=file` is retained only for isolated local development/tests.
 - Shapes are JSON OSLC-style payloads, not complete RDF content-negotiated shape documents.
 - AM and RM are read/query discovery profiles over the existing graph; they do not yet implement every mandatory operation and representation required for a conforming full-domain server.
 

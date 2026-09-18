@@ -12,7 +12,7 @@ from .merge_service import GovernedMergeService
 from .business_context import BusinessContextService
 from .semantica_adapter import semantica
 from backend.Services.ontology_upload_manager import OntologyUploadManager
-from backend.platform.authorization import approval_identity
+from backend.depo_platform.authorization import approval_identity
 from .vocabulary_service import vocabularies
 
 router = APIRouter(prefix="/ontologies", tags=["ontologies"])
@@ -146,7 +146,10 @@ def add_policy(payload: dict[str, Any]) -> dict:
 
 @router.post("/policies/evaluate", summary="Evaluate Semantica policies before a governed action")
 def evaluate_policies(payload: dict[str, Any]) -> dict:
-    return intelligence.evaluate_policies(dict(payload.get("decision") or {}), list(payload.get("exception_policy_ids") or []))
+    try:
+        return intelligence.evaluate_policies(dict(payload.get("decision") or {}), list(payload.get("exception_policy_ids") or []))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/merges/preview", summary="Create a persistent governed ontology merge preview")
@@ -312,6 +315,20 @@ def migrate_legacy_ontologies(payload: dict[str, Any]) -> dict:
             },
         ))
     return {"status": "success", "migrated": migrated, "count": len(migrated)}
+
+
+@router.post("/migrations/legacy/analytics", summary="Backfill missing draft catalog analytics from retained ontology artifacts")
+def backfill_legacy_analytics(payload: dict[str, Any], request: Request) -> dict:
+    actor = approval_identity(request, payload, token_env="ONTOLOGY_APPROVAL_TOKEN")
+    ontology_ids = [str(value).strip() for value in payload.get("ontology_ids", []) if str(value).strip()]
+    if not ontology_ids:
+        raise HTTPException(status_code=422, detail="ontology_ids must contain at least one registered ontology ID")
+    try:
+        return catalog.backfill_analytics(ontology_ids=ontology_ids, actor=actor)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/{ontology_id}", summary="Read ontology artifact metadata")

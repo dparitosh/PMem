@@ -77,7 +77,8 @@ These are standalone scripts. They are not APIs and are not imported as active F
 
 For customer release, expose these as official surfaces only:
 
-1. `start_backend.bat` and `start_frontend.bat` for service startup.
+1. `infra/windows/start-depo-services.ps1` for the supported local service
+   startup, invoked with `powershell -NoProfile -ExecutionPolicy Bypass -File`.
 2. FastAPI OpenAPI docs from `/docs` and `/openapi.json`.
 3. `backend/scripts/import_file.py` for backend import fallback.
 4. `backend/scripts/run_semantic_workflow.py` for Semantic Bridge / ontology fallback.

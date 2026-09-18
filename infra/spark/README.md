@@ -10,7 +10,7 @@ is not a dependency of the React frontend or DEPO request-serving services.
 2. From the repository root run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\infra\windows\test-depo-spark.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-spark.ps1
 ```
 
 The smoke job validates the pinned Java runtime, Spark launcher, PySpark

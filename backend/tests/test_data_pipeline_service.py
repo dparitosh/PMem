@@ -607,3 +607,38 @@ def test_publish_run_uses_canonical_api_before_advancing_checkpoint(monkeypatch)
     assert response.status_code == 200
     assert response.json()["checkpoint"] == {"offset": 2}
     assert response.json()["output_manifest"]["checkpoint_state"] == "advanced"
+
+
+def test_publish_run_reconciles_gateway_error_from_durable_graph_receipt(monkeypatch):
+    import json
+    import httpx
+    from backend.artifact_store import ArtifactStore
+    from backend.data_pipeline_service import run_records
+
+    registry = InMemoryRegistry()
+    monkeypatch.setattr(run_records, "store", registry)
+    artifact = ArtifactStore().ingest_bytes(
+        json.dumps({"representation": "normalized-ceim-v1", "ceim_version": "0.1.0", "standard": "qif", "entities": [], "relationships": []}).encode(),
+        filename="accepted-reconcile.json", kind="accepted-semantic-partition", media_type="application/json",
+    )
+    registry.put("reconcile-run", {
+        "run_id": "reconcile-run", "job_type": "validate-semantic-batch", "status": "completed",
+        "output_manifest": {"partition_artifacts": {"accepted": artifact["artifact_id"]}, "checkpoint_candidate": {"offset": 3}, "checkpoint_state": "awaiting_approved_publication"},
+    })
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, **kwargs):
+            return httpx.Response(503, request=httpx.Request("POST", url), text="gateway unavailable")
+        async def get(self, url, **kwargs):
+            return httpx.Response(200, request=httpx.Request("GET", url), json={"publication_id": "reconcile-run", "status": "published", "resources": 3})
+
+    monkeypatch.setattr("backend.data_pipeline_service.router.httpx.AsyncClient", FakeClient)
+    response = TestClient(app).post("/api/v1/pipeline/jobs/runs/reconcile-run/publish", json={
+        "approved_by": "pipeline-steward", "semantic_release": {"asset_id": "ceim", "version": "0.1.0", "lifecycle_status": "approved"},
+    })
+    assert response.status_code == 200
+    assert response.json()["checkpoint"] == {"offset": 3}
+    assert response.json()["output_manifest"]["publication"]["reconciled_after_gateway_error"] is True

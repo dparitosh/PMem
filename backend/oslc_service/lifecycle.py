@@ -10,13 +10,14 @@ from rdflib.namespace import RDF, DCTERMS
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from backend.mesh_store import PostgresRegistry
-from backend.platform.authorization import graph_read_identity
+from backend.depo_platform.authorization import graph_read_identity
 from backend.Services.oslc_service import OSLCService
 from .access import authorize
 
 KINDS = {"job-definitions": "data_job_definitions", "job-runs": "data_job_runs",
-         "products": "catalog_products"}
+         "products": "catalog_products", "ontologies": "ontology_catalog"}
 PUBLIC_FIELDS = {"job_id", "run_id", "product_id", "version", "status", "job_type",
+                 "ontology_id", "ontology_name", "lifecycle_status", "semantic_completeness", "analytics_profile_artifact_id",
                  "quality_profile", "validation_status", "created_at", "started_at",
                  "finished_at", "updated_at", "event_id", "ceim_version", "mapping_digest"}
 router = APIRouter(prefix="/oslc/lifecycle", tags=["OSLC lifecycle extensions"],

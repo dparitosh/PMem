@@ -49,6 +49,19 @@ class BusinessContextService:
         self._loaded = True
 
     def upsert(self, payload: dict[str, Any]) -> dict[str, Any]:
+        # Serialize cooperating writers and reload under the lock. Never mutate
+        # the shared in-process graph before validation and persistence succeed.
+        with self.registry.advisory_lock(self._STATE_KEY) as acquired:
+            if not acquired:
+                raise RuntimeError("Business context update in progress; retry")
+            staged = BusinessContextService(self.root, registry=self.registry)
+            result = staged._upsert(payload)
+            self.graph = staged.graph
+            self._loaded = True
+            self._persistence_error = ""
+            return result
+
+    def _upsert(self, payload: dict[str, Any]) -> dict[str, Any]:
         self._load_persisted_state(require_persistence=True)
         nodes = list(payload.get("nodes") or [])
         edges = list(payload.get("relationships") or payload.get("edges") or [])

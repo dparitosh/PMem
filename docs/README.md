@@ -11,7 +11,7 @@
 ## Repository boundaries
 
 `backend/*_service` and `backend/qif` contain deployed API services.
-`backend/platform` contains shared runtime infrastructure. `backend/ceim`
+`backend/depo_platform` contains shared runtime infrastructure. `backend/ceim`
 and `backend/ontology_service/domain` contain canonical and ontology domain
 logic respectively. Ingestion browser/export HTTP adapters live in
 `backend/ingestion_service/api`. Contract tests live in `backend/tests/contracts`.

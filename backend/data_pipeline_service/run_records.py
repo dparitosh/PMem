@@ -78,7 +78,6 @@ def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id
         "job_version": definition["version"],
         "job_type": definition["job_type"],
         "quality_profile": definition.get("quality_profile"),
-        "quality_profile": definition.get("quality_profile"),
         "status": "running",
         "correlation_id": correlation_id,
         "replay_of": replay_of,
@@ -216,8 +215,6 @@ def telemetry_summary(*, limit: int = 100) -> dict[str, Any]:
         return next((int(values[name]) for name in names if values.get(name) is not None), 0)
 
     return {
-        "scope": "recent_runs",
-        "limit": limit,
         "scope": "recent_runs",
         "limit": limit,
         "runs": len(runs),

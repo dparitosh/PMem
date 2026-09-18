@@ -12,13 +12,14 @@ process.
 
 ## Start The Backend
 
-From repository root:
+For the supported service deployment, use the manifest-driven Windows launcher
+from the repository root:
 
-```bat
-.\start_backend.bat
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\start-depo-services.ps1
 ```
 
-Or directly:
+For compatibility-host debugging only, start the legacy host directly:
 
 ```bat
 cd D:\Githuv_repo\PMem

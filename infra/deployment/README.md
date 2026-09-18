@@ -14,7 +14,7 @@ CEIM and Data Pipeline, preventing an incomplete gateway registration.
 ## Configure a deployment
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\infra\deployment\new-depo-deployment-config.ps1 -OutputPath .env.local
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\new-depo-deployment-config.ps1 -OutputPath .env.local
 ```
 
 The generator creates a unique 384-bit token for every bootstrap token and
@@ -65,19 +65,19 @@ not disable API authentication or permanently change system execution policy.
 
 ```powershell
 # Validate settings and the manifest without requiring running services
-powershell -ExecutionPolicy Bypass -File .\infra\deployment\test-depo-deployment.ps1 -EnvFile .env.local -Profile Bootstrap -SkipEndpointChecks
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\test-depo-deployment.ps1 -EnvFile .env.local -Profile Bootstrap -SkipEndpointChecks
 
 # Start services, then validate all health, readiness, OpenAPI 3.0.3 and OData contracts
-powershell -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local
 
 # Run local or customer-network contract validation after a restart
-powershell -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Validate -EnvFile .env.local
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Validate -EnvFile .env.local
 
 # Validate production requirements before release
-powershell -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action ReleasePreflight -EnvFile .env.local -Profile Production
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action ReleasePreflight -EnvFile .env.local -Profile Production
 
 # Stop only DEPO child processes
-powershell -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Stop
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Stop
 ```
 
 For Apache Spark, add `-EnableSpark`; add `-EnablePipelineScheduler` only when
@@ -97,8 +97,8 @@ The service code rejects non-loopback requests even in this mode. Create the
 configuration explicitly, then validate it with the separate confirmation:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\infra\deployment\new-depo-deployment-config.ps1 -OutputPath .env.local -AuthMode disabled -ConfirmInsecureLocalDemo
-powershell -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action ReleasePreflight -EnvFile .env.local -Profile Bootstrap -LocalInsecureDemo
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\new-depo-deployment-config.ps1 -OutputPath .env.local -AuthMode disabled -ConfirmInsecureLocalDemo
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action ReleasePreflight -EnvFile .env.local -Profile Bootstrap -LocalInsecureDemo
 ```
 
 Never use this mode on a LAN, VPN, cloud VM, APIM backend or customer network.

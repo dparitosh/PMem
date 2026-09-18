@@ -2,8 +2,8 @@
 
 Run with: ``python -m uvicorn backend.qif.app:app --port 8010``.
 """
-from backend.platform.service_runtime import create_service_app
-from backend.platform.odata import ServiceCapability, create_odata_catalog_router
+from backend.depo_platform.service_runtime import create_service_app
+from backend.depo_platform.odata import ServiceCapability, create_odata_catalog_router
 from .router import router
 
 app = create_service_app(title="Engineering Schema-Set Service", version="1.0.0")

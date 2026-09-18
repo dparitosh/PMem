@@ -2,8 +2,8 @@
 
 Run: python -m uvicorn backend.ontology_service.app:app --port 8011
 """
-from backend.platform.service_runtime import create_service_app
-from backend.platform.odata import ServiceCapability, create_odata_catalog_router
+from backend.depo_platform.service_runtime import create_service_app
+from backend.depo_platform.odata import ServiceCapability, create_odata_catalog_router
 from backend.routes.admin_routes import router as admin_router
 from backend.routes.metadata_registry_routes import router as metadata_registry_router
 from backend.routes.ontology_routes import router as legacy_ontology_router
@@ -22,6 +22,7 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Governed merge preview", "/api/v1/ontologies/merges/preview", "POST", "Review an ontology merge before approval"),
         ServiceCapability("Approved ontology merge", "/api/v1/ontologies/merges/{preview_id}/apply", "POST", "Persist an approved merge with provenance"),
         ServiceCapability("Legacy catalog migration", "/api/v1/ontologies/migrations/legacy", "POST", "Adopt named legacy ingestion artifacts with stable IDs"),
+        ServiceCapability("Legacy analytics backfill", "/api/v1/ontologies/migrations/legacy/analytics", "POST", "Add draft analytics and lifecycle metadata from retained ontology artifacts"),
         ServiceCapability("Register ontology artifact", "/api/v1/ontologies/register", "POST", "Syntax-validate and register a draft RDF/OWL artifact"),
         ServiceCapability("Ontology lifecycle", "/api/v1/ontologies/{ontology_id}/transition", "POST", "Move a draft ontology through review, approval, deprecation, or retirement"),
         ServiceCapability("Business-object context", "/api/v1/ontologies/business-context", "GET", "Inspect Semantica ContextGraph business-object context"),

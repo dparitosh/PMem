@@ -1,5 +1,254 @@
 # DEPO Focused Delivery Tracker
 
+## PostgreSQL analytics and knowledge-graph audit — 2026-09-18
+
+- Confirmed the `semantic` PostgreSQL schema, migrations 1–4, control-plane
+  tables, and `depo_ontology_analytics` view are present.
+- Added an approval-gated, idempotent legacy ontology analytics backfill. It
+  derives RDF metrics from retained artifacts and records a draft lifecycle;
+  it cannot approve or publish an ontology. Applied locally to two AP242
+  records and the QIF record.
+- PostgreSQL catalog now exposes analytics for all four registered ontologies:
+  AP242 (24,902 triples / 3,000 classes each), QIF (60,526 / 3,272), and
+  PLMXML (66,068 / 5,235). Live Neo4j contains 22,217 published RDF resources.
+- Catalog registration and Neo4j publication remain deliberately distinct:
+  draft catalog records are not inferred to be graph-approved merely because a
+  similarly named graph projection exists.
+
+## Durable OSLC TRS control plane — 2026-09-18
+
+- OSLC TRS change-log state now uses the PostgreSQL control-plane registry and
+  advisory locking by default, so an ordered lifecycle feed survives service
+  restart and can be shared across instances. File mode requires the explicit
+  `OSLC_TRS_STORE=file` local-development setting.
+- Focused OSLC/TRS and service-contract verification: 29 tests passed. The
+  restarted live OSLC service returned a `trs:TrackedResourceSet` descriptor
+  and a readable PostgreSQL-backed changelog.
+
+## Control-plane contract cleanup — 2026-09-18
+
+- Removed duplicate quality-profile and telemetry keys from durable data-job
+  manifests, leaving one authoritative value in API and persisted output.
+- Removed the duplicate remote-sync capability from the OSLC OData catalog.
+  The generated OpenAPI contract exposes exactly one remote-sync path.
+- Focused pipeline, service-contract, and OSLC lifecycle tests: 32 passed.
+  All local PMem and OSLC readiness endpoints returned HTTP 200 after restart.
+
+## Publication recovery and mapping release gate — 2026-09-17
+
+- Normalized CEIM batches now prove the active mapping-pack identifier,
+  version, and SHA-256 digest for every entity and relationship. A stale or
+  mixed retained batch is rejected before validation or graph publication;
+  replay must use its original governed mapping release or be deliberately
+  remapped and approved.
+- Graph publication now accepts the durable pipeline run ID as a publication
+  ID and records a Neo4j `OntologyPublication` receipt. If the CEIM response
+  times out or a gateway returns 502/503/504, the pipeline queries that receipt
+  and advances a checkpoint only when the committed publication is proven. It
+  never blindly retries a write.
+- Existing graph data remains unchanged by this safety change. A controlled
+  replay/re-publication is required to apply newly added relationship typing.
+
+## Approved PLMXML structural publication — 2026-09-17
+
+- User-approved local-test mapping release
+  `plmxml-motor-structural-local-test-20260917` version 0.3.0 was created,
+  reviewed, and approved with explicit non-certification evidence.
+- New governed run `a98e68ee-7504-4798-a709-f73c407cf176` completed with 1980
+  entities and 1688 structural relationships; canonical publication advanced
+  its PostgreSQL checkpoint. Receipt: 7647 RDF resources, 22012 relationships,
+  and 1049 typed hierarchy edges.
+- Publisher now promotes the full declared CEIM relationship vocabulary to
+  typed Neo4j edges (including TRACE_TO, SATISFIES, REALIZES, verification,
+  impact, and production relations). Existing published graphs are immutable;
+  this behavior applies to future or deliberately replayed publications.
+- Focused graph/CEIM verification: 9 tests passed. Services restarted and key
+  readiness endpoints return HTTP 200.
+
+## Relationship provenance quality gate — 2026-09-17
+
+- CEIM RDF reifies every canonical relationship as an RDF statement and retains
+  `sourceStandard`, `sourceType`, and `sourceKey` provenance.
+- New SHACL relationship assertion shape requires source, predicate, target,
+  and the three provenance values; adapters without a field-level key retain a
+  deterministic `mapping:<relationship-source-type>` key.
+- Basic CEIM relationship validation conforms with two node shapes and one
+  property shape. Services restarted; ontology, graph, CEIM, and pipeline
+  readiness endpoints return HTTP 200.
+
+## PLMXML structural-reference extraction — 2026-09-17
+
+- PLMXML mapping pack now declares source structural fields instead of relying
+  only on generic parser relationship labels: ProductInstance `parent_ref` and
+  `part_ref`, ProductView `root_refs` and `product_ref`.
+- Each CEIM relationship records its `source_key` in provenance. Free-text
+  attributes such as names, revisions, and descriptions remain properties.
+- The Induction Motor validation sample emits 1980 entities and 1688 declared
+  structural relationships (340 more than the prior generic-parser result),
+  with all relationship provenance keys verified. PMem services were restarted
+  and ontology, graph, ingestion, CEIM, and pipeline readiness return HTTP 200.
+
+## Structural and recovery fixes — 2026-09-17
+
+- CEIM SHACL contract now exposes a named `ExternalIdPropertyShape`; live
+  validation reports one node shape and one property shape.
+- Graph publication promotes CEIM `hasPart`, geometry, feature, and
+  characteristic predicates to typed Neo4j relationships while retaining the
+  source RDF predicate. Existing published data is not rewritten implicitly.
+- Fixed Windows recovery: stop script now discovers only PMem processes by the
+  deployment manifest instead of trusting stale PID files. A clean restart was
+  performed; ontology, graph, CEIM, and pipeline readiness endpoints return 200.
+
+## Runtime reliability fixes — 2026-09-17
+
+- Renamed internal `backend.platform` package to `backend.depo_platform`.
+  This removes the collision with Python's standard-library `platform` module
+  when operators run pytest from the `backend` directory.
+- Canonical and speed-path publication timeouts now use bounded, validated
+  `GRAPH_PUBLICATION_TIMEOUT_SECONDS` configuration (default 180 seconds,
+  minimum 1, maximum 3600). Invalid values safely use the default.
+- Replaced the obsolete localhost:8000 import CLI, whose upload/preview/commit
+  routes no longer exist, with a client for the governed ingestion endpoint on
+  port 8014. It cannot clean or publish the graph.
+- Focused backend verification: 32 tests passed from the backend directory.
+
+## Scoped PLMXML publication completed — 2026-09-17
+
+- User-authorized local-test mapping release `plmxml-motor-local-test-20260917`
+  version 0.2.0 created and transitioned through review to approved via the
+  metadata API, with explicit limited-validation evidence (not certification).
+- Published run `451c9183-1e06-43b3-bc6c-8380d12b9c6e` through pipeline → CEIM →
+  graph API. First request timed out after its graph transaction committed.
+- Added missing composite lookup index on OntologyResource(ontology_id, iri).
+  Re-runnable provisioning DDL: `infra/deployment/neo4j-publication-index.cypher`.
+  Governed idempotent retry returned HTTP 200; no direct graph-data bypass.
+- Independent PostgreSQL read confirms `published` and checkpoint `advanced`
+  at 2026-09-17T08:00:54.770697+00:00. Neo4j read confirms 7304 RDF resources
+  and 18624 edges, matching receipt counts after retry (including provenance).
+- Business input remains 1980 entities / 1348 relationships. These counts are
+  not interchangeable with the RDF projection counts.
+- Generated XSD ontology remains draft; full semantic constraints and customer
+  certification are still outstanding. This closes only scoped local publication.
+
+## Recovery and publication recheck — 2026-09-17
+
+- Follow-up: increased service readiness timeout from 90 to 300 seconds,
+  configurable up to 3600 seconds; added waiting/log-location diagnostics.
+  PowerShell syntax validation passed. Ontology `/readyz` now returns HTTP 200
+  after completing its earlier startup. The startup availability blocker is
+  cleared; publication and receipt verification below remain pending.
+
+- PostgreSQL recovered after an unclean shutdown; the pipeline API returns saved
+  run `451c9183-1e06-43b3-bc6c-8380d12b9c6e` as completed, retaining 1980 entities
+  and 1348 relationships. Its checkpoint remains `awaiting_approved_publication`.
+- Live graph health returns HTTP 200 for Neo4j database `ontology`.
+- Fixed Windows startup logging to place future PostgreSQL logs outside PGDATA,
+  avoiding an active log handle in the directory crash recovery must sync.
+- User authorized scoped local publication, but no publication performed:
+  ontology service port 8011 remains unavailable after the startup readiness
+  timeout. Restore this dependency, record the scoped release approval through
+  its API, publish through the pipeline canonical endpoint, then verify the
+  receipt/checkpoint and graph counts. Do not bypass the release gate.
+- The generated schema ontology remains draft with partial semantic coverage;
+  local publication approval must not be described as customer certification.
+
+## PLMXML governed job execution — 2026-09-16
+
+- Neo4j graph health verified OK (database ontology).
+- Initial run 2df93b34-7de2-4518-b1d7-aeb534495b89 failed because Spark was disabled.
+  Restarted only pipeline with installed Spark 4.1.2/Java 21 and replayed retained input.
+- Run 451c9183-1e06-43b3-bc6c-8380d12b9c6e completed in 55.2 seconds at
+  2026-09-16 10:03:41 IST; 1980 entities and 1348 relationships retained.
+- PostgreSQL manifests retain accepted artifact, mapping digest, replay lineage,
+  and checkpoint state awaiting_approved_publication. No Neo4j write performed.
+- Publication blocked: no approved PLMXML semantic release. Existing boc-core and
+  historical governance acceptance approvals must not substitute for this draft.
+- Validation scope is limited: current CEIM SHACL summary has one node shape and
+  zero property shapes. Full semantic conformance is not established by that pass.
+- Restart pipeline with -EnableSpark in the standard startup script; the manual
+  runtime enablement is process-scoped. Schema draft remains partial and unapproved.
+
+## PLMXML draft analytics and OSLC closure — 2026-09-16 09:53 IST
+
+- This pass ran approximately 09:49–09:53 IST (3 minutes 49 seconds).
+- Applied migration 4: `semantic.depo_ontology_analytics`, a relational VIEW of
+  registered ontology statistics/provenance, not instance-domain analytics tables.
+- Verified SQL row for plmxml_12662e4cec26454b: 5235 classes, 516 object properties,
+  3865 datatype properties, lifecycle draft.
+- Connected retained catalog artifacts to authenticated/authorized OSLC shape
+  lookup and added ontologies to lifecycle discovery. Live HTTP response is 200
+  with 5235 classes and 4381 properties, explicitly draft/partial semantics.
+- Persisted a local-development grant scoped to this ontology in ignored .env.local;
+  restarted only OSLC. No approval or publication was fabricated.
+- 27 focused OSLC tests passed. Open semantic limitations remain XSD facets,
+  choices/groups, identity constraints and QName scope; approval requires review.
+
+## PLMXML artifact registration — 2026-09-16 09:42 IST
+
+- Continuation began 09:39 IST; registration/state verification took approximately
+  3 minutes 30 seconds. Ontology, pipeline health and OSLC catalog return HTTP 200
+  after slow startup (the startup script's initial readiness deadline expired).
+- Registered PostgreSQL ontology draft `plmxml_12662e4cec26454b`; read-back confirms
+  lifecycle draft and retained analytics-profile artifact. 23 source XSDs retained.
+- Generated RDF: 66068 triples, 5235 OWL classes, 516 object properties and
+  3865 datatype properties. Generator reports partial XSD semantic completeness.
+- Analytics artifact is JSON, NOT a PostgreSQL relational analytics schema.
+- OSLC draft shape returns 404: standalone catalog registration is not yet
+  connected to the legacy OSLC ontology-shape path. This remains a concrete gap.
+- No approvals or graph/product publication were performed. Semantic review,
+  relational analytics materialization and OSLC draft discovery remain pending.
+
+## PLMXML live-state verification — 2026-09-16
+
+- Extended explicit PLMXML mapping v0.2.0 for Terminal, ConnectionRevision and
+  GDE as Resource, retaining source types; occurrence references use TRACE_TO.
+- Real sample: 1980 entities, all 1348 parsed relationships retained, zero
+  dropped relationships. Six focused PLMXML/OSLC tests pass.
+- Started existing PostgreSQL cluster after interrupted shutdown; read-only
+  verification succeeded after recovery despite initial startup wait timeout.
+- PostgreSQL has eight semantic control-plane tables. Two PLMXML-related
+  validation runs are completed; these are prior runs, not this sample's release.
+- No rows in ontology_catalog, catalog_products or data_products. Therefore no
+  registered PLMXML ontology or published analytics product is verified.
+- Schema analytics currently produces JSON profiles/drafts, not relational
+  analytics tables. Full ontology generation/registration and approved product
+  publication remain open. Do not equate parser success with these steps.
+
+## PLMXML execution follow-up — 2026-09-16
+
+- Corrected validator path identity: all 23 schemas combine successfully and
+  003257_InductionMotor.xml passes XSD validation. The earlier duplicate type
+  diagnosis was a validator URI-resolution defect, not incompatible schemas.
+- Executed parser and CEIM normalization. Fixed fragment references (#id) being
+  compared with bare entity ids: 1680 entities and 1048 relationships now emitted.
+- 300 of 1348 parsed relationships remain unmapped; counts now explicitly report
+  this loss. Full semantic completeness is NOT claimed. No graph publication.
+
+## PLMXML schema-set audit — 2026-09-16
+
+- Added read-only `tools/diagnostics/validate_schema_set.py`, with local-only
+  schema resolution. Tested the supplied 23 XSDs and InductionMotor XML.
+- All 23 individual schema entry points compile. Individual entry points do
+  not validate this multi-extension export (RevisionRule/Terminal coverage).
+- Combining all files indiscriminately fails with duplicate SetupInstanceType.
+  An explicit compatible extension profile is required; do not label this as
+  invalid source data or silently drop schemas to manufacture a pass.
+- No data published; semantic/AP242 mapping validation remains pending.
+
+## Context and policy safety — 2026-09-16
+
+- Disabled caller-selected policy exemptions; evaluation rejects them with 422.
+- Context writes reload under an advisory lock and persist a staged graph before
+  replacing shared memory, preventing failed-request leakage and stale-writer loss.
+- Analytics explicitly identifies bounded-projection scope.
+- Verified: two graph analytics tests and five context/policy tests passed;
+  changed Python modules compile. The context suite completed with Hugging Face
+  offline flags after earlier collection delays; networked initialization remains
+  an operational concern.
+- Remaining: diagnose slow import initialization and refresh
+  long-lived readers, and implement separately governed decision/causal/temporal
+  capabilities. These are not made available by this safety patch.
+
 ## Pre-push review — 2026-09-15
 
 - Added default-deny lifecycle resource grants, denied unauthorized collection

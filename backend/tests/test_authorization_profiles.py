@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from backend.platform.authorization import approval_identity, graph_read_identity
+from backend.depo_platform.authorization import approval_identity, graph_read_identity
 
 
 def _request(host: str) -> Request:

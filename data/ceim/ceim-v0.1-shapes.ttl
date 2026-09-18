@@ -1,5 +1,7 @@
 @prefix ceim: <https://depo.example.org/ceim/0.1/> .
 @prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 
 ceim:CanonicalEntityShape a sh:NodeShape ;
   sh:targetClass ceim:Product, ceim:ProductRevision, ceim:Part, ceim:Assembly,
@@ -7,4 +9,21 @@ ceim:CanonicalEntityShape a sh:NodeShape ;
     ceim:Configuration, ceim:Test, ceim:Process, ceim:Resource, ceim:Feature,
     ceim:Characteristic, ceim:Datum, ceim:DatumReferenceFrame,
     ceim:PMIAnnotation, ceim:GeometryBody ;
-  sh:property [ sh:path ceim:externalId ; sh:minCount 1 ; sh:maxCount 1 ; sh:message "Every CEIM entity requires exactly one source-derived externalId." ] .
+  sh:property ceim:ExternalIdPropertyShape .
+
+ceim:ExternalIdPropertyShape a sh:PropertyShape ;
+  sh:path ceim:externalId ;
+  sh:minCount 1 ;
+  sh:maxCount 1 ;
+  sh:datatype xsd:string ;
+  sh:message "Every CEIM entity requires exactly one source-derived externalId." .
+
+ceim:RelationshipAssertionShape a sh:NodeShape ;
+  sh:targetClass rdf:Statement ;
+  sh:property [ sh:path rdf:subject ; sh:minCount 1 ; sh:maxCount 1 ; sh:nodeKind sh:IRI ] ;
+  sh:property [ sh:path rdf:predicate ; sh:minCount 1 ; sh:maxCount 1 ; sh:nodeKind sh:IRI ] ;
+  sh:property [ sh:path rdf:object ; sh:minCount 1 ; sh:maxCount 1 ; sh:nodeKind sh:IRI ] ;
+  sh:property [ sh:path ceim:sourceStandard ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ] ;
+  sh:property [ sh:path ceim:sourceType ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ] ;
+  sh:property [ sh:path ceim:sourceKey ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ;
+    sh:message "Every canonical relationship must retain its declared source key." ] .

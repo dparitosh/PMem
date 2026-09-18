@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from rdflib import Graph
+from rdflib.namespace import OWL
 
 from backend.artifact_store import artifact_store
 from backend.mesh_store import PostgresRegistry
@@ -78,6 +79,19 @@ class OntologyCatalog:
             except Exception as exc:  # try the other supported syntax
                 last_error = exc
         raise ValueError(f"Ontology RDF/OWL parsing failed: {last_error}") from last_error
+
+    @classmethod
+    def _analytics_from_content(cls, content: bytes, filename: str) -> dict[str, int]:
+        """Derive catalog metrics from a retained RDF artifact, never a graph copy."""
+        parsed = cls._parse_ontology(content, filename)
+        graph = Graph()
+        graph.parse(data=content, format=parsed["rdf_format"])
+        return {
+            "triples": len(graph),
+            "classes": len(set(graph.subjects(predicate=None, object=OWL.Class))),
+            "object_properties": len(set(graph.subjects(predicate=None, object=OWL.ObjectProperty))),
+            "datatype_properties": len(set(graph.subjects(predicate=None, object=OWL.DatatypeProperty))),
+        }
 
     def register(self, *, content: bytes, filename: str, ontology_name: str, prefix: str, description: str = "", source: str = "api", extra_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         if not content:
@@ -253,6 +267,44 @@ class OntologyCatalog:
         })
         return self._save_metadata(metadata)
 
+    def backfill_analytics(self, *, ontology_ids: list[str], actor: str) -> dict[str, Any]:
+        """Add missing draft metadata and RDF analytics to legacy catalog records.
+
+        This is intentionally additive: it cannot alter an approval state,
+        publish to Neo4j, or replace the immutable source artifact.
+        """
+        if not str(actor or "").strip():
+            raise ValueError("A review identity is required")
+        results: list[dict[str, Any]] = []
+        for ontology_id in ontology_ids:
+            safe_id = _safe_token(ontology_id, field="ontology_id")
+            with self._transition_lock:
+                lock = self.registry.advisory_lock(f"analytics-backfill:{safe_id}") if self._postgres_enabled else _null_lock()
+                with lock as acquired:
+                    if not acquired:
+                        raise ValueError(f"Ontology analytics is being updated; retry: {safe_id}")
+                    metadata = self.get(safe_id)
+                    if metadata is None:
+                        raise LookupError(f"Ontology artifact not found: {safe_id}")
+                    if metadata.get("statistics") and metadata.get("lifecycle_status"):
+                        results.append({"ontology_id": safe_id, "status": "unchanged"})
+                        continue
+                    _, content = self.read_artifact(safe_id)
+                    analytics = self._analytics_from_content(content, str(metadata.get("original_filename") or "ontology.ttl"))
+                    prior_status = metadata.get("lifecycle_status")
+                    metadata.setdefault("lifecycle_status", "draft")
+                    metadata.setdefault("semantic_completeness", "unknown")
+                    metadata["statistics"] = analytics
+                    metadata["validation"] = {"status": "passed", **self._parse_ontology(content, str(metadata.get("original_filename") or "ontology.ttl"))}
+                    metadata.setdefault("lifecycle_events", []).append({
+                        "at": _now(), "actor": str(actor), "from": prior_status,
+                        "to": metadata["lifecycle_status"],
+                        "reason": "legacy catalog analytics backfill; no approval or publication performed",
+                    })
+                    self._save_metadata(metadata)
+                    results.append({"ontology_id": safe_id, "status": "updated", "statistics": analytics, "lifecycle_status": metadata["lifecycle_status"]})
+        return {"results": results, "updated": sum(item["status"] == "updated" for item in results)}
+
     def list(self) -> list[dict[str, Any]]:
         entries = list(self.registry.all().values()) if self._postgres_enabled else []
         known = {str(item.get("ontology_id") or "") for item in entries}
@@ -267,3 +319,8 @@ class OntologyCatalog:
 
 
 catalog = OntologyCatalog()
+
+
+class _null_lock:
+    def __enter__(self) -> bool: return True
+    def __exit__(self, *_: Any) -> None: return None

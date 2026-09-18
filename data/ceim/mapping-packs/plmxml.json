@@ -1,8 +1,11 @@
 {
   "id": "plmxml-teamcenter-core",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "ceim_version": "0.1.0",
   "entities": {
+    "Terminal": {"ceim_type": "Resource", "properties": {"$source_id": "external_id", "name": "name", "subType": "source_subtype"}},
+    "ConnectionRevision": {"ceim_type": "Resource", "properties": {"$source_id": "external_id", "name": "name", "revision": "revision", "subType": "source_subtype"}},
+    "GDE": {"ceim_type": "Resource", "properties": {"$source_id": "external_id", "name": "name", "subType": "source_subtype"}},
     "Part": {"ceim_type": "Part", "properties": {"$source_id": "external_id", "name": "name", "part_number": "part_number", "revision": "revision", "description": "description"}},
     "ProductInstance": {"ceim_type": "Assembly", "properties": {"$source_id": "external_id", "name": "name", "quantity": "quantity"}},
     "ProductView": {"ceim_type": "Product", "properties": {"$source_id": "external_id", "name": "name", "view_type": "view_type"}},
@@ -11,7 +14,16 @@
     "ChangeNotice": {"ceim_type": "Change", "properties": {"$source_id": "external_id", "name": "name", "status": "status", "change_type": "change_type"}}
   },
   "relationships": {
+    "instance_resource": {"relationship": "TRACE_TO"},
     "instance_part": {"relationship": "HAS_PART"},
-    "assembly_child": {"relationship": "HAS_PART"}
-  }
+    "assembly_child": {"relationship": "HAS_PART"},
+    "view_root": {"relationship": "HAS_PART"},
+    "view_product": {"relationship": "TRACE_TO"}
+  },
+  "reference_rules": [
+    {"source_type": "ProductInstance", "attribute": "parent_ref", "relationship_source_type": "assembly_child", "reverse": true},
+    {"source_type": "ProductInstance", "attribute": "part_ref", "relationship_source_type": "instance_part", "reverse": false},
+    {"source_type": "ProductView", "attribute": "root_refs", "relationship_source_type": "view_root"},
+    {"source_type": "ProductView", "attribute": "product_ref", "relationship_source_type": "view_product"}
+  ]
 }

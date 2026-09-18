@@ -1,6 +1,6 @@
 """Standalone OSLC server/client. Run on port 8015."""
-from backend.platform.service_runtime import create_service_app
-from backend.platform.odata import ServiceCapability, create_odata_catalog_router
+from backend.depo_platform.service_runtime import create_service_app
+from backend.depo_platform.odata import ServiceCapability, create_odata_catalog_router
 from backend.routes.oslc_routes import router as server_router
 from .router import router as client_router
 from .lifecycle import router as lifecycle_router
@@ -12,7 +12,6 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Health", "/api/v1/oslc/health", description="OSLC service health"),
         ServiceCapability("Remote catalog", "/api/v1/oslc/remote/catalog", description="Discover a configured OSLC provider catalog"),
         ServiceCapability("Remote query", "/api/v1/oslc/remote/query/{resource_type}", "POST", "Query a configured OSLC provider"),
-        ServiceCapability("Stage remote sync", "/api/v1/oslc/remote/sync/{resource_type}", "POST", "Pull and stage a remote OSLC snapshot"),
         ServiceCapability("Stage remote sync", "/api/v1/oslc/remote/sync/{resource_type}", "POST", "Pull and stage a remote OSLC snapshot"),
         ServiceCapability("OSLC server catalog", "/oslc/catalog", description="DEPO OSLC service provider catalog"),
     ],

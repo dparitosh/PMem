@@ -5,7 +5,8 @@ import os
 from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from backend.platform.authorization import approval_identity
+from backend.depo_platform.authorization import approval_identity
+from backend.depo_platform.network import bounded_timeout_seconds
 from backend.artifact_store import ArtifactStore
 from . import speed_path
 
@@ -57,7 +58,8 @@ async def publish(reconciliation_id: str, payload: dict[str, Any], request: Requ
         root = os.getenv("CEIM_SERVICE_URL", "http://127.0.0.1:8018/api/v1").rstrip("/")
         root = root if root.endswith("/api/v1") else f"{root}/api/v1"
         publication_payload = {**batch, "ontology_id": payload.get("ontology_id"), "prefix": payload.get("prefix", "ceim"), "semantic_release": payload.get("semantic_release"), "approved_by": actor, "approval_token": payload.get("approval_token")}
-        async with httpx.AsyncClient(timeout=90.0) as client:
+        publication_timeout = bounded_timeout_seconds("GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180)
+        async with httpx.AsyncClient(timeout=publication_timeout) as client:
             response = await client.post(f"{root}/ceim/publications/graph", json=publication_payload)
         if response.is_error: raise RuntimeError(f"Canonical publication returned HTTP {response.status_code}: {response.text[:500]}")
         published = {**record, "status": "published", "published_at": speed_path._now(), "published_by": actor, "publication": dict(response.json())}

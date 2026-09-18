@@ -35,6 +35,30 @@ def test_catalog_accepts_turtle_serialized_owl(tmp_path):
     assert record["validation"]["rdf_format"] == "turtle"
 
 
+def test_legacy_catalog_analytics_backfill_is_additive_and_keeps_draft(tmp_path):
+    catalog = OntologyCatalog(root=tmp_path / "catalog")
+    record = catalog.register(
+        content=(b'@prefix owl: <http://www.w3.org/2002/07/owl#> . '
+                 b'@prefix ex: <https://example.test/> . ex:Part a owl:Class . '
+                 b'ex:hasPart a owl:ObjectProperty .'),
+        filename="legacy.ttl", ontology_name="Legacy", prefix="legacy",
+    )
+    legacy = catalog.get(record["ontology_id"])
+    for field in ("lifecycle_status", "semantic_completeness", "statistics", "validation", "lifecycle_events"):
+        legacy.pop(field, None)
+    catalog._save_metadata(legacy)
+
+    result = catalog.backfill_analytics(ontology_ids=[record["ontology_id"]], actor="steward")
+
+    assert result["updated"] == 1
+    updated = catalog.get(record["ontology_id"])
+    assert updated["lifecycle_status"] == "draft"
+    assert updated["semantic_completeness"] == "unknown"
+    assert updated["statistics"]["classes"] == 1
+    assert updated["statistics"]["object_properties"] == 1
+    assert "no approval or publication" in updated["lifecycle_events"][-1]["reason"]
+
+
 def test_invalid_legacy_artifact_cannot_be_approved(tmp_path):
     catalog = OntologyCatalog(root=tmp_path)
     record = catalog.adopt_legacy(ontology_id="legacy", content=b"broken [", filename="old.ttl", ontology_name="Old", prefix="old")

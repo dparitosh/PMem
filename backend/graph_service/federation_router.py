@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 from fastapi import APIRouter, HTTPException, Request
-from backend.platform.authorization import approval_identity, graph_read_identity
+from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from . import federation_service
 
 router = APIRouter(prefix="/api/v1/sparql/federation", tags=["sparql-federation"])

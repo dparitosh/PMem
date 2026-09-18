@@ -15,8 +15,9 @@ from backend.ceim.resolution import analyze_entities, resolution_registry
 from backend.ceim.qif_adapter import qif_to_ceim_batch, validate_qif_instance
 from backend.ceim.reqif_adapter import reqif_to_ceim_batch
 from backend.ceim.plmxml_adapter import plmxml_to_ceim_batch
-from backend.platform.authorization import approval_identity
-from backend.platform.semantic_registry import resolve_approved_release
+from backend.depo_platform.authorization import approval_identity
+from backend.depo_platform.network import bounded_timeout_seconds
+from backend.depo_platform.semantic_registry import resolve_approved_release
 
 
 router = APIRouter(prefix="/ceim", tags=["ceim"])
@@ -71,6 +72,9 @@ def normalize_batch(payload: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError("Normalized CEIM input version does not match the active CEIM contract")
             normalized_entities = [dict(record) for record in entities]
             normalized_relationships = [dict(record) for record in relationships]
+            contract.validate_mapping_evidence(
+                standard=standard, entities=normalized_entities, relationships=normalized_relationships,
+            )
             contract.to_rdf(entities=normalized_entities, relationships=normalized_relationships)
             analysis = resolution_registry.record(analyze_entities(normalized_entities))
             analysis = resolution_registry.apply(analysis, list(payload.get("resolution_case_ids") or []))
@@ -188,17 +192,20 @@ def turtle_projection(payload: dict[str, Any]) -> Response:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-async def _publish_to_graph(*, turtle: str, ontology_id: str, prefix: str) -> dict[str, Any]:
+async def _publish_to_graph(*, turtle: str, ontology_id: str, prefix: str, publication_id: str | None = None) -> dict[str, Any]:
     """Use the graph service's sole publication boundary, never the database directly."""
     graph_url = os.getenv("GRAPH_SERVICE_URL", "http://127.0.0.1:8013").rstrip("/")
     # Deployment service discovery may provide either a host root or the
     # standard API root.  Normalize it once to avoid the subtle `/api/v1/api/v1`
     # route that otherwise turns a governed publication into a false 404.
     graph_api_root = graph_url if graph_url.endswith("/api/v1") else f"{graph_url}/api/v1"
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    # Large ontology projections can exceed the default request window while
+    # Neo4j commits. Keep the boundary configurable for customer deployments.
+    publication_timeout = bounded_timeout_seconds("GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180)
+    async with httpx.AsyncClient(timeout=publication_timeout) as client:
         response = await client.post(
             f"{graph_api_root}/graph/ontologies/publish",
-            data={"ontology_id": ontology_id, "prefix": prefix},
+            data={"ontology_id": ontology_id, "prefix": prefix, "publication_id": publication_id or ""},
             files={"artifact": (f"{ontology_id}.ttl", turtle.encode("utf-8"), "text/turtle")},
             headers={"Authorization": f"Bearer {os.environ['GRAPH_PUBLICATION_TOKEN']}"} if os.getenv("GRAPH_PUBLICATION_TOKEN") else {},
         )
@@ -238,13 +245,15 @@ async def publish_graph(payload: dict[str, Any], request: Request) -> dict[str, 
         if not validation.get("conforms"):
             raise HTTPException(status_code=422, detail={"message": "CEIM SHACL validation failed; graph publication was not attempted", "validation": validation})
         turtle = contract.turtle_projection(entities=list(normalized["entities"]), relationships=list(normalized["relationships"]), decision={"approved_by": approved_by, "semantic_release": semantic_release})
-        publication = await _publish_to_graph(turtle=turtle, ontology_id=ontology_id, prefix=prefix)
+        publication_id = str(payload.get("publication_id") or "").strip() or None
+        publication = await _publish_to_graph(turtle=turtle, ontology_id=ontology_id, prefix=prefix, publication_id=publication_id)
         return {
             "status": "published",
             "ontology_id": ontology_id,
             "prefix": prefix,
             "approved_by": approved_by,
             "semantic_release": semantic_release,
+            "publication_id": publication_id,
             "validation": {key: validation[key] for key in ("conforms", "triple_count", "ceim_version")},
             "publication": publication,
         }

@@ -2,8 +2,8 @@
 
 Run: python -m uvicorn backend.graph_service.app:app --port 8013
 """
-from backend.platform.service_runtime import create_service_app
-from backend.platform.odata import ServiceCapability, create_odata_catalog_router
+from backend.depo_platform.service_runtime import create_service_app
+from backend.depo_platform.odata import ServiceCapability, create_odata_catalog_router
 from .router import router
 from .context_router import router as context_router
 from .graphql_router import router as graphql_router

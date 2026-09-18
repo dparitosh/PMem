@@ -7,6 +7,7 @@ from backend.Services.oslc_query_service import OSLCCondition, OSLCQueryParamete
 from backend.Services.oslc_service import OSLCService
 from backend.Services.oslc_trs_service import OSLCTRSService
 from backend.Services.ontology_upload_manager import OntologyUploadManager
+from backend.mesh_store import InMemoryRegistry
 
 
 def test_where_parser_keeps_boolean_words_inside_quotes():
@@ -246,6 +247,7 @@ def test_shacl_discovery_does_not_scan_working_directory_without_source_path():
 @pytest.fixture
 def isolated_trs(monkeypatch, tmp_path):
     storage_path = tmp_path / "change_log.json"
+    monkeypatch.setenv("OSLC_TRS_STORE", "file")
     monkeypatch.setattr(OSLCTRSService, "_storage_path", classmethod(lambda cls: storage_path))
     monkeypatch.setattr(OSLCTRSService, "base_url", classmethod(lambda cls: "https://current.example"))
     monkeypatch.setattr(OSLCTRSService, "is_enabled", classmethod(lambda cls: True))
@@ -265,6 +267,19 @@ def test_trs_publish_uses_atomic_state_and_oslc_uri(isolated_trs):
     assert state["counter"] == 1
     assert not isolated_trs.with_suffix(".lock").exists()
     assert not list(isolated_trs.parent.glob("*.tmp"))
+
+
+def test_trs_uses_shared_postgres_registry_by_default(monkeypatch):
+    registry = InMemoryRegistry()
+    monkeypatch.delenv("OSLC_TRS_STORE", raising=False)
+    monkeypatch.setattr(OSLCTRSService, "_store", registry)
+    monkeypatch.setattr(OSLCTRSService, "base_url", classmethod(lambda cls: "https://current.example"))
+    monkeypatch.setattr(OSLCTRSService, "is_enabled", classmethod(lambda cls: True))
+
+    event = OSLCTRSService.publish_event("https://current.example/oslc/lifecycle/job-runs/run-1", "Creation")
+
+    assert event["order"] == 1
+    assert registry.get("change_log")["events"][0]["resource_uri"] == "/oslc/lifecycle/job-runs/run-1"
 
 
 def test_trs_corruption_fails_closed_without_overwrite(isolated_trs):

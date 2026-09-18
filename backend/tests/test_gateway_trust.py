@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from backend.platform.authorization import approval_identity
+from backend.depo_platform.authorization import approval_identity
 
 
 def _request(host: str = "10.0.0.5") -> Request:

@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
-from backend.platform.authorization import graph_read_identity
+from backend.depo_platform.authorization import graph_read_identity
 from .sparql_service import sparql
 
 

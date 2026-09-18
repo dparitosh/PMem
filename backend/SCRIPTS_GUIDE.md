@@ -9,25 +9,25 @@ These are the most usable command-line entry points in the repo:
 
 ### `backend/scripts/import_file.py`
 
-Run the full import pipeline without the UI.
+Submit one source file through the same governed ingestion path as the UI.
+The command retains an immutable artifact and starts an approved data job; it
+does not clean or publish the graph.
 
 Typical use:
 
 ```powershell
-python backend/scripts/import_file.py <file_path> --base-url http://localhost:8000
+python backend/scripts/import_file.py <file_path> --base-url http://127.0.0.1:8014
 ```
 
 Useful flags:
-- `--clean-first` clean Neo4j before the import
-- `--skip-commit` stop after preview and do not write to Neo4j
-- `--preview-timeout <seconds>`
-- `--commit-timeout <seconds>`
+- `--profile <profile-id|auto>`
+- `--job-id <approved-job-id>` and `--job-version <semver>`
+- `--source-system <name>`
 - `--request-timeout <seconds>`
-- `--poll-seconds <seconds>`
 
 Best for:
 - PLMXML, XML, STEP, XMI, JSON, CSV, Excel imports
-- reproducing the UI import pipeline from the command line
+- reproducing the governed UI import submission from the command line
 
 ---
 

@@ -69,6 +69,8 @@ class SemanticIntelligence:
         return record
 
     def evaluate_policies(self, decision: dict[str, Any], exception_policy_ids: list[str] | None = None) -> dict[str, Any]:
+        if exception_policy_ids:
+            raise ValueError("Policy exceptions require a governed exception contract; caller overrides are disabled")
         exceptions = set(exception_policy_ids or [])
         checks = []
         engine = ContextGraph()

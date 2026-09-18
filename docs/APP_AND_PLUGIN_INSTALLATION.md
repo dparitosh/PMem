@@ -8,12 +8,12 @@ and configure them separately; start DEPO before using plugin imports.
 Run from `D:\Githuv_repo\PMem`:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\infra\windows\install-depo.ps1
-powershell -ExecutionPolicy Bypass -File .\infra\deployment\new-depo-deployment-config.ps1 -OutputPath .env.local -AuthMode token
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\new-depo-deployment-config.ps1 -OutputPath .env.local -AuthMode token
 # Edit .env.local with PostgreSQL, Neo4j, origins and customer endpoints.
-powershell -ExecutionPolicy Bypass -File .\infra\deployment\test-depo-deployment.ps1 -EnvFile .env.local -Profile Bootstrap -SkipEndpointChecks
-powershell -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local -Profile Bootstrap
-powershell -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Validate -EnvFile .env.local -Profile Bootstrap
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\test-depo-deployment.ps1 -EnvFile .env.local -Profile Bootstrap -SkipEndpointChecks
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local -Profile Bootstrap
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Validate -EnvFile .env.local -Profile Bootstrap
 ```
 
 The installer creates `backend\.dt_venv`, installs `backend\requirements.txt`,
@@ -107,11 +107,11 @@ For outbound OSLC retrieval, set `OSLC_REMOTE_BASE_URL` to the gateway base befo
 Run from `D:\Githuv_repo\PMem\plugins\mbse_plugin`:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Install
-powershell -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Configure -IngestionUrl http://127.0.0.1:8014/api/v1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Install
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Configure -IngestionUrl http://127.0.0.1:8014/api/v1
 # Edit .runtime\config.json if the application uses token authentication.
-powershell -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Start
-powershell -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Verify
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Start
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Verify
 ```
 
 This creates a separate venv and starts the plugin on `127.0.0.1:8020`. It contains

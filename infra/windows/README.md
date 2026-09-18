@@ -4,7 +4,7 @@ Run the commands from the repository root (`D:\Githuv_repo\PMem`). DEPO does not
 `.env.postgres.example`, then run PowerShell as Administrator:
 
 ```powershell
-.\infra\windows\start-depo-services.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\start-depo-services.ps1
 ```
 
 Run PowerShell as Administrator only when PostgreSQL service control requires it. The script starts either an installed PostgreSQL Windows service or the default
@@ -14,7 +14,7 @@ Python process. Override those locations with `-PostgresBinDir` and
 `-PostgresDataDir`. Stop them with:
 
 ```powershell
-.\infra\windows\stop-depo-services.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\stop-depo-services.ps1
 ```
 
 Add `-StopPostgres` only when PostgreSQL is dedicated to DEPO and should also
@@ -24,7 +24,7 @@ Before a customer release, run the production preflight after creating the
 customer `.env.local`:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\infra\windows\test-depo-release.ps1 -Production
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-release.ps1 -Production
 ```
 
 The preflight rejects the local administrator PostgreSQL URL, localhost CORS,
@@ -35,7 +35,7 @@ For an initial customer rollout without Entra or TLS, use the constrained
 bootstrap profile:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\infra\windows\test-depo-release.ps1 -Bootstrap
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-release.ps1 -Bootstrap
 ```
 
 Bootstrap requires token-protected approvals plus working PostgreSQL and Neo4j,
@@ -44,7 +44,7 @@ but does not require Entra or TLS. Run it only on a restricted customer network.
 For a clean machine, install runtime dependencies once from the repository root:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\infra\windows\install-depo.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo.ps1
 ```
 
 The installer creates `backend\.dt_venv`, installs the single backend requirements file, and runs `npm ci` for the frontend. It does not install PostgreSQL, Neo4j, Java, or Spark.

@@ -362,7 +362,7 @@ def _generate_step_rdf_ttl(
     if Graph is None:
         raise RuntimeError(
             "rdflib is required for STEP/AP242 ontology generation. "
-            "Run backend\\setup.bat --backend or install backend requirements."
+            "Run infra\\windows\\install-depo.ps1 or install backend requirements."
         ) from _RDFLIB_IMPORT_ERROR
 
     instance_ns = Namespace(_as_namespace_uri(base_uri))
@@ -735,7 +735,7 @@ def copy_ap242_reference_ontology(output_dir: Path) -> Dict[str, Path]:
             if Graph is None:
                 raise RuntimeError(
                     "rdflib is required to serialize AP242 reference ontology to OWL. "
-                    "Run backend\\setup.bat --backend or install backend requirements."
+                    "Run infra\\windows\\install-depo.ps1 or install backend requirements."
                 ) from _RDFLIB_IMPORT_ERROR
             graph = Graph()
             graph.parse(str(ttl_dst), format="turtle")

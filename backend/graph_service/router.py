@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from backend.platform.authorization import service_write_identity, graph_read_identity
+from backend.depo_platform.authorization import service_write_identity, graph_read_identity
 
 from .neo4j_publisher import publisher
 
@@ -19,14 +19,28 @@ async def publish_ontology(
     artifact: Annotated[UploadFile, File(description="Turtle ontology artifact")],
     ontology_id: Annotated[str, Form()],
     prefix: Annotated[str, Form()],
+    publication_id: Annotated[str | None, Form()] = None,
 ) -> dict:
     try:
         service_write_identity(request, token_env="GRAPH_PUBLICATION_TOKEN", default_actor="graph-publication-service")
-        return publisher.publish_turtle(content=await artifact.read(), ontology_id=ontology_id, prefix=prefix)
+        return publisher.publish_turtle(content=await artifact.read(), ontology_id=ontology_id, prefix=prefix, publication_id=publication_id)
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Graph publication failed: {type(exc).__name__}: {exc}") from exc
+
+
+@router.get("/ontologies/{ontology_id}/publications/{publication_id}", dependencies=[Depends(graph_read_identity)], summary="Read a durable graph publication receipt")
+def publication_receipt(ontology_id: str, publication_id: str) -> dict:
+    try:
+        receipt = publisher.publication_receipt(ontology_id=ontology_id, publication_id=publication_id)
+        if receipt is None:
+            raise HTTPException(status_code=404, detail="Publication receipt was not found")
+        return receipt
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Graph publication receipt is unavailable: {type(exc).__name__}: {exc}") from exc
 
 
 @router.get("/overview", dependencies=[Depends(graph_read_identity)], summary="Get a bounded explorer-ready view across published ontologies")

@@ -40,13 +40,21 @@ async def list_resource_shapes():
 
 
 @router.get("/shapes/{shape_id}")
-async def get_resource_shape(shape_id: str):
+async def get_resource_shape(shape_id: str, request: Request):
     if not OSLCService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
     try:
         return OSLCService.resource_shape(shape_id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        from backend.depo_platform.authorization import graph_read_identity
+        from backend.oslc_service.access import authorize
+        from backend.oslc_service.ontology_shapes import catalog_shape
+        identity = graph_read_identity(request)
+        authorize(identity, "ontologies", shape_id)
+        try:
+            return catalog_shape(shape_id, OSLCService.config().base_url)
+        except ValueError as missing:
+            raise HTTPException(status_code=404, detail=str(missing)) from missing
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Unable to retrieve the OSLC resource shape") from exc
 

@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from backend.postgres_migrations import apply_migrations
-from backend.platform.postgres_schema import initialise_schema
+from backend.depo_platform.postgres_schema import initialise_schema
 
 
 class PostgresRegistry:

@@ -13,6 +13,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote, urlparse
+from backend.mesh_store import PostgresRegistry
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,21 @@ class OSLCTRSService:
     MAX_EVENTS = 5000
     LOCK_TIMEOUT_SECONDS = 10.0
     STALE_LOCK_SECONDS = 60.0
+    _store = PostgresRegistry("oslc_trs")
+    _state_key = "change_log"
+
+    @classmethod
+    def _storage_backend(cls) -> str:
+        """Select durable PostgreSQL state unless file mode is explicit.
+
+        A file-backed TRS cannot provide one ordered change log across multiple
+        service instances. It remains available only for isolated development
+        and compatibility tests where PostgreSQL is intentionally absent.
+        """
+        backend = str(os.getenv("OSLC_TRS_STORE", "postgres")).strip().lower()
+        if backend not in {"postgres", "file"}:
+            raise RuntimeError("OSLC_TRS_STORE must be postgres or file")
+        return backend
 
     @classmethod
     def is_enabled(cls) -> bool:
@@ -55,6 +71,21 @@ class OSLCTRSService:
 
     @classmethod
     def _load(cls) -> Dict[str, Any]:
+        if cls._storage_backend() == "postgres":
+            try:
+                state = cls._store.get(cls._state_key) or {"events": [], "counter": 0, "first_retained_order": 0}
+            except RuntimeError as exc:
+                raise RuntimeError("OSLC TRS PostgreSQL state is unavailable") from exc
+            if not isinstance(state, dict) or not isinstance(state.get("events", []), list):
+                raise RuntimeError("OSLC TRS PostgreSQL state has an invalid structure")
+            events = state.get("events") or []
+            orders = [int(event.get("order") or 0) for event in events if isinstance(event, dict)]
+            counter = int(state.get("counter") or 0)
+            if orders and counter < max(orders):
+                raise RuntimeError("OSLC TRS PostgreSQL counter is behind its retained events")
+            state["counter"] = counter
+            state["first_retained_order"] = int(state.get("first_retained_order") or (min(orders) if orders else 0))
+            return state
         path = cls._storage_path()
         if not path.exists():
             return {'events': [], 'counter': 0, 'first_retained_order': 0}
@@ -75,6 +106,12 @@ class OSLCTRSService:
 
     @classmethod
     def _save(cls, payload: Dict[str, Any]) -> None:
+        if cls._storage_backend() == "postgres":
+            try:
+                cls._store.put(cls._state_key, payload)
+                return
+            except RuntimeError as exc:
+                raise RuntimeError("OSLC TRS PostgreSQL state could not be saved") from exc
         path = cls._storage_path()
         temp_path = path.with_name(f'.{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp')
         try:
@@ -90,6 +127,12 @@ class OSLCTRSService:
     @classmethod
     @contextmanager
     def _cross_process_lock(cls):
+        if cls._storage_backend() == "postgres":
+            with cls._store.advisory_lock(cls._state_key) as acquired:
+                if not acquired:
+                    raise RuntimeError("Could not acquire OSLC TRS PostgreSQL advisory lock")
+                yield
+            return
         lock_path = cls._storage_path().with_suffix('.lock')
         deadline = time.monotonic() + cls.LOCK_TIMEOUT_SECONDS
         descriptor = None

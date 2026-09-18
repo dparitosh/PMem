@@ -1,5 +1,6 @@
 """Optional acceptance check for the supplied industrial PLMXML fixture."""
 from pathlib import Path
+import pytest
 
 from backend.Services.data_import_service import DataImportService
 

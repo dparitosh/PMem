@@ -53,12 +53,13 @@ export default defineConfig(({ mode }) => {
       globals: true,
       setupFiles: './src/setupTests.js',
       include: ['src/**/*.test.{js,jsx}'],
-      // The graph and Siemens IX suites are memory-heavy. Keep a small pool
-      // of isolated workers: a single worker leaks IX custom-element state
-      // across files, while an unrestricted pool exhausts the Node heap.
-      pool: 'threads',
-      maxWorkers: 2,
+      // Siemens IX custom elements retain state across thread workers on
+      // Windows. One forked worker isolates globals and exits deterministically
+      // after the suite, trading a little speed for reliable CI completion.
+      pool: 'forks',
+      maxWorkers: 1,
       minWorkers: 1,
+      teardownTimeout: 10_000,
     },
   };
 });

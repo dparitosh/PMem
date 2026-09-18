@@ -1,5 +1,5 @@
 import pytest
-from backend.platform.metadata_repository import MetadataRepository
+from backend.depo_platform.metadata_repository import MetadataRepository
 
 
 def test_rejects_invalid_actor_before_connecting():

@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi import Header
 
 from backend.mesh_store import PostgresRegistry
-from backend.platform.authorization import approval_identity
+from backend.depo_platform.authorization import approval_identity
 from .artifact_retention import retention
 from .product_contract import validate_revision, validate_registration
 

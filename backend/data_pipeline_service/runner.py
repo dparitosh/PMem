@@ -390,6 +390,9 @@ class SparkJobRunner:
                 raise ValueError("Normalized CEIM input version does not match the active CEIM contract")
             normalized_entities = [dict(record) for record in entities]
             normalized_relationships = [dict(record) for record in relationships]
+            contract.validate_mapping_evidence(
+                standard=standard, entities=normalized_entities, relationships=normalized_relationships,
+            )
             # Validate the declared normalized shape before Spark receives it;
             # this rejects accidental or malicious pass-through records.
             contract.to_rdf(entities=normalized_entities, relationships=normalized_relationships)
@@ -411,6 +414,8 @@ class SparkJobRunner:
             "input_representation": representation,
             "ceim_version": contract.version,
             "mapping_digest": contract.mapping_pack(standard)["digest"],
+            "mapping_pack": contract.mapping_pack(standard)["id"],
+            "mapping_version": contract.mapping_pack(standard)["version"],
             "entities": normalized_entities,
             "relationships": normalized_relationships,
         }

@@ -9,7 +9,8 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 
 from backend.artifact_store import ArtifactStore
-from backend.platform.authorization import approval_identity
+from backend.depo_platform.authorization import approval_identity
+from backend.depo_platform.network import bounded_timeout_seconds
 
 from . import job_definitions
 from . import run_records
@@ -78,6 +79,27 @@ def run_document_evidence_workflow(payload: dict[str, Any], request: Request) ->
 
 def _registry_error(exc: RuntimeError) -> HTTPException:
     return HTTPException(status_code=503, detail=f"Data-job control plane is unavailable: {exc}")
+
+
+async def _reconcile_graph_publication(
+    *, ontology_id: str, publication_id: str, headers: dict[str, str], timeout_seconds: float,
+) -> dict[str, Any] | None:
+    """Read the graph's durable receipt after an uncertain upstream response.
+
+    This is intentionally a read, not a retry.  A matching receipt proves the
+    canonical mutation completed; an absent receipt leaves the run safely
+    awaiting publication for an operator to retry with the same run identity.
+    """
+    graph_url = os.getenv("GRAPH_SERVICE_URL", "http://127.0.0.1:8013").rstrip("/")
+    graph_root = graph_url if graph_url.endswith("/api/v1") else f"{graph_url}/api/v1"
+    try:
+        async with httpx.AsyncClient(timeout=min(timeout_seconds, 15)) as client:
+            response = await client.get(
+                f"{graph_root}/graph/ontologies/{ontology_id}/publications/{publication_id}", headers=headers,
+            )
+        return dict(response.json()) if response.status_code == 200 else None
+    except httpx.HTTPError:
+        return None
 
 
 def execute_configured_job(definition: dict[str, Any], payload: dict[str, Any], correlation_id: str) -> dict[str, Any]:
@@ -307,10 +329,14 @@ async def publish_job_run(run_id: str, payload: dict[str, Any], request: Request
         if metadata.get("kind") != "accepted-semantic-partition":
             raise ValueError("Run does not reference an accepted semantic partition")
         batch = json.loads(path.read_text(encoding="utf-8"))
+        ontology_id = str(payload.get("ontology_id") or f"ceim-{batch.get('standard') or record.get('source_standard') or 'batch'}").strip().lower()
         publication_payload = {
             **batch,
-            "ontology_id": payload.get("ontology_id"), "prefix": payload.get("prefix", "ceim"),
+            "ontology_id": ontology_id, "prefix": payload.get("prefix", "ceim"),
             "semantic_release": payload.get("semantic_release"),
+            # A stable run id makes a successful graph commit recoverable if
+            # the caller loses the CEIM response while the commit completes.
+            "publication_id": run_id,
             "approved_by": actor, "approval_token": payload.get("approval_token"),
         }
         ceim_url = os.getenv("CEIM_SERVICE_URL", "http://127.0.0.1:8018/api/v1").rstrip("/")
@@ -322,9 +348,32 @@ async def publish_job_run(run_id: str, payload: dict[str, Any], request: Request
         publication_token = os.getenv("GRAPH_PUBLICATION_TOKEN", "").strip()
         if publication_token:
             forwarded_headers["Authorization"] = f"Bearer {publication_token}"
-        async with httpx.AsyncClient(timeout=90.0) as client:
-            response = await client.post(f"{ceim_root}/ceim/publications/graph", json=publication_payload, headers=forwarded_headers)
+        publication_timeout = bounded_timeout_seconds("GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180)
+        try:
+            async with httpx.AsyncClient(timeout=publication_timeout) as client:
+                response = await client.post(f"{ceim_root}/ceim/publications/graph", json=publication_payload, headers=forwarded_headers)
+        except httpx.TimeoutException as exc:
+            # Never retry a mutation blindly. Query the graph's durable
+            # receipt keyed by this run before reporting an uncertain result.
+            receipt = await _reconcile_graph_publication(
+                ontology_id=ontology_id, publication_id=run_id, headers=forwarded_headers, timeout_seconds=publication_timeout,
+            )
+            if receipt:
+                return run_records.publication_succeeded(record, {
+                    "status": "published", "ontology_id": ontology_id,
+                    "publication_id": run_id, "reconciled_after_timeout": True, "publication": receipt,
+                })
+            raise RuntimeError("Canonical publication timed out and no durable graph receipt was found; retry the same run to reconcile safely") from exc
         if response.is_error:
+            if response.status_code in {502, 503, 504}:
+                receipt = await _reconcile_graph_publication(
+                    ontology_id=ontology_id, publication_id=run_id, headers=forwarded_headers, timeout_seconds=publication_timeout,
+                )
+                if receipt:
+                    return run_records.publication_succeeded(record, {
+                        "status": "published", "ontology_id": ontology_id,
+                        "publication_id": run_id, "reconciled_after_gateway_error": True, "publication": receipt,
+                    })
             raise RuntimeError(f"Canonical publication returned HTTP {response.status_code}: {response.text[:500]}")
         return run_records.publication_succeeded(record, dict(response.json()))
     except LookupError as exc:

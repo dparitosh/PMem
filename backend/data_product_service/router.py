@@ -11,8 +11,8 @@ from fastapi.responses import FileResponse
 
 from backend.artifact_store import ArtifactStore
 from backend.mesh_store import PostgresRegistry
-from backend.platform.authorization import approval_identity
-from backend.platform.semantic_registry import release_reference, resolve_approved_release
+from backend.depo_platform.authorization import approval_identity
+from backend.depo_platform.semantic_registry import release_reference, resolve_approved_release
 from .packaging import build_package
 
 router = APIRouter(prefix="/data-products", tags=["data-products"])

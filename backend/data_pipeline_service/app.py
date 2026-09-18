@@ -1,8 +1,8 @@
 """Run with: python -m uvicorn backend.data_pipeline_service.app:app --port 8019."""
 from contextlib import asynccontextmanager
 
-from backend.platform.odata import ServiceCapability, create_odata_catalog_router
-from backend.platform.service_runtime import create_service_app
+from backend.depo_platform.odata import ServiceCapability, create_odata_catalog_router
+from backend.depo_platform.service_runtime import create_service_app
 
 from .router import router, runner, execute_configured_job
 from .speed_router import router as speed_router

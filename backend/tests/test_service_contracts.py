@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from backend.qif.app import app as qif_app
-from backend.platform.service_runtime import create_service_app
+from backend.depo_platform.service_runtime import create_service_app
 
 
 def test_service_factory_emits_openapi_303() -> None:

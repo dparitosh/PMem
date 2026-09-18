@@ -20,6 +20,8 @@ def test_live_projection_is_consumed_by_semantica_analytics(monkeypatch):
 
     assert result["analytics"]["metrics"]["num_nodes"] == 2
     assert result["analytics"]["connectivity"]["is_connected"] is True
+    assert result["scope"]["type"] == "bounded_projection"
+    assert result["scope"]["whole_graph_verified"] is False
 
 
 def test_explorer_projection_uses_the_stable_browser_graph_contract(monkeypatch):

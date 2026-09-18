@@ -3,7 +3,8 @@ param(
   [string]$PostgresBinDir = "D:\codevita\postgresql-16\pgsql\bin",
   [string]$PostgresDataDir = "D:\codevita\postgresql-16\data",
   [string]$BindHost = "",
-  [int]$ServiceStartupTimeoutSeconds = 90,
+  [ValidateRange(1, 3600)]
+  [int]$ServiceStartupTimeoutSeconds = 300,
   [switch]$SkipPostgres,
   [switch]$EnableSpark,
   [switch]$EnablePipelineScheduler,
@@ -78,7 +79,11 @@ if (-not $SkipPostgres) {
     if (-not (Test-Path $pgIsReady)) { throw "PostgreSQL readiness executable was not found: $pgIsReady" }
     & $pgIsReady -h 127.0.0.1 -p 5432 | Out-Null
     if ($LASTEXITCODE -ne 0) {
-      $logFile = Join-Path $PostgresDataDir 'depo-postgres.log'
+      # Keep the active log outside PGDATA: crash recovery fsyncs that tree,
+      # and an open Windows log handle can cause sharing violations there.
+      $postgresLogDir = Join-Path $root 'logs\windows-services'
+      New-Item -ItemType Directory -Path $postgresLogDir -Force | Out-Null
+      $logFile = Join-Path $postgresLogDir 'postgres.log'
       & $pgCtl start -D $PostgresDataDir -l $logFile -w -t 60
       if ($LASTEXITCODE -ne 0) { throw "PostgreSQL could not start. See $logFile." }
     }
@@ -126,6 +131,7 @@ foreach ($service in $services) {
 }
 
 foreach ($service in $services | Where-Object { $_.Port }) {
+  Write-Host "Waiting up to $ServiceStartupTimeoutSeconds seconds for '$($service.Name)' readiness on port $($service.Port)..."
   $deadline = (Get-Date).AddSeconds($ServiceStartupTimeoutSeconds)
   $ready = $false
   do {
@@ -138,7 +144,7 @@ foreach ($service in $services | Where-Object { $_.Port }) {
       Start-Sleep -Milliseconds 500
     }
   } while (-not $ready -and (Get-Date) -lt $deadline)
-  if (-not $ready) { throw "DEPO service '$($service.Name)' did not become ready within $ServiceStartupTimeoutSeconds seconds." }
+  if (-not $ready) { throw "DEPO service '$($service.Name)' did not become ready within $ServiceStartupTimeoutSeconds seconds. Check $stateDir\$($service.Name).err.log. For a slower cold start, retry with -ServiceStartupTimeoutSeconds 600." }
 }
 
 Write-Host "DEPO services are ready on $BindHost. Use infra/windows/stop-depo-services.ps1 to stop them."

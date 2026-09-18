@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
-from backend.platform.authorization import graph_read_identity
+from backend.depo_platform.authorization import graph_read_identity
 from .graphql_schema import execute
 
 router = APIRouter(prefix="/api/v1/graphql", tags=["graphql"])

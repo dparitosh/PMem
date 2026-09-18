@@ -1,6 +1,6 @@
 import pytest
 
-from backend.platform.semantic_registry import release_reference
+from backend.depo_platform.semantic_registry import release_reference
 
 
 def test_release_reference_requires_an_approved_semantic_version():

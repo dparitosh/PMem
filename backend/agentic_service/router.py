@@ -9,7 +9,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
-from backend.platform.authorization import approval_identity
+from backend.depo_platform.authorization import approval_identity
 from backend.mesh_store import PostgresRegistry
 from .companion import companion
 from .oslc_graph_rag import oslc_graph_rag
@@ -99,7 +99,7 @@ async def dt_run(payload: dict[str, Any], request: Request) -> dict:
 
 @router.get("/integrations/dt-requirements-design/runs/{run_id}")
 def dt_run_status(run_id: str, request: Request) -> dict:
-    from backend.platform.authorization import service_write_identity
+    from backend.depo_platform.authorization import service_write_identity
     service_write_identity(request, token_env="AGENTIC_APPROVAL_TOKEN", default_actor="dt-agent")
     record = dt_run_store.get(run_id)
     if not record:

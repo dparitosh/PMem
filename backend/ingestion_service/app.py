@@ -1,6 +1,6 @@
 """Run with: python -m uvicorn backend.ingestion_service.app:app --port 8014."""
-from backend.platform.service_runtime import create_service_app
-from backend.platform.odata import ServiceCapability, create_odata_catalog_router
+from backend.depo_platform.service_runtime import create_service_app
+from backend.depo_platform.odata import ServiceCapability, create_odata_catalog_router
 from .router import router
 from .api.ontology_browser import router as ontology_browser_router
 from backend.Services.unified_import_router import ontology_router as compatibility_ontology_router

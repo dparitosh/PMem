@@ -2,17 +2,16 @@
 
 ## Customer release entry points
 
-Use these scripts from the repository root:
+Use the supported PowerShell scripts from the repository root. `-NoProfile` and
+the process-only execution-policy override make the commands work on locked-down
+Windows workstations without changing the machine policy:
 
-```bat
-setup.bat
-start_backend.bat
-start_frontend.bat
-stop_backend.bat
-stop_frontend.bat
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\start-depo-services.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-release.ps1 -Bootstrap
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\stop-depo-services.ps1
 ```
-
-`setup.bat` is a root wrapper over `backend/setup.bat` so customer users do not need to know the backend folder layout.
 
 ## Runtime expectations
 
@@ -42,10 +41,15 @@ Do not package these into the customer runtime unless explicitly needed:
 
 ## Current installation script audit
 
-- `start_frontend.bat` uses local `node_modules/.bin/react-scripts.cmd`, avoiding global `react-scripts` failures.
-- `start_backend.bat` detects existing port listener and avoids duplicate port binding.
-- `start_backend.bat` sets `ALLOWED_ORIGINS` for localhost, 127.0.0.1, and LAN host.`r`n- OSLC provider and TRS URLs use `OSLC_BASE_URL` when configured; otherwise they derive from `APP_HOST`/`APP_PORT` so customer VM links do not silently point to localhost.
-- `backend/setup.bat` installs backend and frontend dependencies and now has a root wrapper.
+- `install-depo.ps1` creates the backend virtual environment, installs the single
+  requirements file, and runs `npm ci` for the frontend.
+- `start-depo-services.ps1` validates the service manifest, PostgreSQL schema,
+  and configured service endpoints before starting the local processes.
+- `stop-depo-services.ps1` resolves virtual-environment wrapper processes before
+  stopping child Python workers, avoiding stale port listeners.
+- OSLC provider and TRS URLs use `OSLC_BASE_URL` when configured; otherwise they
+  derive from `APP_HOST`/`APP_PORT` so customer VM links do not silently point to
+  localhost.
 
 ## Known cleanup recommendation
 
