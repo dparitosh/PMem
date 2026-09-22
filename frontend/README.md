@@ -9,12 +9,16 @@ than the retired aggregate backend on port 8000.
 Use Node.js 24+ and npm 10+.
 
 ```powershell
-cd D:\Githuv_repo\PMem\frontend
+# From the repository root:
+cd frontend
 npm ci
 npm run dev
 ```
 
 Create a production bundle with `npm run build`.
+
+Copy `.env.example` to `.env.local` inside this directory before configuring
+service URLs. These settings are public build inputs; rebuild after changes.
 
 ## Service configuration
 

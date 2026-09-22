@@ -35,3 +35,6 @@ app.include_router(context_router)
 app.include_router(graphql_router)
 app.include_router(sparql_router)
 app.include_router(federation_router)
+
+from .bridge_router import router as bridge_router
+app.include_router(bridge_router, prefix="/api/v1")

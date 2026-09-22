@@ -1,14 +1,20 @@
 # Windows direct-service operations
 
-Run the commands from the repository root (`D:\Githuv_repo\PMem`). DEPO does not require Docker. Configure `.env.local` from
-`.env.postgres.example`, then run PowerShell as Administrator:
+This is an operations reference for an installed application. For a clean
+machine, complete the [installation sequence](../deployment/README.md) first,
+including browser configuration before the frontend build.
+
+Run the commands from the repository root. DEPO does not require Docker. Generate `.env.local` using the deployment guide and
+`config/deployment.env.example`, then start services:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\start-depo-services.ps1
 ```
 
-Run PowerShell as Administrator only when PostgreSQL service control requires it. The script starts either an installed PostgreSQL Windows service or the default
-standalone installation at `D:\codevita\postgresql-16`, validates the
+Run PowerShell as Administrator only when PostgreSQL service control requires it.
+Set `DEPO_POSTGRES_MODE=external`, `service` or `portable`. Service mode starts
+only `DEPO_POSTGRES_SERVICE_NAME`; portable mode uses explicitly configured
+`DEPO_POSTGRES_BIN_DIR` and `DEPO_POSTGRES_DATA_DIR`. The launcher validates the
 `semantic` PostgreSQL schema, and runs each DEPO microservice as a hidden local
 Python process. Override those locations with `-PostgresBinDir` and
 `-PostgresDataDir`. Stop them with:
@@ -47,4 +53,10 @@ For a clean machine, install runtime dependencies once from the repository root:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo.ps1
 ```
 
-The installer creates `backend\.dt_venv`, installs the single backend requirements file, and runs `npm ci` for the frontend. It does not install PostgreSQL, Neo4j, Java, or Spark.
+The installer checks Python 3.11+, Node 24+ and npm 10.2+, creates
+`backend\.dt_venv`, installs backend requirements, runs frontend `npm ci` and
+builds `frontend/dist`. Use `-Development` for test dependencies or
+`-CheckPrerequisites` for checks without installation. The Python environment
+path is fixed to match all lifecycle scripts. Configure public browser settings
+before building; follow the [complete sequence](../deployment/README.md).
+The installer does not install PostgreSQL, Neo4j, Java, or Spark.

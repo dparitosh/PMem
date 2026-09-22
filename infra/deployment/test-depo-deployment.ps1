@@ -20,6 +20,9 @@ $path = if ([System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-P
 if (-not (Test-Path $path)) { throw "Missing environment file: $path" }
 $values = @{}
 Get-Content -LiteralPath $path | ForEach-Object { if ($_ -match '^\s*([^#=]+)=(.*)$') { $values[$matches[1].Trim()] = $matches[2].Trim() } }
+if ($values.DEPO_POSTGRES_MODE -notin @('external','service','portable')) { throw 'Set DEPO_POSTGRES_MODE to external, service or portable.' }
+if ($values.DEPO_POSTGRES_MODE -eq 'service' -and -not $values.DEPO_POSTGRES_SERVICE_NAME) { throw 'Service mode requires DEPO_POSTGRES_SERVICE_NAME.' }
+if ($values.DEPO_POSTGRES_MODE -eq 'portable' -and (-not $values.DEPO_POSTGRES_BIN_DIR -or -not $values.DEPO_POSTGRES_DATA_DIR)) { throw 'Portable mode requires PostgreSQL binary and initialized data paths.' }
 $required = @("DEPO_DATABASE_URL", "DEPO_DATABASE_SCHEMA", "AUTH_MODE", "NEO4J_URI", "NEO4J_USER", "NEO4J_PASS", "NEO4J_DATABASE", "ALLOWED_ORIGINS")
 foreach ($name in $required) { if (-not $values[$name] -or $values[$name] -match '<.*>') { throw "Missing customer value for $name in $path" } }
 if ($Profile -eq "Production") {

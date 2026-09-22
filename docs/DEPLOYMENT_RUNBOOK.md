@@ -4,6 +4,10 @@ This is the customer production runbook. The executable commands and current
 service inventory are maintained in `infra/deployment`; do not expose
 development ports to users.
 
+Use the [installation guide](../infra/deployment/README.md) for prerequisite and
+configuration preparation. This runbook describes the subsequent production
+release checks. Run all commands from the project root and stop on failures.
+
 ## 1. Prepare the host
 
 1. Install supported Python, Node.js, PostgreSQL, and Neo4j according to the
@@ -37,27 +41,35 @@ unreviewed source data.
 ## 3. Build and verify before deployment
 
 ```powershell
-cd D:\Githuv_repo\PMem
-npm ci --prefix frontend
-npm run build --prefix frontend
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action ReleasePreflight -EnvFile .env.local -Profile Production
+# From the project root, after configuring server and public browser settings:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo.ps1
+if ($LASTEXITCODE -ne 0) { throw 'Installation or build failed.' }
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\test-depo-deployment.ps1 -EnvFile .env.local -Profile Production -SkipEndpointChecks
+if ($LASTEXITCODE -ne 0) { throw 'Production configuration validation failed.' }
 ```
 
-For a restricted internal bootstrap deployment, use `-Bootstrap` instead of
-`-Production`.  It is not a public-internet profile.
+For a restricted internal bootstrap deployment, use `-Profile Bootstrap` instead
+of `-Profile Production`. It is not a public-internet profile.
 
 ## 4. Start DEPO services
 
 ```powershell
-cd D:\Githuv_repo\PMem
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local
+# From the project root:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local -Profile Production
+if ($LASTEXITCODE -ne 0) { throw 'Production startup or validation failed.' }
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action ReleasePreflight -EnvFile .env.local -Profile Production
+if ($LASTEXITCODE -ne 0) { throw 'Production release preflight failed.' }
 ```
 
 The service set is schema sets (`8010`), ontology (`8011`), agentic (`8012`),
 graph (`8013`), ingestion (`8014`), OSLC (`8015`), catalog (`8016`), data
 products (`8017`), CEIM (`8018`), and the data-pipeline API (`8019`).  Use the service manager or scheduled
 process supervisor in customer environments; the script is a direct-process
-Windows deployment aid.
+Windows deployment aid. Add `-SkipPostgres` to Start for remote/shared PostgreSQL;
+otherwise configure the installed Windows service or explicit PostgreSQL paths.
+Start provisions baseline assets/jobs unless `-SkipBaselineProvisioning` is
+specified. ReleasePreflight performs live database checks including a PostgreSQL
+registry write; successful static validation does not replace it.
 
 ## 5. Publish the frontend and gateway
 
@@ -92,11 +104,11 @@ Validate the smoke test before enabling it for a customer workload.
 powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-spark.ps1
 
 # Enables the local Spark execution plane for the data-pipeline service.
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local -EnableSpark
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local -Profile Production -EnableSpark
 
 # Also enables the supervised scheduler for approved jobs with a configured
 # retained replay input and bounded retry policy.
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local -EnableSpark -EnablePipelineScheduler
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local -Profile Production -EnableSpark -EnablePipelineScheduler
 ```
 
 ## 8. Rollback

@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import patch
 
 from backend.Services.semantic_workflow_service import SemanticWorkflowService
@@ -524,58 +525,14 @@ def test_user_approved_bridge_mapping_becomes_applyable_candidate(monkeypatch):
     assert candidates[0]["approvedByUser"] is True
 
 
-def test_instance_link_applies_user_approved_mappings(monkeypatch):
-    monkeypatch.setattr(SemanticWorkflowService, "_resolve_ontology_id", lambda ontology_id: "ont-1")
-    monkeypatch.setattr(
-        SemanticWorkflowService,
-        "_ontology_metadata",
-        lambda ontology_id: {"ontology_id": ontology_id, "prefix": "mbse", "original_filename": "mbse.owl"},
-    )
-    monkeypatch.setattr(
-        SemanticWorkflowService,
-        "_load_import_task",
-        lambda manifest: {"task_id": "import-1", "parsed_rows": [{"import_row_key": "row-1", "entity_type": "Requirement", "name": "REQ-001"}]},
-    )
-    monkeypatch.setattr(SemanticWorkflowService, "_build_link_candidates", lambda *args, **kwargs: [])
-    monkeypatch.setattr(
-        SemanticWorkflowService,
-        "_approved_mappings_to_candidates",
-        lambda *args, **kwargs: [{
-            "import_id": "import-1",
-            "import_row_key": "row-1",
-            "source_term": "REQ-001",
-            "source_type": "Entity",
-            "ontology_term": "Requirement",
-            "ontology_class_element_id": "neo4j-class-1",
-            "target_ontology_type": "Class",
-            "graph_linkable": True,
-            "mapping_type": "userApproved",
-            "validation_status": "approved",
-            "confidence": 1.0,
-            "mapping": "mbse",
-            "evidence": ["user-approved bridge"],
-            "selected_for_apply": True,
-            "approvedByUser": True,
-        }],
-    )
-    monkeypatch.setattr(SemanticWorkflowService, "_apply_instance_links", lambda candidates: len(candidates))
-    monkeypatch.setattr(SemanticWorkflowService, "_new_task", lambda workflow_id, source_filename="": "link-task")
-    monkeypatch.setattr("backend.Services.semantic_workflow_service.WorkflowArtifactService.write_json", lambda *args, **kwargs: None)
-    monkeypatch.setattr("backend.Services.semantic_workflow_service.WorkflowArtifactService.get_manifest", lambda task_id: {"task_id": task_id})
-    monkeypatch.setattr("backend.Services.semantic_workflow_service.SemanticWorkflowService._write_bridge_mapping_exports", lambda *args, **kwargs: None)
-
-    result = SemanticWorkflowService.link_instances({
-        "ontology_id": "mbse",
-        "import_artifact_manifest": {"task_id": "import-1"},
-        "apply_links": True,
-        "approved_mappings": [{"source_term": "row-1", "target_term": "Requirement", "approvedByUser": True}],
-    })
-
-    assert result["result"]["summary"]["user_approved_candidates"] == 1
-    assert result["result"]["summary"]["applied_links"] == 1
+def test_instance_link_rejects_direct_publication_before_loading_inputs():
+    with patch.object(SemanticWorkflowService, "_resolve_ontology_id") as resolve:
+        with pytest.raises(ValueError, match="Direct instance.link publication is retired"):
+            SemanticWorkflowService.link_instances({"apply_links": True})
+        resolve.assert_not_called()
 
 
-def test_instance_link_records_agent_memory_when_available(monkeypatch):
+def test_instance_link_preview_does_not_record_agent_memory(monkeypatch):
     recorded = {"mappings": None, "trace": None}
 
     class FakeAgentMemoryService:
@@ -630,13 +587,9 @@ def test_instance_link_records_agent_memory_when_available(monkeypatch):
     SemanticWorkflowService.link_instances({
         "ontology_id": "mbse",
         "import_artifact_manifest": {"task_id": "import-1"},
-        "apply_links": True,
+        "apply_links": False,
         "session_id": "chat-1",
         "approved_mappings": [{"source_term": "row-1", "target_term": "Requirement", "approvedByUser": True}],
     })
 
-    assert recorded["mappings"]["ontology_id"] == "ont-1"
-    assert recorded["mappings"]["import_task_id"] == "import-1"
-    assert len(list(recorded["mappings"]["mappings"])) == 1
-    assert recorded["trace"]["session_id"] == "chat-1"
-    assert recorded["trace"]["tool_name"] == "instance.link"
+    assert recorded == {"mappings": None, "trace": None}

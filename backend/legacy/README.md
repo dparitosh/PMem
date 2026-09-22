@@ -10,6 +10,6 @@ yet moved to standalone services. New backend work must target one of:
 
 Do not delete a legacy route merely because an equivalent service exists.
 First migrate its frontend consumer to the corresponding OpenAPI service,
-verify the service contract in CI, then remove the route in a separately
+verify the service contract using local tests, then remove the route in a separately
 reviewable change. This protects existing user workflows during the gradual
 cutover.

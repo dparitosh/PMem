@@ -10,7 +10,7 @@ if ($Production -and $Bootstrap) { throw 'Choose either -Production or -Bootstra
 if ($LocalInsecureDemo -and -not $Bootstrap) { throw 'Local insecure demo requires -Bootstrap.' }
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $path = Join-Path $root $EnvFile
-if (-not (Test-Path $path)) { throw "Missing $EnvFile. Copy .env.postgres.example and configure customer secrets." }
+if (-not (Test-Path $path)) { throw "Missing $EnvFile. Copy config/deployment.env.example and configure customer secrets." }
 
 $values = @{}
 Get-Content $path | ForEach-Object {

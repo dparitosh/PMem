@@ -7,7 +7,7 @@ from pyspark.sql import SparkSession
 
 
 def main() -> None:
-    warehouse = os.getenv("DEPO_SPARK_OUTPUT_ROOT", "D:/DEPO/data/spark")
+    warehouse = os.environ["DEPO_SPARK_OUTPUT_ROOT"]
     spark = (
         SparkSession.builder.appName("depo-spark-smoke")
         .config("spark.ui.enabled", "false")

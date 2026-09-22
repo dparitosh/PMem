@@ -22,11 +22,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\start-depo-s
 For compatibility-host debugging only, start the legacy host directly:
 
 ```bat
-cd D:\Githuv_repo\PMem
-backend\.dt_venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+rem From the repository root, with backend environment variables already injected:
+backend\.dt_venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
 ## Key URLs
+
+These URLs apply only to the compatibility host above. Supported services use
+the `/healthz` and `/readyz` endpoints on the ports in the service inventory.
 
 - Health: `http://localhost:8000/health`
 - Neo4j health: `http://localhost:8000/health/neo4j`
@@ -64,6 +67,9 @@ python -m uvicorn backend.data_catalog_service.app:app --host 127.0.0.1 --port 8
 development and direct process-managed deployments. It contains only API, RDF/Semantica, Neo4j,
 XML, HTTP, and pure-Python XLSX support. Optional chat, OCR, document, and
 notebook integrations are not part of the supported service runtime.
+
+For local development and testing, install `backend/requirements-dev.txt` from the
+repository root; it includes the runtime requirements and pytest dependencies.
 
 Use `POST /api/v1/source-profiles/{profile_id}/workflow` on the ingestion
 service to run `normalize → generate/validate → publish`. Set `publish=true`

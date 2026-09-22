@@ -1,0 +1,4 @@
+# Local development and test dependencies; includes the application runtime.
+-r requirements.txt
+pytest>=8,<9
+pytest-asyncio>=1,<2

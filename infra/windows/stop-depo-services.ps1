@@ -1,7 +1,8 @@
 param(
   [switch]$StopPostgres,
-  [string]$PostgresBinDir = "D:\codevita\postgresql-16\pgsql\bin",
-  [string]$PostgresDataDir = "D:\codevita\postgresql-16\data"
+  [string]$EnvFile = '.env.local',
+  [string]$PostgresBinDir = "",
+  [string]$PostgresDataDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -64,12 +65,19 @@ if (Test-Path $stateDir) {
   }
 }
 if ($StopPostgres) {
-  $postgres = Get-Service | Where-Object { $_.Name -match '^postgresql' -or $_.DisplayName -match 'PostgreSQL' } | Select-Object -First 1
-  if ($postgres -and $postgres.Status -eq 'Running') {
-    Stop-Service -Name $postgres.Name
-  } elseif (Test-Path (Join-Path $PostgresBinDir 'pg_ctl.exe')) {
-    $pgVersion = Join-Path $PostgresDataDir 'PG_VERSION'
-    if (Test-Path $pgVersion) { & (Join-Path $PostgresBinDir 'pg_ctl.exe') stop -D $PostgresDataDir -m fast -w -t 60 }
+  . (Join-Path $PSScriptRoot 'runtime-config.ps1')
+  Import-DepoEnvironment -Root $root -EnvFile $EnvFile
+  if ($env:DEPO_POSTGRES_MODE -eq 'service') {
+    if (-not $env:DEPO_POSTGRES_SERVICE_NAME) { throw 'Specify DEPO_POSTGRES_SERVICE_NAME before stopping PostgreSQL.' }
+    Stop-Service -Name $env:DEPO_POSTGRES_SERVICE_NAME -ErrorAction Stop
+  } elseif ($env:DEPO_POSTGRES_MODE -eq 'portable') {
+    if (-not $PostgresBinDir) { $PostgresBinDir = $env:DEPO_POSTGRES_BIN_DIR }
+    if (-not $PostgresDataDir) { $PostgresDataDir = $env:DEPO_POSTGRES_DATA_DIR }
+    if (-not $PostgresBinDir -or -not $PostgresDataDir) { throw 'Explicit PostgreSQL binary/data paths are required.' }
+    & (Join-Path $PostgresBinDir 'pg_ctl.exe') stop -D $PostgresDataDir -m fast -w -t 60
+    if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL stop failed.' }
+  } else {
+    throw 'Refusing to stop an external or unspecified PostgreSQL instance.'
   }
 }
 Write-Host "DEPO services stopped."

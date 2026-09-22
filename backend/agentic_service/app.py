@@ -4,3 +4,5 @@ from .router import router
 app = create_service_app(title="DEPO Agentic Control Plane", version="1.0.0")
 app.include_router(create_odata_catalog_router(service_name="DEPOAgentic", capabilities=[ServiceCapability("Agents", "/api/v1/agents"), ServiceCapability("Tools", "/api/v1/tools"), ServiceCapability("Workflows", "/api/v1/workflows"), ServiceCapability("Knowledge companion", "/api/v1/chat", "POST", "Submit a guided knowledge-companion prompt"), ServiceCapability("Knowledge companion stream", "/api/v1/chat-stream", "POST", "Stream a guided companion response"), ServiceCapability("Code audit", "/api/v1/code-audit", description="Generate a read-only repository dependency graph"), ServiceCapability("Plans", "/api/v1/plans", "POST", "Validate agent tool invocation"), ServiceCapability("Workflow runs", "/api/v1/workflow-runs", "POST", "Execute an ordered workflow and persist traces"), ServiceCapability("OpenAPI validation", "/api/v1/catalog/validate", description="Detect catalog drift from live OpenAPI contracts")]))
 app.include_router(router)
+from .bridge_router import router as bridge_router
+app.include_router(bridge_router)

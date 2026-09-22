@@ -5,6 +5,7 @@ import { useOntologies } from '../contexts/OntologyContext';
 import DataGridWidget from '../widgets/DataGridWidget';
 import ErrorBoundary from './ErrorBoundary';
 import OntologyInferenceWorkbench from './ontology/OntologyInferenceWorkbench';
+import SemanticBridgeJobs from './ontology/SemanticBridgeJobs';
 import {
   normalizeOntologyBrowserNode,
   ontologyDisplayName,
@@ -2107,137 +2108,6 @@ export default function OntologyMapper() {
     }
   }, [mergeSourceOntologyId, mergeSourceOptions, selectedMapping]);
 
-  const handlePreviewMappings = async () => {
-    if (!selectedImportTaskId) {
-      setMapMessage({ kind: 'error', text: 'Select an imported instance before previewing mappings.' });
-      return;
-    }
-
-    setMapBusy(true);
-    setMapMessage(null);
-    try {
-      const taskRes = await API_METHODS.import.getStatus(selectedImportTaskId);
-      const taskData = taskRes.data || {};
-      const manifest = taskData.artifact_manifest || taskData.artifactManifest || null;
-      if (!manifest) {
-        throw new Error('Selected instance does not have retained artifacts yet. Import the file first.');
-      }
-
-      const previewRes = await API_METHODS.workflow.execute('instance.link', {
-        ontology_id: selectedOntologyApi,
-        import_artifact_manifest: manifest,
-        apply_links: false,
-      });
-      const previewData = previewRes.data || {};
-      const previewCandidates = Array.isArray(previewData?.result?.candidates) ? previewData.result.candidates : [];
-      setBridgeCandidates(previewCandidates);
-      setUnifyResult(null);
-      const summary = previewData?.result?.summary || {};
-      setMapMessage({
-        kind: 'success',
-        text: `Preview ready: ${summary.candidate_count ?? previewCandidates.length} candidates, ${summary.high_confidence_candidates ?? 0} high-confidence.`,
-      });
-    } catch (e) {
-      setMapMessage({ kind: 'error', text: e.response?.data?.detail || e.message || 'Preview failed.' });
-    } finally {
-      setMapBusy(false);
-    }
-  };
-
-  const handleUnifyInstanceWithOntology = async () => {
-    if (!selectedImportTaskId) {
-      setUnifyResult({ kind: 'error', text: 'Select an imported instance to link.' });
-      return;
-    }
-    if (!selectedOntologyApi) {
-      setUnifyResult({ kind: 'error', text: 'Select an ontology to link with the instance.' });
-      return;
-    }
-
-    setUnifyBusy(true);
-    setUnifyResult(null);
-    try {
-      const taskRes = await API_METHODS.import.getStatus(selectedImportTaskId);
-      const taskData = taskRes.data || {};
-      const manifest = taskData.artifact_manifest || taskData.artifactManifest || null;
-      if (!manifest) {
-        throw new Error('Selected instance does not have retained artifacts yet. Import the file first.');
-      }
-
-      const res = await API_METHODS.workflow.execute('instance.link', {
-        ontology_id: selectedOntologyApi,
-        import_artifact_manifest: manifest,
-        apply_links: true,
-        approved_mappings: visibleMappingEdges
-          .filter((edge) => edge?.selected_for_apply || edge?.approvedByUser || edge?.validation_status === 'approved')
-          .map((edge) => ({
-            source_instance_id: edge.source_instance_id,
-            source_instance_label: edge.source_instance_label,
-            source_term: edge.source_term,
-            source_label: edge.source_label,
-            source_type: edge.source_type,
-            target_term: edge.target_term,
-            target_label: edge.target_label,
-            target_ontology_type: edge.target_ontology_type,
-            mapping_type: edge.mapping_type,
-            confidence: edge.confidence,
-            evidence: edge.evidence || [],
-            signal_type: edge.signal_type,
-            selected_for_apply: true,
-            approvedByUser: true,
-            userComment: edge.userComment || '',
-          })),
-      });
-      const d = res.data || {};
-      const candidates = Array.isArray(d.result?.candidates) ? d.result.candidates : [];
-      const approvedCandidates = candidates.filter((candidate) => candidate?.selected_for_apply);
-      const approvedRows = approvedCandidates.map((candidate) => ({
-        source_instance_id: selectedImportTaskId || candidate.source_instance_id || 'instance',
-        source_instance_label: taskData?.filename || candidate.source_instance_label || 'Imported instance',
-        source_term: candidate.import_row_key || candidate.source_term || candidate.source_label || selectedImportTaskId || 'instance',
-        source_label: candidate.source_label || candidate.import_row_key || candidate.source_term || taskData?.filename || 'Imported entity',
-        source_type: candidate.source_type || 'Entity',
-        target_term: candidate.ontology_class_element_id || candidate.ontology_term || selectedOntologyApi,
-        target_label: candidate.ontology_term || selectedOntologyOption?.label || candidate.ontology_class_element_id || selectedOntologyApi,
-        target_ontology_type: candidate.target_ontology_type || 'Class',
-        mapping_type: 'autoMap',
-        confidence: candidate.confidence,
-        evidence: candidate.evidence || [],
-        signal_type: candidate.signal_type || 'metadata',
-      }));
-
-      setBridgeCandidates(candidates);
-      if (approvedRows.length > 0) {
-        setMappingEdges((prev) => {
-          const next = Array.isArray(prev) ? [...prev] : [];
-          approvedRows.forEach((row) => {
-            const exists = next.some((edge) =>
-              edge?.source_term === row.source_term &&
-              String(edge?.mapping_type || '').toLowerCase() === String(row.mapping_type || '').toLowerCase() &&
-              edge?.target_term === row.target_term
-            );
-            if (!exists) next.push(row);
-          });
-          return next;
-        });
-      }
-      setUnifyResult({
-        kind: 'success',
-        text: d.result?.summary ? 'Instance linked to ontology.' : d.message || 'Instance linked to ontology.',
-        nodes: d.result?.summary?.applied_links,
-        summary: d.result?.summary || null,
-        candidates,
-        manifest: manifest,
-      });
-    } catch (e) {
-      const detail = e?.response?.data?.detail || e?.message || 'Linking failed.';
-      setBridgeCandidates([]);
-      setUnifyResult({ kind: 'error', text: detail });
-    } finally {
-      setUnifyBusy(false);
-    }
-  };
-
   const handlePreviewOntologyMerge = async () => {
     if (!mergeSourceOntologyId || !selectedMapping) {
       setMergeResult({ kind: 'error', text: 'Select both source and active target ontology before reviewing the merge.' });
@@ -2776,7 +2646,7 @@ export default function OntologyMapper() {
                   {[
                     { title: '1. Instance', text: selectedImportTaskInfo?.filename || 'Choose imported instance' },
                     { title: '2. Active ontology', text: selectedOntologyOption?.label || 'Choose active ontology' },
-                    { title: '3. Review and apply', text: bridgeCandidates.length > 0 ? `${bridgeCandidates.length} candidate mappings ready` : 'Preview suggestions first' },
+                    { title: '3. Review and publish', text: 'Create a saved preview in the jobs panel below' },
                   ].map((item) => (
                     <div key={item.title} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', background: C.surface, padding: '8px 10px' }}>
                       <div style={{ fontSize: '10px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{item.title}</div>
@@ -2806,24 +2676,7 @@ export default function OntologyMapper() {
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      onClick={handlePreviewMappings}
-                      disabled={mapBusy}
-                      style={{
-                        padding: '7px 12px',
-                        border: 'none',
-                        borderRadius: '6px',
-                        background: mapBusy ? C.textMuted : C.primary,
-                        color: '#fff',
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        cursor: mapBusy ? 'not-allowed' : 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {mapBusy ? 'WorkingÃ¢â‚¬Â¦' : 'Preview bridge suggestions'}
-                    </button>
+
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
@@ -2851,23 +2704,7 @@ export default function OntologyMapper() {
                       {selectedOntologyOption?.prefix ? `Prefix ${selectedOntologyOption.prefix}` : 'The semantic bridge uses the shared active ontology selection.'}
                     </div>
                   </div>
-                  <button
-                    onClick={handleUnifyInstanceWithOntology}
-                    disabled={unifyBusy || !selectedImportTaskId || !selectedOntologyApi}
-                    style={{
-                      padding: '8px 18px',
-                      border: 'none',
-                      borderRadius: '6px',
-                      background: unifyBusy || !selectedImportTaskId || !selectedOntologyApi ? C.textMuted : C.primaryDark,
-                      color: '#fff',
-                      fontSize: '13px',
-                      fontWeight: 700,
-                      cursor: unifyBusy || !selectedImportTaskId || !selectedOntologyApi ? 'not-allowed' : 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {unifyBusy ? 'LinkingÃ¢â‚¬Â¦' : 'Link'}
-                  </button>
+
                 </div>
                 <div style={{
                   marginTop: '12px',
@@ -2915,6 +2752,7 @@ export default function OntologyMapper() {
                 <div style={{ marginTop: '8px', fontSize: '11px', color: C.textSec }}>
                   {selectedImportTaskId ? `Auto-detected source format: ${selectedMappingType || 'unknown'}.` : 'Select an imported instance to continue.'}
                 </div>
+                <SemanticBridgeJobs ontologyId={selectedOntologyApi} importTaskId={selectedImportTaskId} />
                 {(importTasksError || unifyResult) && (
                   <div style={{
                     marginTop: '12px',

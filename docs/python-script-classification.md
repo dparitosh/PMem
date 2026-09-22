@@ -49,7 +49,7 @@ These are standalone scripts. They are not APIs and are not imported as active F
 | `scripts/load_mbse_xmi_instances.py` | Standalone loader | Utility | Loads MBSE/XMI instances; direct Neo4j usage detected. |
 | `scripts/load_ontology_to_neo4j.py` | Standalone loader | Utility | Loads ontology into Neo4j; direct Neo4j usage detected. |
 | `scripts/load_xpdmxml_instances.py` | Standalone loader | Utility | Loads XPDMXML instances; direct Neo4j usage detected. |
-| `scripts/_cleanup_neo4j.py` | Standalone cleanup | Legacy/admin utility | Cleanup helper; keep out of normal customer workflow unless documented as admin-only. |
+| `tools/admin/cleanup_neo4j.py` | Standalone cleanup | Admin utility | Maintained explicit maintenance entry point; redundant legacy wrapper removed. |
 
 ## Root / Backend-Root Python Files
 

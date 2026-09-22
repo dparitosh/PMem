@@ -36,6 +36,12 @@ venv.bak/
 .dt_venv/
 
 # Local environment
+.env.*
+**/.env.*
+*.env
+!*.env.example
+!.env.example
+!**/.env.example
 .env
 **/.env
 **/.env.local
@@ -98,3 +104,11 @@ data/artifacts/
 *.pptx.inspect.ndjson
 DEPO_Component_Interaction_Architecture/
 Semantic_Integration_Lambda_Architecture/
+
+# Generated verification results (source fixtures are retained)
+frontend/test-results/
+frontend/playwright-report/
+backend/tests/cat_test_results/
+backend/test_data/integration_test_results.json
+.mypy_cache/
+.ruff_cache/

@@ -5,28 +5,18 @@ and configure them separately; start DEPO before using plugin imports.
 
 ## DEPO application
 
-Run from `D:\Githuv_repo\PMem`:
+Follow the [canonical installation sequence](../infra/deployment/README.md)
+from the repository root. It covers prerequisite checks, server and browser
+configuration, combined backend installation/frontend build, service startup
+and validation. Configure public browser endpoints before the build.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\new-depo-deployment-config.ps1 -OutputPath .env.local -AuthMode token
-# Edit .env.local with PostgreSQL, Neo4j, origins and customer endpoints.
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\test-depo-deployment.ps1 -EnvFile .env.local -Profile Bootstrap -SkipEndpointChecks
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local -Profile Bootstrap
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Validate -EnvFile .env.local -Profile Bootstrap
-```
+The installer uses `backend/.dt_venv` and `frontend/node_modules`, and produces
+`frontend/dist`. `-Development` includes Python test dependencies. PostgreSQL,
+Neo4j and optional Java/Spark runtimes are provisioned separately. For a
+remote/shared PostgreSQL database, use `-SkipPostgres` on lifecycle Start.
 
-The installer creates `backend\.dt_venv`, installs `backend\requirements.txt`,
-and runs frontend `npm ci`. It does not install PostgreSQL, Neo4j, Java or Spark.
-Pass `-SkipPostgres` to the lifecycle Start command for a remote/shared database
-(it is not an installer parameter). Production deployments require
-the production profile and release preflight. Disabled auth is loopback-only demo
-mode.
-
-Prerequisites: an available Python interpreter (`py`, or installer `-Python`),
-Node.js satisfying `frontend/package.json` (currently >=24), npm >=10.2,
-and configured PostgreSQL and graph database connectivity. Installation does
-not upgrade these system dependencies automatically.
+The application has no GitHub Actions installation dependency. Optional plugins
+below have their own packages and are not installed by the DEPO installer.
 
 ## Pipeline execution configuration
 
@@ -37,16 +27,15 @@ Install the official Spark binary distribution and a trusted Java distribution
 on the execution host. The application installer does not download them.
 Verify vendor checksums/signatures before extracting; provision the Windows
 Hadoop helper from your approved runtime source, not an unverified executable.
-Merge needed settings from `.env.spark.example` into `.env.local`; the example
-file is not loaded automatically and its blank credentials must not replace
-your configured graph credentials. Set `DEPO_SPARK_HOME`, `DEPO_JAVA_HOME`,
+Merge needed settings from `config/spark.env.example` into `.env.local`; the example
+file is not loaded automatically. Preserve existing graph credentials and replace
+the runtime-path placeholders with approved installation paths. Set `DEPO_SPARK_HOME`, `DEPO_JAVA_HOME`,
 `DEPO_HADOOP_HOME`, `DEPO_SPARK_OUTPUT_ROOT`, and `DEPO_SPARK_MASTER` for the host.
 
 ```powershell
-# In a fresh shell, specify paths explicitly (the smoke script does not load .env.local).
-$env:HADOOP_HOME = 'D:\DEPO\runtime\hadoop'
-$env:PATH = "$env:HADOOP_HOME\bin;$env:PATH"
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-spark.ps1 -SparkHome D:\DEPO\runtime\spark-4.1.2-bin-hadoop3 -JavaHome D:\DEPO\runtime\jdk-21\jdk-21.0.12.1+1
+# The smoke script loads the selected server configuration.
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-spark.ps1 -EnvFile .env.local
+if ($LASTEXITCODE -ne 0) { throw 'Spark smoke test failed.' }
 powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local -EnableSpark -EnablePipelineScheduler -EnableNeo4jSparkConnector
 ```
 
@@ -104,7 +93,7 @@ For outbound OSLC retrieval, set `OSLC_REMOTE_BASE_URL` to the gateway base befo
 
 ## MBSE plugin (MBSE, Teamcenter/SMW, Cameo preparation)
 
-Run from `D:\Githuv_repo\PMem\plugins\mbse_plugin`:
+Run from `plugins/mbse_plugin` within the project root:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Install

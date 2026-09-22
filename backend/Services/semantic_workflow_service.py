@@ -1177,19 +1177,13 @@ class SemanticWorkflowService:
         }
         WorkflowArtifactService.write_json(task_id, "reports", "merge_plan.json", report, "merge_plan")
         cls._write_ontology_graph_exports(task_id, source_id, target_id)
-        try:
-            OSLCTRSService.publish_event(
-                OSLCTRSService.ontology_resource_uri(target_id),
-                "Modification",
-                title=f"Ontology merge into {target_id}",
-                metadata={"workflow_id": "ontology.merge", "task_id": task_id, "source_ontology_id": source_id, "target_ontology_id": target_id},
-            )
-        except Exception as exc:
-            logger.warning("OSLC TRS publish skipped for ontology.merge: %s", exc)
         return {"task_id": task_id, "status": "completed", "result": report, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
 
     @classmethod
     def link_instances(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
+        apply_links = payload.get("apply_links", False)
+        if apply_links is not False:
+            raise ValueError('Direct instance.link publication is retired. Create a Bridge preview job and publish approved candidate IDs.')
         ontology_id = cls._resolve_ontology_id(payload.get("ontology_id"))
         if not ontology_id:
             raise ValueError("ontology_id is required")
@@ -1197,7 +1191,6 @@ class SemanticWorkflowService:
         import_manifest = payload.get("import_artifact_manifest") or {}
         import_task = cls._load_import_task(import_manifest)
         import_task_id = str(import_task.get("task_id") or import_manifest.get("task_id") or "")
-        apply_links = payload.get("apply_links", True)
         task_id = cls._new_task("instance.link", meta.get("original_filename", ""))
         rows = import_task.get("parsed_rows") or []
         ontology_scope = meta.get("prefix") or meta.get("ontology_prefix") or ontology_id
@@ -1260,37 +1253,6 @@ class SemanticWorkflowService:
         }
         WorkflowArtifactService.write_json(task_id, "reports", "link_candidates.json", report, "link_candidates")
         cls._write_bridge_mapping_exports(task_id, report)
-        if AgentMemoryService is not None:
-            try:
-                AgentMemoryService.record_semantic_bridge_mappings(
-                    ontology_id=ontology_id,
-                    import_task_id=import_task_id,
-                    mappings=approved_candidates,
-                    task_id=task_id,
-                )
-                AgentMemoryService.record_reasoning_trace(
-                    session_id=str(payload.get("session_id") or f"workflow:{task_id}"),
-                    task="semantic_bridge_instance_link",
-                    tool_name="instance.link",
-                    input_payload={
-                        "ontology_id": ontology_id,
-                        "import_task_id": import_task_id,
-                        "apply_links": apply_links,
-                    },
-                    result_summary=report.get("summary") or {},
-                    success=True,
-                )
-            except Exception as exc:
-                logger.warning("Agent memory semantic bridge record skipped: %s", exc)
-        try:
-            OSLCTRSService.publish_event(
-                OSLCTRSService.ontology_resource_uri(ontology_id),
-                "Modification",
-                title=f"Semantic bridge link update for {ontology_id}",
-                metadata={"workflow_id": "instance.link", "task_id": task_id, "ontology_id": ontology_id, "import_task_id": import_task_id, "applied_links": applied_links},
-            )
-        except Exception as exc:
-            logger.warning("OSLC TRS publish skipped for instance.link: %s", exc)
         return {"task_id": task_id, "status": "completed", "result": report, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
 
     @classmethod

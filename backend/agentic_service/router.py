@@ -6,10 +6,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
-from backend.depo_platform.authorization import approval_identity
+from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from backend.mesh_store import PostgresRegistry
 from .companion import companion
 from .oslc_graph_rag import oslc_graph_rag
@@ -129,7 +129,7 @@ def workflow_options() -> dict:
     return {"workflows": get_workflow_options()}
 
 
-@router.post("/workflows/execute")
+@router.post("/workflows/execute", dependencies=[Depends(graph_read_identity)])
 def execute_semantic_workflow(payload: dict[str, Any]) -> dict:
     """Execute a governed semantic workflow without routing through the legacy monolith."""
     workflow_id = str(payload.get("workflow_id") or "").strip()

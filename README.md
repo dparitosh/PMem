@@ -21,6 +21,13 @@ Use the single maintained deployment guide:
 
 [infra/deployment/README.md](infra/deployment/README.md)
 
+One installer handles backend dependencies and the frontend build:
+`infra/windows/install-depo.ps1`. Run it from the project root after preparing
+server and browser settings as described in the guide. `-CheckPrerequisites`
+checks Python/Node/npm without installation; `-Development` includes test tools.
+Python packages remain under `backend/.dt_venv`, npm packages under
+`frontend/node_modules`, and the browser build under `frontend/dist`.
+
 It covers configuration generation, security profiles, service startup,
 OpenAPI/OData validation, Spark opt-in, shutdown and production preflight.
 
@@ -38,6 +45,11 @@ OpenAPI/OData validation, Spark opt-in, shutdown and production preflight.
 
 - Frontend: Node.js 24+ and npm 10+, run `npm ci` then `npm run build` in
   `frontend`.
-- Backend: use the project Python runtime under `backend/.dt_venv`.
+- Backend: use Python 3.11. The installer creates
+  `backend/.dt_venv`; install `backend/requirements-dev.txt` for tests.
 - No Docker, Redis or Celery runtime is required.
 - Do not store customer secrets in source control. `.env.local` is gitignored.
+- [Configuration ownership](config/README.md) explains the server, browser and
+  optional Spark templates.
+- [Repository maintenance](docs/REPOSITORY_MAINTENANCE.md) documents folder
+  ownership, test commands, cleanup decisions and remaining release work.

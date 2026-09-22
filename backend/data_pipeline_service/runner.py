@@ -100,8 +100,9 @@ class SparkJobRunner:
         }
 
     def _runtime_paths(self) -> tuple[Path, Path]:
-        spark_home = Path(os.getenv("DEPO_SPARK_HOME", "D:/DEPO/runtime/spark-4.1.2-bin-hadoop3"))
-        java_home = Path(os.getenv("DEPO_JAVA_HOME", "D:/DEPO/runtime/jdk-21/jdk-21.0.12.1+1"))
+        runtime_root = Path(__file__).resolve().parents[2] / "runtime"
+        spark_home = Path(os.getenv("DEPO_SPARK_HOME") or runtime_root / "spark")
+        java_home = Path(os.getenv("DEPO_JAVA_HOME") or runtime_root / "java")
         return spark_home, java_home
 
     def health(self) -> dict[str, Any]:
@@ -151,7 +152,9 @@ class SparkJobRunner:
             from pyspark.sql import SparkSession
         except ImportError as exc:
             raise SparkUnavailable("PySpark could not be loaded from the configured Spark runtime") from exc
-        warehouse = os.getenv("DEPO_SPARK_OUTPUT_ROOT", "D:/DEPO/data/spark")
+        warehouse = os.getenv("DEPO_SPARK_OUTPUT_ROOT")
+        if not warehouse or not Path(warehouse).is_absolute():
+            raise SparkUnavailable("DEPO_SPARK_OUTPUT_ROOT must be an explicit absolute output path")
         builder = (
             SparkSession.builder.appName("depo-data-pipeline-service")
             .master(os.getenv("DEPO_SPARK_MASTER", "local[2]"))

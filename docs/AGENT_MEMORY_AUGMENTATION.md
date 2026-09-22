@@ -22,7 +22,7 @@ adapter so customer environments do not need a new experimental dependency.
 
 ## Enable It
 
-Set these in `backend/.env`:
+Set these in root `.env.local` and restart through the deployment lifecycle launcher:
 
 ```env
 AGENT_MEMORY_ENABLED=true

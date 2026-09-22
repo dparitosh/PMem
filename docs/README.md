@@ -1,5 +1,9 @@
 # Documentation map
 
+- [Repository structure and maintenance](REPOSITORY_MAINTENANCE.md)
+- [Environment configuration](../config/README.md)
+- [Support tools](../tools/README.md)
+
 - [Current service/API catalog](architecture/SERVICE_CATALOG.md)
 - [Deployment instructions](../infra/deployment/README.md)
 - [Application and plugins](APP_AND_PLUGIN_INSTALLATION.md)

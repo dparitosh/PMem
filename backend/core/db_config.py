@@ -144,7 +144,8 @@ def _load_environment() -> None:
     logger.warning(
         "No .env file found in standard locations. "
         "Using environment variables or defaults. "
-        "Recommended: Set environment variables or create requirements/.env"
+        "Recommended: inject environment variables through the deployment "
+        "lifecycle launcher using root .env.local"
     )
 
 

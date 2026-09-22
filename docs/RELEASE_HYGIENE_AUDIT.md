@@ -1,24 +1,27 @@
 # Release Hygiene Audit
 
+For the cleanup inventory and outstanding release work, see
+[repository maintenance](REPOSITORY_MAINTENANCE.md). The authoritative
+installation sequence is the [deployment guide](../infra/deployment/README.md).
+
 ## Customer release entry points
 
-Use the supported PowerShell scripts from the repository root. `-NoProfile` and
-the process-only execution-policy override make the commands work on locked-down
-Windows workstations without changing the machine policy:
+Follow the [deployment guide](../infra/deployment/README.md) from the project
+root: check prerequisites, prepare server and public browser configuration,
+install/build, validate configuration, start services, validate endpoints and
+perform release preflight. Configure browser URLs before the combined installer
+builds the frontend. Shutdown is a separate operational action.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\start-depo-services.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-release.ps1 -Bootstrap
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\stop-depo-services.ps1
-```
+The guide supplies the executable commands and profile-specific options. This
+audit deliberately does not duplicate an installation command sequence.
 
 ## Runtime expectations
 
-- Node.js: 20 LTS or newer, npm 10+
+- Node.js: 24+, npm 10.2+
+- Python: 3.11
 - Backend virtual environment: `backend/.dt_venv`
 - Frontend dependencies: `frontend/node_modules`
-- Backend API default: `http://<host>:8000`
+- Backend services: ports 8010–8019 in `infra/deployment/services.json`
 - Frontend default: `http://<host>:3000`
 
 ## Folders to include in product release
@@ -26,6 +29,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\stop-depo-se
 - `backend/`
 - `frontend/`
 - `docs/`
+- `infra/` and `config/`
+- Required semantic assets and shared modules in `data/`, `ontology/`, `mapping/`
+  and `parsers/`, selected according to the deployed features
 - `tools/admin/`
 - `tools/import/` helper scripts if needed by support
 - `standalone/ontology_agentic_service/` only if releasing companion service
@@ -42,7 +48,9 @@ Do not package these into the customer runtime unless explicitly needed:
 ## Current installation script audit
 
 - `install-depo.ps1` creates the backend virtual environment, installs the single
-  requirements file, and runs `npm ci` for the frontend.
+  runtime requirements file, and runs `npm ci` and `npm run build` for the
+  frontend. It checks prerequisite versions before installation; `-Development`
+  includes test dependencies and `-CheckPrerequisites` performs checks only.
 - `start-depo-services.ps1` validates the service manifest, PostgreSQL schema,
   and configured service endpoints before starting the local processes.
 - `stop-depo-services.ps1` resolves virtual-environment wrapper processes before
@@ -51,6 +59,7 @@ Do not package these into the customer runtime unless explicitly needed:
   derive from `APP_HOST`/`APP_PORT` so customer VM links do not silently point to
   localhost.
 
-## Known cleanup recommendation
+## Reference material
 
-`external/sirius-web/` is large and untracked. It should be removed from release packaging or deleted after confirmation if no longer needed as reference material.
+Exclude `external/` from runtime packaging. Recovery and customer inputs are
+retained because their disposability cannot be inferred from source references.

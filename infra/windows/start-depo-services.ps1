@@ -1,7 +1,7 @@
 param(
   [string]$EnvFile = ".env.local",
-  [string]$PostgresBinDir = "D:\codevita\postgresql-16\pgsql\bin",
-  [string]$PostgresDataDir = "D:\codevita\postgresql-16\data",
+  [string]$PostgresBinDir = "",
+  [string]$PostgresDataDir = "",
   [string]$BindHost = "",
   [ValidateRange(1, 3600)]
   [int]$ServiceStartupTimeoutSeconds = 300,
@@ -15,11 +15,12 @@ $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $python = Join-Path $root "backend\.dt_venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { throw "Project Python runtime was not found: $python" }
-if (-not (Test-Path (Join-Path $root $EnvFile))) { throw "Create $EnvFile from .env.postgres.example first." }
+if (-not (Test-Path (Join-Path $root $EnvFile))) { throw "Create $EnvFile from config/deployment.env.example first." }
 
-Get-Content (Join-Path $root $EnvFile) | ForEach-Object {
-  if ($_ -match '^\s*([^#=]+)=(.*)$') { Set-Item -Path ("Env:" + $matches[1].Trim()) -Value $matches[2].Trim() }
-}
+. (Join-Path $PSScriptRoot 'runtime-config.ps1')
+Import-DepoEnvironment -Root $root -EnvFile $EnvFile
+if (-not $PostgresBinDir) { $PostgresBinDir = $env:DEPO_POSTGRES_BIN_DIR }
+if (-not $PostgresDataDir) { $PostgresDataDir = $env:DEPO_POSTGRES_DATA_DIR }
 if (-not $BindHost) { $BindHost = if ($env:DEPO_SERVICE_HOST) { $env:DEPO_SERVICE_HOST } else { "127.0.0.1" } }
 # Local peer URLs keep the control plane usable without duplicating service
 # addresses in every developer .env.local. Customer deployments override them
@@ -40,12 +41,7 @@ foreach ($entry in $serviceUrls.GetEnumerator()) {
 # execution plane for bounded interactive transformations and telemetry.
 if ($EnableSpark) {
   $env:DEPO_SPARK_ENABLED = 'true'
-  if (-not $env:DEPO_SPARK_HOME) { $env:DEPO_SPARK_HOME = 'D:\DEPO\runtime\spark-4.1.2-bin-hadoop3' }
-  if (-not $env:DEPO_JAVA_HOME) { $env:DEPO_JAVA_HOME = 'D:\DEPO\runtime\jdk-21\jdk-21.0.12.1+1' }
-  if (-not $env:DEPO_HADOOP_HOME) { $env:DEPO_HADOOP_HOME = 'D:\DEPO\runtime\hadoop' }
-  if (-not (Test-Path $env:DEPO_SPARK_HOME)) { throw "Spark runtime was not found: $env:DEPO_SPARK_HOME" }
-  if (-not (Test-Path $env:DEPO_JAVA_HOME)) { throw "Java runtime was not found: $env:DEPO_JAVA_HOME" }
-  if (-not (Test-Path (Join-Path $env:DEPO_HADOOP_HOME 'bin\winutils.exe'))) { throw "Windows Hadoop helper was not found: $env:DEPO_HADOOP_HOME\bin\winutils.exe" }
+  Assert-DepoSparkRuntime $env:DEPO_SPARK_HOME $env:DEPO_JAVA_HOME $env:DEPO_HADOOP_HOME
   $env:SPARK_HOME = $env:DEPO_SPARK_HOME
   $env:JAVA_HOME = $env:DEPO_JAVA_HOME
   $env:HADOOP_HOME = $env:DEPO_HADOOP_HOME
@@ -65,11 +61,17 @@ if ($EnablePipelineScheduler) {
   $env:DEPO_PIPELINE_SCHEDULER_ENABLED = 'true'
 }
 
-if (-not $SkipPostgres) {
-  $postgres = Get-Service | Where-Object { $_.Name -match '^postgresql' -or $_.DisplayName -match 'PostgreSQL' } | Select-Object -First 1
+if (-not $SkipPostgres -and $env:DEPO_POSTGRES_MODE -ne 'external') {
+  if ($env:DEPO_POSTGRES_MODE -notin @('service','portable')) { throw 'Set DEPO_POSTGRES_MODE=external, service or portable. No PostgreSQL instance is selected automatically.' }
+  $postgres = $null
+  if ($env:DEPO_POSTGRES_MODE -eq 'service') {
+    if (-not $env:DEPO_POSTGRES_SERVICE_NAME) { throw 'DEPO_POSTGRES_SERVICE_NAME is required for service mode.' }
+    $postgres = Get-Service -Name $env:DEPO_POSTGRES_SERVICE_NAME -ErrorAction Stop
+  }
   if ($postgres) {
     if ($postgres.Status -ne 'Running') { Start-Service -Name $postgres.Name; $postgres.WaitForStatus('Running', [TimeSpan]::FromSeconds(30)) }
   } else {
+    if (-not $PostgresBinDir -or -not $PostgresDataDir) { throw 'Portable PostgreSQL requires DEPO_POSTGRES_BIN_DIR and DEPO_POSTGRES_DATA_DIR.' }
     $pgCtl = Join-Path $PostgresBinDir 'pg_ctl.exe'
     $pgVersion = Join-Path $PostgresDataDir 'PG_VERSION'
     if (-not (Test-Path $pgCtl) -or -not (Test-Path $pgVersion)) {
@@ -77,7 +79,7 @@ if (-not $SkipPostgres) {
     }
     $pgIsReady = Join-Path $PostgresBinDir 'pg_isready.exe'
     if (-not (Test-Path $pgIsReady)) { throw "PostgreSQL readiness executable was not found: $pgIsReady" }
-    & $pgIsReady -h 127.0.0.1 -p 5432 | Out-Null
+    & $pgCtl status -D $PostgresDataDir | Out-Null
     if ($LASTEXITCODE -ne 0) {
       # Keep the active log outside PGDATA: crash recovery fsyncs that tree,
       # and an open Windows log handle can cause sharing violations there.

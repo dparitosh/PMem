@@ -16,6 +16,7 @@ $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 switch ($Action) {
   "Start" {
+    & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $EnvFile -Profile $Profile -SkipEndpointChecks
     $startParameters = @{ EnvFile = $EnvFile }
     if ($PostgresBinDir) { $startParameters.PostgresBinDir = $PostgresBinDir }
     if ($PostgresDataDir) { $startParameters.PostgresDataDir = $PostgresDataDir }
@@ -33,7 +34,7 @@ switch ($Action) {
       & (Join-Path $PSScriptRoot "seed-depo-baseline-semantic-assets.ps1") -EnvFile $EnvFile
     }
   }
-  "Stop" { & (Join-Path $root "infra\windows\stop-depo-services.ps1") }
+  "Stop" { & (Join-Path $root "infra\windows\stop-depo-services.ps1") -EnvFile $EnvFile }
   "Validate" { & (Join-Path $PSScriptRoot "test-depo-deployment.ps1") -EnvFile $EnvFile -Profile $Profile }
   "ReleasePreflight" {
     $switch = if ($Profile -eq "Production") { "-Production" } else { "-Bootstrap" }
