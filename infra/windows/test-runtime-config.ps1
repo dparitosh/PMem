@@ -16,6 +16,38 @@ try {
   Assert-Rejected { Import-DepoEnvironment $fixture '.env.local' } 'Duplicate'
   if ($env:DEPO_AUDIT_FIXTURE) { throw 'Invalid configuration partially changed environment.' }
   Assert-Rejected { Import-DepoEnvironment $fixture 'missing.env' } 'Missing environment'
+  $savedFlags = @{}
+  foreach ($key in @('DEPO_SPARK_ENABLED','DEPO_SPARK_NEO4J_ENABLED','DEPO_PIPELINE_SCHEDULER_ENABLED')) {
+    $savedFlags[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
+    [Environment]::SetEnvironmentVariable($key, 'false', 'Process')
+  }
+  try {
+    $env:DEPO_SPARK_ENABLED = 'true'
+    $env:DEPO_SPARK_NEO4J_ENABLED = 'true'
+    $options = Resolve-DepoSparkOptions @{}
+    if (-not $options.EnableSpark -or -not $options.EnableNeo4jSparkConnector) { throw 'Environment flags ignored.' }
+    Assert-Rejected { Resolve-DepoSparkOptions @{ EnableSpark = $false } } 'require Spark'
+    $options = Resolve-DepoSparkOptions @{ EnableSpark = $false; EnableNeo4jSparkConnector = $false }
+    if ($options.EnableSpark -or $options.EnableNeo4jSparkConnector) { throw 'Explicit false overrides ignored.' }
+    $env:DEPO_SPARK_ENABLED = 'invalid'
+    Assert-Rejected { Resolve-DepoSparkOptions @{} } 'Invalid boolean'
+  } finally {
+    foreach ($key in $savedFlags.Keys) { [Environment]::SetEnvironmentVariable($key, $savedFlags[$key], 'Process') }
+  }
+  $neo = @{ NEO4J_URI = 'neo4j+s://graph.example.com'; NEO4J_USER = 'app'; NEO4J_PASS = 'fixture'; NEO4J_DATABASE = 'neo4j' }
+  Assert-DepoNeo4jConfiguration $neo -Production
+  $neo.NEO4J_URI = 'bolt+s://graph.example.com:7687'
+  Assert-DepoNeo4jConfiguration $neo -Production
+  foreach ($scheme in @('neo4j','bolt','neo4j+ssc','bolt+ssc')) {
+    $neo.NEO4J_URI = "${scheme}://graph.example.com"
+    Assert-DepoNeo4jConfiguration $neo
+    Assert-Rejected { Assert-DepoNeo4jConfiguration $neo -Production } 'certificate-verified TLS'
+  }
+  $neo.NEO4J_URI = 'neo4j+s://user:password@graph.example.com'
+  Assert-Rejected { Assert-DepoNeo4jConfiguration $neo } 'Invalid Neo4j URI'
+  Set-Content -LiteralPath $envPath -Value 'DEPO_AUDIT_FIXTURE=read-only'
+  $parsed = Read-DepoEnvironment $fixture $envPath
+  if ($parsed.DEPO_AUDIT_FIXTURE -ne 'read-only' -or $env:DEPO_AUDIT_FIXTURE) { throw 'Reader changed process environment.' }
   Assert-Rejected { Assert-DepoSparkRuntime '' '' '' } 'absolute runtime path'
   $spark = Join-Path $fixture 'spark'; $java = Join-Path $fixture 'java'; $hadoop = Join-Path $fixture 'hadoop'
   foreach ($file in @('spark/bin/spark-submit.cmd','spark/python/lib/pyspark.zip','spark/python/lib/py4j-test-src.zip','spark/jars/spark-core_2.13-4.1.2.jar','java/bin/java.exe','hadoop/bin/winutils.exe')) {

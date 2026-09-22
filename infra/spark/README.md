@@ -54,8 +54,18 @@ Use `-Profile Bootstrap` for a restricted token-authenticated bootstrap setup.
 Add `-EnablePipelineScheduler` only when scheduled execution is required.
 `-EnableNeo4jSparkConnector` additionally requires graph credentials and access
  to an approved Maven repository/cache for the configured connector artifact.
-Validate the connector separately using `infra/spark/neo4j_connector_smoke.py`
-through the approved Spark launcher and retain its result.
+Validate the connector separately and retain its result:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-spark.ps1 -EnvFile .env.local -Neo4jConnector
+if ($LASTEXITCODE -ne 0) { throw 'Neo4j connector smoke test failed.' }
+```
+
+The equivalent environment flags are `DEPO_SPARK_ENABLED`,
+`DEPO_SPARK_NEO4J_ENABLED` and `DEPO_PIPELINE_SCHEDULER_ENABLED` (`true`/`false`).
+Explicit command switches override their corresponding file values. Connector
+and scheduler require Spark enabled; environment-based enabling also runs runtime
+validation. Update existing keys when merging templates; duplicate keys fail validation.
 
 ## Operational boundary
 

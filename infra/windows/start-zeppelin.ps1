@@ -1,7 +1,7 @@
 param(
-  [string]$ZeppelinHome = 'D:\DEPO\runtime\zeppelin-0.12.1-full',
-  [string]$ConfigDir = 'D:\DEPO\runtime\zeppelin-conf',
-  [string]$NotebookDir = 'D:\DEPO\runtime\zeppelin-notebook-active',
+  [Parameter(Mandatory = $true)][string]$ZeppelinHome,
+  [Parameter(Mandatory = $true)][string]$ConfigDir,
+  [Parameter(Mandatory = $true)][string]$NotebookDir,
   [int]$Port = 8080
 )
 $ErrorActionPreference = 'Stop'
@@ -14,7 +14,7 @@ $env:ZEPPELIN_HOME = $ZeppelinHome
 $env:ZEPPELIN_CONF_DIR = $ConfigDir
 $env:ZEPPELIN_WAR = $war
 $env:ZEPPELIN_NOTEBOOK_DIR = $NotebookDir
-$env:ZEPPELIN_LOG_DIR = 'D:\DEPO\runtime\zeppelin-logs'
+$env:ZEPPELIN_LOG_DIR = Join-Path $ConfigDir 'logs'
 $env:ZEPPELIN_PID_DIR = (Join-Path $ConfigDir 'run')
 foreach ($d in @($env:ZEPPELIN_NOTEBOOK_DIR,$env:ZEPPELIN_LOG_DIR,$env:ZEPPELIN_PID_DIR)) { New-Item -ItemType Directory -Force $d | Out-Null }
 $existing = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue

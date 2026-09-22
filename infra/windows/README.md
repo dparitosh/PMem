@@ -1,62 +1,29 @@
-# Windows direct-service operations
+# Windows operations
 
-This is an operations reference for an installed application. For a clean
-machine, complete the [installation sequence](../deployment/README.md) first,
-including browser configuration before the frontend build.
+Follow the [canonical installation guide](../deployment/README.md) for frontend,
+backend, API-key configuration and startup. Use the [customer acceptance record](../deployment/CUSTOMER_RELEASE.md)
+for production delivery. No GitHub Actions or Entra setup is required.
 
-Run the commands from the repository root. DEPO does not require Docker. Generate `.env.local` using the deployment guide and
-`config/deployment.env.example`, then start services:
+| Script | Purpose |
+| --- | --- |
+| install-depo.ps1 | Prerequisites, shared backend environment, frontend install/build |
+| initialize-depo-schema.ps1 | Apply migrations and verify tables/columns; `-CheckOnly` avoids writes |
+| start-depo-services.ps1 | Start ten APIs and outbox worker; validate enabled Spark runtime |
+| stop-depo-services.ps1 | Stop tracked application processes |
+| test-depo-release.ps1 | Database/schema and profile-specific release checks |
+| test-depo-neo4j.ps1 | Verify connectivity to the selected Neo4j database |
+| test-depo-spark.ps1 | Execute PySpark smoke job; `-Neo4jConnector` tests connector |
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\start-depo-services.ps1
-```
+Prefer `infra/deployment/invoke-depo-lifecycle.ps1` for Start/Stop/Validate,
+InitializeDatabase and ReleasePreflight. It also provisions baseline jobs/assets.
+Server settings live in root `.env.local`; browser-only settings live in
+`frontend/.env.local`. Do not duplicate server secrets in backend env files.
 
-Run PowerShell as Administrator only when PostgreSQL service control requires it.
-Set `DEPO_POSTGRES_MODE=external`, `service` or `portable`. Service mode starts
-only `DEPO_POSTGRES_SERVICE_NAME`; portable mode uses explicitly configured
-`DEPO_POSTGRES_BIN_DIR` and `DEPO_POSTGRES_DATA_DIR`. The launcher validates the
-`semantic` PostgreSQL schema, and runs each DEPO microservice as a hidden local
-Python process. Override those locations with `-PostgresBinDir` and
-`-PostgresDataDir`. Stop them with:
+Database provisioning: [PostgreSQL](../postgres/README.md), [tables/columns](../postgres/SCHEMA.md),
+[Neo4j](../neo4j/README.md). Optional compute: [Spark/PySpark](../spark/README.md).
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\stop-depo-services.ps1
-```
-
-Add `-StopPostgres` only when PostgreSQL is dedicated to DEPO and should also
-be stopped. For a remote/shared database, use `-SkipPostgres` on start.
-
-Before a customer release, run the production preflight after creating the
-customer `.env.local`:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-release.ps1 -Production
-```
-
-The preflight rejects the local administrator PostgreSQL URL, localhost CORS,
-missing Entra authentication, non-HTTPS OSLC URLs, and insecure or unreachable
-Neo4j production connections.
-
-For an initial customer rollout without Entra or TLS, use the constrained
-bootstrap profile:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-release.ps1 -Bootstrap
-```
-
-Bootstrap requires token-protected approvals plus working PostgreSQL and Neo4j,
-but does not require Entra or TLS. Run it only on a restricted customer network.
-`AUTH_MODE=disabled` is allowed only for an explicit loopback-only local demo.
-For a clean machine, install runtime dependencies once from the repository root:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo.ps1
-```
-
-The installer checks Python 3.11+, Node 24+ and npm 10.2+, creates
-`backend\.dt_venv`, installs backend requirements, runs frontend `npm ci` and
-builds `frontend/dist`. Use `-Development` for test dependencies or
-`-CheckPrerequisites` for checks without installation. The Python environment
-path is fixed to match all lifecycle scripts. Configure public browser settings
-before building; follow the [complete sequence](../deployment/README.md).
-The installer does not install PostgreSQL, Neo4j, Java, or Spark.
+The direct launcher is not a process supervisor. Customer operations must supply
+restart/reboot recovery, TLS ingress, monitoring and backups. Administrator access
+is needed only for operations such as controlling the selected PostgreSQL service.
+Zeppelin is an optional operator utility, outside the supported application install;
+its paths must be supplied explicitly.

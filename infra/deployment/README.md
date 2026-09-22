@@ -8,7 +8,7 @@ generate secrets into local environment files without printing them.
 ## Service inventory
 
 For a new customer server, first complete [PostgreSQL provisioning](../postgres/README.md)
-and, when included, [Spark/PySpark provisioning](../spark/README.md). Use the
+and [Neo4j on-premises or off-premises](../neo4j/README.md), and, when included, [Spark/PySpark provisioning](../spark/README.md). Use the
 [customer release acceptance record](CUSTOMER_RELEASE.md) to track live checks
 and outstanding delivery gates.
 
@@ -68,7 +68,7 @@ Stop here and edit both files before running the installer:
 Use `AUTH_MODE=token` and distinct generated API keys for both bootstrap and
 production. Production requires HTTPS origins/OSLC URL and keys of at least 32
 characters. Entra is optional and is not required for this deployment. The current
-deployment validator requires `neo4j+s://` in the Production profile. Replace all
+deployment validator requires certificate-verified `neo4j+s://` or `bolt+s://` in the Production profile. Replace all
 required placeholders. Keep the server filename `.env.local`: alternate output
 names are rejected before writing configuration.
 
@@ -86,15 +86,27 @@ text environment variables because each service must read them at runtime;
 production deployments should inject equivalent values from the customer secret
 manager, vault or managed-identity mechanism instead of distributing `.env`.
 
-For `AUTH_MODE=entra`, set `DEPO_TRUSTED_GATEWAY_IPS` to the private addresses
-of the API gateway/reverse proxy. Services reject forwarded Entra identity
-headers from every other source. Keep service listeners private; this setting
-is a trust-boundary allowlist, not a replacement for network isolation.
+## Initialize PostgreSQL tables and columns
+
+Provision and start PostgreSQL before this explicit step; the application installer
+creates neither a database server nor a database/login. With `.env.local` complete
+and the application installed, apply migrations and verify the schema:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action InitializeDatabase -EnvFile .env.local
+if ($LASTEXITCODE -ne 0) { throw 'Schema initialization failed; stop here.' }
+```
+
+See the [table and column reference](../postgres/SCHEMA.md). Start and release
+preflight also apply pending migrations and verify the schema. For an existing
+database, back up first. Use `initialize-depo-schema.ps1 -CheckOnly` for a read-only
+compatibility check. Local service/portable mode can let Start start PostgreSQL
+before its automatic schema step; explicit initialization requires it running.
 
 ## Validate and operate
 
 The commands below show Bootstrap startup. Use `-Profile Production` consistently
-for configuration validation, Start and Validate when deploying with Entra.
+for configuration validation, Start and Validate for customer releases using API keys.
 `-SkipEndpointChecks` validates configuration without connecting to services.
 Start launches services, validates endpoints and then provisions baseline assets
 and jobs; use `-SkipBaselineProvisioning` when those assets are managed separately.
@@ -153,7 +165,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Endpoint validation failed.' }
 ```
 
 Release preflight connects to PostgreSQL and Neo4j. It performs a PostgreSQL
-registry write/migration check; it is not an offline or read-only check. Use the
+migration and table/column compatibility check; it is not an offline or read-only check. Use the
 profile matching the installation (`Bootstrap` or `Production`):
 
 ```powershell

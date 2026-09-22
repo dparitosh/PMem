@@ -7,8 +7,8 @@ configuration mocks are not production certification.
 ## Installation order
 
 1. Record the Windows version, service account, approved Python/Node/npm versions,
-   network endpoints, storage locations and gateway identity design.
-2. Provision [PostgreSQL](../postgres/README.md) and Neo4j. Record database owners,
+   network endpoints, storage locations and API-key access design.
+2. Provision [PostgreSQL](../postgres/README.md) and [Neo4j](../neo4j/README.md). Record database owners,
    TLS trust, app-role privileges, backup and restore evidence.
 3. If Spark is part of this delivery, provision the approved Spark/JDK/Hadoop
    runtime using the [Spark guide](../spark/README.md). PySpark comes from that
@@ -36,7 +36,7 @@ configuration mocks are not production certification.
 | Data stores | PostgreSQL/Neo4j live checks and backup/restore drill pass |
 | Spark when included | Smoke job returns four expected records; enabled service reports configured runtime |
 | API readiness | All ten service readiness/OpenAPI/OData checks pass |
-| Authentication | Trusted gateway accepts permitted identities and denies unauthorized operations |
+| Authentication | Valid API keys permit authorized operations; missing/invalid keys are denied |
 | Browser | Correct customer URLs and representative governed import/publication workflow |
 | Operations | Reboot/crash recovery, log rotation, disk capacity/retention and monitoring exercised |
 | Rollback | Previous build/configuration available; database recovery approved and rehearsed |
@@ -48,7 +48,7 @@ lock for this release. Generate and validate that lock on the target platform,
 retain the matching package artifacts, and perform the dependency/license review
 before packaging. Do not treat broad requirements ranges as a reproducible build.
 
-Live provisioning, full application tests/build, Spark execution, gateway and
+Target-server provisioning, full installed-runtime integration tests, Spark execution, gateway and
 supervisor recovery have not been performed in this workspace. Customer-specific
 endpoints, approved binaries, credentials and host administration are required.
 The legacy destructive cleanup utility also retains the configuration-precedence

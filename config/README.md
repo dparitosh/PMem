@@ -13,7 +13,8 @@ Start services through the deployment lifecycle script with `-EnvFile .env.local
 | `../frontend/.env.example` | Public browser settings | `frontend/.env.local` |
 
 The Spark template is not loaded automatically. Do not overwrite configured
-credentials with its blank values. The browser configuration is intentionally
+credentials with its blank values. Update existing keys instead of appending duplicates;
+the shared parser rejects duplicate keys before changing the process environment. The browser configuration is intentionally
 separate: Vite compiles these values into public JavaScript. Never copy the
 server configuration into the frontend or put secrets in `VITE_*` or
 `REACT_APP_*` variables. Rebuild the frontend after changing its configuration.

@@ -1,5 +1,6 @@
 param(
   [string]$EnvFile = '.env.local',
+  [switch]$Neo4jConnector,
   [string]$SparkHome = $env:DEPO_SPARK_HOME,
   [string]$JavaHome = $env:DEPO_JAVA_HOME,
   [string]$HadoopHome = $env:DEPO_HADOOP_HOME,
@@ -34,6 +35,14 @@ $env:PATH = (Join-Path $HadoopHome 'bin') + ';' + $env:PATH
 $env:PYSPARK_PYTHON = Join-Path $root "backend\.dt_venv\Scripts\python.exe"
 if (-not (Test-Path $env:PYSPARK_PYTHON)) { throw "DEPO Python runtime was not found: $env:PYSPARK_PYTHON" }
 
-& $submit --master $Master $job
+$env:PYSPARK_DRIVER_PYTHON = $env:PYSPARK_PYTHON
+if ($Neo4jConnector) {
+  $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+  Assert-DepoNeo4jConfiguration -Values $values
+  if (-not $env:DEPO_SPARK_NEO4J_PACKAGE) { throw 'Configure DEPO_SPARK_NEO4J_PACKAGE before connector verification.' }
+  & $submit --master $Master --packages $env:DEPO_SPARK_NEO4J_PACKAGE (Join-Path $root 'infra/spark/neo4j_connector_smoke.py')
+} else {
+  & $submit --master $Master $job
+}
 if ($LASTEXITCODE -ne 0) { throw "DEPO Spark smoke job failed." }
 Write-Host "DEPO Spark smoke job passed."

@@ -96,3 +96,7 @@ is for a dedicated DEPO database only and rejects external mode.
 After application installation, run lifecycle Start and ReleasePreflight using
 the chosen profile. These perform application schema migrations/registry writes
 and live connectivity checks. Record backup/restore evidence before release.
+
+## Application schema
+
+After installing the application, follow [schema initialization and the complete table/column reference](SCHEMA.md). The application installer does not create a PostgreSQL login or database.

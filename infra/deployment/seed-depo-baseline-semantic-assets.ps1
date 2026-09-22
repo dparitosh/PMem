@@ -5,12 +5,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$envPath = if ([System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
-if (-not (Test-Path $envPath)) { throw "Missing environment file: $envPath" }
-$settings = @{}
-Get-Content -LiteralPath $envPath | ForEach-Object { if ($_ -match '^\s*([^#=]+)=(.*)$') { $settings[$matches[1].Trim()] = $matches[2].Trim() } }
+. (Join-Path $root 'infra/windows/runtime-config.ps1')
+$settings = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+if (-not $OntologyBaseUrl -and $settings.ONTOLOGY_SERVICE_URL) { $OntologyBaseUrl = $settings.ONTOLOGY_SERVICE_URL.TrimEnd('/') + '/metadata-registry' }
 if (-not $OntologyBaseUrl) {
   $hostName = if ($settings.DEPO_SERVICE_HOST) { $settings.DEPO_SERVICE_HOST } else { "127.0.0.1" }
+  if ($hostName -in @('0.0.0.0','::')) { $hostName = '127.0.0.1' }
+  if ($hostName.Contains(':') -and -not $hostName.StartsWith('[')) { $hostName = '[' + $hostName + ']' }
   $OntologyBaseUrl = "http://${hostName}:8011/api/v1/metadata-registry"
 }
 $assets = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "baseline-semantic-assets.json") -Raw | ConvertFrom-Json).assets

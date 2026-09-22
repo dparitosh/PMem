@@ -6,7 +6,7 @@ than the retired aggregate backend on port 8000.
 
 ## Development
 
-Use Node.js 24+ and npm 10+.
+Use Node.js 24+ and npm 10.2+.
 
 ```powershell
 # From the repository root:

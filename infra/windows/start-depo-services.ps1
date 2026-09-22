@@ -15,13 +15,14 @@ $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $python = Join-Path $root "backend\.dt_venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { throw "Project Python runtime was not found: $python" }
-if (-not (Test-Path (Join-Path $root $EnvFile))) { throw "Create $EnvFile from config/deployment.env.example first." }
 
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
 if (-not $PostgresBinDir) { $PostgresBinDir = $env:DEPO_POSTGRES_BIN_DIR }
 if (-not $PostgresDataDir) { $PostgresDataDir = $env:DEPO_POSTGRES_DATA_DIR }
 if (-not $BindHost) { $BindHost = if ($env:DEPO_SERVICE_HOST) { $env:DEPO_SERVICE_HOST } else { "127.0.0.1" } }
+$peerHost = if ($BindHost -in @('0.0.0.0','::')) { '127.0.0.1' } else { $BindHost }
+  if ($peerHost.Contains(':') -and -not $peerHost.StartsWith('[')) { $peerHost = '[' + $peerHost + ']' }
 # Local peer URLs keep the control plane usable without duplicating service
 # addresses in every developer .env.local. Customer deployments override them
 # with private service discovery addresses.
@@ -32,7 +33,7 @@ $serviceUrls = @{
 }
 foreach ($entry in $serviceUrls.GetEnumerator()) {
   if (-not [Environment]::GetEnvironmentVariable($entry.Key, 'Process')) {
-    Set-Item -Path ("Env:" + $entry.Key) -Value ("http://${BindHost}:$($entry.Value)/api/v1")
+    Set-Item -Path ("Env:" + $entry.Key) -Value ("http://${peerHost}:$($entry.Value)/api/v1")
   }
 }
 
@@ -43,6 +44,13 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Agentic configuration validation failed. Configure the listed settings before starting services.' }
 } finally { Pop-Location }
 
+$sparkOptions = Resolve-DepoSparkOptions $PSBoundParameters
+$EnableSpark = $sparkOptions.EnableSpark
+$EnableNeo4jSparkConnector = $sparkOptions.EnableNeo4jSparkConnector
+$EnablePipelineScheduler = $sparkOptions.EnablePipelineScheduler
+$env:DEPO_SPARK_ENABLED = ([bool]$EnableSpark).ToString().ToLowerInvariant()
+$env:DEPO_SPARK_NEO4J_ENABLED = ([bool]$EnableNeo4jSparkConnector).ToString().ToLowerInvariant()
+$env:DEPO_PIPELINE_SCHEDULER_ENABLED = ([bool]$EnablePipelineScheduler).ToString().ToLowerInvariant()
 # Spark is deliberately opt-in: the data-pipeline API stays healthy without
 # allocating a JVM, while this switch lets an operator enable the local Spark
 # execution plane for bounded interactive transformations and telemetry.
@@ -99,8 +107,11 @@ if (-not $SkipPostgres -and $env:DEPO_POSTGRES_MODE -ne 'external') {
   }
 }
 
-& $python -c "from backend.mesh_store import PostgresRegistry; PostgresRegistry('startup_probe').put('ready', {'value': True})"
-if ($LASTEXITCODE -ne 0) { throw "PostgreSQL is not reachable with DEPO_DATABASE_URL." }
+Push-Location $root
+try {
+  & $python -m backend.depo_platform.database_setup
+  if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL migration/column verification failed.' }
+} finally { Pop-Location }
 
 $stateDir = Join-Path $root "logs\windows-services"
 New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
@@ -147,7 +158,7 @@ foreach ($service in $services | Where-Object { $_.Port }) {
     try {
       # Liveness means a Python process exists; readiness also verifies every
       # configured shared dependency before a service is announced usable.
-      $response = Invoke-WebRequest -UseBasicParsing "http://${BindHost}:$($service.Port)/readyz" -TimeoutSec 5
+      $response = Invoke-WebRequest -UseBasicParsing "http://${peerHost}:$($service.Port)/readyz" -TimeoutSec 5
       $ready = $response.StatusCode -eq 200
     } catch {
       Start-Sleep -Milliseconds 500

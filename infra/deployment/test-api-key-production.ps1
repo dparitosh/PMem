@@ -14,6 +14,15 @@ try {
   foreach ($key in $replacements.Keys) { $content = $content -replace "(?m)^$key=.*$", "$key=$($replacements[$key])" }
   Set-Content -LiteralPath $testFile -Value $content
   & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks
+  Set-Content -LiteralPath $testFile -Value ($content -replace 'neo4j\+s://graph.example', 'bolt+s://graph.example')
+  & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks
+  foreach ($invalid in @(($content -replace 'neo4j\+s://graph.example', 'neo4j+ssc://graph.example'), ($content + "`nAUTH_MODE=token"))) {
+    Set-Content -LiteralPath $testFile -Value $invalid
+    $rejected = $false
+    try { & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks }
+    catch { $rejected = $true }
+    if (-not $rejected) { throw 'Invalid TLS or duplicate configuration accepted.' }
+  }
   Set-Content -LiteralPath $testFile -Value ($content -replace '(?m)^AGENTIC_APPROVAL_TOKEN=.*$', 'AGENTIC_APPROVAL_TOKEN=short')
   $rejected = $false
   try { & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks }

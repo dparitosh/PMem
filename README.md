@@ -43,7 +43,7 @@ OpenAPI/OData validation, Spark opt-in, shutdown and production preflight.
 
 ## Development notes
 
-- Frontend: Node.js 24+ and npm 10+, run `npm ci` then `npm run build` in
+- Frontend: Node.js 24+ and npm 10.2+, run `npm ci` then `npm run build` in
   `frontend`.
 - Backend: use Python 3.11. The installer creates
   `backend/.dt_venv`; install `backend/requirements-dev.txt` for tests.

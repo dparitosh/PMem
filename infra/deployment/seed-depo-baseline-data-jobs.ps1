@@ -6,14 +6,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$envPath = if ([System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
-if (-not (Test-Path $envPath)) { throw "Missing environment file: $envPath" }
-$settings = @{}
-Get-Content -LiteralPath $envPath | ForEach-Object {
-  if ($_ -match '^\s*([^#=]+)=(.*)$') { $settings[$matches[1].Trim()] = $matches[2].Trim() }
-}
+. (Join-Path $root 'infra/windows/runtime-config.ps1')
+$settings = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+if (-not $PipelineBaseUrl -and $settings.DATA_PIPELINE_SERVICE_URL) { $PipelineBaseUrl = $settings.DATA_PIPELINE_SERVICE_URL.TrimEnd('/') + '/pipeline' }
 if (-not $PipelineBaseUrl) {
   $hostName = if ($settings.DEPO_SERVICE_HOST) { $settings.DEPO_SERVICE_HOST } else { "127.0.0.1" }
+  if ($hostName -in @('0.0.0.0','::')) { $hostName = '127.0.0.1' }
+  if ($hostName.Contains(':') -and -not $hostName.StartsWith('[')) { $hostName = '[' + $hostName + ']' }
   $PipelineBaseUrl = "http://${hostName}:8019/api/v1/pipeline"
 }
 $manifestFile = if ($ManifestPath) { $ManifestPath } else { Join-Path $PSScriptRoot "baseline-data-jobs.json" }

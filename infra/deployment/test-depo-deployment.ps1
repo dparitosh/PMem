@@ -18,8 +18,9 @@ if (-not (($ids -contains "ceim") -and ($ids -contains "data-pipeline"))) { thro
 
 $path = if ([System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
 if (-not (Test-Path $path)) { throw "Missing environment file: $path" }
-$values = @{}
-Get-Content -LiteralPath $path | ForEach-Object { if ($_ -match '^\s*([^#=]+)=(.*)$') { $values[$matches[1].Trim()] = $matches[2].Trim() } }
+. (Join-Path $root 'infra/windows/runtime-config.ps1')
+$values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+Assert-DepoNeo4jConfiguration -Values $values -Production:($Profile -eq 'Production')
 if ($values.DEPO_POSTGRES_MODE -notin @('external','service','portable')) { throw 'Set DEPO_POSTGRES_MODE to external, service or portable.' }
 if ($values.DEPO_POSTGRES_MODE -eq 'service' -and -not $values.DEPO_POSTGRES_SERVICE_NAME) { throw 'Service mode requires DEPO_POSTGRES_SERVICE_NAME.' }
 if ($values.DEPO_POSTGRES_MODE -eq 'portable' -and (-not $values.DEPO_POSTGRES_BIN_DIR -or -not $values.DEPO_POSTGRES_DATA_DIR)) { throw 'Portable mode requires PostgreSQL binary and initialized data paths.' }
@@ -31,7 +32,6 @@ if ($Profile -eq "Production") {
   foreach ($origin in $values.ALLOWED_ORIGINS.Split(',')) {
     if ($origin.Trim() -notmatch '^https://') { throw 'Production ALLOWED_ORIGINS must contain HTTPS origins only.' }
   }
-  if ($values.NEO4J_URI -notmatch '^neo4j\+s://') { throw "Production requires a secure Neo4j Aura or TLS URI (neo4j+s://)." }
   if ($values.AUTH_MODE -eq 'entra' -and (-not $values.DEPO_TRUSTED_GATEWAY_IPS -or $values.DEPO_TRUSTED_GATEWAY_IPS -match '<.*>')) { throw "Gateway identity mode requires DEPO_TRUSTED_GATEWAY_IPS." }
 }
 if ($Profile -eq "Bootstrap" -and $values.AUTH_MODE -notin @("token", "entra", "disabled")) { throw "Bootstrap requires AUTH_MODE=token, AUTH_MODE=entra or an explicit loopback-only disabled-auth demo." }
@@ -52,6 +52,8 @@ if ($values.AUTH_MODE -eq "token") {
 
 if (-not $SkipEndpointChecks) {
   $hostName = if ($values.DEPO_SERVICE_HOST) { $values.DEPO_SERVICE_HOST } else { "127.0.0.1" }
+  if ($hostName -in @('0.0.0.0','::')) { $hostName = '127.0.0.1' }
+  if ($hostName.Contains(':') -and -not $hostName.StartsWith('[')) { $hostName = '[' + $hostName + ']' }
   foreach ($service in $manifest.services) {
     foreach ($endpoint in $manifest.contract_endpoints) {
       $uri = "http://${hostName}:$($service.port)$endpoint"
