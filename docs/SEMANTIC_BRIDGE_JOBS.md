@@ -33,4 +33,13 @@ The graph transaction records a `DepoBridgeChange` event with the receipt. An OS
 
 Job read access follows the configured reader role, not per-user ownership. There is no automated retention policy. Define access, backup, retention, and OSLC delivery requirements before customer rollout.
 
+## Bug-fix verification (2026-09-22)
+
+- Structured API validation errors now display a safe message instead of crashing React or echoing submitted input. Wrong-source previews display a specific recovery instruction.
+- Loading a preview keeps candidate selection locked until publication status is recovered. A confirmed missing publication unlocks a fresh review; connection failures do not.
+- Snapshot comparisons normalize unordered ontology lookup collections, preventing false stale-preview errors when graph query results arrive in a different order. Changes to target metadata still invalidate the snapshot. Previews created before this normalization may need to be recreated.
+- Candidates missing source identifiers or using unsupported target types cannot be approved. Reconciliation requires both the saved request digest and the matching publication ID, preventing incomplete or unrelated receipts from marking a job published.
+
+Verification: 34 backend tests and 8 UI tests passed. These tests cover the cases above plus existing semantic workflow behavior; they do not certify live graph publication or the full application.
+
 Focused unit/API tests use an in-memory registry and graph fakes. Live PostgreSQL/Neo4j integration, trusted-gateway identity, graph concurrency, and a deployed browser acceptance run remain required. Dependency installation also reported 11 frontend vulnerabilities (4 moderate, 7 high); assess and remediate the dependency audit before release.

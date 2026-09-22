@@ -15,6 +15,49 @@ afterEach(cleanup);
 const mount = () => render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
 async function create() { fireEvent.click(screen.getByText('Create preview')); await screen.findByLabelText('Approve part to Part'); }
 
+test('structured validation errors do not crash or echo submitted credentials', async () => {
+  api.preview.mockRejectedValue({ response: { status: 422, data: { detail: [{ msg: 'invalid', input: 'private-credential' }] } } });
+  mount(); fireEvent.click(screen.getByText('Create preview'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Invalid request');
+  expect(document.body.textContent).not.toContain('private-credential');
+});
+
+test('failed publication recovery keeps selection locked until status is recovered', async () => {
+  api.status.mockResolvedValueOnce({ data: preview }).mockRejectedValueOnce(new Error('network'))
+    .mockResolvedValueOnce({ data: { job_id: 'publish-1', status: 'retryable', approved_ids: ['valid'] } });
+  mount();
+  fireEvent.change(screen.getByLabelText('Saved preview ID'), { target: { value: 'preview-1' } });
+  fireEvent.click(screen.getByText('Load preview'));
+  await screen.findByRole('alert');
+  expect(screen.getByLabelText('Approve part to Part')).toBeDisabled();
+  expect(screen.getByText('Retry same publication')).toBeDisabled();
+  fireEvent.click(screen.getByText('Refresh publication status'));
+  await screen.findByText('Publication: retryable');
+  expect(screen.getByLabelText('Approve part to Part')).toBeChecked();
+});
+
+test('refresh of an absent publication unlocks review', async () => {
+  api.status.mockResolvedValueOnce({ data: preview }).mockRejectedValueOnce(new Error('network'))
+    .mockRejectedValueOnce({ response: { status: 404 } });
+  mount();
+  fireEvent.change(screen.getByLabelText('Saved preview ID'), { target: { value: 'preview-1' } });
+  fireEvent.click(screen.getByText('Load preview'));
+  await screen.findByRole('alert');
+  fireEvent.click(screen.getByText('Refresh publication status'));
+  await screen.findByText('No publication exists yet. Select and review mappings before publishing.');
+  expect(screen.getByLabelText('Approve part to Part')).not.toBeDisabled();
+  expect(screen.getByText('Publish approved mappings')).toBeDisabled();
+});
+
+test('wrong-source preview explains how to recover', async () => {
+  api.status.mockResolvedValueOnce({ data: { ...preview, ontology_id: 'different' } });
+  mount();
+  fireEvent.change(screen.getByLabelText('Saved preview ID'), { target: { value: 'preview-1' } });
+  fireEvent.click(screen.getByText('Load preview'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Preview belongs to another source or ontology');
+  expect(screen.queryByLabelText('Approve part to Part')).toBeNull();
+});
+
 test('requires explicit eligible selection and review confirmation', async () => {
   mount(); await create();
   expect(screen.getByLabelText('Approve part to Part')).not.toBeChecked();

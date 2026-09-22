@@ -42,6 +42,50 @@ class BridgeJobTests(unittest.TestCase):
         self.assertNotIn('selected_for_apply', self.preview['candidates'][0])
         self.assertEqual(self.preview['status'], 'ready')
 
+    def test_unpublishable_candidates_cannot_be_approved(self):
+        original = self.source.preview()[1][0]
+        for changes in ({'import_row_key': ''}, {'import_id': ''}, {'target_ontology_type': 'Unsupported'}):
+            with self.subTest(changes=changes):
+                self.source.preview = lambda *args: (self.source.snapshot(), [{**original, **changes}])
+                preview = self.jobs.preview('ontology', 'import', 'reader')
+                candidate = preview['candidates'][0]
+                self.assertFalse(candidate['eligible'])
+                with self.assertRaises(ValueError):
+                    self.jobs.publish(preview['job_id'], [candidate['candidate_id']], 'reviewer')
+        self.assertEqual(self.graph.calls, [])
+
+    def test_receipt_without_approved_digest_is_rejected(self):
+        self.graph.receipts[self.preview['publication_job_id']] = {'publication_id': self.preview['publication_job_id']}
+        with self.assertRaises(BridgeConflict):
+            self.jobs.publish(self.preview['job_id'], self.ids, 'reviewer')
+        self.assertNotEqual(self.jobs.get(self.preview['publication_job_id'])['status'], 'published')
+
+    def test_receipt_from_different_publication_is_rejected(self):
+        self.graph.lose_response = True
+        with self.assertRaises(TimeoutError):
+            self.jobs.publish(self.preview['job_id'], self.ids, 'reviewer')
+        self.graph.receipts[self.preview['publication_job_id']]['publication_id'] = 'another-job'
+        with self.assertRaises(BridgeConflict):
+            self.jobs.publish(self.preview['job_id'], self.ids, 'reviewer')
+
+    def test_snapshot_ignores_lookup_order_but_detects_target_changes(self):
+        from backend.agentic_service.bridge_jobs import BridgeSource
+        from backend.Services.semantic_workflow_service import SemanticWorkflowService as service
+        from backend.Services.unified_data_import import UnifiedDataImportService as imports
+        lookup = {'part': [{'element_id': 'one'}, {'element_id': 'two'}]}
+        with patch.object(service, '_resolve_ontology_id', return_value='ontology'), \
+             patch.object(service, '_ontology_metadata', return_value={'prefix': 'part'}), \
+             patch.object(service, '_load_import_task', return_value={'parsed_rows': [{'id': 'one'}]}), \
+             patch.object(service, '_read_ontology_file', return_value='ontology bytes'), \
+             patch.object(service, '_load_ontology_term_lookup', return_value=lookup), \
+             patch.object(imports, '_load_ontology_class_lookup', return_value=lookup):
+            source = BridgeSource()
+            before = source.snapshot('ontology', 'import')
+            lookup['part'].reverse()
+            self.assertEqual(before, source.snapshot('ontology', 'import'))
+            lookup['part'][0]['element_id'] = 'replacement'
+            self.assertNotEqual(before, source.snapshot('ontology', 'import'))
+
     def test_empty_unknown_duplicate_selection_rejected(self):
         for selection in ([], ['invented'], self.ids * 2):
             with self.assertRaises(ValueError): self.jobs.publish(self.preview['job_id'], selection, 'reviewer')

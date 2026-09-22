@@ -1,6 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { bridgeApi } from '../../services/bridgeApi';
 
+class PreviewInputError extends Error {}
+
+function errorMessage(error) {
+  if (error instanceof PreviewInputError) return error.message;
+  const detail = error.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  // FastAPI validation details contain objects (and can contain submitted input).
+  // Never render the raw response or echo credential-bearing input fields.
+  if (error.response?.status === 422) return 'Invalid request. Check the selected inputs and approval fields.';
+  return 'Request interrupted. Refresh job status before retrying.';
+}
+
 export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bridgeApi }) {
   const [preview, setPreview] = useState(null);
   const [job, setJob] = useState(null);
@@ -25,18 +37,27 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
     const current = generation.current;
     setBusy(true); setMessage('');
     try { await operation(() => current === generation.current); }
-    catch (error) { if (current === generation.current) setMessage(error.response?.data?.detail || 'Request interrupted. Refresh job status before retrying.'); }
+    catch (error) { if (current === generation.current) setMessage(errorMessage(error)); }
     finally { if (current === generation.current) setBusy(false); }
   };
   const adoptPreview = (value) => {
     if (value.kind !== 'preview' || value.ontology_id !== ontologyId || value.import_task_id !== importTaskId) {
-      throw new Error('Preview belongs to another source or ontology. Select its inputs first.');
+      throw new PreviewInputError('Preview belongs to another source or ontology. Select its inputs first.');
     }
     setPreview(value); setSelected([]); setJob(null); setConfirmed(false); setResumeId(value.job_id);
     try { sessionStorage.setItem(`bridge-preview:${ontologyId}:${importTaskId}`, value.job_id); } catch { /* optional recovery aid */ }
   };
   const refresh = async (isCurrent) => {
-    const response = await api.status(preview.publication_job_id, readToken);
+    let response;
+    try { response = await api.status(preview.publication_job_id, readToken); }
+    catch (error) {
+      if (error.response?.status === 404 && isCurrent()) {
+        setJob(null); setSelected([]); setConfirmed(false);
+        setMessage('No publication exists yet. Select and review mappings before publishing.');
+        return;
+      }
+      throw error;
+    }
     if (!isCurrent()) return;
     setJob(response.data); setSelected(response.data.approved_ids || []);
     if (response.data.status === 'published') setConfirmed(false);
@@ -62,10 +83,15 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
       const result = await api.status(resumeId.trim(), readToken);
       if (!current()) return;
       adoptPreview(result.data);
+      // Keep approval disabled until publication recovery succeeds or returns 404.
+      setJob({ job_id: result.data.publication_job_id, status: 'unknown', approved_ids: [] });
       try {
         const publication = await api.status(result.data.publication_job_id, readToken);
         if (current()) { setJob(publication.data); setSelected(publication.data.approved_ids || []); }
-      } catch (error) { if (error.response?.status !== 404) throw error; }
+      } catch (error) {
+        if (error.response?.status !== 404) throw error;
+        if (current()) setJob(null);
+      }
     })}>Load preview</button>
     {message && <p role="alert">{message}</p>}
     {preview && <>

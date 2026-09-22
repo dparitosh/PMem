@@ -22,6 +22,15 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def canonical_lookup(value):
+    """Graph lookup collections have no query ordering or RDF list semantics."""
+    if isinstance(value, dict):
+        return {key: canonical_lookup(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return sorted((canonical_lookup(item) for item in value), key=digest)
+    return value
+
+
 class BridgeJobs:
     def __init__(self, store=None, source=None, graph=None):
         self.store = store or PostgresRegistry('semantic_bridge_jobs_v1')
@@ -46,7 +55,8 @@ class BridgeJobs:
             row.pop('selected_for_apply', None)
             row.pop('approvedByUser', None)
             row['candidate_id'] = digest(row)
-            row['eligible'] = bool(row.get('ontology_class_element_id') and
+            row['eligible'] = bool(all(row.get(key) for key in ('import_id', 'import_row_key', 'ontology_class_element_id')) and
+                row.get('target_ontology_type') in {'Class', 'ObjectProperty', 'DatatypeProperty', 'AnnotationProperty'} and
                 not row.get('validation_errors') and row.get('validation_status') != 'invalid')
             rows[row['candidate_id']] = row
         preview_id = 'bridge-preview-' + uuid4().hex
@@ -118,7 +128,9 @@ class BridgeJobs:
             return self._completed(job, receipt)
 
     def _completed(self, job, receipt):
-        if receipt.get('request_digest') != job.get('request_digest'):
+        if (not job.get('request_digest') or
+                receipt.get('request_digest') != job['request_digest'] or
+                receipt.get('publication_id') != job['job_id']):
             raise BridgeConflict('Graph receipt does not match the approved publication.')
         job.update(status='published', receipt=receipt, updated_at=now())
         job.pop('error', None)
@@ -138,7 +150,7 @@ class BridgeSource:
         terms = service._load_ontology_term_lookup(scope)
         classes = UnifiedDataImportService._load_ontology_class_lookup(scope)
         snapshot = {'source': digest(task.get('parsed_rows') or []),
-                    'ontology': digest([ontology_id, scope, service._read_ontology_file(meta), terms, classes])}
+                    'ontology': digest([ontology_id, scope, service._read_ontology_file(meta), canonical_lookup(terms), canonical_lookup(classes)])}
         return service, task, scope, snapshot
 
     def snapshot(self, ontology_id, import_id):
