@@ -18,6 +18,7 @@
 .data-flow-kpis .data-flow-kpi-state { font-size: 1.15rem; line-height: 2rem; }
 .data-flow-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(18rem, .9fr); gap: 1rem; }
 .data-flow-card { min-width: 0; padding: 1rem; }
+.data-flow-card--definitions { margin-bottom: 1rem; }
 .data-flow-card__heading { display: flex; justify-content: space-between; gap: 1rem; align-items: end; margin-bottom: 1rem; }
 .data-flow-card__heading p { font-size: .9rem; }
 .data-flow-filter { color: #52606d; font-size: .8rem; font-weight: 700; }
@@ -26,6 +27,8 @@
 .data-flow-table { width: 100%; min-width: 43rem; border-collapse: collapse; font-size: .875rem; }
 .data-flow-table th { padding: .65rem; border-bottom: 2px solid #aeb7bf; color: #35414d; text-align: left; white-space: nowrap; }
 .data-flow-table td { padding: .7rem .65rem; border-bottom: 1px solid #d9dfe3; vertical-align: middle; }
+.data-flow-definition-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.data-flow-definition-actions .data-flow-replay { padding: .35rem .5rem; font-size: .78rem; }
 .data-flow-table tr.is-selected { background: #e6f6f8; }
 .data-flow-table small { display: block; margin-top: .15rem; color: #667684; }
 .data-flow-link { padding: 0; border: 0; background: transparent; color: #006f87; font-weight: 700; text-align: left; cursor: pointer; }

@@ -170,26 +170,32 @@ def failed(record: dict[str, Any], message: str) -> dict[str, Any]:
 
 
 def publication_succeeded(record: dict[str, Any], publication: dict[str, Any]) -> dict[str, Any]:
-    """Advance a candidate checkpoint only after canonical publication succeeds."""
+    """Record a canonical publication and advance a candidate checkpoint when present.
+
+    Semantic batch jobs do not all consume an ordered event stream.  A batch
+    without ``next_checkpoint`` is still publishable, so treating the absent
+    checkpoint as an error after the remote graph commit would leave the UI
+    reporting a failure for a successfully published batch.
+    """
     output = dict(record.get("output_manifest") or {})
     if output.get("checkpoint_state") == "advanced":
         return record
-    candidate = output.get("checkpoint_candidate")
-    if candidate is None:
-        raise ValueError("Run does not contain a checkpoint candidate")
     if publication.get("status") != "published":
         raise ValueError("Canonical publication did not report success")
     advanced_at = _now()
+    candidate = output.get("checkpoint_candidate")
     output.update({
-        "checkpoint_state": "advanced",
-        "checkpoint_advanced_at": advanced_at,
+        "checkpoint_state": "advanced" if candidate is not None else "not_applicable",
         "publication_digest": _digest(publication),
         "publication": publication,
     })
-    return store.put(record["run_id"], {
-        **record, "checkpoint": candidate, "checkpoint_advanced_at": advanced_at,
-        "output_manifest": output,
-    })
+    if candidate is not None:
+        output["checkpoint_advanced_at"] = advanced_at
+        return store.put(record["run_id"], {
+            **record, "checkpoint": candidate, "checkpoint_advanced_at": advanced_at,
+            "output_manifest": output,
+        })
+    return store.put(record["run_id"], {**record, "output_manifest": output})
 
 
 def get(run_id: str) -> dict[str, Any] | None:

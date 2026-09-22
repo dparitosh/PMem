@@ -67,6 +67,8 @@ export default function DataFlowPage() {
   const [error, setError] = useState('');
   const [replayError, setReplayError] = useState('');
   const [replayingId, setReplayingId] = useState('');
+  const [definitionActionId, setDefinitionActionId] = useState('');
+  const [scheduleInterval, setScheduleInterval] = useState(300);
   const [replayApprover, setReplayApprover] = useState('');
   const [replayApprovalToken, setReplayApprovalToken] = useState('');
   const loadSequence = useRef(0);
@@ -167,6 +169,36 @@ export default function DataFlowPage() {
     }
   };
 
+  const approval = () => {
+    const approvalToken = replayApprovalToken.trim();
+    return approvalToken ? { approved_by: replayApprover.trim(), approval_token: approvalToken } : {};
+  };
+
+  const manageDefinition = async (definition, action) => {
+    const key = `${definition.job_id}:${definition.version}:${action}`;
+    setDefinitionActionId(key);
+    setReplayError('');
+    try {
+      if (action === 'approve') await dataPipelineAPI.approveDefinition(definition.job_id, definition.version, approval());
+      if (action === 'disable') await dataPipelineAPI.disableDefinition(definition.job_id, definition.version, approval());
+      if (action === 'unschedule') await dataPipelineAPI.disableSchedule(definition.job_id, definition.version, approval());
+      if (action === 'schedule') {
+        const priorRun = runs.find((run) => run.job_id === definition.job_id && run.job_version === definition.version);
+        if (!priorRun) throw new Error('Run this job once before scheduling it; schedules replay a retained immutable input.');
+        await dataPipelineAPI.scheduleDefinition(definition.job_id, definition.version, {
+          replay_run_id: priorRun.run_id,
+          interval_seconds: Number(scheduleInterval),
+        }, approval());
+      }
+      setReplayApprovalToken('');
+      await load();
+    } catch (actionFailure) {
+      setReplayError(actionFailure?.response?.data?.detail || actionFailure?.message || 'Data-job lifecycle action could not be completed.');
+    } finally {
+      setDefinitionActionId('');
+    }
+  };
+
   return (
     <section className="data-flow-page" aria-labelledby="data-flow-title">
       <header className="data-flow-page__header">
@@ -184,8 +216,8 @@ export default function DataFlowPage() {
       </header>
 
       <details className="data-flow-notice" style={{ marginBottom: 12 }}>
-        <summary>Replay approval credentials (only when the API gateway does not provide identity)</summary>
-        <p>These values are held only in memory and the API key is cleared after a replay starts.</p>
+        <summary>Data-job approval credentials (only when the API gateway does not provide identity)</summary>
+        <p>These values are held only in memory and the API key is cleared after a lifecycle action starts.</p>
         <label>Approver <input aria-label="Replay approver" value={replayApprover} onChange={(event) => setReplayApprover(event.target.value)} autoComplete="off" /></label>{' '}
         <label>Execution API key <input aria-label="Replay execution API key" type="password" value={replayApprovalToken} onChange={(event) => setReplayApprovalToken(event.target.value)} autoComplete="off" /></label>
       </details>
@@ -203,6 +235,31 @@ export default function DataFlowPage() {
       </div>
 
       <p>Run and record totals cover the latest {totals.limit ?? 100} runs, not lifetime history.</p>
+      <article className="data-flow-card data-flow-card--definitions">
+        <div className="data-flow-card__heading">
+          <div><h2>Data-job definitions</h2><p>Approve, disable, or schedule only versioned jobs with retained inputs.</p></div>
+          <label className="data-flow-filter">Schedule interval (seconds)<input aria-label="Schedule interval seconds" type="number" min="60" max="86400" value={scheduleInterval} onChange={(event) => setScheduleInterval(event.target.value)} /></label>
+        </div>
+        <div className="data-flow-table-wrap"><table className="data-flow-table data-flow-definition-table">
+          <thead><tr><th>Definition</th><th>Contract</th><th>State</th><th>Schedule</th><th aria-label="Actions" /></tr></thead>
+          <tbody>{definitions.map((definition) => {
+            const busy = definitionActionId.startsWith(`${definition.job_id}:${definition.version}:`);
+            const isApproved = definition.lifecycle_state === 'approved' && definition.enabled;
+            return <tr key={`${definition.job_id}:${definition.version}`}>
+              <td><strong>{definition.name || definition.job_id}</strong><small>{definition.job_id} · {definition.version} · {definition.owner || 'No owner recorded'}</small></td>
+              <td>{definition.input_contract || '—'}<small>{definition.output_contract || '—'}</small></td>
+              <td><Status value={definition.lifecycle_state || (definition.enabled ? 'enabled' : 'disabled')} /></td>
+              <td>{definition.schedule ? `Every ${definition.schedule.interval_seconds}s` : 'Not scheduled'}</td>
+              <td className="data-flow-definition-actions">
+                {!isApproved && definition.lifecycle_state !== 'disabled' && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'approve')}>Approve</button>}
+                {isApproved && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'disable')}>Disable</button>}
+                {isApproved && !definition.schedule && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'schedule')}>Schedule</button>}
+                {isApproved && definition.schedule && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'unschedule')}>Stop schedule</button>}
+              </td>
+            </tr>;
+          })}{!definitions.length && <tr><td colSpan="5" className="data-flow-empty">No versioned data-job definitions are registered.</td></tr>}</tbody>
+        </table></div>
+      </article>
       <div className="data-flow-grid">
         <article className="data-flow-card data-flow-card--runs">
           <div className="data-flow-card__heading">

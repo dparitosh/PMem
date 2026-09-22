@@ -78,8 +78,11 @@ class SparkJobRunner:
         """Return the official connector configuration without exposing secrets."""
         package = os.getenv("DEPO_SPARK_NEO4J_PACKAGE", "").strip()
         uri = os.getenv("NEO4J_URI", "").strip()
-        username = os.getenv("NEO4J_USER", "").strip()
-        password = os.getenv("NEO4J_PASS", "").strip()
+        # Keep Spark aligned with the shared Neo4j configuration contract:
+        # customer Aura exports commonly use USERNAME/PASSWORD while the
+        # deployment template uses the shorter USER/PASS names.
+        username = (os.getenv("NEO4J_USER") or os.getenv("NEO4J_USERNAME") or "").strip()
+        password = (os.getenv("NEO4J_PASS") or os.getenv("NEO4J_PASSWORD") or "").strip()
         database = os.getenv("NEO4J_DATABASE", "neo4j").strip()
         spark_version = self._spark_version(spark_home)
         if not spark_version.startswith(("4.0.", "4.1.")):
@@ -90,7 +93,7 @@ class SparkJobRunner:
         if not package:
             raise SparkUnavailable("DEPO_SPARK_NEO4J_PACKAGE must name a Neo4j Spark connector compatible with the installed Spark runtime")
         if not uri or not username or not password:
-            raise SparkUnavailable("NEO4J_URI, NEO4J_USER, and NEO4J_PASS are required when the Neo4j Spark connector is enabled")
+            raise SparkUnavailable("NEO4J_URI, NEO4J_USER (or NEO4J_USERNAME), and NEO4J_PASS (or NEO4J_PASSWORD) are required when the Neo4j Spark connector is enabled")
         return {
             "spark.jars.packages": package,
             "neo4j.url": uri,
@@ -126,7 +129,11 @@ class SparkJobRunner:
             "java_home_present": java_home.is_dir(),
             "neo4j_connector_enabled": self._neo4j_enabled(),
             "neo4j_connector_package_configured": bool(os.getenv("DEPO_SPARK_NEO4J_PACKAGE", "").strip()),
-            "neo4j_connection_configured": bool(os.getenv("NEO4J_URI", "").strip() and os.getenv("NEO4J_USER", "").strip() and os.getenv("NEO4J_PASS", "").strip()),
+            "neo4j_connection_configured": bool(
+                os.getenv("NEO4J_URI", "").strip()
+                and (os.getenv("NEO4J_USER") or os.getenv("NEO4J_USERNAME") or "").strip()
+                and (os.getenv("NEO4J_PASS") or os.getenv("NEO4J_PASSWORD") or "").strip()
+            ),
             "runs_retained": len(self._runs),
         }
 

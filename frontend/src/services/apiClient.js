@@ -402,6 +402,26 @@ export const dataPipelineAPI = {
   telemetry: () => apiClient.get(buildUrl('/api/v1/pipeline/telemetry')),
   definitions: () => apiClient.get(buildUrl('/api/v1/pipeline/jobs/definitions')),
   runs: (limit = 100) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/runs'), { params: { limit } }),
+  approveDefinition: (jobId, version, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/definitions/${encodeURIComponent(jobId)}/${encodeURIComponent(version)}/approve`),
+    approval,
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
+  disableDefinition: (jobId, version, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/definitions/${encodeURIComponent(jobId)}/${encodeURIComponent(version)}/disable`),
+    approval,
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
+  scheduleDefinition: (jobId, version, schedule, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/definitions/${encodeURIComponent(jobId)}/${encodeURIComponent(version)}/schedule`),
+    { ...schedule, ...approval },
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
+  disableSchedule: (jobId, version, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/definitions/${encodeURIComponent(jobId)}/${encodeURIComponent(version)}/schedule/disable`),
+    approval,
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
   replay: (runId, approval = {}) => apiClient.post(
     buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}/replay`),
     approval,

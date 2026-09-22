@@ -144,6 +144,21 @@ def test_neo4j_connector_rejects_an_unsupported_spark_runtime(tmp_path, monkeypa
         SparkJobRunner()._neo4j_connector_configuration(tmp_path)
 
 
+def test_neo4j_spark_connector_accepts_aura_style_credential_names(tmp_path, monkeypatch):
+    (tmp_path / "RELEASE").write_text("Spark 4.1.2 built for Hadoop", encoding="utf-8")
+    monkeypatch.setenv("DEPO_SPARK_NEO4J_PACKAGE", "org.neo4j.connectors:spark:6.0.0-s_2.13")
+    monkeypatch.setenv("NEO4J_URI", "neo4j+s://graph.example")
+    monkeypatch.setenv("NEO4J_USERNAME", "aura-user")
+    monkeypatch.setenv("NEO4J_PASSWORD", "aura-password")
+    monkeypatch.delenv("NEO4J_USER", raising=False)
+    monkeypatch.delenv("NEO4J_PASS", raising=False)
+
+    options = SparkJobRunner()._neo4j_connector_configuration(tmp_path)
+
+    assert options["neo4j.authentication.basic.username"] == "aura-user"
+    assert options["neo4j.authentication.basic.password"] == "aura-password"
+
+
 def test_versioned_data_job_definition_requires_approval_before_execution(monkeypatch):
     registry = InMemoryRegistry()
     monkeypatch.setattr("backend.data_pipeline_service.job_definitions.store", registry)
@@ -607,6 +622,44 @@ def test_publish_run_uses_canonical_api_before_advancing_checkpoint(monkeypatch)
     assert response.status_code == 200
     assert response.json()["checkpoint"] == {"offset": 2}
     assert response.json()["output_manifest"]["checkpoint_state"] == "advanced"
+
+
+def test_publish_run_records_success_when_no_checkpoint_is_required(monkeypatch):
+    """A bounded semantic batch has no stream offset to advance."""
+    import json
+    import httpx
+    from backend.artifact_store import ArtifactStore
+    from backend.data_pipeline_service import run_records
+
+    registry = InMemoryRegistry()
+    monkeypatch.setattr(run_records, "store", registry)
+    artifact = ArtifactStore().ingest_bytes(
+        json.dumps({
+            "representation": "normalized-ceim-v1", "ceim_version": "0.1.0", "standard": "qif",
+            "entities": [], "relationships": [],
+        }).encode(),
+        filename="accepted-without-checkpoint.json", kind="accepted-semantic-partition", media_type="application/json",
+    )
+    registry.put("batch-run", {
+        "run_id": "batch-run", "job_type": "validate-semantic-batch", "status": "completed",
+        "output_manifest": {"partition_artifacts": {"accepted": artifact["artifact_id"]}},
+    })
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def post(self, url, **kwargs):
+            return httpx.Response(200, request=httpx.Request("POST", url), json={"status": "published", "ontology_id": "qif"})
+
+    monkeypatch.setattr("backend.data_pipeline_service.router.httpx.AsyncClient", FakeClient)
+    response = TestClient(app).post("/api/v1/pipeline/jobs/runs/batch-run/publish", json={
+        "approved_by": "pipeline-steward", "semantic_release": {"asset_id": "ceim", "version": "0.1.0", "lifecycle_status": "approved"},
+    })
+
+    assert response.status_code == 200
+    assert response.json()["output_manifest"]["checkpoint_state"] == "not_applicable"
+    assert response.json()["output_manifest"]["publication"]["status"] == "published"
 
 
 def test_publish_run_reconciles_gateway_error_from_durable_graph_receipt(monkeypatch):
