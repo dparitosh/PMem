@@ -39,6 +39,11 @@ if (-not (Test-Path $venvPython)) {
 $requirements = if ($Development) { 'backend/requirements-dev.txt' } else { 'backend/requirements.txt' }
 & $venvPython -m pip install -r (Join-Path $root $requirements)
 if ($LASTEXITCODE -ne 0) { throw "Backend dependency installation failed." }
+Push-Location $root
+try {
+  & $venvPython -c 'from backend.agentic_service.app import app; assert app.openapi()["paths"]; print("Agentic service import and OpenAPI smoke check passed.")'
+  if ($LASTEXITCODE -ne 0) { throw 'Agentic service installation smoke check failed.' }
+} finally { Pop-Location }
 if (-not $SkipFrontend) {
   $frontend = Join-Path $root "frontend"
   Push-Location $frontend

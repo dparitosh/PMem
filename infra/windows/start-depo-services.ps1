@@ -26,7 +26,7 @@ if (-not $BindHost) { $BindHost = if ($env:DEPO_SERVICE_HOST) { $env:DEPO_SERVIC
 # addresses in every developer .env.local. Customer deployments override them
 # with private service discovery addresses.
 $serviceUrls = @{
-  ONTOLOGY_SERVICE_URL = 8011; GRAPH_SERVICE_URL = 8013; INGESTION_SERVICE_URL = 8014
+  AGENTIC_SERVICE_URL = 8012; ONTOLOGY_SERVICE_URL = 8011; GRAPH_SERVICE_URL = 8013; INGESTION_SERVICE_URL = 8014
   OSLC_SERVICE_URL = 8015; QIF_SERVICE_URL = 8010; DATA_CATALOG_URL = 8016
   DATA_PRODUCT_SERVICE_URL = 8017; CEIM_SERVICE_URL = 8018; DATA_PIPELINE_SERVICE_URL = 8019
 }
@@ -35,6 +35,13 @@ foreach ($entry in $serviceUrls.GetEnumerator()) {
     Set-Item -Path ("Env:" + $entry.Key) -Value ("http://${BindHost}:$($entry.Value)/api/v1")
   }
 }
+
+# Fail before launching processes when the agentic runtime is incomplete.
+Push-Location $root
+try {
+  & $python -m backend.agentic_service.configuration
+  if ($LASTEXITCODE -ne 0) { throw 'Agentic configuration validation failed. Configure the listed settings before starting services.' }
+} finally { Pop-Location }
 
 # Spark is deliberately opt-in: the data-pipeline API stays healthy without
 # allocating a JVM, while this switch lets an operator enable the local Spark

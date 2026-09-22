@@ -26,10 +26,13 @@ if ($values.DEPO_POSTGRES_MODE -eq 'portable' -and (-not $values.DEPO_POSTGRES_B
 $required = @("DEPO_DATABASE_URL", "DEPO_DATABASE_SCHEMA", "AUTH_MODE", "NEO4J_URI", "NEO4J_USER", "NEO4J_PASS", "NEO4J_DATABASE", "ALLOWED_ORIGINS")
 foreach ($name in $required) { if (-not $values[$name] -or $values[$name] -match '<.*>') { throw "Missing customer value for $name in $path" } }
 if ($Profile -eq "Production") {
-  if ($values.AUTH_MODE -ne "entra") { throw "Production requires AUTH_MODE=entra." }
+  if ($values.AUTH_MODE -notin @('token', 'entra')) { throw 'Production requires API-key authentication (AUTH_MODE=token) or a configured gateway identity profile.' }
   if ($values.ALLOWED_ORIGINS -match "localhost|127\.0\.0\.1") { throw "Production ALLOWED_ORIGINS must not use a loopback host." }
+  foreach ($origin in $values.ALLOWED_ORIGINS.Split(',')) {
+    if ($origin.Trim() -notmatch '^https://') { throw 'Production ALLOWED_ORIGINS must contain HTTPS origins only.' }
+  }
   if ($values.NEO4J_URI -notmatch '^neo4j\+s://') { throw "Production requires a secure Neo4j Aura or TLS URI (neo4j+s://)." }
-  if (-not $values.DEPO_TRUSTED_GATEWAY_IPS -or $values.DEPO_TRUSTED_GATEWAY_IPS -match '<.*>') { throw "Production requires DEPO_TRUSTED_GATEWAY_IPS for trusted gateway identity forwarding." }
+  if ($values.AUTH_MODE -eq 'entra' -and (-not $values.DEPO_TRUSTED_GATEWAY_IPS -or $values.DEPO_TRUSTED_GATEWAY_IPS -match '<.*>')) { throw "Gateway identity mode requires DEPO_TRUSTED_GATEWAY_IPS." }
 }
 if ($Profile -eq "Bootstrap" -and $values.AUTH_MODE -notin @("token", "entra", "disabled")) { throw "Bootstrap requires AUTH_MODE=token, AUTH_MODE=entra or an explicit loopback-only disabled-auth demo." }
 if ($values.AUTH_MODE -eq "disabled") {
@@ -41,7 +44,10 @@ if ($values.AUTH_MODE -eq "disabled") {
 if ($values.AUTH_MODE -eq "token") {
   if (-not $values.ONTOLOGY_APPROVAL_TOKEN -or $values.ONTOLOGY_APPROVAL_TOKEN -match '<.*>') { throw 'Missing generated bootstrap token: ONTOLOGY_APPROVAL_TOKEN' }
   $tokenKeys = @("DATA_PRODUCT_APPROVAL_TOKEN", "AGENTIC_APPROVAL_TOKEN", "ARTIFACT_RETENTION_APPROVAL_TOKEN", "DATA_JOB_EXECUTION_TOKEN", "DATA_JOB_APPROVAL_TOKEN", "CEIM_PUBLISH_APPROVAL_TOKEN", "CEIM_RESOLUTION_APPROVAL_TOKEN", "SPEED_PATH_APPROVAL_TOKEN", "SPEED_EVENT_TOKEN", "SPARQL_FEDERATION_APPROVAL_TOKEN", "VOCABULARY_APPROVAL_TOKEN", "GRAPH_READ_TOKEN", "GRAPH_PUBLICATION_TOKEN", "INGESTION_WRITE_TOKEN", "CATALOG_SERVICE_TOKEN")
-  foreach ($name in $tokenKeys) { if (-not $values[$name] -or $values[$name] -match '<.*>') { throw "Missing generated bootstrap token: $name" } }
+  foreach ($name in ($tokenKeys + 'ONTOLOGY_APPROVAL_TOKEN')) {
+    if (-not $values[$name] -or $values[$name] -match '<.*>') { throw "Missing API key: $name" }
+    if ($Profile -eq 'Production' -and $values[$name].Length -lt 32) { throw "Production API key must be at least 32 characters: $name" }
+  }
 }
 
 if (-not $SkipEndpointChecks) {

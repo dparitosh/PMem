@@ -65,9 +65,9 @@ Stop here and edit both files before running the installer:
 | Root `.env.local` | PostgreSQL URL/schema, Neo4j URI/user/password/database, allowed browser origins, OSLC URL and authentication profile |
 | `frontend/.env.local` | Public gateway URL or explicit service URLs reachable by the user's browser |
 
-For a restricted bootstrap installation keep `AUTH_MODE=token` and the generated
-tokens. For production set `AUTH_MODE=entra`, configure the trusted gateway IPs,
-HTTPS origins/OSLC URL and the gateway authentication described below. The current
+Use `AUTH_MODE=token` and distinct generated API keys for both bootstrap and
+production. Production requires HTTPS origins/OSLC URL and keys of at least 32
+characters. Entra is optional and is not required for this deployment. The current
 deployment validator requires `neo4j+s://` in the Production profile. Replace all
 required placeholders. Keep the server filename `.env.local`: alternate output
 names are rejected before writing configuration.

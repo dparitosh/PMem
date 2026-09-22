@@ -63,12 +63,16 @@ test('keeps chat input locked until the SSE stream completes and clears the serv
 
   const setChatResults = jest.fn();
   render(<Chatbot setChatResults={setChatResults} graphData={{ nodes: [], links: [] }} searchResults={[]} />);
+  fireEvent.change(screen.getByLabelText('Chat API key'), { target: { value: 'read-test-key' } });
 
   const input = screen.getByRole('textbox', { name: 'Chat question' });
   fireEvent.change(input, { target: { value: 'Explain this graph' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send chat question' }));
 
   expect(await screen.findByText('Hello')).toBeInTheDocument();
+  const sent = global.fetch.mock.calls.find(([, options]) => options.method === 'POST');
+  expect(sent[1].headers.Authorization).toBe('Bearer read-test-key');
+  expect(JSON.stringify(window.sessionStorage)).not.toContain('read-test-key');
   expect(input).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Send chat question' })).toBeDisabled();
 

@@ -23,7 +23,7 @@ release checks. Run all commands from the project root and stop on failures.
 
 Required: `DEPO_DATABASE_URL`, `DEPO_DATABASE_SCHEMA`, Neo4j connection
 settings, artifact storage, and service URLs.  For production additionally set
-`AUTH_MODE=entra`, Entra configuration, and Azure API Management settings.
+`AUTH_MODE=token`, generated API keys, and customer HTTPS routing settings.
 
 Set `CEIM_SERVICE_URL` to the private CEIM service address when agent workflows
 need canonical normalization. The Windows launcher defaults it to local port
@@ -76,7 +76,7 @@ registry write; successful static validation does not replace it.
 1. Host `frontend/dist` behind the approved HTTPS frontend hostname.
 2. Register only approved OpenAPI/OData service operations in Azure API
    Management.
-3. Terminate TLS and validate Entra access tokens in APIM.
+3. Terminate TLS at the customer reverse proxy and preserve API-key headers. Entra/APIM is optional.
 4. Keep all DEPO service ports private; APIM is the sole public ingress.
 
 ## 6. Smoke test

@@ -20,7 +20,7 @@ Manual mapping drafts in the older mapper controls are not submitted by this pan
 - Agentic service needs the configured PostgreSQL registry and access to imported artifacts, ontology metadata, and graph reads. Job namespace: `semantic_bridge_jobs_v1`.
 - Set `GRAPH_SERVICE_URL` and a server-only `GRAPH_PUBLICATION_TOKEN` shared by agentic and graph services. Never compile this token into frontend environment variables. Restrict graph publication endpoints to the service network.
 - Graph service requires `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASS`, and `NEO4J_DATABASE`. Its database identity must be able to create the unique `DepoBridgePublication.publication_id` constraint and write mappings, receipts, and change records.
-- Route `/api/v1/workflows` to the agentic service. Use the configured trusted gateway reader/approver identity in production. Bootstrap token mode uses `GRAPH_READ_TOKEN` for reads and `AGENTIC_APPROVAL_TOKEN` plus the approver name for approval. The UI's bootstrap fields hold credentials only in component memory.
+- Route `/api/v1/workflows` to the agentic service. Use API-key authentication (`AUTH_MODE=token`) for this deployment. It uses `GRAPH_READ_TOKEN` for reads and `AGENTIC_APPROVAL_TOKEN` plus the approver name for approval. The UI's bootstrap fields hold credentials only in component memory.
 - Use TLS for browser and service traffic. Approval credentials must be excluded from proxy/body logs.
 
 ## Behavior and release limits

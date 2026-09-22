@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from backend.mesh_store import PostgresRegistry
 from .companion import companion
+from .transport_auth import APPROVAL_TOKENS, downstream_headers, downstream_inputs
 from .oslc_graph_rag import oslc_graph_rag
 from .dt_requirements_adapter import assess_manifest
 from .dt_gateway import execute_current_plan
@@ -76,6 +77,8 @@ def dt_capability_bindings() -> dict:
 @router.post("/integrations/dt-requirements-design/runs")
 async def dt_run(payload: dict[str, Any], request: Request) -> dict:
     actor = approval_identity(request, payload, token_env="AGENTIC_APPROVAL_TOKEN")
+    if os.getenv('DT_AGENT_ENABLED', 'false').lower() != 'true':
+        raise HTTPException(503, 'DT integration is disabled; configure and enable DT_AGENT_ENABLED')
     if payload.get("execution_scope") != "current_plan" or payload.get("workflow_id"):
         raise HTTPException(422, "DT supports only explicit execution_scope=current_plan, not workflow selection")
     run_id = str(uuid4())
@@ -107,9 +110,11 @@ def dt_run_status(run_id: str, request: Request) -> dict:
     return record
 
 
-@router.post("/oslc/graph-rag")
+@router.post("/oslc/graph-rag", dependencies=[Depends(graph_read_identity)])
 async def oslc_graph_rag_route(payload: dict[str, Any]) -> dict:
     """OSLC-governed, read-only retrieval for agent context."""
+    if os.getenv('OSLC_REMOTE_ENABLED', 'false').lower() != 'true':
+        raise HTTPException(503, 'Remote OSLC integration is disabled; configure and enable OSLC_REMOTE_ENABLED')
     try:
         return await oslc_graph_rag.retrieve(
             str(payload.get("query") or ""),
@@ -156,7 +161,7 @@ def companion_sample_queries() -> dict:
     return {"queries": _COMPANION_PROMPTS, "data_available": True, "mode": "evidence-grounded"}
 
 
-@router.post("/chat/validate")
+@router.post("/chat/validate", dependencies=[Depends(graph_read_identity)])
 def companion_validate(payload: dict[str, Any]) -> dict:
     message = " ".join(str(payload.get("message") or "").split())
     if not message:
@@ -164,28 +169,29 @@ def companion_validate(payload: dict[str, Any]) -> dict:
     return {"status": "ok", "valid": True, "session_id": payload.get("session_id"), "graph_context_present": bool(payload.get("graph_context"))}
 
 
-@router.post("/chat")
-async def companion_chat(payload: dict[str, Any]) -> dict:
+@router.post("/chat", dependencies=[Depends(graph_read_identity)])
+async def companion_chat(payload: dict[str, Any], request: Request) -> dict:
     message = " ".join(str(payload.get("message") or "").split())
     if not message:
         raise HTTPException(status_code=422, detail="message is required")
     try:
-        result = await companion.ask(message)
+        headers = downstream_headers(request, companion._graph_root(), graph_read=True)
+        result = await companion.ask(message, headers=headers)
         return {"session_id": str(payload.get("session_id") or uuid4()), **result, "mode": "evidence-grounded"}
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-@router.post("/chat/jobs", status_code=202)
-async def companion_job(payload: dict[str, Any]) -> dict:
-    response = await companion_chat(payload)
+@router.post("/chat/jobs", status_code=202, dependencies=[Depends(graph_read_identity)])
+async def companion_job(payload: dict[str, Any], request: Request) -> dict:
+    response = await companion_chat(payload, request)
     job_id = f"companion-{uuid4()}"
     record = {"job_id": job_id, "status": "completed", "session_id": response["session_id"], "response": response["response"], "answerable": response["answerable"], "evidence": response["evidence"], "sources": response["sources"], "created_at": _now(), "finished_at": _now()}
     companion_job_store.put(job_id, record)
     return {"status": "accepted", "job_id": job_id, "poll_endpoint": f"/api/v1/chat/jobs/{job_id}", "session_id": response["session_id"]}
 
 
-@router.get("/chat/jobs/{job_id}")
+@router.get("/chat/jobs/{job_id}", dependencies=[Depends(graph_read_identity)])
 def companion_job_status(job_id: str) -> dict:
     record = companion_job_store.get(job_id)
     if not record:
@@ -204,23 +210,23 @@ def companion_capabilities() -> dict:
     return {"name": "knowledge-companion", "mode": "evidence-grounded", "operations": ["validate", "ask", "stream", "job", "sample-queries"], "evidence_required": True}
 
 
-@router.post("/chat-stream")
-async def companion_stream(payload: dict[str, Any]) -> StreamingResponse:
-    response = await companion_chat(payload)
+@router.post("/chat-stream", dependencies=[Depends(graph_read_identity)])
+async def companion_stream(payload: dict[str, Any], request: Request) -> StreamingResponse:
+    response = await companion_chat(payload, request)
 
     async def events():
-        yield f"data: {json.dumps({'token': response['response']})}\\n\\n"
-        yield f"data: {json.dumps({'evidence': response['evidence'], 'sources': response['sources'], 'answerable': response['answerable']})}\\n\\n"
-        yield "data: {\"done\": true}\\n\\n"
+        yield f"data: {json.dumps({'token': response['response']})}\n\n"
+        yield f"data: {json.dumps({'evidence': response['evidence'], 'sources': response['sources'], 'answerable': response['answerable']})}\n\n"
+        yield "data: {\"done\": true}\n\n"
 
-    return StreamingResponse(events(), media_type="text/event-stream")
+    return StreamingResponse(events(), media_type="text/event-stream", headers={'X-Session-ID': response['session_id']})
 
 @router.post("/plans")
 def plan(payload: dict[str, Any]) -> dict:
     try:
         agent, tool = catalog.item("agents", str(payload["agent_id"])), catalog.item("tools", str(payload["tool_id"]))
         if tool["id"] not in agent.get("tools", []): raise ValueError("Tool is not allowlisted for this agent")
-        requires_approval = bool(agent.get("approval_required") or tool.get("mutates"))
+        requires_approval = bool(agent.get("approval_required") or tool.get("mutates") or tool["id"] in APPROVAL_TOKENS or payload.get("approval_required"))
         return {"valid": True, "agent": agent["id"], "tool": tool, "requires_approval": requires_approval}
     except (KeyError, ValueError) as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -261,7 +267,7 @@ def _resolve_inputs(value: Any, traces: list[dict[str, Any]]) -> Any:
     if isinstance(value, list): return [_resolve_inputs(item, traces) for item in value]
     return _lookup(value, traces)
 
-def _multipart(inputs: dict[str, Any]) -> tuple[dict[str, Any], dict[str, tuple[str, bytes, str]]]:
+def _multipart(inputs: dict[str, Any], file_field: str = 'file') -> tuple[dict[str, Any], dict[str, tuple[str, bytes, str]]]:
     upload = dict(inputs.get("file") or {})
     encoded = str(upload.get("content_base64") or "")
     if not upload.get("filename") or not encoded:
@@ -271,7 +277,7 @@ def _multipart(inputs: dict[str, Any]) -> tuple[dict[str, Any], dict[str, tuple[
     if len(content) > int(os.getenv("AGENTIC_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024))):
         raise ValueError("Agent file exceeds AGENTIC_MAX_UPLOAD_BYTES")
     form = dict(inputs.get("form") or {})
-    return form, {"file": (str(upload["filename"]), content, str(upload.get("content_type") or "application/octet-stream"))}
+    return form, {file_field: (str(upload["filename"]), content, str(upload.get("content_type") or "application/octet-stream"))}
 
 @router.post("/runs")
 async def run(payload: dict[str, Any], request: Request) -> dict:
@@ -279,19 +285,24 @@ async def run(payload: dict[str, Any], request: Request) -> dict:
     approved_by = None
     if plan_result["requires_approval"]:
         approved_by = approval_identity(request, payload, token_env="AGENTIC_APPROVAL_TOKEN")
+    else:
+        graph_read_identity(request)
     tool, inputs = plan_result["tool"], dict(payload.get("inputs") or {})
     if tool.get("transport") != "openapi":
         raise HTTPException(status_code=501, detail="This transport is catalogued but not HTTP-executable")
     try:
         path = _render(str(tool["path"]), inputs)
+        endpoint = _base(tool["service"]) + path
+        headers = downstream_headers(request, endpoint, graph_read=tool["service"] in {"graph", "agentic"})
+        inputs = downstream_inputs(tool, inputs, approved_by)
         async with httpx.AsyncClient(timeout=float(os.getenv("AGENTIC_TOOL_TIMEOUT_SECONDS", "30"))) as client:
             if tool.get("input_kind") == "multipart":
-                form, files = _multipart(inputs)
-                response = await client.request(tool["method"], _base(tool["service"]) + path, data=form, files=files)
+                form, files = _multipart(inputs, 'artifact' if tool['id'] == 'ontology.register' else 'file')
+                response = await client.request(tool["method"], endpoint, headers=headers, data=form, files=files)
             elif tool.get("input_kind") == "form":
-                response = await client.request(tool["method"], _base(tool["service"]) + path, data=inputs)
+                response = await client.request(tool["method"], endpoint, headers=headers, data=inputs)
             else:
-                response = await client.request(tool["method"], _base(tool["service"]) + path, params=inputs if tool["method"] == "GET" else None, json=None if tool["method"] == "GET" else inputs)
+                response = await client.request(tool["method"], endpoint, headers=headers, params=inputs if tool["method"] == "GET" else None, json=None if tool["method"] == "GET" else inputs)
             response.raise_for_status()
         if tool["id"] == "ontology.export":
             result = {"content_base64": base64.b64encode(response.content).decode("ascii"),
@@ -300,7 +311,7 @@ async def run(payload: dict[str, Any], request: Request) -> dict:
             result = response.json()
         return {"agent_id": plan_result["agent"], "tool_id": tool["id"], "approved_by": approved_by, "result": result}
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail="Downstream tool request failed; inspect service status before retrying") from exc
 
 
 @router.post("/workflow-runs")
@@ -314,6 +325,12 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
     """
     try:
         workflow = catalog.item("workflows", str(payload["workflow_id"]))
+        planned = workflow_plan(payload)
+        approved_workflow = any(step['requires_approval'] for step in planned['steps'])
+        if approved_workflow:
+            approval_identity(request, payload, token_env="AGENTIC_APPROVAL_TOKEN")
+        else:
+            graph_read_identity(request)
         requested = list(payload.get("step_inputs") or [])
         if requested and len(requested) != len(workflow.get("steps", [])):
             raise ValueError("step_inputs must contain one entry for each workflow step")
@@ -322,7 +339,7 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
         workflow_store.put(run_id, record)
         for index, step in enumerate(workflow["steps"]):
             inputs = _resolve_inputs(requested[index] if requested else payload.get("inputs", {}), record["traces"])
-            command = {**step, "inputs": inputs, "approved_by": payload.get("approved_by"), "approval_token": payload.get("approval_token")}
+            command = {**step, "approval_required": approved_workflow or step.get('approval_required', False), "inputs": inputs, "approved_by": payload.get("approved_by"), "approval_token": payload.get("approval_token")}
             retries, attempt = max(0, int(step.get("retries", 0))), 0
             while True:
                 attempt += 1
@@ -344,14 +361,14 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
         raise HTTPException(422, str(exc)) from exc
 
 
-@router.get("/workflow-runs/{run_id}")
+@router.get("/workflow-runs/{run_id}", dependencies=[Depends(graph_read_identity)])
 def workflow_run(run_id: str) -> dict:
     record = workflow_store.get(run_id)
     if not record: raise HTTPException(404, "Workflow run not found")
     return record
 
 
-@router.get("/catalog/validate")
+@router.get("/catalog/validate", dependencies=[Depends(graph_read_identity)])
 async def validate_openapi_catalog() -> dict:
     """Compare declarative HTTP tools with their live OpenAPI operations."""
     errors: list[dict[str, str]] = []
@@ -371,7 +388,7 @@ async def validate_openapi_catalog() -> dict:
     return {"valid": not errors, "errors": errors, "services": sorted(documents)}
 
 
-@router.get("/code-audit", summary="Generate or read the bounded repository dependency graph")
+@router.get("/code-audit", dependencies=[Depends(graph_read_identity)], summary="Generate or read the bounded repository dependency graph")
 async def code_audit(refresh: bool = False) -> dict:
     """Expose code-network analysis from the agentic control plane.
 

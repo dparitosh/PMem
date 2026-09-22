@@ -10,6 +10,13 @@ from typing import Any
 from fastapi import HTTPException, Request
 
 
+def _request_api_key(request: Request) -> str:
+    authorization = request.headers.get('authorization', '')
+    if authorization.lower().startswith('bearer '):
+        return authorization[7:]
+    return request.headers.get('x-api-key', '')
+
+
 def _require_trusted_gateway(request: Request) -> None:
     """Make header-based Entra identity safe only behind a known gateway hop.
 
@@ -46,9 +53,8 @@ def service_write_identity(request: Request, *, token_env: str, default_actor: s
         _require_trusted_gateway(request)
         return approval_identity(request, {}, token_env=token_env)
     expected = os.getenv(token_env, "").strip()
-    authorization = request.headers.get("authorization", "")
-    supplied = authorization[7:] if authorization.lower().startswith("bearer ") else ""
-    if not expected or not supplied or not hmac.compare_digest(supplied, expected):
+    supplied = _request_api_key(request)
+    if not expected or not supplied or not hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
         raise HTTPException(403, "A valid service write token is required")
     return request.headers.get("x-depo-principal-id", default_actor)
 
@@ -62,7 +68,8 @@ def approval_identity(request: Request, payload: dict[str, Any], *, token_env: s
         return str(payload.get("approved_by") or "local-development")
     if mode != "entra":
         expected = os.getenv(token_env, "")
-        if expected and payload.get("approved_by") and payload.get("approval_token") == expected:
+        supplied = payload.get('approval_token') or _request_api_key(request)
+        if expected and payload.get("approved_by") and isinstance(supplied, str) and hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
             return str(payload["approved_by"])
         raise HTTPException(403, "A valid approval token and approver are required")
     _require_trusted_gateway(request)
@@ -92,9 +99,8 @@ def graph_read_identity(request: Request) -> str:
         return "local-development"
     if mode != "entra":
         expected = os.getenv("GRAPH_READ_TOKEN", "")
-        authorization = request.headers.get("authorization", "")
-        supplied = authorization[7:] if authorization.lower().startswith("bearer ") else ""
-        if expected and hmac.compare_digest(supplied, expected):
+        supplied = _request_api_key(request)
+        if expected and hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
             return "token-reader"
         raise HTTPException(403, "A valid graph read token is required")
     _require_trusted_gateway(request)

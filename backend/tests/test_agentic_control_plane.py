@@ -29,19 +29,23 @@ def test_tool_is_rejected_when_not_allowlisted_for_agent():
 
 
 def test_companion_returns_bounded_graph_evidence(monkeypatch):
-    async def grounded(message):
+    monkeypatch.setenv("AUTH_MODE", "token")
+    monkeypatch.setenv("GRAPH_READ_TOKEN", "read-test")
+    async def grounded(message, **kwargs):
         return {"status": "grounded", "answerable": True, "response": "Grounded graph matches: Product.", "evidence": [{"evidence_type": "graph_resource", "resource_id": "urn:product", "label": "Product", "source": "graph"}], "sources": ["graph"], "retrieval": {"nodes_examined": 1, "relationships_examined": 0, "truncated": False}}
     monkeypatch.setattr("backend.agentic_service.router.companion.ask", grounded)
-    response = TestClient(app).post("/api/v1/chat", json={"message": "Show product"})
+    response = TestClient(app).post("/api/v1/chat", json={"message": "Show product"}, headers={"Authorization": "Bearer read-test"})
     assert response.status_code == 200
     assert response.json()["answerable"] is True
     assert response.json()["evidence"][0]["resource_id"] == "urn:product"
 
 
 def test_companion_fails_closed_when_graph_is_unavailable(monkeypatch):
-    async def unavailable(message):
+    monkeypatch.setenv("AUTH_MODE", "token")
+    monkeypatch.setenv("GRAPH_READ_TOKEN", "read-test")
+    async def unavailable(message, **kwargs):
         raise RuntimeError("Knowledge graph retrieval is unavailable; no answer was generated")
     monkeypatch.setattr("backend.agentic_service.router.companion.ask", unavailable)
-    response = TestClient(app).post("/api/v1/chat", json={"message": "Invent an answer"})
+    response = TestClient(app).post("/api/v1/chat", json={"message": "Invent an answer"}, headers={"Authorization": "Bearer read-test"})
     assert response.status_code == 503
     assert "no answer was generated" in response.json()["detail"]

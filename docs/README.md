@@ -28,3 +28,5 @@ manual live scripts excluded by conftest are not release certification.
 packaged tools. `infra` owns deployment and runtime scripts. `data`, `uploads`,
 `ontology_uploads`, and external standards folders may hold customer evidence
 or parser inputs and must not be treated as disposable source clutter.
+
+Agentic service installation, API keys, and optional integrations: [Agentic service setup](AGENTIC_SERVICE_SETUP.md).

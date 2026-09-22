@@ -23,6 +23,7 @@ const CHAT_COLORS = {
 const Chatbot = ({ setChatResults, graphData, searchResults }) => {
     const [chatMessages, setChatMessages] = useState([]);
     const [question, setQuestion] = useState('');
+    const [accessToken, setAccessToken] = useState('');
     const [showSpinner, setShowSpinner] = useState(false);
     const [requestActive, setRequestActive] = useState(false);
     const [error, setError] = useState(null);
@@ -247,6 +248,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    ...(accessToken.trim() ? { Authorization: `Bearer ${accessToken.trim()}` } : {}),
                     ...(sessionId ? { 'X-Session-ID': sessionId } : {}),
                 },
                 body: JSON.stringify({ session_id: sessionId, message: validated, graph_context: graphContext }),
@@ -464,6 +466,12 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             backgroundColor: 'white',
             overflow: 'hidden'
         }}>
+            <details style={{ padding: '8px 14px', flexShrink: 0 }}>
+                <summary>Connection credentials</summary>
+                <label>API key <input aria-label="Chat API key" type="password" autoComplete="off"
+                    value={accessToken} onChange={event => setAccessToken(event.target.value)} /></label>
+                <small style={{ display: 'block' }}>Enter your graph read API key. Kept only in memory.</small>
+            </details>
             {/* Compact session utility row; the surrounding IX card owns the panel title. */}
             <div style={{
                 background: 'var(--theme-color-std-background, #f4f6f8)',

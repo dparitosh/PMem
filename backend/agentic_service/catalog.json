@@ -43,7 +43,7 @@
     ,{"id": "ceim.contract", "transport": "openapi", "service": "ceim", "method": "GET", "path": "/ceim/contract", "mutates": false}
     ,{"id": "ceim.normalize.batch", "transport": "openapi", "service": "ceim", "method": "POST", "path": "/ceim/normalize/batch", "mutates": false}
     ,{"id": "pipeline.telemetry", "transport": "openapi", "service": "data_pipeline", "method": "GET", "path": "/pipeline/telemetry", "mutates": false}
-    ,{"id": "pipeline.transform", "transport": "openapi", "service": "data_pipeline", "method": "POST", "path": "/pipeline/jobs/transform", "mutates": false}
+    ,{"id": "pipeline.transform", "transport": "openapi", "service": "data_pipeline", "method": "POST", "path": "/pipeline/jobs/transform", "mutates": true}
   ],
   "mcp_servers": [
     {"id": "semantica", "transport": "stdio", "command": "python", "args": ["-m", "semantica.mcp_server"], "environment": ["SEMANTICA_KG_PATH"], "operations": ["ontology", "reasoning", "validation"]}

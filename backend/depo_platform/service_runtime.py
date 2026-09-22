@@ -67,7 +67,7 @@ def configured_dependency_status() -> dict[str, dict[str, str]]:
     return status
 
 
-def create_service_app(*, title: str, version: str, lifespan_hook: Callable[[], AsyncIterator[None]] | None = None) -> FastAPI:
+def create_service_app(*, title: str, version: str, lifespan_hook: Callable[[], AsyncIterator[None]] | None = None, readiness_check: Callable | None = None) -> FastAPI:
     """Create a service with uniform CORS, lifecycle and correlation behavior."""
 
     lifespan = None
@@ -86,7 +86,8 @@ def create_service_app(*, title: str, version: str, lifespan_hook: Callable[[], 
         allow_origins=allowed_origins(),
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
+        allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID", "X-Session-ID"],
+        expose_headers=["X-Request-ID", "X-Session-ID"],
     )
 
     @app.get("/healthz", include_in_schema=False)
@@ -96,7 +97,9 @@ def create_service_app(*, title: str, version: str, lifespan_hook: Callable[[], 
 
     @app.get("/readyz", include_in_schema=False)
     def readiness() -> JSONResponse:
-        dependencies = configured_dependency_status()
+        dependencies = readiness_check() if readiness_check else {}
+        if not any(item['status'] != 'ready' for item in dependencies.values()):
+            dependencies.update(configured_dependency_status())
         unavailable = [name for name, item in dependencies.items() if item["status"] != "ready"]
         body = {
             "status": "not_ready" if unavailable else "ready",

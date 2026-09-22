@@ -20,8 +20,9 @@ Get-Content $path | ForEach-Object {
 $required = @('DEPO_DATABASE_URL', 'DEPO_DATABASE_SCHEMA')
 if ($Production) {
   $required += @('ALLOWED_ORIGINS', 'AUTH_MODE', 'OSLC_BASE_URL')
-  if ($values['AUTH_MODE'] -ne 'entra') { throw 'Production requires AUTH_MODE=entra behind Azure API Management.' }
-  if (-not $values['DEPO_TRUSTED_GATEWAY_IPS'] -or $values['DEPO_TRUSTED_GATEWAY_IPS'] -match '<.*>') { throw 'Production requires DEPO_TRUSTED_GATEWAY_IPS for gateway identity forwarding.' }
+  if ($values['AUTH_MODE'] -notin @('token','entra')) { throw 'Production requires API-key authentication (AUTH_MODE=token) or a configured gateway identity profile.' }
+  if ($values['AUTH_MODE'] -eq 'entra' -and (-not $values['DEPO_TRUSTED_GATEWAY_IPS'] -or $values['DEPO_TRUSTED_GATEWAY_IPS'] -match '<.*>')) { throw 'Gateway identity mode requires DEPO_TRUSTED_GATEWAY_IPS.' }
+  & (Join-Path $root 'infra/deployment/test-depo-deployment.ps1') -EnvFile $EnvFile -Profile Production -SkipEndpointChecks
   if ($values['ALLOWED_ORIGINS'] -match 'localhost|127\.0\.0\.1') { throw 'Production ALLOWED_ORIGINS must use the customer HTTPS frontend URL.' }
   if ($values['OSLC_BASE_URL'] -notmatch '^https://') { throw 'Production OSLC_BASE_URL must be an HTTPS customer URL.' }
 }

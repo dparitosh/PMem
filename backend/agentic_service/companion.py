@@ -21,14 +21,15 @@ class KnowledgeCompanion:
         configured = os.getenv("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1").rstrip("/")
         return configured if configured.endswith("/api/v1") else f"{configured}/api/v1"
 
-    async def ask(self, message: str) -> dict[str, Any]:
+    async def ask(self, message: str, *, headers: dict | None = None) -> dict[str, Any]:
         query = " ".join(str(message or "").split())
         if not query:
             raise ValueError("message is required")
         endpoint = f"{self._graph_root()}/graph/search"
         try:
             async with httpx.AsyncClient(timeout=float(os.getenv("COMPANION_RETRIEVAL_TIMEOUT_SECONDS", "15"))) as client:
-                headers = {"Authorization": f"Bearer {os.environ['GRAPH_READ_TOKEN']}"} if os.getenv("GRAPH_READ_TOKEN") else {}
+                if headers is None:
+                    headers = {"Authorization": f"Bearer {os.environ['GRAPH_READ_TOKEN']}"} if os.getenv('GRAPH_READ_TOKEN') else {}
                 response = await client.get(endpoint, params={"query": query, "limit": min(self.max_nodes, 200)}, headers=headers)
                 response.raise_for_status()
         except httpx.HTTPError as exc:
