@@ -8,12 +8,12 @@ configuration mocks are not production certification.
 
 1. Record the Windows version, service account, approved Python/Node/npm versions,
    network endpoints, storage locations and API-key access design.
-2. Provision [PostgreSQL](../postgres/README.md) and [Neo4j](../neo4j/README.md). Record database owners,
+2. Provision [PostgreSQL](../../INSTALLATION.md) and [Neo4j](../../INSTALLATION.md). Record database owners,
    TLS trust, app-role privileges, backup and restore evidence.
 3. If Spark is part of this delivery, provision the approved Spark/JDK/Hadoop
-   runtime using the [Spark guide](../spark/README.md). PySpark comes from that
+   runtime using the [Spark guide](../../INSTALLATION.md). PySpark comes from that
    Spark distribution; do not install a second unrelated PySpark version.
-4. Follow the [application installation guide](README.md): configure server and
+4. Follow the [application installation guide](../../INSTALLATION.md): configure server and
    browser settings, run prerequisite checks, install/build, then validate.
 5. Run Spark smoke testing when enabled. Start with `-EnableSpark`; add the
    scheduler/Neo4j connector switches only when their features are required.

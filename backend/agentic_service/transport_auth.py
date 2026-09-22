@@ -11,6 +11,10 @@ APPROVAL_TOKENS = {
     'data.product.publish': 'DATA_PRODUCT_APPROVAL_TOKEN',
     'pipeline.run': 'DATA_JOB_EXECUTION_TOKEN',
     'pipeline.transform': 'DATA_JOB_EXECUTION_TOKEN',
+    'engineering.publish': 'AGENTIC_APPROVAL_TOKEN',
+    'oslc.remote.sync': 'AGENTIC_APPROVAL_TOKEN',
+    'qif.task.commit': 'AGENTIC_APPROVAL_TOKEN',
+    'context.upsert': 'AGENTIC_APPROVAL_TOKEN',
 }
 
 
@@ -38,6 +42,8 @@ def downstream_headers(request: Request, endpoint: str, *, graph_read=False) -> 
 def downstream_inputs(tool: dict, inputs: dict, actor: str | None) -> dict:
     result = {key: value for key, value in inputs.items() if key not in {'approval_token', 'approved_by'}}
     key = APPROVAL_TOKENS.get(tool['id'])
+    if tool.get('mutates') and not key:
+        raise HTTPException(503, f"Mutating tool {tool['id']} has no downstream approval contract")
     if key:
         if not actor:
             raise HTTPException(403, 'Approval is required before dispatch')

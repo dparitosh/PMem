@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -17,9 +18,14 @@ class OSLCClient:
     def _request(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         if not self.base_url:
             raise RuntimeError("OSLC_REMOTE_BASE_URL is not configured")
+        parsed = urlsplit(self.base_url)
+        if (parsed.scheme not in {"http", "https"} or not parsed.hostname or
+                parsed.username or parsed.password or parsed.query or parsed.fragment):
+            raise RuntimeError("OSLC_REMOTE_BASE_URL must be an HTTP(S) base URL without embedded credentials")
         headers = {"Accept": "application/json"}
         if self.token: headers["Authorization"] = f"Bearer {self.token}"
-        response = httpx.get(f"{self.base_url}/{path.lstrip('/')}", params=params, headers=headers, timeout=self.timeout)
+        with httpx.Client(timeout=self.timeout, follow_redirects=False, trust_env=False) as client:
+            response = client.get(f"{self.base_url}/{path.lstrip('/')}", params=params, headers=headers)
         response.raise_for_status()
         return response.json()
 

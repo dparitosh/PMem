@@ -13,7 +13,7 @@ import {
 import OntologyMetadataForm from './OntologyMetadataForm';
 import { API_METHODS, apiClient, getClientSessionId, setClientSessionId } from '../services/apiClient';
 import { useOntologies } from '../contexts/OntologyContext';
-import { API, buildUrl, replaceParams, config } from '../config';
+import { API, buildUrl, replaceParams } from '../config';
 import {
   backendToFrontendStage,
   buildWorkflowStages,
@@ -66,6 +66,8 @@ export default function DataImportPipeline() {
   const [previewData, setPreviewData] = useState(null);
   const [confirmingImport, setConfirmingImport] = useState(null);
   const [preCheck, setPreCheck] = useState(null); // { loading, ready, checks, reason }
+  const [commitApprover, setCommitApprover] = useState('');
+  const [commitApprovalToken, setCommitApprovalToken] = useState('');
   const fileInputRef = useRef(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState('instance.import');
   const [showAdvancedWorkflows, setShowAdvancedWorkflows] = useState(false);
@@ -1274,7 +1276,10 @@ export default function DataImportPipeline() {
     }
 
     // Close the review modal immediately — don't make the user wait 2-3 min
+    const approvalToken = commitApprovalToken.trim();
+    const approvedBy = commitApprover.trim();
     setConfirmingImport(null);
+    setCommitApprovalToken('');
 
     // Mark as "loading to Neo4j" in the file card right away
     setPipelineStatus(prev => {
@@ -1307,10 +1312,10 @@ export default function DataImportPipeline() {
       headers: {
         'Content-Type': 'application/json',
         ...(activeSessionId ? { 'X-Session-ID': activeSessionId } : {}),
-        ...(config.apiToken ? { Authorization: `Bearer ${config.apiToken}` } : {}),
+        ...(approvalToken ? { Authorization: `Bearer ${approvalToken}` } : {}),
       },
       body: JSON.stringify({
-        ...(config.apiToken ? { approved_by: config.apiActor, approval_token: config.apiToken } : {}),
+        ...(approvalToken ? { approved_by: approvedBy, approval_token: approvalToken } : {}),
       }),
       signal: commitController.signal,
     })
@@ -3434,7 +3439,7 @@ export default function DataImportPipeline() {
                 Preview
               </h3>
               <button
-                onClick={() => setConfirmingImport(null)}
+                onClick={() => { setConfirmingImport(null); setCommitApprovalToken(''); }}
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -3600,6 +3605,19 @@ export default function DataImportPipeline() {
               )}
             </div>
 
+            <details style={{ marginBottom: '12px', fontSize: '12px', color: C.textSec }}>
+              <summary>Approval credentials (only when your API gateway requires them)</summary>
+              <p style={{ margin: '8px 0' }}>These values stay in memory and are cleared when the load starts or this dialog closes.</p>
+              <label style={{ display: 'block', marginBottom: '6px' }}>
+                Approver
+                <input aria-label="Import approver" value={commitApprover} onChange={(event) => setCommitApprover(event.target.value)} autoComplete="off" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '3px' }} />
+              </label>
+              <label style={{ display: 'block' }}>
+                Approval API key
+                <input aria-label="Import approval API key" type="password" value={commitApprovalToken} onChange={(event) => setCommitApprovalToken(event.target.value)} autoComplete="off" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '3px' }} />
+              </label>
+            </details>
+
             {/* Actions */}
             <div style={{
               display: 'flex',
@@ -3607,7 +3625,7 @@ export default function DataImportPipeline() {
               justifyContent: 'flex-end',
             }}>
               <button
-                onClick={() => setConfirmingImport(null)}
+                onClick={() => { setConfirmingImport(null); setCommitApprovalToken(''); }}
                 style={{
                   padding: '8px 16px',
                   background: C.border,

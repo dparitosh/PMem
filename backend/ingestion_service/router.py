@@ -201,7 +201,7 @@ async def run_engineering_workflow(
               description=description, register=register_ontology, request_id=getattr(request.state, "request_id", None),
               publish=publish, enforce_quality=enforce_quality, policy_exception_ids=policy_exception_ids,
         )
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, RuntimeError) as exc:
         raise HTTPException(status_code=503, detail=f"Ontology service is unavailable: {exc}") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -260,7 +260,7 @@ async def execute_source_profile(profile_id: str, file: UploadFile = File(...)) 
         raise HTTPException(status_code=422, detail=f"Profile execution failed: {exc}") from exc
 
 
-@router.post("/source-profiles/{profile_id}/workflow", summary="Generate and optionally publish an ontology from a source profile batch")
+@router.post("/source-profiles/{profile_id}/workflow", summary="Generate and register an ontology draft from a source profile batch")
 async def run_source_profile_workflow(
     request: Request,
     profile_id: str,
@@ -272,9 +272,10 @@ async def run_source_profile_workflow(
     enforce_quality: bool = Form(True),
     policy_exception_ids: str = Form("[]"),
 ) -> dict:
-    """Run normalize → Semantica generate/validate → optional graph publish.
+    """Run normalize → Semantica generate/validate → draft registration.
 
-    ``publish`` is deliberately opt-in because it changes the governed graph.
+    ``publish`` requests publication-readiness checks only. A separate
+    approved publication action is required to mutate the governed graph.
     """
     try:
         profile = profiles.get(profile_id)

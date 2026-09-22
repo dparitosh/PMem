@@ -5,7 +5,7 @@ and configure them separately; start DEPO before using plugin imports.
 
 ## DEPO application
 
-Follow the [canonical installation sequence](../infra/deployment/README.md)
+Follow the [single installation sequence](../INSTALLATION.md)
 from the repository root. It covers prerequisite checks, server and browser
 configuration, combined backend installation/frontend build, service startup
 and validation. Configure public browser endpoints before the build.

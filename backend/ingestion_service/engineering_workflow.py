@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 
+from backend.depo_platform.network import service_bearer_headers
 from .schema_conversion import EngineeringSchemaConverter
 
 
@@ -80,6 +81,7 @@ class EngineeringWorkflow:
                 f"{self.graph_url}/graph/ontologies/publish",
                 data={"ontology_id": registration["ontology_id"], "prefix": data["prefix"]},
                 files={"artifact": (f"{PathName.safe_stem(filename)}.ttl", ontology["turtle"].encode("utf-8"), "text/turtle")},
+                headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API"),
             )
             published.raise_for_status()
             result["status"] = "published"

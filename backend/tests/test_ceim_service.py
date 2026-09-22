@@ -60,7 +60,7 @@ def test_ceim_service_validates_and_projects_reqif_batch():
 
 
 def test_ceim_service_requires_approval_and_publishes_only_validated_projection(monkeypatch):
-    async def fake_publish(*, turtle, ontology_id, prefix):
+    async def fake_publish(*, turtle, ontology_id, prefix, publication_id=None):
         assert "externalId" in turtle
         assert ontology_id == "ceim-qif-demo"
         assert prefix == "ceim"

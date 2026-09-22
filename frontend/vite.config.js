@@ -6,10 +6,15 @@ export default defineConfig(({ mode }) => {
   // by default, while the existing customer deployment files use REACT_APP_*.
   // Load both prefixes explicitly and compile only browser-safe UI settings.
   const loaded = loadEnv(mode, process.cwd(), '');
+  const isPublicClientSetting = (key) => {
+    if (!(key.startsWith('VITE_') || key.startsWith('REACT_APP_') || key === 'HOST')) return false;
+    // Vite values are compiled into JavaScript and can be read by every browser
+    // user. Authentication material belongs in the gateway or in a one-time,
+    // in-memory approval field, never in an environment value compiled here.
+    return !/(?:^|_)(?:API_?KEY|API_?TOKEN|PASSWORD|SECRET|PRIVATE_?KEY)(?:_|$)/i.test(key);
+  };
   const clientEnv = Object.fromEntries(
-    Object.entries({ ...loaded, ...process.env }).filter(([key]) =>
-      key.startsWith('VITE_') || key.startsWith('REACT_APP_') || key === 'HOST'
-    ),
+    Object.entries({ ...loaded, ...process.env }).filter(([key]) => isPublicClientSetting(key)),
   );
 
   return {

@@ -88,10 +88,10 @@ defaults remain outstanding from the findings below.
    discovery instead of personal filesystem defaults.
 
 5. **Medium: operational documentation still conflicts with the main guide.**
-   `docs/DEPLOYMENT_RUNBOOK.md:46` tells readers to use `-Bootstrap` instead of
+   The retired deployment runbook previously told readers to use `-Bootstrap` instead of
    `-Production`, but its lifecycle command accepts `-Profile Bootstrap` or
    `-Profile Production`. The runbook also uses a fixed checkout path.
-   `backend/NEO4J_QUICK_START.md:8` and the centralized configuration document
+   The retired Neo4j quick-start and the centralized configuration document
    direct operators to `backend/.env`, conflicting with the consolidated server
    setup. Update or clearly mark legacy instructions, with links to the single
    deployment authority. `backend/legacy/README.md` still mentions CI; there is

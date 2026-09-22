@@ -7,6 +7,8 @@ from typing import Any, Protocol
 
 import httpx
 
+from backend.depo_platform.network import service_bearer_headers
+
 
 class QifPublisher(Protocol):
     def register(self, *, artifact: Path, ontology_name: str, prefix: str, description: str) -> dict[str, Any]: ...
@@ -38,6 +40,7 @@ class ServicePublisher:
                 f"{self.graph_url}/graph/ontologies/publish",
                 data={"ontology_id": ontology_id, "prefix": ontology_id.split("_", 1)[0]},
                 files={"artifact": (artifact.name, content, "text/turtle")},
+                headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API"),
             )
         response.raise_for_status()
         return response.json()

@@ -23,6 +23,13 @@ const apiClient = axios.create({
 const MAX_GET_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 700;
 const SESSION_STORAGE_KEY = 'depo.sessionId.v1';
+let adminApiKey = '';
+
+// Administrative credentials are deliberately memory-only. They must never
+// be placed in Vite environment variables, local storage, or server logs.
+export function setAdminApiKey(value) {
+  adminApiKey = String(value || '').trim();
+}
 
 export function getClientSessionId() {
   if (typeof window === 'undefined') return null;
@@ -106,9 +113,9 @@ apiClient.interceptors.request.use(
       requestConfig.headers = requestConfig.headers || {};
       requestConfig.headers['X-Session-ID'] = sessionId;
     }
-    if (config.adminApiKey && String(requestConfig.url || '').includes('/api/v1/admin/')) {
+    if (adminApiKey && String(requestConfig.url || '').includes('/api/v1/admin/')) {
       requestConfig.headers = requestConfig.headers || {};
-      requestConfig.headers['X-API-Key'] = config.adminApiKey;
+      requestConfig.headers['X-API-Key'] = adminApiKey;
     }
     if (config.debug) {
       // eslint-disable-next-line no-console
@@ -395,7 +402,11 @@ export const dataPipelineAPI = {
   telemetry: () => apiClient.get(buildUrl('/api/v1/pipeline/telemetry')),
   definitions: () => apiClient.get(buildUrl('/api/v1/pipeline/jobs/definitions')),
   runs: (limit = 100) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/runs'), { params: { limit } }),
-  replay: (runId) => apiClient.post(buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}/replay`)),
+  replay: (runId, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}/replay`),
+    approval,
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
 };
 
 // ========== DATA IMPORT ENDPOINTS ==========

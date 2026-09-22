@@ -349,7 +349,10 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
                     workflow_store.put(run_id, record)
                     break
                 except HTTPException as exc:
-                    if attempt <= retries and exc.status_code >= 500:
+                    # Never blindly repeat a mutating operation after an
+                    # uncertain downstream response. Mutation APIs must offer
+                    # their own receipt/reconciliation contract first.
+                    if attempt <= retries and exc.status_code >= 500 and not step.get('mutates', False):
                         continue
                     record.update({"status": "failed", "finished_at": _now()})
                     record["traces"].append({"sequence": index + 1, "tool_id": step["tool_id"], "attempt": attempt, "status": "failed", "error": str(exc.detail)})

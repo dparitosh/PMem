@@ -185,6 +185,17 @@ class GraphBridgeRouteTests(unittest.TestCase):
                 GraphBridgeClient().receipt('job')
                 self.assertEqual(request.call_args.args[:2], ('GET', 'http://graph:8013/api/v1/graph/bridge/publications/job'))
 
+    def test_graph_client_does_not_hide_a_missing_publication_route(self):
+        from unittest.mock import MagicMock
+        from backend.agentic_service.bridge_jobs import GraphBridgeClient
+        with patch.dict(os.environ, {'GRAPH_SERVICE_URL': 'http://graph:8013', 'GRAPH_PUBLICATION_TOKEN': 'private-test'}), patch('httpx.Client') as client:
+            response = MagicMock(); response.status_code = 404
+            response.raise_for_status.side_effect = RuntimeError('route missing')
+            client.return_value.__enter__.return_value.request.return_value = response
+            with self.assertRaises(Exception):
+                GraphBridgeClient().publish({'publication_id': 'job'})
+            response.raise_for_status.assert_called_once()
+
     def test_private_graph_routes_require_service_token(self):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient

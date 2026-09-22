@@ -1,6 +1,6 @@
-# Installation audit — 2026-09-22
+# Installation audit ï¿½ 2026-09-22
 
-The supported customer procedure is [deployment/README](../infra/deployment/README.md).
+The supported customer procedure is [INSTALLATION.md](../INSTALLATION.md).
 Competing backend, Windows and deployment runbook recipes were replaced with
 references to this sequence. Historical audits are records, not install instructions.
 

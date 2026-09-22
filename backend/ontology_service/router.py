@@ -13,6 +13,7 @@ from .business_context import BusinessContextService
 from .semantica_adapter import semantica
 from backend.Services.ontology_upload_manager import OntologyUploadManager
 from backend.depo_platform.authorization import approval_identity
+from backend.depo_platform.network import service_bearer_headers
 from .vocabulary_service import vocabularies
 
 router = APIRouter(prefix="/ontologies", tags=["ontologies"])
@@ -174,7 +175,8 @@ def business_context_summary() -> dict:
 
 
 @router.post("/business-context/objects", summary="Upsert typed business objects and relationships into Semantica ContextGraph")
-def upsert_business_context(payload: dict[str, Any]) -> dict:
+def upsert_business_context(payload: dict[str, Any], request: Request) -> dict:
+    approval_identity(request, payload, token_env="AGENTIC_APPROVAL_TOKEN")
     try:
         return business_context.upsert(payload)
     except (TypeError, ValueError) as exc:
@@ -271,6 +273,7 @@ async def publish_vocabulary(scheme_id: str, version: str, payload: dict[str, An
                 f"{graph_root}/graph/ontologies/publish",
                 data={"ontology_id": f"skos-{scheme_id}-{version.replace('.', '-')}", "prefix": "skos"},
                 files={"artifact": (artifact["filename"], content, "text/turtle")},
+                headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API"),
             )
         if response.is_error:
             raise RuntimeError(f"Graph service returned HTTP {response.status_code}")

@@ -2,7 +2,7 @@ param(
   [Parameter(Mandatory = $true)][string]$ZeppelinHome,
   [Parameter(Mandatory = $true)][string]$ConfigDir,
   [Parameter(Mandatory = $true)][string]$NotebookDir,
-  [int]$Port = 8080
+  [ValidateRange(1, 65535)][int]$Port = 8080
 )
 $ErrorActionPreference = 'Stop'
 $cmd = Join-Path $ZeppelinHome 'bin\zeppelin.cmd'
@@ -16,6 +16,7 @@ $env:ZEPPELIN_WAR = $war
 $env:ZEPPELIN_NOTEBOOK_DIR = $NotebookDir
 $env:ZEPPELIN_LOG_DIR = Join-Path $ConfigDir 'logs'
 $env:ZEPPELIN_PID_DIR = (Join-Path $ConfigDir 'run')
+$env:ZEPPELIN_PORT = $Port
 foreach ($d in @($env:ZEPPELIN_NOTEBOOK_DIR,$env:ZEPPELIN_LOG_DIR,$env:ZEPPELIN_PID_DIR)) { New-Item -ItemType Directory -Force $d | Out-Null }
 $existing = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
 if ($existing) { Write-Output "Zeppelin already listening on port $Port"; exit 0 }

@@ -16,7 +16,7 @@ from backend.ceim.qif_adapter import qif_to_ceim_batch, validate_qif_instance
 from backend.ceim.reqif_adapter import reqif_to_ceim_batch
 from backend.ceim.plmxml_adapter import plmxml_to_ceim_batch
 from backend.depo_platform.authorization import approval_identity
-from backend.depo_platform.network import bounded_timeout_seconds
+from backend.depo_platform.network import bounded_timeout_seconds, service_bearer_headers
 from backend.depo_platform.semantic_registry import resolve_approved_release
 
 
@@ -207,7 +207,7 @@ async def _publish_to_graph(*, turtle: str, ontology_id: str, prefix: str, publi
             f"{graph_api_root}/graph/ontologies/publish",
             data={"ontology_id": ontology_id, "prefix": prefix, "publication_id": publication_id or ""},
             files={"artifact": (f"{ontology_id}.ttl", turtle.encode("utf-8"), "text/turtle")},
-            headers={"Authorization": f"Bearer {os.environ['GRAPH_PUBLICATION_TOKEN']}"} if os.getenv("GRAPH_PUBLICATION_TOKEN") else {},
+            headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API"),
         )
     if response.is_error:
         raise httpx.HTTPStatusError(

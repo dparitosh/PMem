@@ -1,5 +1,8 @@
 # Isolated configuration contract test. Never reads or changes customer settings.
 $ErrorActionPreference = 'Stop'
+# The generator is copied into an isolated test directory; permit that local
+# copy for this test process without changing the machine execution policy.
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $testParent = Join-Path $root '.release-test-tmp'
 $testRoot = Join-Path $testParent ('config-' + [guid]::NewGuid().ToString('N'))

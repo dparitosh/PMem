@@ -1,8 +1,7 @@
 # Neo4j configuration behavior
 
 The supported installation uses one server configuration at root `.env.local`.
-Follow the [deployment guide](../infra/deployment/README.md) and
-[Neo4j setup](NEO4J_QUICK_START.md). The application installer creates the fixed
+Follow the [single installation guide](../INSTALLATION.md). The application installer creates the fixed
 `backend/.dt_venv` environment used by every supplied lifecycle script.
 
 ## Supported launch path

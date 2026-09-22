@@ -31,8 +31,20 @@ if ($Bootstrap) {
 }
 foreach ($name in $required) { if (-not $values[$name]) { throw "Missing required setting: $name" } }
 if ($Production -and $values['DEPO_DATABASE_URL'] -match 'postgres:tcs12345') { throw 'Replace the local PostgreSQL administrator connection with a customer-managed least-privilege application account.' }
+$sparkFlags = @('DEPO_SPARK_ENABLED', 'DEPO_SPARK_NEO4J_ENABLED', 'DEPO_PIPELINE_SCHEDULER_ENABLED')
+foreach ($name in $sparkFlags) {
+  if ($values[$name] -and $values[$name] -notin @('true', 'false')) { throw "Invalid boolean setting: $name" }
+}
+$sparkEnabled = $values['DEPO_SPARK_ENABLED'] -eq 'true'
+$neo4jSparkEnabled = $values['DEPO_SPARK_NEO4J_ENABLED'] -eq 'true'
+$schedulerEnabled = $values['DEPO_PIPELINE_SCHEDULER_ENABLED'] -eq 'true'
+if (($neo4jSparkEnabled -or $schedulerEnabled) -and -not $sparkEnabled) {
+  throw 'Spark connector and scheduler require DEPO_SPARK_ENABLED=true.'
+}
 
-& (Join-Path $PSScriptRoot 'initialize-depo-schema.ps1') -EnvFile $EnvFile
+# Release preflight must prove the deployed schema is complete without changing
+# it. Migrations run explicitly during InitializeDatabase before services start.
+& (Join-Path $PSScriptRoot 'initialize-depo-schema.ps1') -EnvFile $EnvFile -CheckOnly
 if ($Production) {
   & (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') -EnvFile $EnvFile -Production
   if ($LASTEXITCODE -ne 0) { throw 'Neo4j production preflight failed.' }
@@ -40,5 +52,11 @@ if ($Production) {
 if ($Bootstrap) {
   & (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') -EnvFile $EnvFile -Bootstrap
   if ($LASTEXITCODE -ne 0) { throw 'Neo4j bootstrap preflight failed.' }
+}
+if ($sparkEnabled) {
+  $sparkParameters = @{ EnvFile = $EnvFile }
+  if ($neo4jSparkEnabled) { $sparkParameters.Neo4jConnector = $true }
+  & (Join-Path $PSScriptRoot 'test-depo-spark.ps1') @sparkParameters
+  if ($LASTEXITCODE -ne 0) { throw 'Spark release preflight failed.' }
 }
 Write-Host 'DEPO release preflight passed.'

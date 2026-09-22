@@ -87,13 +87,6 @@ const baseConfig = {
   logLevel: setting('LOG_LEVEL') || 'info',
   requestTimeout: parseInt(setting('REQUEST_TIMEOUT') || '300000', 10),
   chatStreamTimeout: parseInt(setting('CHAT_STREAM_TIMEOUT') || '900000', 10),
-  // This key is intentionally opt-in. It is visible to browser users and is
-  // appropriate only for a trusted internal admin deployment.
-  adminApiKey: setting('ADMIN_API_KEY'),
-  // Optional only for trusted internal/token deployments. Never commit this
-  // value; production Entra deployments should leave it empty.
-  apiToken: setting('API_TOKEN'),
-  apiActor: setting('API_ACTOR') || 'ui-user',
 };
 
 const gatewayUrl = configuredGatewayUrl ? configuredGatewayUrl.replace(/\/$/, '') : '';

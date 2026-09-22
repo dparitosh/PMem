@@ -5,7 +5,7 @@
 - [Support tools](../tools/README.md)
 
 - [Current service/API catalog](architecture/SERVICE_CATALOG.md)
-- [Deployment instructions](../infra/deployment/README.md)
+- [Installation instructions](../INSTALLATION.md)
 - [Application and plugins](APP_AND_PLUGIN_INSTALLATION.md)
 - [Delivery tracker](ACCELERATED_DELIVERY_TRACKER.md)
 - [Current sequence](CURRENT_ARCHITECTURE_SEQUENCE.md)

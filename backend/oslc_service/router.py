@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from backend.depo_platform.authorization import approval_identity
 import httpx
 
 from backend.routes.oslc_routes import router as server_router
@@ -32,7 +33,8 @@ def remote_query(resource_type: str, parameters: dict) -> dict:
 
 
 @router.post("/remote/sync/{resource_type}", summary="Pull and stage a remote OSLC query snapshot")
-def pull_remote_sync(resource_type: str, parameters: dict) -> dict:
+def pull_remote_sync(resource_type: str, parameters: dict, request: Request) -> dict:
+    approval_identity(request, parameters, token_env="AGENTIC_APPROVAL_TOKEN")
     try:
         return synchronizer.pull(resource_type, parameters)
     except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail=f"Remote OSLC sync unavailable: {exc}") from exc

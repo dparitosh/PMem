@@ -6,10 +6,15 @@ from backend.graph_service.app import app
 
 @pytest.fixture(autouse=True)
 def graph_reader(monkeypatch):
+    monkeypatch.setattr("backend.graph_service.router.graph_read_identity", lambda request: "test-reader")
     monkeypatch.setattr("backend.graph_service.graphql_router.graph_read_identity", lambda request: "test-reader")
     monkeypatch.setattr("backend.graph_service.sparql_router.graph_read_identity", lambda request: "test-reader")
     monkeypatch.setattr("backend.graph_service.federation_router.graph_read_identity", lambda request: "test-reader")
     monkeypatch.setattr("backend.graph_service.federation_router.approval_identity", lambda *args, **kwargs: "test-approver")
+    from backend.depo_platform.authorization import graph_read_identity
+    app.dependency_overrides[graph_read_identity] = lambda: "test-reader"
+    yield
+    app.dependency_overrides.clear()
 
 
 def test_graphql_is_read_only_and_uses_bounded_graph_projections(monkeypatch):
@@ -22,6 +27,15 @@ def test_graphql_is_read_only_and_uses_bounded_graph_projections(monkeypatch):
     assert response.json()["data"]["overview"]["counts"]["nodes"] == 7
     mutation = client.post("/api/v1/graphql", json={"query": "mutation { publish }"})
     assert mutation.status_code == 400
+
+
+def test_graphql_rejects_alias_fanout_before_resolvers_run(monkeypatch):
+    calls = []
+    monkeypatch.setattr("backend.graph_service.graphql_schema.publisher.overview", lambda **_: calls.append(1))
+    query = "{ " + " ".join(f"n{i}: overview" for i in range(26)) + " }"
+    response = TestClient(app).post("/api/v1/graphql", json={"query": query})
+    assert response.status_code == 422
+    assert not calls
 
 
 def test_graphql_exposes_control_plane_read_models_without_submitting_spark_work(monkeypatch):

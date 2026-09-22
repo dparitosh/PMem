@@ -8,11 +8,10 @@ import httpx
 
 
 class SemanticIngestionWorkflow:
-    """Connect ingestion to independently deployable ontology and graph services."""
+    """Connect ingestion to an independently deployable ontology service."""
 
     def __init__(self) -> None:
         self.ontology_url = os.getenv("ONTOLOGY_SERVICE_URL", "http://127.0.0.1:8011/api/v1").rstrip("/")
-        self.graph_url = os.getenv("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1").rstrip("/")
         self.timeout = float(os.getenv("SERVICE_REQUEST_TIMEOUT_SECONDS", "30"))
 
     async def run(
@@ -66,6 +65,8 @@ class SemanticIngestionWorkflow:
                 files={"artifact": (f"{prefix}.ttl", turtle.encode("utf-8"), "text/turtle")},
             )
             registered.raise_for_status()
+            # Registration produces a draft. Graph publication is a separate
+            # approval operation and is never implied by an import request.
             result["status"] = "awaiting_approval"
             result["registered_ontology"] = registered.json()
             result["message"] = "Draft registered. Review and approval are required before graph publication."

@@ -27,5 +27,5 @@ values take precedence. Remove stale local legacy files after migrating their
 required settings; the retired templates are no longer distributed.
 
 For production, inject equivalent settings using the deployment secret manager.
-See the [deployment guide](../infra/deployment/README.md) for validation and
+See the [single installation guide](../INSTALLATION.md) for validation and
 authentication profiles.

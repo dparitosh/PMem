@@ -2,11 +2,11 @@
 
 For the cleanup inventory and outstanding release work, see
 [repository maintenance](REPOSITORY_MAINTENANCE.md). The authoritative
-installation sequence is the [deployment guide](../infra/deployment/README.md).
+installation sequence is the [single installation guide](../INSTALLATION.md).
 
 ## Customer release entry points
 
-Follow the [deployment guide](../infra/deployment/README.md) from the project
+Follow the [single installation guide](../INSTALLATION.md) from the project
 root: check prerequisites, prepare server and public browser configuration,
 install/build, validate configuration, start services, validate endpoints and
 perform release preflight. Configure browser URLs before the combined installer

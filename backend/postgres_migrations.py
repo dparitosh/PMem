@@ -1,114 +1,37 @@
-"""Versioned PostgreSQL schema migrations shared by DEPO services."""
+"""Versioned PostgreSQL migrations loaded from DBA-reviewable SQL files."""
 from __future__ import annotations
 
+from pathlib import Path
 from collections.abc import Sequence
 
-
 Migration = tuple[int, str, Sequence[str]]
+MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / 'infra' / 'postgres' / 'migrations'
 
-MIGRATIONS: tuple[Migration, ...] = (
-    (4, "ontology_analytics_view", (
-        """CREATE VIEW depo_ontology_analytics AS
-        SELECT key AS ontology_id, value->>'ontology_name' AS ontology_name,
-               value->>'lifecycle_status' AS lifecycle_status,
-               value->>'semantic_completeness' AS semantic_completeness,
-               value->>'schema_set_digest' AS schema_set_digest,
-               value->>'analytics_profile_artifact_id' AS analytics_profile_artifact_id,
-               CASE WHEN jsonb_typeof(value->'statistics'->'triples') = 'number'
-                    THEN (value->'statistics'->>'triples')::numeric END AS triples,
-               CASE WHEN jsonb_typeof(value->'statistics'->'classes') = 'number'
-                    THEN (value->'statistics'->>'classes')::numeric END AS classes,
-               CASE WHEN jsonb_typeof(value->'statistics'->'object_properties') = 'number'
-                    THEN (value->'statistics'->>'object_properties')::numeric END AS object_properties,
-               CASE WHEN jsonb_typeof(value->'statistics'->'datatype_properties') = 'number'
-                    THEN (value->'statistics'->>'datatype_properties')::numeric END AS datatype_properties
-        FROM depo_registry WHERE namespace = 'ontology_catalog'""",
-    )),
-    (3, "governance_metadata", (
-        """CREATE TABLE IF NOT EXISTS depo_metadata_assets (
-            asset_id TEXT PRIMARY KEY,
-            revision INTEGER NOT NULL CHECK (revision > 0),
-            value JSONB NOT NULL CHECK (jsonb_typeof(value) = 'object'),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        )""",
-        """CREATE TABLE IF NOT EXISTS depo_metadata_events (
-            event_id TEXT PRIMARY KEY,
-            asset_id TEXT NOT NULL REFERENCES depo_metadata_assets(asset_id),
-            revision INTEGER NOT NULL,
-            value JSONB NOT NULL CHECK (jsonb_typeof(value) = 'object'),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-            UNIQUE(asset_id, revision)
-        )""",
-        """CREATE TABLE IF NOT EXISTS depo_metadata_outbox (
-            event_id TEXT PRIMARY KEY REFERENCES depo_metadata_events(event_id),
-            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','published')),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        )""",
-        "CREATE INDEX IF NOT EXISTS idx_metadata_pending ON depo_metadata_outbox(created_at) WHERE status = 'pending'",
-    )),
-    (
-        1,
-        "control_plane_registry",
-        (
-            """
-            CREATE TABLE IF NOT EXISTS depo_registry (
-                namespace TEXT NOT NULL,
-                key TEXT NOT NULL,
-                value JSONB NOT NULL,
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-                PRIMARY KEY(namespace, key)
-            )
-            """,
-        ),
-    ),
-    (
-        2,
-        "runtime_state",
-        (
-            """
-            CREATE TABLE IF NOT EXISTS depo_runtime_state (
-                kind TEXT NOT NULL,
-                key TEXT NOT NULL,
-                value JSONB NOT NULL,
-                updated_at DOUBLE PRECISION NOT NULL,
-                PRIMARY KEY(kind, key)
-            )
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS depo_chat_messages (
-                session_id TEXT NOT NULL,
-                message_id BIGSERIAL PRIMARY KEY,
-                role TEXT NOT NULL,
-                content TEXT NOT NULL,
-                created_at DOUBLE PRECISION NOT NULL
-            )
-            """,
-            "CREATE INDEX IF NOT EXISTS idx_depo_chat_messages ON depo_chat_messages(session_id, message_id)",
-            """
-            CREATE TABLE IF NOT EXISTS depo_rate_limits (
-                client_key TEXT NOT NULL,
-                created_at DOUBLE PRECISION NOT NULL
-            )
-            """,
-            "CREATE INDEX IF NOT EXISTS idx_depo_rate_limits ON depo_rate_limits(client_key, created_at)",
-        ),
-    ),
+
+def _read_migration(version: int, name: str) -> tuple[str, ...]:
+    path = MIGRATIONS_DIR / f'{version:03d}_{name}.sql'
+    if not path.is_file():
+        raise RuntimeError(f'Missing PostgreSQL migration file: {path}')
+    return (path.read_text(encoding='utf-8'),)
+
+
+MIGRATIONS: tuple[Migration, ...] = tuple(
+    (version, name, _read_migration(version, name))
+    for version, name in (
+        (1, 'control_plane_registry'),
+        (2, 'runtime_state'),
+        (3, 'governance_metadata'),
+        (4, 'ontology_analytics_view'),
+    )
 )
+SCHEMA_MIGRATIONS_SQL = (MIGRATIONS_DIR / '000_schema_migrations.sql').read_text(encoding='utf-8')
 
 
 def apply_migrations(connection) -> None:
     """Apply each migration once and record its immutable version/name pair."""
     with connection.transaction(), connection.cursor() as cursor:
         cursor.execute("SELECT pg_advisory_xact_lock(hashtextextended(current_schema() || ':depo-migrations', 0))")
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS depo_schema_migrations (
-                version INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
-                applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-            )
-            """
-        )
+        cursor.execute(SCHEMA_MIGRATIONS_SQL)
         cursor.execute("SELECT version, name FROM depo_schema_migrations")
         applied = {int(version): name for version, name in cursor.fetchall()}
         for version, name, statements in sorted(MIGRATIONS):
@@ -119,7 +42,4 @@ def apply_migrations(connection) -> None:
                 continue
             for statement in statements:
                 cursor.execute(statement)
-            cursor.execute(
-                "INSERT INTO depo_schema_migrations(version, name) VALUES (%s, %s)",
-                (version, name),
-            )
+            cursor.execute("INSERT INTO depo_schema_migrations(version, name) VALUES (%s, %s)", (version, name))

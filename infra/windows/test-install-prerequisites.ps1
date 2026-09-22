@@ -1,5 +1,9 @@
 # No downloads, subprocess installation or database access. Run in a fresh shell.
 $ErrorActionPreference = 'Stop'
+# The test copies the installer to an isolated directory. Keep the test usable
+# on customer machines where locally copied PowerShell files are blocked by the
+# effective execution policy; this setting applies only to this process.
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $testParent = Join-Path $root '.release-test-tmp'
 $testRoot = Join-Path $testParent ('install-' + [guid]::NewGuid().ToString('N'))

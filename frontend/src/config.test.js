@@ -61,6 +61,19 @@ test('normalizes a trailing slash from the configured backend URL', async () => 
   vi.resetModules();
 });
 
+test('does not expose API credentials through browser configuration', async () => {
+  vi.stubEnv('REACT_APP_API_TOKEN', 'must-not-reach-the-browser');
+  vi.stubEnv('REACT_APP_ADMIN_API_KEY', 'must-not-reach-the-browser');
+  vi.resetModules();
+
+  const { config } = await import('./config');
+  expect(config).not.toHaveProperty('apiToken');
+  expect(config).not.toHaveProperty('adminApiKey');
+
+  vi.unstubAllEnvs();
+  vi.resetModules();
+});
+
 test('routes published service contracts to their owning local service', () => {
   expect(getServiceForPath('/api/v1/qif/catalog')).toBe('qif');
   expect(getServiceForPath('/api/v1/ontologies/capabilities')).toBe('ontology');

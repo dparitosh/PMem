@@ -1596,6 +1596,17 @@ export default function OntologyMapper() {
   }, [mappingOptions]);
   const selectedImportManifest = selectedImportTask?.artifact_manifest || selectedImportTask?.artifactManifest || null;
   const selectedBridgeSummary = unifyResult?.summary || null;
+  const mergeConflictCount = Number(
+    mergeResult?.report?.summary?.conflict_count
+    ?? mergeResult?.report?.conflict_count
+    ?? 0,
+  );
+  const mergePlanReady = Boolean(
+    mergeResult?.kind === 'success'
+    && mergeResult?.task_id
+    && mergeResult?.report
+    && mergeConflictCount === 0,
+  );
   const visibleMappingEdges = useMemo(() => {
     const baseEdges = (mappingEdges || [])
       .filter((edge) => String(edge.mapping_type || '').toLowerCase() !== 'property_of')
@@ -2108,6 +2119,10 @@ export default function OntologyMapper() {
     }
   }, [mergeSourceOntologyId, mergeSourceOptions, selectedMapping]);
 
+  useEffect(() => {
+    setMergeResult(null);
+  }, [mergeSourceOntologyId, selectedMapping]);
+
   const handlePreviewOntologyMerge = async () => {
     if (!mergeSourceOntologyId || !selectedMapping) {
       setMergeResult({ kind: 'error', text: 'Select both source and active target ontology before reviewing the merge.' });
@@ -2146,6 +2161,10 @@ export default function OntologyMapper() {
     }
     if (mergeSourceOntologyId === selectedMapping) {
       setMergeResult({ kind: 'error', text: 'Choose two different ontologies for merge.' });
+      return;
+    }
+    if (!mergePlanReady) {
+      setMergeResult({ kind: 'error', text: 'Create a current conflict-free merge plan before committing.' });
       return;
     }
     setMergeBusy(true);
@@ -2914,8 +2933,9 @@ export default function OntologyMapper() {
                   <button
                     type="button"
                     onClick={handleCommitOntologyMerge}
-                    disabled={mergeBusy || !mergeSourceOntologyId || !selectedMapping}
-                    style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: mergeBusy || !mergeSourceOntologyId || !selectedMapping ? C.textMuted : C.primaryDark, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: mergeBusy || !mergeSourceOntologyId || !selectedMapping ? 'not-allowed' : 'pointer' }}
+                    disabled={mergeBusy || !mergePlanReady}
+                    title={mergePlanReady ? 'Commit the reviewed conflict-free merge plan' : 'Review a conflict-free merge plan before committing'}
+                    style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: mergeBusy || !mergePlanReady ? C.textMuted : C.primaryDark, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: mergeBusy || !mergePlanReady ? 'not-allowed' : 'pointer' }}
                   >
                     Merge into target
                   </button>

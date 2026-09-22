@@ -19,7 +19,7 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("AP242 MBD extraction", "/ap242/mbd/extract", "POST", "Extract traceable product, geometry, PMI, and presentation mappings"),
         ServiceCapability("AP242 Part-28 export", "/ap242/mbd/export-part28", "POST", "Losslessly re-export an already supplied AP242 Part-28 XML source"),
         ServiceCapability("Engineering workflow", "/engineering-workflows", "POST", "Convert, govern, register and optionally publish an engineering ontology"),
-        ServiceCapability("Execute profile", "/source-profiles/{profile_id}/workflow", "POST", "Run governed profile ingestion"),
+        ServiceCapability("Execute profile", "/source-profiles/{profile_id}/workflow", "POST", "Generate and register a governed ontology draft"),
         ServiceCapability("Import workflow", "/import/upload", "POST", "Upload and run the existing tracked import workflow"),
         ServiceCapability("Governed instance import", "/governed-import", "POST", "Route STEP/AP242, ReqIF, QIF, or PLMXML into an approved semantic data job"),
         ServiceCapability("Import task", "/import/status/{task_id}", description="Read tracked import workflow status"),

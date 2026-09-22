@@ -7,7 +7,7 @@ client process, not an HTTP tool executor.
 
 ## Install and configure
 
-Use the root installer in [deployment instructions](../infra/deployment/README.md).
+Use the root installer in the [single installation guide](../INSTALLATION.md).
 It creates `backend/.dt_venv`, installs `backend/requirements.txt`, imports the
 agentic application and generates its OpenAPI document as a smoke check. Use
 `-Development` to include the test dependencies. Root `.env.local` holds server

@@ -1,7 +1,8 @@
 # PostgreSQL application tables and columns
 
-The authoritative DDL is [`backend/postgres_migrations.py`](../../backend/postgres_migrations.py).
-Do not maintain a second manual table-creation SQL script. Versions 1-4 are
+The authoritative DDL is the versioned SQL in
+[`infra/postgres/migrations/`](migrations/). The Python runner loads those files;
+do not copy table creation into service code. Versions 1-4 are
 applied in ascending order inside a transaction protected by an advisory lock.
 The schema name is `DEPO_DATABASE_SCHEMA` (default `semantic`).
 
@@ -32,7 +33,7 @@ not separate SQL columns. No per-service or per-candidate tables must be created
 
 ## Initialize or upgrade
 
-Provision the database/login/schema first using [PostgreSQL provisioning](README.md),
+Provision the database/login/schema first using [INSTALLATION.md](../../INSTALLATION.md),
 install backend dependencies, and configure root `.env.local`. Back up existing
 customer data before an upgrade. With the database already running:
 

@@ -121,6 +121,8 @@ $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $services = @($manifest.services | ForEach-Object { @{ Name=$_.id; Module=$_.module; Port=[int]$_.port } })
 $services += @($manifest.workers | ForEach-Object { @{ Name=$_.id; Module=$_.module; Port=$null } })
 if ($services.Count -ne 11) { throw "Deployment manifest must define ten HTTP services and one worker." }
+$startedServices = @()
+try {
 foreach ($service in $services) {
   $pidFile = Join-Path $stateDir "$($service.Name).pid"
   # A PID may be reused after an unplanned shutdown.  Reuse it only when the
@@ -148,6 +150,9 @@ foreach ($service in $services) {
   $stderr = Join-Path $stateDir "$($service.Name).err.log"
   $process = Start-Process -FilePath $python -ArgumentList $arguments -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
   Set-Content -Path $pidFile -Value $process.Id
+  # Roll back only processes launched by this invocation. Existing healthy
+  # services are intentionally not part of a failed start attempt.
+  $startedServices += @{ ProcessId = $process.Id; PidFile = $pidFile }
 }
 
 foreach ($service in $services | Where-Object { $_.Port }) {
@@ -165,6 +170,15 @@ foreach ($service in $services | Where-Object { $_.Port }) {
     }
   } while (-not $ready -and (Get-Date) -lt $deadline)
   if (-not $ready) { throw "DEPO service '$($service.Name)' did not become ready within $ServiceStartupTimeoutSeconds seconds. Check $stateDir\$($service.Name).err.log. For a slower cold start, retry with -ServiceStartupTimeoutSeconds 600." }
+}
+} catch {
+  foreach ($startedService in @($startedServices | Sort-Object { [int]$_.ProcessId } -Descending)) {
+    Stop-Process -Id $startedService.ProcessId -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $startedService.PidFile) {
+      Remove-Item -LiteralPath $startedService.PidFile -Force -ErrorAction SilentlyContinue
+    }
+  }
+  throw
 }
 
 Write-Host "DEPO services are ready on $BindHost. Use infra/windows/stop-depo-services.ps1 to stop them."

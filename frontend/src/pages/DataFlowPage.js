@@ -67,6 +67,8 @@ export default function DataFlowPage() {
   const [error, setError] = useState('');
   const [replayError, setReplayError] = useState('');
   const [replayingId, setReplayingId] = useState('');
+  const [replayApprover, setReplayApprover] = useState('');
+  const [replayApprovalToken, setReplayApprovalToken] = useState('');
   const loadSequence = useRef(0);
   const loadInFlight = useRef(false);
 
@@ -151,7 +153,12 @@ export default function DataFlowPage() {
     setReplayingId(run.run_id);
     setReplayError('');
     try {
-      await dataPipelineAPI.replay(run.run_id);
+      const approvalToken = replayApprovalToken.trim();
+      await dataPipelineAPI.replay(run.run_id, approvalToken ? {
+        approved_by: replayApprover.trim(),
+        approval_token: approvalToken,
+      } : {});
+      setReplayApprovalToken('');
       await load();
     } catch (replayFailure) {
       setReplayError(replayFailure?.response?.data?.detail || replayFailure?.message || 'Replay could not be started.');
@@ -175,6 +182,13 @@ export default function DataFlowPage() {
           </button>
         </div>
       </header>
+
+      <details className="data-flow-notice" style={{ marginBottom: 12 }}>
+        <summary>Replay approval credentials (only when the API gateway does not provide identity)</summary>
+        <p>These values are held only in memory and the API key is cleared after a replay starts.</p>
+        <label>Approver <input aria-label="Replay approver" value={replayApprover} onChange={(event) => setReplayApprover(event.target.value)} autoComplete="off" /></label>{' '}
+        <label>Execution API key <input aria-label="Replay execution API key" type="password" value={replayApprovalToken} onChange={(event) => setReplayApprovalToken(event.target.value)} autoComplete="off" /></label>
+      </details>
 
       {error && <div className="data-flow-notice" role="status">{error}</div>}
       {replayError && <div className="data-flow-notice data-flow-notice--error" role="alert">{replayError}</div>}

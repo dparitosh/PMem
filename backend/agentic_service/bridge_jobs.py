@@ -178,7 +178,10 @@ class GraphBridgeClient:
         with httpx.Client(timeout=120) as client:
             response = client.request(method, base + '/api/v1/graph/bridge/' + path,
                                       headers={'Authorization': 'Bearer ' + token}, **kwargs)
-        if response.status_code == 404:
+        # A missing receipt is expected only for an idempotency lookup. A POST
+        # route mismatch must remain visible instead of being misreported as a
+        # recoverable publication response loss.
+        if method == 'GET' and response.status_code == 404:
             return None
         response.raise_for_status()
         return response.json()

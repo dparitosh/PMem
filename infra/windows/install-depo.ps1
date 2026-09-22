@@ -57,4 +57,4 @@ if (-not $SkipFrontend) {
 }
 Write-Host 'Backend installed in backend/.dt_venv.'
 if (-not $SkipFrontend) { Write-Host 'Frontend installed and built in frontend/dist. Rebuild after changing browser configuration.' }
-Write-Host 'Configure root .env.local, then use infra/deployment/invoke-depo-lifecycle.ps1. See infra/deployment/README.md for the complete sequence.'
+Write-Host 'Configure root .env.local, then use infra/deployment/invoke-depo-lifecycle.ps1. See INSTALLATION.md for the complete sequence.'

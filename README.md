@@ -19,7 +19,7 @@ The authoritative service inventory is
 
 Use the single maintained deployment guide:
 
-[infra/deployment/README.md](infra/deployment/README.md)
+[INSTALLATION.md](INSTALLATION.md)
 
 One installer handles backend dependencies and the frontend build:
 `infra/windows/install-depo.ps1`. Run it from the project root after preparing
@@ -39,7 +39,7 @@ OpenAPI/OData validation, Spark opt-in, shutdown and production preflight.
 - [Semantic Integration and Lambda Pipeline](docs/SEMANTIC_INTEGRATION_LAMBDA_PIPELINE.md)
 - [Semantic Governance Contract](docs/SEMANTIC_GOVERNANCE_CONTRACT.md)
 - [Delivery Tracker](docs/ACCELERATED_DELIVERY_TRACKER.md)
-- [Customer Deployment Runbook](docs/DEPLOYMENT_RUNBOOK.md)
+- [Installation and release guide](INSTALLATION.md)
 
 ## Development notes
 

@@ -37,18 +37,17 @@ class _Client:
 
 
 @pytest.mark.asyncio
-async def test_workflow_generates_and_optionally_publishes(monkeypatch):
+async def test_workflow_registers_a_draft_and_never_publishes_directly(monkeypatch):
     client = _Client()
     monkeypatch.setattr("backend.ingestion_service.workflow.httpx.AsyncClient", lambda **kwargs: client)
     runner = SemanticIngestionWorkflow()
-    runner.ontology_url, runner.graph_url = "http://ontology/api/v1", "http://graph/api/v1"
+    runner.ontology_url = "http://ontology/api/v1"
     normalized = {"entities": [{"id": "P-1", "type": "Part"}], "relationships": [], "records_processed": 1, "provenance": {"profile_id": "parts"}}
 
     result = await runner.run(normalized=normalized, name="Parts", prefix="parts", base_uri="urn:parts", publish=True)
 
-    assert result["status"] == "published"
-    assert result["graph_publication"]["resources"] == 2
-    assert [call[0] for call in client.calls] == ["http://ontology/api/v1/ontologies/policies/evaluate", "http://ontology/api/v1/ontologies/quality-gate", "http://ontology/api/v1/ontologies/generate", "http://graph/api/v1/graph/ontologies/publish"]
+    assert result["status"] == "awaiting_approval"
+    assert [call[0] for call in client.calls] == ["http://ontology/api/v1/ontologies/policies/evaluate", "http://ontology/api/v1/ontologies/quality-gate", "http://ontology/api/v1/ontologies/generate", "http://ontology/api/v1/ontologies/register"]
 
 
 @pytest.mark.asyncio
