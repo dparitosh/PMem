@@ -68,37 +68,108 @@ installer does not install or operate either database server.
 
 ### 1.2 Install optional Apache Spark and PySpark
 
-Install Spark only when the Data Pipeline service will execute Spark jobs. This
-release requires the Apache Spark **4.1.2** binary distribution built with
-Scala **2.13**, JDK **21**, and its bundled PySpark/Py4J archives. Spark 4 uses
-Scala 2.13; obtain the approved 4.1.2 archive from the [Apache Spark release
-page](https://spark.apache.org/releases/spark-release-4-1-2.html) and verify
-its checksum/signature according to the [Apache download instructions](https://spark.apache.org/downloads/).
+Install Spark only when the Data Pipeline service will execute Spark jobs. The
+application validates one fixed layout: **Spark 4.1.2**, **Scala 2.13**, **JDK
+21**, the bundled PySpark/Py4J libraries, and the Windows Hadoop helper. Follow
+the commands below from an Administrator PowerShell window.
 
-1. Install the customer-approved JDK 21. Open a new PowerShell window and run
-   `java -version`; it must report version 21.
-2. Create the installation and data folders below. Copy the approved
-   `winutils.exe` helper into `C:\DEPO\runtime\hadoop\bin`. It is required by
-   the Windows runtime check and must come from the customer's approved Hadoop
-   helper bundle.
-3. Save the verified Spark archive as
-   `C:\DEPO\downloads\spark-4.1.2-bin-hadoop3.tgz`, then extract it.
+#### Step A — install and verify JDK 21
+
+Install JDK 21 through the customer software catalogue. If the customer permits
+Windows Package Manager, this command installs Microsoft OpenJDK 21:
 
 ```powershell
-New-Item -ItemType Directory -Force C:\DEPO\downloads, C:\DEPO\runtime, C:\DEPO\data\spark-output, C:\DEPO\runtime\hadoop\bin | Out-Null
-# Copy the customer-approved helper to this exact location before continuing:
-# C:\DEPO\runtime\hadoop\bin\winutils.exe
-tar -xf C:\DEPO\downloads\spark-4.1.2-bin-hadoop3.tgz -C C:\DEPO\runtime
-Get-Item C:\DEPO\runtime\spark-4.1.2-bin-hadoop3\bin\spark-submit.cmd,
-  C:\DEPO\runtime\spark-4.1.2-bin-hadoop3\python\lib\pyspark.zip,
-  C:\DEPO\runtime\hadoop\bin\winutils.exe
+winget install --id Microsoft.OpenJDK.21 -e --source winget
+java -version
+$jdkHome = 'C:\Program Files\Java\jdk-21' # Replace if the installer used another JDK 21 folder.
+Get-Item "$jdkHome\bin\java.exe", "$jdkHome\release"
 ```
 
-Do not run a separate `pip install pyspark`; the service uses the PySpark and
-Py4J libraries included in this Spark distribution. Add the resulting paths to
-the root `.env.local` in section 2.3, then run the Spark smoke test in section
-5. Spark jobs remain governed by the Data Pipeline service and cannot write
-Neo4j directly.
+Close and reopen PowerShell if `java` is not found. The version output must start
+with `21`. Record the JDK installation folder containing `bin\java.exe` and a
+`release` file. The examples below use `C:\Program Files\Java\jdk-21`; replace
+that path if your JDK installer uses another folder.
+
+#### Step B — download Spark 4.1.2 and its SHA-512 file
+
+This release is intentionally pinned to Spark 4.1.2 because the application
+checks for `spark-core_2.13-4.1.2.jar`. The exact Apache archive names are
+shown below. They are historical-release artifacts; use them only after the
+customer approves this pinned application baseline.
+
+```powershell
+$sparkVersion = '4.1.2'
+$jdkHome = 'C:\Program Files\Java\jdk-21' # Replace with the JDK 21 folder verified in Step A.
+$sparkHome = "C:\DEPO\runtime\spark-$sparkVersion-bin-hadoop3"
+$sparkArchive = "C:\DEPO\downloads\spark-$sparkVersion-bin-hadoop3.tgz"
+$sparkUrl = "https://archive.apache.org/dist/spark/spark-$sparkVersion/spark-$sparkVersion-bin-hadoop3.tgz"
+
+New-Item -ItemType Directory -Force C:\DEPO\downloads, C:\DEPO\runtime, C:\DEPO\data\spark-output, C:\DEPO\runtime\hadoop\bin | Out-Null
+Invoke-WebRequest -Uri $sparkUrl -OutFile $sparkArchive
+Invoke-WebRequest -Uri "$sparkUrl.sha512" -OutFile "$sparkArchive.sha512"
+```
+
+#### Step C — verify the download before extracting it
+
+Run the following checksum check. It stops immediately if the downloaded
+archive differs from the Apache-published SHA-512 value.
+
+```powershell
+$expectedHash = ((Get-Content "$sparkArchive.sha512" -Raw).Trim() -split '\s+')[0].ToUpperInvariant()
+$actualHash = (Get-FileHash -Algorithm SHA512 $sparkArchive).Hash.ToUpperInvariant()
+if ($actualHash -ne $expectedHash) { throw "Spark SHA-512 verification failed. Delete $sparkArchive and download it again." }
+Write-Host 'Spark SHA-512 verification passed.'
+```
+
+For a customer release, also validate the Apache release signature. Install
+Gpg4win from the customer software catalogue first, then run:
+
+```powershell
+Invoke-WebRequest -Uri "$sparkUrl.asc" -OutFile "$sparkArchive.asc"
+Invoke-WebRequest -Uri 'https://downloads.apache.org/spark/KEYS' -OutFile 'C:\DEPO\downloads\apache-spark-KEYS'
+gpg --import C:\DEPO\downloads\apache-spark-KEYS
+gpg --verify "$sparkArchive.asc" $sparkArchive
+if ($LASTEXITCODE -ne 0) { throw 'Spark signature verification failed.' }
+```
+
+Record the successful SHA-512 and signature verification in the release
+evidence. The archive directory lists the Spark binary and accompanying
+`.sha512` and `.asc` files: [Spark 4.1.2 Apache archive](https://archive.apache.org/dist/spark/spark-4.1.2/).
+
+#### Step D — extract Spark and install the Windows helper
+
+Use the `tar.exe` included with current Windows. The last command proves that
+the exact files required by `test-depo-spark.ps1` exist.
+
+```powershell
+tar -xf $sparkArchive -C C:\DEPO\runtime
+
+# Obtain winutils.exe from the customer-approved Hadoop helper package and copy it here.
+# Do not download an unverified winutils.exe from an arbitrary public repository.
+Copy-Item 'C:\Path\From\Approved\Hadoop\Helper\winutils.exe' 'C:\DEPO\runtime\hadoop\bin\winutils.exe'
+
+Get-Item "$sparkHome\bin\spark-submit.cmd",
+  "$sparkHome\python\lib\pyspark.zip",
+  "$sparkHome\jars\spark-core_2.13-4.1.2.jar",
+  'C:\DEPO\runtime\hadoop\bin\winutils.exe',
+  "$jdkHome\bin\java.exe"
+```
+
+Do not run `pip install pyspark`; the backend uses the PySpark and Py4J archives
+already inside `$sparkHome`. Continue with section 2.3 to write these paths to
+the root `.env.local`. After the backend install in section 3, execute these
+commands in this order:
+
+```powershell
+# Spark configuration must be present in root .env.local first.
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-spark.ps1 -EnvFile .env.local
+```
+
+Continue with the database initialization in section 4, then start services in
+section 6 with `-EnableSpark`. Spark jobs remain governed by the Data Pipeline
+service and cannot write Neo4j directly. Add `-EnableNeo4jSparkConnector` only
+after the regular smoke test passes and the Neo4j connector check in section 5
+succeeds.
 
 ## 2. Create configuration
 
