@@ -73,6 +73,23 @@ application validates one fixed layout: **Spark 4.1.2**, **Scala 2.13**, **JDK
 21**, the bundled PySpark/Py4J libraries, and the Windows Hadoop helper. Follow
 the commands below from an Administrator PowerShell window.
 
+Run the Spark setup in this order. Do not jump directly to the final installer:
+
+| Order | Run | Continue with |
+| --- | --- | --- |
+| 1 | Step A | Confirm `java -version` starts with `21` |
+| 2 | Step B | Confirm both files exist under `C:\DEPO\downloads` |
+| 3 | Step C | Confirm the SHA-512 and GPG checks pass |
+| 4 | Step D | Confirm `spark-submit.cmd`, `pyspark.zip`, the Spark core JAR, and approved `winutils.exe` exist |
+| 5 | Section 2.3 | Copy the verified paths into the root `.env.local` |
+| 6 | Section 3 | Run the application installer with `-EnableSpark` |
+| 7 | Section 4, then Section 5 | Initialize PostgreSQL, then test the Spark runtime and optional Neo4j connector |
+
+The only archive downloaded in this sequence is
+`spark-4.1.2-bin-hadoop3.tgz`. The `.tgz` is extracted by Windows
+`tar.exe` in Step D; no separate unzip program or `pip install pyspark` command
+is required.
+
 #### Step A — install and verify JDK 21
 
 Install JDK 21 through the customer software catalogue. If the customer permits
