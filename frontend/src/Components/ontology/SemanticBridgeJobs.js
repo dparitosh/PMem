@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { bridgeApi } from '../../services/bridgeApi';
+import agenticAPI from '../../services/agenticApi';
 
 class PreviewInputError extends Error {}
 
@@ -24,10 +25,11 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
   const [approvalToken, setApprovalToken] = useState('');
   const [resumeId, setResumeId] = useState('');
   const [confirmed, setConfirmed] = useState(false);
+  const [agentReport, setAgentReport] = useState(null);
   const generation = useRef(0);
   useEffect(() => {
     generation.current += 1;
-    setPreview(null); setJob(null); setSelected([]); setMessage(''); setBusy(false);
+    setPreview(null); setJob(null); setSelected([]); setMessage(''); setBusy(false); setAgentReport(null);
     setConfirmed(false); setApprovalToken('');
     try { setResumeId(sessionStorage.getItem(`bridge-preview:${ontologyId}:${importTaskId}`) || ''); } catch { setResumeId(''); }
     return () => { generation.current += 1; };
@@ -78,6 +80,15 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
       const result = await api.preview(ontologyId, importTaskId, readToken);
       if (current()) adoptPreview(result.data);
     })}>Create preview</button>
+    <button style={buttonStyle} disabled={busy || !ontologyId || !importTaskId || !agenticAPI.isConfigured()} onClick={() => invoke(async current => {
+      const result = await agenticAPI.orchestrateOntology({ workflow_id: 'ontology_review', ontology_id: ontologyId, import_task_id: importTaskId }, authOptions(readToken));
+      if (current()) setAgentReport(result.data);
+    })}>Run ontology agent review</button>
+    {!agenticAPI.isConfigured() && <small>Enable the Agentic service to run ontology intake and review.</small>}
+    {agentReport && <div role="status" style={{ marginTop: 8, padding: 8, background: '#eef7fb', border: '1px solid #c5dce6' }}>
+      <strong>Ontology agent review:</strong> {agentReport.steps?.length || 0} steps completed; publication requires human approval.
+      {agentReport.steps?.[1]?.result?.issues?.length ? ` ${agentReport.steps[1].result.issues.length} structural issue(s) require review.` : ' No structural issues reported.'}
+    </div>}
     <label>Saved preview ID <input aria-label="Saved preview ID" value={resumeId} onChange={e => setResumeId(e.target.value)} /></label>
     <button style={buttonStyle} disabled={busy || !resumeId || !ontologyId || !importTaskId} onClick={() => invoke(async current => {
       const result = await api.status(resumeId.trim(), readToken);
@@ -134,4 +145,8 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
       </div>}
     </>}
   </section>;
+}
+
+function authOptions(token) {
+  return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
 }

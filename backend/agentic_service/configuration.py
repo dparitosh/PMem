@@ -50,6 +50,14 @@ def configuration_status():
     for flag in ('DT_AGENT_ENABLED', 'OSLC_REMOTE_ENABLED'):
         if os.getenv(flag, 'false').lower() not in {'true', 'false'}:
             errors.append(flag)
+    if os.getenv('ONTOLOGY_AGENT_LLM_ENABLED', 'false').lower() not in {'true', 'false'}:
+        errors.append('ONTOLOGY_AGENT_LLM_ENABLED')
+    try:
+        ontology_limit = int(os.getenv('ONTOLOGY_AGENT_MAX_BYTES', str(25 * 1024 * 1024)))
+        if ontology_limit <= 0:
+            raise ValueError()
+    except ValueError:
+        errors.append('ONTOLOGY_AGENT_MAX_BYTES')
     if os.getenv('DT_AGENT_ENABLED', 'false').lower() == 'true':
         url('DT_AGENT_GATEWAY_URL', https=True)
         require('DT_AGENT_GATEWAY_TOKEN')

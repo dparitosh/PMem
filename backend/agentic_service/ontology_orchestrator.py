@@ -68,6 +68,50 @@ def inspect_ontology(ontology_path: str) -> dict[str, Any]:
     }
 
 
+def _resolve_ontology_path(ontology_path: str, ontology_id: str | None) -> str:
+    if ontology_path:
+        return ontology_path
+    if not ontology_id:
+        raise ValueError("ontology_id is required when ontology_path is not supplied")
+    from backend.Services.ontology_upload_manager import OntologyUploadManager
+    record = OntologyUploadManager.get_ontology(ontology_id)
+    metadata = record.get("metadata") if record.get("status") == "success" else None
+    path = str((metadata or {}).get("file_path") or "")
+    if not path:
+        raise ValueError("The selected ontology has no readable source artifact")
+    return path
+
+
+def _instance_metadata(import_task_id: str | None, supplied: dict[str, Any] | None) -> dict[str, Any]:
+    if supplied:
+        return supplied
+    if not import_task_id:
+        return {}
+    from backend.Services.unified_data_import import UnifiedDataImportService
+    task = UnifiedDataImportService._restore_task(import_task_id)
+    if not task:
+        raise ValueError("The selected import task was not found")
+    rows = task.get("parsed_rows") or []
+    if not isinstance(rows, list):
+        raise ValueError("The selected import task has invalid parsed row data")
+    entities: list[str] = []
+    attributes: list[str] = []
+    relationships: list[str] = []
+    for row in rows[:1000]:
+        if not isinstance(row, dict):
+            continue
+        for key, value in row.items():
+            key_text = str(key)
+            if any(marker in key_text.lower() for marker in ("ref", "href", "parent", "child", "source", "target")):
+                relationships.append(key_text)
+            elif value not in (None, ""):
+                attributes.append(key_text)
+        label = row.get("entity_type") or row.get("element_type") or row.get("type") or row.get("name")
+        if label:
+            entities.append(str(label))
+    return {"entities": sorted(set(entities)), "attributes": sorted(set(attributes)), "relationships": sorted(set(relationships)), "metadata": [task.get("filename")] if task.get("filename") else []}
+
+
 def review_ontology(ontology_path: str) -> dict[str, Any]:
     summary = inspect_ontology(ontology_path)
     issues = []
@@ -133,10 +177,10 @@ def orchestrate(payload: dict[str, Any]) -> dict[str, Any]:
     workflow_id = str(payload.get("workflow_id") or "ontology_review").strip()
     if workflow_id not in {"ontology_review", "semantic_bridge_plan"}:
         raise ValueError(f"Unknown ontology agent workflow: {workflow_id}")
-    ontology_path = str(payload.get("ontology_path") or "")
+    ontology_path = _resolve_ontology_path(str(payload.get("ontology_path") or ""), str(payload.get("ontology_id") or "") or None)
+    metadata = _instance_metadata(str(payload.get("import_task_id") or "") or None, payload.get("instance_metadata"))
     steps = [{"agent": "ontology_intake_agent", "status": "completed", "result": inspect_ontology(ontology_path)}]
     if workflow_id == "ontology_review":
         steps.append({"agent": "ontology_structure_review_agent", "status": "completed", "result": review_ontology(ontology_path)})
-    metadata = payload.get("instance_metadata") or {}
     steps.append({"agent": "semantic_bridge_planner_agent", "status": "completed", "result": plan_bridge(metadata, ontology_path)})
     return {"workflow_id": workflow_id, "steps": steps, "status": "completed", "publication": "requires_human_approval"}

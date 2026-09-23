@@ -17,13 +17,8 @@ Example request from an authenticated internal client:
 ```powershell
 $body = @{
   workflow_id = 'ontology_review'
-  ontology_path = 'data\customer\motor.ttl'
-  instance_metadata = @{
-    entities = @('Motor')
-    attributes = @('weight')
-    relationships = @('hasPart')
-    metadata = @('sourceSystem')
-  }
+  ontology_id = '<registered-ontology-id>'
+  import_task_id = '<completed-import-task-id>'
 } | ConvertTo-Json -Depth 6
 
 Invoke-RestMethod `
@@ -34,8 +29,12 @@ Invoke-RestMethod `
   -Body $body
 ```
 
-The service only reads files under `ONTOLOGY_AGENT_ALLOWED_ROOTS`, which
-defaults to `data`, `ontology`, `backend/test_data`, and `ontology_uploads`.
+The service resolves `ontology_id` through the registered ontology store and
+`import_task_id` through the retained import-task store. Callers do not need to
+send local filesystem paths. Direct `ontology_path` input remains available for
+controlled internal tooling and is restricted to `ONTOLOGY_AGENT_ALLOWED_ROOTS`,
+which defaults to `data`, `ontology`, `backend/test_data`, and
+`ontology_uploads`.
 `ONTOLOGY_AGENT_MAX_BYTES` limits the artifact size and defaults to 25 MiB.
 The LLM is disabled by default. Set `ONTOLOGY_AGENT_LLM_ENABLED=true` only
 after configuring the existing `backend/core/llm.py` provider. LLM output is
