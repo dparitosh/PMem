@@ -90,6 +90,25 @@ The only archive downloaded in this sequence is
 `tar.exe` in Step D; no separate unzip program or `pip install pyspark` command
 is required.
 
+The exact filenames expected at the end of the Spark setup are:
+
+| Location | Exact filename |
+| --- | --- |
+| `C:\DEPO\downloads` | `spark-4.1.2-bin-hadoop3.tgz` |
+| `C:\DEPO\downloads` | `spark-4.1.2-bin-hadoop3.tgz.sha512` |
+| `C:\DEPO\downloads` | `spark-4.1.2-bin-hadoop3.tgz.asc` |
+| `C:\DEPO\downloads` | `apache-spark-KEYS` |
+| `C:\DEPO\runtime\spark-4.1.2-bin-hadoop3\bin` | `spark-submit.cmd` |
+| `C:\DEPO\runtime\spark-4.1.2-bin-hadoop3\python\lib` | `pyspark.zip` |
+| `C:\DEPO\runtime\spark-4.1.2-bin-hadoop3\python\lib` | `py4j-0.10.9.9-src.zip` |
+| `C:\DEPO\runtime\spark-4.1.2-bin-hadoop3\jars` | `spark-core_2.13-4.1.2.jar` |
+| `C:\DEPO\runtime\hadoop\bin` | `winutils.exe` |
+| JDK installation directory `bin` | `java.exe` |
+
+The Py4J filename can include a Spark-published patch version. Step D's
+`Get-Item` check validates the PySpark archive and Spark core JAR; the runtime
+smoke test validates the bundled Py4J library.
+
 #### Step A — install and verify JDK 21
 
 Install JDK 21 through the customer software catalogue. If the customer permits
