@@ -41,7 +41,16 @@ $requirements = if ($Development) { 'backend/requirements-dev.txt' } else { 'bac
 if ($LASTEXITCODE -ne 0) { throw "Backend dependency installation failed." }
 Push-Location $root
 try {
-  & $venvPython -c 'from backend.agentic_service.app import app; assert app.openapi()["paths"]; print("Agentic service import and OpenAPI smoke check passed.")'
+  # Do not use ``python -c`` here. Windows PowerShell removes embedded double
+  # quotes while constructing native-process arguments, which turns
+  # ``print("Agentic...")`` into invalid Python. Standard input preserves the
+  # smoke-check source exactly on Windows PowerShell and PowerShell 7.
+  @'
+from backend.agentic_service.app import app
+
+assert app.openapi()["paths"]
+print("Agentic service import and OpenAPI smoke check passed.")
+'@ | & $venvPython -
   if ($LASTEXITCODE -ne 0) { throw 'Agentic service installation smoke check failed.' }
 } finally { Pop-Location }
 if (-not $SkipFrontend) {
