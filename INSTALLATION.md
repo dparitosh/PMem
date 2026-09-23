@@ -332,100 +332,57 @@ it must not show a `backend/.env.local` or a `spark.env.local`.
 Get-Item .\.env.local, .\frontend\.env.local | Select-Object FullName, Length, LastWriteTime
 ```
 
-## 3. Install the applications
+## 3. Run the single Windows installation command
 
-Install Python 3.11+, Node.js 24+ and npm 10.2+. The installer creates the fixed
-`backend/.dt_venv`, installs backend dependencies, runs `npm ci`, and builds the
-frontend into `frontend/dist`.
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo.ps1 -CheckPrerequisites
-if ($LASTEXITCODE -ne 0) { throw 'Prerequisite check failed.' }
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo.ps1
-if ($LASTEXITCODE -ne 0) { throw 'Application installation failed.' }
-```
-
-Use `-Development` when installing test dependencies and `-SkipFrontend` only
-for a backend-only development install. The installer does not provision either
-database or Spark.
-
-## 4. Initialize and verify PostgreSQL
-
-Start the customer PostgreSQL service or managed database first. Apply migrations
-and verify the complete application contract:
+After PostgreSQL, Neo4j, optional Spark, and both `.env.local` files are ready,
+run **one** PowerShell command from the repository root. This is the supported
+customer installation path; do not run the individual migration, startup, or
+validation scripts by hand.
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action InitializeDatabase -EnvFile .env.local
-if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL initialization failed.' }
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\initialize-depo-schema.ps1 -EnvFile .env.local -CheckOnly
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo-windows.ps1 -EnvFile .env.local -Profile Production
 ```
 
-The check covers eight tables, one view, forty required columns/types and the
-recorded migration versions. The executable table scripts are in
-`infra/postgres/migrations/`, one versioned SQL file per migration. The complete
-column reference is in `infra/postgres/SCHEMA.md`; that file is a schema reference, not a competing
-installation guide. Do not edit migration history or drop customer tables to
-hide a mismatch.
-
-## 5. Verify Neo4j and Spark
-
-After installing the backend environment, verify Neo4j authentication, TLS and
-the configured database with a read-only query:
+For a Spark deployment, use this command instead. Add the connector and
+scheduler switches only when those customer capabilities are required:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-neo4j.ps1 -EnvFile .env.local -Production
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo-windows.ps1 -EnvFile .env.local -Profile Production -EnableSpark
+# Optional: -EnableNeo4jSparkConnector -EnablePipelineScheduler
 ```
 
-When Spark is enabled, run the actual DataFrame smoke job. To test the optional
-Neo4j Spark connector, add `-Neo4jConnector`:
+The installer performs these stages in this fixed order and stops at the first
+failure:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-spark.ps1 -EnvFile .env.local
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-spark.ps1 -EnvFile .env.local -Neo4jConnector
-```
+1. Validates Python, Node.js, npm, and the frontend lockfile.
+2. Creates `backend/.dt_venv`, installs backend dependencies, runs `npm ci`,
+   and builds `frontend/dist`.
+3. Validates root `.env.local` and the ten-service deployment configuration.
+4. Applies and verifies PostgreSQL migrations.
+5. Verifies Neo4j TLS, authentication, and database access.
+6. When enabled, validates Spark/JDK/Hadoop paths and runs the DataFrame smoke
+   job before services are started.
+7. Starts the ten APIs and outbox worker, validates all endpoints, and seeds the
+   approved baseline assets and data jobs.
+8. Runs release preflight, including schema, Neo4j, Spark, and production
+   configuration checks.
 
-## 6. Start and validate
+The command is safe to run again after correcting a failure: package installs,
+migrations, validation, and baseline seeding use their existing idempotent
+contracts. It does not create or overwrite `.env.local`, PostgreSQL accounts,
+Neo4j accounts, Spark files, or customer secrets.
 
-Start the ten APIs and the outbox worker. Spark, the event scheduler and the
-Neo4j connector are opt-in and require Spark runtime validation:
+## 4. Complete customer deployment
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local -Profile Production
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Validate -EnvFile .env.local -Profile Production
-```
+The successful installer leaves the browser build in `frontend/dist`. Serve that
+directory through the customer HTTPS web server and route its API gateway to the
+internal ten services. Do not expose service ports directly to browser clients.
 
-For Spark-enabled operation, add `-EnableSpark`; add
-`-EnablePipelineScheduler` or `-EnableNeo4jSparkConnector` only when required.
-Serve `frontend/dist` through the customer's HTTPS web server and configure its
-API proxy to the internal services. The browser UI supports Bridge preview,
-mapping review, approval, job telemetry, graph exploration and evidence-backed
-agentic retrieval. Private publication credentials remain server-side.
+Record the installer output, approved runtime inventory, dependency lock,
+database schema result, Neo4j evidence, Spark smoke result when enabled,
+backup/restore drill, browser acceptance, process supervision, reboot recovery,
+monitoring, and rollback evidence in the customer release record.
 
-For a temporary local browser check, serve the built directory with Vite:
-
-```powershell
-Push-Location frontend
-npm.cmd run preview -- --host 127.0.0.1 --port 4173
-Pop-Location
-```
-
-Open `http://127.0.0.1:4173`. A customer deployment must use its managed HTTPS
-web server, certificate and reverse-proxy configuration.
-
-## 7. Production acceptance
-
-Run the release preflight after a successful start:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action ReleasePreflight -EnvFile .env.local -Profile Production
-```
-
-Record the approved runtime inventory, dependency lock, frontend build, database
-schema check, Neo4j read/write acceptance, backup/restore drill, Spark smoke test
-when enabled, all service readiness checks, API-key rejection tests, browser
-workflow, process supervision, reboot recovery, monitoring and rollback evidence.
-Live customer provisioning and recovery evidence is required before release.
-
-For service ownership and API ports, use `infra/deployment/services.json`. For
-operational support, use the scripts under `infra/windows/`; they are referenced
-by the commands above and are not separate installation guides.
+For service ownership and ports, use `infra/deployment/services.json`. The
+scripts under `infra/windows/` are implementation stages used by the one
+installer, not separate installation instructions.

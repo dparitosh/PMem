@@ -6,14 +6,11 @@ and configure them separately; start DEPO before using plugin imports.
 ## DEPO application
 
 Follow the [single installation sequence](../INSTALLATION.md)
-from the repository root. It covers prerequisite checks, server and browser
-configuration, combined backend installation/frontend build, service startup
-and validation. Configure public browser endpoints before the build.
-
-The installer uses `backend/.dt_venv` and `frontend/node_modules`, and produces
-`frontend/dist`. `-Development` includes Python test dependencies. PostgreSQL,
-Neo4j and optional Java/Spark runtimes are provisioned separately. For a
-remote/shared PostgreSQL database, use `-SkipPostgres` on lifecycle Start.
+from the repository root. It is the only normative DEPO installation procedure.
+Use `infra/windows/install-depo-windows.ps1` as the single execution command;
+it owns dependency installation, frontend build, database initialization,
+service startup, validation, and release preflight. PostgreSQL, Neo4j and
+optional Java/Spark runtimes must be provisioned before that command.
 
 The application has no GitHub Actions installation dependency. Optional plugins
 below have their own packages and are not installed by the DEPO installer.
@@ -32,12 +29,9 @@ file is not loaded automatically. Preserve existing graph credentials and replac
 the runtime-path placeholders with approved installation paths. Set `DEPO_SPARK_HOME`, `DEPO_JAVA_HOME`,
 `DEPO_HADOOP_HOME`, `DEPO_SPARK_OUTPUT_ROOT`, and `DEPO_SPARK_MASTER` for the host.
 
-```powershell
-# The smoke script loads the selected server configuration.
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-spark.ps1 -EnvFile .env.local
-if ($LASTEXITCODE -ne 0) { throw 'Spark smoke test failed.' }
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local -EnableSpark -EnablePipelineScheduler -EnableNeo4jSparkConnector
-```
+The supported installer runs this smoke test itself. Enable it with
+`-EnableSpark` on `infra/windows/install-depo-windows.ps1`; add the connector
+and scheduler switches only when their customer capability has been approved.
 
 The connector switch requires Spark. Connector dependency resolution needs
 access to an approved Maven repository/cache. Omit the connector switch when
@@ -69,7 +63,7 @@ customer deployments must serve `frontend/dist` with their managed static web
 server and configured HTTPS/gateway authentication. Stop the local web server
 with Ctrl+C. Do not expose Vite's development server as the customer web server.
 
-Enable Spark with `-EnableSpark` on the lifecycle Start command after installing
+Enable Spark with `-EnableSpark` on the single Windows installer after installing
 the supported Spark/Java runtime. Use `-EnablePipelineScheduler` to enable
 scheduled replay; this is separate from HTTP job execution. Configure
 `DEPO_SPARK_MASTER` for the chosen runtime; its default is `local[2]`.

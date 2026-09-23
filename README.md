@@ -21,15 +21,18 @@ Use the single maintained deployment guide:
 
 [INSTALLATION.md](INSTALLATION.md)
 
-One installer handles backend dependencies and the frontend build:
-`infra/windows/install-depo.ps1`. Run it from the project root after preparing
-server and browser settings as described in the guide. `-CheckPrerequisites`
-checks Python/Node/npm without installation; `-Development` includes test tools.
-Python packages remain under `backend/.dt_venv`, npm packages under
-`frontend/node_modules`, and the browser build under `frontend/dist`.
+Run the supported one-command Windows installer after preparing PostgreSQL,
+Neo4j, optional Spark, and the two `.env.local` files described in the guide:
 
-It covers configuration generation, security profiles, service startup,
-OpenAPI/OData validation, Spark opt-in, shutdown and production preflight.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo-windows.ps1 -EnvFile .env.local -Profile Production
+```
+
+It installs dependencies, builds the frontend, validates configuration, applies
+the database schema, verifies Neo4j and optional Spark, starts all services,
+and runs release preflight. Python packages remain under `backend/.dt_venv`,
+npm packages under `frontend/node_modules`, and the browser build under
+`frontend/dist`.
 
 ## Architecture references
 
