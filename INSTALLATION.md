@@ -5,28 +5,53 @@ Neo4j, Spark and PySpark. Run commands from the repository root on Windows.
 
 ## 1. Provision the customer dependencies
 
-PostgreSQL is required. Use PostgreSQL 16 or the customer-approved supported
-patch. Create a database, an application login and a schema owned by that login.
-The login needs DDL privileges in its schema for the first migration and least
-privilege after the schema is established. Configure TLS with `sslmode=verify-full`,
-the trusted CA and a backup/restore procedure.
+### 1.1 Install PostgreSQL 16
 
-For a new local Windows instance, run these commands after PostgreSQL is
-installed. Replace the sample password and paths with customer-approved values.
+PostgreSQL is required. For a new Windows machine, download the supported
+PostgreSQL 16 x64 installer from the [official PostgreSQL Windows download
+page](https://www.postgresql.org/download/windows/). The installer is provided
+by EDB and includes the database server and `psql` command-line tools. During
+the installer screens:
+
+1. Select **PostgreSQL Server** and **Command Line Tools**. pgAdmin is optional.
+2. Keep the displayed data directory unless the customer storage policy assigns
+   a dedicated data volume.
+3. Choose and record the Windows service name shown by the installer.
+4. Set a PostgreSQL administrator password. The installer starts the Windows
+   service when it finishes.
+
+Open a new PowerShell window and confirm the tools and service are available:
 
 ```powershell
 $pgBin = 'C:\Program Files\PostgreSQL\16\bin'
-$env:Path = "$pgBin;$env:Path"
-psql -U postgres -h 127.0.0.1 -c "CREATE ROLE depo_app LOGIN PASSWORD 'REPLACE_WITH_A_STRONG_PASSWORD';"
-psql -U postgres -h 127.0.0.1 -c "CREATE DATABASE depo OWNER depo_app;"
-psql -U postgres -h 127.0.0.1 -d depo -c "CREATE SCHEMA semantic AUTHORIZATION depo_app;"
-psql 'postgresql://depo_app:URL_ENCODED_PASSWORD@127.0.0.1:5432/depo?sslmode=disable' -c 'select current_database(), current_user;'
+& "$pgBin\psql.exe" --version
+Get-Service | Where-Object DisplayName -like '*PostgreSQL*' | Format-Table Status, Name, DisplayName
 ```
 
-For a managed or existing database, ask the DBA to perform the equivalent
-steps. Set `DEPO_DATABASE_URL` to use `sslmode=verify-full` plus the customer
-CA certificate for production. Never paste a real password into PowerShell
-history or source control.
+If the service is stopped, start the exact `Name` returned above:
+
+```powershell
+Start-Service -Name 'postgresql-x64-16'
+```
+
+Create a database, a least-privilege application login, and its schema. The
+second command prompts securely for the application password instead of writing
+it into PowerShell history. Replace only the server administrator account when
+it differs from `postgres`.
+
+```powershell
+& "$pgBin\psql.exe" -U postgres -h 127.0.0.1 -c 'CREATE ROLE depo_app LOGIN;'
+& "$pgBin\psql.exe" -U postgres -h 127.0.0.1 -c '\password depo_app'
+& "$pgBin\psql.exe" -U postgres -h 127.0.0.1 -c 'CREATE DATABASE depo OWNER depo_app;'
+& "$pgBin\psql.exe" -U postgres -h 127.0.0.1 -d depo -c 'CREATE SCHEMA semantic AUTHORIZATION depo_app;'
+```
+
+In the root `.env.local` created in section 2, set
+`DEPO_DATABASE_URL=postgresql://depo_app:URL_ENCODED_PASSWORD@127.0.0.1:5432/depo?sslmode=disable`
+for this local setup. For a managed or customer database, ask the DBA to create
+the equivalent login, database and schema; use `sslmode=verify-full` and the
+customer CA certificate. Never paste a real password into PowerShell history or
+source control.
 
 Neo4j may run on-premises, on a private VM, as a hosted self-managed server, or
 in Neo4j Aura. Use the provider's actual database name. Production requires
@@ -35,12 +60,39 @@ certificate-verified TLS: `neo4j+s://` or direct `bolt+s://`. Bootstrap may use
 Bolt address, certificate chain and application database account. The application
 installer does not install or operate either database server.
 
-Spark is optional. When enabled, use the approved Apache Spark 4.1.2 distribution
-with Scala 2.13, JDK 21 and the matching PySpark and Py4J archives. Do not install
-a second unrelated `pip install pyspark` for this packaged distribution. On
-Windows, provision the approved Hadoop helper bundle containing `winutils.exe`.
-Spark jobs remain governed by the Data Pipeline service and cannot write Neo4j
-directly.
+### 1.2 Install optional Apache Spark and PySpark
+
+Install Spark only when the Data Pipeline service will execute Spark jobs. This
+release requires the Apache Spark **4.1.2** binary distribution built with
+Scala **2.13**, JDK **21**, and its bundled PySpark/Py4J archives. Spark 4 uses
+Scala 2.13; obtain the approved 4.1.2 archive from the [Apache Spark release
+page](https://spark.apache.org/releases/spark-release-4-1-2.html) and verify
+its checksum/signature according to the [Apache download instructions](https://spark.apache.org/downloads/).
+
+1. Install the customer-approved JDK 21. Open a new PowerShell window and run
+   `java -version`; it must report version 21.
+2. Create the installation and data folders below. Copy the approved
+   `winutils.exe` helper into `C:\DEPO\runtime\hadoop\bin`. It is required by
+   the Windows runtime check and must come from the customer's approved Hadoop
+   helper bundle.
+3. Save the verified Spark archive as
+   `C:\DEPO\downloads\spark-4.1.2-bin-hadoop3.tgz`, then extract it.
+
+```powershell
+New-Item -ItemType Directory -Force C:\DEPO\downloads, C:\DEPO\runtime, C:\DEPO\data\spark-output, C:\DEPO\runtime\hadoop\bin | Out-Null
+# Copy the customer-approved helper to this exact location before continuing:
+# C:\DEPO\runtime\hadoop\bin\winutils.exe
+tar -xf C:\DEPO\downloads\spark-4.1.2-bin-hadoop3.tgz -C C:\DEPO\runtime
+Get-Item C:\DEPO\runtime\spark-4.1.2-bin-hadoop3\bin\spark-submit.cmd,
+  C:\DEPO\runtime\spark-4.1.2-bin-hadoop3\python\lib\pyspark.zip,
+  C:\DEPO\runtime\hadoop\bin\winutils.exe
+```
+
+Do not run a separate `pip install pyspark`; the service uses the PySpark and
+Py4J libraries included in this Spark distribution. Add the resulting paths to
+the root `.env.local` in section 2.3, then run the Spark smoke test in section
+5. Spark jobs remain governed by the Data Pipeline service and cannot write
+Neo4j directly.
 
 ## 2. Create configuration
 
