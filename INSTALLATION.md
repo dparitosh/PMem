@@ -280,6 +280,14 @@ Open the new root `.env.local` and edit these values in order:
 5. Leave all `DEPO_SPARK_*` values out until step 2.3 unless Spark is part of
    this installation.
 
+Ontology agents are deterministic by default. Keep
+`ONTOLOGY_AGENT_LLM_ENABLED=false` for the initial installation. To enable
+review-only LLM suggestions later, configure the existing Ollama or Azure
+provider in the server environment, set `ONTOLOGY_AGENT_LLM_ENABLED=true`, and
+restart the Agentic service. The LLM can suggest validation questions; it cannot
+approve mappings or publish to Neo4j. Keep
+`ONTOLOGY_AGENT_ALLOWED_ROOTS` limited to approved ontology data directories.
+
 The shared parser rejects duplicate keys before changing the process
 environment. Edit a key in place; never append another line with the same key.
 

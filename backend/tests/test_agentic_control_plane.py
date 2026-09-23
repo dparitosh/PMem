@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 from backend.agentic_service.app import app
 from backend.agentic_service.router import _multipart
 import base64
+from pathlib import Path
 
 def test_catalogue_is_manifest_driven_and_mutations_require_approval():
     client = TestClient(app)
@@ -26,6 +27,36 @@ def test_tool_is_rejected_when_not_allowlisted_for_agent():
     client = TestClient(app)
     response = client.post("/api/v1/plans", json={"agent_id": "ontology-intake", "tool_id": "context.upsert"})
     assert response.status_code == 422
+
+
+def test_ontology_agent_orchestrator_returns_reviewable_bridge_plan(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("AUTH_MODE", "token")
+    monkeypatch.setenv("GRAPH_READ_TOKEN", "read-test")
+    ontology = tmp_path / "sample.ttl"
+    ontology.write_text(
+        "@prefix ex: <https://example.test/> .\n"
+        "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+        "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n"
+        "ex:Motor a owl:Class .\n"
+        "ex:hasPart a owl:ObjectProperty ; rdfs:domain ex:Motor ; rdfs:range ex:Motor .\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONTOLOGY_AGENT_ALLOWED_ROOTS", str(tmp_path))
+    response = TestClient(app).post(
+        "/api/v1/ontology-agents/orchestrate",
+        headers={"Authorization": "Bearer read-test"},
+        json={
+            "workflow_id": "ontology_review",
+            "ontology_path": str(ontology),
+            "instance_metadata": {"entities": ["Motor"], "relationships": ["hasPart"]},
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "completed"
+    assert body["publication"] == "requires_human_approval"
+    assert body["steps"][0]["result"]["classes"] == 1
+    assert body["steps"][2]["result"]["alignment_plan"]["relationship_to_objectproperty"] == 1
 
 
 def test_companion_returns_bounded_graph_evidence(monkeypatch):

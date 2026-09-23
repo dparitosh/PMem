@@ -1,6 +1,10 @@
 {
   "agents": [
-    {"id": "ontology-intake", "name": "Ontology Intake", "tools": ["engineering.inspect", "ontology.generate"], "approval_required": false},
+    {"id": "ontology-intake", "name": "Ontology Intake", "tools": ["engineering.inspect", "ontology.generate", "ontology.agent.orchestrate"], "approval_required": false},
+    {"id": "ontology-structure-review", "name": "Ontology Structure Review", "tools": ["ontology.agent.orchestrate"], "approval_required": false},
+    {"id": "semantic-bridge-planner", "name": "Semantic Bridge Planner", "tools": ["ontology.agent.orchestrate"], "approval_required": false},
+    {"id": "ontology-export", "name": "Ontology Export", "tools": ["ontology.export"], "approval_required": true},
+    {"id": "ontology-orchestrator", "name": "Ontology Orchestrator", "tools": ["ontology.agent.orchestrate"], "approval_required": false},
     {"id": "context-analyst", "name": "Business Context Analyst", "tools": ["context.upsert", "context.search", "context.where_used"], "approval_required": false},
     {"id": "ontology-governor", "name": "Ontology Governor", "tools": ["ontology.register", "ontology.transition", "ontology.export", "ontology.merge.preview", "ontology.merge.apply", "engineering.publish"], "approval_required": true},
     {"id": "engineering-parser", "name": "Engineering Parser", "tools": ["engineering.inspect", "profile.inspect", "profile.execute"], "approval_required": false},
@@ -44,6 +48,7 @@
     ,{"id": "ceim.normalize.batch", "transport": "openapi", "service": "ceim", "method": "POST", "path": "/ceim/normalize/batch", "mutates": false}
     ,{"id": "pipeline.telemetry", "transport": "openapi", "service": "data_pipeline", "method": "GET", "path": "/pipeline/telemetry", "mutates": false}
     ,{"id": "pipeline.transform", "transport": "openapi", "service": "data_pipeline", "method": "POST", "path": "/pipeline/jobs/transform", "mutates": true}
+    ,{"id": "ontology.agent.orchestrate", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/ontology-agents/orchestrate", "mutates": false}
   ],
   "mcp_servers": [
     {"id": "semantica", "transport": "stdio", "command": "python", "args": ["-m", "semantica.mcp_server"], "environment": ["SEMANTICA_KG_PATH"], "operations": ["ontology", "reasoning", "validation"]}
@@ -56,6 +61,9 @@
     {"id": "business-context-enrichment", "name": "Business object context enrichment", "steps": [
       {"agent_id": "context-analyst", "tool_id": "context.upsert"},
       {"agent_id": "context-analyst", "tool_id": "context.where_used"}
+    ]},
+    {"id": "ontology-review-and-bridge-plan", "name": "Ontology intake, structure review and Semantic Bridge planning", "steps": [
+      {"agent_id": "ontology-orchestrator", "tool_id": "ontology.agent.orchestrate"}
     ]}
   ]
 }

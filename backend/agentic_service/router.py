@@ -147,6 +147,16 @@ def execute_semantic_workflow(payload: dict[str, Any]) -> dict:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.post("/ontology-agents/orchestrate", dependencies=[Depends(graph_read_identity)])
+def orchestrate_ontology_agents(payload: dict[str, Any]) -> dict:
+    """Run read-only ontology intake/review/Bridge planning agents."""
+    try:
+        from .ontology_orchestrator import orchestrate
+        return orchestrate(payload)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 _COMPANION_PROMPTS = [
     "Show MBSE to EBOM traceability for the Variable Speed Drive",
     "Compare EBOM and MBOM for 5 HP MOTOR ASSEMBLY",
