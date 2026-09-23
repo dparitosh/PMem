@@ -155,6 +155,8 @@ def orchestrate_ontology_agents(payload: dict[str, Any]) -> dict:
         return orchestrate(payload)
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="Ontology agent could not parse the supplied artifact") from exc
 
 
 _COMPANION_PROMPTS = [

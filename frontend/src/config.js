@@ -142,7 +142,7 @@ const SERVICE_PATHS = [
   ['catalog', /^\/api\/v1\/catalog\/products(?:\/|$)/],
   ['dataProducts', /^\/api\/v1\/data-products(?:\/|$)/],
   ['dataPipeline', /^\/api\/v1\/pipeline(?:\/|$)/],
-  ['agentic', /^\/api\/v1\/(?:agents|tools|mcp-servers|workflows|plans|runs|workflow-runs|catalog\/validate|chat)(?:\/|$)/],
+  ['agentic', /^\/api\/v1\/(?:agents|tools|mcp-servers|workflows|plans|runs|workflow-runs|catalog\/validate|chat|ontology-agents)(?:\/|$)/],
   ['agentic', /^\/api\/v1\/code-audit(?:\/|$)/],
   ['graph', /^\/recommendations(?:\/|$)/],
 ];
@@ -400,6 +400,7 @@ const AGENTIC_ENDPOINTS = {
   openApiImport: process.env.REACT_APP_AGENTIC_OPENAPI_IMPORT || '/api/v1/openapi/import',
   runAgent: process.env.REACT_APP_AGENTIC_RUN_AGENT || '/api/v1/agents/{agent_name}/run',
   runWorkflow: process.env.REACT_APP_AGENTIC_RUN_WORKFLOW || '/api/v1/workflows/run',
+  orchestrateOntology: process.env.REACT_APP_AGENTIC_ONTOLOGY_ORCHESTRATE || '/api/v1/ontology-agents/orchestrate',
 };
 
 /**

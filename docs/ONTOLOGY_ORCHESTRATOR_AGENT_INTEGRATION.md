@@ -36,6 +36,7 @@ Invoke-RestMethod `
 
 The service only reads files under `ONTOLOGY_AGENT_ALLOWED_ROOTS`, which
 defaults to `data`, `ontology`, `backend/test_data`, and `ontology_uploads`.
+`ONTOLOGY_AGENT_MAX_BYTES` limits the artifact size and defaults to 25 MiB.
 The LLM is disabled by default. Set `ONTOLOGY_AGENT_LLM_ENABLED=true` only
 after configuring the existing `backend/core/llm.py` provider. LLM output is
 bounded review guidance and is never an approval or a publication command.

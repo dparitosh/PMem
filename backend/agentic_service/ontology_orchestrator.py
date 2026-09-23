@@ -28,6 +28,9 @@ def _allowed_path(value: str) -> Path:
         roots.append((root if root.is_absolute() else ROOT / root).resolve())
     if not path.is_file() or not any(path == root or root in path.parents for root in roots):
         raise ValueError("ontology_path must name an existing ontology file under an approved ontology data directory")
+    max_bytes = int(os.getenv("ONTOLOGY_AGENT_MAX_BYTES", str(25 * 1024 * 1024)))
+    if path.stat().st_size > max_bytes:
+        raise ValueError(f"ontology file exceeds ONTOLOGY_AGENT_MAX_BYTES ({max_bytes} bytes)")
     if path.suffix.lower() not in {".owl", ".rdf", ".xml", ".ttl", ".nt", ".n3", ".jsonld"}:
         raise ValueError("ontology_path must use a supported RDF/OWL extension")
     return path
@@ -48,7 +51,7 @@ def inspect_ontology(ontology_path: str) -> dict[str, Any]:
     annotation_properties = set(graph.subjects(RDF.type, OWL.AnnotationProperty))
     individuals = set(graph.subjects(RDF.type, OWL.NamedIndividual))
     return {
-        "path": str(path),
+        "path": str(path.relative_to(ROOT)).replace("\\", "/") if ROOT in path.parents else path.name,
         "format": path.suffix.lower().lstrip("."),
         "engine": "rdflib",
         "triples": len(graph),
@@ -84,6 +87,10 @@ def review_ontology(ontology_path: str) -> dict[str, Any]:
 def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = None) -> dict[str, Any]:
     if not isinstance(instance_metadata, dict):
         raise ValueError("instance_metadata must be an object")
+    fields = ("entities", "attributes", "relationships", "metadata")
+    for field in fields:
+        if field in instance_metadata and not isinstance(instance_metadata[field], list):
+            raise ValueError(f"instance_metadata.{field} must be an array")
     plan = {
         "entity_to_class": len(instance_metadata.get("entities") or []),
         "attribute_to_dataproperty": len(instance_metadata.get("attributes") or []),

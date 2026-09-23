@@ -39,6 +39,11 @@ export const agenticAPI = {
     agenticUrl(API.agentic.runWorkflow),
     { workflow_id: workflowId, inputs },
   ),
+  orchestrateOntology: (payload = {}, options = {}) => agenticClient.post(
+    agenticUrl(API.agentic.orchestrateOntology),
+    payload,
+    options,
+  ),
 };
 
 export { agenticClient };

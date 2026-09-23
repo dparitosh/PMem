@@ -287,6 +287,8 @@ provider in the server environment, set `ONTOLOGY_AGENT_LLM_ENABLED=true`, and
 restart the Agentic service. The LLM can suggest validation questions; it cannot
 approve mappings or publish to Neo4j. Keep
 `ONTOLOGY_AGENT_ALLOWED_ROOTS` limited to approved ontology data directories.
+Keep `ONTOLOGY_AGENT_MAX_BYTES=26214400` unless the customer has approved a
+different artifact limit.
 
 The shared parser rejects duplicate keys before changing the process
 environment. Edit a key in place; never append another line with the same key.
