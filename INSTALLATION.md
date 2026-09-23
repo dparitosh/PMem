@@ -93,16 +93,31 @@ that path if your JDK installer uses another folder.
 #### Step B — download Spark 4.1.2 and its SHA-512 file
 
 This release is intentionally pinned to Spark 4.1.2 because the application
-checks for `spark-core_2.13-4.1.2.jar`. The exact Apache archive names are
-shown below. They are historical-release artifacts; use them only after the
-customer approves this pinned application baseline.
+checks for `spark-core_2.13-4.1.2.jar`. Apache ships the Windows-compatible
+binary as a **`.tgz`** archive; it does not publish a `.zip` file for this
+package. Windows 10/11 includes `tar.exe`, which extracts `.tgz` files.
+
+Download these exact files. Do **not** download `pyspark-4.1.2.tar.gz`,
+`pyspark_client-4.1.2.tar.gz`, `spark-4.1.2.tgz`, or the `-connect` archive:
+they do not provide the full local Spark runtime expected by this application.
+
+| Purpose | Exact file to download | Direct Apache URL |
+| --- | --- | --- |
+| Spark runtime | `spark-4.1.2-bin-hadoop3.tgz` | [download runtime](https://archive.apache.org/dist/spark/spark-4.1.2/spark-4.1.2-bin-hadoop3.tgz) |
+| SHA-512 checksum | `spark-4.1.2-bin-hadoop3.tgz.sha512` | [download checksum](https://archive.apache.org/dist/spark/spark-4.1.2/spark-4.1.2-bin-hadoop3.tgz.sha512) |
+| GPG signature | `spark-4.1.2-bin-hadoop3.tgz.asc` | [download signature](https://archive.apache.org/dist/spark/spark-4.1.2/spark-4.1.2-bin-hadoop3.tgz.asc) |
+| Apache signing keys | `KEYS` | [download keys](https://downloads.apache.org/spark/KEYS) |
+
+The 4.1.2 files are historical-release artifacts because the application is
+pinned to that approved baseline. Record the security approval alongside the
+release evidence.
 
 ```powershell
 $sparkVersion = '4.1.2'
 $jdkHome = 'C:\Program Files\Java\jdk-21' # Replace with the JDK 21 folder verified in Step A.
 $sparkHome = "C:\DEPO\runtime\spark-$sparkVersion-bin-hadoop3"
 $sparkArchive = "C:\DEPO\downloads\spark-$sparkVersion-bin-hadoop3.tgz"
-$sparkUrl = "https://archive.apache.org/dist/spark/spark-$sparkVersion/spark-$sparkVersion-bin-hadoop3.tgz"
+$sparkUrl = 'https://archive.apache.org/dist/spark/spark-4.1.2/spark-4.1.2-bin-hadoop3.tgz'
 
 New-Item -ItemType Directory -Force C:\DEPO\downloads, C:\DEPO\runtime, C:\DEPO\data\spark-output, C:\DEPO\runtime\hadoop\bin | Out-Null
 Invoke-WebRequest -Uri $sparkUrl -OutFile $sparkArchive
@@ -122,7 +137,8 @@ Write-Host 'Spark SHA-512 verification passed.'
 ```
 
 For a customer release, also validate the Apache release signature. Install
-Gpg4win from the customer software catalogue first, then run:
+Gpg4win from the customer software catalogue first, then run. These commands
+download the exact `.asc` and `KEYS` files listed in the table above:
 
 ```powershell
 Invoke-WebRequest -Uri "$sparkUrl.asc" -OutFile "$sparkArchive.asc"
