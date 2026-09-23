@@ -11,6 +11,8 @@ $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
+if (-not $env:NEO4J_USER -and $env:NEO4J_USERNAME) { $env:NEO4J_USER = $env:NEO4J_USERNAME }
+if (-not $env:NEO4J_PASS -and $env:NEO4J_PASSWORD) { $env:NEO4J_PASS = $env:NEO4J_PASSWORD }
 if (-not $PSBoundParameters.ContainsKey('SparkHome')) { $SparkHome = $env:DEPO_SPARK_HOME }
 if (-not $PSBoundParameters.ContainsKey('JavaHome')) { $JavaHome = $env:DEPO_JAVA_HOME }
 if (-not $PSBoundParameters.ContainsKey('HadoopHome')) { $HadoopHome = $env:DEPO_HADOOP_HOME }
@@ -38,6 +40,8 @@ if (-not (Test-Path $env:PYSPARK_PYTHON)) { throw "DEPO Python runtime was not f
 $env:PYSPARK_DRIVER_PYTHON = $env:PYSPARK_PYTHON
 if ($Neo4jConnector) {
   $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+  if (-not $values.NEO4J_USER -and $env:NEO4J_USER) { $values.NEO4J_USER = $env:NEO4J_USER }
+  if (-not $values.NEO4J_PASS -and $env:NEO4J_PASS) { $values.NEO4J_PASS = $env:NEO4J_PASS }
   Assert-DepoNeo4jConfiguration -Values $values
   if (-not $env:DEPO_SPARK_NEO4J_PACKAGE) { throw 'Configure DEPO_SPARK_NEO4J_PACKAGE before connector verification.' }
   & $submit --master $Master --packages $env:DEPO_SPARK_NEO4J_PACKAGE (Join-Path $root 'infra/spark/neo4j_connector_smoke.py')

@@ -20,11 +20,13 @@ $env:Path = "$pgBin;$env:Path"
 psql -U postgres -h 127.0.0.1 -c "CREATE ROLE depo_app LOGIN PASSWORD 'REPLACE_WITH_A_STRONG_PASSWORD';"
 psql -U postgres -h 127.0.0.1 -c "CREATE DATABASE depo OWNER depo_app;"
 psql -U postgres -h 127.0.0.1 -d depo -c "CREATE SCHEMA semantic AUTHORIZATION depo_app;"
-psql 'postgresql://depo_app:URL_ENCODED_PASSWORD@127.0.0.1:5432/depo?sslmode=verify-full' -c 'select current_database(), current_user;'
+psql 'postgresql://depo_app:URL_ENCODED_PASSWORD@127.0.0.1:5432/depo?sslmode=disable' -c 'select current_database(), current_user;'
 ```
 
 For a managed or existing database, ask the DBA to perform the equivalent
-steps. Never paste a real password into PowerShell history or source control.
+steps. Set `DEPO_DATABASE_URL` to use `sslmode=verify-full` plus the customer
+CA certificate for production. Never paste a real password into PowerShell
+history or source control.
 
 Neo4j may run on-premises, on a private VM, as a hosted self-managed server, or
 in Neo4j Aura. Use the provider's actual database name. Production requires
@@ -42,42 +44,120 @@ directly.
 
 ## 2. Create configuration
 
-Generate one server configuration and keep it at the repository root:
+### There are exactly two `.env.local` files in a standard installation
+
+Create and configure **only these two files**. They are ignored by Git and
+must never be copied into a release package or source-control repository.
+
+| File | Who uses it | What it contains | Do not put here |
+| --- | --- | --- | --- |
+| `.env.local` at the repository root | All ten backend services, migrations, Neo4j checks and Spark scripts | Database and Neo4j credentials, service settings, API keys, Spark settings | Browser configuration |
+| `frontend/.env.local` | The Vite frontend build only | Public HTTPS API gateway address and optional public browser settings | Passwords, API keys, database URLs, Neo4j credentials, Spark paths |
+
+`config/deployment.env.example` and `config/spark.env.example` are **templates**,
+not extra environment files. `standalone/ontology_agentic_service/.env.example`
+belongs only to that separate standalone component; do not create it for this
+application deployment.
+
+### 2.1 Create the root server file
+
+From the repository root, run this command once. It copies the server template
+and generates distinct API-key values without printing them:
 
 ```powershell
 if (-not (Test-Path .env.local)) {
   powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\new-depo-deployment-config.ps1
 }
-Copy-Item .\frontend\.env.example .\frontend\.env.local -ErrorAction SilentlyContinue
 ```
 
-Edit `.env.local` with the PostgreSQL URL/schema, `NEO4J_URI`, `NEO4J_USER`,
-`NEO4J_PASS`, `NEO4J_DATABASE`, service URLs, API keys and allowed browser origin.
-Use `AUTH_MODE=token`; this delivery does not require Entra or GitHub Actions.
-Keep server secrets out of `frontend/.env.local`; browser variables are public.
-The shared parser rejects duplicate keys before changing the process environment.
+Open the new root `.env.local` and edit these values in order:
 
-For Spark, merge only the required values from `config/spark.env.example`:
+1. Set `DEPO_DATABASE_URL` to the PostgreSQL connection URL and
+   `DEPO_DATABASE_SCHEMA=semantic` (or the customer-approved schema).
+2. Set `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASS` and `NEO4J_DATABASE`. Aura
+   exports named `NEO4J_USERNAME` and `NEO4J_PASSWORD` are also accepted by
+   the Spark connector, but use the canonical `NEO4J_USER` and `NEO4J_PASS`
+   names in this file so every service and script has one consistent setting.
+3. Set `ALLOWED_ORIGINS=https://<customer-frontend-host>` and
+   `OSLC_BASE_URL=https://<customer-api-host>`.
+4. Keep `AUTH_MODE=token`. This delivery uses API keys; it does not require
+   Entra or GitHub Actions. Do not replace the generated token values unless
+   the customer secret-management process supplies approved replacements.
+5. Leave all `DEPO_SPARK_*` values out until step 2.3 unless Spark is part of
+   this installation.
+
+The shared parser rejects duplicate keys before changing the process
+environment. Edit a key in place; never append another line with the same key.
+
+### 2.2 Create the frontend browser file
+
+Create this file once, then set the public API gateway URL **before** running
+the frontend build. A browser can read every `VITE_*` value, so this file must
+contain no credentials.
+
+```powershell
+if (-not (Test-Path .\frontend\.env.local)) {
+  Copy-Item .\frontend\.env.example .\frontend\.env.local
+}
+notepad .\frontend\.env.local
+```
+
+For a customer deployment, set this single line and leave the individual
+service URLs commented unless the customer deliberately exposes separate
+gateway routes:
+
+```text
+VITE_API_GATEWAY_URL=https://api.customer.example
+```
+
+For a local developer installation, leave `VITE_API_GATEWAY_URL` empty. The
+frontend then uses the local service ports listed in `infra/deployment/services.json`.
+
+### 2.3 Add optional Spark settings to the root server file
+
+For Spark, merge only the required values from `config/spark.env.example` into
+the existing **root** `.env.local`. Do not create `spark.env.local`.
+Add these values after the database and Neo4j settings:
 `DEPO_SPARK_HOME`, `DEPO_JAVA_HOME`, `DEPO_HADOOP_HOME`,
 `DEPO_SPARK_OUTPUT_ROOT` and `DEPO_SPARK_MASTER`.
 
-Example for an installation under `C:\DEPO\runtime`:
+Example for an installation under `C:\DEPO\runtime`. This command updates each
+Spark key in place, so it is safe to run again after changing a path:
 
 ```powershell
-@(
-  'DEPO_SPARK_HOME=C:\DEPO\runtime\spark-4.1.2-bin-hadoop3',
-  'DEPO_JAVA_HOME=C:\Program Files\Java\jdk-21',
-  'DEPO_HADOOP_HOME=C:\DEPO\runtime\hadoop',
-  'DEPO_SPARK_OUTPUT_ROOT=C:\DEPO\data\spark-output',
-  'DEPO_SPARK_MASTER=local[2]',
-  'DEPO_SPARK_ENABLED=false',
-  'DEPO_SPARK_NEO4J_ENABLED=false',
-  'DEPO_PIPELINE_SCHEDULER_ENABLED=false'
-) | Add-Content .env.local
+$sparkSettings = @{
+  DEPO_SPARK_HOME = 'C:\DEPO\runtime\spark-4.1.2-bin-hadoop3'
+  DEPO_JAVA_HOME = 'C:\Program Files\Java\jdk-21'
+  DEPO_HADOOP_HOME = 'C:\DEPO\runtime\hadoop'
+  DEPO_SPARK_OUTPUT_ROOT = 'C:\DEPO\data\spark-output'
+  DEPO_SPARK_MASTER = 'local[2]'
+  DEPO_SPARK_ENABLED = 'false'
+  DEPO_SPARK_NEO4J_ENABLED = 'false'
+  DEPO_PIPELINE_SCHEDULER_ENABLED = 'false'
+}
+$lines = Get-Content .\.env.local
+foreach ($entry in $sparkSettings.GetEnumerator()) {
+  $match = "^$([regex]::Escape($entry.Key))="
+  if ($lines -match $match) {
+    $lines = $lines | ForEach-Object { if ($_ -match $match) { "$($entry.Key)=$($entry.Value)" } else { $_ } }
+  } else {
+    $lines += "$($entry.Key)=$($entry.Value)"
+  }
+}
+Set-Content .\.env.local $lines
 ```
 
 Set feature flags to `true` only after the Spark smoke test passes. Edit existing
 keys instead of appending duplicates; duplicate keys fail validation.
+
+### 2.4 Confirm the two files before installation
+
+Run this check. It must show the root server file and the frontend browser file;
+it must not show a `backend/.env.local` or a `spark.env.local`.
+
+```powershell
+Get-Item .\.env.local, .\frontend\.env.local | Select-Object FullName, Length, LastWriteTime
+```
 
 ## 3. Install the applications
 

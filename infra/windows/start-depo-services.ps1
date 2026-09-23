@@ -18,6 +18,12 @@ if (-not (Test-Path $python)) { throw "Project Python runtime was not found: $py
 
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
+# Aura exports use USERNAME/PASSWORD while the customer template uses the
+# shorter USER/PASS names. Normalize only the child-process environment so
+# every Spark launch path receives the same credentials without duplicating
+# them in the customer configuration file.
+if (-not $env:NEO4J_USER -and $env:NEO4J_USERNAME) { $env:NEO4J_USER = $env:NEO4J_USERNAME }
+if (-not $env:NEO4J_PASS -and $env:NEO4J_PASSWORD) { $env:NEO4J_PASS = $env:NEO4J_PASSWORD }
 if (-not $PostgresBinDir) { $PostgresBinDir = $env:DEPO_POSTGRES_BIN_DIR }
 if (-not $PostgresDataDir) { $PostgresDataDir = $env:DEPO_POSTGRES_DATA_DIR }
 if (-not $BindHost) { $BindHost = if ($env:DEPO_SERVICE_HOST) { $env:DEPO_SERVICE_HOST } else { "127.0.0.1" } }
