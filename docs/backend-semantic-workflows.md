@@ -21,11 +21,7 @@ Confirm these are ready:
 
 ## Script
 
-Use:
-
-`D:\Githuv_repo\PMem\backend\scripts\run_semantic_workflow.py`
-
-Run from repo root:
+Run the repository-owned script from the DEPO installation root:
 
 ```powershell
 backend\.dt_venv\Scripts\python.exe backend\scripts\run_semantic_workflow.py --help

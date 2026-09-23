@@ -5,12 +5,13 @@ environment ownership and runtime paths. No dependency installation was run.
 
 ## Remediation status
 
-Implemented after this audit: all Node selectors now specify 24; the installer
-uses only `backend/.dt_venv`, validates Python/Node/npm before installation,
-supports `-CheckPrerequisites` and `-Development`, and builds the frontend.
-The deployment guide now provides one configure/install/build/start sequence.
-Neo4j setup documentation uses root `.env.local` and explicitly describes legacy
-fallbacks. The findings below record the original state, not the updated installer.
+Implemented after this audit: all Node selectors now specify 24; the dependency
+installer uses only `backend/.dt_venv`, validates Python/Node/npm before
+installation, supports `-CheckPrerequisites` and `-Development`, and builds the
+frontend. `infra/windows/install-depo-windows.ps1` is now the single supported
+Windows release entry point: it installs dependencies, validates configuration,
+migrates PostgreSQL, validates Neo4j and optional Spark, starts services, and
+runs release preflight. Neo4j setup uses root `.env.local`.
 
 Validation: isolated prerequisite checks cover supported versions, rejected old
 Python/Node/npm versions, backend-only mode, missing lockfile and no installation
@@ -20,15 +21,16 @@ tool environment precedence remains separate work in the repository audit.
 
 ## Current layout
 
-The project already has one combined installer:
-`infra/windows/install-depo.ps1`. By default it installs Python requirements
-into `backend/.dt_venv` and runs `npm ci` in `frontend`. `-SkipFrontend` makes
-backend-only installation explicit. There is no second root npm installation
-or backend npm manifest remaining.
+The project has one supported release installer:
+`infra/windows/install-depo-windows.ps1`. It delegates dependency installation
+to `install-depo.ps1`, which installs Python requirements into
+`backend/.dt_venv` and runs `npm ci` in `frontend`. There is no second root npm
+installation or backend npm manifest remaining.
 
 | Location | Role | Assessment |
 | --- | --- | --- |
-| `infra/windows/install-depo.ps1` | Combined dependency installer | Keep one implementation |
+| `infra/windows/install-depo-windows.ps1` | Supported end-to-end Windows release installer | Use as the only customer installation entry point |
+| `infra/windows/install-depo.ps1` | Internal dependency-installation stage | Called by the release installer; not a customer entry point |
 | `infra/deployment/` | Configuration generation, validation and service lifecycle | Shared installation/operations entry points |
 | `backend/requirements.txt` | Python runtime dependencies | Correctly owned by backend |
 | `backend/requirements-dev.txt` | Python test dependencies, including runtime requirements | Correctly owned by backend |
@@ -58,13 +60,9 @@ or backend npm manifest remaining.
    Choose one supported environment path or propagate one shared setting through
    every consumer.
 
-3. **Medium — the installer installs dependencies but does not produce a complete
-   deployment.** It does not build `frontend/dist`, generate server configuration,
-   or provision databases. These steps are documented separately. Make the
-   root installation instructions explicit about the sequence: prerequisites,
-   combined dependency install, configuration, frontend build, service startup
-   and validation. A successful dependency install alone is not a successful
-   application deployment.
+3. **Resolved — dependency installation was previously confused with a complete
+   deployment.** `install-depo-windows.ps1` now performs the ordered release
+   stages after approved customer infrastructure and `.env.local` are present.
 
 4. **Medium — legacy backend configuration guidance remains.** Backend Neo4j
    documents and maintenance tools still refer to `backend/.env` while supported

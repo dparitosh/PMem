@@ -1,4 +1,22 @@
-# Repository audit — 2026-09-21
+# Repository audit — 2026-09-21 (historical record)
+
+## Release recheck — 2026-09-23
+
+All tracked Python modules compile, all tracked PowerShell scripts parse, the
+frontend production build completes, and the installer/configuration contract
+tests pass. The customer entry point is
+`infra/windows/install-depo-windows.ps1`; it applies the selected root
+`.env.local`, validates PostgreSQL and Neo4j, validates Spark whenever it is
+enabled by a switch or environment setting, then performs release preflight.
+
+The destructive Neo4j cleanup command now requires an existing selected root
+environment file, applies it over inherited process variables, clears cached
+connection settings, and prints a non-secret target summary before it accepts
+`--yes`. It no longer defaults to `backend/.env`.
+
+Remaining release acceptance is environment-specific: run the live PostgreSQL,
+Neo4j, and optional Spark checks against the customer infrastructure from
+`INSTALLATION.md`; they cannot be proven from a source-only audit.
 
 Installation-documentation follow-up: the release-hygiene guide now links to
 the canonical configure-before-build sequence. The production runbook installs
@@ -71,7 +89,7 @@ defaults remain outstanding from the findings below.
    every accepted output. Current regression coverage checks only the default.
 
 3. **Medium: installation is not reproducible or version-checked.**
-   `infra/windows/install-depo.ps1:12` uses whichever interpreter `py` resolves
+   `infra/windows/install-depo.ps1:12` uses whichever interpreter `py` resolves (the internal dependency stage is invoked by `install-depo-windows.ps1`)
    to; it does not verify Python, Node or npm versions before installation.
    `backend/requirements.txt` mostly uses ranges and has no full transitive lock;
    the installer also upgrades pip without a fixed version. Fresh installations

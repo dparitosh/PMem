@@ -4,12 +4,29 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 from typing import Any
 
 import requests
 from dotenv import load_dotenv
 
 from backend.core.db_config import Neo4jConnection, get_config
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def load_selected_environment(env_file: str) -> Path:
+    """Load the requested deployment configuration with deterministic precedence."""
+    path = Path(env_file).expanduser()
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    path = path.resolve()
+    if not path.is_file():
+        raise SystemExit(f"Environment file was not found: {path}")
+    load_dotenv(path, override=True)
+    get_config.cache_clear()
+    return path
 
 
 def _request(label: str, url: str) -> tuple[int | None, str]:
@@ -38,10 +55,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend-url", default=os.getenv("BACKEND_URL", "http://localhost:8000"))
     parser.add_argument("--frontend-url", default=os.getenv("FRONTEND_URL", "http://localhost:3000"))
-    parser.add_argument("--env-file", default="backend/.env")
+    parser.add_argument("--env-file", default=".env.local")
     args = parser.parse_args()
 
-    load_dotenv(args.env_file)
+    load_selected_environment(args.env_file)
 
     backend_url = args.backend_url.rstrip("/")
     frontend_url = args.frontend_url.rstrip("/")
@@ -76,4 +93,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

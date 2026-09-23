@@ -18,34 +18,29 @@ The central message is:
 ## Prerequisites
 
 1. Start Neo4j and verify the target database is configured.
-2. Start the application stack:
+2. From the DEPO installation root, complete the supported Windows installation
+   before the first demo:
 
 ```powershell
-cd D:\Githuv_repo\PMem
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo-windows.ps1 -EnvFile .env.local -Profile Production
 ```
 
-3. Open `http://localhost:3000/`.
+3. Open the customer HTTPS frontend URL configured in `ALLOWED_ORIGINS`.
 4. Confirm these services before the demo:
 
 ```text
-Frontend:  http://localhost:3000/
-Graph:     http://localhost:8013/healthz
-Ontology:  http://localhost:8011/healthz
-Agentic:   http://localhost:8012/healthz
+Frontend:  https://<customer-frontend-host>/
+Graph:     http://<internal-service-host>:8013/healthz
+Ontology:  http://<internal-service-host>:8011/healthz
+Agentic:   http://<internal-service-host>:8012/healthz
 ```
 
 5. Use a clean demo database or a dedicated `demo` import identifier. Do not use **Clean Neo4j Schema** during a customer presentation unless the database is explicitly disposable.
 
 ## Demo Data
 
-Representative files are available under:
-
-```text
-D:\FileHistory\Paritosh\DESKTOP-6V68C8J\Data\D\graphdb\DesktopDB\relate-data\dbmss\dbms-319603fc-d69d-4cf5-b4a4-9fbb86278426\import\SPLM
-```
-
-Recommended files:
+Use customer-approved demo files from the release package or a dedicated demo
+share. Recommended source types are:
 
 ```text
 000687_A_1-INDUCTION MOTOR ASSY 5HP (...).stpx

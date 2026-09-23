@@ -15,7 +15,7 @@ const finalPath=path.resolve(root,outputArg>=0?process.argv[outputArg+1]:'delive
 await fs.mkdir(build,{recursive:true}); await fs.mkdir(path.dirname(finalPath),{recursive:true});
 const p=Presentation.create({slideSize:{width:1280,height:720}});
 const C={navy:'#0B2133',ink:'#20313E',muted:'#526779',teal:'#007F8B',blue:'#DFF0F5',green:'#E1F2E9',amber:'#FFF0D1',white:'#FFFFFF',line:'#B9CCD5',bg:'#F5F8FA'};
-const FONT='Arial', sourceBase='https://github.com/dparitosh/PMem/blob/545d43a/';
+const FONT='Arial', sourceBase='https://github.com/dparitosh/PMem/blob/codex/semantic-bridge-release/';
 const tableSlides=[]; const outline=[];
 function text(s,t,x,y,w,h,size=24,color=C.ink,bold=false){
  const z=s.shapes.add({geometry:'textbox',name:t.slice(0,70),position:{left:x,top:y,width:w,height:h},fill:'none',line:{fill:'none',width:0}});
@@ -27,7 +27,7 @@ function slide(title,sub,sources=[]){
  if(sub) text(s,sub,60,115,1155,65,23,C.muted);
  if(title) text(s,'DEPO  /  Functional architecture',60,678,920,22,15,C.muted);
  if(title) text(s,String(p.slides.items.length).padStart(2,'0'),1168,678,52,22,15,C.muted);
- s.speakerNotes.textFrame.setText('Implementation baseline: commit 545d43a, 22 September 2026.\n'+sources.map(x=>sourceBase+x).join('\n'));
+ s.speakerNotes.textFrame.setText('Implementation baseline: current release branch, 23 September 2026.\n'+sources.map(x=>sourceBase+x).join('\n'));
  outline.push({slide:p.slides.items.length,title,sources}); return s;
 }
 function node(s,title,body,x,y,w=260,h=135,fill=C.white){
@@ -47,7 +47,7 @@ function table(s,headers,rows,widths,y=192,h=422,size=21){
 }
 // 1: consolidated cover, retaining the source decks' navy/teal palette and Arial.
 {
- const s=slide('','',['infra/deployment/README.md','docs/architecture/SERVICE_CATALOG.md']);s.background.fill=C.navy;
+ const s=slide('','',['INSTALLATION.md','docs/architecture/SERVICE_CATALOG.md']);s.background.fill=C.navy;
  text(s,'DEPO DIGITAL THREAD',75,90,1100,40,24,'#5CD0D1',true);
  text(s,'Functional architecture\nand customer deployment',75,187,1110,160,58,C.white,true);
  text(s,'Semantic Bridge, governed data jobs and graph publication',78,388,1090,90,30,'#CCDDE7');
@@ -115,7 +115,7 @@ function table(s,headers,rows,widths,y=192,h=422,size=21){
 }
 // 9
 {
- const s=slide('Batch and event reconciliation','Both paths retain evidence and use CEIM for semantic batch publication.',['backend/data_pipeline_service/speed_router.py','backend/data_pipeline_service/speed_path.py','infra/spark/README.md']);
+ const s=slide('Batch and event reconciliation','Both paths retain evidence and use CEIM for semantic batch publication.',['backend/data_pipeline_service/speed_router.py','backend/data_pipeline_service/speed_path.py','INSTALLATION.md']);
  text(s,'Batch path',60,190,250,32,25,C.teal,true);
  flow(s,[['Retained artifact','Source manifest and version'],['Approved data job','Spark/PySpark transformation',C.blue],['Accepted partition','CEIM publication approval',C.green]],231,129);
  text(s,'Event path',60,397,250,32,25,C.teal,true);
@@ -153,7 +153,7 @@ function table(s,headers,rows,widths,y=192,h=422,size=21){
 }
 // 14
 {
- const s=slide('Customer deployment topology','The same application supports local or customer-managed databases.',['infra/deployment/README.md','infra/neo4j/README.md','infra/postgres/README.md','infra/spark/README.md']);
+ const s=slide('Customer deployment topology','The same application supports local or customer-managed databases.',['INSTALLATION.md','INSTALLATION.md','INSTALLATION.md','INSTALLATION.md']);
  const a=node(s,'Browser','Public frontend bundle over HTTPS',60,215,320,135,C.white);
  const b=node(s,'Web server / proxy','Serves frontend/dist and routes API requests',470,215,340,135,C.blue);
  const c=node(s,'DEPO services','Ten APIs and one outbox worker',900,215,320,135,C.green);link(s,a,b);link(s,b,c);
@@ -161,7 +161,7 @@ function table(s,headers,rows,widths,y=192,h=422,size=21){
 }
 // 15
 {
- const s=slide('One application installation sequence','A single installer owns frontend dependencies and the backend Python environment.',['infra/deployment/README.md','infra/windows/install-depo.ps1','infra/windows/initialize-depo-schema.ps1']);
+ const s=slide('One application installation sequence','A single installer owns frontend dependencies and the backend Python environment.',['INSTALLATION.md','infra/windows/install-depo-windows.ps1','infra/windows/initialize-depo-schema.ps1']);
  flow(s,[['1  Provision','PostgreSQL and Neo4j. Add Spark only when required.'],['2  Configure','Root server env and separate public browser env.'],['3  Install','Python dependencies, npm ci and frontend build.',C.blue],['4  Initialize','Apply migrations and check tables and columns.',C.green]],220,178);
  columns(s,[['Runtime baseline','Python 3.11+, Node.js 24+ and npm 10.2+. PySpark comes from the approved Spark distribution.'],['Start and accept','Start services, serve frontend/dist, run Production preflight and verify the customer browser workflow.']],445);
 }
@@ -201,15 +201,15 @@ function table(s,headers,rows,widths,y=192,h=422,size=21){
 }
 // 20: actionable reference map with the complete service inventory.
 {
- const s=slide('Service inventory and installation references','Ports describe internal service defaults. The customer web server provides public HTTPS access.',['infra/deployment/services.json','infra/deployment/README.md','infra/postgres/SCHEMA.md','infra/neo4j/README.md','infra/spark/README.md']);
+ const s=slide('Service inventory and installation references','Ports describe internal service defaults. The customer web server provides public HTTPS access.',['infra/deployment/services.json','INSTALLATION.md','infra/postgres/SCHEMA.md','INSTALLATION.md','INSTALLATION.md']);
  table(s,['Service','Port','Owned responsibility'],[
  ['Schema sets / QIF','8010','Engineering schema processing'],['Ontology','8011','Semantic artifacts, modeling and registry'],['Agentic','8012','Tools, workflows, Bridge and Companion'],['Graph','8013','Publication, projections and semantic queries'],['Ingestion','8014','Source capture, parsing and profiles'],['OSLC','8015','Engineering resource interfaces'],['Data catalog','8016','Product discovery and artifact retention'],['Data products','8017','Manifests, packaging and catalog outbox'],['CEIM','8018','Canonical mapping, validation and publication requests'],['Data pipeline','8019','Data jobs, quality evidence and event reconciliation']],[325,100,735],185,409,19);
- text(s,'Installation: infra/deployment/README.md\nDatabase columns: infra/postgres/SCHEMA.md   |   Neo4j: infra/neo4j/README.md   |   Spark: infra/spark/README.md',60,617,1160,52,18,C.muted);
+ text(s,'Installation: INSTALLATION.md\nDatabase columns: infra/postgres/SCHEMA.md   |   Neo4j: INSTALLATION.md   |   Spark: INSTALLATION.md',60,617,1160,52,18,C.muted);
 }
 await fs.writeFile(path.join(build,'outline.json'),JSON.stringify(outline,null,2));
 const candidate=path.join(build,'candidate.pptx');
 await (await PresentationFile.exportPptx(p)).save(candidate);
-await finalizePresentation({workspaceDir:root,candidatePath:candidate,finalPath,pythonExecutable:process.env.DEPO_PRESENTATION_PYTHON,integrityValidatorPath:path.join(skill,'container_tools/inspect_presentation_package_integrity.py'),layoutValidatorPath:path.join(skill,'container_tools/inspect_presentation_layout_geometry.py'),layoutArgs:['--expected-slide-size-emu','12192000,6858000','--validate-bullet-geometry','--validate-heading-fit',...tableSlides.flatMap(n=>['--require-native-table-slide',String(n)])],requiredNativeTableOwnerSlides:tableSlides,explicitTotalSlideCount:20,fontPolicy:{basis:'design',families:[FONT]},verifyArtifactToolImport:true,receiptPath:path.join(build,'validation.json')});
+await finalizePresentation({workspaceDir:root,candidatePath:candidate,finalPath,pythonExecutable:process.env.DEPO_PRESENTATION_PYTHON,integrityValidatorPath:path.join(skill,'container_tools/inspect_presentation_package_integrity.py'),layoutValidatorPath:path.join(skill,'container_tools/inspect_presentation_layout_geometry.py'),layoutArgs:['--expected-slide-size-emu','12192000,6858000','--validate-bullet-geometry','--validate-heading-fit',...tableSlides.flatMap(n=>['--require-native-table-slide',String(n)])],requiredNativeTableOwnerSlides:tableSlides,explicitTotalSlideCount:20,fontPolicy:{basis:'design',families:[FONT]},verifyArtifactToolImport:true,receiptPath:path.join(build,`${path.basename(finalPath)}.validation.json`)});
 const final=await PresentationFile.importPptx(await FileBlob.load(finalPath));
 for(let i=0;i<final.slides.items.length;i++){ const blob=await final.export({slide:final.slides.items[i],format:'png',scale:1});await fs.writeFile(path.join(build,`slide-${i+1}.png`),new Uint8Array(await blob.arrayBuffer())); }
 await fs.writeFile(path.join(build,'inspect.ndjson'),(await final.inspect({kind:'slide,textbox,shape,table',maxChars:500000})).ndjson);

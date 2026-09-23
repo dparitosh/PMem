@@ -47,9 +47,10 @@ Do not package these into the customer runtime unless explicitly needed:
 
 ## Current installation script audit
 
-- `install-depo.ps1` creates the backend virtual environment, installs the single
-  runtime requirements file, and runs `npm ci` and `npm run build` for the
-  frontend. It checks prerequisite versions before installation; `-Development`
+- `install-depo-windows.ps1` is the customer installation entry point. It calls
+  the dependency stage, validates configuration, migrates PostgreSQL, validates
+  Neo4j and optional Spark, starts the services, and runs release preflight.
+  `install-depo.ps1` remains the internal dependency stage; `-Development`
   includes test dependencies and `-CheckPrerequisites` performs checks only.
 - `start-depo-services.ps1` validates the service manifest, PostgreSQL schema,
   and configured service endpoints before starting the local processes.

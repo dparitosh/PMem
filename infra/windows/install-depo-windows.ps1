@@ -37,8 +37,16 @@ function Invoke-DepoStage([string]$Name, [scriptblock]$Action) {
 if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
   throw "Missing deployment configuration: $envPath. Create and complete root .env.local before running this installer."
 }
-if (($EnableNeo4jSparkConnector -or $EnablePipelineScheduler) -and -not $EnableSpark) {
-  throw '-EnableNeo4jSparkConnector and -EnablePipelineScheduler require -EnableSpark.'
+. (Join-Path $PSScriptRoot 'runtime-config.ps1')
+$settings = Read-DepoEnvironment -Root $root -EnvFile $envPath
+$configuredSpark = $settings['DEPO_SPARK_ENABLED'] -eq 'true'
+$configuredConnector = $settings['DEPO_SPARK_NEO4J_ENABLED'] -eq 'true'
+$configuredScheduler = $settings['DEPO_PIPELINE_SCHEDULER_ENABLED'] -eq 'true'
+$effectiveSpark = [bool]($EnableSpark -or $configuredSpark)
+$effectiveConnector = [bool]($EnableNeo4jSparkConnector -or $configuredConnector)
+$effectiveScheduler = [bool]($EnablePipelineScheduler -or $configuredScheduler)
+if (($effectiveConnector -or $effectiveScheduler) -and -not $effectiveSpark) {
+  throw 'Spark connector and scheduler require Spark enabled through -EnableSpark or DEPO_SPARK_ENABLED=true in .env.local.'
 }
 
 if (-not $SkipDependencyInstall) {
@@ -61,18 +69,18 @@ Invoke-DepoStage 'Neo4j connection validation' {
   if ($Profile -eq 'Production') { $neo4jParameters.Production = $true } else { $neo4jParameters.Bootstrap = $true }
   & (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') @neo4jParameters
 }
-if ($EnableSpark) {
+if ($effectiveSpark) {
   Invoke-DepoStage 'Spark runtime smoke test' {
     $sparkParameters = @{ EnvFile = $envPath }
-    if ($EnableNeo4jSparkConnector) { $sparkParameters.Neo4jConnector = $true }
+    if ($effectiveConnector) { $sparkParameters.Neo4jConnector = $true }
     & (Join-Path $PSScriptRoot 'test-depo-spark.ps1') @sparkParameters
   }
 }
 Invoke-DepoStage 'Service startup and endpoint validation' {
   $startParameters = @{ Action = 'Start'; EnvFile = $envPath; Profile = $Profile }
-  if ($EnableSpark) { $startParameters.EnableSpark = $true }
-  if ($EnableNeo4jSparkConnector) { $startParameters.EnableNeo4jSparkConnector = $true }
-  if ($EnablePipelineScheduler) { $startParameters.EnablePipelineScheduler = $true }
+  if ($effectiveSpark) { $startParameters.EnableSpark = $true }
+  if ($effectiveConnector) { $startParameters.EnableNeo4jSparkConnector = $true }
+  if ($effectiveScheduler) { $startParameters.EnablePipelineScheduler = $true }
   if ($SkipBaselineProvisioning) { $startParameters.SkipBaselineProvisioning = $true }
   & (Join-Path $root 'infra\deployment\invoke-depo-lifecycle.ps1') @startParameters
 }
