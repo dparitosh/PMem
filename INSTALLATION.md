@@ -34,6 +34,12 @@ If the service is stopped, start the exact `Name` returned above:
 Start-Service -Name 'postgresql-x64-16'
 ```
 
+Record that exact service name. You will set
+`DEPO_POSTGRES_MODE=service` and `DEPO_POSTGRES_SERVICE_NAME=<that-name>` in
+the root `.env.local` in section 2.1, which allows the lifecycle launcher to
+start and check the local database. For a managed or remote PostgreSQL server,
+keep `DEPO_POSTGRES_MODE=external` and leave the service name blank.
+
 Create a database, a least-privilege application login, and its schema. The
 second command prompts securely for the application password instead of writing
 it into PowerShell history. Replace only the server administrator account when
@@ -125,7 +131,11 @@ if (-not (Test-Path .env.local)) {
 Open the new root `.env.local` and edit these values in order:
 
 1. Set `DEPO_DATABASE_URL` to the PostgreSQL connection URL and
-   `DEPO_DATABASE_SCHEMA=semantic` (or the customer-approved schema).
+   `DEPO_DATABASE_SCHEMA=semantic` (or the customer-approved schema). For the
+   local Windows service installed in section 1.1, also set
+   `DEPO_POSTGRES_MODE=service` and `DEPO_POSTGRES_SERVICE_NAME` to the exact
+   Windows service `Name`. For a managed or remote database, retain
+   `DEPO_POSTGRES_MODE=external` and leave `DEPO_POSTGRES_SERVICE_NAME` empty.
 2. Set `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASS` and `NEO4J_DATABASE`. Aura
    exports named `NEO4J_USERNAME` and `NEO4J_PASSWORD` are also accepted by
    the Spark connector, but use the canonical `NEO4J_USER` and `NEO4J_PASS`
