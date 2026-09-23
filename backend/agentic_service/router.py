@@ -159,6 +159,33 @@ def orchestrate_ontology_agents(payload: dict[str, Any]) -> dict:
         raise HTTPException(status_code=422, detail="Ontology agent could not parse the supplied artifact") from exc
 
 
+def _ontology_agent_call(operation, payload: dict[str, Any]) -> dict:
+    try:
+        return operation(payload)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="Ontology agent could not parse the supplied artifact") from exc
+
+
+@router.post("/ontology-agents/intake", dependencies=[Depends(graph_read_identity)])
+def ontology_agent_intake(payload: dict[str, Any]) -> dict:
+    from .ontology_orchestrator import intake
+    return _ontology_agent_call(intake, payload)
+
+
+@router.post("/ontology-agents/review", dependencies=[Depends(graph_read_identity)])
+def ontology_agent_review(payload: dict[str, Any]) -> dict:
+    from .ontology_orchestrator import structure_review
+    return _ontology_agent_call(structure_review, payload)
+
+
+@router.post("/ontology-agents/bridge-plan", dependencies=[Depends(graph_read_identity)])
+def ontology_agent_bridge_plan(payload: dict[str, Any]) -> dict:
+    from .ontology_orchestrator import bridge_plan
+    return _ontology_agent_call(bridge_plan, payload)
+
+
 _COMPANION_PROMPTS = [
     "Show MBSE to EBOM traceability for the Variable Speed Drive",
     "Compare EBOM and MBOM for 5 HP MOTOR ASSEMBLY",

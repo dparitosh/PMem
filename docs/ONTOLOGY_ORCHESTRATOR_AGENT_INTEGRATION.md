@@ -44,3 +44,11 @@ The frontend can use the response to render an intake summary, structural
 issues, and Semantic Bridge planning counts. Existing Bridge preview, approval,
 PostgreSQL job history, and Graph Service publication remain the authoritative
 write path.
+
+The specialist tools are separately allowlisted so an intake agent cannot call
+the review or planning operation by changing a prompt. Their read-only routes
+are `/api/v1/ontology-agents/intake`, `/api/v1/ontology-agents/review`, and
+`/api/v1/ontology-agents/bridge-plan`. The system prompts and tool bindings are
+versioned in `backend/agentic_service/catalog.json`; prompt text is treated as
+policy metadata, while the server-side route and approval checks remain the
+enforcement mechanism.

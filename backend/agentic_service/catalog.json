@@ -1,10 +1,10 @@
 {
   "agents": [
-    {"id": "ontology-intake", "name": "Ontology Intake", "tools": ["engineering.inspect", "ontology.generate", "ontology.agent.orchestrate"], "approval_required": false},
-    {"id": "ontology-structure-review", "name": "Ontology Structure Review", "tools": ["ontology.agent.orchestrate"], "approval_required": false},
-    {"id": "semantic-bridge-planner", "name": "Semantic Bridge Planner", "tools": ["ontology.agent.orchestrate"], "approval_required": false},
-    {"id": "ontology-export", "name": "Ontology Export", "tools": ["ontology.export"], "approval_required": true},
-    {"id": "ontology-orchestrator", "name": "Ontology Orchestrator", "tools": ["ontology.agent.orchestrate"], "approval_required": false},
+    {"id": "ontology-intake", "name": "Ontology Intake", "tools": ["engineering.inspect", "ontology.generate", "ontology.agent.intake"], "approval_required": false, "system_prompt": "Inspect only the selected RDF/OWL artifact. Return factual counts and parser warnings. Never infer missing semantics or mutate data."},
+    {"id": "ontology-structure-review", "name": "Ontology Structure Review", "tools": ["ontology.agent.review"], "approval_required": false, "system_prompt": "Review only observable ontology structure. Report machine-readable issues. Do not fabricate axioms, recommendations, approvals, or writes."},
+    {"id": "semantic-bridge-planner", "name": "Semantic Bridge Planner", "tools": ["ontology.agent.bridge-plan"], "approval_required": false, "system_prompt": "Prepare a review-only mapping plan from supplied metadata. Keep entity, attribute, relationship, and metadata counts separate. Never approve or publish mappings."},
+    {"id": "ontology-export", "name": "Ontology Export", "tools": ["ontology.export"], "approval_required": true, "system_prompt": "Export only after the existing human approval contract is satisfied. Do not alter ontology semantics."},
+    {"id": "ontology-orchestrator", "name": "Ontology Orchestrator", "tools": ["ontology.agent.orchestrate"], "approval_required": false, "system_prompt": "Run intake, structural review, and Bridge planning in order. Preserve evidence. Stop before approval or publication."},
     {"id": "context-analyst", "name": "Business Context Analyst", "tools": ["context.upsert", "context.search", "context.where_used"], "approval_required": false},
     {"id": "ontology-governor", "name": "Ontology Governor", "tools": ["ontology.register", "ontology.transition", "ontology.export", "ontology.merge.preview", "ontology.merge.apply", "engineering.publish"], "approval_required": true},
     {"id": "engineering-parser", "name": "Engineering Parser", "tools": ["engineering.inspect", "profile.inspect", "profile.execute"], "approval_required": false},
@@ -49,6 +49,9 @@
     ,{"id": "pipeline.telemetry", "transport": "openapi", "service": "data_pipeline", "method": "GET", "path": "/pipeline/telemetry", "mutates": false}
     ,{"id": "pipeline.transform", "transport": "openapi", "service": "data_pipeline", "method": "POST", "path": "/pipeline/jobs/transform", "mutates": true}
     ,{"id": "ontology.agent.orchestrate", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/ontology-agents/orchestrate", "mutates": false}
+    ,{"id": "ontology.agent.intake", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/ontology-agents/intake", "mutates": false}
+    ,{"id": "ontology.agent.review", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/ontology-agents/review", "mutates": false}
+    ,{"id": "ontology.agent.bridge-plan", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/ontology-agents/bridge-plan", "mutates": false}
   ],
   "mcp_servers": [
     {"id": "semantica", "transport": "stdio", "command": "python", "args": ["-m", "semantica.mcp_server"], "environment": ["SEMANTICA_KG_PATH"], "operations": ["ontology", "reasoning", "validation"]}

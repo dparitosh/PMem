@@ -184,3 +184,19 @@ def orchestrate(payload: dict[str, Any]) -> dict[str, Any]:
         steps.append({"agent": "ontology_structure_review_agent", "status": "completed", "result": review_ontology(ontology_path)})
     steps.append({"agent": "semantic_bridge_planner_agent", "status": "completed", "result": plan_bridge(metadata, ontology_path)})
     return {"workflow_id": workflow_id, "steps": steps, "status": "completed", "publication": "requires_human_approval"}
+
+
+def intake(payload: dict[str, Any]) -> dict[str, Any]:
+    path = _resolve_ontology_path(str(payload.get("ontology_path") or ""), str(payload.get("ontology_id") or "") or None)
+    return inspect_ontology(path)
+
+
+def structure_review(payload: dict[str, Any]) -> dict[str, Any]:
+    path = _resolve_ontology_path(str(payload.get("ontology_path") or ""), str(payload.get("ontology_id") or "") or None)
+    return review_ontology(path)
+
+
+def bridge_plan(payload: dict[str, Any]) -> dict[str, Any]:
+    path = _resolve_ontology_path(str(payload.get("ontology_path") or ""), str(payload.get("ontology_id") or "") or None)
+    metadata = _instance_metadata(str(payload.get("import_task_id") or "") or None, payload.get("instance_metadata"))
+    return plan_bridge(metadata, path)
