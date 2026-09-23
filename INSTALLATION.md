@@ -154,11 +154,18 @@ evidence. The archive directory lists the Spark binary and accompanying
 
 #### Step D — extract Spark and install the Windows helper
 
-Use the `tar.exe` included with current Windows. The last command proves that
-the exact files required by `test-depo-spark.ps1` exist.
+Use the `tar.exe` included with current Windows. First verify that PowerShell
+can find it, then list the archive contents, and only then extract it. The
+commands stop if `tar.exe` is missing or the expected Spark folder already
+exists. The final `Get-Item` command proves that the exact files required by
+`test-depo-spark.ps1` exist.
 
 ```powershell
-tar -xf $sparkArchive -C C:\DEPO\runtime
+$tar = Get-Command tar.exe -ErrorAction Stop
+& $tar.Source -tzf $sparkArchive | Select-Object -First 10
+if (Test-Path $sparkHome) { throw "Spark folder already exists: $sparkHome. Verify it, or remove it before extracting again." }
+& $tar.Source -xzf $sparkArchive -C C:\DEPO\runtime
+if (-not (Test-Path "$sparkHome\bin\spark-submit.cmd")) { throw "Spark extraction did not create $sparkHome" }
 
 # Obtain winutils.exe from the customer-approved Hadoop helper package and copy it here.
 # Do not download an unverified winutils.exe from an arbitrary public repository.
@@ -173,8 +180,10 @@ Get-Item "$sparkHome\bin\spark-submit.cmd",
 
 Do not run `pip install pyspark`; the backend uses the PySpark and Py4J archives
 already inside `$sparkHome`. Continue with section 2.3 to write these paths to
-the root `.env.local`. After the backend install in section 3, execute these
-commands in this order:
+the root `.env.local`. The deployment scripts load root `.env.local` into the
+Windows **process environment** each time they run; do not set permanent
+machine-wide `SPARK_HOME`, `JAVA_HOME`, or `HADOOP_HOME` values. After the
+backend install in section 3, execute this smoke test:
 
 ```powershell
 # Spark configuration must be present in root .env.local first.
@@ -294,6 +303,21 @@ foreach ($entry in $sparkSettings.GetEnumerator()) {
   }
 }
 Set-Content .\.env.local $lines
+```
+
+Verify the file is valid and that the Windows process receives the expected
+non-secret runtime paths. This command does not print passwords or API keys:
+
+```powershell
+. .\infra\windows\runtime-config.ps1
+Import-DepoEnvironment -Root (Get-Location).Path -EnvFile .env.local
+[pscustomobject]@{
+  DEPO_SPARK_HOME = $env:DEPO_SPARK_HOME
+  DEPO_JAVA_HOME = $env:DEPO_JAVA_HOME
+  DEPO_HADOOP_HOME = $env:DEPO_HADOOP_HOME
+  DEPO_SPARK_OUTPUT_ROOT = $env:DEPO_SPARK_OUTPUT_ROOT
+  DEPO_SPARK_MASTER = $env:DEPO_SPARK_MASTER
+} | Format-List
 ```
 
 Set feature flags to `true` only after the Spark smoke test passes. Edit existing
