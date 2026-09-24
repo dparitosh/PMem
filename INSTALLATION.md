@@ -87,6 +87,78 @@ keys. In external mode the Windows lifecycle scripts skip `Start-Service`,
 `pg_ctl`, and local PostgreSQL paths. They connect to the remote database only
 when schema initialization and service readiness checks run.
 
+### 1.1.1 Test the remote PostgreSQL connection with pgAdmin 4
+
+pgAdmin is a graphical PostgreSQL client; it does not install or host the
+server, and a successful pgAdmin connection does not test ODBC. Install pgAdmin
+4 on the administrator or application VM from the [official pgAdmin Windows
+download](https://www.pgadmin.org/download/pgadmin-4-windows/).
+
+Open pgAdmin, right-click **Servers**, select **Register > Server**, and enter
+the DBA-provided host name/private IP, port `5432`, maintenance database
+`depo` (or `postgres`), user `depo_app`, and password. Set SSL mode to
+`verify-full` and select the customer CA certificate when required. Use any
+local label such as `DEPO PostgreSQL (remote)` for the General > Name field.
+
+Open **Tools > Query Tool** and run these read-only checks:
+
+```sql
+SELECT current_database(), current_user, current_schema();
+SELECT table_schema, table_name
+FROM information_schema.tables
+WHERE table_schema = 'semantic'
+ORDER BY table_name;
+```
+
+The first query must show `depo`, `depo_app`, and the expected schema. The
+second confirms that the application schema is reachable. A pgAdmin connection
+proves PostgreSQL network access and credentials only; continue with the ODBC
+test below when another Windows application requires ODBC.
+
+### 1.1.2 Install and test the PostgreSQL ODBC driver on a 64-bit Windows VM
+
+Install psqlODBC on the Windows VM where the ODBC-consuming application or
+service runs, not on the PostgreSQL database VM. Download the signed 64-bit
+Windows installer from the [official PostgreSQL ODBC project](https://odbc.postgresql.org/).
+After installation, verify that Windows registered the driver:
+
+```powershell
+Get-OdbcDriver -Name '*PostgreSQL*' | Format-Table Name, Platform, Version
+Start-Process "$env:WINDIR\System32\odbcad32.exe"
+```
+
+On 64-bit Windows, `System32\odbcad32.exe` is the 64-bit ODBC Administrator.
+In **System DSN**, select **Add**, choose **PostgreSQL Unicode(x64)**, and set
+the data source name to `DEPO_PG_REMOTE`. Enter the DBA-provided host, port,
+database `depo`, and user `depo_app`; set SSL mode to `verify-full` and select
+the customer root CA if offered. Use a System DSN for a Windows service. Do not
+export the DSN with a plaintext password.
+
+Test the DSN without putting the password in command history:
+
+```powershell
+$secure = Read-Host 'PostgreSQL password' -AsSecureString
+$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+$plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+try {
+  $cn = [System.Data.Odbc.OdbcConnection]::new("DSN=DEPO_PG_REMOTE;UID=depo_app;PWD=$plain;")
+  $cn.Open(); $cmd = $cn.CreateCommand()
+  $cmd.CommandText = 'select current_database(), current_user, current_schema()'
+  $reader = $cmd.ExecuteReader()
+  while ($reader.Read()) { '{0} / {1} / {2}' -f $reader.GetValue(0), $reader.GetValue(1), $reader.GetValue(2) }
+  $reader.Close(); $cn.Close()
+} finally {
+  $plain = $null
+  if ($ptr -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
+}
+```
+
+The DEPO backend uses `DEPO_DATABASE_URL` through `psycopg`; ODBC is optional
+for external Windows tools. If no driver appears, check that the 64-bit driver
+was installed. A timeout indicates DNS, firewall, or port `5432` access; an SSL
+error indicates a CA or hostname mismatch; an authentication error requires
+the DBA to check role, password, and schema grants.
+
 Neo4j may run on-premises, on a private VM, as a hosted self-managed server, or
 in Neo4j Aura. Use the provider's actual database name. Production requires
 certificate-verified TLS: `neo4j+s://` or direct `bolt+s://`. Bootstrap may use
