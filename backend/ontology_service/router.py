@@ -162,9 +162,10 @@ def preview_merge(payload: dict[str, Any]) -> dict:
 
 
 @router.post("/merges/{preview_id}/apply", summary="Apply an approved, conflict-free ontology merge")
-def apply_merge(preview_id: str, payload: dict[str, Any]) -> dict:
+def apply_merge(preview_id: str, payload: dict[str, Any], request: Request) -> dict:
     try:
-        return merges.apply(preview_id, str(payload.get("approved_by") or ""))
+        approver = approval_identity(request, payload, token_env="ONTOLOGY_APPROVAL_TOKEN")
+        return merges.apply(preview_id, approver)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

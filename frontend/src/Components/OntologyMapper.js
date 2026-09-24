@@ -1552,6 +1552,8 @@ export default function OntologyMapper() {
   const [mergeSourceOntologyId, setMergeSourceOntologyId] = useState('');
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeResult, setMergeResult] = useState(null);
+  const [mergeApprover, setMergeApprover] = useState('');
+  const [mergeApprovalToken, setMergeApprovalToken] = useState('');
   const selectedImportTask = useMemo(
     () => importTasks.find((task) => task.task_id === selectedImportTaskId) || null,
     [importTasks, selectedImportTaskId],
@@ -1605,6 +1607,7 @@ export default function OntologyMapper() {
     mergeResult?.kind === 'success'
     && mergeResult?.task_id
     && mergeResult?.report
+    && mergeResult?.governedPreview?.preview_id
     && mergeConflictCount === 0,
   );
   const visibleMappingEdges = useMemo(() => {
@@ -2140,12 +2143,17 @@ export default function OntologyMapper() {
         target_ontology_id: selectedMapping,
       });
       const payload = res.data || {};
+      const governed = await API_METHODS.ontology.governedMergePreview(
+        [mergeSourceOntologyId, selectedMapping],
+        { ontology_name: `Merged ${selectedMapping}`, prefix: `merged_${Date.now()}` },
+      );
       setMergeResult({
         kind: 'success',
         text: 'Merge plan ready. Review overlaps, additions, conflicts, and subclass gaps before commit.',
         task_id: payload.task_id,
         report: payload.result || null,
         artifact_manifest: payload.artifact_manifest || null,
+        governedPreview: governed.data || governed,
       });
     } catch (e) {
       setMergeResult({ kind: 'error', text: e?.response?.data?.detail || e?.message || 'Merge plan preview failed.' });
@@ -2169,17 +2177,27 @@ export default function OntologyMapper() {
     }
     setMergeBusy(true);
     setMergeResult(null);
+    if (!mergeApprover.trim()) {
+      setMergeResult({ kind: 'error', text: 'Enter the approving steward identity before committing the governed merge.' });
+      return;
+    }
+    if (!mergeResult?.governedPreview?.preview_id) {
+      setMergeResult({ kind: 'error', text: 'Create a governed merge preview before committing.' });
+      return;
+    }
     try {
-      const res = await API_METHODS.ontology.merge(mergeSourceOntologyId, selectedMapping, { dry_run: false });
+      const res = await API_METHODS.ontology.governedMergeApply(mergeResult.governedPreview.preview_id, mergeApprover.trim(), mergeApprovalToken);
       setMergeResult({
         kind: 'success',
         text: res?.data?.message || 'Ontology merge committed to Neo4j.',
-        report: res?.data || null,
+        report: { ...(mergeResult.report || {}), governed: res?.data || res },
+        governedPreview: mergeResult.governedPreview,
         artifact_manifest: null,
       });
     } catch (e) {
       setMergeResult({ kind: 'error', text: e?.response?.data?.detail || e?.message || 'Ontology merge failed.' });
     } finally {
+      setMergeApprovalToken('');
       setMergeBusy(false);
     }
   };
@@ -2922,6 +2940,14 @@ export default function OntologyMapper() {
                     <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, marginBottom: '4px' }}>Target ontology</div>
                     <div style={{ fontSize: '12px', color: C.textPrimary }}>{selectedOntologyOption?.label || 'Select the active ontology in the header above'}</div>
                   </div>
+                  <div>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Approving steward</label>
+                    <input value={mergeApprover} onChange={(e) => setMergeApprover(e.target.value)} placeholder="name or service principal" style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Approval token</label>
+                    <input type="password" autoComplete="off" value={mergeApprovalToken} onChange={(e) => setMergeApprovalToken(e.target.value)} placeholder="approval secret" style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }} />
+                  </div>
                   <button
                     type="button"
                     onClick={handlePreviewOntologyMerge}
@@ -2933,7 +2959,7 @@ export default function OntologyMapper() {
                   <button
                     type="button"
                     onClick={handleCommitOntologyMerge}
-                    disabled={mergeBusy || !mergePlanReady}
+                    disabled={mergeBusy || !mergePlanReady || !mergeApprover.trim() || !mergeApprovalToken}
                     title={mergePlanReady ? 'Commit the reviewed conflict-free merge plan' : 'Review a conflict-free merge plan before committing'}
                     style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: mergeBusy || !mergePlanReady ? C.textMuted : C.primaryDark, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: mergeBusy || !mergePlanReady ? 'not-allowed' : 'pointer' }}
                   >

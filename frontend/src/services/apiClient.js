@@ -309,6 +309,16 @@ export const ontologyAPI = {
       to_ontology_id: toOntologyId,
       ...(options || {}),
     }),
+  governedMergePreview: (sourceOntologyIds, options = {}) =>
+    apiClient.post(buildUrl(API.ontology.governedMergePreview), {
+      source_ontology_ids: sourceOntologyIds,
+      ...(options || {}),
+    }),
+  governedMergeApply: (previewId, approvedBy, approvalToken = '') =>
+    apiClient.post(buildUrl(replaceParams(API.ontology.governedMergeApply, { preview_id: previewId })), {
+      approved_by: approvedBy,
+      approval_token: approvalToken,
+    }),
   cleanupOldXsd: (body) => apiClient.post(buildUrl(API.ontology.cleanupOldXsd), body),
   exportUrl: (ontologyId, format = 'ttl') => `${buildUrl(replaceParams(API.ontology.exportRegistered, { ontology: ontologyId }))}?format=${encodeURIComponent(format)}`,
   exportRegistered: (ontologyId, format = 'ttl') =>

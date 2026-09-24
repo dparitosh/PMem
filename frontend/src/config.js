@@ -235,6 +235,8 @@ const ONTOLOGY_ENDPOINTS = {
   threeDxmlFormats: process.env.REACT_APP_API_ONTOLOGY_3DXML_FORMATS || '/api/v1/ontology/3dxml/formats',
   alignmentOptions: process.env.REACT_APP_API_ONTOLOGY_ALIGNMENT_OPTIONS || '/ontology-mappings',
   merge: process.env.REACT_APP_API_ONTOLOGY_MERGE || '/api/v1/ontology/merge',
+  governedMergePreview: process.env.REACT_APP_API_ONTOLOGY_GOVERNED_MERGE_PREVIEW || '/api/v1/ontologies/merges/preview',
+  governedMergeApply: process.env.REACT_APP_API_ONTOLOGY_GOVERNED_MERGE_APPLY || '/api/v1/ontologies/merges/{preview_id}/apply',
   cleanupOldXsd: process.env.REACT_APP_API_ONTOLOGY_CLEANUP_OLD_XSD || '/api/v1/ontology/cleanup-old-xsd',
   exportRegistered: process.env.REACT_APP_API_ONTOLOGY_EXPORT || '/api/v1/ontology/{ontology}/export',
 };
