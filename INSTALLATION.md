@@ -59,6 +59,34 @@ the equivalent login, database and schema; use `sslmode=verify-full` and the
 customer CA certificate. Never paste a real password into PowerShell history or
 source control.
 
+If PostgreSQL is hosted on another VM, do **not** install PostgreSQL or set a
+Windows PostgreSQL service name on the DEPO application VM. Ask the DBA to
+create the database, role, and `semantic` schema on the database VM, permit the
+application VM's private IP on port `5432`, and provide the CA certificate.
+Configure the application VM as follows:
+
+```powershell
+# Run from the DEPO repository root and edit the existing keys in this file.
+notepad .env.local
+```
+
+The resulting entries must be exactly one line each (replace the placeholders
+with DBA-approved values):
+
+```text
+DEPO_POSTGRES_MODE=external
+DEPO_POSTGRES_SERVICE_NAME=
+DEPO_POSTGRES_BIN_DIR=
+DEPO_POSTGRES_DATA_DIR=
+DEPO_DATABASE_SCHEMA=semantic
+DEPO_DATABASE_URL=postgresql://depo_app:URL_ENCODED_PASSWORD@postgres-db.internal.example:5432/depo?sslmode=verify-full
+```
+
+Edit existing keys in place if they already exist; do not append duplicate
+keys. In external mode the Windows lifecycle scripts skip `Start-Service`,
+`pg_ctl`, and local PostgreSQL paths. They connect to the remote database only
+when schema initialization and service readiness checks run.
+
 Neo4j may run on-premises, on a private VM, as a hosted self-managed server, or
 in Neo4j Aura. Use the provider's actual database name. Production requires
 certificate-verified TLS: `neo4j+s://` or direct `bolt+s://`. Bootstrap may use

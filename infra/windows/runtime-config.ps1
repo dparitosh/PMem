@@ -47,7 +47,7 @@ function Assert-DepoSparkRuntime([string]$SparkHome, [string]$JavaHome, [string]
   if (-not $env:DEPO_SPARK_OUTPUT_ROOT -or -not [IO.Path]::IsPathRooted($env:DEPO_SPARK_OUTPUT_ROOT)) { throw 'DEPO_SPARK_OUTPUT_ROOT must be an explicit absolute data path.' }
 }
 
-function Resolve-DepoSparkOptions([System.Collections.IDictionary]$Overrides) {
+function Resolve-DepoSparkOptions([hashtable]$Overrides) {
   $EnableSpark = [bool]$Overrides['EnableSpark']
   $EnableNeo4jSparkConnector = [bool]$Overrides['EnableNeo4jSparkConnector']
   $EnablePipelineScheduler = [bool]$Overrides['EnablePipelineScheduler']
@@ -55,9 +55,9 @@ foreach ($key in @('DEPO_SPARK_ENABLED','DEPO_SPARK_NEO4J_ENABLED','DEPO_PIPELIN
   $value = [Environment]::GetEnvironmentVariable($key, 'Process')
   if ($value -and $value -notin @('true','false')) { throw "Invalid boolean setting: $key" }
 }
-if (-not $Overrides.Contains('EnableSpark')) { $EnableSpark = $env:DEPO_SPARK_ENABLED -eq 'true' }
-if (-not $Overrides.Contains('EnableNeo4jSparkConnector')) { $EnableNeo4jSparkConnector = $env:DEPO_SPARK_NEO4J_ENABLED -eq 'true' }
-if (-not $Overrides.Contains('EnablePipelineScheduler')) { $EnablePipelineScheduler = $env:DEPO_PIPELINE_SCHEDULER_ENABLED -eq 'true' }
+if (-not $Overrides.ContainsKey('EnableSpark')) { $EnableSpark = $env:DEPO_SPARK_ENABLED -eq 'true' }
+if (-not $Overrides.ContainsKey('EnableNeo4jSparkConnector')) { $EnableNeo4jSparkConnector = $env:DEPO_SPARK_NEO4J_ENABLED -eq 'true' }
+if (-not $Overrides.ContainsKey('EnablePipelineScheduler')) { $EnablePipelineScheduler = $env:DEPO_PIPELINE_SCHEDULER_ENABLED -eq 'true' }
 if (($EnableNeo4jSparkConnector -or $EnablePipelineScheduler) -and -not $EnableSpark) { throw 'Spark connector and scheduler require Spark enabled.' }
   return @{ EnableSpark = [bool]$EnableSpark; EnableNeo4jSparkConnector = [bool]$EnableNeo4jSparkConnector; EnablePipelineScheduler = [bool]$EnablePipelineScheduler }
 }
