@@ -556,6 +556,39 @@ migrations, validation, and baseline seeding use their existing idempotent
 contracts. It does not create or overwrite `.env.local`, PostgreSQL accounts,
 Neo4j accounts, Spark files, or customer secrets.
 
+### 3.1 Service ports and health checks
+
+The standard Windows service topology does not use port `8000`. Do not test
+`http://127.0.0.1:8000/health` unless a customer has separately configured a
+legacy aggregate API. Test the service ports below instead:
+
+| Port | Service | Health URL |
+| --- | --- | --- |
+| 8010 | Schema Sets | `http://127.0.0.1:8010/readyz` |
+| 8011 | Ontology | `http://127.0.0.1:8011/readyz` |
+| 8012 | Agentic | `http://127.0.0.1:8012/readyz` |
+| 8013 | Graph | `http://127.0.0.1:8013/readyz` |
+| 8014 | Ingestion and ontology registry | `http://127.0.0.1:8014/readyz` |
+| 8015 | OSLC | `http://127.0.0.1:8015/readyz` |
+| 8016 | Data Catalog | `http://127.0.0.1:8016/readyz` |
+| 8017 | Data Products | `http://127.0.0.1:8017/readyz` |
+| 8018 | CEIM | `http://127.0.0.1:8018/readyz` |
+| 8019 | Data Pipeline | `http://127.0.0.1:8019/readyz` |
+
+Check every HTTP service from the application VM:
+
+```powershell
+8010..8019 | ForEach-Object {
+  $url = "http://127.0.0.1:$($_)/readyz"
+  $response = Invoke-WebRequest $url -UseBasicParsing
+  "{0}: {1}" -f $url, $response.StatusCode
+}
+```
+
+The expected status is `200` for every enabled service. The browser frontend
+is separate and is served at `http://127.0.0.1:3000/` during a local smoke
+test.
+
 ## 4. Complete customer deployment
 
 Complete these steps in order after Section 3 reports success. If a step fails,
