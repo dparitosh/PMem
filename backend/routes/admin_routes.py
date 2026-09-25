@@ -439,6 +439,35 @@ def _route_group_services(api_routes: list[dict]) -> list[dict]:
     return sorted(groups.values(), key=lambda row: row["name"])
 
 
+def _standalone_service_registry() -> list[dict]:
+    """Expose the deployed service topology in the Admin UI, not only route groups."""
+    manifest_path = Path(__file__).resolve().parents[2] / "infra" / "deployment" / "services.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning("Standalone service manifest unavailable: %s", exc)
+        return []
+    rows = []
+    for service in manifest.get("services", []):
+        port = service.get("port")
+        if not service.get("id") or not port:
+            continue
+        rows.append({
+            "id": service["id"],
+            "name": service.get("display_name") or service["id"],
+            "type": "standalone_api",
+            "status": "configured",
+            "owner": "Digital Engineering",
+            "endpoint": f"http://127.0.0.1:{port}",
+            "health_endpoint": f"http://127.0.0.1:{port}/readyz",
+            "config_source": "infra/deployment/services.json",
+            "route_count": 0,
+            "frontend_mapped_count": 0,
+            "port": port,
+        })
+    return rows
+
+
 def _route_available(api_routes: list[dict], path: str) -> str:
     return path if any(route.get("path") == path for route in api_routes) else ""
 
@@ -520,7 +549,7 @@ async def get_admin_registry(request: Request):
                 "frontend_mapped_count": 0,
                 "model": llm.get("model", ""),
             },
-        ] + route_group_services,
+        ] + _standalone_service_registry() + route_group_services,
         "api_routes": api_routes,
         "data_sources": [
             neo4j,
