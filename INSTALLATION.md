@@ -423,6 +423,38 @@ VITE_API_GATEWAY_URL=https://api.customer.example
 For a local developer installation, leave `VITE_API_GATEWAY_URL` empty. The
 frontend then uses the local service ports listed in `infra/deployment/services.json`.
 
+For a local installation without an API gateway, complete this exact sequence
+from the repository root:
+
+```powershell
+Set-Location .\frontend
+if (-not (Test-Path .\.env.local)) { Copy-Item .\.env.example .\.env.local }
+notepad .\.env.local
+```
+
+Keep this line empty in the file:
+
+```text
+VITE_API_GATEWAY_URL=
+```
+
+Save the file, then build and serve the browser application:
+
+```powershell
+npm ci
+npm run build
+Test-Path .\dist\index.html
+npx --yes serve .\dist -l 3000
+```
+
+The last command must remain running. Open
+`http://127.0.0.1:3000/` in the browser and use **Ctrl+F5** after rebuilding.
+The ontology registry request must go to
+`http://127.0.0.1:8014/api/v1/ontology/registered`. If that endpoint returns
+HTTP 200 with an `ontologies` array but the UI is blank, rebuild after checking
+that `VITE_API_GATEWAY_URL` is still empty; Vite embeds environment values at
+build time.
+
 ### 2.3 Add optional Spark settings to the root server file
 
 For Spark, merge only the required values from `config/spark.env.example` into
