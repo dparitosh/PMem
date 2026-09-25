@@ -520,14 +520,112 @@ Neo4j accounts, Spark files, or customer secrets.
 
 ## 4. Complete customer deployment
 
-The successful installer leaves the browser build in `frontend/dist`. Serve that
-directory through the customer HTTPS web server and route its API gateway to the
-internal ten services. Do not expose service ports directly to browser clients.
+Complete these steps in order after Section 3 reports success. If a step fails,
+stop, fix that step, and rerun only the relevant validation; do not skip ahead.
 
-Record the installer output, approved runtime inventory, dependency lock,
-database schema result, Neo4j evidence, Spark smoke result when enabled,
-backup/restore drill, browser acceptance, process supervision, reboot recovery,
-monitoring, and rollback evidence in the customer release record.
+### 4.1 Confirm the installer result
+
+From the repository root, confirm the browser build and configuration files:
+
+```powershell
+Test-Path .\frontend\dist
+Get-Item .\.env.local, .\frontend\.env.local | Select-Object FullName, Length, LastWriteTime
+```
+
+Both paths must exist. Never copy either `.env.local` file into `frontend\dist`.
+
+### 4.2 Confirm the application processes
+
+The supported installer starts the DEPO APIs and worker. Confirm that the
+expected processes exist:
+
+```powershell
+Get-Process python,node -ErrorAction SilentlyContinue |
+  Select-Object Id, ProcessName, Path
+```
+
+Use the service inventory for the exact ports:
+
+```powershell
+Get-Content .\infra\deployment\services.json
+```
+
+For each enabled service, test its health URL from the application VM. Example:
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8000/health -UseBasicParsing
+Invoke-WebRequest http://127.0.0.1:8011/api/v1/health -UseBasicParsing
+```
+
+The response must be HTTP 200. Do not expose these internal ports directly to
+the browser or the public network.
+
+### 4.3 Verify the remote PostgreSQL schema
+
+On the PostgreSQL VM, use pgAdmin Query Tool, connected to database `depo`, and
+run:
+
+```sql
+SELECT current_database(), current_user;
+SELECT schema_name
+FROM information_schema.schemata
+WHERE schema_name = 'semantic';
+SELECT table_schema, table_name
+FROM information_schema.tables
+WHERE table_schema = 'semantic'
+ORDER BY table_name;
+```
+
+The `semantic` schema must be present and the table query must return the DEPO
+tables. On the application VM, confirm the runtime uses the remote mode:
+
+```powershell
+. .\infra\windows\runtime-config.ps1
+Import-DepoEnvironment -Root (Get-Location).Path -EnvFile .env.local
+if ($env:DEPO_POSTGRES_MODE -ne 'external') { throw 'Expected external PostgreSQL mode' }
+$env:DEPO_POSTGRES_MODE
+```
+
+Do not run `Start-Service` for PostgreSQL on the application VM.
+
+### 4.4 Serve the frontend
+
+The installer creates static files in `frontend\dist`. For a smoke test only,
+serve them locally:
+
+```powershell
+npx --yes serve .\frontend\dist -l 3000
+```
+
+Open `http://127.0.0.1:3000` in a browser and confirm the DEPO landing page
+loads. For a customer release, copy or mount `frontend\dist` into the approved
+HTTPS web server document root and configure the single-page-application fallback
+to `index.html`.
+
+### 4.5 Configure the customer gateway
+
+Route browser API requests through the customer HTTPS gateway to the internal
+DEPO services listed in `infra\deployment\services.json`. Keep service ports
+private. Configure the gateway to forward the required API-key headers and to
+preserve WebSocket or streaming support when the selected UI feature needs it.
+
+### 4.6 Perform release acceptance
+
+Run these checks in the browser in order:
+
+1. Sign in using the customer API-key flow.
+2. Open Ontology Junction and load the registered ontology list.
+3. Open Semantic Bridge, select an imported instance and ontology, create a
+   preview, review candidates, and confirm that publication requires approval.
+4. Open the data pipeline page and verify the configured job status.
+5. If Spark is enabled, run the documented Spark smoke test and confirm its
+   output artifact.
+6. If Neo4j is enabled, open the graph view and verify a read-only query.
+
+Record the installer output, dependency lock versions, PostgreSQL schema result,
+Neo4j evidence, Spark smoke result when enabled, browser acceptance, process
+supervision, reboot recovery, monitoring, backup/restore drill, and rollback
+evidence in the customer release record.
 
 For service ownership and ports, use `infra/deployment/services.json`. The
 scripts under `infra/windows/` are implementation stages used by the one
