@@ -681,7 +681,64 @@ DEPO services listed in `infra\deployment\services.json`. Keep service ports
 private. Configure the gateway to forward the required API-key headers and to
 preserve WebSocket or streaming support when the selected UI feature needs it.
 
-### 4.6 Perform release acceptance
+### 4.6 Switch from direct service access to a gateway
+
+A direct installation can be migrated later. The database and backend service
+configuration does not change; only the browser routing and CORS configuration
+change. Complete these steps in order:
+
+1. Configure the gateway to route these paths to the internal service ports:
+
+   ```text
+   /qif            -> 8010
+   /ontology       -> 8011
+   /agentic        -> 8012
+   /graph          -> 8013
+   /ingestion      -> 8014
+   /oslc           -> 8015
+   /catalog        -> 8016
+   /data-products  -> 8017
+   /ceim           -> 8018
+   /data-pipeline  -> 8019
+   ```
+
+2. Update the root server `.env.local` CORS value to the browser origin:
+
+   ```text
+   ALLOWED_ORIGINS=https://app.customer.example
+   ```
+
+3. Update `frontend/.env.local` before building:
+
+   ```text
+   VITE_API_GATEWAY_URL=https://api.customer.example
+   ```
+
+4. Rebuild the browser bundle from the repository root:
+
+   ```powershell
+   Set-Location .\frontend
+   npm ci
+   npm run build
+   Test-Path .\dist\index.html
+   ```
+
+5. Deploy the new `frontend\dist` directory and restart the backend services so
+   the new CORS setting is loaded. The browser bundle embeds Vite environment
+   values at build time; changing `.env.local` without rebuilding has no effect.
+
+6. Verify the gateway before browser acceptance:
+
+   ```powershell
+   Invoke-WebRequest https://api.customer.example/ontology/readyz -UseBasicParsing
+   Invoke-WebRequest https://api.customer.example/ingestion/readyz -UseBasicParsing
+   Invoke-WebRequest https://api.customer.example/data-pipeline/readyz -UseBasicParsing
+   ```
+
+   Each enabled route must return HTTP 200. Keep ports `8010–8019` private
+   after the gateway is working.
+
+### 4.7 Perform release acceptance
 
 Run these checks in the browser in order:
 
