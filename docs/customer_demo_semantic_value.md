@@ -264,8 +264,8 @@ The import inspects the specification only. It does not execute or register cust
 If the UI is unavailable, validate the adapters without changing Neo4j:
 
 ```powershell
-Invoke-RestMethod http://localhost:8000/health
-Invoke-RestMethod http://localhost:8000/health/neo4j
+Invoke-RestMethod http://127.0.0.1:8013/readyz
+Invoke-RestMethod http://127.0.0.1:8011/readyz
 Invoke-RestMethod http://localhost:8012/health
 Invoke-RestMethod http://localhost:8012/api/v1/agents
 Invoke-RestMethod http://localhost:8012/api/v1/tools

@@ -12,10 +12,10 @@ The frontend now uses a **centralized, environment-driven API configuration** th
 
 ## Configuration Files
 
-### 1. `.env` (Local Development)
-Located: `frontend/.env`
+### 1. `.env.local` (Local Development)
+Located: `frontend/.env.local`
 - **Purpose**: Development environment configuration (do NOT commit to git)
-- **Usage**: Automatically loaded by Create React App at build time
+- **Usage**: Automatically loaded by Vite at build time
 - **Variables**: 50+ API endpoint mappings
 
 ### 2. `.env.example` (Template/Documentation)
@@ -28,7 +28,7 @@ Located: `frontend/.env.example`
 Located: `frontend/src/config.js`
 - **Purpose**: Centralized configuration loader at runtime
 - **Features**:
-  - Reads from `process.env.REACT_APP_*` variables
+  - Reads from `import.meta.env.VITE_*` variables
   - Organizes endpoints by category
   - Provides utility functions (`buildUrl()`, `replaceParams()`)
   - Logs configuration in debug mode
@@ -46,10 +46,9 @@ Located: `frontend/src/services/apiClient.js`
 
 ### Base Configuration
 ```env
-REACT_APP_BACKEND_URL=http://localhost:8000
-REACT_APP_API_VERSION=v1
-REACT_APP_ENV=development
-REACT_APP_DEBUG=true
+VITE_API_GATEWAY_URL=
+# For direct local service mode, leave the gateway empty.
+# Services use ports 8010 through 8019; port 8000 is not part of the standard topology.
 ```
 
 ### API Endpoints (Full List in .env.example)
@@ -89,7 +88,7 @@ import { API, config } from '../config';
 // Access organized endpoints
 const ontologyUploadUrl = API.ontology.upload;  // '/api/v1/ontology/upload'
 const importStatusUrl = API.import.status;       // '/api/v1/import/status/{task_id}'
-const backendUrl = config.backendUrl;            // 'http://localhost:8000'
+const backendUrl = config.backendUrl;            // direct mode uses service URLs on 8010-8019
 ```
 
 ### 2. Using the API Client (Recommended)
@@ -128,7 +127,7 @@ import { buildUrl, replaceParams, API } from '../config';
 
 // Build full URL from endpoint
 const fullUrl = buildUrl(API.ontology.upload);
-// Result: 'http://localhost:8000/api/v1/ontology/upload'
+// Result: a configured ontology service URL (normally port 8011)
 
 // Replace path parameters
 const taskStatusUrl = replaceParams(API.import.status, { task_id: 'abc-123' });
@@ -136,7 +135,7 @@ const taskStatusUrl = replaceParams(API.import.status, { task_id: 'abc-123' });
 
 // Combine them
 const fullStatusUrl = buildUrl(taskStatusUrl);
-// Result: 'http://localhost:8000/api/v1/import/status/abc-123'
+// Result: a configured ingestion service URL (normally port 8014)
 ```
 
 ### 4. Custom Axios Requests
@@ -150,7 +149,7 @@ const response = await apiClient.post('/api/v1/custom/endpoint', {
 });
 
 // apiClient automatically includes:
-// - Base URL from REACT_APP_BACKEND_URL
+// - Base URL from VITE_API_GATEWAY_URL or direct service routing
 // - Request timeout
 // - Debug logging
 // - Error handling
@@ -160,7 +159,7 @@ const response = await apiClient.post('/api/v1/custom/endpoint', {
 
 ### Before (Hardcoded URLs)
 ```javascript
-const response = await axios.get('http://localhost:8000/api/v1/ontology/registered');
+const response = await axios.get('http://127.0.0.1:8014/api/v1/ontology/registered');
 ```
 
 ### After (Using API Client)
@@ -181,39 +180,31 @@ const response = await API_METHODS.ontology.listRegistered();
 ## Environment Switching
 
 ### Development (localhost)
-`frontend/.env`:
+`frontend/.env.local`:
 ```env
-REACT_APP_BACKEND_URL=http://localhost:8000
-REACT_APP_DEBUG=true
-REACT_APP_ENV=development
+VITE_API_GATEWAY_URL=
+# Direct local mode uses 127.0.0.1 service ports 8010-8019.
 ```
 
 ### Staging
-`frontend/.env.staging`:
+`frontend/.env.local` for gateway mode:
 ```env
-REACT_APP_BACKEND_URL=https://staging-api.example.com
-REACT_APP_DEBUG=false
-REACT_APP_ENV=staging
+VITE_API_GATEWAY_URL=https://staging-api.example.com
 ```
 
 ### Production
-`frontend/.env.production`:
+`frontend/.env.local` for production:
 ```env
-REACT_APP_BACKEND_URL=https://api.example.com
-REACT_APP_DEBUG=false
-REACT_APP_ENV=production
+VITE_API_GATEWAY_URL=https://api.example.com
 ```
 
 **Build with specific environment:**
 ```bash
-# Development (default)
-npm start
+# Direct local development
+npm run dev -- --host 127.0.0.1 --port 3000
 
-# Staging
-REACT_APP_ENV=staging npm run build
-
-# Production
-REACT_APP_ENV=production npm run build
+# Staging or production: set VITE_API_GATEWAY_URL in .env.local, then build
+npm run build
 ```
 
 ## API Categories
@@ -262,7 +253,7 @@ REACT_APP_ENV=production npm run build
 
 ## Debug Mode
 
-Enable debug logging in `frontend/.env`:
+Enable debug logging using the supported Vite variables in `frontend/.env.local`:
 ```env
 REACT_APP_DEBUG=true
 REACT_APP_LOG_LEVEL=debug
@@ -317,14 +308,14 @@ jest.mock('../services/apiClient', () => ({
 
 ### 1. API calls return 404
 **Check:**
-- `REACT_APP_BACKEND_URL` points to correct server
+- `VITE_API_GATEWAY_URL` is empty for direct local mode or points to the gateway
 - Endpoint path in `.env` is correct
 - Backend service is running
 
 ### 2. CORS errors
 **Check:**
 - Backend allows CORS from frontend origin
-- `REACT_APP_BACKEND_URL` includes correct protocol (http/https)
+- Gateway URLs include the correct protocol (http/https)
 
 ### 3. API returns 400/422 errors
 **Check:**

@@ -11,9 +11,11 @@ These are operator utilities, not application startup scripts.
 | `tests/` | Manual service integration checks |
 | `code_graph_audit.py` | Static code dependency audit |
 
-Inspect a tool's arguments and target configuration before execution. Several
-import and test helpers target the compatibility API on port 8000 and need live
-services; they are not part of default regression certification. Some helpers
+Inspect a tool's arguments and target configuration before execution. The
+supported Windows deployment uses services on ports 8010 through 8019. A few
+legacy import and test helpers still target the retired compatibility API on
+port 8000; they are not part of customer installation or default regression
+certification and must not be used as deployment health checks. Some helpers
 need optional dependencies beyond the supported service requirements.
 
 Use `python -m tools.admin.cleanup_neo4j --help` for the maintained graph cleanup
