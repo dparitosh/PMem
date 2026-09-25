@@ -56,8 +56,9 @@ In the root `.env.local` created in section 2, set
 `DEPO_DATABASE_URL=postgresql://depo_app:URL_ENCODED_PASSWORD@127.0.0.1:5432/depo?sslmode=disable`
 for this local setup. For a managed or customer database, ask the DBA to create
 the equivalent login, database and schema; use `sslmode=verify-full` and the
-customer CA certificate. Never paste a real password into PowerShell history or
-source control.
+customer CA certificate. If the customer has explicitly approved a private,
+isolated non-TLS network, use `sslmode=disable` instead. Never paste a real
+password into PowerShell history or source control.
 
 If PostgreSQL is hosted on another VM, do **not** install PostgreSQL or set a
 Windows PostgreSQL service name on the DEPO application VM. Ask the DBA to
@@ -79,8 +80,12 @@ DEPO_POSTGRES_SERVICE_NAME=
 DEPO_POSTGRES_BIN_DIR=
 DEPO_POSTGRES_DATA_DIR=
 DEPO_DATABASE_SCHEMA=semantic
-DEPO_DATABASE_URL=postgresql://depo_app:URL_ENCODED_PASSWORD@postgres-db.internal.example:5432/depo?sslmode=verify-full
+DEPO_DATABASE_URL=postgresql://depo_app:URL_ENCODED_PASSWORD@postgres-db.internal.example:5432/depo?sslmode=disable
 ```
+
+Use `sslmode=verify-full` and the DBA-provided CA certificate when TLS is
+required. With an approved private non-TLS network, keep `sslmode=disable` and
+set pgAdmin and the ODBC DSN to **SSL mode: Disable** as well.
 
 Edit existing keys in place if they already exist; do not append duplicate
 keys. In external mode the Windows lifecycle scripts skip `Start-Service`,
@@ -131,7 +136,8 @@ On 64-bit Windows, `System32\odbcad32.exe` is the 64-bit ODBC Administrator.
 In **System DSN**, select **Add**, choose **PostgreSQL Unicode(x64)**, and set
 the data source name to `DEPO_PG_REMOTE`. Enter the DBA-provided host, port,
 database `depo`, and user `depo_app`; set SSL mode to `verify-full` and select
-the customer root CA if offered. Use a System DSN for a Windows service. Do not
+the customer root CA if TLS is required. For an approved private non-TLS setup,
+set SSL mode to `disable`. Use a System DSN for a Windows service. Do not
 export the DSN with a plaintext password.
 
 Test the DSN without putting the password in command history:
@@ -183,7 +189,7 @@ Run the Spark setup in this order. Do not jump directly to the final installer:
 | 4 | Step D | Confirm `spark-submit.cmd`, `pyspark.zip`, the Spark core JAR, and approved `winutils.exe` exist |
 | 5 | Section 2.3 | Copy the verified paths into the root `.env.local` |
 | 6 | Section 3 | Run the application installer with `-EnableSpark` |
-| 7 | Section 4, then Section 5 | Initialize PostgreSQL, then test the Spark runtime and optional Neo4j connector |
+| 7 | Section 4 | Complete post-install validation and customer acceptance |
 
 The only archive downloaded in this sequence is
 `spark-4.1.2-bin-hadoop3.tgz`. The `.tgz` is extracted by Windows
@@ -326,11 +332,11 @@ backend install in section 3, execute this smoke test:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-spark.ps1 -EnvFile .env.local
 ```
 
-Continue with the database initialization in section 4, then start services in
-section 6 with `-EnableSpark`. Spark jobs remain governed by the Data Pipeline
+Continue with the application installer in section 3, then complete section 4.
+Spark jobs remain governed by the Data Pipeline
 service and cannot write Neo4j directly. Add `-EnableNeo4jSparkConnector` only
-after the regular smoke test passes and the Neo4j connector check in section 5
-succeeds.
+after the regular smoke test passes and the Neo4j connection check in the
+installer succeeds.
 
 ## 2. Create configuration
 
@@ -560,10 +566,11 @@ Invoke-WebRequest http://127.0.0.1:8011/api/v1/health -UseBasicParsing
 The response must be HTTP 200. Do not expose these internal ports directly to
 the browser or the public network.
 
-### 4.3 Verify the remote PostgreSQL schema
+### 4.3 Verify the PostgreSQL schema
 
-On the PostgreSQL VM, use pgAdmin Query Tool, connected to database `depo`, and
-run:
+For a remote deployment, use pgAdmin Query Tool on the PostgreSQL VM or admin
+workstation, connected to database `depo`. For a local deployment, use pgAdmin
+on the application VM. Run:
 
 ```sql
 SELECT current_database(), current_user;
