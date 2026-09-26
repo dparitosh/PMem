@@ -352,6 +352,8 @@ const SERVICE_HEALTH_ENDPOINTS = Object.freeze({
   oslc: '/api/v1/oslc/health',
   catalog: '/healthz',
   dataProducts: '/healthz',
+  ceim: '/healthz',
+  dataPipeline: '/api/v1/pipeline/health',
 });
 
 function isUsableHealthResponse(response) {
@@ -366,7 +368,7 @@ export const platformAPI = {
     return apiClient.get(buildSemanticServiceUrl(service, path), options);
   },
   coreHealth: async (options = {}) => {
-    const services = ['ontology', 'graph', 'ingestion', 'qif'];
+    const services = ['qif', 'ontology', 'agentic', 'graph', 'ingestion', 'oslc', 'catalog', 'dataProducts', 'ceim', 'dataPipeline'];
     const checks = await Promise.allSettled(services.map((service) => platformAPI.health(service, options)));
     return services.reduce((result, service, index) => {
       result[service] = checks[index].status === 'fulfilled' && isUsableHealthResponse(checks[index].value);
@@ -435,6 +437,16 @@ export const dataPipelineAPI = {
   replay: (runId, approval = {}) => apiClient.post(
     buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}/replay`),
     approval,
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
+  runDefinition: (jobId, version, payload = {}, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/definitions/${encodeURIComponent(jobId)}/${encodeURIComponent(version)}/run`),
+    { ...payload, ...approval },
+    approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
+  ),
+  publishRun: (runId, payload = {}, approval = {}) => apiClient.post(
+    buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}/publish`),
+    { ...payload, ...approval },
     approval.approval_token ? { headers: { Authorization: `Bearer ${approval.approval_token}` } } : undefined,
   ),
 };

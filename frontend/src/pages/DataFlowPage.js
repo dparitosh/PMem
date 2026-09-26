@@ -68,6 +68,7 @@ export default function DataFlowPage() {
   const [replayError, setReplayError] = useState('');
   const [replayingId, setReplayingId] = useState('');
   const [definitionActionId, setDefinitionActionId] = useState('');
+  const [publishingId, setPublishingId] = useState('');
   const [scheduleInterval, setScheduleInterval] = useState(300);
   const [replayApprover, setReplayApprover] = useState('');
   const [replayApprovalToken, setReplayApprovalToken] = useState('');
@@ -190,12 +191,30 @@ export default function DataFlowPage() {
           interval_seconds: Number(scheduleInterval),
         }, approval());
       }
+      if (action === 'run') {
+        const result = await dataPipelineAPI.runDefinition(definition.job_id, definition.version, {}, approval());
+        const run = responsePayload(result)?.run || responsePayload(result)?.run_manifest;
+        if (run?.run_id) setSelectedRun(run);
+      }
       setReplayApprovalToken('');
       await load();
     } catch (actionFailure) {
       setReplayError(actionFailure?.response?.data?.detail || actionFailure?.message || 'Data-job lifecycle action could not be completed.');
     } finally {
       setDefinitionActionId('');
+    }
+  };
+
+  const publish = async (run) => {
+    setPublishingId(run.run_id);
+    setReplayError('');
+    try {
+      await dataPipelineAPI.publishRun(run.run_id, {}, approval());
+      await load();
+    } catch (publishFailure) {
+      setReplayError(publishFailure?.response?.data?.detail || publishFailure?.message || 'Run could not be published.');
+    } finally {
+      setPublishingId('');
     }
   };
 
@@ -252,6 +271,7 @@ export default function DataFlowPage() {
               <td>{definition.schedule ? `Every ${definition.schedule.interval_seconds}s` : 'Not scheduled'}</td>
               <td className="data-flow-definition-actions">
                 {!isApproved && definition.lifecycle_state !== 'disabled' && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'approve')}>Approve</button>}
+                {isApproved && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'run')}>Run now</button>}
                 {isApproved && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'disable')}>Disable</button>}
                 {isApproved && !definition.schedule && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'schedule')}>Schedule</button>}
                 {isApproved && definition.schedule && <button className="data-flow-replay" type="button" disabled={busy} onClick={() => manageDefinition(definition, 'unschedule')}>Stop schedule</button>}
@@ -277,7 +297,7 @@ export default function DataFlowPage() {
                     <td>{displayTime(run.started_at)}</td>
                     <td>{countFor(run, 'accepted_records')} accepted · {countFor(run, 'rejected_records')} rejected</td>
                     <td><Status value={qualityStatus(run)} /></td>
-                    <td><button className="data-flow-replay" type="button" onClick={() => replay(run)} disabled={replayingId === run.run_id || run.status === 'running'}>{replayingId === run.run_id ? 'Replaying…' : 'Replay'}</button></td>
+                    <td><button className="data-flow-replay" type="button" onClick={() => replay(run)} disabled={replayingId === run.run_id || run.status === 'running'}>{replayingId === run.run_id ? 'Replaying…' : 'Replay'}</button>{' '}{run.status === 'completed' && <button className="data-flow-replay" type="button" onClick={() => publish(run)} disabled={publishingId === run.run_id}>{publishingId === run.run_id ? 'Publishing…' : 'Publish'}</button>}</td>
                   </tr>)}
                   {!visibleRuns.length && <tr><td colSpan="6" className="data-flow-empty">No durable job runs match the current filter.</td></tr>}
                 </tbody>
@@ -302,6 +322,7 @@ export default function DataFlowPage() {
               <dt>Output evidence</dt><dd>{selectedRun.output_manifest?.contract || 'Pending output manifest'}</dd>
               <dt>Mapping evidence</dt><dd>{selectedRun.output_manifest?.mapping_digest || 'Not applicable or not recorded'}</dd>
               <dt>Validation</dt><dd>{selectedRun.output_manifest?.validation_status || 'Not applicable or pending'}</dd>
+              <dt>Quality checks</dt><dd>{(() => { const quality = selectedRun.output_manifest?.quality_report || selectedRun.output_manifest?.quality || selectedRun.quality || {}; const failed = quality.failed_rules ?? quality.rules_failed ?? quality.rejected_records; const score = quality.score ?? quality.quality_score ?? quality.completeness; return score !== undefined || failed !== undefined ? `${score !== undefined ? `score ${score}` : 'score not recorded'} · ${failed ?? 0} failed rule(s)` : 'No rule-level quality report recorded'; })()}</dd>
               {selectedRun.output_manifest?.data_product_draft && <>
                 <dt>Data product draft</dt><dd>{selectedRun.output_manifest.data_product_draft.contract || 'Draft available'} · {selectedRun.output_manifest.data_product_draft.artifacts?.length || 0} retained artifacts</dd>
                 <dt>Product approval</dt><dd>{selectedRun.output_manifest.data_product_draft.publication_requirements?.join('; ') || 'Awaiting data-product approval'}</dd>

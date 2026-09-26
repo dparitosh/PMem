@@ -110,6 +110,7 @@ const semanticServiceUrls = Object.freeze({
   oslc: configuredServiceUrl('oslc', 8015, '/oslc'),
   catalog: configuredServiceUrl('catalog', 8016, '/catalog'),
   dataProducts: configuredServiceUrl('data_product', 8017, '/data-products'),
+  ceim: configuredServiceUrl('ceim', 8018, '/ceim'),
   dataPipeline: configuredServiceUrl('data_pipeline', 8019, '/data-pipeline'),
 });
 
