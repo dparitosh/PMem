@@ -244,7 +244,7 @@ export default function DataFlowPage() {
         <summary>Data-job approval credentials (only when the API gateway does not provide identity)</summary>
         <p>These values are held only in memory and the API key is cleared after a lifecycle action starts.</p>
         <label>Approver <input aria-label="Replay approver" value={replayApprover} onChange={(event) => setReplayApprover(event.target.value)} autoComplete="off" /></label>{' '}
-        <label>Execution / publish API key <input aria-label="Execution and publish API key" type="password" value={replayApprovalToken} onChange={(event) => setReplayApprovalToken(event.target.value)} autoComplete="off" /></label>
+        <label>Execution / publish API key <input aria-label="Replay execution API key" type="password" value={replayApprovalToken} onChange={(event) => setReplayApprovalToken(event.target.value)} autoComplete="off" /></label>
       </details>
 
       {error && <div className="data-flow-notice" role="status">{error}</div>}
