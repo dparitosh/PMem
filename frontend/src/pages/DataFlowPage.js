@@ -61,6 +61,20 @@ function Status({ value }) {
   return <span className={`data-flow-status data-flow-status--${normalized}`}>{value || 'unknown'}</span>;
 }
 
+function QualityOverview({ runs, accepted, rejected }) {
+  const completed = runs.filter((run) => run.status === 'completed').length;
+  const failed = runs.filter((run) => run.status === 'failed').length;
+  const running = runs.filter((run) => run.status === 'running').length;
+  const total = Math.max(accepted + rejected, 1);
+  const acceptedWidth = Math.round((accepted / total) * 100);
+  return <article className="data-flow-card data-flow-quality" aria-label="Data quality overview">
+    <div className="data-flow-card__heading"><div><h2>Live quality and workflow status</h2><p>Derived from the latest retained pipeline snapshot; Zeppelin remains optional.</p></div><Status value={failed ? 'warning' : 'ok'} /></div>
+    <div className="data-flow-quality__bar" role="img" aria-label={`${accepted} accepted and ${rejected} rejected records`}><span style={{ width: `${acceptedWidth}%` }} /></div>
+    <div className="data-flow-quality__legend"><span><i className="data-flow-quality__swatch data-flow-quality__swatch--accepted" />Accepted <strong>{accepted}</strong></span><span><i className="data-flow-quality__swatch data-flow-quality__swatch--rejected" />Rejected <strong>{rejected}</strong></span></div>
+    <div className="data-flow-quality__states"><span>Completed <strong>{completed}</strong></span><span>Running <strong>{running}</strong></span><span>Failed <strong>{failed}</strong></span></div>
+  </article>;
+}
+
 export default function DataFlowPage() {
   const [health, setHealth] = useState(null);
   const [telemetry, setTelemetry] = useState(null);
@@ -260,6 +274,7 @@ export default function DataFlowPage() {
       </div>
 
       <p>Run and record totals cover the latest {totals.limit ?? 100} runs, not lifetime history.</p>
+      <QualityOverview runs={runs} accepted={totals.records_accepted ?? durableTotals.accepted} rejected={totals.records_rejected ?? durableTotals.rejected} />
       <article className="data-flow-card data-flow-card--definitions">
         <div className="data-flow-card__heading">
           <div><h2>Data-job definitions</h2><p>Approve, disable, or schedule only versioned jobs with retained inputs.</p></div>

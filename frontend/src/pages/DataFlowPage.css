@@ -18,6 +18,14 @@
 .data-flow-kpis .data-flow-kpi-state { font-size: 1.15rem; line-height: 2rem; }
 .data-flow-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(18rem, .9fr); gap: 1rem; }
 .data-flow-card { min-width: 0; padding: 1rem; }
+.data-flow-quality { margin-bottom: 1rem; }
+.data-flow-quality__bar { height: .8rem; overflow: hidden; border-radius: 999px; background: #f2c7ca; }
+.data-flow-quality__bar span { display: block; height: 100%; background: #00a6a6; transition: width .3s ease; }
+.data-flow-quality__legend, .data-flow-quality__states { display: flex; flex-wrap: wrap; gap: 1.25rem; margin-top: .7rem; color: #52606d; font-size: .85rem; }
+.data-flow-quality__legend span, .data-flow-quality__states span { display: inline-flex; align-items: center; gap: .35rem; }
+.data-flow-quality__swatch { width: .7rem; height: .7rem; border-radius: 50%; }
+.data-flow-quality__swatch--accepted { background: #00a6a6; }
+.data-flow-quality__swatch--rejected { background: #c23b43; }
 .data-flow-card--definitions { margin-bottom: 1rem; }
 .data-flow-card__heading { display: flex; justify-content: space-between; gap: 1rem; align-items: end; margin-bottom: 1rem; }
 .data-flow-card__heading p { font-size: .9rem; }
