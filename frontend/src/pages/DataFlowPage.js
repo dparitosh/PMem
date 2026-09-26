@@ -50,6 +50,12 @@ function sourceStandard(run) {
   return run?.source_standard || run?.output_manifest?.source_standard || 'Not recorded';
 }
 
+function isPublishableRun(run) {
+  return run?.status === 'completed'
+    && ['normalize-ceim', 'validate-semantic-batch', 'normalize-unstructured-ceim'].includes(run?.job_type)
+    && run?.output_manifest?.checkpoint_state !== 'advanced';
+}
+
 function Status({ value }) {
   const normalized = String(value || 'unknown').toLowerCase();
   return <span className={`data-flow-status data-flow-status--${normalized}`}>{value || 'unknown'}</span>;
@@ -238,7 +244,7 @@ export default function DataFlowPage() {
         <summary>Data-job approval credentials (only when the API gateway does not provide identity)</summary>
         <p>These values are held only in memory and the API key is cleared after a lifecycle action starts.</p>
         <label>Approver <input aria-label="Replay approver" value={replayApprover} onChange={(event) => setReplayApprover(event.target.value)} autoComplete="off" /></label>{' '}
-        <label>Execution API key <input aria-label="Replay execution API key" type="password" value={replayApprovalToken} onChange={(event) => setReplayApprovalToken(event.target.value)} autoComplete="off" /></label>
+        <label>Execution / publish API key <input aria-label="Execution and publish API key" type="password" value={replayApprovalToken} onChange={(event) => setReplayApprovalToken(event.target.value)} autoComplete="off" /></label>
       </details>
 
       {error && <div className="data-flow-notice" role="status">{error}</div>}
@@ -297,7 +303,7 @@ export default function DataFlowPage() {
                     <td>{displayTime(run.started_at)}</td>
                     <td>{countFor(run, 'accepted_records')} accepted · {countFor(run, 'rejected_records')} rejected</td>
                     <td><Status value={qualityStatus(run)} /></td>
-                    <td><button className="data-flow-replay" type="button" onClick={() => replay(run)} disabled={replayingId === run.run_id || run.status === 'running'}>{replayingId === run.run_id ? 'Replaying…' : 'Replay'}</button>{' '}{run.status === 'completed' && <button className="data-flow-replay" type="button" onClick={() => publish(run)} disabled={publishingId === run.run_id}>{publishingId === run.run_id ? 'Publishing…' : 'Publish'}</button>}</td>
+                    <td><button className="data-flow-replay" type="button" onClick={() => replay(run)} disabled={replayingId === run.run_id || run.status === 'running'}>{replayingId === run.run_id ? 'Replaying…' : 'Replay'}</button>{' '}{isPublishableRun(run) && <button className="data-flow-replay" type="button" onClick={() => publish(run)} disabled={publishingId === run.run_id}>{publishingId === run.run_id ? 'Publishing…' : 'Publish'}</button>}</td>
                   </tr>)}
                   {!visibleRuns.length && <tr><td colSpan="6" className="data-flow-empty">No durable job runs match the current filter.</td></tr>}
                 </tbody>
