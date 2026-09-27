@@ -5,6 +5,8 @@ import hashlib
 import json
 import os
 import re
+import csv
+import io
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -75,8 +77,34 @@ class SourceProfileStore:
             return {"format": "jsonld" if isinstance(sample, dict) and "@context" in sample else "json", "fingerprint": fingerprint,
                     "namespace": sample.get("@context", "") if isinstance(sample, dict) else "",
                     "fields": sorted(sample.keys()) if isinstance(sample, dict) else []}
+        if suffix == ".csv":
+            try:
+                text = content.decode("utf-8-sig")
+                reader = csv.reader(io.StringIO(text))
+                headers = next(reader, [])
+            except (UnicodeDecodeError, csv.Error) as exc:
+                raise ValueError("CSV input must be valid UTF-8 with a readable header") from exc
+            if not headers or any(not str(header).strip() for header in headers):
+                raise ValueError("CSV input requires a non-empty header row")
+            if len(set(headers)) != len(headers):
+                raise ValueError("CSV input contains duplicate column names")
+            return {"format": "csv", "fingerprint": fingerprint, "fields": headers}
+        if suffix in {".xlsx", ".xlsm"}:
+            try:
+                import openpyxl
+                workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=False)
+            except ImportError as exc:
+                raise ValueError("XLSX inspection requires the optional openpyxl dependency") from exc
+            except Exception as exc:
+                raise ValueError("XLSX input is unreadable") from exc
+            sheets = []
+            for worksheet in workbook.worksheets:
+                rows = worksheet.iter_rows(values_only=True)
+                headers = [str(value).strip() for value in (next(rows, ()) or ()) if value is not None]
+                sheets.append({"name": worksheet.title, "fields": headers})
+            return {"format": "xlsx", "fingerprint": fingerprint, "sheets": sheets}
         root = ET.fromstring(content)
-        return {"format": "xml", "fingerprint": fingerprint, "root": root.tag,
+        return {"format": "xsl" if suffix == ".xsl" else "xml", "fingerprint": fingerprint, "root": root.tag,
                 "attributes": sorted(root.attrib), "children": sorted({child.tag for child in root})}
 
     def save(self, profile: dict[str, Any]) -> dict[str, Any]:
@@ -187,6 +215,32 @@ class SourceProfileStore:
             if isinstance(payload, list):
                 return [item for item in payload if isinstance(item, dict)]
             return [payload] if isinstance(payload, dict) else []
+
+        if suffix == ".csv":
+            try:
+                rows = csv.DictReader(io.StringIO(content.decode("utf-8-sig")))
+                if not rows.fieldnames or any(not str(field).strip() for field in rows.fieldnames):
+                    raise ValueError("CSV input requires a non-empty header row")
+                return [{str(key): value for key, value in row.items()} for row in rows]
+            except (UnicodeDecodeError, csv.Error) as exc:
+                raise ValueError("CSV input must be valid UTF-8") from exc
+
+        if suffix in {".xlsx", ".xlsm"}:
+            try:
+                import openpyxl
+                workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+            except ImportError as exc:
+                raise ValueError("XLSX extraction requires the optional openpyxl dependency") from exc
+            except Exception as exc:
+                raise ValueError("XLSX input is unreadable") from exc
+            sheet_name = str(mapping.get("sheet") or workbook.sheetnames[0])
+            if sheet_name not in workbook.sheetnames:
+                raise ValueError(f"XLSX sheet not found: {sheet_name}")
+            rows = workbook[sheet_name].iter_rows(values_only=True)
+            headers = [str(value).strip() if value is not None else "" for value in (next(rows, ()) or ())]
+            if not headers or any(not header for header in headers) or len(set(headers)) != len(headers):
+                raise ValueError("XLSX sheet requires unique, non-empty header cells")
+            return [dict(zip(headers, row)) for row in rows if any(value is not None for value in row)]
 
         root = ET.fromstring(content)
         if record_path:
