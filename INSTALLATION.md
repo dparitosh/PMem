@@ -594,6 +594,35 @@ The expected status is `200` for every enabled service. The browser frontend
 is separate and is served at `http://127.0.0.1:3000/` during a local smoke
 test.
 
+### 3.2 What the installer installs and configures
+
+`install-depo-windows.ps1` is the orchestration entry point. It calls
+`install-depo.ps1` for the Python environment and frontend, then calls the
+deployment lifecycle scripts. Do not start individual Uvicorn modules for a
+customer installation.
+
+| Component | Runtime module or output | Configuration source | Lifecycle script |
+| --- | --- | --- | --- |
+| Frontend | `frontend/dist` | `frontend/.env.local` (`VITE_*`) | `infra/windows/install-depo.ps1` |
+| Schema Sets/QIF | `backend.qif.app:app` / 8010 | root `.env.local` | `start-depo-services.ps1` |
+| Ontology | `backend.ontology_service.app:app` / 8011 | root `.env.local` | `start-depo-services.ps1` |
+| Agentic | `backend.agentic_service.app:app` / 8012 | root `.env.local` plus agentic settings | `start-depo-services.ps1` |
+| Graph | `backend.graph_service.app:app` / 8013 | root `.env.local`, Neo4j settings | `start-depo-services.ps1` |
+| Ingestion | `backend.ingestion_service.app:app` / 8014 | root `.env.local` | `start-depo-services.ps1` |
+| OSLC | `backend.oslc_service.app:app` / 8015 | root `.env.local` | `start-depo-services.ps1` |
+| Catalog | `backend.data_catalog_service.app:app` / 8016 | root `.env.local` | `start-depo-services.ps1` |
+| Data Products | `backend.data_product_service.app:app` / 8017 | root `.env.local` | `start-depo-services.ps1` |
+| CEIM | `backend.ceim_service.app:app` / 8018 | root `.env.local`, Neo4j settings | `start-depo-services.ps1` |
+| Data Pipeline | `backend.data_pipeline_service.app:app` / 8019 | root `.env.local`, Spark settings | `start-depo-services.ps1` |
+| Data-product worker | `backend.data_product_service.worker` | root `.env.local` | `start-depo-services.ps1` |
+
+The authoritative module and port list is
+[`infra/deployment/services.json`](infra/deployment/services.json). The
+installer creates the backend virtual environment, installs `backend/requirements.txt`,
+runs `npm ci` in `frontend`, and runs `npm run build`; it does not install
+PostgreSQL, Neo4j, Java, Hadoop, or Spark binaries. Those runtimes must be
+installed and configured before the installer command in Section 3.
+
 ## 4. Complete customer deployment
 
 Complete these steps in order after Section 3 reports success. If a step fails,
