@@ -107,12 +107,10 @@ def get_graph():
         # Try to use centralized configuration
         if CENTRALIZED_CONFIG_AVAILABLE:
             config = get_config()
-            _graph = Neo4jGraph(
-                url=config.uri,
-                username=config.username,
-                password=config.password,
-                database=config.database,
-            )
+            graph_kwargs = {"url": config.uri, "database": config.database}
+            if config.auth_mode != "none":
+                graph_kwargs.update(username=config.username, password=config.password)
+            _graph = Neo4jGraph(**graph_kwargs)
             logger.info(
                 f"Neo4j graph connection established using centralized config "
                 f"(deployment: {config.deployment_type.value})"
