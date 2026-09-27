@@ -11,6 +11,7 @@ if (-not $ManifestPath) { $ManifestPath = Join-Path $PSScriptRoot "services.json
 if (-not (Test-Path $ManifestPath)) { throw "Service manifest is missing: $ManifestPath" }
 $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
 if ($manifest.services.Count -ne 10) { throw "Expected 10 HTTP services in the deployment manifest." }
+if ($manifest.workers.Count -ne 2) { throw "Expected the data-product outbox and data-pipeline workers in the deployment manifest." }
 $ids = @($manifest.services | ForEach-Object { $_.id })
 if (($ids | Sort-Object -Unique).Count -ne $ids.Count) { throw "Service manifest contains duplicate ids." }
 if (($manifest.services | ForEach-Object { $_.port } | Sort-Object -Unique).Count -ne $manifest.services.Count) { throw "Service manifest contains duplicate ports." }
@@ -35,6 +36,8 @@ if ($Profile -eq "Production") {
     if ($origin.Trim() -notmatch '^https://') { throw 'Production ALLOWED_ORIGINS must contain HTTPS origins only.' }
   }
   if ($values.AUTH_MODE -eq 'entra' -and (-not $values.DEPO_TRUSTED_GATEWAY_IPS -or $values.DEPO_TRUSTED_GATEWAY_IPS -match '<.*>')) { throw "Gateway identity mode requires DEPO_TRUSTED_GATEWAY_IPS." }
+  if ($values.DEPO_PIPELINE_EXECUTION_MODE -ne 'worker') { throw 'Production requires DEPO_PIPELINE_EXECUTION_MODE=worker so Spark jobs do not execute inside HTTP requests.' }
+  if (-not $values.ARTIFACT_STORAGE -or -not [System.IO.Path]::IsPathRooted($values.ARTIFACT_STORAGE)) { throw 'Production requires an absolute ARTIFACT_STORAGE path accessible to the API and pipeline worker.' }
 }
 if ($Profile -eq "Bootstrap" -and $values.AUTH_MODE -notin @("token", "entra", "disabled")) { throw "Bootstrap requires AUTH_MODE=token, AUTH_MODE=entra or an explicit loopback-only disabled-auth demo." }
 if ($values.AUTH_MODE -eq "disabled") {

@@ -76,6 +76,11 @@ class ScheduledJobSupervisor:
                 if latest and self._seconds_since(latest.get("started_at")) < int(schedule["interval_seconds"]):
                     continue
                 payload = {**run_records.replay_payload(prior), "execution_actor": "pipeline-scheduler"}
+                if os.getenv("DEPO_PIPELINE_EXECUTION_MODE", "inline").strip().lower() == "worker":
+                    run_records.enqueue(definition, payload, correlation_id=f"scheduled:{definition['job_id']}:{int(time.time())}")
+                    self._runs_started += 1
+                    self._last_error = ""
+                    continue
                 retry = definition.get("retry_policy") or {"max_attempts": 1, "backoff_seconds": 30}
                 for attempt in range(int(retry["max_attempts"])):
                     try:

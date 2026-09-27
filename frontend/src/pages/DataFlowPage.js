@@ -65,13 +65,14 @@ function QualityOverview({ runs, accepted, rejected }) {
   const completed = runs.filter((run) => run.status === 'completed').length;
   const failed = runs.filter((run) => run.status === 'failed').length;
   const running = runs.filter((run) => run.status === 'running').length;
+  const queued = runs.filter((run) => run.status === 'queued').length;
   const total = Math.max(accepted + rejected, 1);
   const acceptedWidth = Math.round((accepted / total) * 100);
   return <article className="data-flow-card data-flow-quality" aria-label="Data quality overview">
     <div className="data-flow-card__heading"><div><h2>Live quality and workflow status</h2><p>Derived from the latest retained pipeline snapshot; Zeppelin remains optional.</p></div><Status value={failed ? 'warning' : 'ok'} /></div>
     <div className="data-flow-quality__bar" role="img" aria-label={`${accepted} accepted and ${rejected} rejected records`}><span style={{ width: `${acceptedWidth}%` }} /></div>
     <div className="data-flow-quality__legend"><span><i className="data-flow-quality__swatch data-flow-quality__swatch--accepted" />Accepted <strong>{accepted}</strong></span><span><i className="data-flow-quality__swatch data-flow-quality__swatch--rejected" />Rejected <strong>{rejected}</strong></span></div>
-    <div className="data-flow-quality__states"><span>Completed <strong>{completed}</strong></span><span>Running <strong>{running}</strong></span><span>Failed <strong>{failed}</strong></span></div>
+    <div className="data-flow-quality__states"><span>Completed <strong>{completed}</strong></span><span>Queued <strong>{queued}</strong></span><span>Running <strong>{running}</strong></span><span>Failed <strong>{failed}</strong></span></div>
   </article>;
 }
 
@@ -271,6 +272,7 @@ export default function DataFlowPage() {
         <article><span>Accepted records</span><strong>{totals.records_accepted ?? durableTotals.accepted}</strong></article>
         <article><span>Rejected records</span><strong>{totals.records_rejected ?? durableTotals.rejected}</strong></article>
         <article><span>Scheduler</span><strong className="data-flow-kpi-state">{telemetry?.scheduler?.running ? 'Running' : telemetry?.scheduler?.enabled ? 'Stopped' : 'Disabled'}</strong></article>
+        <article><span>Pipeline workers</span><strong className="data-flow-kpi-state">{telemetry?.worker_count ?? health?.worker_count ?? 0} / {telemetry?.busy_workers ?? health?.busy_workers ?? 0} busy</strong></article>
       </div>
 
       <p>Run and record totals cover the latest {totals.limit ?? 100} runs, not lifetime history.</p>
@@ -339,6 +341,9 @@ export default function DataFlowPage() {
               <dt>Checkpoint</dt><dd>{selectedRun.checkpoint ? JSON.stringify(selectedRun.checkpoint) : 'No watermark/checkpoint recorded'}</dd>
               <dt>Lineage</dt><dd>{selectedRun.correlation_id || 'No correlation identifier recorded'}</dd>
               <dt>Executed by</dt><dd>{selectedRun.executed_by || 'Legacy run / identity not recorded'}</dd>
+              <dt>Worker</dt><dd>{selectedRun.worker_id || (selectedRun.status === 'queued' ? 'Awaiting worker' : 'Inline or legacy execution')}</dd>
+              <dt>Attempt</dt><dd>{selectedRun.attempt || 1}</dd>
+              <dt>Lease heartbeat</dt><dd>{displayTime(selectedRun.lease?.heartbeat_at)}</dd>
               <dt>Replay lineage</dt><dd>{selectedRun.replay_of || 'Original execution'}</dd>
               <dt>Output evidence</dt><dd>{selectedRun.output_manifest?.contract || 'Pending output manifest'}</dd>
               <dt>Mapping evidence</dt><dd>{selectedRun.output_manifest?.mapping_digest || 'Not applicable or not recorded'}</dd>

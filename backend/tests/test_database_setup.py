@@ -21,7 +21,7 @@ def test_schema_contract(monkeypatch):
     result = setup.verify_schema(connection())
     assert result['schema'] == 'customer'
     assert result['columns_checked'] == 40
-    assert result['migration_versions'] == [1, 2, 3, 4]
+    assert result['migration_versions'] == [1, 2, 3, 4, 5, 6]
 
 
 @pytest.mark.parametrize('rows', [[], [('depo_registry', 'value', 'text')]])

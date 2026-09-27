@@ -57,6 +57,8 @@ $EnablePipelineScheduler = $sparkOptions.EnablePipelineScheduler
 $env:DEPO_SPARK_ENABLED = ([bool]$EnableSpark).ToString().ToLowerInvariant()
 $env:DEPO_SPARK_NEO4J_ENABLED = ([bool]$EnableNeo4jSparkConnector).ToString().ToLowerInvariant()
 $env:DEPO_PIPELINE_SCHEDULER_ENABLED = ([bool]$EnablePipelineScheduler).ToString().ToLowerInvariant()
+if (-not $env:DEPO_PIPELINE_EXECUTION_MODE) { $env:DEPO_PIPELINE_EXECUTION_MODE = 'worker' }
+if ($env:DEPO_PIPELINE_EXECUTION_MODE -notin @('worker','inline')) { throw 'DEPO_PIPELINE_EXECUTION_MODE must be worker or inline.' }
 # Spark is deliberately opt-in: the data-pipeline API stays healthy without
 # allocating a JVM, while this switch lets an operator enable the local Spark
 # execution plane for bounded interactive transformations and telemetry.
@@ -128,7 +130,7 @@ if (-not (Test-Path $manifestPath)) { throw "Deployment service manifest was not
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $services = @($manifest.services | ForEach-Object { @{ Name=$_.id; Module=$_.module; Port=[int]$_.port } })
 $services += @($manifest.workers | ForEach-Object { @{ Name=$_.id; Module=$_.module; Port=$null } })
-if ($services.Count -ne 11) { throw "Deployment manifest must define ten HTTP services and one worker." }
+if ($services.Count -ne 12) { throw "Deployment manifest must define ten HTTP services and two workers." }
 $startedServices = @()
 try {
 foreach ($service in $services) {

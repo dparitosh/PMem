@@ -35,6 +35,8 @@ class SparkJobRunner:
         self._lock = threading.Lock()
         self._spark: Any | None = None
         self._runs: deque[dict[str, Any]] = deque(maxlen=50)
+        self._application_id: str | None = None
+        self._started_at: str | None = None
 
     @staticmethod
     def _now() -> str:
@@ -127,10 +129,13 @@ class SparkJobRunner:
         return {
             "status": status,
             "runtime_files_present": runtime_present,
-            "execution_verified": False,
+            "execution_verified": self._spark is not None and bool(self._application_id),
             "execution_mode": "bounded_preview",
             "spark_enabled": self._enabled(),
             "spark_initialized": self._spark is not None,
+            "spark_application_id": self._application_id,
+            "spark_started_at": self._started_at,
+            "spark_master": os.getenv("DEPO_SPARK_MASTER", "local[2]"),
             "spark_home_present": spark_home.is_dir(),
             "java_home_present": java_home.is_dir(),
             "neo4j_connector_enabled": self._neo4j_enabled(),
@@ -179,6 +184,8 @@ class SparkJobRunner:
                 builder = builder.config(key, value)
         self._spark = builder.getOrCreate()
         self._spark.sparkContext.setLogLevel(os.getenv("DEPO_SPARK_LOG_LEVEL", "WARN"))
+        self._application_id = str(self._spark.sparkContext.applicationId)
+        self._started_at = self._now()
         return self._spark
 
     @staticmethod
@@ -840,6 +847,8 @@ class SparkJobRunner:
             if self._spark is not None:
                 self._spark.stop()
                 self._spark = None
+                self._application_id = None
+                self._started_at = None
 
 
 runner = SparkJobRunner()

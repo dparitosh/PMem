@@ -18,7 +18,10 @@ OData advertises capabilities, not a complete OData entity implementation.
 | CEIM | 8018 | backend.ceim_service | /api/v1/ceim | Canonical mapping, validation and approved publication requests |
 | Data pipeline | 8019 | backend.data_pipeline_service | /api/v1/pipeline | Job definitions, runs, quality evidence and event reconciliation |
 
-The outbox worker is `backend.data_product_service.worker`; it has no HTTP port.
+The deployment also runs two portless workers: `backend.data_product_service.worker`
+for the durable catalog outbox and `backend.data_pipeline_service.worker` for
+PostgreSQL-leased data jobs. Spark/JVM work runs only in the latter when
+`DEPO_PIPELINE_EXECUTION_MODE=worker`.
 The React/Vite frontend is in `frontend`, with service routing in
 `frontend/src/config.js`. It normally listens on 3000 during development.
 

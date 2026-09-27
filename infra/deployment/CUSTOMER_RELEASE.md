@@ -17,8 +17,9 @@ configuration mocks are not production certification.
    browser settings, run prerequisite checks, install/build, then validate.
 5. Run Spark smoke testing when enabled. Start with `-EnableSpark`; add the
    scheduler/Neo4j connector switches only when their features are required.
-6. Configure the customer's process supervisor for ten APIs and the outbox
-   worker in `services.json`. Demonstrate recovery after a process failure and
+6. Configure the customer's process supervisor for ten APIs, the outbox
+   worker, and the data-pipeline worker in `services.json`. Demonstrate queued
+   job lease recovery after a worker failure, recovery after an API failure, and
    server reboot. The supplied direct-process launcher is not a Windows service
    manager and does not by itself provide those guarantees.
 7. Serve `frontend/dist` through the customer's HTTPS web server/gateway. Run

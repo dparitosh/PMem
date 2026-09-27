@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from typing import Any
 
@@ -69,6 +70,47 @@ class PostgresRegistry:
             cursor.executemany("INSERT INTO depo_registry(namespace, key, value) VALUES (%s, %s, %s::jsonb) ON CONFLICT(namespace, key) DO UPDATE SET value=excluded.value, updated_at=now()", [(self.namespace, key, json.dumps(value)) for key, value in values.items()])
         return values
 
+    def claim_next(self, *, worker_id: str, lease_seconds: int = 300) -> dict[str, Any] | None:
+        """Atomically claim one data-job registry value using SKIP LOCKED."""
+        if self.namespace != "data_job_runs":
+            raise RuntimeError("claim_next is only valid for the data-job run registry")
+        now = datetime.now(timezone.utc)
+        expires = now + timedelta(seconds=max(30, min(int(lease_seconds), 3600)))
+        lease = json.dumps({"claimed_at": now.isoformat(), "heartbeat_at": now.isoformat(), "expires_at": expires.isoformat()})
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                WITH candidate AS (
+                  SELECT key FROM depo_registry
+                  WHERE namespace = %s AND (
+                    value->>'status' = 'queued' OR
+                    (value->>'status' = 'running' AND COALESCE(value->'lease'->>'expires_at','') < %s)
+                  ) AND COALESCE(value->>'available_at','') <= %s
+                  ORDER BY updated_at, key FOR UPDATE SKIP LOCKED LIMIT 1
+                )
+                UPDATE depo_registry AS r SET
+                  value = r.value || jsonb_build_object(
+                    'status','running','worker_id',%s,'attempt',COALESCE((r.value->>'attempt')::int,0)+1,'lease',%s::jsonb
+                  ), updated_at = now()
+                FROM candidate WHERE r.namespace = %s AND r.key = candidate.key
+                RETURNING r.value
+                """,
+                (self.namespace, now.isoformat(), now.isoformat(), worker_id, lease, self.namespace),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    def heartbeat(self, *, key: str, worker_id: str, lease: dict[str, Any]) -> dict[str, Any] | None:
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE depo_registry SET value=jsonb_set(value,'{lease}',%s::jsonb), updated_at=now()
+                   WHERE namespace=%s AND key=%s AND value->>'status'='running' AND value->>'worker_id'=%s
+                   RETURNING value""",
+                (json.dumps(lease), self.namespace, key, worker_id),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
     @contextmanager
     def advisory_lock(self, key: str):
         """Hold a PostgreSQL session lock for one cross-process operation."""
@@ -91,6 +133,10 @@ class InMemoryRegistry:
     def recent(self, limit: int = 100) -> list[dict[str, Any]]: return list(reversed(list(self.values.values())))[:limit]
     def put(self, key: str, value: dict[str, Any]) -> dict[str, Any]: self.values[key] = value; return value
     def put_many(self, values: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]: self.values.update(values); return values
+    def heartbeat(self, *, key: str, worker_id: str, lease: dict[str, Any]) -> dict[str, Any] | None:
+        value = self.values.get(key)
+        if not value or value.get("status") != "running" or value.get("worker_id") != worker_id: return None
+        return self.put(key, {**value, "lease": lease})
     @contextmanager
     def advisory_lock(self, key: str):
         yield True

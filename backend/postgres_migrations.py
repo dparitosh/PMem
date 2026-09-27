@@ -23,6 +23,8 @@ MIGRATIONS: tuple[Migration, ...] = tuple(
         (3, 'governance_metadata'),
         (4, 'ontology_analytics_view'),
         (5, 'metadata_revision_constraints'),
+        (6, 'pipeline_job_queue_index'),
+        (6, 'pipeline_job_queue_index'),
     )
 )
 SCHEMA_MIGRATIONS_SQL = (MIGRATIONS_DIR / '000_schema_migrations.sql').read_text(encoding='utf-8')

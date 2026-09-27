@@ -174,6 +174,15 @@ installer does not install or operate either database server.
 
 ### 1.2 Install optional Apache Spark and PySpark
 
+> **Current Windows deployment boundary:** Until a Linux Spark VM is available,
+> DEPO runs native Windows Spark only in the dedicated
+> `data-pipeline-worker` process. The HTTP Data Pipeline service submits a
+> durable PostgreSQL run and returns a queued status; it does not own the JVM.
+> PostgreSQL leases, worker heartbeats, bounded retries and expired-lease
+> recovery prevent an API restart from losing submitted work. Set
+> `DEPO_PIPELINE_EXECUTION_MODE=worker` for customer installations. The
+> `inline` mode is retained only for isolated developer compatibility.
+
 Install Spark only when the Data Pipeline service will execute Spark jobs. The
 application validates one fixed layout: **Spark 4.1.2**, **Scala 2.13**, **JDK
 21**, the bundled PySpark/Py4J libraries, and the Windows Hadoop helper. Follow
@@ -476,6 +485,9 @@ Invoke-WebRequest http://127.0.0.1:8012/api/v1/metrics | Select-Object -ExpandPr
    non-TLS environment.
 3. Set `ALLOWED_ORIGINS=https://<customer-frontend-host>` and
    `OSLC_BASE_URL=https://<customer-api-host>`.
+   Set `ARTIFACT_STORAGE=C:\DEPO\data\artifacts`, create that directory, and
+   grant the DEPO service account Modify permission. The API services and the
+   data-pipeline worker must resolve this exact same absolute path.
 4. Keep `AUTH_MODE=token`. This delivery uses API keys; it does not require
    Entra or GitHub Actions. Do not replace the generated token values unless
    the customer secret-management process supplies approved replacements.
@@ -578,6 +590,9 @@ $sparkSettings = @{
   DEPO_SPARK_ENABLED = 'false'
   DEPO_SPARK_NEO4J_ENABLED = 'false'
   DEPO_PIPELINE_SCHEDULER_ENABLED = 'false'
+  DEPO_PIPELINE_EXECUTION_MODE = 'worker'
+  DEPO_PIPELINE_LEASE_SECONDS = '300'
+  DEPO_PIPELINE_POLL_SECONDS = '5'
 }
 $lines = Get-Content .\.env.local
 foreach ($entry in $sparkSettings.GetEnumerator()) {
@@ -603,6 +618,7 @@ Import-DepoEnvironment -Root (Get-Location).Path -EnvFile .env.local
   DEPO_HADOOP_HOME = $env:DEPO_HADOOP_HOME
   DEPO_SPARK_OUTPUT_ROOT = $env:DEPO_SPARK_OUTPUT_ROOT
   DEPO_SPARK_MASTER = $env:DEPO_SPARK_MASTER
+  DEPO_PIPELINE_EXECUTION_MODE = $env:DEPO_PIPELINE_EXECUTION_MODE
 } | Format-List
 ```
 
@@ -648,7 +664,8 @@ failure:
 5. Verifies Neo4j TLS, authentication, and database access.
 6. When enabled, validates Spark/JDK/Hadoop paths and runs the DataFrame smoke
    job before services are started.
-7. Starts the ten APIs and outbox worker, validates all endpoints, and seeds the
+7. Starts the ten APIs, data-product outbox worker, and durable data-pipeline
+   worker; validates all endpoints; and seeds the
    approved baseline assets and data jobs.
 8. Runs release preflight, including schema, Neo4j, Spark, and production
    configuration checks.
@@ -712,6 +729,7 @@ customer installation.
 | CEIM | `backend.ceim_service.app:app` / 8018 | root `.env.local`, Neo4j settings | `start-depo-services.ps1` |
 | Data Pipeline | `backend.data_pipeline_service.app:app` / 8019 | root `.env.local`, Spark settings | `start-depo-services.ps1` |
 | Data-product worker | `backend.data_product_service.worker` | root `.env.local` | `start-depo-services.ps1` |
+| Data-pipeline worker | `backend.data_pipeline_service.worker` | root `.env.local`, PostgreSQL, artifact storage, optional Spark | `start-depo-services.ps1` |
 
 The authoritative module and port list is
 [`infra/deployment/services.json`](infra/deployment/services.json). The
@@ -738,7 +756,7 @@ Both paths must exist. Never copy either `.env.local` file into `frontend\dist`.
 
 ### 4.2 Confirm the application processes
 
-The supported installer starts the DEPO APIs and worker. Confirm that the
+The supported installer starts the DEPO APIs and both workers. Confirm that the
 expected processes exist:
 
 ```powershell

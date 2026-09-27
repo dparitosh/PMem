@@ -16,9 +16,14 @@ from . import job_definitions
 from . import run_records
 from .runner import SparkUnavailable, runner
 from .handlers import registry as handler_registry
+from . import worker_status
 
 
 router = APIRouter(prefix="/pipeline", tags=["data-pipeline"])
+
+
+def _worker_execution_enabled() -> bool:
+    return os.getenv("DEPO_PIPELINE_EXECUTION_MODE", "inline").strip().lower() == "worker"
 
 
 def _authorize_execution(request: Request, payload: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -32,9 +37,16 @@ def _supervisor_health() -> dict[str, Any]:
     return supervisor.health()
 
 
+def _worker_summary() -> dict[str, Any]:
+    try:
+        return worker_status.summary()
+    except RuntimeError:
+        return {"workers": [], "worker_count": 0, "busy_workers": 0, "worker_registry_status": "unavailable"}
+
+
 @router.get("/health", summary="Read Spark data-job execution readiness")
 def health() -> dict[str, Any]:
-    return {"service": "data-pipeline", **runner.health(), "scheduler": _supervisor_health()}
+    return {"service": "data-pipeline", **runner.health(), "scheduler": _supervisor_health(), **_worker_summary()}
 
 
 @router.get("/telemetry", summary="Read UI-ready job telemetry for Siemens IX/ECharts monitoring")
@@ -43,7 +55,7 @@ def telemetry() -> dict[str, Any]:
     # view and durable run manifests. This gives the Data Flow UI quality,
     # lineage, checkpoint, and replay evidence after a worker restart.
     try:
-        return {**runner.telemetry(), "scheduler": _supervisor_health(), "durable_job_telemetry": run_records.telemetry_summary()}
+        return {**runner.telemetry(), "scheduler": _supervisor_health(), "durable_job_telemetry": run_records.telemetry_summary(), **_worker_summary()}
     except RuntimeError as exc:
         raise _registry_error(exc) from exc
 
@@ -51,6 +63,8 @@ def telemetry() -> dict[str, Any]:
 @router.post("/jobs/transform", summary="Run a bounded Spark quality transformation and return JSON")
 def transform(payload: dict[str, Any], request: Request) -> dict[str, Any]:
     _, payload = _authorize_execution(request, payload)
+    if _worker_execution_enabled():
+        raise HTTPException(status_code=409, detail="Direct Spark transforms are disabled in worker mode; run an approved data-job definition")
     try:
         return runner.transform_quality_summary(payload, correlation_id=getattr(request.state, "request_id", ""))
     except SparkUnavailable as exc:
@@ -63,6 +77,8 @@ def transform(payload: dict[str, Any], request: Request) -> dict[str, Any]:
 def run_document_evidence_workflow(payload: dict[str, Any], request: Request) -> dict[str, Any]:
     """Execute the fixed unstructured workflow with approved job versions."""
     actor, payload = _authorize_execution(request, payload)
+    if _worker_execution_enabled():
+        raise HTTPException(status_code=409, detail="Synchronous document workflows are disabled in worker mode; submit the approved stages as data jobs")
     try:
         return execute_document_evidence_workflow(
             payload, correlation_id=getattr(request.state, "request_id", ""), actor=actor,
@@ -119,6 +135,17 @@ def execute_configured_job(definition: dict[str, Any], payload: dict[str, Any], 
         raise
     persisted = run_records.complete(run, result)
     return {**result, "configured_job": {field: definition[field] for field in ("job_id", "name", "version", "job_type", "quality_profile", "owner")}, "run_manifest": persisted}
+
+
+def execute_claimed_job(definition: dict[str, Any], payload: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
+    """Execute a PostgreSQL-leased run without creating a duplicate manifest."""
+    if definition["job_type"] in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim"}:
+        standard = str(payload.get("standard") or "").strip().lower()
+        if standard not in definition.get("allowed_standards", []):
+            raise ValueError("The request standard is not allowed by this data-job definition")
+    result = handler_registry.get(definition["job_type"]).execute(runner, payload, correlation_id=run.get("correlation_id", ""))
+    persisted = run_records.complete(run, result)
+    return {**result, "run_manifest": persisted}
 
 
 def _approved_definition(reference: Any) -> dict[str, Any]:
@@ -283,6 +310,9 @@ def run_configured_job(job_id: str, version: str, payload: dict[str, Any], reque
     correlation_id = getattr(request.state, "request_id", "")
     payload = {**payload, "execution_actor": actor}
     try:
+        if _worker_execution_enabled():
+            queued = run_records.enqueue(definition, payload, correlation_id=correlation_id)
+            return {"status": "queued", "run": queued, "run_manifest": queued}
         return execute_configured_job(definition, payload, correlation_id)
     except SparkUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -403,6 +433,9 @@ def replay_job_run(run_id: str, request: Request, authorization: dict[str, Any] 
             raise LookupError("Data job definition was not found")
         if definition.get("lifecycle_state") != "approved" or not definition.get("enabled"):
             raise ValueError("Only an approved and enabled data-job definition can be replayed")
+        if _worker_execution_enabled():
+            queued = run_records.enqueue(definition, payload, correlation_id=getattr(request.state, "request_id", ""))
+            return {"status": "queued", "run": queued, "run_manifest": queued}
         return execute_configured_job(definition, payload, getattr(request.state, "request_id", ""))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

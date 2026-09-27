@@ -598,6 +598,50 @@ def test_completed_run_records_partition_and_gated_checkpoint_evidence(monkeypat
     assert run_records.publication_succeeded(published, {"status": "published"}) == published
 
 
+def test_worker_mode_queues_without_executing_spark_in_http_request(monkeypatch):
+    from backend.data_pipeline_service import job_definitions, run_records
+
+    monkeypatch.setenv("DEPO_PIPELINE_EXECUTION_MODE", "worker")
+    monkeypatch.setattr(job_definitions, "store", InMemoryRegistry())
+    monkeypatch.setattr(run_records, "store", InMemoryRegistry())
+    monkeypatch.setattr("backend.data_pipeline_service.router.approval_identity", lambda *args, **kwargs: "operator")
+    definition = {
+        "job_id": "queued-quality", "name": "Queued quality", "version": "1.0.0", "owner": "data-engineering",
+        "job_type": "interactive-quality-summary", "quality_profile": "semantic-core-v1", "enabled": True,
+        "lifecycle_state": "approved", "input_contract": "quality-records-v1", "output_contract": "quality-summary-v1",
+    }
+    job_definitions.store.put("queued-quality:1.0.0", definition)
+    called = []
+    monkeypatch.setattr("backend.data_pipeline_service.router.runner.transform_quality_summary", lambda *args, **kwargs: called.append(True))
+
+    response = TestClient(app).post("/api/v1/pipeline/jobs/definitions/queued-quality/1.0.0/run", json={
+        "records": [{"source_standard": "qif", "canonical_concept": "Part"}],
+    })
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    assert response.json()["run"]["status"] == "queued"
+    assert called == []
+
+
+def test_worker_claim_heartbeat_and_retry_are_durable(monkeypatch):
+    from backend.data_pipeline_service import run_records
+
+    registry = InMemoryRegistry()
+    monkeypatch.setattr(run_records, "store", registry)
+    definition = {"job_id": "leased-job", "version": "1.0.0", "job_type": "interactive-quality-summary", "input_contract": "records-v1"}
+    queued = run_records.enqueue(definition, {"records": [{"source_standard": "qif", "canonical_concept": "Part"}]}, correlation_id="lease-test")
+    claimed = run_records.claim_next(worker_id="worker-1", lease_seconds=60)
+    assert claimed["run_id"] == queued["run_id"]
+    assert claimed["status"] == "running"
+    assert claimed["attempt"] == 1
+    renewed = run_records.heartbeat(claimed, worker_id="worker-1", lease_seconds=60)
+    assert renewed["lease"]["heartbeat_at"]
+    retried = run_records.requeue(renewed, message="temporary failure", backoff_seconds=1)
+    assert retried["status"] == "queued"
+    assert retried["last_error"] == "temporary failure"
+
+
 def test_publish_run_uses_canonical_api_before_advancing_checkpoint(monkeypatch):
     import json
     import httpx

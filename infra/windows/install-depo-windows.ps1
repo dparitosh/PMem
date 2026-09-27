@@ -39,6 +39,17 @@ if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
 }
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 $settings = Read-DepoEnvironment -Root $root -EnvFile $envPath
+$artifactStorage = $settings['ARTIFACT_STORAGE']
+if (-not $artifactStorage -or -not [IO.Path]::IsPathRooted($artifactStorage)) {
+  throw 'ARTIFACT_STORAGE must be an absolute durable directory shared by the DEPO APIs and workers.'
+}
+New-Item -ItemType Directory -Path $artifactStorage -Force | Out-Null
+$artifactProbe = Join-Path $artifactStorage ('.depo-write-probe-' + [guid]::NewGuid().ToString('N'))
+try {
+  Set-Content -LiteralPath $artifactProbe -Value 'DEPO artifact storage write probe' -NoNewline
+} finally {
+  if (Test-Path -LiteralPath $artifactProbe) { Remove-Item -LiteralPath $artifactProbe -Force }
+}
 $configuredSpark = $settings['DEPO_SPARK_ENABLED'] -eq 'true'
 $configuredConnector = $settings['DEPO_SPARK_NEO4J_ENABLED'] -eq 'true'
 $configuredScheduler = $settings['DEPO_PIPELINE_SCHEDULER_ENABLED'] -eq 'true'

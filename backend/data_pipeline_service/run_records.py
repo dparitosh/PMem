@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import socket
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from backend.artifact_store import ArtifactStore
@@ -38,7 +40,7 @@ def _input_count(payload: dict[str, Any]) -> int:
     return len(list(payload.get("entities") or [])) + len(list(payload.get("relationships") or []))
 
 
-def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id: str) -> dict[str, Any]:
+def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id: str, status: str = "running") -> dict[str, Any]:
     run_id = str(uuid.uuid4())
     checkpoint = payload.get("checkpoint")
     if checkpoint is not None and not isinstance(checkpoint, dict):
@@ -78,7 +80,7 @@ def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id
         "job_version": definition["version"],
         "job_type": definition["job_type"],
         "quality_profile": definition.get("quality_profile"),
-        "status": "running",
+        "status": status,
         "correlation_id": correlation_id,
         "replay_of": replay_of,
         "executed_by": executed_by,
@@ -96,6 +98,62 @@ def start(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id
         "output_manifest": None,
     }
     return store.put(run_id, record)
+
+
+def enqueue(definition: dict[str, Any], payload: dict[str, Any], *, correlation_id: str) -> dict[str, Any]:
+    """Persist work before acknowledging submission to the caller."""
+    return start(definition, payload, correlation_id=correlation_id, status="queued")
+
+
+def claim_next(*, worker_id: str, lease_seconds: int = 300) -> dict[str, Any] | None:
+    """Atomically lease one queued or abandoned run across worker processes."""
+    if hasattr(store, "claim_next"):
+        return store.claim_next(worker_id=worker_id, lease_seconds=lease_seconds)
+    # Test doubles and legacy registry implementations remain deterministic.
+    now = datetime.now(timezone.utc)
+    for record in list_runs(limit=1000):
+        lease = record.get("lease") or {}
+        available_at = record.get("available_at")
+        try:
+            if available_at and datetime.fromisoformat(available_at) > now:
+                continue
+        except ValueError:
+            pass
+        expired = not lease.get("expires_at")
+        try:
+            if lease.get("expires_at"):
+                expired = datetime.fromisoformat(lease["expires_at"]) <= now
+        except ValueError:
+            expired = True
+        if record.get("status") == "queued" or (record.get("status") == "running" and expired):
+            claimed = {**record, "status": "running", "worker_id": worker_id, "attempt": int(record.get("attempt") or 0) + 1,
+                       "lease": {"claimed_at": _now(), "heartbeat_at": _now(), "expires_at": (now + timedelta(seconds=lease_seconds)).isoformat()}}
+            return store.put(record["run_id"], claimed)
+    return None
+
+
+def heartbeat(record: dict[str, Any], *, worker_id: str, lease_seconds: int = 300) -> dict[str, Any]:
+    if record.get("worker_id") != worker_id or record.get("status") != "running":
+        raise ValueError("Worker no longer owns this run lease")
+    now = datetime.now(timezone.utc)
+    lease = {**(record.get("lease") or {}), "heartbeat_at": now.isoformat(),
+             "expires_at": (now + timedelta(seconds=lease_seconds)).isoformat()}
+    if hasattr(store, "heartbeat"):
+        updated = store.heartbeat(key=record["run_id"], worker_id=worker_id, lease=lease)
+        if not updated:
+            raise ValueError("Worker no longer owns this run lease")
+        return updated
+    return store.put(record["run_id"], {**record, "lease": lease})
+
+
+def requeue(record: dict[str, Any], *, message: str, backoff_seconds: int) -> dict[str, Any]:
+    available = datetime.now(timezone.utc) + timedelta(seconds=max(1, min(int(backoff_seconds), 3600)))
+    return store.put(record["run_id"], {**record, "status": "queued", "available_at": available.isoformat(),
+                                         "last_error": message, "worker_id": None, "lease": None})
+
+
+def worker_identity() -> str:
+    return os.getenv("DEPO_PIPELINE_WORKER_ID", "").strip() or f"{socket.gethostname()}:{os.getpid()}"
 
 
 def replay_payload(record: dict[str, Any]) -> dict[str, Any]:
@@ -226,6 +284,8 @@ def telemetry_summary(*, limit: int = 100) -> dict[str, Any]:
         "runs": len(runs),
         "completed_runs": sum(1 for run in runs if run.get("status") == "completed"),
         "failed_runs": sum(1 for run in runs if run.get("status") == "failed"),
+        "queued_runs": sum(1 for run in runs if run.get("status") == "queued"),
+        "running_runs": sum(1 for run in runs if run.get("status") == "running"),
         "records_input": sum(int((run.get("input_manifest") or {}).get("record_count") or 0) for run in runs),
         "records_accepted": sum(count(run, "accepted_records", "records_accepted", "normalized_entities", "accepted_documents", "valid_ntriples") for run in runs),
         "records_rejected": sum(count(run, "rejected_records", "records_rejected", "rejected_documents", "malformed_lines") for run in runs),
