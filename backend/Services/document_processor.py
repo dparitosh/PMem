@@ -35,6 +35,11 @@ except Exception:  # pragma: no cover
     pytesseract = None
     Image = None
 
+try:  # Optional IIF-compatible OCR provider.
+    import easyocr
+except Exception:  # pragma: no cover
+    easyocr = None
+
 logger = logging.getLogger(__name__)
 
 SUPPORTED_FORMATS = {
@@ -62,6 +67,8 @@ MAX_OOXML_EXPANDED_BYTES = _positive_int_setting("DOCUMENT_MAX_OOXML_EXPANDED_BY
 MAX_OOXML_ENTRIES = _positive_int_setting("DOCUMENT_MAX_OOXML_ENTRIES", 10_000)
 MAX_PDF_PAGES = _positive_int_setting("DOCUMENT_MAX_PDF_PAGES", 2_000)
 MAX_OCR_PAGES = _positive_int_setting("DOCUMENT_MAX_OCR_PAGES", 100)
+OCR_PROVIDER = os.getenv("DOCUMENT_OCR_PROVIDER", "auto").strip().lower() or "auto"
+OCR_LANGUAGES = tuple(filter(None, (item.strip() for item in os.getenv("DOCUMENT_OCR_LANGUAGES", "en").split(",")))) or ("en",)
 EMBEDDING_BATCH_SIZE = _positive_int_setting("DOCUMENT_EMBEDDING_BATCH_SIZE", 64)
 NEO4J_WRITE_BATCH_SIZE = _positive_int_setting("DOCUMENT_WRITE_BATCH_SIZE", 100)
 EMBEDDING_VECTOR_DIMENSIONS = _positive_int_setting("EMBEDDING_VECTOR_DIMENSIONS", 768)
@@ -118,6 +125,9 @@ class DocumentProcessingCancelled(RuntimeError):
     pass
 
 
+_EASYOCR_READERS: dict[tuple[str, ...], Any] = {}
+
+
 def get_format_description() -> dict[str, str]:
     return {
         "pdf": "Portable Document Format text extraction and DatasheetChunk indexing",
@@ -146,18 +156,22 @@ def runtime_status() -> dict[str, Any]:
     except Exception as exc:
         errors.append(f"graph_embeddings import: {exc}")
 
-    ocr_available = False
+    tesseract_available = False
     if fitz is not None and pytesseract is not None and Image is not None:
         try:
             pytesseract.get_tesseract_version()
-            ocr_available = True
+            tesseract_available = True
         except Exception:
-            ocr_available = False
+            tesseract_available = False
+    easyocr_available = fitz is not None and Image is not None and easyocr is not None
+    selected_provider = _select_ocr_provider(raise_when_unavailable=False)
 
     return {
         "available": embedder_available and not errors,
         "embedder_available": embedder_available,
-        "ocr_available": ocr_available,
+        "ocr_available": selected_provider is not None,
+        "ocr_provider": selected_provider,
+        "ocr_providers": {"tesseract": tesseract_available, "easyocr": easyocr_available},
         "errors": errors,
     }
 
@@ -170,13 +184,13 @@ def _detect_format(file_path: Path) -> str:
     raise ValueError(f"Unsupported document format: {suffix}")
 
 
-def _extract_pdf_text(file_path: Path) -> str:
+def _native_pdf_pages(file_path: Path) -> tuple[int, list[dict[str, Any]]]:
     if PdfReader is None:
         raise RuntimeError("pypdf is not available")
     reader = PdfReader(str(file_path))
     if len(reader.pages) > MAX_PDF_PAGES:
         raise ValueError(f"PDF exceeds the {MAX_PDF_PAGES} page extraction limit")
-    pages = []
+    pages: list[dict[str, Any]] = []
     for index, page in enumerate(reader.pages, start=1):
         try:
             text = page.extract_text() or ""
@@ -185,31 +199,85 @@ def _extract_pdf_text(file_path: Path) -> str:
             text = ""
         text = text.strip()
         if text:
-            pages.append(f"[Page {index}]\n{text}")
-    native_text = "\n\n".join(pages).strip()
-    return native_text or _extract_pdf_ocr_text(file_path)
+            pages.append({"page": index, "text": text, "method": "native", "confidence": 1.0})
+    return len(reader.pages), pages
+
+
+def _select_ocr_provider(*, raise_when_unavailable: bool = True) -> str | None:
+    if OCR_PROVIDER not in {"auto", "tesseract", "easyocr", "disabled"}:
+        raise RuntimeError("DOCUMENT_OCR_PROVIDER must be auto, tesseract, easyocr, or disabled")
+    if OCR_PROVIDER == "disabled":
+        return None
+    available: list[str] = []
+    if fitz is not None and pytesseract is not None and Image is not None:
+        try:
+            pytesseract.get_tesseract_version()
+            available.append("tesseract")
+        except Exception:
+            pass
+    if fitz is not None and Image is not None and easyocr is not None:
+        available.append("easyocr")
+    selected = available[0] if OCR_PROVIDER == "auto" and available else OCR_PROVIDER if OCR_PROVIDER in available else None
+    if selected is None and raise_when_unavailable:
+        raise RuntimeError(f"Configured OCR provider '{OCR_PROVIDER}' is unavailable")
+    return selected
+
+
+def _easyocr_reader() -> Any:
+    key = tuple(OCR_LANGUAGES)
+    if key not in _EASYOCR_READERS:
+        model_dir = os.getenv("DOCUMENT_EASYOCR_MODEL_DIR", "").strip()
+        kwargs: dict[str, Any] = {"gpu": os.getenv("DOCUMENT_OCR_GPU", "false").lower() == "true"}
+        if model_dir:
+            kwargs.update(model_storage_directory=model_dir, download_enabled=False)
+        else:
+            kwargs["download_enabled"] = os.getenv("DOCUMENT_EASYOCR_ALLOW_DOWNLOAD", "false").lower() == "true"
+        _EASYOCR_READERS[key] = easyocr.Reader(list(key), **kwargs)
+    return _EASYOCR_READERS[key]
+
+
+def _extract_pdf(file_path: Path) -> dict[str, Any]:
+    page_count, native_pages = _native_pdf_pages(file_path)
+    if native_pages:
+        return {"text": "\n\n".join(f"[Page {item['page']}]\n{item['text']}" for item in native_pages), "extraction": {"method": "native", "provider": "pypdf", "page_count": page_count, "pages": native_pages}}
+    ocr = _extract_pdf_ocr(file_path)
+    return {"text": ocr["text"], "extraction": {"method": "ocr", "provider": ocr["provider"], "page_count": page_count, "pages": ocr["pages"]}}
+
+
+def _extract_pdf_text(file_path: Path) -> str:
+    return _extract_pdf(file_path)["text"]
 
 
 def _extract_pdf_ocr_text(file_path: Path) -> str:
-    if fitz is None or pytesseract is None or Image is None:
-        return ""
+    return _extract_pdf_ocr(file_path)["text"]
+
+
+def _extract_pdf_ocr(file_path: Path) -> dict[str, Any]:
+    provider = _select_ocr_provider()
     document = fitz.open(str(file_path))
     try:
         if document.page_count > MAX_OCR_PAGES:
             raise ValueError(f"Scanned PDF exceeds the {MAX_OCR_PAGES} page OCR limit")
-        pages: list[str] = []
+        pages: list[dict[str, Any]] = []
         for index in range(document.page_count):
             page = document.load_page(index)
             pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
             image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
             try:
-                text = str(pytesseract.image_to_string(image) or "").strip()
+                confidence: float | None = None
+                if provider == "easyocr":
+                    items = _easyocr_reader().readtext(image, detail=1)
+                    text = " ".join(str(item[1]).strip() for item in items if len(item) >= 3 and str(item[1]).strip())
+                    scores = [float(item[2]) for item in items if len(item) >= 3]
+                    confidence = round(sum(scores) / len(scores), 4) if scores else None
+                else:
+                    text = str(pytesseract.image_to_string(image) or "").strip()
             except Exception as exc:
                 logger.warning("OCR unavailable for %s page %s: %s", file_path.name, index + 1, exc)
-                return ""
+                raise RuntimeError(f"OCR failed on page {index + 1}") from exc
             if text:
-                pages.append(f"[Page {index + 1} OCR]\n{text}")
-        return "\n\n".join(pages).strip()
+                pages.append({"page": index + 1, "text": text, "method": "ocr", "provider": provider, "confidence": confidence, "text_digest": "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()})
+        return {"provider": provider, "pages": pages, "text": "\n\n".join(f"[Page {item['page']} OCR]\n{item['text']}" for item in pages).strip()}
     finally:
         document.close()
 
@@ -301,8 +369,11 @@ def extract_text_from_file(file_path: str | Path) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"Document not found: {path}")
     file_type = _detect_format(path)
+    extraction: dict[str, Any] = {"method": "native", "provider": file_type, "pages": []}
     if file_type == "pdf":
-        text = _extract_pdf_text(path)
+        pdf_result = _extract_pdf(path)
+        text = pdf_result["text"]
+        extraction = pdf_result["extraction"]
     elif file_type == "word":
         text = _extract_docx_text(path)
     elif file_type == "powerpoint":
@@ -327,6 +398,7 @@ def extract_text_from_file(file_path: str | Path) -> dict[str, Any]:
         "filename": path.name,
         "file_type": file_type,
         "text": text,
+        "extraction": extraction,
     }
 
 
@@ -619,6 +691,7 @@ def process_documents_batch(
                 "index_name": normalized_index_name if publish_index else None,
                 "index_status": "published" if publish_index else "not_requested",
                 "content_hash": content_hash,
+                "extraction": extracted.get("extraction", {"method": "native", "provider": extracted["file_type"], "pages": []}),
                 "semantic_proposals": semantic_proposals,
                 "evidence_chunks": evidence_chunks if include_chunk_content else [],
             })

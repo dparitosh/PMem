@@ -624,6 +624,7 @@ class SparkJobRunner:
             accepted.append({
                 "id": f"document:{document_id}", "type": "Document", "document_id": document_id,
                 "artifact_id": artifact_id, "media_type": metadata.get("media_type", "application/octet-stream"),
+                "extraction": dict(document.get("extraction") or {}),
                 "chunks": proposed_chunks,
             })
             rows.append({"media_type": metadata.get("media_type", "application/octet-stream"), "chunk_count": len(proposed_chunks), "token_count": sum(item["token_count_estimate"] for item in proposed_chunks)})
@@ -655,7 +656,7 @@ class SparkJobRunner:
             "correlation_id": correlation_id, "completed_at": self._now(), "duration_ms": round((time.perf_counter() - started) * 1000, 2),
             "output_contract": "document-graph-proposal-v1",
             "counts": {"input_documents": len(documents), "accepted_documents": len(accepted), "rejected_documents": len(rejected), "chunks": sum(len(item["chunks"]) for item in accepted), "graph_nodes": len(graph_nodes), "graph_relationships": len(graph_edges)},
-            "quality": {"quality_profile": "unstructured-evidence-v1", "rejections": rejected[:100], "enrichment": ["deterministic chunk normalization", "content digests", "artifact and chunk provenance"], "not_performed": ["OCR", "model-based NER", "embedding generation", "graph publication"]},
+            "quality": {"quality_profile": "unstructured-evidence-v1", "rejections": rejected[:100], "enrichment": ["deterministic chunk normalization", "content digests", "artifact, extraction and chunk provenance"], "upstream_ocr_documents": sum(1 for item in accepted if (item.get("extraction") or {}).get("method") == "ocr"), "not_performed": ["model-based NER", "embedding generation", "graph publication"]},
             "partition_artifacts": partition_artifacts, "series": series,
             "publication": proposal["publication"],
         }

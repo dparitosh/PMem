@@ -306,7 +306,8 @@ def test_document_enrichment_job_creates_a_provenance_preserving_graph_proposal(
     assert result["output_contract"] == "document-graph-proposal-v1"
     assert result["counts"]["graph_nodes"] == 3
     assert result["counts"]["graph_relationships"] == 2
-    assert result["quality"]["not_performed"] == ["OCR", "model-based NER", "embedding generation", "graph publication"]
+    assert result["quality"]["not_performed"] == ["model-based NER", "embedding generation", "graph publication"]
+    assert result["quality"]["upstream_ocr_documents"] == 0
     _, proposal_path = __import__("backend.artifact_store", fromlist=["ArtifactStore"]).ArtifactStore().resolve(result["partition_artifacts"]["accepted"])
     proposal = __import__("json").loads(proposal_path.read_text(encoding="utf-8"))
     assert proposal["documents"][0]["chunks"][0]["content"] == "Motor cover"

@@ -37,9 +37,27 @@ def test_pdf_native_text_falls_back_to_optional_ocr(monkeypatch, tmp_path) -> No
             self.pages = [Page()]
 
     monkeypatch.setattr(document_processor, "PdfReader", Reader)
-    monkeypatch.setattr(document_processor, "_extract_pdf_ocr_text", lambda _path: "OCR requirement text")
+    monkeypatch.setattr(document_processor, "_extract_pdf_ocr", lambda _path: {
+        "provider": "easyocr", "text": "OCR requirement text", "pages": [],
+    })
 
     assert document_processor._extract_pdf_text(sample) == "OCR requirement text"
+
+
+def test_ocr_evidence_preserves_page_provenance(monkeypatch, tmp_path) -> None:
+    sample = tmp_path / "scan.pdf"
+    sample.write_bytes(b"pdf")
+    monkeypatch.setattr(document_processor, "_native_pdf_pages", lambda _path: (1, []))
+    monkeypatch.setattr(document_processor, "_extract_pdf_ocr", lambda _path: {
+        "provider": "easyocr",
+        "text": "[Page 1 OCR]\nREQ-9 shall pass.",
+        "pages": [{"page": 1, "text": "REQ-9 shall pass.", "method": "ocr", "provider": "easyocr", "confidence": 0.91, "text_digest": "sha256:test"}],
+    })
+
+    extracted = document_processor.extract_text_from_file(sample)
+
+    assert extracted["extraction"]["provider"] == "easyocr"
+    assert extracted["extraction"]["pages"][0]["confidence"] == 0.91
 
 
 def test_document_job_writes_durable_result_and_proposal_artifacts(monkeypatch, tmp_path) -> None:
@@ -142,4 +160,3 @@ def test_direct_document_indexing_routes_are_retired() -> None:
 
     assert response.status_code == 410
     assert "retired" in response.json()["detail"]
-

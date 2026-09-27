@@ -184,6 +184,7 @@ class DocumentJobService:
                     "document_id": item.get("document_id"),
                     "content_hash": item.get("content_hash"),
                     "file_type": item.get("file_type"),
+                    "extraction": item.get("extraction", {}),
                     "chunks": item.get("evidence_chunks", []),
                     "semantic_proposals": item.get("semantic_proposals", {}),
                 })

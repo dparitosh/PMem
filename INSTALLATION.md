@@ -411,6 +411,67 @@ service and cannot write Neo4j directly. Add `-EnableNeo4jSparkConnector` only
 after the regular smoke test passes and the Neo4j connection check in the
 installer succeeds.
 
+### 1.3 Install and verify document OCR on Windows
+
+DEPO extracts the native PDF text layer first. Scanned PDFs then use the OCR
+provider selected by `DOCUMENT_OCR_PROVIDER`. The standard installer installs
+both Python adapters; EasyOCR provides an in-process fallback and does not
+require a separate Windows executable. Tesseract remains supported when the
+customer already operates an approved Tesseract installation.
+
+Run these commands from the repository root after section 3 has created the
+backend virtual environment:
+
+```powershell
+Set-Location 'E:\App\PMem' # Replace only when the repository is elsewhere.
+& '.\backend\.dt_venv\Scripts\python.exe' -c "import easyocr, fitz, pypdf, PIL; print('EasyOCR', easyocr.__version__); print('PyMuPDF', fitz.VersionBind); print('pypdf', pypdf.__version__)"
+```
+
+For an internet-connected provisioning VM, set the following temporarily in
+the root `.env.local` so EasyOCR downloads its signed package-published model
+assets on the first controlled OCR smoke test:
+
+```dotenv
+DOCUMENT_OCR_PROVIDER=easyocr
+DOCUMENT_OCR_LANGUAGES=en
+DOCUMENT_EASYOCR_MODEL_DIR=C:\DEPO\models\easyocr
+DOCUMENT_EASYOCR_ALLOW_DOWNLOAD=true
+DOCUMENT_OCR_GPU=false
+DOCUMENT_MAX_OCR_PAGES=100
+```
+
+Create the model directory, run the smoke test, then set downloads to `false`:
+
+```powershell
+New-Item -ItemType Directory -Force 'C:\DEPO\models\easyocr' | Out-Null
+$env:DOCUMENT_OCR_PROVIDER='easyocr'
+$env:DOCUMENT_OCR_LANGUAGES='en'
+$env:DOCUMENT_EASYOCR_MODEL_DIR='C:\DEPO\models\easyocr'
+$env:DOCUMENT_EASYOCR_ALLOW_DOWNLOAD='true'
+& '.\backend\.dt_venv\Scripts\python.exe' -c "from backend.Services.document_processor import _easyocr_reader; r=_easyocr_reader(); print(type(r).__name__)"
+(Get-ChildItem -LiteralPath 'C:\DEPO\models\easyocr' -File).Name
+```
+
+Change `DOCUMENT_EASYOCR_ALLOW_DOWNLOAD=false` in `.env.local` after the model
+files exist. Copy the populated model directory through the customer's normal
+artifact-verification process when production VMs cannot access the internet.
+Never copy IIF's hardcoded `C:\krown_code` path into DEPO configuration.
+
+If the customer selects Tesseract instead, install its approved 64-bit Windows
+package, place `tesseract.exe` on the service account's `PATH`, set
+`DOCUMENT_OCR_PROVIDER=tesseract`, and verify it from the same PowerShell
+session:
+
+```powershell
+tesseract --version
+& '.\backend\.dt_venv\Scripts\python.exe' -c "from backend.Services.document_processor import runtime_status; import json; print(json.dumps(runtime_status(), indent=2))"
+```
+
+The final JSON must show `"ocr_available": true` and the intended
+`"ocr_provider"`. OCR output is retained as raw page evidence with provider,
+confidence when supplied by EasyOCR, and a SHA-256 text digest. LLM correction
+or summarization is a separate review proposal and never replaces raw evidence.
+
 ## 2. Create configuration
 
 ### There are exactly two `.env.local` files in a standard installation
