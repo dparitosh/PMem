@@ -142,12 +142,20 @@ async def normalize_qif(file: UploadFile = File(...)) -> dict[str, Any]:
     if len(content) > MAX_SOURCE_BYTES:
         raise HTTPException(status_code=413, detail="QIF upload exceeds the 25 MiB limit")
     try:
+        # Normalization is a typed mapping operation, not a substitute for
+        # XSD validation. Reject structurally invalid QIF before retaining the
+        # source artifact or emitting CEIM entities.
+        validation = validate_qif_instance(content)
+        if not validation.get("validated"):
+            raise HTTPException(status_code=503, detail=validation.get("errors") or "QIF validator is unavailable")
+        if not validation.get("conforms"):
+            raise HTTPException(status_code=422, detail={"message": "QIF instance does not conform to the bundled XSD", "errors": validation.get("errors", [])})
         source = ArtifactStore().ingest_bytes(
             content, filename=file.filename or "source.qif", kind="source-qif",
             media_type=file.content_type or "application/xml", provenance={"adapter": "qif-ceim-v1"},
         )
         return {
-            **qif_to_ceim_batch(content), "source_artifact_id": source["artifact_id"],
+            **qif_to_ceim_batch(content), "xsd_validation": validation, "source_artifact_id": source["artifact_id"],
             "representation": "normalized-ceim-v1", "ceim_version": contract.version,
         }
     except ValueError as exc:
