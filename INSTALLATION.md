@@ -411,7 +411,7 @@ service and cannot write Neo4j directly. Add `-EnableNeo4jSparkConnector` only
 after the regular smoke test passes and the Neo4j connection check in the
 installer succeeds.
 
-### 1.3 Install and verify document OCR on Windows
+### 1.3 Choose document OCR on Windows; verify it immediately after section 3
 
 DEPO extracts the native PDF text layer first. Scanned PDFs then use the OCR
 provider selected by `DOCUMENT_OCR_PROVIDER`. The standard installer installs
@@ -419,8 +419,9 @@ both Python adapters; EasyOCR provides an in-process fallback and does not
 require a separate Windows executable. Tesseract remains supported when the
 customer already operates an approved Tesseract installation.
 
-Run these commands from the repository root after section 3 has created the
-backend virtual environment:
+Do not run the verification commands before the installer. Complete sections 2
+and 3 first; then return to this subsection and run these commands from the
+repository root after section 3 has created the backend virtual environment:
 
 ```powershell
 Set-Location 'E:\App\PMem' # Replace only when the repository is elsewhere.

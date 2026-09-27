@@ -43,6 +43,29 @@ class SparkJobRunner:
         return datetime.now(timezone.utc).isoformat()
 
     @staticmethod
+    def _extraction_evidence_error(extraction: Any) -> str | None:
+        if extraction in (None, {}):
+            return None
+        if not isinstance(extraction, dict):
+            return "extraction evidence must be an object"
+        method = str(extraction.get("method") or "")
+        if method not in {"native", "ocr", "hybrid"}:
+            return "extraction.method must be native, ocr, or hybrid"
+        pages = extraction.get("pages")
+        if not isinstance(pages, list):
+            return "extraction.pages must be an array"
+        for page in pages:
+            if not isinstance(page, dict) or not isinstance(page.get("page"), int) or page["page"] < 1:
+                return "every extraction page must have a positive integer page number"
+            if page.get("method") == "ocr":
+                text = str(page.get("text") or "")
+                digest = str(page.get("text_digest") or "")
+                expected = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+                if not text or digest != expected:
+                    return "OCR page text and SHA-256 digest must be present and consistent"
+        return None
+
+    @staticmethod
     def _retain_json_artifact(
         value: Any,
         *,
@@ -514,6 +537,10 @@ class SparkJobRunner:
             if invalid_chunk is not None:
                 rejected.append({"index": index, "rule": "chunk.provenance", "message": "Every chunk must have chunk_id and content"})
                 continue
+            extraction_error = self._extraction_evidence_error(document.get("extraction"))
+            if extraction_error:
+                rejected.append({"index": index, "rule": "extraction.provenance", "message": extraction_error})
+                continue
             accepted.append(document)
             rows.append({"media_type": metadata.get("media_type", "application/octet-stream"), "chunk_count": len(chunks), "proposal_count": len((document.get("semantic_proposals") or {}).get("entities") or [])})
         if not accepted:
@@ -597,6 +624,10 @@ class SparkJobRunner:
             except ValueError as exc:
                 rejected.append({"index": index, "rule": "artifact.content_addressed", "message": str(exc)})
                 continue
+            extraction_error = self._extraction_evidence_error(document.get("extraction"))
+            if extraction_error:
+                rejected.append({"index": index, "rule": "extraction.provenance", "message": extraction_error})
+                continue
             proposed_chunks = []
             invalid = False
             for ordinal, chunk in enumerate(chunks):
@@ -656,7 +687,7 @@ class SparkJobRunner:
             "correlation_id": correlation_id, "completed_at": self._now(), "duration_ms": round((time.perf_counter() - started) * 1000, 2),
             "output_contract": "document-graph-proposal-v1",
             "counts": {"input_documents": len(documents), "accepted_documents": len(accepted), "rejected_documents": len(rejected), "chunks": sum(len(item["chunks"]) for item in accepted), "graph_nodes": len(graph_nodes), "graph_relationships": len(graph_edges)},
-            "quality": {"quality_profile": "unstructured-evidence-v1", "rejections": rejected[:100], "enrichment": ["deterministic chunk normalization", "content digests", "artifact, extraction and chunk provenance"], "upstream_ocr_documents": sum(1 for item in accepted if (item.get("extraction") or {}).get("method") == "ocr"), "not_performed": ["model-based NER", "embedding generation", "graph publication"]},
+            "quality": {"quality_profile": "unstructured-evidence-v1", "rejections": rejected[:100], "enrichment": ["deterministic chunk normalization", "content digests", "artifact, extraction and chunk provenance"], "upstream_ocr_documents": sum(1 for item in accepted if (item.get("extraction") or {}).get("method") in {"ocr", "hybrid"}), "not_performed": ["model-based NER", "embedding generation", "graph publication"]},
             "partition_artifacts": partition_artifacts, "series": series,
             "publication": proposal["publication"],
         }

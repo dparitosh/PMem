@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import html
+import importlib
+import importlib.util
 import logging
 import math
 import os
@@ -35,10 +37,8 @@ except Exception:  # pragma: no cover
     pytesseract = None
     Image = None
 
-try:  # Optional IIF-compatible OCR provider.
-    import easyocr
-except Exception:  # pragma: no cover
-    easyocr = None
+# EasyOCR imports PyTorch and OpenCV, so load it only when OCR actually needs it.
+easyocr = None
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +163,7 @@ def runtime_status() -> dict[str, Any]:
             tesseract_available = True
         except Exception:
             tesseract_available = False
-    easyocr_available = fitz is not None and Image is not None and easyocr is not None
+    easyocr_available = fitz is not None and Image is not None and importlib.util.find_spec("easyocr") is not None
     selected_provider = _select_ocr_provider(raise_when_unavailable=False)
 
     return {
@@ -215,7 +215,7 @@ def _select_ocr_provider(*, raise_when_unavailable: bool = True) -> str | None:
             available.append("tesseract")
         except Exception:
             pass
-    if fitz is not None and Image is not None and easyocr is not None:
+    if fitz is not None and Image is not None and importlib.util.find_spec("easyocr") is not None:
         available.append("easyocr")
     selected = available[0] if OCR_PROVIDER == "auto" and available else OCR_PROVIDER if OCR_PROVIDER in available else None
     if selected is None and raise_when_unavailable:
@@ -224,6 +224,9 @@ def _select_ocr_provider(*, raise_when_unavailable: bool = True) -> str | None:
 
 
 def _easyocr_reader() -> Any:
+    global easyocr
+    if easyocr is None:
+        easyocr = importlib.import_module("easyocr")
     key = tuple(OCR_LANGUAGES)
     if key not in _EASYOCR_READERS:
         model_dir = os.getenv("DOCUMENT_EASYOCR_MODEL_DIR", "").strip()
@@ -238,10 +241,17 @@ def _easyocr_reader() -> Any:
 
 def _extract_pdf(file_path: Path) -> dict[str, Any]:
     page_count, native_pages = _native_pdf_pages(file_path)
-    if native_pages:
-        return {"text": "\n\n".join(f"[Page {item['page']}]\n{item['text']}" for item in native_pages), "extraction": {"method": "native", "provider": "pypdf", "page_count": page_count, "pages": native_pages}}
-    ocr = _extract_pdf_ocr(file_path)
-    return {"text": ocr["text"], "extraction": {"method": "ocr", "provider": ocr["provider"], "page_count": page_count, "pages": ocr["pages"]}}
+    native_page_numbers = {int(item["page"]) for item in native_pages}
+    missing_pages = [page for page in range(1, page_count + 1) if page not in native_page_numbers]
+    ocr = _extract_pdf_ocr(file_path, page_indices=missing_pages) if missing_pages else {"provider": None, "pages": []}
+    pages = sorted([*native_pages, *ocr["pages"]], key=lambda item: int(item["page"]))
+    text = "\n\n".join(
+        f"[Page {item['page']}{' OCR' if item['method'] == 'ocr' else ''}]\n{item['text']}"
+        for item in pages
+    ).strip()
+    method = "hybrid" if native_pages and ocr["pages"] else "ocr" if ocr["pages"] else "native"
+    provider = f"pypdf+{ocr['provider']}" if method == "hybrid" else ocr["provider"] if method == "ocr" else "pypdf"
+    return {"text": text, "extraction": {"method": method, "provider": provider, "page_count": page_count, "pages": pages}}
 
 
 def _extract_pdf_text(file_path: Path) -> str:
@@ -252,14 +262,18 @@ def _extract_pdf_ocr_text(file_path: Path) -> str:
     return _extract_pdf_ocr(file_path)["text"]
 
 
-def _extract_pdf_ocr(file_path: Path) -> dict[str, Any]:
+def _extract_pdf_ocr(file_path: Path, page_indices: list[int] | None = None) -> dict[str, Any]:
     provider = _select_ocr_provider()
     document = fitz.open(str(file_path))
     try:
-        if document.page_count > MAX_OCR_PAGES:
-            raise ValueError(f"Scanned PDF exceeds the {MAX_OCR_PAGES} page OCR limit")
+        selected_pages = page_indices if page_indices is not None else list(range(1, document.page_count + 1))
+        if len(selected_pages) > MAX_OCR_PAGES:
+            raise ValueError(f"PDF requires OCR on more than the {MAX_OCR_PAGES} page limit")
+        if any(page < 1 or page > document.page_count for page in selected_pages):
+            raise ValueError("OCR page indices are outside the PDF page range")
         pages: list[dict[str, Any]] = []
-        for index in range(document.page_count):
+        for page_number in selected_pages:
+            index = page_number - 1
             page = document.load_page(index)
             pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
             image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)

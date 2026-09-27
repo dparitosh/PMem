@@ -37,7 +37,7 @@ def test_pdf_native_text_falls_back_to_optional_ocr(monkeypatch, tmp_path) -> No
             self.pages = [Page()]
 
     monkeypatch.setattr(document_processor, "PdfReader", Reader)
-    monkeypatch.setattr(document_processor, "_extract_pdf_ocr", lambda _path: {
+    monkeypatch.setattr(document_processor, "_extract_pdf_ocr", lambda _path, **_kwargs: {
         "provider": "easyocr", "text": "OCR requirement text", "pages": [],
     })
 
@@ -48,7 +48,7 @@ def test_ocr_evidence_preserves_page_provenance(monkeypatch, tmp_path) -> None:
     sample = tmp_path / "scan.pdf"
     sample.write_bytes(b"pdf")
     monkeypatch.setattr(document_processor, "_native_pdf_pages", lambda _path: (1, []))
-    monkeypatch.setattr(document_processor, "_extract_pdf_ocr", lambda _path: {
+    monkeypatch.setattr(document_processor, "_extract_pdf_ocr", lambda _path, **_kwargs: {
         "provider": "easyocr",
         "text": "[Page 1 OCR]\nREQ-9 shall pass.",
         "pages": [{"page": 1, "text": "REQ-9 shall pass.", "method": "ocr", "provider": "easyocr", "confidence": 0.91, "text_digest": "sha256:test"}],
@@ -58,6 +58,26 @@ def test_ocr_evidence_preserves_page_provenance(monkeypatch, tmp_path) -> None:
 
     assert extracted["extraction"]["provider"] == "easyocr"
     assert extracted["extraction"]["pages"][0]["confidence"] == 0.91
+
+
+def test_mixed_pdf_uses_ocr_only_for_pages_without_native_text(monkeypatch, tmp_path) -> None:
+    sample = tmp_path / "mixed.pdf"
+    sample.write_bytes(b"pdf")
+    captured = {}
+    monkeypatch.setattr(document_processor, "_native_pdf_pages", lambda _path: (
+        2, [{"page": 1, "text": "Native", "method": "native", "confidence": 1.0}],
+    ))
+    def fake_ocr(_path, *, page_indices=None):
+        captured["page_indices"] = page_indices
+        text = "Scanned"
+        return {"provider": "easyocr", "text": text, "pages": [{"page": 2, "text": text, "method": "ocr", "provider": "easyocr", "confidence": 0.8, "text_digest": "sha256:" + document_processor.hashlib.sha256(text.encode()).hexdigest()}]}
+    monkeypatch.setattr(document_processor, "_extract_pdf_ocr", fake_ocr)
+
+    extracted = document_processor.extract_text_from_file(sample)
+
+    assert captured["page_indices"] == [2]
+    assert extracted["extraction"]["method"] == "hybrid"
+    assert "[Page 1]" in extracted["text"] and "[Page 2 OCR]" in extracted["text"]
 
 
 def test_document_job_writes_durable_result_and_proposal_artifacts(monkeypatch, tmp_path) -> None:

@@ -1,3 +1,5 @@
+import hashlib
+
 from fastapi.testclient import TestClient
 import pytest
 
@@ -313,6 +315,19 @@ def test_document_enrichment_job_creates_a_provenance_preserving_graph_proposal(
     assert proposal["documents"][0]["chunks"][0]["content"] == "Motor cover"
     assert proposal["documents"][0]["chunks"][0]["content_digest"].startswith("sha256:")
     assert proposal["publication"].startswith("not_attempted")
+
+
+def test_ocr_evidence_digest_must_match_raw_page_text() -> None:
+    valid_text = "REQ-9 shall pass."
+    valid = {
+        "method": "ocr",
+        "provider": "easyocr",
+        "pages": [{"page": 1, "method": "ocr", "text": valid_text, "text_digest": "sha256:" + hashlib.sha256(valid_text.encode()).hexdigest()}],
+    }
+    tampered = {**valid, "pages": [{**valid["pages"][0], "text": "changed"}]}
+
+    assert SparkJobRunner._extraction_evidence_error(valid) is None
+    assert "digest" in SparkJobRunner._extraction_evidence_error(tampered).lower()
 
 
 def test_unstructured_proposal_uses_the_same_ceim_validation_contract(monkeypatch):
