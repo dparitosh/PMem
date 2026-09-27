@@ -20,13 +20,15 @@ def test_qif_service_exposes_health_and_catalog():
     assert catalog["file_count"] >= 1
 
 
-def test_qif_api_rejects_invalid_task_identifiers_and_non_xsd_uploads():
+def test_qif_api_rejects_invalid_task_identifiers_and_non_xsd_uploads(monkeypatch):
+    monkeypatch.setenv("ONTOLOGY_APPROVAL_TOKEN", "test-ontology-token")
     client = TestClient(app)
     missing = client.get("/api/v1/qif/tasks/not-a-task")
     assert missing.status_code == 404
 
     response = client.post(
         "/api/v1/qif/tasks/upload",
+        headers={"Authorization": "Bearer test-ontology-token"},
         files=[("files", ("not-schema.txt", b"not an xsd", "text/plain"))],
         data={"ontology_name": "Invalid upload", "prefix": "invalid", "description": "test"},
     )

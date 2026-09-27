@@ -116,6 +116,25 @@ def test_semantic_bridge_facts_queries_mapping_memory(monkeypatch):
     assert rows == [{"source": "REQ-001", "target": "Requirement"}]
     assert captured["params"]["ontology_id"] == "mbse"
     assert captured["params"]["limit"] == 25
+    assert captured["params"]["scope"] == AgentMemoryService.scope()
+
+
+def test_memory_scope_is_part_of_session_and_fact_identity(monkeypatch):
+    monkeypatch.setenv("AGENT_MEMORY_SCOPE", "customer-a:program-1")
+    first_session = AgentMemoryService._memory_key("session-1")
+    first_fact = AgentMemoryService._mapping_fact_row(
+        "ap242", "import-1", {"source_term": "A", "ontology_term": "B"}, "task-1"
+    )
+
+    monkeypatch.setenv("AGENT_MEMORY_SCOPE", "customer-b:program-1")
+    second_session = AgentMemoryService._memory_key("session-1")
+    second_fact = AgentMemoryService._mapping_fact_row(
+        "ap242", "import-1", {"source_term": "A", "ontology_term": "B"}, "task-1"
+    )
+
+    assert first_session != second_session
+    assert first_fact["fact_id"] != second_fact["fact_id"]
+    assert second_fact["scope"] == "customer-b:program-1"
 
 
 def test_ensure_schema_is_attempted_once(monkeypatch):
@@ -129,7 +148,35 @@ def test_ensure_schema_is_attempted_once(monkeypatch):
 
     assert first["ensured"] is True
     assert second["cached"] is True
-    assert len(calls) == 6
+    assert len(calls) == 7
+
+
+def test_ensure_schema_does_not_cache_failed_initialization(monkeypatch):
+    monkeypatch.setenv("AGENT_MEMORY_ENABLED", "true")
+    monkeypatch.setattr(AgentMemoryService, "_schema_attempted", False)
+    monkeypatch.setattr(AgentMemoryService, "_query", lambda *_args, **_kwargs: None)
+
+    result = AgentMemoryService.ensure_schema()
+
+    assert result["ensured"] is False
+    assert AgentMemoryService._schema_attempted is False
+
+
+def test_delete_session_is_scope_bounded(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("AGENT_MEMORY_ENABLED", "true")
+    monkeypatch.setenv("AGENT_MEMORY_SCOPE", "customer-a:program-1")
+
+    def fake_query(cypher, params=None):
+        captured["cypher"] = cypher
+        captured["params"] = params
+        return [{"deleted": 1}]
+
+    monkeypatch.setattr(AgentMemoryService, "_query", fake_query)
+
+    assert AgentMemoryService.delete_session("session-1") is True
+    assert captured["params"]["scope"] == "customer-a:program-1"
+    assert "scope: $scope" in captured["cypher"]
 
 
 def test_extract_touched_nodes_reads_nested_frontend_graph_snapshot():

@@ -6,7 +6,7 @@ from backend.depo_platform.service_runtime import create_service_app
 from backend.depo_platform.odata import ServiceCapability, create_odata_catalog_router
 from .router import router
 
-app = create_service_app(title="Engineering Schema-Set Service", version="1.0.0")
+app = create_service_app(title="Engineering Schema-Set Service", version="1.0.0", dependencies=())
 app.include_router(
     create_odata_catalog_router(
         service_name="DEPOEngineeringSchemaSets",

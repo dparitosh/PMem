@@ -13,11 +13,16 @@ vi.mock('@siemens/ix-react', () => ({
   IxButton: ({ children, ...props }) => <button {...props}>{children}</button>,
   IxContent: ({ children, ...props }) => <main {...props}>{children}</main>,
   IxContentHeader: ({ headerTitle }) => <h1>{headerTitle}</h1>,
-  IxMenu: ({ children, ...props }) => <nav {...props}>{children}</nav>,
+  IxMenu: ({ children, enableToggleTheme: _enableToggleTheme, i18nToggleTheme: _i18nToggleTheme, ...props }) => <nav {...props}>{children}</nav>,
   IxMenuItem: ({ children, active, ...props }) => <button aria-current={active ? 'page' : undefined} {...props}>{children}</button>,
 }));
 
-test('exposes active navigation, backend status, and chat drawer state', () => {
+beforeEach(() => {
+  window.localStorage.clear();
+  document.documentElement.dataset.ixColorSchema = 'light';
+});
+
+test('exposes active navigation, backend status, chat drawer state, and persistent theme control', () => {
   const onToggleChat = jest.fn();
   render(
     <AppShell
@@ -35,10 +40,16 @@ test('exposes active navigation, backend status, and chat drawer state', () => {
 
   expect(screen.getByRole('button', { name: 'Metadata Registry' })).toHaveAttribute('aria-current', 'page');
   expect(screen.getByRole('status')).toHaveTextContent('Unavailable');
-  expect(screen.getByRole('complementary', { name: 'Chat assistant' })).toBeInTheDocument();
+  expect(screen.getByRole('complementary', { name: 'Knowledge Companion' })).toBeInTheDocument();
   const chatButton = screen.getByRole('button', { name: 'Toggle Knowledge Companion' });
   expect(chatButton).toHaveAttribute('aria-expanded', 'true');
   expect(chatButton).toHaveAttribute('aria-controls', 'depo-chat-drawer');
   fireEvent.click(chatButton);
   expect(onToggleChat).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Close Knowledge Companion' }));
+  expect(onToggleChat).toHaveBeenCalledTimes(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Use dark theme' }));
+  expect(document.documentElement.dataset.ixColorSchema).toBe('dark');
+  expect(window.localStorage.getItem('depo.colorSchema')).toBe('dark');
+  expect(screen.getByRole('button', { name: 'Use light theme' })).toHaveAttribute('aria-pressed', 'true');
 });

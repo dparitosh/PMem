@@ -53,6 +53,7 @@ def test_legacy_instance_adapters_receive_the_ceim_version_at_job_submission(mon
 
 
 def test_governed_import_endpoint_delegates_only_to_an_approved_job(monkeypatch):
+    monkeypatch.setenv("DATA_JOB_EXECUTION_TOKEN", "test-job-token")
     async def fake_run_job(**kwargs):
         assert kwargs["job_id"] == "semantic-source-validation"
         assert kwargs["job_version"] == "1.0.0"
@@ -62,6 +63,7 @@ def test_governed_import_endpoint_delegates_only_to_an_approved_job(monkeypatch)
     monkeypatch.setattr("backend.ingestion_service.router.governed_import.run_job", fake_run_job)
     response = TestClient(app).post(
         "/api/v1/governed-import",
+        headers={"Authorization": "Bearer test-job-token"},
         data={"source_system": "Teamcenter"},
         files={"file": ("ebom.plmxml", b"<PLMXML/>", "application/xml")},
     )

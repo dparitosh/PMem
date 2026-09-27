@@ -463,7 +463,8 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             display: 'flex',
             flexDirection: 'column',
             minWidth: '0',
-            backgroundColor: 'white',
+            backgroundColor: 'var(--theme-color-std-background, var(--ui-surface, #fff))',
+            color: 'var(--theme-color-std-text, var(--ui-text, #252a2e))',
             overflow: 'hidden'
         }}>
             <details style={{ padding: '8px 14px', flexShrink: 0 }}>
@@ -530,7 +531,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             )}
 
             {/* Chat body */}
-            <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column', backgroundColor: 'white' }}>
+            <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--theme-color-std-background, var(--ui-surface, #fff))' }}>
                 {/* Messages Container */}
                 <div className='chat-messages' style={{
                     flex: 1,
@@ -637,7 +638,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                     </div>
                 )}
 
-                <div style={{ padding: '8px', borderTop: '1px solid var(--theme-color-weak-bdr, #d9e2ec)', background: '#fff' }}>
+                <div style={{ padding: '8px', borderTop: '1px solid var(--theme-color-weak-bdr, #d9e2ec)', background: 'var(--theme-color-std-background, var(--ui-surface, #fff))' }}>
                     <IxChatInput
                         value={question}
                         disabled={requestActive}

@@ -5,25 +5,27 @@ from .router import router
 from .api.ontology_browser import router as ontology_browser_router
 from backend.Services.unified_import_router import ontology_router as compatibility_ontology_router
 from backend.Services.unified_import_router import router as compatibility_import_router
+from fastapi import Depends
+from .router import _ingestion_identity
 
 app = create_service_app(title="DEPO Ingestion Service", version="1.0.0")
 app.include_router(create_odata_catalog_router(
     service_name="DEPOIngestion",
     capabilities=[
-        ServiceCapability("Health", "/ingestion/health", description="Ingestion service health"),
-        ServiceCapability("Source profiles", "/source-profiles", description="List reusable ingestion profiles"),
-        ServiceCapability("Inspect source", "/source-profiles/inspect", "POST", "Inspect a source schema or sample"),
-        ServiceCapability("Engineering schema conversion", "/schema-conversions/inspect", "POST", "Convert EXPRESS, STEP, XMI, or XSD to Turtle and retain a schema-analytics data-product draft"),
-        ServiceCapability("AP242 inspection", "/ap242/inspect", "POST", "Classify AP242 XSD ontology schemas, EXPRESS schemas, or STEP instances"),
-        ServiceCapability("AP242 reference validation", "/ap242/reference/validation", description="Validate configured AP242 EXPRESS and XSD reference assets without publishing"),
-        ServiceCapability("AP242 MBD extraction", "/ap242/mbd/extract", "POST", "Extract traceable product, geometry, PMI, and presentation mappings"),
-        ServiceCapability("AP242 Part-28 export", "/ap242/mbd/export-part28", "POST", "Losslessly re-export an already supplied AP242 Part-28 XML source"),
-        ServiceCapability("Engineering workflow", "/engineering-workflows", "POST", "Convert, govern, register and optionally publish an engineering ontology"),
-        ServiceCapability("Execute profile", "/source-profiles/{profile_id}/workflow", "POST", "Generate and register a governed ontology draft"),
-        ServiceCapability("Import workflow", "/import/upload", "POST", "Upload and run the existing tracked import workflow"),
-        ServiceCapability("Governed instance import", "/governed-import", "POST", "Route STEP/AP242, ReqIF, QIF, or PLMXML into an approved semantic data job"),
-        ServiceCapability("Import task", "/import/status/{task_id}", description="Read tracked import workflow status"),
-        ServiceCapability("Ontology upload compatibility", "/ontology/upload", "POST", "Upload an ontology artifact through the ingestion boundary"),
+        ServiceCapability("Health", "/api/v1/ingestion/health", description="Ingestion service health"),
+        ServiceCapability("Source profiles", "/api/v1/source-profiles", description="List reusable ingestion profiles"),
+        ServiceCapability("Inspect source", "/api/v1/source-profiles/inspect", "POST", "Inspect a source schema or sample"),
+        ServiceCapability("Engineering schema conversion", "/api/v1/schema-conversions/inspect", "POST", "Convert EXPRESS, STEP, XMI, or XSD to Turtle and retain a schema-analytics data-product draft"),
+        ServiceCapability("AP242 inspection", "/api/v1/ap242/inspect", "POST", "Classify AP242 XSD ontology schemas, EXPRESS schemas, or STEP instances"),
+        ServiceCapability("AP242 reference validation", "/api/v1/ap242/reference/validation", description="Validate configured AP242 EXPRESS and XSD reference assets without publishing"),
+        ServiceCapability("AP242 MBD extraction", "/api/v1/ap242/mbd/extract", "POST", "Extract traceable product, geometry, PMI, and presentation mappings"),
+        ServiceCapability("AP242 Part-28 export", "/api/v1/ap242/mbd/export-part28", "POST", "Losslessly re-export an already supplied AP242 Part-28 XML source"),
+        ServiceCapability("Engineering workflow", "/api/v1/engineering-workflows", "POST", "Convert, govern, register and optionally publish an engineering ontology"),
+        ServiceCapability("Execute profile", "/api/v1/source-profiles/{profile_id}/workflow", "POST", "Generate and register a governed ontology draft"),
+        ServiceCapability("Import workflow", "/api/v1/import/upload", "POST", "Upload and run the existing tracked import workflow"),
+        ServiceCapability("Governed instance import", "/api/v1/governed-import", "POST", "Route STEP/AP242, ReqIF, QIF, or PLMXML into an approved semantic data job"),
+        ServiceCapability("Import task", "/api/v1/import/status/{task_id}", description="Read tracked import workflow status"),
+        ServiceCapability("Ontology upload compatibility", "/api/v1/ontology/upload", "POST", "Upload an ontology artifact through the ingestion boundary"),
     ],
 ))
 app.include_router(router, prefix="/api/v1")
@@ -31,5 +33,5 @@ app.include_router(ontology_browser_router, prefix="/api/v1")
 # The tracked import and ontology-upload contracts are retained during the SPA
 # migration.  They execute in the ingestion process rather than through the
 # retired aggregate server, while new engineering workflows use router.py.
-app.include_router(compatibility_import_router, prefix="/api/v1")
-app.include_router(compatibility_ontology_router, prefix="/api/v1")
+app.include_router(compatibility_import_router, prefix="/api/v1", dependencies=[Depends(_ingestion_identity)])
+app.include_router(compatibility_ontology_router, prefix="/api/v1", dependencies=[Depends(_ingestion_identity)])

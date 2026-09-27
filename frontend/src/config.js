@@ -404,6 +404,8 @@ const AGENTIC_ENDPOINTS = {
   runAgent: process.env.REACT_APP_AGENTIC_RUN_AGENT || '/api/v1/agents/{agent_name}/run',
   runWorkflow: process.env.REACT_APP_AGENTIC_RUN_WORKFLOW || '/api/v1/workflows/run',
   orchestrateOntology: process.env.REACT_APP_AGENTIC_ONTOLOGY_ORCHESTRATE || '/api/v1/ontology-agents/orchestrate',
+  observabilitySummary: process.env.REACT_APP_AGENTIC_OBSERVABILITY_SUMMARY || '/api/v1/observability/summary',
+  observabilityRuns: process.env.REACT_APP_AGENTIC_OBSERVABILITY_RUNS || '/api/v1/observability/runs',
 };
 
 /**

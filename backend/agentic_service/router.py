@@ -1,6 +1,6 @@
 """Catalog and bounded execution for independently extensible agents/tools."""
 from __future__ import annotations
-import base64, binascii, json, os
+import base64, binascii, json, os, time
 from uuid import uuid4
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from backend.mesh_store import PostgresRegistry
 from .companion import companion
@@ -17,6 +17,7 @@ from .oslc_graph_rag import oslc_graph_rag
 from .dt_requirements_adapter import assess_manifest
 from .dt_gateway import execute_current_plan
 from .dt_bindings import extend_catalog, capabilities as dt_capabilities
+from .telemetry import telemetry
 
 router = APIRouter(prefix="/api/v1", tags=["agentic-control-plane"])
 
@@ -213,11 +214,23 @@ async def companion_chat(payload: dict[str, Any], request: Request) -> dict:
     message = " ".join(str(payload.get("message") or "").split())
     if not message:
         raise HTTPException(status_code=422, detail="message is required")
+    observation, observed_at = telemetry.start(
+        operation="knowledge_companion",
+        request_id=getattr(request.state, "request_id", ""),
+        session_id=str(payload.get("session_id") or ""),
+    )
     try:
         headers = downstream_headers(request, companion._graph_root(), graph_read=True)
         result = await companion.ask(message, headers=headers)
+        telemetry.finish(
+            observation,
+            observed_at,
+            status="completed",
+            evidence_count=len(result.get("evidence") or []),
+        )
         return {"session_id": str(payload.get("session_id") or uuid4()), **result, "mode": "evidence-grounded"}
     except RuntimeError as exc:
+        telemetry.finish(observation, observed_at, status="failed", error_type=type(exc).__name__)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
@@ -374,7 +387,13 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
         if requested and len(requested) != len(workflow.get("steps", [])):
             raise ValueError("step_inputs must contain one entry for each workflow step")
         run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
-        record: dict[str, Any] = {"run_id": run_id, "workflow_id": workflow["id"], "status": "running", "started_at": _now(), "traces": []}
+        request_id = getattr(request.state, "request_id", "")
+        observation, observed_at = telemetry.start(
+            operation="workflow",
+            request_id=request_id,
+            workflow_id=workflow["id"],
+        )
+        record: dict[str, Any] = {"run_id": run_id, "workflow_id": workflow["id"], "request_id": request_id, "status": "running", "started_at": _now(), "traces": []}
         workflow_store.put(run_id, record)
         for index, step in enumerate(workflow["steps"]):
             inputs = _resolve_inputs(requested[index] if requested else payload.get("inputs", {}), record["traces"])
@@ -382,22 +401,29 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
             retries, attempt = max(0, int(step.get("retries", 0))), 0
             while True:
                 attempt += 1
+                tool_started = time.perf_counter()
                 try:
                     result = await run(command, request)
-                    record["traces"].append({"sequence": index + 1, "tool_id": step["tool_id"], "attempt": attempt, "status": "completed", "result": result.get("result", {})})
+                    duration_ms = round((time.perf_counter() - tool_started) * 1000, 2)
+                    record["traces"].append({"sequence": index + 1, "tool_id": step["tool_id"], "attempt": attempt, "status": "completed", "duration_ms": duration_ms, "result": result.get("result", {})})
+                    telemetry.tool_span(observation, tool_id=step["tool_id"], attempt=attempt, status="completed", duration_ms=duration_ms)
                     workflow_store.put(run_id, record)
                     break
                 except HTTPException as exc:
+                    duration_ms = round((time.perf_counter() - tool_started) * 1000, 2)
+                    telemetry.tool_span(observation, tool_id=step["tool_id"], attempt=attempt, status="failed", duration_ms=duration_ms, error_type=type(exc).__name__)
                     # Never blindly repeat a mutating operation after an
                     # uncertain downstream response. Mutation APIs must offer
                     # their own receipt/reconciliation contract first.
                     if attempt <= retries and exc.status_code >= 500 and not step.get('mutates', False):
                         continue
                     record.update({"status": "failed", "finished_at": _now()})
-                    record["traces"].append({"sequence": index + 1, "tool_id": step["tool_id"], "attempt": attempt, "status": "failed", "error": str(exc.detail)})
+                    record["traces"].append({"sequence": index + 1, "tool_id": step["tool_id"], "attempt": attempt, "status": "failed", "duration_ms": duration_ms, "error": str(exc.detail)})
                     workflow_store.put(run_id, record)
+                    telemetry.finish(observation, observed_at, status="failed", error_type=type(exc).__name__)
                     raise
         record.update({"status": "completed", "finished_at": _now()})
+        telemetry.finish(observation, observed_at, status="completed")
         return workflow_store.put(run_id, record)
     except (KeyError, ValueError) as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -408,6 +434,22 @@ def workflow_run(run_id: str) -> dict:
     record = workflow_store.get(run_id)
     if not record: raise HTTPException(404, "Workflow run not found")
     return record
+
+
+@router.get("/observability/summary", dependencies=[Depends(graph_read_identity)])
+def observability_summary(limit: int = 500) -> dict:
+    return {"status": "ok", **telemetry.summary(limit)}
+
+
+@router.get("/observability/runs", dependencies=[Depends(graph_read_identity)])
+def observability_runs(limit: int = 100) -> dict:
+    bounded = max(1, min(int(limit), 500))
+    return {"status": "ok", "runs": telemetry.recent(bounded), "limit": bounded}
+
+
+@router.get("/metrics", include_in_schema=False)
+def prometheus_metrics() -> Response:
+    return Response(telemetry.prometheus(), media_type="text/plain; version=0.0.4; charset=utf-8")
 
 
 @router.get("/catalog/validate", dependencies=[Depends(graph_read_identity)])

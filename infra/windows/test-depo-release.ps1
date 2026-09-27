@@ -22,7 +22,9 @@ if ($Production) {
   if ($values['OSLC_BASE_URL'] -notmatch '^https://') { throw 'Production OSLC_BASE_URL must be an HTTPS customer URL.' }
 }
 if ($Bootstrap) {
-  $required += @('AUTH_MODE', 'NEO4J_URI', 'NEO4J_USER', 'NEO4J_PASS', 'NEO4J_DATABASE')
+  $required += @('AUTH_MODE', 'NEO4J_URI', 'NEO4J_DATABASE')
+  $neo4jAuthMode = if ($values['NEO4J_AUTH_MODE']) { $values['NEO4J_AUTH_MODE'] } else { 'token' }
+  if ($neo4jAuthMode -ne 'none') { $required += @('NEO4J_USER', 'NEO4J_PASS') }
   if ($values['AUTH_MODE'] -notin @('token', 'entra', 'disabled')) { throw 'Bootstrap requires AUTH_MODE=token, AUTH_MODE=entra or a loopback-only disabled-auth demo.' }
   if ($values['AUTH_MODE'] -eq 'disabled') {
     if (-not $LocalInsecureDemo) { throw 'AUTH_MODE=disabled requires -LocalInsecureDemo.' }

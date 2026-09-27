@@ -67,7 +67,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
   const fixedSelection = !!job;
   const canPublish = preview && selected.length > 0 && confirmed && !busy && !['published', 'stale'].includes(job?.status);
   const buttonStyle = { padding: '8px 12px', marginRight: 8, marginTop: 8 };
-  return <section aria-label="Governed Semantic Bridge jobs" style={{ background: '#fff', padding: 16, border: '1px solid #ccd5df', borderRadius: 8, marginTop: 16 }}>
+  return <section aria-label="Governed Semantic Bridge jobs" style={{ background: 'var(--ui-surface, #fff)', color: 'var(--ui-text, #1f2933)', padding: 16, border: '1px solid var(--ui-border, #ccd5df)', borderRadius: 8, marginTop: 16 }}>
     <h3>Preview → review → publish</h3>
     <p>Create a saved preview, select valid mappings, then approve publication. Nothing is selected automatically.</p>
     <details><summary>Bootstrap authentication (use gateway identity in production)</summary>
@@ -76,11 +76,11 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
       <label>Approver <input aria-label="Approver" value={actor} onChange={e => setActor(e.target.value)} /></label>{' '}
       <label>Approval token <input aria-label="Approval token" type="password" autoComplete="off" value={approvalToken} onChange={e => setApprovalToken(e.target.value)} /></label>
     </details>
-    <button style={buttonStyle} disabled={busy || !ontologyId || !importTaskId} onClick={() => invoke(async current => {
+    <button type="button" style={buttonStyle} disabled={busy || !ontologyId || !importTaskId} onClick={() => invoke(async current => {
       const result = await api.preview(ontologyId, importTaskId, readToken);
       if (current()) adoptPreview(result.data);
     })}>Create preview</button>
-    <button style={buttonStyle} disabled={busy || !ontologyId || !importTaskId || !agenticAPI.isConfigured()} onClick={() => invoke(async current => {
+    <button type="button" style={buttonStyle} disabled={busy || !ontologyId || !importTaskId || !agenticAPI.isConfigured()} onClick={() => invoke(async current => {
       const result = await agenticAPI.orchestrateOntology({ workflow_id: 'ontology_review', ontology_id: ontologyId, import_task_id: importTaskId }, authOptions(readToken));
       if (current()) setAgentReport(result.data);
     })}>Run ontology agent review</button>
@@ -90,7 +90,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
       {agentReport.steps?.[1]?.result?.issues?.length ? ` ${agentReport.steps[1].result.issues.length} structural issue(s) require review.` : ' No structural issues reported.'}
     </div>}
     <label>Saved preview ID <input aria-label="Saved preview ID" value={resumeId} onChange={e => setResumeId(e.target.value)} /></label>
-    <button style={buttonStyle} disabled={busy || !resumeId || !ontologyId || !importTaskId} onClick={() => invoke(async current => {
+    <button type="button" style={buttonStyle} disabled={busy || !resumeId.trim() || !ontologyId || !importTaskId} onClick={() => invoke(async current => {
       const result = await api.status(resumeId.trim(), readToken);
       if (!current()) return;
       adoptPreview(result.data);
@@ -124,7 +124,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
       </table></div>
       {!preview.candidates.length && <p>No candidates found. Check the imported data and ontology before creating another preview.</p>}
       <label><input type="checkbox" aria-label="Confirm reviewed mappings" checked={confirmed} disabled={busy || !selected.length || job?.status === 'published'} onChange={e => setConfirmed(e.target.checked)} /> I reviewed these {selected.length} mappings and approve their publication.</label><br />
-      <button style={buttonStyle} disabled={!canPublish} onClick={() => invoke(async current => {
+      <button type="button" style={buttonStyle} disabled={!canPublish} onClick={() => invoke(async current => {
         // Freeze the selection immediately; response loss must not allow editing.
         setJob({ job_id: preview.publication_job_id, status: 'publishing', approved_ids: selected });
         try {
@@ -132,8 +132,8 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
           if (current()) { setJob(result.data); setConfirmed(false); }
         } finally { if (current()) setApprovalToken(''); }
       })}>{busy ? 'Working…' : job ? 'Retry same publication' : 'Publish approved mappings'}</button>
-      <button style={buttonStyle} disabled={busy} onClick={() => invoke(refresh)}>Refresh publication status</button>
-      <button style={buttonStyle} disabled={busy} onClick={() => invoke(async current => {
+      <button type="button" style={buttonStyle} disabled={busy || !preview.publication_job_id} onClick={() => invoke(refresh)}>Refresh publication status</button>
+      <button type="button" style={buttonStyle} disabled={busy} onClick={() => invoke(async current => {
         const result = await api.artifact(job?.status === 'published' ? job.job_id : preview.job_id, readToken);
         if (!current()) return;
         const url = URL.createObjectURL(result.data); const link = document.createElement('a');

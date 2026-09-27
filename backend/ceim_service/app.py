@@ -5,7 +5,7 @@ from backend.depo_platform.service_runtime import create_service_app
 from .router import router
 
 
-app = create_service_app(title="DEPO CEIM Service", version="0.1.0")
+app = create_service_app(title="DEPO CEIM Service", version="0.1.0", dependencies=())
 app.include_router(create_odata_catalog_router(
     service_name="DEPOCEIM",
     capabilities=[

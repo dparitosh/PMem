@@ -5,7 +5,7 @@ from backend.routes.oslc_routes import router as server_router
 from .router import router as client_router
 from .lifecycle import router as lifecycle_router
 
-app = create_service_app(title="DEPO OSLC Service", version="1.0.0")
+app = create_service_app(title="DEPO OSLC Service", version="1.0.0", dependencies=())
 app.include_router(create_odata_catalog_router(
     service_name="DEPOOSLC",
     capabilities=[

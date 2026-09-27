@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import os
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 
 from .profiles import profiles
@@ -19,8 +19,17 @@ from .tabular import MAX_IMPORT_ROWS, MAX_UPLOAD_BYTES, constraint_query, index_
 import json
 import httpx
 from defusedxml import ElementTree as ET
+from backend.depo_platform.authorization import service_write_identity
 
-router = APIRouter(tags=["ingestion"])
+
+def _ingestion_identity(request: Request) -> str:
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return "public-read"
+    token_env = "DATA_JOB_EXECUTION_TOKEN" if request.url.path.endswith(("/governed-import", "/sysml-v2/import-commit")) else "INGESTION_WRITE_TOKEN"
+    return service_write_identity(request, token_env=token_env, default_actor="ingestion-service")
+
+
+router = APIRouter(tags=["ingestion"], dependencies=[Depends(_ingestion_identity)])
 
 
 @router.post("/sysml-v2/import-commit", summary="Import the configured SysML v2 commit into an approved data job")

@@ -13,6 +13,12 @@ from backend.ontology_service import vocabulary_service
 @pytest.fixture(autouse=True)
 def steward_identity(monkeypatch):
     monkeypatch.setattr("backend.ontology_service.router.approval_identity", lambda request, payload, token_env: str(payload.get("approved_by") or "test-steward"))
+    monkeypatch.setenv("AUTH_MODE", "token")
+    monkeypatch.setenv("ONTOLOGY_APPROVAL_TOKEN", "test-ontology-token")
+
+
+def _client() -> TestClient:
+    return TestClient(app, headers={"Authorization": "Bearer test-ontology-token"})
 
 
 def _payload() -> dict:
@@ -30,11 +36,9 @@ def _payload() -> dict:
 
 
 def test_vocabulary_requires_validation_and_steward_lifecycle(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("AUTH_MODE", "disabled")
-    monkeypatch.setenv("DEPO_ALLOW_INSECURE_LOCAL_AUTH", "true")
     vocabulary_service.vocabularies.store = InMemoryRegistry()
     vocabulary_service.vocabularies.artifacts = ArtifactStore(tmp_path / "artifacts")
-    client = TestClient(app)
+    client = _client()
 
     created = client.post("/api/v1/ontologies/vocabularies", json=_payload())
     assert created.status_code == 201
@@ -50,22 +54,18 @@ def test_vocabulary_requires_validation_and_steward_lifecycle(tmp_path: Path, mo
 
 
 def test_vocabulary_rejects_duplicate_labels(monkeypatch):
-    monkeypatch.setenv("AUTH_MODE", "disabled")
-    monkeypatch.setenv("DEPO_ALLOW_INSECURE_LOCAL_AUTH", "true")
     vocabulary_service.vocabularies.store = InMemoryRegistry()
     payload = _payload()
     payload["concepts"][1]["alt_labels"] = ["Product"]
-    response = TestClient(app).post("/api/v1/ontologies/vocabularies", json=payload)
+    response = _client().post("/api/v1/ontologies/vocabularies", json=payload)
     assert response.status_code == 422
     assert "duplicate_label" in response.json()["detail"]
 
 
 def test_only_approved_vocabulary_publishes_through_graph_boundary(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("AUTH_MODE", "disabled")
-    monkeypatch.setenv("DEPO_ALLOW_INSECURE_LOCAL_AUTH", "true")
     vocabulary_service.vocabularies.store = InMemoryRegistry()
     vocabulary_service.vocabularies.artifacts = ArtifactStore(tmp_path / "artifacts")
-    client = TestClient(app)
+    client = _client()
     client.post("/api/v1/ontologies/vocabularies", json=_payload())
     blocked = client.post("/api/v1/ontologies/vocabularies/engineering-terms/1.0.0/publish", json={"approved_by": "approver"})
     assert blocked.status_code == 409

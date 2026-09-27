@@ -308,16 +308,80 @@ $tar = Get-Command tar.exe -ErrorAction Stop
 if (Test-Path $sparkHome) { throw "Spark folder already exists: $sparkHome. Verify it, or remove it before extracting again." }
 & $tar.Source -xzf $sparkArchive -C C:\DEPO\runtime
 if (-not (Test-Path "$sparkHome\bin\spark-submit.cmd")) { throw "Spark extraction did not create $sparkHome" }
+```
 
-# Obtain winutils.exe from the customer-approved Hadoop helper package and copy it here.
-# Do not download an unverified winutils.exe from an arbitrary public repository.
-Copy-Item 'C:\Path\From\Approved\Hadoop\Helper\winutils.exe' 'C:\DEPO\runtime\hadoop\bin\winutils.exe'
+##### Step D1 — obtain an approved Windows Hadoop helper
 
+Microsoft does **not** publish a current supported `winutils.exe` package.
+Microsoft's archived 2015 Spark-on-Windows article points to an obsolete
+third-party Hortonworks HTTP download; do not use that URL for a customer
+installation. Apache Hadoop contains the Windows helper source and looks for
+`%HADOOP_HOME%\bin\winutils.exe`, but Apache Hadoop and Apache Spark do not
+publish an official Windows `winutils.exe` binary with the Spark archive.
+
+The customer's security or platform team must provide these exact files through
+its approved software repository or build them from the matching Apache Hadoop
+source and publish them internally:
+
+| Required file | Purpose |
+| --- | --- |
+| `winutils.exe` | Hadoop local-filesystem permission and helper operations on native Windows |
+| `hadoop.dll` | Recommended native Hadoop library for Windows code paths that load it |
+
+The internal package owner must provide a SHA-256 value for each file. Copy the
+approved files to a staging folder such as `C:\DEPO\downloads\hadoop-helper`.
+Do not put either binary in this Git repository and do not copy `hadoop.dll` to
+`C:\Windows\System32`.
+
+Confirm the supplied filenames and calculate the hashes:
+
+```powershell
+$helperSource = 'C:\DEPO\downloads\hadoop-helper'
+Get-Item "$helperSource\winutils.exe", "$helperSource\hadoop.dll"
+Get-FileHash "$helperSource\winutils.exe" -Algorithm SHA256
+Get-FileHash "$helperSource\hadoop.dll" -Algorithm SHA256
+```
+
+Compare those values with the hashes published in the customer's software
+approval record. A locally calculated hash alone does not establish trust.
+
+##### Step D2 — install and validate the helper
+
+Run the repository installer from the repository root. Replace the two example
+hashes with the approved 64-character SHA-256 values:
+
+```powershell
+$helperSource = 'C:\DEPO\downloads\hadoop-helper'
+$winutilsSha256 = '<approved-64-character-winutils-sha256>'
+$hadoopDllSha256 = '<approved-64-character-hadoop-dll-sha256>'
+
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\infra\windows\install-depo-winutils.ps1 `
+  -WinutilsPath "$helperSource\winutils.exe" `
+  -WinutilsSha256 $winutilsSha256 `
+  -HadoopDllPath "$helperSource\hadoop.dll" `
+  -HadoopDllSha256 $hadoopDllSha256 `
+  -Destination 'C:\DEPO\runtime\hadoop'
+```
+
+The script refuses a hash mismatch and refuses to overwrite an existing helper.
+Use `-Force` only for an approved replacement. It installs the files under
+`C:\DEPO\runtime\hadoop\bin`, removes the downloaded-file block after hash
+approval, runs `winutils.exe ls`, and prints the installed hashes.
+
+Verify the complete runtime layout:
+
+```powershell
+$hadoopHome = 'C:\DEPO\runtime\hadoop'
 Get-Item "$sparkHome\bin\spark-submit.cmd",
   "$sparkHome\python\lib\pyspark.zip",
   "$sparkHome\jars\spark-core_2.13-4.1.2.jar",
-  'C:\DEPO\runtime\hadoop\bin\winutils.exe',
+  "$hadoopHome\bin\winutils.exe",
+  "$hadoopHome\bin\hadoop.dll",
   "$jdkHome\bin\java.exe"
+
+& "$hadoopHome\bin\winutils.exe" ls $hadoopHome
+if ($LASTEXITCODE -ne 0) { throw 'winutils.exe validation failed.' }
 ```
 
 Do not run `pip install pyspark`; the backend uses the PySpark and Py4J archives
@@ -368,6 +432,34 @@ if (-not (Test-Path .env.local)) {
 
 Open the new root `.env.local` and edit these values in order:
 
+For customer-isolated agent memory, add a unique scope and retention period.
+Use the actual customer and program identifiers; do not copy the example value
+unchanged. Leave `AGENT_MEMORY_ENABLED=false` when Neo4j conversation memory is
+not approved. PostgreSQL conversation history remains available to the agent.
+
+```env
+DEPO_TENANT_ID=customer-acme
+DEPO_PROJECT_ID=program-alpha
+AGENT_MEMORY_ENABLED=true
+AGENT_MEMORY_SCOPE=customer-acme:program-alpha
+AGENT_MEMORY_QUERY_TIMEOUT=5
+AGENT_MEMORY_RETENTION_DAYS=30
+AGENT_PROMPT_VERSION=1
+AGENT_FAILURE_RATE_ALERT_THRESHOLD=0.2
+AGENT_STUCK_RUN_SECONDS=900
+```
+
+After starting the Agentic service, verify its monitoring loop. The summary and
+run endpoints use graph-read authentication. The Prometheus endpoint exposes
+aggregate operational values and contains no prompt or tool-input content.
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8012/healthz
+Invoke-RestMethod http://127.0.0.1:8012/api/v1/observability/summary `
+  -Headers @{ Authorization = "Bearer $env:GRAPH_READ_TOKEN" }
+Invoke-WebRequest http://127.0.0.1:8012/api/v1/metrics | Select-Object -ExpandProperty Content
+```
+
 1. Set `DEPO_DATABASE_URL` to the PostgreSQL connection URL and
    `DEPO_DATABASE_SCHEMA=semantic` (or the customer-approved schema). For the
    local Windows service installed in section 1.1, also set
@@ -382,12 +474,17 @@ Open the new root `.env.local` and edit these values in order:
    `neo4j://host:7687`; omit the user and password. This mode is rejected for
    production preflight and is intended only for a deliberately unsecured
    non-TLS environment.
-   names in this file so every service and script has one consistent setting.
 3. Set `ALLOWED_ORIGINS=https://<customer-frontend-host>` and
    `OSLC_BASE_URL=https://<customer-api-host>`.
 4. Keep `AUTH_MODE=token`. This delivery uses API keys; it does not require
    Entra or GitHub Actions. Do not replace the generated token values unless
    the customer secret-management process supplies approved replacements.
+   Confirm the generated root file contains distinct non-placeholder values
+   for `GRAPH_READ_TOKEN`, `GRAPH_PUBLICATION_TOKEN`,
+   `ONTOLOGY_APPROVAL_TOKEN`, `DATA_PRODUCT_APPROVAL_TOKEN`,
+   `DATA_JOB_EXECUTION_TOKEN`, `INGESTION_WRITE_TOKEN`, and
+   `AGENTIC_APPROVAL_TOKEN`. The API gateway supplies the appropriate token to
+   backend requests; never put these server secrets in `frontend/.env.local`.
 5. Leave all `DEPO_SPARK_*` values out until step 2.3 unless Spark is part of
    this installation.
 

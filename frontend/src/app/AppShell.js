@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   IxApplication,
   IxApplicationHeader,
@@ -13,6 +13,16 @@ import {
 import { navigationItems, pageLabel } from './navigation';
 import './AppShell.css';
 
+const THEME_STORAGE_KEY = 'depo.colorSchema';
+
+function initialColorSchema() {
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === 'dark' || stored === 'light') return stored;
+  } catch (_error) { /* restricted browser storage */ }
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
 // Matches the official Siemens IX React starter frame while keeping DEPO
 // feature pages and their API integrations independent from the shell.
 export default function AppShell({
@@ -25,6 +35,26 @@ export default function AppShell({
   rightDrawer,
   children,
 }) {
+  const [colorSchema, setColorSchema] = useState(initialColorSchema);
+  useEffect(() => {
+    document.documentElement.dataset.ixTheme = 'classic';
+    document.documentElement.dataset.ixColorSchema = colorSchema;
+    document.documentElement.style.colorScheme = colorSchema;
+    try { window.localStorage.setItem(THEME_STORAGE_KEY, colorSchema); } catch (_error) { /* optional preference */ }
+  }, [colorSchema]);
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      const next = document.documentElement.dataset.ixColorSchema;
+      if (next === 'dark' || next === 'light') setColorSchema(next);
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-ix-color-schema'] });
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    const target = document.getElementById(showChat ? 'depo-chat-drawer' : 'depo-chat-toggle');
+    target?.focus?.();
+  }, [showChat]);
+
   const statusVariant = serviceStatus === 'online'
     ? 'success'
     : serviceStatus === 'degraded'
@@ -43,11 +73,12 @@ export default function AppShell({
   return (
     <>
       <a href="#main-content" className="skip-link">Skip to main content</a>
-      <IxApplication>
+      <IxApplication theme="classic" colorSchema={colorSchema}>
         <IxApplicationHeader name="DEPO | Digital Thread">
           <div className="depo-app-mark" aria-label="DEPO">D</div>
           <IxBadge type="label" variant={statusVariant} label={statusLabel} role="status" aria-live="polite" />
           <IxButton
+            id="depo-chat-toggle"
             type="button"
             variant="tertiary"
             icon="info"
@@ -58,13 +89,22 @@ export default function AppShell({
           >
             Chat
           </IxButton>
+          <IxButton
+            type="button"
+            variant="tertiary"
+            onClick={() => setColorSchema((current) => current === 'dark' ? 'light' : 'dark')}
+            aria-label={`Use ${colorSchema === 'dark' ? 'light' : 'dark'} theme`}
+            aria-pressed={colorSchema === 'dark'}
+          >
+            {colorSchema === 'dark' ? 'Light' : 'Dark'}
+          </IxButton>
           <IxAvatar initials="DT" aria-label="Digital Thread workspace" />
         </IxApplicationHeader>
 
         {/* Keep the desktop menu breakpoint explicit. IX recalculates overflow
             while custom elements hydrate; an implicit breakpoint can trigger
             its scroll handler before the menu items container exists. */}
-        <IxMenu aria-label="Application navigation" breakpoint="lg">
+        <IxMenu aria-label="Application navigation" breakpoint="lg" enableToggleTheme i18nToggleTheme="Toggle light and dark theme">
           {navigationItems.map((item) => (
             <IxMenuItem
               key={item.id}
@@ -92,8 +132,12 @@ export default function AppShell({
             <div className="depo-ix-page__body">{children}</div>
           </div>
           {rightDrawer && (
-            <aside id="depo-chat-drawer" className="depo-ix-drawer" aria-label="Chat assistant" hidden={!showChat}>
-              {rightDrawer}
+            <aside id="depo-chat-drawer" className="depo-ix-drawer" aria-label="Knowledge Companion" hidden={!showChat} tabIndex={-1}>
+              <div className="depo-ix-drawer__header">
+                <strong>Knowledge Companion</strong>
+                <button type="button" className="depo-ix-drawer__close" onClick={onToggleChat} aria-label="Close Knowledge Companion">×</button>
+              </div>
+              <div className="depo-ix-drawer__body">{rightDrawer}</div>
             </aside>
           )}
         </IxContent>

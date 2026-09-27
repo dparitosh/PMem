@@ -3,11 +3,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from backend.Services import agentic_modeling_service, modeling_service
+from backend.depo_platform.authorization import service_write_identity
 
-router = APIRouter(prefix="/modeling", tags=["modeling"])
+
+def _modeling_identity(request: Request) -> str:
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return "public-read"
+    return service_write_identity(request, token_env="ONTOLOGY_APPROVAL_TOKEN", default_actor="ontology-modeler")
+
+
+router = APIRouter(prefix="/modeling", tags=["modeling"], dependencies=[Depends(_modeling_identity)])
 
 
 def _call(operation, *args, **kwargs):

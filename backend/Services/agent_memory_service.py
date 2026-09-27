@@ -49,6 +49,20 @@ class AgentMemoryService:
         return _truthy(os.getenv("AGENT_MEMORY_ENABLED", "false"))
 
     @classmethod
+    def scope(cls) -> str:
+        """Return the mandatory isolation boundary used by every memory query."""
+        configured = str(os.getenv("AGENT_MEMORY_SCOPE", "") or "").strip()
+        if configured:
+            return configured[:256]
+        tenant = str(os.getenv("DEPO_TENANT_ID", "default") or "default").strip()
+        project = str(os.getenv("DEPO_PROJECT_ID", "project") or "project").strip()
+        return f"{tenant}:{project}"[:256]
+
+    @classmethod
+    def _memory_key(cls, session_id: str) -> str:
+        return _stable_id(cls.scope(), session_id)
+
+    @classmethod
     def sdk_available(cls) -> bool:
         try:
             import neo4j_agent_memory  # noqa: F401
@@ -63,14 +77,14 @@ class AgentMemoryService:
             "enabled": cls.enabled(),
             "mode": "local_neo4j_adapter",
             "sdk_available": cls.sdk_available(),
-            "scope": os.getenv("AGENT_MEMORY_SCOPE", "project"),
+            "scope": cls.scope(),
             "database": os.getenv("AGENT_MEMORY_NEO4J_DATABASE") or os.getenv("NEO4J_DATABASE", "neo4j"),
             "memory_layers": ["short_term", "long_term", "reasoning"],
             "best_effort": True,
         }
 
     @classmethod
-    def _query(cls, cypher: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    def _query(cls, cypher: str, params: Optional[Dict[str, Any]] = None) -> Optional[List[Dict[str, Any]]]:
         if not cls.enabled():
             return []
         try:
@@ -97,7 +111,7 @@ class AgentMemoryService:
             return query_with_timeout(cypher, params or {}, timeout=timeout) or []
         except Exception as exc:
             logger.warning("Agent memory write skipped: %s", exc)
-            return []
+            return None
 
     @classmethod
     def ensure_schema(cls) -> Dict[str, Any]:
@@ -108,7 +122,8 @@ class AgentMemoryService:
             return {"enabled": True, "ensured": True, "cached": True}
 
         statements = [
-            "CREATE CONSTRAINT agent_memory_session_id IF NOT EXISTS FOR (s:AgentMemorySession) REQUIRE s.session_id IS UNIQUE",
+            "DROP CONSTRAINT agent_memory_session_id IF EXISTS",
+            "CREATE CONSTRAINT agent_memory_session_key IF NOT EXISTS FOR (s:AgentMemorySession) REQUIRE s.memory_key IS UNIQUE",
             "CREATE CONSTRAINT agent_memory_message_id IF NOT EXISTS FOR (m:AgentMemoryMessage) REQUIRE m.message_id IS UNIQUE",
             "CREATE CONSTRAINT agent_memory_trace_id IF NOT EXISTS FOR (t:AgentMemoryTrace) REQUIRE t.trace_id IS UNIQUE",
             "CREATE CONSTRAINT agent_memory_fact_id IF NOT EXISTS FOR (f:AgentMemoryFact) REQUIRE f.fact_id IS UNIQUE",
@@ -116,7 +131,8 @@ class AgentMemoryService:
             "CREATE INDEX agent_memory_fact_kind IF NOT EXISTS FOR (f:AgentMemoryFact) ON (f.kind)",
         ]
         for statement in statements:
-            cls._query(statement)
+            if cls._query(statement) is None:
+                return {"enabled": True, "ensured": False, "error": "Neo4j memory schema initialization failed"}
         cls._schema_attempted = True
         return {"enabled": True, "ensured": True, "statement_count": len(statements)}
 
@@ -140,9 +156,10 @@ class AgentMemoryService:
         touched_nodes = cls._extract_touched_nodes(graph_context)
         cls._query(
             """
-            MERGE (s:AgentMemorySession {session_id: $session_id})
+            MERGE (s:AgentMemorySession {memory_key: $memory_key})
             ON CREATE SET s.created_at = $now
             SET s.updated_at = $now,
+                s.session_id = $session_id,
                 s.scope = $scope
             MERGE (u:AgentMemoryMessage {message_id: $user_id})
             SET u.role = 'user',
@@ -168,12 +185,13 @@ class AgentMemoryService:
             """,
             {
                 "session_id": session_id,
+                "memory_key": cls._memory_key(session_id),
                 "user_id": user_id,
                 "assistant_id": assistant_id,
                 "user_message": str(user_message or "")[:4000],
                 "assistant_response": str(assistant_response or "")[:12000],
                 "status": status,
-                "scope": os.getenv("AGENT_MEMORY_SCOPE", "project"),
+                "scope": cls.scope(),
                 "touched_nodes": touched_nodes[:100],
                 "now": _now_iso(),
             },
@@ -197,9 +215,9 @@ class AgentMemoryService:
         trace_id = _stable_id(session_id, task, tool_name, _safe_json(input_payload), _now_iso())
         cls._query(
             """
-            MERGE (s:AgentMemorySession {session_id: $session_id})
+            MERGE (s:AgentMemorySession {memory_key: $memory_key})
             ON CREATE SET s.created_at = $now
-            SET s.updated_at = $now
+            SET s.updated_at = $now, s.session_id = $session_id, s.scope = $scope
             MERGE (t:AgentMemoryTrace {trace_id: $trace_id})
             SET t.task = $task,
                 t.tool_name = $tool_name,
@@ -212,6 +230,8 @@ class AgentMemoryService:
             """,
             {
                 "session_id": session_id,
+                "memory_key": cls._memory_key(session_id),
+                "scope": cls.scope(),
                 "trace_id": trace_id,
                 "task": str(task or "")[:500],
                 "tool_name": str(tool_name or "")[:120],
@@ -246,6 +266,7 @@ class AgentMemoryService:
             UNWIND $rows AS row
             MERGE (f:AgentMemoryFact {fact_id: row.fact_id})
             SET f.kind = 'semantic_bridge_mapping',
+                f.scope = row.scope,
                 f.source = row.source,
                 f.source_type = row.source_type,
                 f.target = row.target,
@@ -269,14 +290,18 @@ class AgentMemoryService:
             return {"enabled": False, "messages": [], "facts": []}
         rows = cls._query(
             """
-            MATCH (:AgentMemorySession {session_id: $session_id})-[:HAS_MESSAGE]->(m:AgentMemoryMessage)
+            MATCH (:AgentMemorySession {memory_key: $memory_key, scope: $scope})-[:HAS_MESSAGE]->(m:AgentMemoryMessage)
             RETURN m.role AS role, m.text AS text, m.created_at AS created_at
             ORDER BY m.created_at DESC
             LIMIT toInteger($limit)
             """,
-            {"session_id": session_id, "limit": max(1, min(int(limit or 6), 20))},
+            {
+                "memory_key": cls._memory_key(session_id),
+                "scope": cls.scope(),
+                "limit": max(1, min(int(limit or 6), 20)),
+            },
         )
-        return {"enabled": True, "messages": rows, "facts": []}
+        return {"enabled": True, "messages": rows or [], "facts": []}
 
     @classmethod
     def semantic_bridge_facts(cls, ontology_id: str = "", limit: int = 1000) -> List[Dict[str, Any]]:
@@ -286,7 +311,7 @@ class AgentMemoryService:
         rows = cls._query(
             """
             MATCH (f:AgentMemoryFact {kind: 'semantic_bridge_mapping'})
-            WHERE $ontology_id = '' OR f.ontology_id = $ontology_id
+            WHERE f.scope = $scope AND ($ontology_id = '' OR f.ontology_id = $ontology_id)
             RETURN f.source AS source,
                    f.source_type AS source_type,
                    f.target AS target,
@@ -300,17 +325,56 @@ class AgentMemoryService:
             """,
             {
                 "ontology_id": str(ontology_id or "").strip(),
+                "scope": cls.scope(),
                 "limit": max(1, min(int(limit or 1000), 5000)),
             },
         )
         return rows or []
 
     @classmethod
+    def delete_session(cls, session_id: str) -> bool:
+        """Delete one conversation and its traces inside the active scope."""
+        if not cls.enabled():
+            return False
+        result = cls._query(
+            """
+            MATCH (s:AgentMemorySession {memory_key: $memory_key, scope: $scope})
+            OPTIONAL MATCH (s)-[:HAS_MESSAGE|HAS_REASONING_TRACE]->(item)
+            DETACH DELETE item, s
+            RETURN count(*) AS deleted
+            """,
+            {"memory_key": cls._memory_key(session_id), "scope": cls.scope()},
+        )
+        return result is not None
+
+    @classmethod
+    def prune_expired_sessions(cls, retention_days: Optional[int] = None) -> int:
+        """Remove scoped conversation memory older than the configured retention."""
+        if not cls.enabled():
+            return 0
+        configured = retention_days if retention_days is not None else os.getenv("AGENT_MEMORY_RETENTION_DAYS", "30")
+        days = max(1, min(int(configured), 3650))
+        rows = cls._query(
+            """
+            MATCH (s:AgentMemorySession {scope: $scope})
+            WHERE datetime(s.updated_at) < datetime() - duration({days: $days})
+            OPTIONAL MATCH (s)-[:HAS_MESSAGE|HAS_REASONING_TRACE]->(item)
+            WITH s, collect(item) AS items
+            FOREACH (item IN items | DETACH DELETE item)
+            DETACH DELETE s
+            RETURN count(*) AS deleted
+            """,
+            {"scope": cls.scope(), "days": days},
+        )
+        return int((rows or [{}])[0].get("deleted", 0)) if rows else 0
+
+    @classmethod
     def _mapping_fact_row(cls, ontology_id: str, import_task_id: str, mapping: Dict[str, Any], task_id: str) -> Dict[str, Any]:
         source = str(mapping.get("source_term") or mapping.get("source_label") or mapping.get("import_row_key") or "").strip()
         target = str(mapping.get("ontology_term") or mapping.get("target_term") or mapping.get("target_ontology_iri") or "").strip()
         return {
-            "fact_id": _stable_id("semantic_bridge", ontology_id, import_task_id, source, target, mapping.get("target_ontology_type")),
+            "fact_id": _stable_id("semantic_bridge", cls.scope(), ontology_id, import_task_id, source, target, mapping.get("target_ontology_type")),
+            "scope": cls.scope(),
             "source": source[:500],
             "source_type": str(mapping.get("source_type") or "")[:80],
             "target": target[:500],

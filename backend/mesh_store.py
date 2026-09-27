@@ -41,6 +41,16 @@ class PostgresRegistry:
             row = cursor.fetchone()
             return row[0] if row else None
 
+    def recent(self, limit: int = 100) -> list[dict[str, Any]]:
+        """Return bounded newest values without loading the registry namespace."""
+        bounded = max(1, min(int(limit), 1000))
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT value FROM depo_registry WHERE namespace = %s ORDER BY updated_at DESC LIMIT %s",
+                (self.namespace, bounded),
+            )
+            return [row[0] for row in cursor.fetchall()]
+
     def page_keys(self, offset: int, limit: int) -> tuple[int, list[str]]:
         """Page identifiers without loading every manifest into process memory."""
         if offset < 0 or not 1 <= limit <= 200:
@@ -78,6 +88,7 @@ class InMemoryRegistry:
     def __init__(self, namespace: str = "test") -> None: self.values: dict[str, dict[str, Any]] = {}
     def all(self) -> dict[str, Any]: return dict(self.values)
     def get(self, key: str) -> dict[str, Any] | None: return self.values.get(key)
+    def recent(self, limit: int = 100) -> list[dict[str, Any]]: return list(reversed(list(self.values.values())))[:limit]
     def put(self, key: str, value: dict[str, Any]) -> dict[str, Any]: self.values[key] = value; return value
     def put_many(self, values: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]: self.values.update(values); return values
     @contextmanager

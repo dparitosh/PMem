@@ -46,12 +46,21 @@ try {
   # ``print("Agentic...")`` into invalid Python. Standard input preserves the
   # smoke-check source exactly on Windows PowerShell and PowerShell 7.
   @'
-from backend.agentic_service.app import app
+import importlib
+import json
+from pathlib import Path
 
-assert app.openapi()["paths"]
-print("Agentic service import and OpenAPI smoke check passed.")
+manifest = json.loads(Path("infra/deployment/services.json").read_text(encoding="utf-8"))
+for item in manifest["services"]:
+    module_name, attribute = item["module"].split(":", 1)
+    app = getattr(importlib.import_module(module_name), attribute)
+    assert app.openapi()["paths"], f"{item['id']} generated an empty OpenAPI contract"
+    print(f"PASS: {item['id']} import and OpenAPI")
+for item in manifest.get("workers", []):
+    importlib.import_module(item["module"])
+    print(f"PASS: {item['id']} worker import")
 '@ | & $venvPython -
-  if ($LASTEXITCODE -ne 0) { throw 'Agentic service installation smoke check failed.' }
+  if ($LASTEXITCODE -ne 0) { throw 'Service installation import/OpenAPI smoke check failed.' }
 } finally { Pop-Location }
 if (-not $SkipFrontend) {
   $frontend = Join-Path $root "frontend"

@@ -6,15 +6,23 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from .agent_registry import registry
 from .models import QifActionResponse, QifAgentsResponse, QifCatalogResponse, QifHealthResponse, QifTaskListResponse, QifTaskPreviewResponse, QifTaskResponse
 from .task_service import task_service
 from .standards import detect_standard, get_standard, public_standards
+from backend.depo_platform.authorization import service_write_identity
 
-router = APIRouter(prefix="/qif", tags=["qif"])
+
+def _qif_identity(request: Request) -> str:
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return "public-read"
+    return service_write_identity(request, token_env="ONTOLOGY_APPROVAL_TOKEN", default_actor="qif-workflow")
+
+
+router = APIRouter(prefix="/qif", tags=["qif"], dependencies=[Depends(_qif_identity)])
 _ROOT = Path(__file__).resolve().parents[2]
 _REFERENCE_ROOT = _ROOT / "docs" / "xsd"
 _MAX_FILES = 40

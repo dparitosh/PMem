@@ -159,6 +159,20 @@ def test_neo4j_spark_connector_accepts_aura_style_credential_names(tmp_path, mon
     assert options["neo4j.authentication.basic.password"] == "aura-password"
 
 
+def test_neo4j_spark_connector_supports_explicit_no_auth_mode(tmp_path, monkeypatch):
+    (tmp_path / "RELEASE").write_text("Spark 4.1.2 built for Hadoop", encoding="utf-8")
+    monkeypatch.setenv("DEPO_SPARK_NEO4J_PACKAGE", "org.neo4j.connectors:spark:6.0.0-s_2.13")
+    monkeypatch.setenv("NEO4J_URI", "neo4j://localhost:7687")
+    monkeypatch.setenv("NEO4J_AUTH_MODE", "none")
+    monkeypatch.delenv("NEO4J_USER", raising=False)
+    monkeypatch.delenv("NEO4J_PASS", raising=False)
+
+    options = SparkJobRunner()._neo4j_connector_configuration(tmp_path)
+
+    assert options["neo4j.authentication.type"] == "none"
+    assert "neo4j.authentication.basic.username" not in options
+
+
 def test_versioned_data_job_definition_requires_approval_before_execution(monkeypatch):
     registry = InMemoryRegistry()
     monkeypatch.setattr("backend.data_pipeline_service.job_definitions.store", registry)

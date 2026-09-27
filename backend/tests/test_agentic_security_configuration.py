@@ -154,7 +154,8 @@ def valid_configuration(monkeypatch):
     for key in SERVICE_KEYS:
         monkeypatch.setenv(key, 'http://service/api/v1')
     for key in ('DEPO_DATABASE_URL', 'NEO4J_URI', 'NEO4J_USER', 'NEO4J_PASS', 'NEO4J_DATABASE',
-                'ONTOLOGY_APPROVAL_TOKEN', 'DATA_PRODUCT_APPROVAL_TOKEN', 'DATA_JOB_EXECUTION_TOKEN', 'GRAPH_PUBLICATION_TOKEN'):
+                'ONTOLOGY_APPROVAL_TOKEN', 'DATA_PRODUCT_APPROVAL_TOKEN', 'DATA_JOB_EXECUTION_TOKEN',
+                'GRAPH_PUBLICATION_TOKEN', 'INGESTION_WRITE_TOKEN'):
         monkeypatch.setenv(key, 'test-setting')
 
 
@@ -176,6 +177,14 @@ def test_valid_configuration_and_optional_integrations(monkeypatch):
     assert configuration_status()['configuration']['status'] == 'ready'
     monkeypatch.setenv('AGENTIC_TOOL_TIMEOUT_SECONDS', 'nan')
     assert 'AGENTIC_TOOL_TIMEOUT_SECONDS' in configuration_status()['configuration']['invalid_settings']
+
+
+def test_unsecured_local_neo4j_does_not_require_credentials(monkeypatch):
+    valid_configuration(monkeypatch)
+    monkeypatch.setenv('NEO4J_AUTH_MODE', 'none')
+    monkeypatch.delenv('NEO4J_USER', raising=False)
+    monkeypatch.delenv('NEO4J_PASS', raising=False)
+    assert configuration_status()['configuration']['status'] == 'ready'
 
 
 def test_disabled_optional_integrations_reject_before_work(client, monkeypatch):

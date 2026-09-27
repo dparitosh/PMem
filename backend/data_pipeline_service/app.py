@@ -20,7 +20,12 @@ async def lifespan():
     runner.shutdown()
 
 
-app = create_service_app(title="DEPO Data Pipeline Service", version="0.1.0", lifespan_hook=lambda: lifespan())
+app = create_service_app(
+    title="DEPO Data Pipeline Service",
+    version="0.1.0",
+    lifespan_hook=lambda: lifespan(),
+    dependencies=("postgres",),
+)
 app.include_router(create_odata_catalog_router(
     service_name="DEPODataPipeline",
     capabilities=[

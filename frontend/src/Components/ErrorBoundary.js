@@ -1,5 +1,7 @@
 import React from 'react';
 
+const isDevelopment = Boolean(import.meta.env?.DEV);
+
 /**
  * ErrorBoundary - Catches React component errors and displays fallback UI
  * Prevents white screen crashes
@@ -75,7 +77,7 @@ class ErrorBoundary extends React.Component {
               The application encountered an unexpected error. Please try refreshing the page or contact support if the problem persists.
             </p>
 
-            {process.env.NODE_ENV === 'development' && this.state.error && (
+            {isDevelopment && this.state.error && (
               <details
                 style={{
                   textAlign: 'left',
@@ -108,6 +110,7 @@ class ErrorBoundary extends React.Component {
 
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
               <button
+                type="button"
                 onClick={this.handleReset}
                 style={{
                   padding: '10px 24px',
@@ -123,7 +126,8 @@ class ErrorBoundary extends React.Component {
                 Try Again
               </button>
               <button
-                onClick={() => { window.location.href = '/'; }}
+                type="button"
+                onClick={() => { window.location.assign('#/home'); }}
                 style={{
                   padding: '10px 24px',
                   backgroundColor: '#6c757d',

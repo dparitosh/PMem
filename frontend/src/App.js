@@ -45,7 +45,7 @@ function getLocationPage() {
 function pushPageLocation(value) {
   if (typeof window === 'undefined' || !window.history?.pushState) return;
   const target = value === 'home' ? '#/home' : `#/${value}`;
-  if (window.location.hash !== target.slice(1)) {
+  if (window.location.hash !== target) {
     window.history.pushState({}, '', target);
   }
 }

@@ -65,10 +65,43 @@ function Message({ tone, children }) {
   );
 }
 
+export function ConfirmationDialog({ confirmation, onResolve }) {
+  const [typed, setTyped] = useState('');
+  const confirmRef = useRef(null);
+  useEffect(() => {
+    setTyped('');
+    if (!confirmation) return undefined;
+    confirmRef.current?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onResolve(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [confirmation, onResolve]);
+  if (!confirmation) return null;
+  const phraseAccepted = !confirmation.phrase || typed === confirmation.phrase;
+  return (
+    <div role="presentation" style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'grid', placeItems: 'center', padding: 16, background: 'rgba(15, 23, 42, .55)' }}>
+      <section role="alertdialog" aria-modal="true" aria-labelledby="admin-confirm-title" aria-describedby="admin-confirm-description" style={{ width: 'min(520px, 100%)', borderRadius: 8, background: 'var(--ui-surface)', color: 'var(--ui-text)', boxShadow: '0 18px 48px rgba(0,0,0,.25)', padding: 20 }}>
+        <h2 id="admin-confirm-title" style={{ margin: '0 0 8px', fontSize: 20 }}>{confirmation.title}</h2>
+        <p id="admin-confirm-description" style={{ color: colors.muted }}>{confirmation.description}</p>
+        {confirmation.phrase && <label style={{ display: 'grid', gap: 6, fontWeight: 700 }}>Type <code>{confirmation.phrase}</code> to continue
+          <input ref={confirmRef} value={typed} onChange={(event) => setTyped(event.target.value)} autoComplete="off" aria-label="Confirmation phrase" style={{ padding: 9, border: `1px solid ${colors.border}`, borderRadius: 5 }} />
+        </label>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 }}>
+          <button ref={confirmation.phrase ? undefined : confirmRef} type="button" style={buttonStyle} onClick={() => onResolve(false)}>Cancel</button>
+          <button type="button" disabled={!phraseAccepted} style={{ ...buttonStyle, borderColor: colors.danger, background: phraseAccepted ? colors.danger : '#eee', color: phraseAccepted ? '#fff' : colors.muted }} onClick={() => onResolve(true)}>{confirmation.confirmLabel || 'Confirm'}</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function AdminPanel({ onSchemaCleaned }) {
   const { fetchOntologies } = useOntologies();
   const [health, setHealth] = useState(null);
   const [stats, setStats] = useState(null);
+  const [agentOps, setAgentOps] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -79,7 +112,19 @@ export default function AdminPanel({ onSchemaCleaned }) {
   const [deleteValue, setDeleteValue] = useState('');
   const [deleteBatchSize, setDeleteBatchSize] = useState(10000);
   const [deletePreview, setDeletePreview] = useState(null);
+  const [confirmation, setConfirmation] = useState(null);
   const adminLoadControllerRef = useRef(null);
+  const confirmationResolverRef = useRef(null);
+  const resolveConfirmation = useCallback((accepted) => {
+    confirmationResolverRef.current?.(accepted);
+    confirmationResolverRef.current = null;
+    setConfirmation(null);
+  }, []);
+  const requestConfirmation = useCallback((options) => new Promise((resolve) => {
+    confirmationResolverRef.current?.(false);
+    confirmationResolverRef.current = resolve;
+    setConfirmation(options);
+  }), []);
 
   const loadAdminState = useCallback(async () => {
     adminLoadControllerRef.current?.abort();
@@ -88,9 +133,12 @@ export default function AdminPanel({ onSchemaCleaned }) {
     setLoading(true);
     setError('');
     try {
-      const [healthRes, statsRes] = await Promise.allSettled([
+      const [healthRes, statsRes, agentOpsRes] = await Promise.allSettled([
         API_METHODS.admin.health({ signal: controller.signal }),
         API_METHODS.admin.schemaStats({ signal: controller.signal }),
+        API_METHODS.agentic.isConfigured()
+          ? API_METHODS.agentic.observabilitySummary({ signal: controller.signal })
+          : Promise.resolve({ data: null }),
       ]);
       if (controller.signal.aborted) return;
       if (healthRes.status === 'fulfilled') {
@@ -111,6 +159,11 @@ export default function AdminPanel({ onSchemaCleaned }) {
           'Unable to load Neo4j schema stats.';
         setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
       }
+      if (agentOpsRes.status === 'fulfilled') {
+        setAgentOps(agentOpsRes.value.data || null);
+      } else {
+        setAgentOps(null);
+      }
     } finally {
       if (!controller.signal.aborted) setLoading(false);
       if (adminLoadControllerRef.current === controller) adminLoadControllerRef.current = null;
@@ -121,15 +174,19 @@ export default function AdminPanel({ onSchemaCleaned }) {
     loadAdminState();
     return () => {
       adminLoadControllerRef.current?.abort();
+      confirmationResolverRef.current?.(false);
       setAdminApiKey('');
     };
   }, [loadAdminState]);
 
   const cleanSchema = useCallback(async () => {
-    const typed = window.prompt(
-      'Full reset deletes Neo4j graph data, indexes/constraints, and uploaded ontology registry metadata. Type CLEAN NEO4J to continue.'
-    );
-    if (typed !== 'CLEAN NEO4J') {
+    const accepted = await requestConfirmation({
+      title: 'Clean the complete Neo4j schema?',
+      description: 'This deletes graph data, indexes, constraints, and uploaded ontology registry metadata.',
+      phrase: 'CLEAN NEO4J',
+      confirmLabel: 'Clean schema',
+    });
+    if (!accepted) {
       setMessage('Full schema cleanup cancelled.');
       return;
     }
@@ -152,13 +209,16 @@ export default function AdminPanel({ onSchemaCleaned }) {
     } finally {
       setLoading(false);
     }
-  }, [fetchOntologies, loadAdminState, onSchemaCleaned]);
+  }, [fetchOntologies, loadAdminState, onSchemaCleaned, requestConfirmation]);
 
   const resetGraphDatabase = useCallback(async () => {
-    const typed = window.prompt(
-      'Graph reset deletes Neo4j nodes and relationships and recreates operational indexes. It does not clear uploaded ontology files. Type RESET GRAPH to continue.'
-    );
-    if (typed !== 'RESET GRAPH') {
+    const accepted = await requestConfirmation({
+      title: 'Reset the graph database?',
+      description: 'This deletes Neo4j nodes and relationships and recreates operational indexes. Uploaded ontology files remain available.',
+      phrase: 'RESET GRAPH',
+      confirmLabel: 'Reset graph',
+    });
+    if (!accepted) {
       setMessage('Graph reset cancelled.');
       return;
     }
@@ -178,7 +238,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
     } finally {
       setLoading(false);
     }
-  }, [loadAdminState, onSchemaCleaned]);
+  }, [loadAdminState, onSchemaCleaned, requestConfirmation]);
 
   const clearCache = useCallback(async () => {
     setLoading(true);
@@ -219,7 +279,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
         return;
       }
 
-      const ok = window.confirm(`Delete ${count} old ingested XSD schema entries from storage and Neo4j?`);
+      const ok = await requestConfirmation({ title: 'Delete old XSD schemas?', description: `Delete ${count} old ingested XSD schema entries from storage and Neo4j?`, confirmLabel: 'Delete schemas' });
       if (!ok) return;
 
       const result = await API_METHODS.ontology.cleanupOldXsd({
@@ -238,7 +298,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
     } finally {
       setLoading(false);
     }
-  }, [fetchOntologies, loadAdminState]);
+  }, [fetchOntologies, loadAdminState, requestConfirmation]);
   const buildDeleteScope = useCallback(() => {
     const label = deleteLabel.trim();
     const prefix = deletePrefix.trim();
@@ -293,9 +353,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       return;
     }
 
-    const ok = window.confirm(
-      `Delete ${deletePreview.matched} matched node(s) for ${scope.target} in batches of ${scope.batchSize}? This cannot be undone.`
-    );
+    const ok = await requestConfirmation({ title: 'Delete matched graph data?', description: `Delete ${deletePreview.matched} matched node(s) for ${scope.target} in batches of ${scope.batchSize}? This cannot be undone.`, confirmLabel: 'Delete nodes' });
     if (!ok) return;
 
     setLoading(true);
@@ -314,7 +372,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
     } finally {
       setLoading(false);
     }
-  }, [buildDeleteScope, deletePreview, loadAdminState]);
+  }, [buildDeleteScope, deletePreview, loadAdminState, requestConfirmation]);
 
   const previewDeleteData = useCallback(async () => {
     const scope = buildDeleteScope();
@@ -354,7 +412,8 @@ export default function AdminPanel({ onSchemaCleaned }) {
   }, [error, health, loading]);
 
   return (
-    <div style={{ height: '100%', overflow: 'auto', background: '#fff', padding: 10 }}>
+    <div style={{ height: '100%', overflow: 'auto', background: 'var(--ui-surface)', color: 'var(--ui-text)', padding: 10 }}>
+      <ConfirmationDialog confirmation={confirmation} onResolve={resolveConfirmation} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
           <label style={{ fontSize: 11, color: colors.muted }}>
@@ -404,6 +463,28 @@ export default function AdminPanel({ onSchemaCleaned }) {
               <Stat label="Indexes" value={stats?.indexes_count} />
               <Stat label="Constraints" value={stats?.constraints_count} />
             </div>
+          </section>
+
+          <section style={cardStyle} aria-label="Agent operations telemetry">
+            <div style={{ fontSize: 11, fontWeight: 850, color: colors.text, marginBottom: 6 }}>
+              Agent Operations{agentOps?.status === 'degraded' ? ' — Needs attention' : ''}
+            </div>
+            {agentOps ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(82px, 1fr))', gap: 4 }}>
+                <Stat label="Runs" value={agentOps.runs} />
+                <Stat label="Running" value={agentOps.running} />
+                <Stat label="Failures" value={agentOps.failed} />
+                <Stat label="Failure rate" value={`${((agentOps.failure_rate || 0) * 100).toFixed(1)}%`} />
+                <Stat label="Avg latency" value={`${Math.round(agentOps.average_duration_ms || 0)} ms`} />
+                <Stat label="Tool calls" value={agentOps.tool_calls} />
+                <Stat label="Tool failures" value={agentOps.tool_failures} />
+                <Stat label="Evidence" value={agentOps.evidence_total} />
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: colors.muted }}>
+                Configure the Agentic service to display durable run and tool telemetry.
+              </div>
+            )}
           </section>
         </div>
 

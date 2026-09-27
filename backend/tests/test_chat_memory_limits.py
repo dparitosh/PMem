@@ -1,4 +1,5 @@
 from backend.agent import memory as memory_module
+from langchain_core.messages import HumanMessage
 
 
 def test_chat_memory_trims_to_limit(monkeypatch):
@@ -31,3 +32,16 @@ def test_chat_memory_prunes_expired_sessions(monkeypatch):
 
     assert "old-session" not in memory_module.chat_sessions
     assert "fresh-session" in memory_module.chat_sessions
+
+
+def test_conversation_history_is_loaded_before_current_turn(monkeypatch):
+    from backend.agent import chat as chat_module
+
+    class History:
+        def get_messages(self):
+            return [HumanMessage(content="earlier question")]
+
+    monkeypatch.setattr(chat_module, "get_memory", lambda _session_id: History())
+    messages = chat_module._conversation_messages("session-1", "current question")
+
+    assert [message.content for message in messages] == ["earlier question", "current question"]

@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import uuid
 from contextlib import asynccontextmanager
+from collections.abc import Collection
 from typing import AsyncIterator, Callable
 
 from fastapi import FastAPI, Request
@@ -32,7 +33,7 @@ def allowed_origins() -> list[str]:
     return [origin.strip() for origin in configured.split(",") if origin.strip()]
 
 
-def configured_dependency_status() -> dict[str, dict[str, str]]:
+def configured_dependency_status(dependencies: Collection[str] = ("postgres", "neo4j")) -> dict[str, dict[str, str]]:
     """Perform small, bounded checks for configured shared dependencies.
 
     The checks intentionally only run when their connection configuration is
@@ -42,7 +43,7 @@ def configured_dependency_status() -> dict[str, dict[str, str]]:
     """
     status: dict[str, dict[str, str]] = {}
     database_url = os.getenv("DEPO_DATABASE_URL") or os.getenv("DATABASE_URL")
-    if database_url:
+    if "postgres" in dependencies and database_url:
         try:
             import psycopg
             with psycopg.connect(database_url, connect_timeout=3) as connection:
@@ -52,12 +53,15 @@ def configured_dependency_status() -> dict[str, dict[str, str]]:
         except Exception as exc:
             status["postgres"] = {"status": "unavailable", "reason": type(exc).__name__}
     neo4j_uri = os.getenv("NEO4J_URI")
-    if neo4j_uri:
+    if "neo4j" in dependencies and neo4j_uri:
         try:
             from neo4j import GraphDatabase
+            auth = None if os.getenv("NEO4J_AUTH_MODE", "token").lower() == "none" else (
+                os.getenv("NEO4J_USER", ""), os.getenv("NEO4J_PASS", "")
+            )
             with GraphDatabase.driver(
                 neo4j_uri,
-                auth=(os.getenv("NEO4J_USER", ""), os.getenv("NEO4J_PASS", "")),
+                auth=auth,
                 connection_timeout=3,
             ) as driver:
                 driver.verify_connectivity()
@@ -67,7 +71,14 @@ def configured_dependency_status() -> dict[str, dict[str, str]]:
     return status
 
 
-def create_service_app(*, title: str, version: str, lifespan_hook: Callable[[], AsyncIterator[None]] | None = None, readiness_check: Callable | None = None) -> FastAPI:
+def create_service_app(
+    *,
+    title: str,
+    version: str,
+    lifespan_hook: Callable[[], AsyncIterator[None]] | None = None,
+    readiness_check: Callable | None = None,
+    dependencies: Collection[str] = ("postgres", "neo4j"),
+) -> FastAPI:
     """Create a service with uniform CORS, lifecycle and correlation behavior."""
 
     lifespan = None
@@ -85,7 +96,7 @@ def create_service_app(*, title: str, version: str, lifespan_hook: Callable[[], 
         CORSMiddleware,
         allow_origins=allowed_origins(),
         allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID", "X-Session-ID"],
         expose_headers=["X-Request-ID", "X-Session-ID"],
     )
@@ -99,7 +110,7 @@ def create_service_app(*, title: str, version: str, lifespan_hook: Callable[[], 
     def readiness() -> JSONResponse:
         dependencies = readiness_check() if readiness_check else {}
         if not any(item['status'] != 'ready' for item in dependencies.values()):
-            dependencies.update(configured_dependency_status())
+            dependencies.update(configured_dependency_status(dependencies=dependencies_to_check))
         unavailable = [name for name, item in dependencies.items() if item["status"] != "ready"]
         body = {
             "status": "not_ready" if unavailable else "ready",
@@ -109,4 +120,8 @@ def create_service_app(*, title: str, version: str, lifespan_hook: Callable[[], 
         }
         return JSONResponse(status_code=503 if unavailable else 200, content=body)
 
+    dependencies_to_check = tuple(dependencies)
+    unsupported = set(dependencies_to_check) - {"postgres", "neo4j"}
+    if unsupported:
+        raise ValueError(f"Unsupported readiness dependencies: {sorted(unsupported)}")
     return app

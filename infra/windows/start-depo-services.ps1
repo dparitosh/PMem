@@ -72,7 +72,9 @@ if ($EnableSpark) {
   if ($EnableNeo4jSparkConnector) {
     $env:DEPO_SPARK_NEO4J_ENABLED = 'true'
     if (-not $env:DEPO_SPARK_NEO4J_PACKAGE) { $env:DEPO_SPARK_NEO4J_PACKAGE = 'org.neo4j.connectors:spark:6.0.0-s_2.13' }
-    foreach ($key in 'NEO4J_URI', 'NEO4J_USER', 'NEO4J_PASS') {
+    $requiredNeo4jKeys = @('NEO4J_URI')
+    if ($env:NEO4J_AUTH_MODE -ne 'none') { $requiredNeo4jKeys += @('NEO4J_USER', 'NEO4J_PASS') }
+    foreach ($key in $requiredNeo4jKeys) {
       if (-not [Environment]::GetEnvironmentVariable($key, 'Process')) { throw "$key is required when -EnableNeo4jSparkConnector is used." }
     }
   }
@@ -176,6 +178,16 @@ foreach ($service in $services | Where-Object { $_.Port }) {
     }
   } while (-not $ready -and (Get-Date) -lt $deadline)
   if (-not $ready) { throw "DEPO service '$($service.Name)' did not become ready within $ServiceStartupTimeoutSeconds seconds. Check $stateDir\$($service.Name).err.log. For a slower cold start, retry with -ServiceStartupTimeoutSeconds 600." }
+}
+# Workers have no readiness port. Require every worker started by this
+# invocation to remain alive through the complete HTTP-service readiness pass.
+foreach ($worker in $services | Where-Object { $null -eq $_.Port }) {
+  $pidFile = Join-Path $stateDir "$($worker.Name).pid"
+  if (-not (Test-Path -LiteralPath $pidFile)) { throw "Worker '$($worker.Name)' has no PID file." }
+  $workerPid = [int](Get-Content -LiteralPath $pidFile)
+  if (-not (Get-Process -Id $workerPid -ErrorAction SilentlyContinue)) {
+    throw "DEPO worker '$($worker.Name)' exited during startup. Check $stateDir\$($worker.Name).err.log."
+  }
 }
 } catch {
   foreach ($startedService in @($startedServices | Sort-Object { [int]$_.ProcessId } -Descending)) {

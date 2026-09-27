@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 import re
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 try:
@@ -13,7 +13,16 @@ try:
 except ImportError:
     from core.graph import graph
 
-router = APIRouter(prefix="/metadata-registry", tags=["metadata-registry"])
+from backend.depo_platform.authorization import service_write_identity
+
+
+def _metadata_registry_identity(request: Request) -> str:
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return "public-read"
+    return service_write_identity(request, token_env="ONTOLOGY_APPROVAL_TOKEN", default_actor="metadata-steward")
+
+
+router = APIRouter(prefix="/metadata-registry", tags=["metadata-registry"], dependencies=[Depends(_metadata_registry_identity)])
 LIFECYCLE_STATUSES = {"draft", "in_review", "approved", "deprecated", "retired"}
 COMPATIBILITY_STATUSES = {"compatible", "breaking", "unknown"}
 SEMVER_PATTERN = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?")

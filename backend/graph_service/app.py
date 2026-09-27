@@ -10,7 +10,7 @@ from .graphql_router import router as graphql_router
 from .sparql_router import router as sparql_router
 from .federation_router import router as federation_router
 
-app = create_service_app(title="DEPO Graph Service", version="1.0.0")
+app = create_service_app(title="DEPO Graph Service", version="1.0.0", dependencies=("neo4j",))
 app.include_router(create_odata_catalog_router(
     service_name="DEPOGraph",
     capabilities=[

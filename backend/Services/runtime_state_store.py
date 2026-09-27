@@ -113,6 +113,10 @@ def load_chat_messages(session_id: str, limit: int) -> list[dict[str, str]]:
 def replace_chat_messages(session_id: str, messages: list[dict[str, str]], limit: int) -> None:
     _ensure_schema()
     with _connection() as connection, connection.transaction(), connection.cursor() as cursor:
+        # Serialize the legacy read/modify/write operation for one conversation.
+        # Without this lock, two workers can both delete the same history and the
+        # last commit silently discards the other worker's turn.
+        cursor.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"chat:{session_id}",))
         cursor.execute("DELETE FROM depo_chat_messages WHERE session_id=%s", (session_id,))
         cursor.executemany(
             "INSERT INTO depo_chat_messages(session_id, role, content, created_at) VALUES(%s, %s, %s, %s)",

@@ -72,6 +72,7 @@ try:
     from .Services.runtime_state_store import (
         allow_request as allow_shared_request,
         acquire_session_lease,
+        clear_chat_messages,
         delete_chat_job as delete_shared_chat_job,
         delete_session as delete_shared_session,
         get_chat_job as get_shared_chat_job,
@@ -85,6 +86,7 @@ except ImportError:
     from Services.runtime_state_store import (
         allow_request as allow_shared_request,
         acquire_session_lease,
+        clear_chat_messages,
         delete_chat_job as delete_shared_chat_job,
         delete_session as delete_shared_session,
         get_chat_job as get_shared_chat_job,
@@ -1586,6 +1588,18 @@ async def agent_memory_session_context(request: Request, session_id: str, limit:
     if not request.scope.get("session_id_supplied") or request.scope.get("session_id") != session_id:
         raise HTTPException(status_code=403, detail="Session context is not available for this client session")
     return AgentMemoryService.recent_context(session_id, limit=limit)
+
+
+@app.delete("/api/v1/agent-memory/sessions/{session_id}")
+async def delete_agent_memory_session(request: Request, session_id: str):
+    """Delete only the caller's server-bound conversation memory."""
+    if AgentMemoryService is None:
+        raise HTTPException(status_code=503, detail="Agent memory service is unavailable")
+    if not request.scope.get("session_id_supplied") or request.scope.get("session_id") != session_id:
+        raise HTTPException(status_code=403, detail="The requested memory session is not bound to this client")
+    deleted = await asyncio.to_thread(AgentMemoryService.delete_session, session_id)
+    await asyncio.to_thread(clear_chat_messages, session_id)
+    return {"status": "ok", "session_id": session_id, "deleted": bool(deleted)}
 
 
 @app.get("/chat/capabilities")

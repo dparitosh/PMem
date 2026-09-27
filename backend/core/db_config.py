@@ -414,8 +414,8 @@ class Neo4jDriverPool:
             # kwarg names and will raise ConfigurationError for unknown keys.
             # Be defensive: if we ever hit that, drop the unexpected keys and retry.
             try:
-            auth = None if config.auth_mode == "none" else (config.username, config.password)
-            self._driver = GraphDatabase.driver(
+                auth = None if config.auth_mode == "none" else (config.username, config.password)
+                self._driver = GraphDatabase.driver(
                     config.uri,
                     auth=auth,
                     **driver_kwargs,

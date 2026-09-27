@@ -83,6 +83,7 @@ class SparkJobRunner:
         # deployment template uses the shorter USER/PASS names.
         username = (os.getenv("NEO4J_USER") or os.getenv("NEO4J_USERNAME") or "").strip()
         password = (os.getenv("NEO4J_PASS") or os.getenv("NEO4J_PASSWORD") or "").strip()
+        auth_mode = os.getenv("NEO4J_AUTH_MODE", "token").strip().lower()
         database = os.getenv("NEO4J_DATABASE", "neo4j").strip()
         spark_version = self._spark_version(spark_home)
         if not spark_version.startswith(("4.0.", "4.1.")):
@@ -92,15 +93,20 @@ class SparkJobRunner:
             )
         if not package:
             raise SparkUnavailable("DEPO_SPARK_NEO4J_PACKAGE must name a Neo4j Spark connector compatible with the installed Spark runtime")
-        if not uri or not username or not password:
+        if auth_mode not in {"token", "none"}:
+            raise SparkUnavailable("NEO4J_AUTH_MODE must be token or none")
+        if not uri or (auth_mode == "token" and (not username or not password)):
             raise SparkUnavailable("NEO4J_URI, NEO4J_USER (or NEO4J_USERNAME), and NEO4J_PASS (or NEO4J_PASSWORD) are required when the Neo4j Spark connector is enabled")
-        return {
+        options = {
             "spark.jars.packages": package,
             "neo4j.url": uri,
-            "neo4j.authentication.basic.username": username,
-            "neo4j.authentication.basic.password": password,
+            "neo4j.authentication.type": "none" if auth_mode == "none" else "basic",
             "neo4j.database": database,
         }
+        if auth_mode == "token":
+            options["neo4j.authentication.basic.username"] = username
+            options["neo4j.authentication.basic.password"] = password
+        return options
 
     def _runtime_paths(self) -> tuple[Path, Path]:
         runtime_root = Path(__file__).resolve().parents[2] / "runtime"

@@ -44,6 +44,11 @@ export const agenticAPI = {
     payload,
     options,
   ),
+  observabilitySummary: (options = {}) => agenticClient.get(agenticUrl(API.agentic.observabilitySummary), options),
+  observabilityRuns: (limit = 20, options = {}) => agenticClient.get(
+    agenticUrl(API.agentic.observabilityRuns),
+    { ...options, params: { ...(options.params || {}), limit } },
+  ),
 };
 
 export { agenticClient };

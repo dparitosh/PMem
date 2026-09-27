@@ -9,6 +9,8 @@ from backend.routes.metadata_registry_routes import router as metadata_registry_
 from backend.routes.ontology_routes import router as legacy_ontology_router
 from .router import router
 from .modeling_router import router as modeling_router
+from .modeling_router import _modeling_identity
+from fastapi import Depends
 
 app = create_service_app(title="DEPO Ontology Service", version="1.0.0")
 app.include_router(create_odata_catalog_router(
@@ -32,13 +34,13 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Governed SKOS vocabularies", "/api/v1/ontologies/vocabularies", "GET", "Curate immutable vocabulary releases through steward review, approval, and publication"),
     ],
 ))
-app.include_router(router, prefix="/api/v1")
+app.include_router(router, prefix="/api/v1", dependencies=[Depends(_modeling_identity)])
 app.include_router(modeling_router, prefix="/api/v1")
 # The SPA still has a substantial, tested ontology-workbench surface on the
 # historical `/api/v1/ontology/*` contract. Host that compatibility contract
 # in the ontology service (rather than letting calls fall through to the
 # retired aggregate application) while new lifecycle APIs use `/ontologies`.
-app.include_router(legacy_ontology_router, prefix="/api/v1")
+app.include_router(legacy_ontology_router, prefix="/api/v1", dependencies=[Depends(_modeling_identity)])
 # The operational registry and its guarded maintenance actions own ontology
 # graph administration.  Hosting them here prevents the frontend from falling
 # back to the retired aggregate service on port 8000.

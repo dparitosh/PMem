@@ -30,8 +30,14 @@ def configuration_status():
             errors.append(key)
     if not (os.getenv('DEPO_DATABASE_URL') or os.getenv('DATABASE_URL')):
         errors.append('DEPO_DATABASE_URL')
-    for key in ('NEO4J_URI', 'NEO4J_USER', 'NEO4J_PASS', 'NEO4J_DATABASE'):
+    for key in ('NEO4J_URI', 'NEO4J_DATABASE'):
         require(key)
+    neo4j_auth_mode = os.getenv('NEO4J_AUTH_MODE', 'token').lower()
+    if neo4j_auth_mode not in {'token', 'none'}:
+        errors.append('NEO4J_AUTH_MODE')
+    if neo4j_auth_mode == 'token':
+        for key in ('NEO4J_USER', 'NEO4J_PASS'):
+            require(key)
     mode = os.getenv('AUTH_MODE', 'token').lower()
     if mode not in {'token', 'entra', 'disabled'}:
         errors.append('AUTH_MODE')
@@ -39,7 +45,7 @@ def configuration_status():
         url(key, https=mode == 'entra')
     if mode == 'token':
         for key in ('GRAPH_READ_TOKEN', 'AGENTIC_APPROVAL_TOKEN', 'ONTOLOGY_APPROVAL_TOKEN',
-                    'DATA_PRODUCT_APPROVAL_TOKEN', 'DATA_JOB_EXECUTION_TOKEN'):
+                    'DATA_PRODUCT_APPROVAL_TOKEN', 'DATA_JOB_EXECUTION_TOKEN', 'INGESTION_WRITE_TOKEN'):
             require(key)
     # Bridge publication uses a private service credential in every auth mode.
     require('GRAPH_PUBLICATION_TOKEN')
