@@ -47,6 +47,8 @@ def reqif_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) -> 
         kind = _local_name(element.tag)
         source_id = str(element.attrib.get("IDENTIFIER") or "").strip()
         if kind == "SPEC-OBJECT" and source_id:
+            if source_id in known_ids:
+                raise ValueError(f"ReqIF document contains duplicate IDENTIFIER: {source_id}")
             entities.append(active_contract.normalize_entity(
                 standard="reqif",
                 record={"source_type": "SPEC-OBJECT", "source_id": source_id, "attributes": {
@@ -58,6 +60,8 @@ def reqif_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) -> 
             known_ids.add(source_id)
             counts["requirements"] += 1
         elif kind == "SPECIFICATION" and source_id:
+            if source_id in known_ids:
+                raise ValueError(f"ReqIF document contains duplicate IDENTIFIER: {source_id}")
             entities.append(active_contract.normalize_entity(
                 standard="reqif",
                 record={"source_type": "SPECIFICATION", "source_id": source_id, "attributes": {

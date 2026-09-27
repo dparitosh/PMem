@@ -138,6 +138,8 @@ def qif_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) -> di
             source_id = f"pmi-{hashlib.sha256(ET.tostring(element, encoding='utf-8')).hexdigest()[:20]}"
         if not source_id:
             continue
+        if source_id in known_ids:
+            raise ValueError(f"QIF document contains duplicate identifier: {source_id}")
         attributes = {
             "name": _attribute(element, "name", "label", "description") or original_type,
             "status": _attribute(element, "status", "state", "disposition"),
