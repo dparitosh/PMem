@@ -2,7 +2,7 @@
 
 The authoritative DDL is the versioned SQL in
 [`infra/postgres/migrations/`](migrations/). The Python runner loads those files;
-do not copy table creation into service code. Versions 1-4 are
+do not copy table creation into service code. Versions 1-5 are
 applied in ascending order inside a transaction protected by an advisory lock.
 The schema name is `DEPO_DATABASE_SCHEMA` (default `semantic`).
 
@@ -18,8 +18,8 @@ The schema name is `DEPO_DATABASE_SCHEMA` (default `semantic`).
 | `depo_metadata_outbox` | `event_id text`, `status text`, `created_at timestamptz` | PK/FK to events; status `pending` or `published`, default `pending`; timestamp defaults to `now()`; partial index for pending records |
 
 All table columns above are NOT NULL (including primary keys). `bigserial`
-creates a bigint column with an owned sequence. The current migration does not
-add a positive-revision check to `depo_metadata_events`; do not assume it exists.
+creates a bigint column with an owned sequence. Migration 5 enforces a positive
+revision on `depo_metadata_events` so invalid history cannot be appended.
 
 The `depo_ontology_analytics` **view** projects `depo_registry` entries in namespace
 `ontology_catalog`. Text columns: `ontology_id`, `ontology_name`, `lifecycle_status`,
