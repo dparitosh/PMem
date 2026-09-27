@@ -61,7 +61,14 @@ def plmxml_to_ceim_batch(content: bytes, *, ceim: CEIMContract | None = None) ->
     if parsed.get("error"):
         raise ValueError(f"PLMXML parsing failed: {parsed['error']}")
     raw_entities = list(parsed.get("entities") or [])
-    known = {str(record.get("id")) for record in raw_entities}
+    known: set[str] = set()
+    for record in raw_entities:
+        identifier = str(record.get("id") or "").strip()
+        if not identifier:
+            continue
+        if identifier in known:
+            raise ValueError(f"PLMXML document contains duplicate id: {identifier}")
+        known.add(identifier)
     # Retain explicitly mapped extension resources without pretending they are
     # product Parts. The source type remains in canonical provenance.
     for element in ET.fromstring(content).iter():

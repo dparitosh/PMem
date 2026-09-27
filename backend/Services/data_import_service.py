@@ -1776,7 +1776,14 @@ class DataImportService:
         """Parse generic XML file."""
         try:
             from lxml import etree
-            tree = etree.parse(file_path)
+            parser = etree.XMLParser(
+                resolve_entities=False,
+                no_network=True,
+                load_dtd=False,
+                huge_tree=False,
+                recover=False,
+            )
+            tree = etree.parse(file_path, parser)
             root = tree.getroot()
 
             entities = []
@@ -1786,6 +1793,8 @@ class DataImportService:
             for elem in root.iter():
                 if elem.tag:
                     elem_id = elem.get('id', f"elem_{id(elem)}")
+                    if elem.get('id') and elem_id in element_map:
+                        raise ValueError(f"XML document contains duplicate id: {elem_id}")
                     elem_type = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
                     
                     entities.append({
