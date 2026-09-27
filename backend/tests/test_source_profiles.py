@@ -45,6 +45,30 @@ def test_xml_profile_executes_child_records_and_versions_updates(tmp_path):
     assert result["entities"][0]["title"] == "Safe stop"
 
 
+def test_csv_profile_requires_unique_headers_and_maps_rows(tmp_path):
+    store = _store(tmp_path)
+    profile = store.save({
+        "profile_id": "csv-parts",
+        "mapping": {"entity": "Part", "identifier": "part_number", "properties": {"part_number": "partNumber", "name": "name"}},
+    })
+    result = store.normalize_batch(
+        profile=profile,
+        filename="parts.csv",
+        content="part_number,name\nP-1,Bracket\nP-2,Washer\n".encode(),
+    )
+    assert result["records_processed"] == 2
+    assert [item["id"] for item in result["entities"]] == ["P-1", "P-2"]
+
+
+def test_xsl_inspection_is_distinguished_from_generic_xml(tmp_path):
+    store = _store(tmp_path)
+    result = store.inspect(
+        filename="transform.xsl",
+        content=b'<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0"/>',
+    )
+    assert result["format"] == "xsl"
+
+
 def test_semantic_workspace_persists_versions_and_alignments(tmp_path):
     registry = InMemoryRegistry()
     workspace = SemanticWorkspace(root=tmp_path, registry=registry)
