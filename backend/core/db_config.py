@@ -54,6 +54,7 @@ class Neo4jConfig:
     uri: str
     username: str
     password: str
+    auth_mode: str = "token"
     database: str = "neo4j"
     deployment_type: Neo4jDeploymentType = Neo4jDeploymentType.AURA
     
@@ -171,6 +172,7 @@ def get_config() -> Neo4jConfig:
     
     # Get configuration values with fallbacks
     uri = _get_env("NEO4J_URI", "NEO4J_URL", "Neo4j_url")
+    auth_mode = (_get_env("NEO4J_AUTH_MODE") or "token").lower()
     username = _get_env("NEO4J_USER", "NEO4J_USERNAME", "Neo4j_user")
     password = _get_env("NEO4J_PASS", "NEO4J_PASSWORD", "Neo4j_password")
     database = _get_env("NEO4J_DATABASE", "Neo4j_database") or "neo4j"
@@ -179,9 +181,11 @@ def get_config() -> Neo4jConfig:
     missing = []
     if not uri:
         missing.append("NEO4J_URI (or NEO4J_URL)")
-    if not username:
+    if auth_mode not in {"token", "none"}:
+        raise Neo4jConfigError("NEO4J_AUTH_MODE must be 'token' or 'none'")
+    if auth_mode == "token" and not username:
         missing.append("NEO4J_USER (or NEO4J_USERNAME)")
-    if not password:
+    if auth_mode == "token" and not password:
         missing.append("NEO4J_PASS (or NEO4J_PASSWORD)")
     
     if missing:
@@ -191,6 +195,8 @@ def get_config() -> Neo4jConfig:
     
     # Detect deployment type from URI
     deployment_type = _detect_deployment_type(uri)
+    if auth_mode == "none" and deployment_type != Neo4jDeploymentType.ON_PREMISES:
+        raise Neo4jConfigError("NEO4J_AUTH_MODE=none is supported only for on-premises bolt:// or neo4j:// deployments")
     
     # Optional: Custom SSL configuration
     custom_ca = os.getenv("NEO4J_CUSTOM_CA_PATH")
@@ -204,6 +210,7 @@ def get_config() -> Neo4jConfig:
         uri=uri,
         username=username,
         password=password,
+        auth_mode=auth_mode,
         database=database,
         deployment_type=deployment_type,
         # Connection pool settings
@@ -236,6 +243,8 @@ def get_config() -> Neo4jConfig:
         ).lower() == "true",
         trust_custom_ca_signed_certificates=custom_ca,
     )
+    if auth_mode == "none" and config.encrypted:
+        raise Neo4jConfigError("NEO4J_AUTH_MODE=none requires NEO4J_ENCRYPTED=false for a non-TLS on-premises connection")
     
     logger.info(f"Neo4j configuration loaded: {config}")
     return config
@@ -405,9 +414,10 @@ class Neo4jDriverPool:
             # kwarg names and will raise ConfigurationError for unknown keys.
             # Be defensive: if we ever hit that, drop the unexpected keys and retry.
             try:
-                self._driver = GraphDatabase.driver(
+            auth = None if config.auth_mode == "none" else (config.username, config.password)
+            self._driver = GraphDatabase.driver(
                     config.uri,
-                    auth=(config.username, config.password),
+                    auth=auth,
                     **driver_kwargs,
                 )
             except Exception as create_exc:
@@ -428,7 +438,7 @@ class Neo4jDriverPool:
                                     driver_kwargs.pop(k, None)
                             self._driver = GraphDatabase.driver(
                                 config.uri,
-                                auth=(config.username, config.password),
+                                auth=auth,
                                 **driver_kwargs,
                             )
                         else:

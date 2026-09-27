@@ -19,8 +19,13 @@ function Import-DepoEnvironment([string]$Root, [string]$EnvFile) {
 }
 
 function Assert-DepoNeo4jConfiguration([hashtable]$Values, [switch]$Production) {
-  foreach ($key in @('NEO4J_URI','NEO4J_USER','NEO4J_PASS','NEO4J_DATABASE')) {
+  $authMode = if ($Values['NEO4J_AUTH_MODE']) { $Values['NEO4J_AUTH_MODE'].ToLowerInvariant() } else { 'token' }
+  if ($authMode -notin @('token','none')) { throw 'NEO4J_AUTH_MODE must be token or none.' }
+  foreach ($key in @('NEO4J_URI','NEO4J_DATABASE')) {
     if (-not $Values[$key] -or $Values[$key] -match '<.*>') { throw "Missing Neo4j setting: $key" }
+  }
+  if ($authMode -eq 'token') {
+    foreach ($key in @('NEO4J_USER','NEO4J_PASS')) { if (-not $Values[$key] -or $Values[$key] -match '<.*>') { throw "Missing Neo4j setting: $key" } }
   }
   $uri = $null
   if (-not [Uri]::TryCreate($Values.NEO4J_URI, [UriKind]::Absolute, [ref]$uri) -or
@@ -31,6 +36,7 @@ function Assert-DepoNeo4jConfiguration([hashtable]$Values, [switch]$Production) 
   if ($Production -and $uri.Scheme -notin @('neo4j+s','bolt+s')) {
     throw 'Production requires certificate-verified TLS: neo4j+s:// or bolt+s://.'
   }
+  if ($authMode -eq 'none' -and $uri.Scheme -notin @('neo4j','bolt')) { throw 'NEO4J_AUTH_MODE=none requires a non-TLS neo4j:// or bolt:// URI.' }
 }
 
 function Assert-DepoSparkRuntime([string]$SparkHome, [string]$JavaHome, [string]$HadoopHome) {

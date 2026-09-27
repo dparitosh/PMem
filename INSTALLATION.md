@@ -377,6 +377,11 @@ Open the new root `.env.local` and edit these values in order:
 2. Set `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASS` and `NEO4J_DATABASE`. Aura
    exports named `NEO4J_USERNAME` and `NEO4J_PASSWORD` are also accepted by
    the Spark connector, but use the canonical `NEO4J_USER` and `NEO4J_PASS`
+   names for the application. For an explicitly unsecured on-premises Neo4j
+   server, set `NEO4J_AUTH_MODE=none` and use `NEO4J_URI=bolt://host:7687` or
+   `neo4j://host:7687`; omit the user and password. This mode is rejected for
+   production preflight and is intended only for a deliberately unsecured
+   non-TLS environment.
    names in this file so every service and script has one consistent setting.
 3. Set `ALLOWED_ORIGINS=https://<customer-frontend-host>` and
    `OSLC_BASE_URL=https://<customer-api-host>`.
