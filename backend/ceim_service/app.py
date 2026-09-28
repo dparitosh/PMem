@@ -5,7 +5,10 @@ from backend.depo_platform.service_runtime import create_service_app
 from .router import router
 
 
-app = create_service_app(title="DEPO CEIM Service", version="0.1.0", dependencies=())
+# Entity-resolution cases are durable control-plane records. Advertising the
+# service as ready while that registry is unavailable defers failure until a
+# duplicate needs steward review.
+app = create_service_app(title="DEPO CEIM Service", version="0.1.0", dependencies=("postgres",))
 app.include_router(create_odata_catalog_router(
     service_name="DEPOCEIM",
     capabilities=[

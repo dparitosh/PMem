@@ -127,6 +127,7 @@ const SERVICE_PATHS = [
   ['ontology', /^\/api\/v1\/modeling(?:\/|$)/],
   ['ontology', /^\/api\/v1\/admin(?:\/|$)/],
   ['ontology', /^\/api\/v1\/metadata-registry(?:\/|$)/],
+  ['ceim', /^\/api\/v1\/ceim(?:\/|$)/],
   // Retained ingestion-owned artifact registry.  Keep these narrow routes
   // ahead of the semantic workbench compatibility namespace below.
   ['ingestion', /^\/api\/v1\/ontology\/(?:upload|registered|merge|cleanup-old-xsd)(?:\/|$)/],
@@ -136,6 +137,7 @@ const SERVICE_PATHS = [
   // profiles remain under ingestion; this namespace is semantic workbench only.
   ['ontology', /^\/api\/v1\/ontology(?:\/|$)/],
   ['graph', /^\/api\/v1\/graph(?:\/|$)/],
+  ['graph', /^\/api\/v1\/(?:graphql|sparql)(?:\/|$)/],
   ['graph', /^\/api\/v1\/requirements(?:\/|$)/],
   ['ingestion', /^\/api\/v1\/(?:ingestion|ingest-data|ap242|schema-conversions|source-profiles|engineering-workflows)(?:\/|$)/],
   ['ingestion', /^\/api\/v1\/import(?:\/|$)/],

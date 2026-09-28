@@ -66,7 +66,7 @@ test('renders task artifact links through the QIF API helper', async () => {
       artifacts: [{ name: 'qif_ontology.ttl', path: 'ontology/qif_ontology.ttl', kind: 'ontology' }],
     },
   });
-  qifAPI.artifactUrl.mockReturnValue('http://127.0.0.1:8000/api/v1/qif/tasks/test/artifacts/ontology/qif_ontology.ttl');
+  qifAPI.artifactUrl.mockReturnValue('http://127.0.0.1:8010/api/v1/qif/tasks/test/artifacts/ontology/qif_ontology.ttl');
 
   render(<QifPage workflowMode />);
   const start = await screen.findByRole('button', { name: /start reference task/i });

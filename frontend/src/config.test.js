@@ -82,6 +82,9 @@ test('routes published service contracts to their owning local service', () => {
   expect(getServiceForPath('/api/v1/ontology/ap242/taxonomy')).toBe('ingestion');
   expect(getServiceForPath('/api/v1/ap242/inspect')).toBe('ingestion');
   expect(getServiceForPath('/api/v1/oslc/health')).toBe('oslc');
+  expect(getServiceForPath('/api/v1/ceim/contract')).toBe('ceim');
+  expect(getServiceForPath('/api/v1/graphql')).toBe('graph');
+  expect(getServiceForPath('/api/v1/sparql/federation/peers')).toBe('graph');
   expect(buildUrl('/api/v1/qif/catalog')).toContain(':8010/api/v1/qif/catalog');
 });
 

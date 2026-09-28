@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import re
 import sys
@@ -11,6 +12,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "frontend" / "src" / "config.js"
+SERVICE_MANIFEST_PATH = ROOT / "infra" / "deployment" / "services.json"
 
 # Direct execution puts ``scripts`` rather than the repository root on sys.path.
 # Keep the audit usable both as a CLI and as an imported test helper.
@@ -38,13 +40,20 @@ def classify_contract() -> dict[str, Any]:
         match = re.search(rf"const {name}\s*=\s*\{{(?P<body>.*?)\n\}};", config_text, flags=re.DOTALL)
         return _endpoint_defaults(match.group("body")) if match else set()
 
-    # These are intentionally owned by standalone agentic service, rather
-    # than the retired aggregate application represented by backend.main.
+    # Agentic calls use their own opt-in client and configuration guard, so
+    # retain their separate classification while auditing every other UI
+    # endpoint against the independently deployed service contracts.
     external = named_block("AGENTIC_ENDPOINTS") | named_block("CHAT_ENDPOINTS")
+    manifest = json.loads(SERVICE_MANIFEST_PATH.read_text(encoding="utf-8"))
+    service_contracts: dict[str, set[str]] = {}
+    for item in manifest.get("services", []):
+        if item.get("id") == "agentic":
+            continue
+        module_name, app_name = str(item["module"]).split(":", 1)
+        app = getattr(importlib.import_module(module_name), app_name)
+        service_contracts[str(item["id"])] = set(app.openapi()["paths"])
 
-    from backend.main import app
-
-    openapi_paths = set(app.openapi()["paths"])
+    openapi_paths = set().union(*service_contracts.values()) if service_contracts else set()
     backend_shapes = {_canonical(path) for path in openapi_paths}
     backend_configured = configured - external
     missing = sorted(path for path in backend_configured if _canonical(path) not in backend_shapes)
@@ -54,6 +63,7 @@ def classify_contract() -> dict[str, Any]:
         "configured_backend_endpoint_count": len(backend_configured),
         "matched_backend_endpoint_count": len(matched),
         "external_agentic_endpoint_count": len(external),
+        "service_contract_count": len(service_contracts),
         "openapi_path_count": len(openapi_paths),
         "unclassified": missing,
         "external_agentic": sorted(external),

@@ -10,7 +10,9 @@ from .graphql_router import router as graphql_router
 from .sparql_router import router as sparql_router
 from .federation_router import router as federation_router
 
-app = create_service_app(title="DEPO Graph Service", version="1.0.0", dependencies=("neo4j",))
+# Neo4j serves graph projections while PostgreSQL holds governed federation
+# peer registrations. Both stores are part of the published API contract.
+app = create_service_app(title="DEPO Graph Service", version="1.0.0", dependencies=("neo4j", "postgres"))
 app.include_router(create_odata_catalog_router(
     service_name="DEPOGraph",
     capabilities=[
