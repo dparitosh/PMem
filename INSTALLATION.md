@@ -329,6 +329,111 @@ installation. Apache Hadoop contains the Windows helper source and looks for
 `%HADOOP_HOME%\bin\winutils.exe`, but Apache Hadoop and Apache Spark do not
 publish an official Windows `winutils.exe` binary with the Spark archive.
 
+**Why Hadoop 3.4.2:** Spark's `v4.1.2` source sets
+`<hadoop.version>3.4.2</hadoop.version>`. The downloaded
+`spark-4.1.2-bin-hadoop3.tgz` therefore contains Hadoop 3.4.2 client JARs. Prove
+the installed distribution matches before accepting any native helper:
+
+```powershell
+$sparkHome = 'C:\DEPO\runtime\spark-4.1.2-bin-hadoop3'
+$expectedHadoopJars = @(
+  "$sparkHome\jars\hadoop-client-api-3.4.2.jar",
+  "$sparkHome\jars\hadoop-client-runtime-3.4.2.jar"
+)
+$missing = $expectedHadoopJars | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }
+if ($missing) { throw "Spark 4.1.2 does not contain the expected Hadoop 3.4.2 JARs: $($missing -join ', ')" }
+Get-Item $expectedHadoopJars | Select-Object Name, Length
+```
+
+There is no official URL from which to download a precompiled Hadoop 3.4.2
+`winutils.exe`. The official download is **source code**. Build it once on an
+approved Windows build workstation and publish the resulting binaries to the
+customer's internal software repository. Do not build Hadoop on the production
+application VM.
+
+###### Step D1a — download and verify the official Hadoop 3.4.2 source
+
+Run in PowerShell on the build workstation:
+
+```powershell
+$hadoopVersion = '3.4.2'
+$downloadRoot = 'C:\DEPO\build-downloads'
+$sourceArchive = "$downloadRoot\hadoop-$hadoopVersion-src.tar.gz"
+New-Item -ItemType Directory -Force $downloadRoot | Out-Null
+
+Invoke-WebRequest -Uri "https://archive.apache.org/dist/hadoop/common/hadoop-$hadoopVersion/hadoop-$hadoopVersion-src.tar.gz" -OutFile $sourceArchive
+Invoke-WebRequest -Uri "https://archive.apache.org/dist/hadoop/common/hadoop-$hadoopVersion/hadoop-$hadoopVersion-src.tar.gz.sha512" -OutFile "$sourceArchive.sha512"
+Invoke-WebRequest -Uri "https://archive.apache.org/dist/hadoop/common/hadoop-$hadoopVersion/hadoop-$hadoopVersion-src.tar.gz.asc" -OutFile "$sourceArchive.asc"
+
+$expected = ((Get-Content "$sourceArchive.sha512" -Raw) -split '\s+')[0].ToLowerInvariant()
+$actual = (Get-FileHash $sourceArchive -Algorithm SHA512).Hash.ToLowerInvariant()
+if ($actual -ne $expected) { throw 'Hadoop 3.4.2 source SHA-512 verification failed.' }
+Write-Host 'Hadoop 3.4.2 source SHA-512 verification passed.'
+```
+
+If GnuPG is approved on the build workstation, also verify the Apache release
+signature:
+
+```powershell
+Invoke-WebRequest -Uri 'https://downloads.apache.org/hadoop/common/KEYS' -OutFile "$downloadRoot\apache-hadoop-KEYS"
+gpg --import "$downloadRoot\apache-hadoop-KEYS"
+gpg --verify "$sourceArchive.asc" $sourceArchive
+if ($LASTEXITCODE -ne 0) { throw 'Hadoop 3.4.2 source signature verification failed.' }
+```
+
+###### Step D1b — build the 64-bit Windows native distribution
+
+The Hadoop 3.4.2 `BUILDING.txt` requires Windows 10, JDK 8, Maven, CMake 3.19+
+and Visual Studio 2019. This JDK 8 is used only on the build workstation; DEPO
+continues to use JDK 21 at runtime. Install the **Desktop development with C++**
+workload and MSVC v142 toolset with Visual Studio 2019. Install Git for Windows,
+Maven and CMake, and ensure `git.exe`, `mvn.cmd`, `cmake.exe` and the JDK 8
+`java.exe` are on `PATH`.
+
+Open **x64 Native Tools Command Prompt for VS 2019** and execute the following
+commands. Hadoop requires a short source path:
+
+```bat
+mkdir C:\hdc
+cd /d C:\hdc
+tar -xzf C:\DEPO\build-downloads\hadoop-3.4.2-src.tar.gz
+
+cd /d C:\
+git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+cd /d C:\vcpkg
+git checkout 7ffa425e1db8b0c3edf9c50f2f3a0f25a324541d
+call bootstrap-vcpkg.bat
+vcpkg.exe install boost:x64-windows protobuf:x64-windows openssl:x64-windows zlib:x64-windows
+
+cd /d C:\hdc\hadoop-3.4.2-src
+set classpath=
+set PROTOBUF_HOME=C:\vcpkg\installed\x64-windows
+set MAVEN_OPTS=-Xmx2048M -Xss128M
+mvn clean package -Dhttps.protocols=TLSv1.2 -DskipTests -DskipDocs -Pnative-win,dist -Drequire.openssl -Drequire.test.libhadoop -Pyarn-ui -Dshell-executable=C:\Git\bin\bash.exe -Dtar -Dopenssl.prefix=C:\vcpkg\installed\x64-windows -Dcmake.prefix.path=C:\vcpkg\installed\x64-windows -Dwindows.cmake.toolchain.file=C:\vcpkg\scripts\buildsystems\vcpkg.cmake -Dwindows.cmake.build.type=RelWithDebInfo -Dwindows.build.hdfspp.dll=off -Dwindows.no.sasl=on -Duse.platformToolsetVersion=v142
+if errorlevel 1 exit /b 1
+```
+
+The command is the Apache Hadoop 3.4.2 Windows build command with the
+`native-win` profile. After it succeeds, locate and stage the two files:
+
+```powershell
+$sourceRoot = 'C:\hdc\hadoop-3.4.2-src'
+$winutils = Get-ChildItem $sourceRoot -Recurse -Filter winutils.exe | Where-Object FullName -Match '\\target\\bin\\winutils\.exe$' | Select-Object -First 1
+$hadoopDll = Get-ChildItem $sourceRoot -Recurse -Filter hadoop.dll | Where-Object FullName -Match '\\target\\bin\\hadoop\.dll$' | Select-Object -First 1
+if (-not $winutils -or -not $hadoopDll) { throw 'The Hadoop Windows build did not produce winutils.exe and hadoop.dll.' }
+
+$approvedOutput = 'C:\DEPO\approved\hadoop-3.4.2-windows-x64\bin'
+New-Item -ItemType Directory -Force $approvedOutput | Out-Null
+Copy-Item -LiteralPath $winutils.FullName -Destination "$approvedOutput\winutils.exe"
+Copy-Item -LiteralPath $hadoopDll.FullName -Destination "$approvedOutput\hadoop.dll"
+Get-FileHash "$approvedOutput\winutils.exe", "$approvedOutput\hadoop.dll" -Algorithm SHA256
+```
+
+Security must scan and approve these two files and their recorded SHA-256
+values. Publish that exact folder in the customer's internal repository. The
+application administrator downloads the approved internal package into
+`C:\DEPO\downloads\hadoop-helper` and continues with Step D2 below.
+
 The customer's security or platform team must provide these exact files through
 its approved software repository or build them from the matching Apache Hadoop
 source and publish them internally:
