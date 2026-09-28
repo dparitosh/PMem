@@ -3,7 +3,7 @@ import argparse
 import json
 import os
 
-from backend.depo_platform.postgres_schema import configured_schema, initialise_schema
+from backend.depo_platform.postgres_schema import configured_schema, connect_timeout_seconds, initialise_schema
 from backend.postgres_migrations import MIGRATIONS, apply_migrations
 
 # Column/type contract for the tables owned by migrations 1-4. JSON documents
@@ -48,7 +48,7 @@ def setup_database(*, check_only=False):
     url = os.getenv('DEPO_DATABASE_URL') or os.getenv('DATABASE_URL')
     if not url:
         raise RuntimeError('DEPO_DATABASE_URL is required')
-    with psycopg.connect(url, connect_timeout=10, autocommit=True) as connection:
+    with psycopg.connect(url, connect_timeout=connect_timeout_seconds(), autocommit=True, application_name='depo-database-setup') as connection:
         if not check_only:
             with connection.cursor() as cursor:
                 initialise_schema(cursor)

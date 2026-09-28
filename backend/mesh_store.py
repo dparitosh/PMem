@@ -7,8 +7,7 @@ from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from typing import Any
 
-from backend.postgres_migrations import apply_migrations
-from backend.depo_platform.postgres_schema import initialise_schema
+from backend.depo_platform.postgres_schema import connect_timeout_seconds, select_schema
 
 
 class PostgresRegistry:
@@ -25,10 +24,14 @@ class PostgresRegistry:
     @contextmanager
     def _connect(self):
         import psycopg
-        with psycopg.connect(self.database_url, autocommit=True) as connection:
+        with psycopg.connect(
+            self.database_url,
+            autocommit=True,
+            connect_timeout=connect_timeout_seconds(),
+            application_name="depo-control-plane",
+        ) as connection:
             with connection.cursor() as cursor:
-                initialise_schema(cursor)
-            apply_migrations(connection)
+                select_schema(cursor)
             yield connection
 
     def all(self) -> dict[str, Any]:

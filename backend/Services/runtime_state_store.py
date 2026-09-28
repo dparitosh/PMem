@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import time
 from contextlib import contextmanager
 from typing import Any
 
-from backend.postgres_migrations import apply_migrations
+from backend.depo_platform.postgres_schema import connect_timeout_seconds, select_schema
 
 
 @contextmanager
@@ -17,24 +16,18 @@ def _connection():
     url = os.getenv("DEPO_DATABASE_URL") or os.getenv("DATABASE_URL")
     if not url:
         raise RuntimeError("DEPO_DATABASE_URL must configure PostgreSQL persistence")
-    schema = os.getenv("DEPO_DATABASE_SCHEMA", "semantic")
-    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,62}", schema):
-        raise RuntimeError("DEPO_DATABASE_SCHEMA must be a valid PostgreSQL identifier")
-    with psycopg.connect(url, autocommit=True) as connection:
+    with psycopg.connect(
+        url,
+        autocommit=True,
+        connect_timeout=connect_timeout_seconds(),
+        application_name="depo-runtime-state",
+    ) as connection:
         with connection.cursor() as cursor:
-            cursor.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-            cursor.execute(f'SET search_path TO "{schema}", public')
-        apply_migrations(connection)
+            select_schema(cursor)
         yield connection
 
 
-def _ensure_schema() -> None:
-    with _connection():
-        return None
-
-
 def _get(kind: str, key: str) -> dict[str, Any] | None:
-    _ensure_schema()
     with _connection() as connection, connection.cursor() as cursor:
         cursor.execute("SELECT value FROM depo_runtime_state WHERE kind=%s AND key=%s", (kind, key))
         row = cursor.fetchone()
@@ -42,7 +35,6 @@ def _get(kind: str, key: str) -> dict[str, Any] | None:
 
 
 def _put(kind: str, key: str, value: dict[str, Any]) -> None:
-    _ensure_schema()
     with _connection() as connection, connection.cursor() as cursor:
         cursor.execute(
             """
@@ -55,13 +47,11 @@ def _put(kind: str, key: str, value: dict[str, Any]) -> None:
 
 
 def _delete(kind: str, key: str) -> None:
-    _ensure_schema()
     with _connection() as connection, connection.cursor() as cursor:
         cursor.execute("DELETE FROM depo_runtime_state WHERE kind=%s AND key=%s", (kind, key))
 
 
 def allow_request(client_key: str, now: float, window: float, maximum: int) -> bool:
-    _ensure_schema()
     with _connection() as connection, connection.transaction(), connection.cursor() as cursor:
         cursor.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (client_key,))
         cursor.execute("DELETE FROM depo_rate_limits WHERE created_at < %s", (now - window,))
@@ -93,7 +83,6 @@ def get_chat_job(job_id: str) -> dict[str, Any] | None:
 
 
 def list_chat_jobs() -> list[dict[str, Any]]:
-    _ensure_schema()
     with _connection() as connection, connection.cursor() as cursor:
         cursor.execute("SELECT value FROM depo_runtime_state WHERE kind='chat_job'")
         return [row[0] for row in cursor.fetchall()]
@@ -104,14 +93,12 @@ def delete_chat_job(job_id: str) -> None:
 
 
 def load_chat_messages(session_id: str, limit: int) -> list[dict[str, str]]:
-    _ensure_schema()
     with _connection() as connection, connection.cursor() as cursor:
         cursor.execute("SELECT role, content FROM depo_chat_messages WHERE session_id=%s ORDER BY message_id DESC LIMIT %s", (session_id, max(1, int(limit))))
         return [{"role": row[0], "content": row[1]} for row in reversed(cursor.fetchall())]
 
 
 def replace_chat_messages(session_id: str, messages: list[dict[str, str]], limit: int) -> None:
-    _ensure_schema()
     with _connection() as connection, connection.transaction(), connection.cursor() as cursor:
         # Serialize the legacy read/modify/write operation for one conversation.
         # Without this lock, two workers can both delete the same history and the
@@ -125,13 +112,11 @@ def replace_chat_messages(session_id: str, messages: list[dict[str, str]], limit
 
 
 def clear_chat_messages(session_id: str) -> None:
-    _ensure_schema()
     with _connection() as connection, connection.cursor() as cursor:
         cursor.execute("DELETE FROM depo_chat_messages WHERE session_id=%s", (session_id,))
 
 
 def acquire_session_lease(session_id: str, owner: str, ttl_seconds: float) -> bool:
-    _ensure_schema()
     now = time.time()
     payload = json.dumps({"owner": owner, "expires_at": now + max(1.0, ttl_seconds)})
     with _connection() as connection, connection.transaction(), connection.cursor() as cursor:
@@ -150,7 +135,6 @@ def acquire_session_lease(session_id: str, owner: str, ttl_seconds: float) -> bo
 
 
 def release_session_lease(session_id: str, owner: str) -> None:
-    _ensure_schema()
     with _connection() as connection, connection.cursor() as cursor:
         cursor.execute(
             "DELETE FROM depo_runtime_state WHERE kind='lease' AND key=%s AND value->>'owner'=%s",

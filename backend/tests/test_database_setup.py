@@ -4,6 +4,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from backend.depo_platform import database_setup as setup
+from backend.depo_platform import postgres_schema
+from backend import postgres_migrations
 
 
 def connection(rows=None, history=None):
@@ -53,3 +55,30 @@ def test_invalid_schema_rejected(monkeypatch):
     monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'unsafe"schema')
     with pytest.raises(RuntimeError, match='valid PostgreSQL identifier'):
         setup.verify_schema(connection())
+
+
+def test_migration_versions_are_unique():
+    versions = [version for version, _name, _statements in postgres_migrations.MIGRATIONS]
+    assert len(versions) == len(set(versions))
+
+
+@pytest.mark.parametrize(('configured', 'expected'), [('1', 1), ('60', 60), ('10', 10)])
+def test_postgres_connect_timeout_is_bounded(monkeypatch, configured, expected):
+    monkeypatch.setenv('DEPO_POSTGRES_CONNECT_TIMEOUT_SECONDS', configured)
+    assert postgres_schema.connect_timeout_seconds() == expected
+
+
+@pytest.mark.parametrize('configured', ['0', '61', 'not-a-number'])
+def test_invalid_postgres_connect_timeout_rejected(monkeypatch, configured):
+    monkeypatch.setenv('DEPO_POSTGRES_CONNECT_TIMEOUT_SECONDS', configured)
+    with pytest.raises(RuntimeError, match='DEPO_POSTGRES_CONNECT_TIMEOUT_SECONDS'):
+        postgres_schema.connect_timeout_seconds()
+
+
+def test_runtime_schema_selection_rejects_missing_schema(monkeypatch):
+    monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'semantic')
+    cursor = MagicMock()
+    cursor.fetchone.return_value = (False,)
+
+    with pytest.raises(RuntimeError, match='initialize-depo-schema.ps1'):
+        postgres_schema.select_schema(cursor)
