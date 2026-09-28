@@ -390,6 +390,37 @@ workload and MSVC v142 toolset with Visual Studio 2019. Install Git for Windows,
 Maven and CMake, and ensure `git.exe`, `mvn.cmd`, `cmake.exe` and the JDK 8
 `java.exe` are on `PATH`.
 
+The repository automates source download, SHA-512 and PGP verification, pinned
+vcpkg dependency installation, compilation, output collection and SHA-256
+manifest creation. From **x64 Native Tools Command Prompt for VS 2019**, run:
+
+```powershell
+Set-Location <repository-root>
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\infra\windows\build-depo-hadoop-windows.ps1 `
+  -BuildRoot 'C:\DEPO\hadoop-build' `
+  -VcpkgRoot 'C:\vcpkg' `
+  -OutputDirectory 'C:\DEPO\approved\hadoop-3.4.2-windows-x64'
+```
+
+Do not use `-SkipSignatureVerification` for a production package. The switch is
+provided only for an isolated build environment where the customer's approved
+supply-chain process performs PGP verification outside this script. A failed
+download, checksum, signature, dependency installation, compilation or missing
+output stops the script. A successful run produces:
+
+```text
+C:\DEPO\approved\hadoop-3.4.2-windows-x64\
+├── build-manifest.json
+└── bin\
+    ├── winutils.exe
+    └── hadoop.dll
+```
+
+The following commands show the underlying Apache build procedure and provide
+a manual recovery path if the automated script reports a workstation-specific
+toolchain problem.
+
 Open **x64 Native Tools Command Prompt for VS 2019** and execute the following
 commands. Hadoop requires a short source path:
 
