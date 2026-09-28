@@ -196,7 +196,7 @@ Run the Spark setup in this order. Do not jump directly to the final installer:
 | 1 | Step A | Confirm `java -version` starts with `21` |
 | 2 | Step B | Confirm both files exist under `C:\DEPO\downloads` |
 | 3 | Step C | Confirm the SHA-512 and GPG checks pass |
-| 4 | Step D | Confirm `spark-submit.cmd`, `pyspark.zip`, the Spark core JAR, and approved `winutils.exe` exist |
+| 4 | Step D | Confirm `spark-submit.cmd`, `pyspark.zip`, the Spark core JAR, approved `winutils.exe`, and `hadoop.dll` exist |
 | 5 | Section 2.3 | Copy the verified paths into the root `.env.local` |
 | 6 | Section 3 | Run the application installer with `-EnableSpark` |
 | 7 | Section 4 | Complete post-install validation and customer acceptance |
@@ -219,6 +219,7 @@ The exact filenames expected at the end of the Spark setup are:
 | `C:\DEPO\runtime\spark-4.1.2-bin-hadoop3\python\lib` | `py4j-0.10.9.9-src.zip` |
 | `C:\DEPO\runtime\spark-4.1.2-bin-hadoop3\jars` | `spark-core_2.13-4.1.2.jar` |
 | `C:\DEPO\runtime\hadoop\bin` | `winutils.exe` |
+| `C:\DEPO\runtime\hadoop\bin` | `hadoop.dll` |
 | JDK installation directory `bin` | `java.exe` |
 
 The Py4J filename can include a Spark-published patch version. Step D's
@@ -472,7 +473,7 @@ source and publish them internally:
 | Required file | Purpose |
 | --- | --- |
 | `winutils.exe` | Hadoop local-filesystem permission and helper operations on native Windows |
-| `hadoop.dll` | Recommended native Hadoop library for Windows code paths that load it |
+| `hadoop.dll` | Required native Hadoop library for the validated Windows runtime |
 
 The internal package owner must provide a SHA-256 value for each file. Copy the
 approved files to a staging folder such as `C:\DEPO\downloads\hadoop-helper`.
@@ -657,9 +658,11 @@ AGENT_FAILURE_RATE_ALERT_THRESHOLD=0.2
 AGENT_STUCK_RUN_SECONDS=900
 ```
 
-After starting the Agentic service, verify its monitoring loop. The summary and
-run endpoints use graph-read authentication. The Prometheus endpoint exposes
-aggregate operational values and contains no prompt or tool-input content.
+After the installer starts the Agentic service, verify its monitoring loop as
+part of Section 4.7. Do not run these commands during configuration. The
+summary and run endpoints use graph-read authentication. The Prometheus
+endpoint exposes aggregate operational values and contains no prompt or
+tool-input content.
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8012/healthz
@@ -736,8 +739,8 @@ VITE_API_GATEWAY_URL=https://api.customer.example
 For a local developer installation, leave `VITE_API_GATEWAY_URL` empty. The
 frontend then uses the local service ports listed in `infra/deployment/services.json`.
 
-For a local installation without an API gateway, complete this exact sequence
-from the repository root:
+For a local installation without an API gateway, configure the file from the
+repository root:
 
 ```powershell
 Set-Location .\frontend
@@ -751,17 +754,11 @@ Keep this line empty in the file:
 VITE_API_GATEWAY_URL=
 ```
 
-Save the file, then build and serve the browser application:
-
-```powershell
-npm ci
-npm run build
-Test-Path .\dist\index.html
-npx --yes serve .\dist -l 3000
-```
-
-The last command must remain running. Open
-`http://127.0.0.1:3000/` in the browser and use **Ctrl+F5** after rebuilding.
+Save the file and return to the repository root. Do not run `npm ci`, build, or
+start the frontend yet; the single installer in Section 3 performs the clean
+frontend installation and production build. Section 4.4 starts the completed
+build for the local browser smoke test. Open `http://127.0.0.1:3000/` only
+after reaching that section, and use **Ctrl+F5** after rebuilding.
 The ontology registry request must go to
 `http://127.0.0.1:8014/api/v1/ontology/registered`. If that endpoint returns
 HTTP 200 with an `ontologies` array but the UI is blank, rebuild after checking
@@ -1014,12 +1011,16 @@ Both paths must exist. Never copy either `.env.local` file into `frontend\dist`.
 
 ### 4.2 Confirm the application processes
 
-The supported installer starts the DEPO APIs and both workers. Confirm that the
-expected processes exist:
+The supported installer starts the DEPO APIs and both workers. Confirm the
+recorded processes rather than listing every unrelated Python process on the
+VM:
 
 ```powershell
-Get-Process python,node -ErrorAction SilentlyContinue |
-  Select-Object Id, ProcessName, Path
+Get-ChildItem .\logs\windows-services\*.pid | ForEach-Object {
+  $processId = [int](Get-Content -LiteralPath $_.FullName)
+  $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+  [pscustomobject]@{ Service = $_.BaseName; ProcessId = $processId; Running = [bool]$process; Path = $process.Path }
+} | Format-Table -AutoSize
 ```
 
 Use the service inventory for the exact ports:
@@ -1031,8 +1032,8 @@ Get-Content .\infra\deployment\services.json
 For each enabled service, test its health URL from the application VM. Example:
 
 ```powershell
-Invoke-WebRequest http://127.0.0.1:8000/health -UseBasicParsing
-Invoke-WebRequest http://127.0.0.1:8011/api/v1/health -UseBasicParsing
+Invoke-WebRequest http://127.0.0.1:8010/readyz -UseBasicParsing
+Invoke-WebRequest http://127.0.0.1:8011/readyz -UseBasicParsing
 ```
 
 The response must be HTTP 200. Do not expose these internal ports directly to
@@ -1070,10 +1071,11 @@ Do not run `Start-Service` for PostgreSQL on the application VM.
 ### 4.4 Serve the frontend
 
 The installer creates static files in `frontend\dist`. For a smoke test only,
-serve them locally:
+serve them locally with the already-installed backend Python runtime. This
+command does not download an additional npm package:
 
 ```powershell
-npx --yes serve .\frontend\dist -l 3000
+.\backend\.dt_venv\Scripts\python.exe -m http.server 3000 --bind 127.0.0.1 --directory .\frontend\dist
 ```
 
 Open `http://127.0.0.1:3000` in a browser and confirm the DEPO landing page
@@ -1162,6 +1164,26 @@ Record the installer output, dependency lock versions, PostgreSQL schema result,
 Neo4j evidence, Spark smoke result when enabled, browser acceptance, process
 supervision, reboot recovery, monitoring, backup/restore drill, and rollback
 evidence in the customer release record.
+
+The included launcher uses hidden user-session processes and PID files. It is
+suitable for installation verification and controlled demonstrations, but it
+does not register Windows services and does not provide reboot recovery. Before
+production acceptance, the customer platform team must place the ten API
+commands and two worker commands from `infra/deployment/services.json` under
+its approved Windows service/process supervisor, using the same root
+`.env.local`, repository working directory, service account and restart policy.
+Treat missing supervision and reboot-recovery evidence as a release blocker.
+
+For a controlled installation or demonstration, stop and restart the complete
+set in this order from the repository root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Stop -EnvFile .env.local
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local -Profile Production -SkipPostgres
+```
+
+`-SkipPostgres` means “do not operate a local PostgreSQL process”; database
+connectivity and schema validation still run against `DEPO_DATABASE_URL`.
 
 For service ownership and ports, use `infra/deployment/services.json`. The
 scripts under `infra/windows/` are implementation stages used by the one

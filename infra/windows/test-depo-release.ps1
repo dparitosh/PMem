@@ -33,14 +33,15 @@ if ($Bootstrap) {
 }
 foreach ($name in $required) { if (-not $values[$name]) { throw "Missing required setting: $name" } }
 if ($Production -and $values['DEPO_DATABASE_URL'] -match 'postgres:tcs12345') { throw 'Replace the local PostgreSQL administrator connection with a customer-managed least-privilege application account.' }
-$sparkFlags = @('DEPO_SPARK_ENABLED', 'DEPO_SPARK_NEO4J_ENABLED', 'DEPO_PIPELINE_SCHEDULER_ENABLED')
+$sparkFlags = @('DEPO_SPARK_ENABLED', 'DEPO_SPARK_NEO4J_ENABLED', 'DEPO_SPARK_POSTGRES_ENABLED', 'DEPO_PIPELINE_SCHEDULER_ENABLED')
 foreach ($name in $sparkFlags) {
   if ($values[$name] -and $values[$name] -notin @('true', 'false')) { throw "Invalid boolean setting: $name" }
 }
 $sparkEnabled = $values['DEPO_SPARK_ENABLED'] -eq 'true'
 $neo4jSparkEnabled = $values['DEPO_SPARK_NEO4J_ENABLED'] -eq 'true'
+$postgresSparkEnabled = $values['DEPO_SPARK_POSTGRES_ENABLED'] -eq 'true'
 $schedulerEnabled = $values['DEPO_PIPELINE_SCHEDULER_ENABLED'] -eq 'true'
-if (($neo4jSparkEnabled -or $schedulerEnabled) -and -not $sparkEnabled) {
+if (($neo4jSparkEnabled -or $postgresSparkEnabled -or $schedulerEnabled) -and -not $sparkEnabled) {
   throw 'Spark connector and scheduler require DEPO_SPARK_ENABLED=true.'
 }
 
@@ -56,9 +57,15 @@ if ($Bootstrap) {
   if ($LASTEXITCODE -ne 0) { throw 'Neo4j bootstrap preflight failed.' }
 }
 if ($sparkEnabled) {
-  $sparkParameters = @{ EnvFile = $EnvFile }
-  if ($neo4jSparkEnabled) { $sparkParameters.Neo4jConnector = $true }
-  & (Join-Path $PSScriptRoot 'test-depo-spark.ps1') @sparkParameters
+  & (Join-Path $PSScriptRoot 'test-depo-spark.ps1') -EnvFile $EnvFile
   if ($LASTEXITCODE -ne 0) { throw 'Spark release preflight failed.' }
+  if ($neo4jSparkEnabled) {
+    & (Join-Path $PSScriptRoot 'test-depo-spark.ps1') -EnvFile $EnvFile -Neo4jConnector
+    if ($LASTEXITCODE -ne 0) { throw 'Spark Neo4j connector release preflight failed.' }
+  }
+  if ($postgresSparkEnabled) {
+    & (Join-Path $PSScriptRoot 'test-depo-spark.ps1') -EnvFile $EnvFile -PostgresConnector
+    if ($LASTEXITCODE -ne 0) { throw 'Spark PostgreSQL connector release preflight failed.' }
+  }
 }
 Write-Host 'DEPO release preflight passed.'

@@ -14,6 +14,7 @@ param(
   [string]$BuildRoot = 'C:\DEPO\hadoop-build',
   [string]$VcpkgRoot = 'C:\vcpkg',
   [string]$OutputDirectory = 'C:\DEPO\approved\hadoop-3.4.2-windows-x64',
+  [string]$GitBashPath = '',
   [switch]$Resume,
   [switch]$SkipSignatureVerification
 )
@@ -50,6 +51,12 @@ $null = Require-Command 'cmake.exe'
 $null = Require-Command 'cl.exe'
 $java = Require-Command 'java.exe'
 $gpg = if ($SkipSignatureVerification) { $null } else { Require-Command 'gpg.exe' }
+if (-not $GitBashPath) {
+  $GitBashPath = [IO.Path]::GetFullPath((Join-Path (Split-Path $git -Parent) '..\bin\bash.exe'))
+}
+if (-not [IO.Path]::IsPathFullyQualified($GitBashPath) -or -not (Test-Path -LiteralPath $GitBashPath -PathType Leaf)) {
+  throw 'Git Bash was not found. Pass -GitBashPath with the absolute path to Git for Windows bin\bash.exe.'
+}
 
 $javaVersion = (& $java -version 2>&1 | Out-String)
 if ($javaVersion -notmatch 'version\s+"1\.8\.') {
@@ -115,7 +122,7 @@ $env:MAVEN_OPTS = '-Xmx2048M -Xss128M'
 $mavenArguments = @(
   'clean', 'package', '-Dhttps.protocols=TLSv1.2', '-DskipTests', '-DskipDocs',
   '-Pnative-win,dist', '-Drequire.openssl', '-Drequire.test.libhadoop', '-Pyarn-ui',
-  '-Dshell-executable=C:\Git\bin\bash.exe', '-Dtar',
+  "-Dshell-executable=$GitBashPath", '-Dtar',
   "-Dopenssl.prefix=$dependencyRoot", "-Dcmake.prefix.path=$dependencyRoot",
   "-Dwindows.cmake.toolchain.file=$VcpkgRoot\scripts\buildsystems\vcpkg.cmake",
   '-Dwindows.cmake.build.type=RelWithDebInfo', '-Dwindows.build.hdfspp.dll=off',

@@ -39,18 +39,18 @@ function Assert-DepoNeo4jConfiguration([hashtable]$Values, [switch]$Production) 
   if ($authMode -eq 'none' -and $uri.Scheme -notin @('neo4j','bolt')) { throw 'NEO4J_AUTH_MODE=none requires a non-TLS neo4j:// or bolt:// URI.' }
 }
 
-function Assert-DepoSparkRuntime([string]$SparkHome, [string]$JavaHome, [string]$HadoopHome) {
+function Assert-DepoSparkRuntime([string]$SparkHome, [string]$JavaHome, [string]$HadoopHome, [string]$OutputRoot = $env:DEPO_SPARK_OUTPUT_ROOT) {
   foreach ($entry in @(@('DEPO_SPARK_HOME',$SparkHome), @('DEPO_JAVA_HOME',$JavaHome), @('DEPO_HADOOP_HOME',$HadoopHome))) {
     if (-not $entry[1] -or -not [IO.Path]::IsPathRooted($entry[1])) { throw "$($entry[0]) must be an explicit absolute runtime path." }
   }
-  foreach ($path in @((Join-Path $SparkHome 'bin/spark-submit.cmd'), (Join-Path $SparkHome 'python/lib/pyspark.zip'), (Join-Path $JavaHome 'bin/java.exe'), (Join-Path $HadoopHome 'bin/winutils.exe'))) {
+  foreach ($path in @((Join-Path $SparkHome 'bin/spark-submit.cmd'), (Join-Path $SparkHome 'python/lib/pyspark.zip'), (Join-Path $JavaHome 'bin/java.exe'), (Join-Path $HadoopHome 'bin/winutils.exe'), (Join-Path $HadoopHome 'bin/hadoop.dll'))) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing Spark runtime component: $path" }
   }
   if (-not @(Get-ChildItem -LiteralPath (Join-Path $SparkHome 'python/lib') -Filter 'py4j-*-src.zip').Count) { throw 'Spark distribution is missing its matching Py4J archive.' }
   if (-not (Test-Path -LiteralPath (Join-Path $SparkHome 'jars/spark-core_2.13-4.1.2.jar'))) { throw 'Expected the Spark 4.1.2 / Scala 2.13 binary distribution.' }
   $javaRelease = Join-Path $JavaHome 'release'
   if (-not (Test-Path -LiteralPath $javaRelease) -or (Get-Content -LiteralPath $javaRelease -Raw) -notmatch '(?m)^JAVA_VERSION="21(?:\.|"|\+)') { throw 'The release baseline requires JDK 21.' }
-  if (-not $env:DEPO_SPARK_OUTPUT_ROOT -or -not [IO.Path]::IsPathRooted($env:DEPO_SPARK_OUTPUT_ROOT)) { throw 'DEPO_SPARK_OUTPUT_ROOT must be an explicit absolute data path.' }
+  if (-not $OutputRoot -or -not [IO.Path]::IsPathRooted($OutputRoot)) { throw 'DEPO_SPARK_OUTPUT_ROOT must be an explicit absolute data path.' }
 }
 
 function Assert-DepoSparkPostgresConfiguration([hashtable]$Values) {

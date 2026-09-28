@@ -114,4 +114,4 @@ if (-not $SkipReleasePreflight) {
 }
 
 Write-Host "`nDEPO Windows installation completed successfully." -ForegroundColor Green
-Write-Host 'Frontend build: frontend\dist. Serve it through the customer HTTPS reverse proxy.'
+if (-not $SkipFrontend) { Write-Host 'Frontend build: frontend\dist. Serve it through the customer HTTPS reverse proxy.' }

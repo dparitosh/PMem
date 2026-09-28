@@ -51,7 +51,7 @@ try {
   if ($parsed.DEPO_AUDIT_FIXTURE -ne 'read-only' -or $env:DEPO_AUDIT_FIXTURE) { throw 'Reader changed process environment.' }
   Assert-Rejected { Assert-DepoSparkRuntime '' '' '' } 'absolute runtime path'
   $spark = Join-Path $fixture 'spark'; $java = Join-Path $fixture 'java'; $hadoop = Join-Path $fixture 'hadoop'
-  foreach ($file in @('spark/bin/spark-submit.cmd','spark/python/lib/pyspark.zip','spark/python/lib/py4j-test-src.zip','spark/jars/spark-core_2.13-4.1.2.jar','java/bin/java.exe','hadoop/bin/winutils.exe')) {
+  foreach ($file in @('spark/bin/spark-submit.cmd','spark/python/lib/pyspark.zip','spark/python/lib/py4j-test-src.zip','spark/jars/spark-core_2.13-4.1.2.jar','java/bin/java.exe','hadoop/bin/winutils.exe','hadoop/bin/hadoop.dll')) {
     $target = Join-Path $fixture $file
     New-Item -ItemType Directory -Path (Split-Path $target) -Force | Out-Null
     Set-Content -LiteralPath $target -Value ''
@@ -62,9 +62,12 @@ try {
   Set-Content -LiteralPath (Join-Path $java 'release') -Value 'JAVA_VERSION="11.0.1"'
   Assert-Rejected { Assert-DepoSparkRuntime $spark $java $hadoop } 'JDK 21'
   Set-Content -LiteralPath (Join-Path $java 'release') -Value 'JAVA_VERSION="21.0.1"'
+  Remove-Item -LiteralPath (Join-Path $hadoop 'bin/hadoop.dll')
+  Assert-Rejected { Assert-DepoSparkRuntime $spark $java $hadoop } 'hadoop.dll'
+  Set-Content -LiteralPath (Join-Path $hadoop 'bin/hadoop.dll') -Value ''
   Remove-Item -LiteralPath (Join-Path $spark 'python/lib/py4j-test-src.zip')
   Assert-Rejected { Assert-DepoSparkRuntime $spark $java $hadoop } 'Py4J'
-  Write-Output 'PASS: missing/duplicate configuration, atomic validation, explicit runtime paths, Java/Spark layout and missing Py4J checks.'
+  Write-Output 'PASS: missing/duplicate configuration, atomic validation, explicit runtime paths, Java/Spark/Hadoop layout and missing native/Py4J checks.'
 } finally {
   $env:DEPO_SPARK_OUTPUT_ROOT = $oldOutput
   $resolved = [IO.Path]::GetFullPath($fixture)

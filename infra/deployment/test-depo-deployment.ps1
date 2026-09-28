@@ -25,6 +25,24 @@ Assert-DepoNeo4jConfiguration -Values $values -Production:($Profile -eq 'Product
 if ($values.DEPO_POSTGRES_MODE -notin @('external','service','portable')) { throw 'Set DEPO_POSTGRES_MODE to external, service or portable.' }
 if ($values.DEPO_POSTGRES_MODE -eq 'service' -and -not $values.DEPO_POSTGRES_SERVICE_NAME) { throw 'Service mode requires DEPO_POSTGRES_SERVICE_NAME.' }
 if ($values.DEPO_POSTGRES_MODE -eq 'portable' -and (-not $values.DEPO_POSTGRES_BIN_DIR -or -not $values.DEPO_POSTGRES_DATA_DIR)) { throw 'Portable mode requires PostgreSQL binary and initialized data paths.' }
+$sparkFlags = @('DEPO_SPARK_ENABLED','DEPO_SPARK_NEO4J_ENABLED','DEPO_SPARK_POSTGRES_ENABLED','DEPO_PIPELINE_SCHEDULER_ENABLED')
+foreach ($name in $sparkFlags) {
+  if ($values[$name] -and $values[$name] -notin @('true','false')) { throw "Invalid boolean setting: $name" }
+}
+$sparkEnabled = $values.DEPO_SPARK_ENABLED -eq 'true'
+$neo4jSparkEnabled = $values.DEPO_SPARK_NEO4J_ENABLED -eq 'true'
+$postgresSparkEnabled = $values.DEPO_SPARK_POSTGRES_ENABLED -eq 'true'
+$schedulerEnabled = $values.DEPO_PIPELINE_SCHEDULER_ENABLED -eq 'true'
+if (($neo4jSparkEnabled -or $postgresSparkEnabled -or $schedulerEnabled) -and -not $sparkEnabled) {
+  throw 'Spark connectors and scheduler require DEPO_SPARK_ENABLED=true.'
+}
+if ($sparkEnabled) {
+  Assert-DepoSparkRuntime $values.DEPO_SPARK_HOME $values.DEPO_JAVA_HOME $values.DEPO_HADOOP_HOME $values.DEPO_SPARK_OUTPUT_ROOT
+  if ($postgresSparkEnabled) { Assert-DepoSparkPostgresConfiguration -Values $values }
+  if ($neo4jSparkEnabled -and (-not $values.DEPO_SPARK_NEO4J_PACKAGE -or $values.DEPO_SPARK_NEO4J_PACKAGE -match '<.*>')) {
+    throw 'DEPO_SPARK_NEO4J_PACKAGE is required when the Spark Neo4j connector is enabled.'
+  }
+}
 $required = @("DEPO_DATABASE_URL", "DEPO_DATABASE_SCHEMA", "AUTH_MODE", "NEO4J_URI", "NEO4J_DATABASE", "ALLOWED_ORIGINS")
 $neo4jAuthMode = if ($values.NEO4J_AUTH_MODE) { $values.NEO4J_AUTH_MODE } else { 'token' }
 if ($neo4jAuthMode -ne 'none') { $required += @('NEO4J_USER', 'NEO4J_PASS') }
