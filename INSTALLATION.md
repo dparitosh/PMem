@@ -640,6 +640,15 @@ Add these values after the database and Neo4j settings:
 `DEPO_SPARK_HOME`, `DEPO_JAVA_HOME`, `DEPO_HADOOP_HOME`,
 `DEPO_SPARK_OUTPUT_ROOT` and `DEPO_SPARK_MASTER`.
 
+This release uses an in-process `SparkSession` on the Windows application VM.
+Apache Spark Connect was assessed but is not enabled because it requires a
+separately operated Spark Connect server endpoint, and this customer topology
+currently has no Linux or managed Spark cluster. Spark Connect is the preferred
+future production topology when that server exists: the Windows application VM
+then acts only as a client and no longer needs a local Spark JVM or
+`winutils.exe`. PostgreSQL JDBC remains a data-source connector in either
+topology; it is not a substitute for Spark Connect.
+
 Example for an installation under `C:\DEPO\runtime`. This command updates each
 Spark key in place, so it is safe to run again after changing a path:
 
@@ -652,6 +661,7 @@ $sparkSettings = @{
   DEPO_SPARK_MASTER = 'local[2]'
   DEPO_SPARK_ENABLED = 'false'
   DEPO_SPARK_NEO4J_ENABLED = 'false'
+  DEPO_SPARK_POSTGRES_ENABLED = 'false'
   DEPO_PIPELINE_SCHEDULER_ENABLED = 'false'
   DEPO_PIPELINE_EXECUTION_MODE = 'worker'
   DEPO_PIPELINE_LEASE_SECONDS = '300'
@@ -688,6 +698,55 @@ Import-DepoEnvironment -Root (Get-Location).Path -EnvFile .env.local
 Set feature flags to `true` only after the Spark smoke test passes. Edit existing
 keys instead of appending duplicates; duplicate keys fail validation.
 
+#### Optional: allow Spark jobs to read PostgreSQL through JDBC
+
+The backend services continue to use `psycopg` for migrations, transactions,
+and control-plane records. Enable JDBC only when an approved Spark data job must
+read PostgreSQL. Spark must not write the DEPO-owned `semantic.depo_*` tables.
+
+Download the Java 8-or-newer PostgreSQL JDBC 4.2 driver from the official
+[pgJDBC download page](https://jdbc.postgresql.org/download/). The release
+validated by this guide is `postgresql-42.7.13.jar`. Run these commands from an
+elevated PowerShell prompt:
+
+```powershell
+New-Item -ItemType Directory -Force 'C:\DEPO\drivers' | Out-Null
+Invoke-WebRequest -Uri 'https://jdbc.postgresql.org/download/postgresql-42.7.13.jar' -OutFile 'C:\DEPO\drivers\postgresql-42.7.13.jar'
+Get-Item 'C:\DEPO\drivers\postgresql-42.7.13.jar'
+Get-FileHash 'C:\DEPO\drivers\postgresql-42.7.13.jar' -Algorithm SHA256
+```
+
+Record the SHA-256 value in the customer installation evidence and compare it
+with the checksum approved by the customer's software-supply process. Then add
+these two unique lines to the root `.env.local`:
+
+```dotenv
+DEPO_SPARK_POSTGRES_ENABLED=true
+DEPO_SPARK_POSTGRES_DRIVER_JAR=C:\DEPO\drivers\postgresql-42.7.13.jar
+```
+
+The same root file must already contain the remote PostgreSQL URL, including
+the application role. Keep special characters percent-encoded. For the
+customer's non-TLS database configuration, the shape is:
+
+```dotenv
+DEPO_DATABASE_URL=postgresql://depo_app:<percent-encoded-password>@<database-vm-ip>:5432/depo?sslmode=disable
+```
+
+Run the dedicated read-only JDBC test before installation:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\test-depo-spark.ps1 -EnvFile .env.local -PostgresConnector
+```
+
+Success prints `DEPO Spark PostgreSQL JDBC smoke test passed.` The probe runs
+only `SELECT 1`; it does not create or modify tables. To enable the connector
+through the single installer, use:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo-windows.ps1 -EnvFile .env.local -Profile Production -EnableSpark -EnablePostgresSparkConnector
+```
+
 ### 2.4 Confirm the two files before installation
 
 Run this check. It must show the root server file and the frontend browser file;
@@ -713,7 +772,7 @@ scheduler switches only when those customer capabilities are required:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo-windows.ps1 -EnvFile .env.local -Profile Production -EnableSpark
-# Optional: -EnableNeo4jSparkConnector -EnablePipelineScheduler
+# Optional: -EnableNeo4jSparkConnector -EnablePostgresSparkConnector -EnablePipelineScheduler
 ```
 
 The installer performs these stages in this fixed order and stops at the first

@@ -15,6 +15,7 @@ param(
   [string]$Python = 'py',
   [switch]$EnableSpark,
   [switch]$EnableNeo4jSparkConnector,
+  [switch]$EnablePostgresSparkConnector,
   [switch]$EnablePipelineScheduler,
   [switch]$SkipFrontend,
   [switch]$SkipBaselineProvisioning,
@@ -52,11 +53,13 @@ try {
 }
 $configuredSpark = $settings['DEPO_SPARK_ENABLED'] -eq 'true'
 $configuredConnector = $settings['DEPO_SPARK_NEO4J_ENABLED'] -eq 'true'
+$configuredPostgresConnector = $settings['DEPO_SPARK_POSTGRES_ENABLED'] -eq 'true'
 $configuredScheduler = $settings['DEPO_PIPELINE_SCHEDULER_ENABLED'] -eq 'true'
 $effectiveSpark = [bool]($EnableSpark -or $configuredSpark)
 $effectiveConnector = [bool]($EnableNeo4jSparkConnector -or $configuredConnector)
+$effectivePostgresConnector = [bool]($EnablePostgresSparkConnector -or $configuredPostgresConnector)
 $effectiveScheduler = [bool]($EnablePipelineScheduler -or $configuredScheduler)
-if (($effectiveConnector -or $effectiveScheduler) -and -not $effectiveSpark) {
+if (($effectiveConnector -or $effectivePostgresConnector -or $effectiveScheduler) -and -not $effectiveSpark) {
   throw 'Spark connector and scheduler require Spark enabled through -EnableSpark or DEPO_SPARK_ENABLED=true in .env.local.'
 }
 
@@ -82,15 +85,24 @@ Invoke-DepoStage 'Neo4j connection validation' {
 }
 if ($effectiveSpark) {
   Invoke-DepoStage 'Spark runtime smoke test' {
-    $sparkParameters = @{ EnvFile = $envPath }
-    if ($effectiveConnector) { $sparkParameters.Neo4jConnector = $true }
-    & (Join-Path $PSScriptRoot 'test-depo-spark.ps1') @sparkParameters
+    & (Join-Path $PSScriptRoot 'test-depo-spark.ps1') -EnvFile $envPath
+  }
+  if ($effectiveConnector) {
+    Invoke-DepoStage 'Spark Neo4j connector smoke test' {
+      & (Join-Path $PSScriptRoot 'test-depo-spark.ps1') -EnvFile $envPath -Neo4jConnector
+    }
+  }
+  if ($effectivePostgresConnector) {
+    Invoke-DepoStage 'Spark PostgreSQL connector smoke test' {
+      & (Join-Path $PSScriptRoot 'test-depo-spark.ps1') -EnvFile $envPath -PostgresConnector
+    }
   }
 }
 Invoke-DepoStage 'Service startup and endpoint validation' {
   $startParameters = @{ Action = 'Start'; EnvFile = $envPath; Profile = $Profile }
   if ($effectiveSpark) { $startParameters.EnableSpark = $true }
   if ($effectiveConnector) { $startParameters.EnableNeo4jSparkConnector = $true }
+  if ($effectivePostgresConnector) { $startParameters.EnablePostgresSparkConnector = $true }
   if ($effectiveScheduler) { $startParameters.EnablePipelineScheduler = $true }
   if ($SkipBaselineProvisioning) { $startParameters.SkipBaselineProvisioning = $true }
   & (Join-Path $root 'infra\deployment\invoke-depo-lifecycle.ps1') @startParameters

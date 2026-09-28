@@ -8,7 +8,8 @@ param(
   [switch]$SkipPostgres,
   [switch]$EnableSpark,
   [switch]$EnablePipelineScheduler,
-  [switch]$EnableNeo4jSparkConnector
+  [switch]$EnableNeo4jSparkConnector,
+  [switch]$EnablePostgresSparkConnector
 )
 
 $ErrorActionPreference = "Stop"
@@ -54,9 +55,11 @@ $sparkOptions = Resolve-DepoSparkOptions $PSBoundParameters
 $EnableSpark = $sparkOptions.EnableSpark
 $EnableNeo4jSparkConnector = $sparkOptions.EnableNeo4jSparkConnector
 $EnablePipelineScheduler = $sparkOptions.EnablePipelineScheduler
+$EnablePostgresSparkConnector = $sparkOptions.EnablePostgresSparkConnector
 $env:DEPO_SPARK_ENABLED = ([bool]$EnableSpark).ToString().ToLowerInvariant()
 $env:DEPO_SPARK_NEO4J_ENABLED = ([bool]$EnableNeo4jSparkConnector).ToString().ToLowerInvariant()
 $env:DEPO_PIPELINE_SCHEDULER_ENABLED = ([bool]$EnablePipelineScheduler).ToString().ToLowerInvariant()
+$env:DEPO_SPARK_POSTGRES_ENABLED = ([bool]$EnablePostgresSparkConnector).ToString().ToLowerInvariant()
 if (-not $env:DEPO_PIPELINE_EXECUTION_MODE) { $env:DEPO_PIPELINE_EXECUTION_MODE = 'worker' }
 if ($env:DEPO_PIPELINE_EXECUTION_MODE -notin @('worker','inline')) { throw 'DEPO_PIPELINE_EXECUTION_MODE must be worker or inline.' }
 # Spark is deliberately opt-in: the data-pipeline API stays healthy without
@@ -79,6 +82,10 @@ if ($EnableSpark) {
     foreach ($key in $requiredNeo4jKeys) {
       if (-not [Environment]::GetEnvironmentVariable($key, 'Process')) { throw "$key is required when -EnableNeo4jSparkConnector is used." }
     }
+  }
+  if ($EnablePostgresSparkConnector) {
+    $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+    Assert-DepoSparkPostgresConfiguration -Values $values
   }
 }
 if ($EnablePipelineScheduler) {

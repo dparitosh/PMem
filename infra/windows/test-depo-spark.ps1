@@ -1,6 +1,7 @@
 param(
   [string]$EnvFile = '.env.local',
   [switch]$Neo4jConnector,
+  [switch]$PostgresConnector,
   [string]$SparkHome = $env:DEPO_SPARK_HOME,
   [string]$JavaHome = $env:DEPO_JAVA_HOME,
   [string]$HadoopHome = $env:DEPO_HADOOP_HOME,
@@ -19,6 +20,7 @@ if (-not $PSBoundParameters.ContainsKey('HadoopHome')) { $HadoopHome = $env:DEPO
 if (-not $PSBoundParameters.ContainsKey('Master')) { $Master = $env:DEPO_SPARK_MASTER }
 if (-not $Master) { $Master = "local[2]" }
 Assert-DepoSparkRuntime $SparkHome $JavaHome $HadoopHome
+if ($Neo4jConnector -and $PostgresConnector) { throw 'Run Neo4j and PostgreSQL connector smoke tests separately.' }
 
 $submit = Join-Path $SparkHome "bin\spark-submit.cmd"
 $java = Join-Path $JavaHome "bin\java.exe"
@@ -38,7 +40,11 @@ $env:PYSPARK_PYTHON = Join-Path $root "backend\.dt_venv\Scripts\python.exe"
 if (-not (Test-Path $env:PYSPARK_PYTHON)) { throw "DEPO Python runtime was not found: $env:PYSPARK_PYTHON" }
 
 $env:PYSPARK_DRIVER_PYTHON = $env:PYSPARK_PYTHON
-if ($Neo4jConnector) {
+if ($PostgresConnector) {
+  $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+  Assert-DepoSparkPostgresConfiguration -Values $values
+  & $submit --master $Master --jars $env:DEPO_SPARK_POSTGRES_DRIVER_JAR (Join-Path $root 'infra/spark/postgres_connector_smoke.py')
+} elseif ($Neo4jConnector) {
   $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
   if (-not $values.NEO4J_USER -and $env:NEO4J_USER) { $values.NEO4J_USER = $env:NEO4J_USER }
   if (-not $values.NEO4J_PASS -and $env:NEO4J_PASS) { $values.NEO4J_PASS = $env:NEO4J_PASS }

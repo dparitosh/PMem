@@ -5,6 +5,7 @@ param(
   [switch]$LocalInsecureDemo,
   [switch]$EnableSpark,
   [switch]$EnableNeo4jSparkConnector,
+  [switch]$EnablePostgresSparkConnector,
   [switch]$EnablePipelineScheduler,
   [switch]$SkipBaselineProvisioning,
   [string]$PostgresBinDir = "",
@@ -21,7 +22,7 @@ switch ($Action) {
     if ($PostgresBinDir) { $startParameters.PostgresBinDir = $PostgresBinDir }
     if ($PostgresDataDir) { $startParameters.PostgresDataDir = $PostgresDataDir }
     if ($SkipPostgres) { $startParameters.SkipPostgres = $true }
-    foreach ($option in @('EnableSpark','EnableNeo4jSparkConnector','EnablePipelineScheduler')) {
+    foreach ($option in @('EnableSpark','EnableNeo4jSparkConnector','EnablePostgresSparkConnector','EnablePipelineScheduler')) {
       if ($PSBoundParameters.ContainsKey($option)) { $startParameters[$option] = $PSBoundParameters[$option] }
     }
     & (Join-Path $root "infra\windows\start-depo-services.ps1") @startParameters

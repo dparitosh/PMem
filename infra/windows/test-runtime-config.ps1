@@ -17,18 +17,19 @@ try {
   if ($env:DEPO_AUDIT_FIXTURE) { throw 'Invalid configuration partially changed environment.' }
   Assert-Rejected { Import-DepoEnvironment $fixture 'missing.env' } 'Missing environment'
   $savedFlags = @{}
-  foreach ($key in @('DEPO_SPARK_ENABLED','DEPO_SPARK_NEO4J_ENABLED','DEPO_PIPELINE_SCHEDULER_ENABLED')) {
+  foreach ($key in @('DEPO_SPARK_ENABLED','DEPO_SPARK_NEO4J_ENABLED','DEPO_SPARK_POSTGRES_ENABLED','DEPO_PIPELINE_SCHEDULER_ENABLED')) {
     $savedFlags[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
     [Environment]::SetEnvironmentVariable($key, 'false', 'Process')
   }
   try {
     $env:DEPO_SPARK_ENABLED = 'true'
     $env:DEPO_SPARK_NEO4J_ENABLED = 'true'
+    $env:DEPO_SPARK_POSTGRES_ENABLED = 'true'
     $options = Resolve-DepoSparkOptions @{}
-    if (-not $options.EnableSpark -or -not $options.EnableNeo4jSparkConnector) { throw 'Environment flags ignored.' }
+    if (-not $options.EnableSpark -or -not $options.EnableNeo4jSparkConnector -or -not $options.EnablePostgresSparkConnector) { throw 'Environment flags ignored.' }
     Assert-Rejected { Resolve-DepoSparkOptions @{ EnableSpark = $false } } 'require Spark'
-    $options = Resolve-DepoSparkOptions @{ EnableSpark = $false; EnableNeo4jSparkConnector = $false }
-    if ($options.EnableSpark -or $options.EnableNeo4jSparkConnector) { throw 'Explicit false overrides ignored.' }
+    $options = Resolve-DepoSparkOptions @{ EnableSpark = $false; EnableNeo4jSparkConnector = $false; EnablePostgresSparkConnector = $false }
+    if ($options.EnableSpark -or $options.EnableNeo4jSparkConnector -or $options.EnablePostgresSparkConnector) { throw 'Explicit false overrides ignored.' }
     $env:DEPO_SPARK_ENABLED = 'invalid'
     Assert-Rejected { Resolve-DepoSparkOptions @{} } 'Invalid boolean'
   } finally {

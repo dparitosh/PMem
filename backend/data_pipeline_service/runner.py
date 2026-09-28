@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.artifact_store import ArtifactStore
+from backend.data_pipeline_service import postgres_jdbc
 
 
 class SparkUnavailable(RuntimeError):
@@ -88,6 +89,9 @@ class SparkJobRunner:
 
     def _neo4j_enabled(self) -> bool:
         return os.getenv("DEPO_SPARK_NEO4J_ENABLED", "false").strip().lower() == "true"
+
+    def _postgres_enabled(self) -> bool:
+        return postgres_jdbc.enabled()
 
     @staticmethod
     def _spark_version(spark_home: Path) -> str:
@@ -168,6 +172,8 @@ class SparkJobRunner:
                 and (os.getenv("NEO4J_USER") or os.getenv("NEO4J_USERNAME") or "").strip()
                 and (os.getenv("NEO4J_PASS") or os.getenv("NEO4J_PASSWORD") or "").strip()
             ),
+            "postgres_jdbc_enabled": self._postgres_enabled(),
+            "postgres_jdbc_driver_configured": bool(os.getenv("DEPO_SPARK_POSTGRES_DRIVER_JAR", "").strip()),
             "runs_retained": len(self._runs),
         }
 
@@ -205,6 +211,12 @@ class SparkJobRunner:
         if self._neo4j_enabled():
             for key, value in self._neo4j_connector_configuration(spark_home).items():
                 builder = builder.config(key, value)
+        if self._postgres_enabled():
+            try:
+                jdbc = postgres_jdbc.configuration()
+            except postgres_jdbc.PostgresJdbcConfigurationError as exc:
+                raise SparkUnavailable(str(exc)) from exc
+            builder = builder.config("spark.jars", jdbc["driver_jar"])
         self._spark = builder.getOrCreate()
         self._spark.sparkContext.setLogLevel(os.getenv("DEPO_SPARK_LOG_LEVEL", "WARN"))
         self._application_id = str(self._spark.sparkContext.applicationId)
