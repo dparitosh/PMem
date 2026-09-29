@@ -53,7 +53,9 @@ if ($Production) {
   if ($LASTEXITCODE -ne 0) { throw 'Neo4j production preflight failed.' }
 }
 if ($Bootstrap) {
-  & (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') -EnvFile $EnvFile -Bootstrap
+  # Bootstrap provisioning is an explicit installer stage. Release diagnostics
+  # remain read-only and prove that the selected database can be queried.
+  & (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') -EnvFile $EnvFile
   if ($LASTEXITCODE -ne 0) { throw 'Neo4j bootstrap preflight failed.' }
 }
 if ($sparkEnabled) {

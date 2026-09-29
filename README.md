@@ -25,7 +25,7 @@ Run the supported one-command Windows installer after preparing PostgreSQL,
 Neo4j, optional Spark, and the two `.env.local` files described in the guide:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo-windows.ps1 -EnvFile .env.local -Profile Production
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-depo.ps1 -EnvFile .env.local -Profile Production
 ```
 
 It installs dependencies, builds the frontend, validates configuration, applies

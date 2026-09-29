@@ -3,6 +3,25 @@
 This is the single installation guide for the DEPO frontend, backend, PostgreSQL,
 Neo4j, Spark and PySpark. Run commands from the repository root on Windows.
 
+Customers use these repository-root entry points for application configuration,
+installation, diagnostics and operation. The root commands call the stages
+below `infra/windows` and `infra/deployment`; customers do not assemble or run
+those stages individually.
+
+| Sequence | Command | Purpose |
+| --- | --- | --- |
+| 1 | Complete Section 1 | Provision PostgreSQL, Neo4j and optional Spark before installing the application |
+| 2 | `.\configure-depo.ps1` | Create the only two editable configuration files |
+| 3 | `.\diagnose-depo.ps1 -Phase Prerequisites` | Check required software without installing anything |
+| 4 | `.\install-depo.ps1` | Install dependencies, schemas, services and frontend in the correct order |
+| 5 | `.\diagnose-depo.ps1 -Phase All` | Verify the completed installation and every service endpoint |
+| Later | `.\manage-depo.ps1 -Action Start` or `-Action Stop` | Operate an already installed deployment |
+
+Do not skip a sequence number. Every command stops on the first failure. The
+installer and diagnostics are safe to rerun after correcting that failure.
+The configuration command refuses to overwrite either `.env.local` file unless
+an administrator deliberately supplies `-Force` after preserving its secrets.
+
 ## 1. Provision the customer dependencies
 
 ### 1.1 Install PostgreSQL 16
@@ -177,26 +196,9 @@ certificate-verified TLS: `neo4j+s://` or direct `bolt+s://`. Bootstrap may use
 Bolt address, certificate chain and application database account. The application
 installer does not install or operate either database server.
 
-After `.env.local` is configured and backend dependencies are installed, apply
-the idempotent Neo4j publication constraints once in a bootstrap environment:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\infra\windows\test-depo-neo4j.ps1 `
-  -EnvFile .env.local `
-  -Bootstrap
-```
-
-This applies `infra/deployment/neo4j-publication-index.cypher`, waits for its
-indexes, and verifies the two composite uniqueness constraints. Production
-preflight is read-only and requires those constraints to exist:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass `
-  -File .\infra\windows\test-depo-neo4j.ps1 `
-  -EnvFile .env.local `
-  -Production
-```
+The single installer in Section 3 applies the idempotent Neo4j publication
+constraints after it creates the backend environment. It then performs a
+read-only production verification. Do not run a separate Neo4j schema script.
 
 ### 1.2 Install optional Apache Spark and PySpark
 
@@ -655,13 +657,15 @@ application deployment.
 
 ### 2.1 Create the root server file
 
-From the repository root, run this command once. It copies the server template
-and generates distinct API-key values without printing them:
+From the repository root, run this command once. It creates both supported
+configuration files, copies the reviewed templates and generates distinct
+server API-key values without printing them. Use an empty `GatewayUrl` only for
+a direct local installation.
 
 ```powershell
-if (-not (Test-Path .env.local)) {
-  powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\new-depo-deployment-config.ps1
-}
+powershell -NoProfile -ExecutionPolicy Bypass -File .\configure-depo.ps1 `
+  -AuthMode token `
+  -GatewayUrl 'https://api.customer.example'
 ```
 
 Open the new root `.env.local` and edit these values in order:
@@ -742,14 +746,11 @@ environment. Edit a key in place; never append another line with the same key.
 
 ### 2.2 Create the frontend browser file
 
-Create this file once, then set the public API gateway URL **before** running
-the frontend build. A browser can read every `VITE_*` value, so this file must
-contain no credentials.
+The `configure-depo.ps1` command in Section 2.1 already created this file and
+set the public API gateway URL. A browser can read every `VITE_*` value, so this
+file must contain no credentials. Open it only to review the generated value.
 
 ```powershell
-if (-not (Test-Path .\frontend\.env.local)) {
-  Copy-Item .\frontend\.env.example .\frontend\.env.local
-}
 notepad .\frontend\.env.local
 ```
 
@@ -762,15 +763,14 @@ VITE_API_GATEWAY_URL=https://api.customer.example
 ```
 
 For a local developer installation, leave `VITE_API_GATEWAY_URL` empty. The
-frontend then uses the local service ports listed in `infra/deployment/services.json`.
+frontend then uses the configured local service inventory.
 
-For a local installation without an API gateway, configure the file from the
-repository root:
+For a local installation without an API gateway, use this command instead of
+the customer-gateway example in Section 2.1:
 
 ```powershell
-Set-Location .\frontend
-if (-not (Test-Path .\.env.local)) { Copy-Item .\.env.example .\.env.local }
-notepad .\.env.local
+powershell -NoProfile -ExecutionPolicy Bypass -File .\configure-depo.ps1 -AuthMode token -GatewayUrl ''
+notepad .\frontend\.env.local
 ```
 
 Keep this line empty in the file:
@@ -902,7 +902,7 @@ only `SELECT 1`; it does not create or modify tables. To enable the connector
 through the single installer, use:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo-windows.ps1 -EnvFile .env.local -Profile Production -EnableSpark -EnablePostgresSparkConnector
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-depo.ps1 -EnvFile .env.local -Profile Production -EnableSpark -EnablePostgresSparkConnector
 ```
 
 ### 2.4 Confirm the two files before installation
@@ -917,19 +917,25 @@ Get-Item .\.env.local, .\frontend\.env.local | Select-Object FullName, Length, L
 ## 3. Run the single Windows installation command
 
 After PostgreSQL, Neo4j, optional Spark, and both `.env.local` files are ready,
-run **one** PowerShell command from the repository root. This is the supported
-customer installation path; do not run the individual migration, startup, or
-validation scripts by hand.
+first run the non-mutating prerequisite diagnostic from the repository root:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo-windows.ps1 -EnvFile .env.local -Profile Production
+powershell -NoProfile -ExecutionPolicy Bypass -File .\diagnose-depo.ps1 -Phase Prerequisites
+```
+
+After it reports success, run **one** installation command. This is the
+supported customer installation path; do not run individual migration, startup,
+or validation scripts by hand.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-depo.ps1 -EnvFile .env.local -Profile Production
 ```
 
 For a Spark deployment, use this command instead. Add the connector and
 scheduler switches only when those customer capabilities are required:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\install-depo-windows.ps1 -EnvFile .env.local -Profile Production -EnableSpark
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-depo.ps1 -EnvFile .env.local -Profile Production -EnableSpark
 # Optional: -EnableNeo4jSparkConnector -EnablePostgresSparkConnector -EnablePipelineScheduler
 ```
 
@@ -941,7 +947,8 @@ failure:
    and builds `frontend/dist`.
 3. Validates root `.env.local` and the ten-service deployment configuration.
 4. Applies and verifies PostgreSQL migrations.
-5. Verifies Neo4j TLS, authentication, and database access.
+5. Applies the idempotent Neo4j publication constraints, waits for their
+   backing indexes, and verifies TLS, authentication and database access.
 6. When enabled, validates Spark/JDK/Hadoop paths and runs the DataFrame smoke
    job before services are started.
 7. Starts the ten APIs, data-product outbox worker, and durable data-pipeline
@@ -990,26 +997,25 @@ test.
 
 ### 3.2 What the installer installs and configures
 
-`install-depo-windows.ps1` is the orchestration entry point. It calls
-`install-depo.ps1` for the Python environment and frontend, then calls the
-deployment lifecycle scripts. Do not start individual Uvicorn modules for a
-customer installation.
+The repository-root `install-depo.ps1` is the only customer installation entry
+point. Scripts below `infra/windows` and `infra/deployment` are internal stages;
+do not run them individually for a customer installation.
 
-| Component | Runtime module or output | Configuration source | Lifecycle script |
+| Component | Runtime module or output | Configuration source | Customer command |
 | --- | --- | --- | --- |
-| Frontend | `frontend/dist` | `frontend/.env.local` (`VITE_*`) | `infra/windows/install-depo.ps1` |
-| Schema Sets/QIF | `backend.qif.app:app` / 8010 | root `.env.local` | `start-depo-services.ps1` |
-| Ontology | `backend.ontology_service.app:app` / 8011 | root `.env.local` | `start-depo-services.ps1` |
-| Agentic | `backend.agentic_service.app:app` / 8012 | root `.env.local` plus agentic settings | `start-depo-services.ps1` |
-| Graph | `backend.graph_service.app:app` / 8013 | root `.env.local`, Neo4j settings | `start-depo-services.ps1` |
-| Ingestion | `backend.ingestion_service.app:app` / 8014 | root `.env.local` | `start-depo-services.ps1` |
-| OSLC | `backend.oslc_service.app:app` / 8015 | root `.env.local` | `start-depo-services.ps1` |
-| Catalog | `backend.data_catalog_service.app:app` / 8016 | root `.env.local` | `start-depo-services.ps1` |
-| Data Products | `backend.data_product_service.app:app` / 8017 | root `.env.local` | `start-depo-services.ps1` |
-| CEIM | `backend.ceim_service.app:app` / 8018 | root `.env.local`, Neo4j settings | `start-depo-services.ps1` |
-| Data Pipeline | `backend.data_pipeline_service.app:app` / 8019 | root `.env.local`, Spark settings | `start-depo-services.ps1` |
-| Data-product worker | `backend.data_product_service.worker` | root `.env.local` | `start-depo-services.ps1` |
-| Data-pipeline worker | `backend.data_pipeline_service.worker` | root `.env.local`, PostgreSQL, artifact storage, optional Spark | `start-depo-services.ps1` |
+| Frontend | `frontend/dist` | `frontend/.env.local` (`VITE_*`) | `install-depo.ps1` |
+| Schema Sets/QIF | `backend.qif.app:app` / 8010 | root `.env.local` | `install-depo.ps1`; later `manage-depo.ps1` |
+| Ontology | `backend.ontology_service.app:app` / 8011 | root `.env.local` | `install-depo.ps1`; later `manage-depo.ps1` |
+| Agentic | `backend.agentic_service.app:app` / 8012 | root `.env.local` plus agentic settings | `install-depo.ps1`; later `manage-depo.ps1` |
+| Graph | `backend.graph_service.app:app` / 8013 | root `.env.local`, Neo4j settings | `install-depo.ps1`; later `manage-depo.ps1` |
+| Ingestion | `backend.ingestion_service.app:app` / 8014 | root `.env.local` | `install-depo.ps1`; later `manage-depo.ps1` |
+| OSLC | `backend.oslc_service.app:app` / 8015 | root `.env.local` | `install-depo.ps1`; later `manage-depo.ps1` |
+| Catalog | `backend.data_catalog_service.app:app` / 8016 | root `.env.local` | `install-depo.ps1`; later `manage-depo.ps1` |
+| Data Products | `backend.data_product_service.app:app` / 8017 | root `.env.local` | `install-depo.ps1`; later `manage-depo.ps1` |
+| CEIM | `backend.ceim_service.app:app` / 8018 | root `.env.local`, Neo4j settings | `install-depo.ps1`; later `manage-depo.ps1` |
+| Data Pipeline | `backend.data_pipeline_service.app:app` / 8019 | root `.env.local`, Spark settings | `install-depo.ps1`; later `manage-depo.ps1` |
+| Data-product worker | `backend.data_product_service.worker` | root `.env.local` | `install-depo.ps1`; later `manage-depo.ps1` |
+| Data-pipeline worker | `backend.data_pipeline_service.worker` | root `.env.local`, PostgreSQL, artifact storage, optional Spark | `install-depo.ps1`; later `manage-depo.ps1` |
 
 The authoritative module and port list is
 [`infra/deployment/services.json`](infra/deployment/services.json). The
@@ -1025,7 +1031,21 @@ stop, fix that step, and rerun only the relevant validation; do not skip ahead.
 
 ### 4.1 Confirm the installer result
 
-From the repository root, confirm the browser build and configuration files:
+From the repository root, run the complete runtime diagnostic:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\diagnose-depo.ps1 `
+  -Phase All `
+  -EnvFile .env.local `
+  -Profile Production
+```
+
+It checks software prerequisites, configuration, PostgreSQL relations,
+constraints and indexes, Neo4j constraints and connectivity, optional Spark,
+and all running service endpoints. In `Production` profile it does not create
+database or graph schema. The optional Spark smoke test writes only disposable
+test output below the configured Spark output root. Then confirm the browser build and the two
+configuration files:
 
 ```powershell
 Test-Path .\frontend\dist
@@ -1048,21 +1068,10 @@ Get-ChildItem .\logs\windows-services\*.pid | ForEach-Object {
 } | Format-Table -AutoSize
 ```
 
-Use the service inventory for the exact ports:
-
-```powershell
-Get-Content .\infra\deployment\services.json
-```
-
-For each enabled service, test its health URL from the application VM. Example:
-
-```powershell
-Invoke-WebRequest http://127.0.0.1:8010/readyz -UseBasicParsing
-Invoke-WebRequest http://127.0.0.1:8011/readyz -UseBasicParsing
-```
-
-The response must be HTTP 200. Do not expose these internal ports directly to
-the browser or the public network.
+The `diagnose-depo.ps1 -Phase All` command above checks the health URL of every
+enabled service and fails if any response is not HTTP 200. The authoritative
+inventory is read by the root commands internally. Do not expose internal
+service ports directly to the browser or the public network.
 
 ### 4.3 Verify the PostgreSQL schema
 
@@ -1203,13 +1212,13 @@ For a controlled installation or demonstration, stop and restart the complete
 set in this order from the repository root:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Stop -EnvFile .env.local
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action Start -EnvFile .env.local -Profile Production -SkipPostgres
+powershell -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Stop -EnvFile .env.local
+powershell -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Start -EnvFile .env.local -Profile Production -SkipPostgres
 ```
 
 `-SkipPostgres` means “do not operate a local PostgreSQL process”; database
 connectivity and schema validation still run against `DEPO_DATABASE_URL`.
 
-For service ownership and ports, use `infra/deployment/services.json`. The
-scripts under `infra/windows/` are implementation stages used by the one
-installer, not separate installation instructions.
+The root commands read the authoritative service inventory internally. Scripts
+under `infra/windows/` and `infra/deployment/` are implementation stages, not
+separate customer installation instructions.

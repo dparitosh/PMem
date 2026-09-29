@@ -78,10 +78,13 @@ Invoke-DepoStage 'Deployment configuration validation' {
 Invoke-DepoStage 'PostgreSQL schema migration' {
   & (Join-Path $root 'infra\deployment\invoke-depo-lifecycle.ps1') -Action InitializeDatabase -EnvFile $envPath -Profile $Profile
 }
-Invoke-DepoStage 'Neo4j connection validation' {
-  $neo4jParameters = @{ EnvFile = $envPath }
-  if ($Profile -eq 'Production') { $neo4jParameters.Production = $true } else { $neo4jParameters.Bootstrap = $true }
-  & (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') @neo4jParameters
+Invoke-DepoStage 'Neo4j schema provisioning and validation' {
+  # The schema file is idempotent. Provision it before the read-only release
+  # preflight so a first Production installation cannot fail on missing indexes.
+  & (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') -EnvFile $envPath -Bootstrap
+  if ($Profile -eq 'Production') {
+    & (Join-Path $PSScriptRoot 'test-depo-neo4j.ps1') -EnvFile $envPath -Production
+  }
 }
 if ($effectiveSpark) {
   Invoke-DepoStage 'Spark runtime smoke test' {
