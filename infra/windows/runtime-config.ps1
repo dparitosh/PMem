@@ -20,7 +20,9 @@ function Import-DepoEnvironment([string]$Root, [string]$EnvFile) {
 
 function Assert-DepoNeo4jConfiguration([hashtable]$Values, [switch]$Production) {
   $authMode = if ($Values['NEO4J_AUTH_MODE']) { $Values['NEO4J_AUTH_MODE'].ToLowerInvariant() } else { 'token' }
+  $tlsMode = if ($Values['NEO4J_TLS_MODE']) { $Values['NEO4J_TLS_MODE'].ToLowerInvariant() } else { 'required' }
   if ($authMode -notin @('token','none')) { throw 'NEO4J_AUTH_MODE must be token or none.' }
+  if ($tlsMode -notin @('required','disabled')) { throw 'NEO4J_TLS_MODE must be required or disabled.' }
   foreach ($key in @('NEO4J_URI','NEO4J_DATABASE')) {
     if (-not $Values[$key] -or $Values[$key] -match '<.*>') { throw "Missing Neo4j setting: $key" }
   }
@@ -33,8 +35,12 @@ function Assert-DepoNeo4jConfiguration([hashtable]$Values, [switch]$Production) 
       $uri.Scheme -notin @('neo4j','bolt','neo4j+s','bolt+s','neo4j+ssc','bolt+ssc')) {
     throw 'Invalid Neo4j URI. Configure credentials separately from the URI.'
   }
-  if ($Production -and $uri.Scheme -notin @('neo4j+s','bolt+s')) {
-    throw 'Production requires certificate-verified TLS: neo4j+s:// or bolt+s://.'
+  if ($Production -and $tlsMode -eq 'required' -and $uri.Scheme -notin @('neo4j+s','bolt+s')) {
+    throw 'Production TLS mode requires certificate-verified TLS: neo4j+s:// or bolt+s://. For a trusted private on-premises network, explicitly set NEO4J_TLS_MODE=disabled, NEO4J_ENCRYPTED=false and use neo4j:// or bolt://.'
+  }
+  if ($tlsMode -eq 'disabled') {
+    if ($uri.Scheme -notin @('neo4j','bolt')) { throw 'NEO4J_TLS_MODE=disabled requires a non-TLS neo4j:// or bolt:// URI.' }
+    if ($Values['NEO4J_ENCRYPTED'] -ne 'false') { throw 'NEO4J_TLS_MODE=disabled requires NEO4J_ENCRYPTED=false.' }
   }
   if ($authMode -eq 'none' -and $uri.Scheme -notin @('neo4j','bolt')) { throw 'NEO4J_AUTH_MODE=none requires a non-TLS neo4j:// or bolt:// URI.' }
 }

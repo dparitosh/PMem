@@ -197,7 +197,9 @@ the DBA to check role, password, and schema grants.
 
 Neo4j may run on-premises, on a private VM, as a hosted self-managed server, or
 in Neo4j Aura. Use the provider's actual database name. Production requires
-certificate-verified TLS: `neo4j+s://` or direct `bolt+s://`. Bootstrap may use
+certificate-verified TLS by default: `neo4j+s://` or direct `bolt+s://`. A
+trusted private on-premises network may explicitly disable TLS as described
+below. Bootstrap may use
 `+ssc` or plaintext only on a controlled local network. Configure the advertised
 Bolt address, certificate chain and application database account. The application
 installer does not install or operate either database server.
@@ -715,11 +717,34 @@ Invoke-WebRequest http://127.0.0.1:8012/api/v1/metrics | Select-Object -ExpandPr
 2. Set `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASS` and `NEO4J_DATABASE`. Aura
    exports named `NEO4J_USERNAME` and `NEO4J_PASSWORD` are also accepted by
    the Spark connector, but use the canonical `NEO4J_USER` and `NEO4J_PASS`
-   names for the application. For an explicitly unsecured on-premises Neo4j
-   server, set `NEO4J_AUTH_MODE=none` and use `NEO4J_URI=bolt://host:7687` or
-   `neo4j://host:7687`; omit the user and password. This mode is rejected for
-   production preflight and is intended only for a deliberately unsecured
-   non-TLS environment.
+   names for the application. Keep the secure production defaults whenever
+   the server supports TLS:
+
+   ```dotenv
+   NEO4J_URI=neo4j+s://graph.customer.example
+   NEO4J_TLS_MODE=required
+   NEO4J_ENCRYPTED=true
+   NEO4J_TLS_VERIFY=true
+   ```
+
+   For an on-premises server on a trusted private network that does not provide
+   TLS, configure the exception explicitly. Authentication can remain enabled:
+
+   ```dotenv
+   NEO4J_URI=bolt://10.20.30.40:7687
+   NEO4J_AUTH_MODE=token
+   NEO4J_TLS_MODE=disabled
+   NEO4J_ENCRYPTED=false
+   NEO4J_TLS_VERIFY=false
+   NEO4J_USER=depo_graph
+   NEO4J_PASS=<password>
+   NEO4J_DATABASE=neo4j
+   ```
+
+   If that private Neo4j server also has authentication disabled, change only
+   `NEO4J_AUTH_MODE=none` and leave `NEO4J_USER` and `NEO4J_PASS` empty. The
+   explicit TLS mode prevents an accidental URI downgrade; production rejects
+   non-TLS URIs unless `NEO4J_TLS_MODE=disabled` is present.
 3. Set `ALLOWED_ORIGINS=https://<customer-frontend-host>` and
    `OSLC_BASE_URL=https://<customer-api-host>`.
    Set `ARTIFACT_STORAGE=C:\DEPO\data\artifacts`, create that directory, and

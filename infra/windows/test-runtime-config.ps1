@@ -42,8 +42,14 @@ try {
   foreach ($scheme in @('neo4j','bolt','neo4j+ssc','bolt+ssc')) {
     $neo.NEO4J_URI = "${scheme}://graph.example.com"
     Assert-DepoNeo4jConfiguration $neo
-    Assert-Rejected { Assert-DepoNeo4jConfiguration $neo -Production } 'certificate-verified TLS'
+    Assert-Rejected { Assert-DepoNeo4jConfiguration $neo -Production } 'Production TLS mode'
   }
+  $neo = @{ NEO4J_URI = 'bolt://graph.internal:7687'; NEO4J_USER = 'app'; NEO4J_PASS = 'fixture'; NEO4J_DATABASE = 'neo4j'; NEO4J_TLS_MODE = 'disabled'; NEO4J_ENCRYPTED = 'false' }
+  Assert-DepoNeo4jConfiguration $neo -Production
+  $neo.NEO4J_ENCRYPTED = 'true'
+  Assert-Rejected { Assert-DepoNeo4jConfiguration $neo -Production } 'NEO4J_ENCRYPTED=false'
+  $neo.NEO4J_ENCRYPTED = 'false'; $neo.NEO4J_URI = 'neo4j+s://graph.example.com'
+  Assert-Rejected { Assert-DepoNeo4jConfiguration $neo -Production } 'non-TLS'
   $neo.NEO4J_URI = 'neo4j+s://user:password@graph.example.com'
   Assert-Rejected { Assert-DepoNeo4jConfiguration $neo } 'Invalid Neo4j URI'
   Set-Content -LiteralPath $envPath -Value 'DEPO_AUDIT_FIXTURE=read-only'

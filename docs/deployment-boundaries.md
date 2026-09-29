@@ -30,5 +30,8 @@ validation. DEPO services must bind only to a private interface. Configure
 `ALLOWED_ORIGINS` and `OSLC_BASE_URL` with the customer HTTPS hostnames.
 Run `infra/windows/test-depo-release.ps1 -Production` against the deployment
 environment before handoff. Configure Neo4j with a customer-managed
-least-privilege graph role and a TLS URI (`neo4j+s://` or `bolt+s://`), then
-verify the target ontology database and its backup/restore procedure.
+least-privilege graph role and a verified TLS URI (`neo4j+s://` or `bolt+s://`)
+by default. A trusted private on-premises network may instead use `neo4j://` or
+`bolt://` only when `NEO4J_TLS_MODE=disabled` and `NEO4J_ENCRYPTED=false` are
+explicitly configured. Verify the target ontology database and its
+backup/restore procedure.
