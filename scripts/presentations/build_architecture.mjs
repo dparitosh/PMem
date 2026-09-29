@@ -183,7 +183,7 @@ function table(s,headers,rows,widths,y=192,h=422,size=21){
 }
 // 18
 {
- const s=slide('Customer release acceptance','Repository checks support deployment. Target-environment evidence determines release readiness.',['infra/deployment/CUSTOMER_RELEASE.md','docs/INSTALLATION_REVIEW.md']);
+ const s=slide('Customer release acceptance','Repository checks support deployment. Target-environment evidence determines release readiness.',['infra/deployment/CUSTOMER_RELEASE.md','INSTALLATION.md']);
  table(s,['Acceptance area','Required evidence'],[
  ['Installation','Approved runtime inventory, dependency resolution and frontend build'],
  ['Data stores','Schema verification, Neo4j read/write permissions and backup restore drill'],

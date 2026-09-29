@@ -4,8 +4,8 @@ This audit separates API entrypoints from standalone scripts and diagnostics. It
 
 ## Summary
 
-- `backend/main.py` is the primary FastAPI application entrypoint.
-- `backend/data_ingestion.py` is a mounted FastAPI router module.
+- `infra/deployment/services.json` defines the ten supported FastAPI entrypoints.
+- `backend/main.py` is a compatibility host and is not started by the customer deployment.
 - root `main.py` is not a server by itself; it re-exports `backend.main.app` for compatibility/tests.
 - top-level `scripts/*.py` are standalone conversion, loading, migration, or cleanup utilities. They are not API endpoints.
 - `backend/scripts/*.py` are supported backend fallback CLI tools.
@@ -19,8 +19,8 @@ This audit separates API entrypoints from standalone scripts and diagnostics. It
 
 | File | Type | Status | Notes |
 | --- | --- | --- | --- |
-| `backend/main.py` | FastAPI app | Active API | Main Uvicorn target: `backend.main:app`. Contains the registered app surface and mounted routers. |
-| `backend/data_ingestion.py` | FastAPI router | Active router | Mounted under backend API; not run directly. |
+| `backend/main.py` | FastAPI app | Compatibility only | Retained while remaining callers migrate; not a supported production Uvicorn target. |
+| `infra/deployment/services.json` | Deployment manifest | Production authority | Defines every supported service module and port. |
 | `backend/routes/admin_routes.py` | FastAPI router | Active router | Admin/cleanup API surface. |
 | `backend/routes/ontology_routes.py` | FastAPI router | Active router | Ontology/Semantic Bridge API surface. |
 | `backend/routes/threedxml_routes.py` | FastAPI router | Active router | 3DXML extraction API surface. |
@@ -56,8 +56,10 @@ These are standalone scripts. They are not APIs and are not imported as active F
 | File | Type | Release classification | Notes |
 | --- | --- | --- | --- |
 | `main.py` | Import shim | Keep | Compatibility import for tests/tools. |
-| `backend/main.py` | API app | Keep | Primary backend service. |
-| `backend/data_ingestion.py` | API router | Keep | Mounted router. |
+| `backend/main.py` | Compatibility app | Keep temporarily | Excluded from the production service manifest. |
+| `backend/data_ingestion.py` | Unused router | Removed | Superseded by `backend/ingestion_service`; it had no imports or mounted routes. |
+| `backend/chains/cypher_fixed.py`, `backend/chains/cypher_og.py` | Superseded copies | Removed | The active compatibility chain is `backend/chains/cypher.py`. |
+| `backend/core/DeveloperApp.py`, `backend/core/CustomAOI_helper.py` | Vendor sample | Removed | Unreferenced sample code depended on absent compiled modules and placeholder credentials. |
 | `backend/analyze_splm_structure.py` | Removed diagnostic | Removed | Local SPLM analysis helper was not an API. |
 | `backend/debug_excel.py` | Removed diagnostic | Removed | Local Excel debug helper was not an API. |
 | `backend/debug_excel2.py` | Removed diagnostic | Removed | Local Excel debug helper was not an API. |

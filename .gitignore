@@ -58,6 +58,8 @@ service-boundaries.env
 *~
 .DS_Store
 Thumbs.db
+__MACOSX/
+._*
 
 # Node
 node_modules/
@@ -96,6 +98,7 @@ external/
 audit-shots/
 _restore_ingest/
 data/artifacts/
+data/code_audit/
 .release-test-tmp/
 
 # Local Codex presentation/build intermediates (final decks belong in deliverables/)

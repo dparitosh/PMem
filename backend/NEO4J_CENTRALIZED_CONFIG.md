@@ -40,7 +40,6 @@ procedure. Do not create new `backend/.env` files. Migrate existing required
 settings to root `.env.local` and use the lifecycle launcher.
 
 Manual maintenance utilities have their own arguments. Inspect them before use
-and explicitly select the intended file; some legacy tools still default to
-`backend/.env`. The destructive-cleanup precedence issue remains recorded in the
-[repository audit](../docs/REPOSITORY_AUDIT.md) and is not resolved by changing
-installation documentation.
+and explicitly select the root `.env.local`. The supported cleanup utility
+requires that selected file, applies it over inherited values, displays a
+non-secret target summary, and requires destructive confirmation.

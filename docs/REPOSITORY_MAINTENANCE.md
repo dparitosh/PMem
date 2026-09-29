@@ -55,6 +55,15 @@ to `config/`; root presentations and the screenshot moved to their owned folders
 The [manifest](repository-cleanup-manifest.json) records paths and SHA-256 hashes.
 It is an inventory, not a backup.
 
+The subsequent whole-tree trace removed 83 macOS archive metadata files, stale
+generated code-graph reports, an excluded duplicate Playwright audit, two
+superseded Cypher chain copies, an unmounted ingestion router, an unreferenced
+vendor developer sample that required missing compiled binaries, duplicated
+ontology assets, CRA-only public files, branch review notes, and superseded
+installation/audit snapshots. Generated code-graph output is now ignored and
+must be regenerated locally. `INSTALLATION.md` remains the only customer
+installation procedure.
+
 Validation performed: infrastructure PowerShell syntax checks, isolated
 configuration generation (default path, distinct bootstrap secrets, admin key
 and overwrite protection), and modified Python syntax. Full backend tests and
@@ -71,11 +80,11 @@ them. `test_upload.xsd` remains an input to a manual API smoke test.
 
 - Backend runtime requirements use version ranges; a tested dependency lock and
   dependency vulnerability review are still needed for reproducible releases.
-- Historical design/audit documents are reference material, not installation
+- Historical design documents are reference material, not installation
   authority. Use the deployment guide and service manifest for operations.
 - Manual support scripts still need incremental migration to service APIs and
   consistent argument/configuration handling.
 - Customer deployment acceptance requires live PostgreSQL, Neo4j, authentication,
   gateway and endpoint validation; static checks alone do not certify a release.
-- This supplied directory has no Git metadata. Perform release review in a
-  version-controlled checkout before establishing a production baseline.
+- Establish a signed or tagged production baseline only after customer
+  acceptance evidence is attached to the version-controlled release commit.

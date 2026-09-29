@@ -52,6 +52,6 @@ before packaging. Do not treat broad requirements ranges as a reproducible build
 Target-server provisioning, full installed-runtime integration tests, Spark execution, gateway and
 supervisor recovery have not been performed in this workspace. Customer-specific
 endpoints, approved binaries, credentials and host administration are required.
-The legacy destructive cleanup utility also retains the configuration-precedence
-finding in `docs/REPOSITORY_AUDIT.md`; do not include it as a supported customer
-maintenance entry point until that issue is fixed and tested.
+The destructive cleanup utility is an explicit operator tool, not a service
+startup step. It requires an existing selected environment file, displays the
+non-secret target, and requires destructive confirmation before changing Neo4j.
