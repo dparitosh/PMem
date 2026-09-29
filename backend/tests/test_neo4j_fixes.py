@@ -19,6 +19,19 @@ from fastapi.testclient import TestClient
 # Add backend to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+
+@pytest.fixture(autouse=True)
+def configured_local_neo4j(monkeypatch):
+    """Exercise configuration logic without relying on developer secret files."""
+    monkeypatch.setenv("NEO4J_URI", "neo4j://127.0.0.1:7687")
+    monkeypatch.setenv("NEO4J_USER", "neo4j")
+    monkeypatch.setenv("NEO4J_PASS", "test-only")
+    monkeypatch.setenv("NEO4J_DATABASE", "neo4j")
+    from core.db_config import get_config
+    get_config.cache_clear()
+    yield
+    get_config.cache_clear()
+
 # Test 1: Database Configuration Loading
 def test_db_config_loads_successfully():
     """Test that db_config module loads without encryption errors"""
@@ -69,15 +82,14 @@ def test_detect_deployment_type_for_supported_uri_schemes():
     assert _detect_deployment_type("neo4j+ssc://neo4j.example.com:7687") == Neo4jDeploymentType.ENTERPRISE
 
 def test_placeholder_process_env_does_not_override_backend_env(monkeypatch):
-    """A template Neo4j URI inherited from the shell must not beat backend/.env."""
+    """A template Neo4j URI inherited from the shell is rejected."""
     import core.db_config as db_config
 
     monkeypatch.setenv("NEO4J_URI", "neo4j+ssc://your-neo4j-instance")
     db_config.get_config.cache_clear()
     try:
-        config = db_config.get_config()
-        assert "your-neo4j-instance" not in config.uri
-        assert config.uri.startswith(("bolt://", "bolt+s://", "neo4j+s://", "neo4j://"))
+        with pytest.raises(db_config.Neo4jConfigError):
+            db_config.get_config()
     finally:
         db_config.get_config.cache_clear()
 
@@ -279,7 +291,7 @@ def test_admin_registry_masks_datasource_secrets():
             assert "configured_database" in source
             assert "configured_database_source" in source
             assert source["configured_database"] == source["active_database"]
-            assert source["configured_database_source"] == "backend\\.env"
+            assert source["configured_database_source"] == "process"
 
 
 def test_batched_delete_by_label_property_uses_transaction_chunks():

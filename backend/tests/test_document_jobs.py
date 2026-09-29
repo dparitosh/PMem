@@ -28,20 +28,13 @@ def test_pdf_native_text_falls_back_to_optional_ocr(monkeypatch, tmp_path) -> No
     sample = tmp_path / "scan.pdf"
     sample.write_bytes(b"pdf")
 
-    class Page:
-        def extract_text(self):
-            return ""
-
-    class Reader:
-        def __init__(self, _path):
-            self.pages = [Page()]
-
-    monkeypatch.setattr(document_processor, "PdfReader", Reader)
+    monkeypatch.setattr(document_processor, "_native_pdf_pages", lambda _path: (1, []))
     monkeypatch.setattr(document_processor, "_extract_pdf_ocr", lambda _path, **_kwargs: {
-        "provider": "easyocr", "text": "OCR requirement text", "pages": [],
+        "provider": "easyocr", "text": "OCR requirement text",
+        "pages": [{"page": 1, "text": "OCR requirement text", "method": "ocr", "confidence": 0.9}],
     })
 
-    assert document_processor._extract_pdf_text(sample) == "OCR requirement text"
+    assert "OCR requirement text" in document_processor._extract_pdf_text(sample)
 
 
 def test_ocr_evidence_preserves_page_provenance(monkeypatch, tmp_path) -> None:

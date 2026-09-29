@@ -63,6 +63,7 @@ def test_vocabulary_rejects_duplicate_labels(monkeypatch):
 
 
 def test_only_approved_vocabulary_publishes_through_graph_boundary(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("GRAPH_PUBLICATION_TOKEN", "graph-publication-test")
     vocabulary_service.vocabularies.store = InMemoryRegistry()
     vocabulary_service.vocabularies.artifacts = ArtifactStore(tmp_path / "artifacts")
     client = _client()

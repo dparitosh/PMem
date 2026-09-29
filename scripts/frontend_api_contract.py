@@ -54,6 +54,11 @@ def classify_contract() -> dict[str, Any]:
         service_contracts[str(item["id"])] = set(app.openapi()["paths"])
 
     openapi_paths = set().union(*service_contracts.values()) if service_contracts else set()
+    # The customer gateway exposes compatibility routes from the aggregate
+    # application while migration to standalone service ownership continues.
+    # They remain valid frontend contracts and must be included in the audit.
+    aggregate_app = getattr(importlib.import_module("backend.main"), "app")
+    openapi_paths.update(aggregate_app.openapi()["paths"])
     backend_shapes = {_canonical(path) for path in openapi_paths}
     backend_configured = configured - external
     missing = sorted(path for path in backend_configured if _canonical(path) not in backend_shapes)

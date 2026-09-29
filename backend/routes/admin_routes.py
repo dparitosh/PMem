@@ -204,6 +204,7 @@ def _neo4j_datasource() -> dict:
             "mutable": False,
         }
     except Exception as exc:
+        logger.warning("Neo4j configuration is incomplete: %s", type(exc).__name__)
         return {
             "id": "neo4j",
             "name": "Neo4j Knowledge Graph",
@@ -216,7 +217,7 @@ def _neo4j_datasource() -> dict:
             "configured_database_source": "",
             "database_status": "degraded",
             "mutable": False,
-            "message": str(exc),
+            "message": "Neo4j configuration is incomplete; review the required connection settings.",
         }
 
 

@@ -13,7 +13,7 @@ def test_catalog_retains_independent_versions(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("CATALOG_SERVICE_TOKEN", "test-catalog-token")
     client = TestClient(catalog_app)
     for version in ("1.0.0", "2.0.0"):
-        response = client.put(f"/api/v1/catalog/products/parts/versions/{version}", headers={"X-DEPO-Service-Token": "test-catalog-token"}, json={"name": "Parts", "domain": "Engineering", "owner": "data", "classification": "internal", "steward": "data", "lifecycle_state": "published"})
+        response = client.put(f"/api/v1/catalog/products/parts/versions/{version}", headers={"X-DEPO-Service-Token": "test-catalog-token"}, json={"name": "Parts", "domain": "Engineering", "owner": "data", "classification": "internal", "steward": "data", "lifecycle_state": "published", "manifest": {"artifacts": [{"artifact_id": f"sha256:{version}", "kind": "test"}]}, "semantic_releases": [{"id": "engineering", "version": version}]})
         assert response.status_code == 200
     product = client.get("/api/v1/catalog/products/parts").json()
     assert len(product["versions"]) == 2

@@ -140,8 +140,12 @@ def test_qif_adapter_normalizes_representative_instance_and_validates_projection
     assert contract.validate_projection(entities=batch["entities"], relationships=batch["relationships"])["conforms"] is True
 
 
-def test_qif_adapter_api_keeps_source_read_only():
+def test_qif_adapter_api_keeps_source_read_only(monkeypatch):
     source = Path("data/ceim/fixtures/qif-inspection-instance.xml")
+    monkeypatch.setattr(
+        "backend.ceim_service.router.validate_qif_instance",
+        lambda _content: {"validated": True, "validator": "test", "conforms": True, "errors": []},
+    )
     response = TestClient(app).post("/api/v1/ceim/adapters/qif/normalize", files={"file": (source.name, source.read_bytes(), "application/xml")})
 
     assert response.status_code == 200

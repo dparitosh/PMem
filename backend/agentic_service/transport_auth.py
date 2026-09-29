@@ -6,6 +6,7 @@ from fastapi import HTTPException, Request
 
 # These endpoints consume approval fields in their JSON body, not bearer tokens.
 APPROVAL_TOKENS = {
+    'ontology.register': 'AGENTIC_APPROVAL_TOKEN',
     'ontology.transition': 'ONTOLOGY_APPROVAL_TOKEN',
     'ontology.merge.apply': 'ONTOLOGY_APPROVAL_TOKEN',
     'data.product.publish': 'DATA_PRODUCT_APPROVAL_TOKEN',

@@ -172,6 +172,8 @@ def get_config() -> Neo4jConfig:
     
     # Get configuration values with fallbacks
     uri = _get_env("NEO4J_URI", "NEO4J_URL", "Neo4j_url")
+    if uri and "your-neo4j-instance" in uri.lower():
+        uri = None
     auth_mode = (_get_env("NEO4J_AUTH_MODE") or "token").lower()
     username = _get_env("NEO4J_USER", "NEO4J_USERNAME", "Neo4j_user")
     password = _get_env("NEO4J_PASS", "NEO4J_PASSWORD", "Neo4j_password")

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 
 _MANUAL_LIVE_TESTS = [
     "customer_acceptance_test.py",
@@ -32,6 +34,19 @@ collect_ignore = (
     if os.getenv("RUN_MANUAL_INTEGRATION_TESTS") == "1"
     else _MANUAL_LIVE_TESTS
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_agent_telemetry(monkeypatch):
+    """Keep unit tests independent of the customer PostgreSQL instance."""
+    try:
+        from backend.agentic_service.telemetry import telemetry
+        from backend.mesh_store import InMemoryRegistry
+    except ImportError:
+        yield
+        return
+    monkeypatch.setattr(telemetry, "store", InMemoryRegistry("agent-telemetry-test"))
+    yield
 
 
 def pytest_sessionfinish(session, exitstatus):

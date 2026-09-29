@@ -5,7 +5,6 @@ import re
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from core.llm import llm, LLM_AVAILABLE
 from core.graph import graph, query_with_timeout
-from langchain_neo4j import GraphCypherQAChain, Neo4jGraph
 from langchain.prompts.prompt import PromptTemplate
 from typing import Optional, List, Dict, Any
 
@@ -17,9 +16,6 @@ except Exception:
     from core.db_config import get_config
 
 logger = logging.getLogger(__name__)
-
-schema = graph.get_schema
-# print(schema)
 
 CYPHER_GENERATION_TEMPLATE = """
 You are a Cypher expert working with a Neo4j knowledge graph for a Digital Engineering Product Ontology (DEPO).
@@ -195,7 +191,7 @@ def get_cypher_qa():
     Get the Cypher QA chain if available, otherwise None.
     
     Returns:
-        GraphCypherQAChain or None
+        SafeCypherQA or None
     """
     return cypher_qa
 
