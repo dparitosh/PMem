@@ -2,6 +2,9 @@
 
 This is the single installation guide for the DEPO frontend, backend, PostgreSQL,
 Neo4j, Spark and PySpark. Run commands from the repository root on Windows.
+The supported application runtime is 64-bit CPython 3.12 on Windows x64. The
+production dependency lock is platform-specific, and the installer rejects a
+different Python minor version.
 
 Customers use these repository-root entry points for application configuration,
 installation, diagnostics and operation. The root commands call the stages
@@ -15,6 +18,7 @@ those stages individually.
 | 3 | `.\diagnose-depo.ps1 -Phase Prerequisites` | Check required software without installing anything |
 | 4 | `.\install-depo.ps1` | Install dependencies, schemas, services and frontend in the correct order |
 | 5 | `.\diagnose-depo.ps1 -Phase All` | Verify the completed installation and every service endpoint |
+| Release | `.\certify-depo-release.ps1` | Re-run production diagnostics and hash the mandatory acceptance evidence |
 | Later | `.\manage-depo.ps1 -Action Start` or `-Action Stop` | Operate an already installed deployment |
 
 Do not skip a sequence number. Every command stops on the first failure. The
@@ -1019,7 +1023,8 @@ do not run them individually for a customer installation.
 
 The authoritative module and port list is
 [`infra/deployment/services.json`](infra/deployment/services.json). The
-installer creates the backend virtual environment, installs `backend/requirements.txt`,
+installer creates the backend virtual environment, installs the exact versions
+and SHA-256 hashes in `backend/requirements-lock.txt`,
 runs `npm ci` in `frontend`, and runs `npm run build`; it does not install
 PostgreSQL, Neo4j, Java, Hadoop, or Spark binaries. Those runtimes must be
 installed and configured before the installer command in Section 3.
@@ -1207,6 +1212,22 @@ commands and two worker commands from `infra/deployment/services.json` under
 its approved Windows service/process supervisor, using the same root
 `.env.local`, repository working directory, service account and restart policy.
 Treat missing supervision and reboot-recovery evidence as a release blocker.
+
+After recording supervision/reboot recovery, backup/restore, browser acceptance
+and rollback results as files, produce the final tamper-evident handoff record:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\certify-depo-release.ps1 `
+  -EnvFile .env.local `
+  -SupervisorEvidencePath C:\DEPO\evidence\supervisor-reboot.txt `
+  -BackupRestoreEvidencePath C:\DEPO\evidence\backup-restore.txt `
+  -BrowserAcceptanceEvidencePath C:\DEPO\evidence\browser-acceptance.txt `
+  -RollbackEvidencePath C:\DEPO\evidence\rollback.txt
+```
+
+The command refuses missing or empty evidence, reruns the complete Production
+diagnostic, and writes a JSON record containing the Git revision and SHA-256
+hashes. Store the generated record with the customer release package.
 
 For a controlled installation or demonstration, stop and restart the complete
 set in this order from the repository root:

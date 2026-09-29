@@ -100,6 +100,7 @@ _restore_ingest/
 data/artifacts/
 data/code_audit/
 .release-test-tmp/
+release-evidence/
 
 # Local Codex presentation/build intermediates (final decks belong in deliverables/)
 .codex-build/

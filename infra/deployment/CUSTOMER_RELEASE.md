@@ -42,12 +42,13 @@ configuration mocks are not production certification.
 | Operations | Reboot/crash recovery, log rotation, disk capacity/retention and monitoring exercised |
 | Rollback | Previous build/configuration available; database recovery approved and rehearsed |
 
-## Current release blockers
+## Current release gates
 
-The repository does not yet contain a certified, fully pinned Python dependency
-lock for this release. Generate and validate that lock on the target platform,
-retain the matching package artifacts, and perform the dependency/license review
-before packaging. Do not treat broad requirements ranges as a reproducible build.
+Production installation uses `backend/requirements-lock.txt`, resolved for
+CPython 3.12 on Windows x64. Every distribution is exact-version and SHA-256
+pinned, and the installer invokes pip with `--require-hashes`. Retain the
+approved matching package artifacts and dependency/license review with the
+customer release evidence.
 
 Target-server provisioning, full installed-runtime integration tests, Spark execution, gateway and
 supervisor recovery have not been performed in this workspace. Customer-specific

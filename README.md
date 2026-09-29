@@ -48,7 +48,7 @@ npm packages under `frontend/node_modules`, and the browser build under
 
 - Frontend: Node.js 24+ and npm 10.2+, run `npm ci` then `npm run build` in
   `frontend`.
-- Backend: use Python 3.11. The installer creates
+- Backend: use 64-bit CPython 3.12. The installer creates
   `backend/.dt_venv`; install `backend/requirements-dev.txt` for tests.
 - No Docker, Redis or Celery runtime is required.
 - Do not store customer secrets in source control. `.env.local` is gitignored.

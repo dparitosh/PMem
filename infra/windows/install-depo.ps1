@@ -12,11 +12,11 @@ $venvPython = Join-Path $VenvPath "Scripts\python.exe"
 # Check prerequisites before creating directories or installing dependencies.
 $pythonToCheck = if (Test-Path -LiteralPath $venvPython) { $venvPython } else { $Python }
 if (-not (Get-Command $pythonToCheck -ErrorAction SilentlyContinue)) {
-  throw 'Python was not found. Install Python 3.11 or newer and pass -Python <executable> if needed.'
+  throw 'Python was not found. Install 64-bit CPython 3.12 and pass -Python <executable> if needed.'
 }
 $pythonVersion = & $pythonToCheck -c 'import sys; print(sys.version.split()[0])'
-if ($LASTEXITCODE -ne 0 -or [version]$pythonVersion -lt [version]'3.11.0') {
-  throw 'Python 3.11 or newer is required. Replace an incompatible backend/.dt_venv before installing.'
+if ($LASTEXITCODE -ne 0 -or ([version]$pythonVersion).Major -ne 3 -or ([version]$pythonVersion).Minor -ne 12) {
+  throw 'The customer release requires CPython 3.12.x. Replace an incompatible backend/.dt_venv before installing.'
 }
 if (-not $SkipFrontend) {
   foreach ($command in @('node', 'npm.cmd')) {
@@ -28,6 +28,12 @@ if (-not $SkipFrontend) {
   if ($LASTEXITCODE -ne 0 -or [version]$npmVersion -lt [version]'10.2.0') { throw 'npm 10.2 or newer is required.' }
   if (-not (Test-Path -LiteralPath (Join-Path $root 'frontend/package-lock.json'))) { throw 'Missing frontend/package-lock.json.' }
 }
+$productionLock = Join-Path $root 'backend\requirements-lock.txt'
+if (-not $Development) {
+  if (-not (Test-Path -LiteralPath $productionLock -PathType Leaf)) { throw 'Missing backend/requirements-lock.txt.' }
+  $unhashed = Get-Content -LiteralPath $productionLock | Where-Object { $_ -and -not $_.StartsWith('#') -and $_ -notmatch ' --hash=sha256:[0-9a-f]{64}$' }
+  if ($unhashed) { throw 'Every production dependency must be exact-version and SHA-256 pinned in backend/requirements-lock.txt.' }
+}
 if ($CheckPrerequisites) {
   Write-Host 'Installation prerequisites passed. No dependencies were installed.'
   return
@@ -36,8 +42,9 @@ if (-not (Test-Path $venvPython)) {
   & $Python -m venv $VenvPath
   if ($LASTEXITCODE -ne 0) { throw "Python virtual environment creation failed." }
 }
-$requirements = if ($Development) { 'backend/requirements-dev.txt' } else { 'backend/requirements.txt' }
-& $venvPython -m pip install -r (Join-Path $root $requirements)
+$requirements = if ($Development) { Join-Path $root 'backend/requirements-dev.txt' } else { $productionLock }
+if ($Development) { & $venvPython -m pip install -r $requirements }
+else { & $venvPython -m pip install --require-hashes -r $requirements }
 if ($LASTEXITCODE -ne 0) { throw "Backend dependency installation failed." }
 Push-Location $root
 try {
@@ -75,4 +82,4 @@ if (-not $SkipFrontend) {
 }
 Write-Host 'Backend installed in backend/.dt_venv.'
 if (-not $SkipFrontend) { Write-Host 'Frontend installed and built in frontend/dist. Rebuild after changing browser configuration.' }
-Write-Host 'Configure root .env.local, then use infra/deployment/invoke-depo-lifecycle.ps1. See INSTALLATION.md for the complete sequence.'
+Write-Host 'Configuration and lifecycle are managed through the repository-root commands documented in INSTALLATION.md.'

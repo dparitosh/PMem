@@ -7,7 +7,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $testParent = Join-Path $root '.release-test-tmp'
 $testRoot = Join-Path $testParent ('install-' + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Force -Path (Join-Path $testRoot 'infra/windows'), (Join-Path $testRoot 'frontend') | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $testRoot 'infra/windows'), (Join-Path $testRoot 'frontend'), (Join-Path $testRoot 'backend') | Out-Null
 function TestPython {
   if ($args[0] -ne '-c') { throw 'Unexpected Python installation attempted.' }
   $global:LASTEXITCODE = 0
@@ -31,14 +31,15 @@ function Assert-Rejected([string]$Expected) {
 try {
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install-depo.ps1') -Destination (Join-Path $testRoot 'infra/windows')
   Set-Content -LiteralPath (Join-Path $testRoot 'frontend/package-lock.json') -Value '{}'
+  Set-Content -LiteralPath (Join-Path $testRoot 'backend/requirements-lock.txt') -Value ('example==1.0 --hash=sha256:' + ('a' * 64))
   $script:installer = Join-Path $testRoot 'infra/windows/install-depo.ps1'
-  $global:depoTestPythonVersion = '3.11.9'
+  $global:depoTestPythonVersion = '3.12.12'
   $global:depoTestNodeVersion = 'v24.0.0'
   $global:depoTestNpmVersion = '10.2.0'
   & $script:installer -Python TestPython -CheckPrerequisites -Development
-  $global:depoTestPythonVersion = '3.10.9'
-  Assert-Rejected 'Python 3.11'
   $global:depoTestPythonVersion = '3.11.9'
+  Assert-Rejected 'CPython 3.12'
+  $global:depoTestPythonVersion = '3.12.12'
   $global:depoTestNodeVersion = 'v20.0.0'
   Assert-Rejected 'Node.js 24'
   $global:depoTestNodeVersion = 'v24.0.0'
