@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_customer_entrypoints_exist_and_guide_does_not_expose_internal_lifecycle_commands():
-    for name in ("configure-depo.ps1", "install-depo.ps1", "diagnose-depo.ps1", "manage-depo.ps1", "certify-depo-release.ps1"):
+    for name in ("configure-depo.ps1", "install-depo.ps1", "diagnose-depo.ps1", "manage-depo.ps1", "certify-depo-release.ps1", "update-postgres-schema.ps1", "test-postgres-schema.ps1"):
         assert (ROOT / name).is_file(), name
     guide = (ROOT / "INSTALLATION.md").read_text(encoding="utf-8")
     assert ".\\install-depo.ps1" in guide
@@ -49,3 +49,15 @@ def test_release_certification_requires_external_acceptance_evidence():
         assert f"[Parameter(Mandatory=$true)][string]${evidence}" in script
     assert "-Phase All" in script
     assert "-Profile Production" in script
+
+
+def test_schema_only_entrypoints_separate_mutating_and_read_only_operations():
+    update = (ROOT / "update-postgres-schema.ps1").read_text(encoding="utf-8")
+    check = (ROOT / "test-postgres-schema.ps1").read_text(encoding="utf-8")
+    assert "initialize-depo-schema.ps1" in update
+    assert "-CheckOnly" not in update
+    assert "initialize-depo-schema.ps1" in check
+    assert "-CheckOnly" in check
+    for forbidden in ("start-depo-services.ps1", "test-depo-neo4j.ps1", "test-depo-spark.ps1", "npm"):
+        assert forbidden not in update
+        assert forbidden not in check

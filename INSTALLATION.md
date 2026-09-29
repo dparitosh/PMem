@@ -20,6 +20,10 @@ those stages individually.
 | 5 | `.\diagnose-depo.ps1 -Phase All` | Verify the completed installation and every service endpoint |
 | Release | `.\certify-depo-release.ps1` | Re-run production diagnostics and hash the mandatory acceptance evidence |
 | Later | `.\manage-depo.ps1 -Action Start` or `-Action Stop` | Operate an already installed deployment |
+| Database update | `.\update-postgres-schema.ps1` | Apply only pending PostgreSQL migrations and verify the schema |
+| Database check | `.\test-postgres-schema.ps1` | Validate PostgreSQL schema and migration history without writes |
+| Database update | `.\update-postgres-schema.ps1` | Apply only pending PostgreSQL migrations and verify the schema |
+| Database check | `.\test-postgres-schema.ps1` | Validate PostgreSQL schema and migration history without writes |
 
 Do not skip a sequence number. Every command stops on the first failure. The
 installer and diagnostics are safe to rerun after correcting that failure.
@@ -1243,3 +1247,43 @@ connectivity and schema validation still run against `DEPO_DATABASE_URL`.
 The root commands read the authoritative service inventory internally. Scripts
 under `infra/windows/` and `infra/deployment/` are implementation stages, not
 separate customer installation instructions.
+
+### 4.8 Schema-only redeployment
+
+When a release changes only PostgreSQL DDL, stop the application services,
+take the approved database backup, apply the schema update, validate it, and
+then start the services. Run these commands from the repository root:
+
+```powershell
+.\manage-depo.ps1 -Action Stop -EnvFile .env.local
+.\update-postgres-schema.ps1 -EnvFile .env.local
+.\test-postgres-schema.ps1 -EnvFile .env.local
+.\manage-depo.ps1 -Action Start -EnvFile .env.local -Profile Production -SkipPostgres
+```
+
+`update-postgres-schema.ps1` contacts only the PostgreSQL URL configured in the
+root `.env.local`. It does not install packages, start PostgreSQL, build or
+start the application, contact Neo4j, or run Spark. It applies each new file in
+`infra\postgres\migrations` once, in numeric order, under an advisory lock and
+then verifies the full released schema contract. `test-postgres-schema.ps1`
+uses the same contract in read-only mode and is safe for routine diagnostics.
+
+### 4.8 Schema-only redeployment
+
+When a release changes only PostgreSQL DDL, stop the application services,
+take the approved database backup, apply the schema update, validate it, and
+then start the services. Run these commands from the repository root:
+
+```powershell
+.\manage-depo.ps1 -Action Stop -EnvFile .env.local
+.\update-postgres-schema.ps1 -EnvFile .env.local
+.\test-postgres-schema.ps1 -EnvFile .env.local
+.\manage-depo.ps1 -Action Start -EnvFile .env.local -Profile Production -SkipPostgres
+```
+
+`update-postgres-schema.ps1` contacts only the PostgreSQL URL configured in the
+root `.env.local`. It does not install packages, start PostgreSQL, build or
+start the application, contact Neo4j, or run Spark. It applies each new file in
+`infra\postgres\migrations` once, in numeric order, under an advisory lock and
+then verifies the full released schema contract. `test-postgres-schema.ps1`
+uses the same contract in read-only mode and is safe for routine diagnostics.

@@ -1,8 +1,9 @@
 # PostgreSQL application tables and columns
 
 The authoritative DDL is the versioned SQL in
-[`infra/postgres/migrations/`](migrations/). The Python runner loads those files;
-do not copy table creation into service code. Versions 1-6 are
+[`infra/postgres/migrations/`](migrations/). The Python runner automatically
+discovers files named `NNN_lowercase_name.sql`; do not copy table creation into
+service code or edit a released file. Versions 1-6 are
 applied in ascending order inside a transaction protected by an advisory lock.
 The schema name is `DEPO_DATABASE_SCHEMA` (default `semantic`).
 
@@ -38,7 +39,7 @@ install backend dependencies, and configure root `.env.local`. Back up existing
 customer data before an upgrade. With the database already running:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\deployment\invoke-depo-lifecycle.ps1 -Action InitializeDatabase -EnvFile .env.local
+powershell -NoProfile -ExecutionPolicy Bypass -File .\update-postgres-schema.ps1 -EnvFile .env.local
 if ($LASTEXITCODE -ne 0) { throw 'Migration or schema verification failed.' }
 ```
 
@@ -52,7 +53,7 @@ drop/recreate tables or edit migration history to conceal a mismatch.
 To verify an existing schema without DDL or data writes:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\initialize-depo-schema.ps1 -EnvFile .env.local -CheckOnly
+powershell -NoProfile -ExecutionPolicy Bypass -File .\test-postgres-schema.ps1 -EnvFile .env.local
 if ($LASTEXITCODE -ne 0) { throw 'Schema verification failed.' }
 ```
 

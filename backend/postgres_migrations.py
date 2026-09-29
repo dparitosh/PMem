@@ -3,29 +3,32 @@ from __future__ import annotations
 
 from pathlib import Path
 from collections.abc import Sequence
+import re
 
 Migration = tuple[int, str, Sequence[str]]
 MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / 'infra' / 'postgres' / 'migrations'
 
 
-def _read_migration(version: int, name: str) -> tuple[str, ...]:
-    path = MIGRATIONS_DIR / f'{version:03d}_{name}.sql'
-    if not path.is_file():
-        raise RuntimeError(f'Missing PostgreSQL migration file: {path}')
-    return (path.read_text(encoding='utf-8'),)
+_MIGRATION_FILE = re.compile(r'^(?P<version>\d{3})_(?P<name>[a-z][a-z0-9_]*)\.sql$')
 
 
-MIGRATIONS: tuple[Migration, ...] = tuple(
-    (version, name, _read_migration(version, name))
-    for version, name in (
-        (1, 'control_plane_registry'),
-        (2, 'runtime_state'),
-        (3, 'governance_metadata'),
-        (4, 'ontology_analytics_view'),
-        (5, 'metadata_revision_constraints'),
-        (6, 'pipeline_job_queue_index'),
-    )
-)
+def _discover_migrations() -> tuple[Migration, ...]:
+    discovered: list[Migration] = []
+    for path in sorted(MIGRATIONS_DIR.glob('*.sql')):
+        match = _MIGRATION_FILE.fullmatch(path.name)
+        if not match:
+            raise RuntimeError(f'Invalid PostgreSQL migration filename: {path.name}')
+        version = int(match.group('version'))
+        if version == 0:
+            continue
+        discovered.append((version, match.group('name'), (path.read_text(encoding='utf-8'),)))
+    versions = [version for version, _name, _statements in discovered]
+    if not versions or versions != list(range(1, max(versions) + 1)):
+        raise RuntimeError(f'PostgreSQL migration versions must be unique and contiguous from 001: {versions}')
+    return tuple(discovered)
+
+
+MIGRATIONS: tuple[Migration, ...] = _discover_migrations()
 SCHEMA_MIGRATIONS_SQL = (MIGRATIONS_DIR / '000_schema_migrations.sql').read_text(encoding='utf-8')
 
 
