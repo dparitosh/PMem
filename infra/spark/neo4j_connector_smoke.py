@@ -4,19 +4,22 @@ import os
 from pyspark.sql import SparkSession
 
 
-required = ("NEO4J_URI", "NEO4J_USER", "NEO4J_PASS")
+auth_mode = os.getenv("NEO4J_AUTH_MODE", "token").strip().lower()
+required = ("NEO4J_URI",) if auth_mode == "none" else ("NEO4J_URI", "NEO4J_USER", "NEO4J_PASS")
 missing = [key for key in required if not os.getenv(key)]
 if missing:
     raise RuntimeError(f"Missing Neo4j configuration: {', '.join(missing)}")
 
-spark = (
+builder = (
     SparkSession.builder.appName("depo-neo4j-spark-smoke")
     .config("neo4j.url", os.environ["NEO4J_URI"])
-    .config("neo4j.authentication.basic.username", os.environ["NEO4J_USER"])
-    .config("neo4j.authentication.basic.password", os.environ["NEO4J_PASS"])
+    .config("neo4j.authentication.type", "none" if auth_mode == "none" else "basic")
     .config("neo4j.database", os.getenv("NEO4J_DATABASE", "neo4j"))
-    .getOrCreate()
 )
+if auth_mode != "none":
+    builder = builder.config("neo4j.authentication.basic.username", os.environ["NEO4J_USER"])
+    builder = builder.config("neo4j.authentication.basic.password", os.environ["NEO4J_PASS"])
+spark = builder.getOrCreate()
 try:
     rows = (
         spark.read.format("org.neo4j.spark.DataSource")

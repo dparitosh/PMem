@@ -7,6 +7,7 @@ never publishes graph data and never creates or approves a job definition.
 from __future__ import annotations
 
 import os
+from backend.depo_platform.service_urls import service_url
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +36,7 @@ def profile_for_filename(filename: str) -> str:
 
 class GovernedImportService:
     def __init__(self) -> None:
-        self.pipeline_url = os.getenv("DATA_PIPELINE_SERVICE_URL", "http://127.0.0.1:8019/api/v1").rstrip("/")
+        self.pipeline_url = service_url("DATA_PIPELINE_SERVICE_URL", "http://127.0.0.1:8019/api/v1")
         self.timeout = float(os.getenv("SERVICE_REQUEST_TIMEOUT_SECONDS", "90"))
 
     def normalize(self, *, filename: str, content: bytes, profile: str = "auto", source_system: str = "") -> dict[str, Any]:

@@ -6,12 +6,12 @@ from datetime import timedelta
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from backend.artifact_store import ArtifactStore
 from backend.mesh_store import PostgresRegistry
-from backend.depo_platform.authorization import approval_identity
+from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from backend.depo_platform.semantic_registry import release_reference, resolve_approved_release
 from .packaging import build_package
 
@@ -166,12 +166,18 @@ async def revoke(product_version: str, payload: dict, request: Request) -> dict:
     return store.put(product_version, await _register_catalog(revoked))
 
 
-@router.get("")
-def list_products() -> dict:
-    return {"products": [{key: value for key, value in record.items() if key != "package_storage"} for record in store.all().values()]}
+@router.get("", dependencies=[Depends(graph_read_identity)])
+def list_products(limit: int = 100) -> dict:
+    safe_limit = max(1, min(int(limit), 500))
+    records = sorted(
+        store.all().values(),
+        key=lambda record: str(record.get("published_at") or record.get("created_at") or ""),
+        reverse=True,
+    )[:safe_limit]
+    return {"products": [{key: value for key, value in record.items() if key != "package_storage"} for record in records], "limit": safe_limit}
 
 
-@router.get("/{product_version}/manifest")
+@router.get("/{product_version}/manifest", dependencies=[Depends(graph_read_identity)])
 def manifest(product_version: str) -> dict:
     record = store.get(product_version)
     if not record:
@@ -179,7 +185,7 @@ def manifest(product_version: str) -> dict:
     return record.get("manifest", {})
 
 
-@router.get("/{product_version}/download")
+@router.get("/{product_version}/download", dependencies=[Depends(graph_read_identity)])
 def download(product_version: str) -> FileResponse:
     record = store.get(product_version)
     if not record:
@@ -190,7 +196,7 @@ def download(product_version: str) -> FileResponse:
     return FileResponse(path, filename=path.name, media_type="application/zip")
 
 
-@router.get("/{product_version}")
+@router.get("/{product_version}", dependencies=[Depends(graph_read_identity)])
 def get_product(product_version: str) -> dict:
     record = store.get(product_version)
     if not record:

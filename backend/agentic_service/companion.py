@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from backend.depo_platform.service_urls import service_url
 import re
 from typing import Any
 
@@ -18,7 +19,7 @@ class KnowledgeCompanion:
 
     @staticmethod
     def _graph_root() -> str:
-        configured = os.getenv("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1").rstrip("/")
+        configured = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1")
         return configured if configured.endswith("/api/v1") else f"{configured}/api/v1"
 
     async def ask(self, message: str, *, headers: dict | None = None) -> dict[str, Any]:

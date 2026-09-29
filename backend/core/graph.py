@@ -7,13 +7,6 @@ from neo4j import Query
 
 logger = logging.getLogger(__name__)
 
-# Optional imports - gracefully handle missing modules
-try:
-    from llama_index.graph_stores.neo4j import Neo4jGraphStore
-except ImportError:
-    logger.warning("llama_index.graph_stores.neo4j not available - Neo4jGraphStore will be unavailable")
-    Neo4jGraphStore = None
-
 try:
     from langchain_neo4j import Neo4jGraph
 except ImportError:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from backend.depo_platform.service_urls import service_url
 import re
 from typing import Any
 
@@ -202,7 +203,7 @@ def turtle_projection(payload: dict[str, Any]) -> Response:
 
 async def _publish_to_graph(*, turtle: str, ontology_id: str, prefix: str, publication_id: str | None = None) -> dict[str, Any]:
     """Use the graph service's sole publication boundary, never the database directly."""
-    graph_url = os.getenv("GRAPH_SERVICE_URL", "http://127.0.0.1:8013").rstrip("/")
+    graph_url = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013")
     # Deployment service discovery may provide either a host root or the
     # standard API root.  Normalize it once to avoid the subtle `/api/v1/api/v1`
     # route that otherwise turns a governed publication into a false 404.

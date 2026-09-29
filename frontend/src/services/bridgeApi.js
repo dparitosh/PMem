@@ -1,11 +1,12 @@
 import axios from 'axios';
 import { buildUrl } from '../config';
+import { serviceAuthHeaders } from './serviceAuth';
 
 // Dedicated client: approval credentials must never enter the debug-logging
 // interceptors used by the generic legacy API client.
 const client = axios.create({ timeout: 150000 });
 const root = '/api/v1/workflows/bridge';
-const auth = (token) => ({ headers: token ? { Authorization: `Bearer ${token}` } : {} });
+const auth = (token) => ({ headers: { ...serviceAuthHeaders(), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
 export const bridgeApi = {
   preview: (ontologyId, importId, token) => client.post(buildUrl(`${root}/previews`),
     { ontology_id: ontologyId, import_task_id: importId }, auth(token)),

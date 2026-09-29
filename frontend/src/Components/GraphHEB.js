@@ -1184,6 +1184,7 @@ const GraphHEB = ({
   // Local loading state for ontology-specific operations (separate from context loading)
   const [, setOntologyLoading] = useState(false);
   const [ontologyGraphMessage, setOntologyGraphMessage] = useState('');
+  const [contextualSearchWarning, setContextualSearchWarning] = useState('');
   // Ontology options loaded from centralized context (shared across all components)
   const {
     ontologies: ontologyOptions,
@@ -2285,6 +2286,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
       const requestId = ++contextualSearchRequestIdRef.current;
       searchModeRef.current = true;
       setSearchLoading(true);
+      setContextualSearchWarning('');
       syncContextualHighlights(debouncedSearchQuery);
       syncSharedSearchResults([], { clear: true });
 
@@ -2310,6 +2312,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           }
 
           const normalized = normalizeGraphDataset(response.data);
+          setContextualSearchWarning('');
           const allowSchemaFallbackNodes = normalized?.view?.fallback === 'schema';
           const candidateNodes = normalized.nodes.filter((node) => (
             node?.elementId
@@ -2321,6 +2324,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
         } catch (err) {
           if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
           logger.error('[CONTEXTUAL SEARCH] Error:', err);
+          setContextualSearchWarning('Contextual graph service is unavailable. Results are limited to nodes already loaded in this view.');
           const visibleMatches = nodeSearchFunction(filteredDataRef.current?.nodes || [], debouncedSearchQuery);
           if (requestId === contextualSearchRequestIdRef.current) {
             await loadContextualSearchMatch(visibleMatches, debouncedSearchQuery, requestId, filteredDataRef.current);
@@ -4350,6 +4354,11 @@ const boundaryForce = (width, height) => {
           <div style={{ fontSize: '14px', color: '#7f8c8d' }}>{error}</div>
         </div>
       )}
+      {!isLoading && !error && contextualSearchWarning && (
+        <div role="status" style={{ position: 'absolute', top: 72, left: '50%', transform: 'translateX(-50%)', zIndex: 12, padding: '8px 12px', borderRadius: 4, background: '#fff4ce', color: '#5c4400', border: '1px solid #e4c45b' }}>
+          {contextualSearchWarning}
+        </div>
+      )}
       {!isLoading && !error && graphViewMode !== 'individual' && graphSearchActive && !searchLoading && normalizeSearchTerm(debouncedSearchQuery) && searchResultData.nodes.length === 0 && (
         <div style={{
           position: 'absolute',
@@ -4496,4 +4505,3 @@ const boundaryForce = (width, height) => {
 }
 
 export default React.memo(GraphHEB);
-

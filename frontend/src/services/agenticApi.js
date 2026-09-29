@@ -1,10 +1,17 @@
 import axios from 'axios';
 import { config, API, replaceParams } from '../config';
+import { serviceAuthHeaders } from './serviceAuth';
 
 const agenticClient = axios.create({
   baseURL: config.agenticServiceUrl || undefined,
   timeout: config.requestTimeout || 300000,
   headers: { 'Content-Type': 'application/json' },
+});
+
+agenticClient.interceptors.request.use((requestConfig) => {
+  requestConfig.headers = requestConfig.headers || {};
+  Object.assign(requestConfig.headers, serviceAuthHeaders());
+  return requestConfig;
 });
 
 function requireConfiguredService() {

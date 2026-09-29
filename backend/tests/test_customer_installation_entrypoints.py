@@ -72,3 +72,27 @@ def test_diagnostics_include_offline_release_package_integrity():
     assert package_check.is_file()
     assert "'Package','Prerequisites','Configuration','Runtime','All'" in diagnostic
     assert "test-installation-package.ps1" in diagnostic
+
+
+def test_linux_spark_runbook_has_executable_lifecycle_and_safe_configuration():
+    linux = ROOT / "infra" / "linux"
+    scripts = (
+        "configure-depo-linux.sh", "diagnose-depo-linux.sh", "generate-linux-lock.sh",
+        "install-depo-linux.sh", "install-spark-linux.sh", "install-systemd-service.sh",
+        "start-depo-services.sh", "stop-depo-services.sh", "test-depo-spark.sh",
+    )
+    for name in scripts:
+        source = (linux / name).read_text(encoding="utf-8")
+        assert source.startswith("#!/usr/bin/env bash\nset -Eeuo pipefail\n"), name
+    configurator = (linux / "configure-depo-linux.sh").read_text(encoding="utf-8")
+    assert "openssl rand -hex 32" in configurator
+    assert "Refusing to overwrite existing configuration" in configurator
+    assert "frontend/.env.local" in configurator
+    installer = (linux / "install-depo-linux.sh").read_text(encoding="utf-8")
+    assert "requirements-linux-lock.txt" in installer
+    assert "--require-hashes" in installer
+    guide = (ROOT / "INSTALLATION.md").read_text(encoding="utf-8")
+    assert "Copy-and-paste example: Ubuntu application VM" in guide
+    assert "bash infra/linux/configure-depo-linux.sh" in guide
+    assert "bash infra/linux/install-spark-linux.sh" in guide
+    assert "bash infra/linux/start-depo-services.sh" in guide

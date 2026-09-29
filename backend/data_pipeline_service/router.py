@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import json
 import os
+from backend.depo_platform.service_urls import service_url
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.artifact_store import ArtifactStore
-from backend.depo_platform.authorization import approval_identity
+from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from backend.depo_platform.network import bounded_timeout_seconds
 
 from . import job_definitions
@@ -106,7 +107,7 @@ async def _reconcile_graph_publication(
     canonical mutation completed; an absent receipt leaves the run safely
     awaiting publication for an operator to retry with the same run identity.
     """
-    graph_url = os.getenv("GRAPH_SERVICE_URL", "http://127.0.0.1:8013").rstrip("/")
+    graph_url = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013")
     graph_root = graph_url if graph_url.endswith("/api/v1") else f"{graph_url}/api/v1"
     try:
         async with httpx.AsyncClient(timeout=min(timeout_seconds, 15)) as client:
@@ -322,7 +323,7 @@ def run_configured_job(job_id: str, version: str, payload: dict[str, Any], reque
         raise _registry_error(exc) from exc
 
 
-@router.get("/jobs/runs", summary="List durable data-job run manifests")
+@router.get("/jobs/runs", dependencies=[Depends(graph_read_identity)], summary="List durable data-job run manifests")
 def list_job_runs(limit: int = 100) -> dict[str, Any]:
     try:
         return {"runs": run_records.list_runs(limit=limit)}
@@ -330,7 +331,7 @@ def list_job_runs(limit: int = 100) -> dict[str, Any]:
         raise _registry_error(exc) from exc
 
 
-@router.get("/jobs/runs/{run_id}", summary="Read a durable data-job run manifest")
+@router.get("/jobs/runs/{run_id}", dependencies=[Depends(graph_read_identity)], summary="Read a durable data-job run manifest")
 def get_job_run(run_id: str) -> dict[str, Any]:
     try:
         record = run_records.get(run_id)
@@ -369,7 +370,7 @@ async def publish_job_run(run_id: str, payload: dict[str, Any], request: Request
             "publication_id": run_id,
             "approved_by": actor, "approval_token": payload.get("approval_token"),
         }
-        ceim_url = os.getenv("CEIM_SERVICE_URL", "http://127.0.0.1:8018/api/v1").rstrip("/")
+        ceim_url = service_url("CEIM_SERVICE_URL", "http://127.0.0.1:8018/api/v1")
         ceim_root = ceim_url if ceim_url.endswith("/api/v1") else f"{ceim_url}/api/v1"
         forwarded_headers = {
             key: value for key, value in request.headers.items()

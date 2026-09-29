@@ -27,12 +27,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--job-id", default="semantic-source-validation", help="Approved data-job identifier.")
     parser.add_argument("--job-version", default="1.0.0", help="Approved data-job semantic version.")
     parser.add_argument("--source-system", default="", help="Optional source-system provenance value.")
-    parser.add_argument("--request-timeout", type=int, default=300, help="Request timeout in seconds.")
+    parser.add_argument("--request-timeout", type=int, default=300, help="Request timeout in seconds (must be positive).")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    if args.request_timeout <= 0:
+        print(json.dumps({"status": "error", "message": "--request-timeout must be positive"}, indent=2))
+        return 2
     source = Path(args.file_path).expanduser().resolve()
     if not source.is_file():
         print(json.dumps({"status": "error", "message": f"File not found: {source}"}, indent=2))
@@ -55,7 +58,10 @@ def main() -> int:
         print(json.dumps(response.json(), indent=2, default=str))
         return 0
     except requests.RequestException as exc:
-        detail = exc.response.text if getattr(exc, "response", None) is not None else str(exc)
+        status = getattr(exc.response, "status_code", None)
+        # Avoid echoing backend response bodies, which can contain source data
+        # or internal diagnostics. The HTTP status remains actionable.
+        detail = f"HTTP {status}" if status else "connection or timeout failure"
         print(json.dumps({"status": "error", "message": "Governed import failed", "detail": detail}, indent=2))
         return 1
 

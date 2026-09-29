@@ -206,6 +206,7 @@ class SparkJobRunner:
             SparkSession.builder.appName("depo-data-pipeline-service")
             .master(os.getenv("DEPO_SPARK_MASTER", "local[2]"))
             .config("spark.sql.warehouse.dir", warehouse)
+            .config("spark.jars.ivy", str(Path(warehouse) / ".ivy2"))
             .config("spark.ui.enabled", "false")
         )
         if self._neo4j_enabled():

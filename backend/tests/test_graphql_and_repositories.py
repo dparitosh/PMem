@@ -38,6 +38,45 @@ def test_graphql_rejects_alias_fanout_before_resolvers_run(monkeypatch):
     assert not calls
 
 
+def test_graphql_search_and_contextual_results_are_bounded(monkeypatch):
+    monkeypatch.setattr(
+        "backend.graph_service.graphql_schema.publisher.search",
+        lambda *, query, limit: {"nodes": [{"id": "urn:part", "label": query}], "limit": limit},
+    )
+    monkeypatch.setattr(
+        "backend.Services.graph_view_service.GraphViewService.get_contextual_subgraph",
+        lambda **kwargs: {"nodes": [{"elementId": "part-1"}], "relationships": [], "view": kwargs},
+    )
+    client = TestClient(app)
+    response = client.post("/api/v1/graphql", json={
+        "query": "query Search($q:String!){ search(query:$q, limit:500) contextualSubgraph(search:$q, limit:500, searchMode:\"broader\") contextualResult(search:$q, limit:500, searchMode:\"broader\") { nodes { elementId label } relationships { source target } view } }",
+        "variables": {"q": "motor"},
+    })
+    assert response.status_code == 200
+    assert response.json()["data"]["search"]["limit"] == 200
+    assert response.json()["data"]["contextualSubgraph"]["view"]["limit"] == 500
+    assert response.json()["data"]["contextualResult"]["nodes"][0]["elementId"] == "part-1"
+    assert response.json()["data"]["contextualResult"]["view"]["limit"] == 500
+
+
+def test_graphql_rejects_unbounded_or_invalid_variables():
+    client = TestClient(app)
+    invalid_type = client.post("/api/v1/graphql", json={"query": "{ health }", "variables": []})
+    assert invalid_type.status_code == 422
+    oversized = client.post("/api/v1/graphql", json={"query": "query($q:String!){ search(query:$q) }", "variables": {"q": "x" * 10_001}})
+    assert oversized.status_code == 422
+
+
+def test_graphql_counts_fragment_expansion_toward_cost_limit(monkeypatch):
+    calls = []
+    monkeypatch.setattr("backend.graph_service.graphql_schema.publisher.traversal", lambda **_: calls.append(1))
+    spreads = " ".join("...Traversal" for _ in range(4))
+    query = f'query {{ {spreads} }} fragment Traversal on Query {{ traversal(iri: "urn:test") }}'
+    response = TestClient(app).post("/api/v1/graphql", json={"query": query})
+    assert response.status_code == 422
+    assert not calls
+
+
 def test_graphql_exposes_control_plane_read_models_without_submitting_spark_work(monkeypatch):
     monkeypatch.setattr(
         "backend.graph_service.graphql_schema.control_plane_client.job_runs",

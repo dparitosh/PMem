@@ -7,6 +7,7 @@ import { validateChatInput, ValidationError } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { formatChatMarkdown } from '../utils/chatMarkdown';
 import { clearClientSessionId, getClientSessionId, setClientSessionId } from '../services/apiClient';
+import { setServiceAuthToken } from '../services/serviceAuth';
 
 const CHAT_COLORS = {
     primary: '#005a9c',
@@ -470,7 +471,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             <details style={{ padding: '8px 14px', flexShrink: 0 }}>
                 <summary>Connection credentials</summary>
                 <label>API key <input aria-label="Chat API key" type="password" autoComplete="off"
-                    value={accessToken} onChange={event => setAccessToken(event.target.value)} /></label>
+                    value={accessToken} onChange={event => { const value = event.target.value; setAccessToken(value); setServiceAuthToken(value); }} /></label>
                 <small style={{ display: 'block' }}>Enter your graph read API key. Kept only in memory.</small>
             </details>
             {/* Compact session utility row; the surrounding IX card owns the panel title. */}

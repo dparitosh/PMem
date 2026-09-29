@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from backend.depo_platform.service_urls import service_url
 from typing import Any
 
 import httpx
@@ -11,7 +12,7 @@ class SemanticIngestionWorkflow:
     """Connect ingestion to an independently deployable ontology service."""
 
     def __init__(self) -> None:
-        self.ontology_url = os.getenv("ONTOLOGY_SERVICE_URL", "http://127.0.0.1:8011/api/v1").rstrip("/")
+        self.ontology_url = service_url("ONTOLOGY_SERVICE_URL", "http://127.0.0.1:8011/api/v1")
         self.timeout = float(os.getenv("SERVICE_REQUEST_TIMEOUT_SECONDS", "30"))
 
     async def run(

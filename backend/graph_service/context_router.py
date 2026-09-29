@@ -3,11 +3,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from starlette.concurrency import run_in_threadpool
 
+from backend.depo_platform.authorization import graph_read_identity
 from .neo4j_publisher import publisher
 
-router = APIRouter(tags=["graph-context"])
+router = APIRouter(tags=["graph-context"], dependencies=[Depends(graph_read_identity)])
 
 
 def _display_name(row: dict[str, Any]) -> str:
@@ -20,21 +22,53 @@ def _ontology_node_clause() -> str:
     return "n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty" if source == "existing_ontology" else "n:OntologyResource"
 
 
-def _find_node(name: str) -> dict[str, Any] | None:
+def _find_node(name: str, *, node_id: str = "", scope: dict[str, Any] | None = None) -> dict[str, Any] | None:
     query = str(name or "").strip()
-    if not query:
+    identifier = str(node_id or "").strip()
+    scope = scope if isinstance(scope, dict) else {}
+    ontology_prefix = str(scope.get("prefix") or scope.get("ontology_prefix") or "").strip()
+    ontology_id = str(scope.get("ontology_id") or "").strip()
+    if not query and not identifier:
         raise HTTPException(status_code=422, detail="A graph term is required")
     node_clause = _ontology_node_clause()
     rows = publisher._session_rows(
         f"MATCH (n) WHERE {node_clause} "
         "WITH n, coalesce(n.name, n.label, n.uri, n.iri) AS display "
-        "WHERE toLower(display) CONTAINS toLower($search_text) "
+        "WHERE ($node_id = '' OR elementId(n) = $node_id) "
+        "AND ($search_text = '' OR toLower(display) CONTAINS toLower($search_text)) "
+        "AND ($ontology_prefix = '' OR n.prefix = $ontology_prefix OR n.ontology_prefix = $ontology_prefix) "
+        "AND ($ontology_id = '' OR n.ontology_id = $ontology_id OR n.source_ontology = $ontology_id) "
         "RETURN elementId(n) AS id, display AS name, labels(n) AS labels, "
         "coalesce(n.source_ontology, n.ontology_id, n.prefix, 'graph') AS source_tag "
         "ORDER BY CASE WHEN toLower(display) = toLower($search_text) THEN 0 ELSE 1 END, display LIMIT 1",
-        search_text=query,
+        search_text=query, node_id=identifier, ontology_prefix=ontology_prefix, ontology_id=ontology_id,
     )
     return rows[0] if rows else None
+
+
+@router.get("/api/v1/graph/contextual-subgraph", summary="Search a bounded contextual engineering subgraph")
+async def contextual_subgraph(
+    search: str = Query(default="", max_length=500),
+    ontology_prefix: str = Query(default="", max_length=256),
+    import_id: str = Query(default="", max_length=256),
+    limit: int = Query(default=400, ge=1, le=1000),
+    search_mode: str = Query(default="best", pattern="^(best|broader)$"),
+    expand_neighbors: bool = Query(default=False),
+) -> dict[str, Any]:
+    from backend.Services.graph_view_service import GraphViewService
+
+    try:
+        return await run_in_threadpool(
+            GraphViewService.get_contextual_subgraph,
+            search=search,
+            ontology_prefix=ontology_prefix,
+            import_id=import_id,
+            limit=limit,
+            search_mode=search_mode,
+            expand_neighbors=expand_neighbors,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail="Contextual graph is unavailable") from exc
 
 
 def _neighbors(node_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
@@ -85,7 +119,7 @@ def recommendation_health() -> dict:
 
 @router.post("/recommendations/change-impact", summary="Trace graph-backed semantic change impact")
 def change_impact(payload: dict[str, Any]) -> dict:
-    root = _find_node(str(payload.get("change_name") or ""))
+    root = _find_node(str(payload.get("change_name") or ""), node_id=str(payload.get("node_id") or ""), scope=payload.get("scope"))
     if root is None:
         return {"message": "No matching graph term was found.", "impacted_parts": [], "assembly_impact": [], "impacted_requirements": [], "process_impacts": [], "realization_chain": []}
     neighbors = _neighbors(str(root["id"]))
@@ -117,7 +151,7 @@ def change_impact(payload: dict[str, Any]) -> dict:
 
 @router.post("/recommendations/similar-parts", summary="Find graph terms with lexical and type similarity")
 def similar_parts(payload: dict[str, Any]) -> dict:
-    root = _find_node(str(payload.get("part_name") or ""))
+    root = _find_node(str(payload.get("part_name") or ""), node_id=str(payload.get("node_id") or ""), scope=payload.get("scope"))
     if root is None:
         return {"message": "No matching graph term was found.", "similar_parts": []}
     top_n = max(1, min(int(payload.get("top_n", 10)), 50))
@@ -149,7 +183,7 @@ def similar_parts(payload: dict[str, Any]) -> dict:
 
 @router.post("/recommendations/manufacturing", summary="Find process context linked to a graph term")
 def manufacturing_context(payload: dict[str, Any]) -> dict:
-    root = _find_node(str(payload.get("part_name") or ""))
+    root = _find_node(str(payload.get("part_name") or ""), node_id=str(payload.get("node_id") or ""), scope=payload.get("scope"))
     if root is None:
         return {"message": "No matching graph term was found.", "direct_processes": [], "process_instances": [], "related_processes": [], "process_summary": {}}
     neighbors = _neighbors(str(root["id"]))

@@ -12,6 +12,35 @@ class ChatRequest(BaseModel):
         default=None,
         description="Optional compact graph context from the UI (visible nodes/relationships, active view, selection hints)",
     )
+
+    @field_validator('graph_context', mode='before')
+    @classmethod
+    def validate_graph_context(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError('graph_context must be an object')
+
+        def inspect(item: Any, depth: int = 0) -> int:
+            if depth > 6:
+                raise ValueError('graph_context nesting exceeds 6 levels')
+            if isinstance(item, dict):
+                if len(item) > 100:
+                    raise ValueError('graph_context object has too many fields')
+                return sum(len(str(key)) + inspect(child, depth + 1) for key, child in item.items())
+            if isinstance(item, list):
+                if len(item) > 100:
+                    raise ValueError('graph_context list exceeds 100 items')
+                return sum(inspect(child, depth + 1) for child in item)
+            if isinstance(item, str):
+                if len(item) > 4000:
+                    raise ValueError('graph_context text value exceeds 4000 characters')
+                return len(item)
+            return len(str(item))
+
+        if inspect(value) > 128_000:
+            raise ValueError('graph_context exceeds 128 KB')
+        return value
     
     @field_validator('session_id', mode='before')
     def validate_session_id(cls, v):

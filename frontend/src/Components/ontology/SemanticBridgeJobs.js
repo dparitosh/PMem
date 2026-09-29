@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { bridgeApi } from '../../services/bridgeApi';
 import agenticAPI from '../../services/agenticApi';
+import { setServiceAuthToken } from '../../services/serviceAuth';
 
 class PreviewInputError extends Error {}
 
@@ -72,7 +73,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
     <p>Create a saved preview, select valid mappings, then approve publication. Nothing is selected automatically.</p>
     <details><summary>Bootstrap authentication (use gateway identity in production)</summary>
       <p>Credentials are held only in this component’s memory. Do not use these fields on an untrusted connection.</p>
-      <label>Read token <input aria-label="Read token" type="password" autoComplete="off" value={readToken} onChange={e => setReadToken(e.target.value)} /></label>{' '}
+      <label>Read token <input aria-label="Read token" type="password" autoComplete="off" value={readToken} onChange={e => { const value = e.target.value; setReadToken(value); setServiceAuthToken(value); }} /></label>{' '}
       <label>Approver <input aria-label="Approver" value={actor} onChange={e => setActor(e.target.value)} /></label>{' '}
       <label>Approval token <input aria-label="Approval token" type="password" autoComplete="off" value={approvalToken} onChange={e => setApprovalToken(e.target.value)} /></label>
     </details>

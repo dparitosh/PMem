@@ -92,16 +92,20 @@ def approval_identity(request: Request, payload: dict[str, Any], *, token_env: s
 def graph_read_identity(request: Request) -> str:
     """Authorize graph reads for local, bootstrap-token, or gateway-Entra profiles."""
     mode = os.getenv("AUTH_MODE", "token").lower()
+    # Internal service-to-service reads use the same narrowly scoped graph
+    # token in every authentication profile. Gateway identity remains required
+    # for browser requests in Entra mode, while backend GraphQL aggregation can
+    # call the data-pipeline and data-product services without spoofing a user.
+    expected = os.getenv("GRAPH_READ_TOKEN", "")
+    supplied = _request_api_key(request)
+    if expected and supplied and hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
+        return "service-token-reader"
     if mode == "disabled":
         client_host = request.client.host if request.client else ""
         if os.getenv("DEPO_ALLOW_INSECURE_LOCAL_AUTH", "").lower() != "true" or client_host not in {"127.0.0.1", "::1"}:
             raise HTTPException(403, "Disabled authentication is allowed only for an explicitly enabled loopback-only process")
         return "local-development"
     if mode != "entra":
-        expected = os.getenv("GRAPH_READ_TOKEN", "")
-        supplied = _request_api_key(request)
-        if expected and hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
-            return "token-reader"
         raise HTTPException(403, "A valid graph read token is required")
     _require_trusted_gateway(request)
     encoded = request.headers.get("x-ms-client-principal", "")

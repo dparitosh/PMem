@@ -1,14 +1,15 @@
 # DEPO installation and release guide
 
 This is the single installation guide for the DEPO frontend, backend, PostgreSQL,
-Neo4j, Spark and PySpark. Run commands from the repository root on Windows.
-The supported application runtime is 64-bit CPython 3.12 on Windows x64. The
-production dependency lock is platform-specific, and the installer rejects a
-different Python minor version.
+Neo4j, Spark and PySpark. Run each command from the repository root in the shell
+named by its section. The primary complete application runtime is 64-bit CPython
+3.12 on Windows x64. Section 1.3 supplies the Linux Spark and DEPO lifecycle;
+the Linux release must include a separately approved CPython 3.12 dependency
+lock because the committed production lock contains Windows x64 artifacts.
 
 Customers use the repository-root entry points below for application lifecycle
-operations. Infrastructure-specific utilities live under `infra/postgres` and
-`infra/windows` and are run only where this guide names their exact command.
+operations. Infrastructure-specific utilities live under `infra/postgres`,
+`infra/windows` and `infra/linux` and are run only where this guide names their exact command.
 Other scripts below `infra` are implementation stages called by these supported
 entry points; customers do not assemble an installation from them.
 
@@ -585,7 +586,395 @@ service and cannot write Neo4j directly. Add `-EnableNeo4jSparkConnector` only
 after the regular smoke test passes and the Neo4j connection check in the
 installer succeeds.
 
-### 1.3 Choose document OCR on Windows; verify it immediately after section 3
+### 1.3 Install and integrate Spark on Linux
+
+Use this path when the DEPO application and local Spark runtime run on a
+supported 64-bit Linux VM. Linux does **not** use `winutils.exe`, `hadoop.dll`,
+or `DEPO_HADOOP_HOME`. The supported release baseline is CPython 3.12, JDK 21,
+Node.js 24 or newer, and `spark-4.1.2-bin-hadoop3.tgz`.
+
+#### Copy-and-paste example: Ubuntu application VM
+
+This example uses the following concrete deployment. Substitute the four
+customer connection values when the configuration script prompts for them:
+
+```text
+Release files already extracted at: /tmp/PMem-release
+DEPO installation:                  /opt/depo/app
+PostgreSQL:                         10.20.30.40:5432/depo
+Neo4j:                              graph.customer.example:7687
+Frontend origin:                    https://depo.customer.example
+Linux service account:              depo
+```
+
+Copy and paste this first block as an administrator. It stops on the first
+failure and does not start any DEPO service:
+
+```bash
+set -euo pipefail
+sudo apt-get update
+sudo apt-get install -y openjdk-21-jdk python3.12 python3.12-venv curl tar gnupg ca-certificates openssl
+node --version
+npm --version
+sudo useradd --system --create-home --shell /usr/sbin/nologin depo 2>/dev/null || true
+sudo install -d -o depo -g depo -m 0750 /opt/depo/app /opt/depo/runtime /opt/depo/downloads /opt/depo/drivers
+sudo install -d -o depo -g depo -m 0750 /var/lib/depo/artifacts /var/lib/depo/spark-output
+sudo cp -a /tmp/PMem-release/. /opt/depo/app/
+sudo chown -R depo:depo /opt/depo/app
+cd /opt/depo/app
+sudo -u depo bash infra/linux/diagnose-depo-linux.sh .env.local || true
+sudo -u depo bash infra/linux/install-spark-linux.sh --install-root /opt/depo/runtime --download-root /opt/depo/downloads
+```
+
+The first diagnostic is expected to report that `.env.local`, the Spark runtime,
+and possibly the reviewed Linux dependency lock are absent. It is included here
+so the operator sees the exact remaining prerequisites before installation.
+`node --version` must report `v24` or newer and `npm --version` must report 10.2
+or newer; if either command is missing, stop and install the approved Node.js 24
+package before continuing.
+
+Create both configuration files with the interactive configurator. The
+PostgreSQL URL and Neo4j password prompts do not echo their input. API/service
+tokens are generated automatically and are never printed:
+
+```bash
+cd /opt/depo/app
+sudo -u depo -H bash infra/linux/configure-depo-linux.sh /opt/depo/app/.env.local
+```
+
+Enter values in this form when prompted:
+
+```text
+PostgreSQL URL: postgresql://depo_app:<actual-password>@10.20.30.40:5432/depo?sslmode=require
+Neo4j URI: neo4j+s://graph.customer.example:7687
+Neo4j database name: ontology
+Frontend origins: https://depo.customer.example,http://localhost:3000
+Neo4j username: depo_graph
+Neo4j password: <actual-password>
+```
+
+The localhost origin permits the temporary SSH-forwarded browser test below.
+Do not type the password angle brackets. Enter the real password supplied by
+the customer secret manager. If the Neo4j server intentionally has authentication disabled,
+run the configurator with `NEO4J_AUTH_MODE=none`; it will not ask for a username
+or password:
+
+```bash
+sudo -u depo -H env NEO4J_AUTH_MODE=none NEO4J_TLS_MODE=disabled NEO4J_ENCRYPTED=false NEO4J_TLS_VERIFY=false \
+  bash infra/linux/configure-depo-linux.sh /opt/depo/app/.env.local
+```
+
+Continue only after the release team has supplied the reviewed Linux lock at
+`backend/requirements-linux-lock.txt`. Then copy and paste:
+
+```bash
+cd /opt/depo/app
+sudo -u depo bash infra/linux/diagnose-depo-linux.sh /opt/depo/app/.env.local
+sudo -u depo bash infra/linux/install-depo-linux.sh --env-file /opt/depo/app/.env.local
+sudo -u depo bash infra/linux/test-depo-spark.sh /opt/depo/app/.env.local
+sudo -u depo bash infra/linux/start-depo-services.sh /opt/depo/app/.env.local
+curl --fail http://127.0.0.1:8013/readyz
+curl --fail http://127.0.0.1:8019/readyz
+```
+
+For a temporary browser smoke test, use a second terminal:
+
+```bash
+cd /opt/depo/app
+sudo -u depo backend/.dt_venv/bin/python -m http.server 3000 --bind 127.0.0.1 --directory frontend/dist
+```
+
+On the administrator workstation, create a temporary SSH tunnel. Replace
+`depo-admin@linux-vm` with the approved SSH account and hostname:
+
+```bash
+ssh -N \
+  -L 3000:127.0.0.1:3000 \
+  -L 8010:127.0.0.1:8010 -L 8011:127.0.0.1:8011 \
+  -L 8012:127.0.0.1:8012 -L 8013:127.0.0.1:8013 \
+  -L 8014:127.0.0.1:8014 -L 8015:127.0.0.1:8015 \
+  -L 8016:127.0.0.1:8016 -L 8017:127.0.0.1:8017 \
+  -L 8018:127.0.0.1:8018 -L 8019:127.0.0.1:8019 \
+  depo-admin@linux-vm
+```
+
+Open `http://localhost:3000`. Stop the Python server and SSH tunnel with
+`Ctrl+C` in their respective terminals.
+For production, publish `frontend/dist` through the approved HTTPS reverse proxy;
+the Python static server is only an installation test.
+
+In token-authentication mode, open **Chat → Connection credentials** and paste
+the `GRAPH_READ_TOKEN` value from the root `.env.local`. The UI keeps it only in
+browser memory. An administrator can display that one value on the application
+VM with the following command; do not copy it into `frontend/.env.local`:
+
+```bash
+sudo -u depo awk -F= '$1=="GRAPH_READ_TOKEN" {print $2}' /opt/depo/app/.env.local
+```
+
+The Linux sequence is:
+
+| Order | Command | Result |
+| --- | --- | --- |
+| 1 | Install OS prerequisites | Java, Python, Node, GnuPG, curl and tar available |
+| 2 | Run `install-spark-linux.sh` | Apache archive and signature verified, then Spark extracted |
+| 3 | Complete root `.env.local` | DEPO, PostgreSQL, Neo4j and Spark configured in one service environment |
+| 4 | Run `install-depo-linux.sh` | Backend virtual environment and frontend production build created |
+| 5 | Run `test-depo-spark.sh` | Spark and enabled connectors execute real read-only jobs |
+| 6 | Run `start-depo-services.sh` | Ten APIs and two durable workers start and pass readiness checks |
+
+#### Linux Step A — install operating-system prerequisites
+
+Run one block appropriate to the customer VM. Package installation requires an
+approved repository and an administrator account.
+
+Ubuntu 24.04 example:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y openjdk-21-jdk python3.12 python3.12-venv curl tar gnupg ca-certificates
+java -version
+python3.12 --version
+```
+
+Install Node.js 24 from the customer's approved package repository, then verify:
+
+```bash
+node --version
+npm --version
+```
+
+The Node result must be `v24` or newer. Do not use a personal NVM installation
+for a production service account.
+
+RHEL-compatible example, using the customer-approved Python 3.12 and Node.js 24
+repositories:
+
+```bash
+sudo dnf install -y java-21-openjdk-devel python3.12 curl tar gnupg2 ca-certificates
+java -version
+python3.12 --version
+node --version
+npm --version
+```
+
+#### Linux Step B — create the service directories
+
+This example installs customer-managed runtime files under `/opt/depo` and
+writable data under `/var/lib/depo`. Replace `depo` with the actual service
+account only if the customer chose a different account.
+
+```bash
+sudo useradd --system --create-home --shell /usr/sbin/nologin depo 2>/dev/null || true
+sudo install -d -o depo -g depo -m 0750 /opt/depo/runtime /opt/depo/downloads /opt/depo/drivers
+sudo install -d -o depo -g depo -m 0750 /var/lib/depo/artifacts /var/lib/depo/spark-output
+```
+
+Clone or copy the reviewed release to `/opt/depo/app`, then assign it to the
+service account according to the customer's deployment policy. The remaining
+commands assume that `/opt/depo/app` is the repository root:
+
+```bash
+cd /opt/depo/app
+chmod 0750 infra/linux/*.sh
+```
+
+#### Linux Step C — download, authenticate and extract Apache Spark
+
+The installer downloads these exact official artifacts:
+
+```text
+spark-4.1.2-bin-hadoop3.tgz
+spark-4.1.2-bin-hadoop3.tgz.sha512
+spark-4.1.2-bin-hadoop3.tgz.asc
+apache-spark-KEYS
+```
+
+It validates SHA-512, imports the Apache Spark release keys into a temporary
+GnuPG home, validates the detached signature, validates the tar archive, and
+refuses to overwrite an existing runtime. Run it as the service account so no
+runtime file is owned by root:
+
+```bash
+sudo -u depo bash infra/linux/install-spark-linux.sh \
+  --install-root /opt/depo/runtime \
+  --download-root /opt/depo/downloads
+```
+
+Successful output prints the detected JDK path and exact Spark path. Verify the
+installed files explicitly:
+
+```bash
+sudo -u depo test -x /opt/depo/runtime/spark-4.1.2-bin-hadoop3/bin/spark-submit
+sudo -u depo test -f /opt/depo/runtime/spark-4.1.2-bin-hadoop3/python/lib/pyspark.zip
+sudo -u depo find /opt/depo/runtime/spark-4.1.2-bin-hadoop3/python/lib -maxdepth 1 -name 'py4j-*-src.zip' -print
+```
+
+#### Linux Step D — create both `.env.local` files
+
+Run the configurator. It asks only for customer-specific PostgreSQL, Neo4j and
+frontend values, generates distinct service tokens, writes root `.env.local`,
+writes `frontend/.env.local`, applies restrictive permissions, and refuses to
+overwrite either existing file:
+
+```bash
+cd /opt/depo/app
+sudo -u depo -H bash infra/linux/configure-depo-linux.sh /opt/depo/app/.env.local
+```
+
+The generated file uses these Linux-specific values by default:
+
+```dotenv
+ARTIFACT_STORAGE=/var/lib/depo/artifacts
+DEPO_POSTGRES_MODE=external
+DEPO_SPARK_ENABLED=true
+DEPO_SPARK_HOME=/opt/depo/runtime/spark-4.1.2-bin-hadoop3
+DEPO_JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+DEPO_SPARK_MASTER=local[2]
+DEPO_SPARK_OUTPUT_ROOT=/var/lib/depo/spark-output
+DEPO_PIPELINE_EXECUTION_MODE=worker
+DEPO_PIPELINE_SCHEDULER_ENABLED=false
+DEPO_SPARK_NEO4J_ENABLED=false
+DEPO_SPARK_POSTGRES_ENABLED=false
+```
+
+On RHEL, determine the exact JDK directory rather than copying the Ubuntu path:
+
+```bash
+dirname "$(dirname "$(readlink -f "$(command -v java)")")"
+```
+
+Use that output as `DEPO_JAVA_HOME`. Do not set `DEPO_HADOOP_HOME` on Linux.
+
+To enable the official Neo4j Spark connector after the base smoke test passes:
+
+```dotenv
+DEPO_SPARK_NEO4J_ENABLED=true
+DEPO_SPARK_NEO4J_PACKAGE=org.neo4j.connectors:spark:6.0.0-s_2.13
+```
+
+The normal `NEO4J_URI`, `NEO4J_DATABASE`, `NEO4J_AUTH_MODE`, `NEO4J_USER`, and
+`NEO4J_PASS` values are reused. With an intentionally unsecured private local
+Neo4j instance, set `NEO4J_AUTH_MODE=none`; credentials are then not required.
+The first connector execution resolves Maven artifacts, so an offline customer
+must mirror and approve that package in its internal Maven repository.
+
+To enable Spark JDBC reads from the external PostgreSQL VM, place the approved
+PostgreSQL JDBC JAR on the application VM and configure:
+
+```dotenv
+DEPO_SPARK_POSTGRES_ENABLED=true
+DEPO_SPARK_POSTGRES_DRIVER_JAR=/opt/depo/drivers/postgresql-42.7.13.jar
+```
+
+The connector reuses `DEPO_DATABASE_URL`. The JDBC test is read-only and does
+not create or alter the PostgreSQL schema.
+
+#### Linux Step E — install DEPO and build the frontend
+
+The repository's `backend/requirements-lock.txt` is explicitly generated for
+Windows x64 and must not be reused on Linux. The customer Linux release package
+must contain `backend/requirements-linux-lock.txt`, generated and reviewed by
+the release pipeline for CPython 3.12 on Linux x86_64. Every resolved requirement
+must contain an exact version and approved artifact hashes (hashes may continue
+onto subsequent lines):
+
+```text
+package-name==exact.version --hash=sha256:<approved-linux-artifact-hash>
+```
+
+The Linux installer stops when that lock is absent or malformed and never falls
+back to an unpinned internet installation. Spark runtime provisioning remains
+independent because the repository authenticates the Apache archive using its
+published SHA-512 value and detached signature.
+
+On the approved internet-connected Linux x86_64 release builder, with the
+reviewed `pip-compile` build tool already installed, generate the lock using:
+
+```bash
+bash infra/linux/generate-linux-lock.sh
+```
+
+Review and scan the resulting `backend/requirements-linux-lock.txt`, then ship
+that exact committed file with the release. Do not generate it on a customer
+production VM.
+
+Run the production installer from the repository root:
+
+```bash
+cd /opt/depo/app
+sudo -u depo bash infra/linux/install-depo-linux.sh --env-file /opt/depo/app/.env.local
+```
+
+The installer creates `backend/.dt_venv`, installs the hash-pinned production
+dependencies, imports every service, validates every OpenAPI contract, runs
+`npm ci`, builds `frontend/dist`, and executes the Spark tests when Spark is
+enabled. Use `--skip-frontend` only when the reviewed frontend artifact is
+deployed separately. Use `--skip-dependencies` only to revalidate an existing
+installation whose virtual environment and frontend dependencies already exist.
+
+#### Linux Step F — run diagnostics independently
+
+Run the same test again whenever Spark, Java, PostgreSQL, Neo4j or connector
+configuration changes:
+
+```bash
+cd /opt/depo/app
+sudo -u depo bash infra/linux/test-depo-spark.sh /opt/depo/app/.env.local
+```
+
+With connectors disabled, this executes the deterministic DEPO Spark dataframe
+job. With either connector enabled, it additionally performs a real read-only
+query against that dependency. A successful command ends with:
+
+```text
+DEPO Linux Spark validation passed.
+```
+
+#### Linux Step G — start, verify and stop DEPO
+
+Start all ten HTTP services and both workers:
+
+```bash
+cd /opt/depo/app
+sudo -u depo bash infra/linux/start-depo-services.sh /opt/depo/app/.env.local
+```
+
+The launcher applies and verifies PostgreSQL migrations first. It then waits
+for every `/readyz` endpoint and rolls back processes started by the command if
+any service fails. Logs and PID files are stored under
+`logs/linux-services`. Verify the pipeline and graph services:
+
+```bash
+curl --fail http://127.0.0.1:8019/readyz
+curl --fail http://127.0.0.1:8013/readyz
+curl --fail http://127.0.0.1:8019/api/v1/health
+```
+
+Stop the deployment cleanly:
+
+```bash
+sudo -u depo bash infra/linux/stop-depo-services.sh
+```
+
+For an unattended customer deployment, install the supplied hardened `systemd`
+unit. It runs as `depo`, protects operating-system paths, prepares the configured
+log, artifact and Spark-output directories, and reads secrets through the
+lifecycle script rather than copying them into the unit:
+
+```bash
+cd /opt/depo/app
+sudo bash infra/linux/install-systemd-service.sh /opt/depo/app/.env.local depo
+sudo systemctl start depo.service
+sudo systemctl status depo.service --no-pager
+```
+
+The installer runs `systemd-analyze verify`, reloads systemd, and enables the
+unit for boot. Keep `.env.local` readable only by the service account. Diagnose
+a failed boot with `journalctl -u depo.service` and the service-specific files
+under `logs/linux-services`.
+
+### 1.4 Choose document OCR on Windows; verify it immediately after section 3
 
 DEPO extracts the native PDF text layer first. Scanned PDFs then use the OCR
 provider selected by `DOCUMENT_OCR_PROVIDER`. The standard installer installs

@@ -1,3 +1,7 @@
 # Generated dependency lockfile; avoid rendering tens of thousands of lines
 # when the retired Mendix widget is removed.
 mendix/depo-graph-miner-widget/package-lock.json -diff
+
+# Linux lifecycle files must remain executable by Bash after a Windows checkout.
+*.sh text eol=lf
+*.service.template text eol=lf

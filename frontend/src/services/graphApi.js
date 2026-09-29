@@ -23,10 +23,25 @@ export const graphApi = {
     });
   },
   getContextualSubgraph(params = {}, signal) {
-    // The standalone graph service deliberately exposes bounded projections.
-    // Contextual ranking stays in the UI, where it can apply the active view
-    // and user search settings without falling back to the retired proxy.
-    return this.getOverview(params.limit || 900, signal);
+    const query = `query ContextualSubgraph($search: String!, $ontologyPrefix: String, $importId: String, $limit: Int, $searchMode: String, $expandNeighbors: Boolean) {
+      contextualResult(search: $search, ontologyPrefix: $ontologyPrefix, importId: $importId, limit: $limit, searchMode: $searchMode, expandNeighbors: $expandNeighbors) {
+        nodes { elementId label type labels properties canTraverse }
+        relationships { elementId source target type properties }
+        counts
+        view
+        root { elementId label type labels properties canTraverse }
+      }
+    }`;
+    const variables = {
+      search: String(params.search || ''),
+      ontologyPrefix: params.ontology_prefix || '',
+      importId: params.import_id || '',
+      limit: params.limit || 200,
+      searchMode: params.search_mode || 'best',
+      expandNeighbors: Boolean(params.expand_neighbors),
+    };
+    return apiClient.post(graphUrl('/api/v1/graphql'), { query, variables, operationName: 'ContextualSubgraph' }, { signal })
+      .then((response) => ({ ...response, data: response.data?.data?.contextualResult || {} }));
   },
   getTraversal(nodeId, depth = 2, signal) {
     return apiClient.get(graphUrl(`/api/v1/graph/traversal/${encodeURIComponent(nodeId)}`), {

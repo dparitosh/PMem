@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from backend.depo_platform.service_urls import service_url
 from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -55,7 +56,7 @@ async def publish(reconciliation_id: str, payload: dict[str, Any], request: Requ
     try:
         _, path = ArtifactStore().resolve(record["partition_artifact_id"])
         batch = json.loads(path.read_text(encoding="utf-8"))
-        root = os.getenv("CEIM_SERVICE_URL", "http://127.0.0.1:8018/api/v1").rstrip("/")
+        root = service_url("CEIM_SERVICE_URL", "http://127.0.0.1:8018/api/v1")
         root = root if root.endswith("/api/v1") else f"{root}/api/v1"
         publication_payload = {**batch, "ontology_id": payload.get("ontology_id"), "prefix": payload.get("prefix", "ceim"), "semantic_release": payload.get("semantic_release"), "approved_by": actor, "approval_token": payload.get("approval_token")}
         publication_timeout = bounded_timeout_seconds("GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180)

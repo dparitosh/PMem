@@ -75,7 +75,14 @@ if (-not $SkipFrontend) {
   try {
     if (Test-Path (Join-Path $frontend "package-lock.json")) { npm.cmd ci }
     else { throw "Missing frontend/package-lock.json; restore the release lockfile before installation." }
-    if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency installation failed.' }
+    if ($LASTEXITCODE -ne 0) {
+      # npm ci removes node_modules first. Windows returns EBUSY when a stale
+      # Vite/Node process still has a package directory open. Retry using the
+      # existing tree so a transient lock does not make installation fail.
+      Write-Warning 'npm ci could not replace frontend/node_modules. Retrying with npm install; close running Vite/Node processes if this also fails.'
+      npm.cmd install --no-audit --no-fund
+    }
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency installation failed. Close running node.exe/Vite processes and rerun install-depo.ps1.' }
     npm.cmd run build
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
   } finally { Pop-Location }

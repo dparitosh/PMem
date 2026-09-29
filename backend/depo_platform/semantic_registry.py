@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from backend.depo_platform.service_urls import service_url
 import re
 from typing import Any
 
@@ -26,7 +27,7 @@ def release_reference(value: Any) -> dict[str, str]:
 async def resolve_approved_release(value: Any) -> dict[str, str]:
     """Resolve an approved semantic release without coupling consumers to Neo4j."""
     reference = release_reference(value)
-    base_url = os.getenv("SEMANTIC_REGISTRY_URL", "http://127.0.0.1:8011/api/v1/metadata-registry").rstrip("/")
+    base_url = service_url("SEMANTIC_REGISTRY_URL", "http://127.0.0.1:8011/api/v1/metadata-registry")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(f"{base_url}/assets/{reference['asset_id']}")

@@ -8,6 +8,7 @@ import axios from 'axios';
 import { config, API, buildSemanticServiceUrl, buildUrl, replaceParams } from '../config';
 import logger from '../utils/logger';
 import agenticAPI from './agenticApi';
+import { serviceAuthHeaders } from './serviceAuth';
 
 /**
  * Create axios instance with base configuration
@@ -112,6 +113,13 @@ apiClient.interceptors.request.use(
     if (sessionId && !isStandaloneServiceRequest(requestConfig.url)) {
       requestConfig.headers = requestConfig.headers || {};
       requestConfig.headers['X-Session-ID'] = sessionId;
+    }
+    // Standalone services enforce graph/read or service identity in token
+    // mode. The token is supplied at runtime by the authenticated UI flow and
+    // is kept in memory only; never read it from Vite build-time variables.
+    if (isStandaloneServiceRequest(requestConfig.url)) {
+      requestConfig.headers = requestConfig.headers || {};
+      Object.assign(requestConfig.headers, serviceAuthHeaders());
     }
     if (adminApiKey && String(requestConfig.url || '').includes('/api/v1/admin/')) {
       requestConfig.headers = requestConfig.headers || {};

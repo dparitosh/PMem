@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from backend.depo_platform.service_urls import service_url
 from typing import Annotated, Any
 
 import httpx
@@ -266,7 +267,7 @@ async def publish_vocabulary(scheme_id: str, version: str, payload: dict[str, An
     if record.get("lifecycle_status") != "approved":
         raise HTTPException(status_code=409, detail="Only an approved vocabulary can be published")
     artifact, content = vocabularies.publication_artifact(record)
-    graph_url = os.getenv("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1").rstrip("/")
+    graph_url = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1")
     graph_root = graph_url if graph_url.endswith("/api/v1") else f"{graph_url}/api/v1"
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:

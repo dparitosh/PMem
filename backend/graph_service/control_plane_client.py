@@ -7,6 +7,7 @@ their dedicated, governed HTTP APIs.
 from __future__ import annotations
 
 import os
+from backend.depo_platform.service_urls import service_url
 from urllib.parse import quote
 
 import httpx
@@ -20,13 +21,11 @@ class ControlPlaneClient:
     def __init__(self, timeout_seconds: float = 5.0) -> None:
         self.timeout_seconds = timeout_seconds
 
-    @staticmethod
-    def _base_url(setting: str, default: str) -> str:
-        return os.getenv(setting, default).rstrip("/")
-
     def _get(self, base_url: str, path: str) -> dict:
         try:
-            response = httpx.get(f"{base_url}{path}", timeout=self.timeout_seconds)
+            token = os.getenv("GRAPH_READ_TOKEN", "").strip()
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
+            response = httpx.get(f"{base_url}{path}", headers=headers, timeout=self.timeout_seconds)
             response.raise_for_status()
             payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
@@ -37,31 +36,31 @@ class ControlPlaneClient:
 
     def job_runs(self, limit: int) -> dict:
         return self._get(
-            self._base_url("DATA_PIPELINE_SERVICE_URL", "http://127.0.0.1:8019/api/v1"),
+            service_url("DATA_PIPELINE_SERVICE_URL", "http://127.0.0.1:8019/api/v1"),
             f"/pipeline/jobs/runs?limit={max(1, min(limit, 1000))}",
         )
 
     def job_run(self, run_id: str) -> dict:
         return self._get(
-            self._base_url("DATA_PIPELINE_SERVICE_URL", "http://127.0.0.1:8019/api/v1"),
+            service_url("DATA_PIPELINE_SERVICE_URL", "http://127.0.0.1:8019/api/v1"),
             f"/pipeline/jobs/runs/{quote(run_id, safe='')}",
         )
 
-    def data_products(self) -> dict:
+    def data_products(self, limit: int = 100) -> dict:
         return self._get(
-            self._base_url("DATA_PRODUCT_SERVICE_URL", "http://127.0.0.1:8017/api/v1"),
-            "/data-products",
+            service_url("DATA_PRODUCT_SERVICE_URL", "http://127.0.0.1:8017/api/v1"),
+            f"/data-products?limit={max(1, min(int(limit), 500))}",
         )
 
     def data_product(self, product_version: str) -> dict:
         return self._get(
-            self._base_url("DATA_PRODUCT_SERVICE_URL", "http://127.0.0.1:8017/api/v1"),
+            service_url("DATA_PRODUCT_SERVICE_URL", "http://127.0.0.1:8017/api/v1"),
             f"/data-products/{quote(product_version, safe=':')}",
         )
 
     def data_product_manifest(self, product_version: str) -> dict:
         return self._get(
-            self._base_url("DATA_PRODUCT_SERVICE_URL", "http://127.0.0.1:8017/api/v1"),
+            service_url("DATA_PRODUCT_SERVICE_URL", "http://127.0.0.1:8017/api/v1"),
             f"/data-products/{quote(product_version, safe=':')}/manifest",
         )
 
