@@ -40,16 +40,20 @@ the root `.env.local` in section 2.1, which allows the lifecycle launcher to
 start and check the local database. For a managed or remote PostgreSQL server,
 keep `DEPO_POSTGRES_MODE=external` and leave the service name blank.
 
-Create a database, a least-privilege application login, and its schema. The
-second command prompts securely for the application password instead of writing
-it into PowerShell history. Replace only the server administrator account when
-it differs from `postgres`.
+Create a database, a least-privilege application login, and its schema with the
+single reviewed provisioning script. It prompts securely for the application
+password instead of writing it into PowerShell history. Replace only the server
+administrator account when it differs from `postgres`. The `-v` values are
+identifiers, not passwords; choose the same values that will be used in
+`.env.local`.
 
 ```powershell
-& "$pgBin\psql.exe" -U postgres -h 127.0.0.1 -c 'CREATE ROLE depo_app LOGIN;'
-& "$pgBin\psql.exe" -U postgres -h 127.0.0.1 -c '\password depo_app'
-& "$pgBin\psql.exe" -U postgres -h 127.0.0.1 -c 'CREATE DATABASE depo OWNER depo_app;'
-& "$pgBin\psql.exe" -U postgres -h 127.0.0.1 -d depo -c 'CREATE SCHEMA semantic AUTHORIZATION depo_app;'
+& "$pgBin\psql.exe" -U postgres -h 127.0.0.1 `
+  -v depo_role=depo_app `
+  -v depo_database=depo `
+  -v depo_schema=semantic `
+  -f .\infra\postgres\create-depo-database.sql
+if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL database provisioning failed.' }
 ```
 
 In the root `.env.local` created in section 2, set
@@ -172,6 +176,27 @@ certificate-verified TLS: `neo4j+s://` or direct `bolt+s://`. Bootstrap may use
 `+ssc` or plaintext only on a controlled local network. Configure the advertised
 Bolt address, certificate chain and application database account. The application
 installer does not install or operate either database server.
+
+After `.env.local` is configured and backend dependencies are installed, apply
+the idempotent Neo4j publication constraints once in a bootstrap environment:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\infra\windows\test-depo-neo4j.ps1 `
+  -EnvFile .env.local `
+  -Bootstrap
+```
+
+This applies `infra/deployment/neo4j-publication-index.cypher`, waits for its
+indexes, and verifies the two composite uniqueness constraints. Production
+preflight is read-only and requires those constraints to exist:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\infra\windows\test-depo-neo4j.ps1 `
+  -EnvFile .env.local `
+  -Production
+```
 
 ### 1.2 Install optional Apache Spark and PySpark
 

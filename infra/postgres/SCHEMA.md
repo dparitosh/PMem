@@ -2,7 +2,7 @@
 
 The authoritative DDL is the versioned SQL in
 [`infra/postgres/migrations/`](migrations/). The Python runner loads those files;
-do not copy table creation into service code. Versions 1-5 are
+do not copy table creation into service code. Versions 1-6 are
 applied in ascending order inside a transaction protected by an advisory lock.
 The schema name is `DEPO_DATABASE_SCHEMA` (default `semantic`).
 
@@ -43,7 +43,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Migration or schema verification failed.' }
 ```
 
 This applies pending migrations and checks 8 tables plus 1 view, all 40 column
-names/types, and recorded migration versions. It does not create the PostgreSQL
+names/types, 11 critical constraints, 4 operational indexes, and recorded
+migration versions. It does not create the PostgreSQL
 server, login or database, and does not erase data. Start and ReleasePreflight
 also run this migration/verification step. A check failure stops startup; do not
 drop/recreate tables or edit migration history to conceal a mismatch.
@@ -57,7 +58,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Schema verification failed.' }
 
 For DBA inspection, run `\dt semantic.*`, `\dv semantic.*` and
 `\d+ semantic.depo_registry` in authenticated `psql`, substituting the configured
-schema. The automated check verifies names/types and migration history, not all
-privileges, constraints, index definitions or customer data. Inspect those and
+schema. The automated check verifies names/types, critical constraints,
+operational indexes and migration history, but not all privileges or customer
+data. Inspect those and
 perform a backup/restore drill as part of release acceptance. Downgrade/rollback
 requires the agreed backup recovery procedure; there is no automatic down migration.

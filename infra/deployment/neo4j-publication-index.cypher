@@ -1,5 +1,7 @@
 // Apply to the configured semantic graph database during provisioning.
-// Non-destructive: accelerates publisher MERGE and relationship endpoint lookup.
-CREATE INDEX idx_ontologyresource_identity IF NOT EXISTS
-FOR (n:OntologyResource) ON (n.ontology_id, n.iri);
+// Uniqueness is required for concurrency-safe publisher MERGE operations.
+CREATE CONSTRAINT uq_ontologyresource_identity IF NOT EXISTS
+FOR (n:OntologyResource) REQUIRE (n.ontology_id, n.iri) IS UNIQUE;
+CREATE CONSTRAINT uq_ontologypublication_identity IF NOT EXISTS
+FOR (n:OntologyPublication) REQUIRE (n.ontology_id, n.publication_id) IS UNIQUE;
 CALL db.awaitIndexes(60);

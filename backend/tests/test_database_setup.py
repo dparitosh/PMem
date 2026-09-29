@@ -8,11 +8,13 @@ from backend.depo_platform import postgres_schema
 from backend import postgres_migrations
 
 
-def connection(rows=None, history=None):
+def connection(rows=None, history=None, constraints=None, indexes=None):
     conn = MagicMock()
     cursor = conn.cursor.return_value.__enter__.return_value
     cursor.fetchall.side_effect = [
         rows if rows is not None else [(t, c, d) for t, cols in setup.EXPECTED_COLUMNS.items() for c, d in cols.items()],
+        [(value,) for value in (constraints if constraints is not None else setup.EXPECTED_CONSTRAINTS)],
+        [(value,) for value in (indexes if indexes is not None else setup.EXPECTED_INDEXES)],
         history if history is not None else [(v, n) for v, n, _ in setup.MIGRATIONS],
     ]
     return conn
@@ -23,6 +25,8 @@ def test_schema_contract(monkeypatch):
     result = setup.verify_schema(connection())
     assert result['schema'] == 'customer'
     assert result['columns_checked'] == 40
+    assert result['constraints_checked'] == 11
+    assert result['indexes_checked'] == 4
     assert result['migration_versions'] == [1, 2, 3, 4, 5, 6]
 
 
@@ -35,6 +39,16 @@ def test_missing_or_incompatible_columns_rejected(rows):
 def test_incorrect_history_rejected():
     with pytest.raises(RuntimeError, match='migration history'):
         setup.verify_schema(connection(history=[(1, 'wrong')]))
+
+
+def test_missing_constraint_rejected():
+    with pytest.raises(RuntimeError, match='Missing PostgreSQL constraints'):
+        setup.verify_schema(connection(constraints=[]))
+
+
+def test_missing_index_rejected():
+    with pytest.raises(RuntimeError, match='Missing PostgreSQL indexes'):
+        setup.verify_schema(connection(indexes=[]))
 
 
 @pytest.mark.parametrize('check_only', [True, False])

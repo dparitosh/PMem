@@ -23,6 +23,18 @@ EXPECTED_COLUMNS = {
     },
 }
 
+EXPECTED_CONSTRAINTS = {
+    'depo_schema_migrations_pkey', 'depo_registry_pkey', 'depo_runtime_state_pkey',
+    'depo_chat_messages_pkey', 'depo_metadata_assets_pkey', 'depo_metadata_events_pkey',
+    'depo_metadata_events_asset_id_revision_key', 'depo_metadata_events_asset_id_fkey',
+    'depo_metadata_events_revision_positive', 'depo_metadata_outbox_pkey',
+    'depo_metadata_outbox_event_id_fkey',
+}
+EXPECTED_INDEXES = {
+    'idx_depo_chat_messages', 'idx_depo_rate_limits', 'idx_metadata_pending',
+    'idx_depo_pipeline_runnable',
+}
+
 
 def verify_schema(connection):
     schema = configured_schema()
@@ -34,12 +46,27 @@ def verify_schema(connection):
                       if actual.get((table, column)) != datatype]
         if mismatches:
             raise RuntimeError('Missing or incompatible database columns: ' + ', '.join(mismatches))
+        cursor.execute(
+            'SELECT constraint_name FROM information_schema.table_constraints WHERE constraint_schema = %s',
+            (schema,),
+        )
+        constraints = {row[0] for row in cursor.fetchall()}
+        missing_constraints = sorted(EXPECTED_CONSTRAINTS - constraints)
+        if missing_constraints:
+            raise RuntimeError('Missing PostgreSQL constraints: ' + ', '.join(missing_constraints))
+        cursor.execute('SELECT indexname FROM pg_indexes WHERE schemaname = %s', (schema,))
+        indexes = {row[0] for row in cursor.fetchall()}
+        missing_indexes = sorted(EXPECTED_INDEXES - indexes)
+        if missing_indexes:
+            raise RuntimeError('Missing PostgreSQL indexes: ' + ', '.join(missing_indexes))
         cursor.execute(f'SELECT version, name FROM "{schema}".depo_schema_migrations')
         applied = dict(cursor.fetchall())
         if any(applied.get(version) != name for version, name, _ in MIGRATIONS):
             raise RuntimeError('Database migration history does not match this release')
     return {'status': 'ok', 'schema': schema, 'relations_checked': len(EXPECTED_COLUMNS),
             'columns_checked': sum(map(len, EXPECTED_COLUMNS.values())),
+            'constraints_checked': len(EXPECTED_CONSTRAINTS),
+            'indexes_checked': len(EXPECTED_INDEXES),
             'migration_versions': sorted(version for version, _, _ in MIGRATIONS)}
 
 
