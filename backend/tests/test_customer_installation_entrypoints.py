@@ -6,8 +6,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_customer_entrypoints_exist_and_guide_does_not_expose_internal_lifecycle_commands():
-    for name in ("configure-depo.ps1", "install-depo.ps1", "diagnose-depo.ps1", "manage-depo.ps1", "certify-depo-release.ps1", "update-postgres-schema.ps1", "test-postgres-schema.ps1"):
+    for name in ("configure-depo.ps1", "install-depo.ps1", "diagnose-depo.ps1", "manage-depo.ps1", "certify-depo-release.ps1"):
         assert (ROOT / name).is_file(), name
+    for name in ("update-postgres-schema.ps1", "test-postgres-schema.ps1"):
+        assert (ROOT / "infra" / "postgres" / name).is_file(), name
+        assert not (ROOT / name).exists(), f"duplicate root schema command: {name}"
     guide = (ROOT / "INSTALLATION.md").read_text(encoding="utf-8")
     assert ".\\install-depo.ps1" in guide
     assert ".\\diagnose-depo.ps1 -Phase All" in guide
@@ -52,8 +55,8 @@ def test_release_certification_requires_external_acceptance_evidence():
 
 
 def test_schema_only_entrypoints_separate_mutating_and_read_only_operations():
-    update = (ROOT / "update-postgres-schema.ps1").read_text(encoding="utf-8")
-    check = (ROOT / "test-postgres-schema.ps1").read_text(encoding="utf-8")
+    update = (ROOT / "infra" / "postgres" / "update-postgres-schema.ps1").read_text(encoding="utf-8")
+    check = (ROOT / "infra" / "postgres" / "test-postgres-schema.ps1").read_text(encoding="utf-8")
     assert "initialize-depo-schema.ps1" in update
     assert "-CheckOnly" not in update
     assert "initialize-depo-schema.ps1" in check

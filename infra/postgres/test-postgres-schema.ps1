@@ -9,11 +9,11 @@ complete migration history. It does not execute DDL or write application data.
 [CmdletBinding()]
 param([string]$EnvFile = '.env.local')
 $ErrorActionPreference = 'Stop'
-$root = $PSScriptRoot
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $envPath = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
 if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) { throw "Missing configuration: $envPath" }
 if (-not (Test-Path -LiteralPath (Join-Path $root 'backend\.dt_venv\Scripts\python.exe') -PathType Leaf)) {
-  throw 'Backend runtime is absent. Run .\install-depo.ps1 once before validating the schema.'
+  throw 'Backend runtime is absent. Run the repository-root .\install-depo.ps1 once before validating the schema.'
 }
 Write-Host 'Running read-only PostgreSQL schema validation.' -ForegroundColor Cyan
 & (Join-Path $root 'infra\windows\initialize-depo-schema.ps1') -EnvFile $envPath -CheckOnly

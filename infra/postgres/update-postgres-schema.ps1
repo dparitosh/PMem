@@ -12,11 +12,11 @@ configured schema's depo_schema_migrations table.
 [CmdletBinding()]
 param([string]$EnvFile = '.env.local')
 $ErrorActionPreference = 'Stop'
-$root = $PSScriptRoot
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $envPath = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
 if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) { throw "Missing configuration: $envPath" }
 if (-not (Test-Path -LiteralPath (Join-Path $root 'backend\.dt_venv\Scripts\python.exe') -PathType Leaf)) {
-  throw 'Backend runtime is absent. Run .\install-depo.ps1 once before applying schema-only updates.'
+  throw 'Backend runtime is absent. Run the repository-root .\install-depo.ps1 once before applying schema-only updates.'
 }
 Write-Host 'Applying pending PostgreSQL migrations. No application services will be started.' -ForegroundColor Cyan
 & (Join-Path $root 'infra\windows\initialize-depo-schema.ps1') -EnvFile $envPath

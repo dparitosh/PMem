@@ -39,7 +39,7 @@ install backend dependencies, and configure root `.env.local`. Back up existing
 customer data before an upgrade. With the database already running:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\update-postgres-schema.ps1 -EnvFile .env.local
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\postgres\update-postgres-schema.ps1 -EnvFile .env.local
 if ($LASTEXITCODE -ne 0) { throw 'Migration or schema verification failed.' }
 ```
 
@@ -53,7 +53,7 @@ drop/recreate tables or edit migration history to conceal a mismatch.
 To verify an existing schema without DDL or data writes:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\test-postgres-schema.ps1 -EnvFile .env.local
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\postgres\test-postgres-schema.ps1 -EnvFile .env.local
 if ($LASTEXITCODE -ne 0) { throw 'Schema verification failed.' }
 ```
 
