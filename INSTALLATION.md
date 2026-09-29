@@ -6,16 +6,17 @@ The supported application runtime is 64-bit CPython 3.12 on Windows x64. The
 production dependency lock is platform-specific, and the installer rejects a
 different Python minor version.
 
-Customers use these repository-root entry points for application configuration,
-installation, diagnostics and operation. The root commands call the stages
-below `infra/windows` and `infra/deployment`; customers do not assemble or run
-those stages individually.
+Customers use the repository-root entry points below for application lifecycle
+operations. Infrastructure-specific utilities live under `infra/postgres` and
+`infra/windows` and are run only where this guide names their exact command.
+Other scripts below `infra` are implementation stages called by these supported
+entry points; customers do not assemble an installation from them.
 
 | Sequence | Command | Purpose |
 | --- | --- | --- |
 | 1 | Complete Section 1 | Provision PostgreSQL, Neo4j and optional Spark before installing the application |
 | 2 | `.\configure-depo.ps1` | Create the only two editable configuration files |
-| 3 | `.\diagnose-depo.ps1 -Phase Prerequisites` | Check required software without installing anything |
+| 3 | `.\diagnose-depo.ps1 -Phase Prerequisites` | Check package integrity and required software without installing anything |
 | 4 | `.\install-depo.ps1` | Install dependencies, schemas, services and frontend in the correct order |
 | 5 | `.\diagnose-depo.ps1 -Phase All` | Verify the completed installation and every service endpoint |
 | Release | `.\certify-depo-release.ps1` | Re-run production diagnostics and hash the mandatory acceptance evidence |
@@ -1267,9 +1268,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action St
 `-SkipPostgres` means “do not operate a local PostgreSQL process”; database
 connectivity and schema validation still run against `DEPO_DATABASE_URL`.
 
-The root commands read the authoritative service inventory internally. Scripts
-under `infra/windows/` and `infra/deployment/` are implementation stages, not
-separate customer installation instructions.
+The supported commands read the authoritative service inventory internally.
+Only infrastructure utilities explicitly named in this guide should be run
+directly. Other scripts under `infra/windows/` and `infra/deployment/` are
+implementation stages, not separate customer installation instructions.
 
 ### 4.8 Schema-only redeployment
 

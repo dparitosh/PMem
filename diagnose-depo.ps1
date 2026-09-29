@@ -1,7 +1,7 @@
-<# .SYNOPSIS Runs supported read-only DEPO installation diagnostics. #>
+<# .SYNOPSIS Runs supported DEPO package, installation and runtime diagnostics. #>
 [CmdletBinding()]
 param(
-  [ValidateSet('Prerequisites','Configuration','Runtime','All')][string]$Phase = 'All',
+  [ValidateSet('Package','Prerequisites','Configuration','Runtime','All')][string]$Phase = 'All',
   [string]$EnvFile = '.env.local',
   [ValidateSet('Bootstrap','Production')][string]$Profile = 'Production',
   [string]$Python = 'py',
@@ -20,6 +20,11 @@ function Invoke-Diagnostic([string]$Name, [scriptblock]$Action) {
   Write-Host "PASS: $Name" -ForegroundColor Green
 }
 
+if ($Phase -in @('Package','Prerequisites','All')) {
+  Invoke-Diagnostic 'release package integrity' {
+    & (Join-Path $root 'infra\deployment\test-installation-package.ps1')
+  }
+}
 if ($Phase -in @('Prerequisites','All')) {
   Invoke-Diagnostic 'software prerequisites' {
     & (Join-Path $root 'infra\windows\install-depo.ps1') -Python $Python -SkipFrontend:$SkipFrontend -CheckPrerequisites

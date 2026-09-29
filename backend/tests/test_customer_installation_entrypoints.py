@@ -64,3 +64,11 @@ def test_schema_only_entrypoints_separate_mutating_and_read_only_operations():
     for forbidden in ("start-depo-services.ps1", "test-depo-neo4j.ps1", "test-depo-spark.ps1", "npm"):
         assert forbidden not in update
         assert forbidden not in check
+
+
+def test_diagnostics_include_offline_release_package_integrity():
+    diagnostic = (ROOT / "diagnose-depo.ps1").read_text(encoding="utf-8")
+    package_check = ROOT / "infra" / "deployment" / "test-installation-package.ps1"
+    assert package_check.is_file()
+    assert "'Package','Prerequisites','Configuration','Runtime','All'" in diagnostic
+    assert "test-installation-package.ps1" in diagnostic

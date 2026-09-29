@@ -25,6 +25,7 @@ $evidence = [ordered]@{
   rollback = Resolve-Evidence $RollbackEvidencePath 'rollback rehearsal'
 }
 
+$global:LASTEXITCODE = 0
 & (Join-Path $root 'diagnose-depo.ps1') -Phase All -EnvFile $EnvFile -Profile Production -Python $Python
 if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Production diagnostics failed with exit code $LASTEXITCODE." }
 

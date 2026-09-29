@@ -1,0 +1,62 @@
+<# .SYNOPSIS Performs offline structural validation of the DEPO release package. #>
+[CmdletBinding()]
+param()
+$ErrorActionPreference = 'Stop'
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+
+$requiredFiles = @(
+  'INSTALLATION.md', 'configure-depo.ps1', 'install-depo.ps1', 'diagnose-depo.ps1',
+  'manage-depo.ps1', 'certify-depo-release.ps1', 'backend/requirements-lock.txt',
+  'frontend/package-lock.json', 'infra/deployment/services.json',
+  'infra/postgres/update-postgres-schema.ps1', 'infra/postgres/test-postgres-schema.ps1'
+)
+foreach ($relative in $requiredFiles) {
+  if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) { throw "Missing release file: $relative" }
+}
+
+$parseFailures = @()
+Get-ChildItem -LiteralPath $root -Recurse -Filter '*.ps1' -File | ForEach-Object {
+  $tokens = $null; $errors = $null
+  [void][Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors)
+  if ($errors) { $parseFailures += @($errors | ForEach-Object { "$($_.Extent.File):$($_.Extent.StartLineNumber): $($_.Message)" }) }
+}
+if ($parseFailures) { throw ('PowerShell syntax errors: ' + ($parseFailures -join '; ')) }
+
+$guide = Get-Content -LiteralPath (Join-Path $root 'INSTALLATION.md') -Raw
+$documentedPaths = [regex]::Matches($guide, '\.\\[A-Za-z0-9_.\\-]+\.(?:ps1|json|sql|example|txt|md)') |
+  ForEach-Object { $_.Value.Substring(2) } | Sort-Object -Unique
+foreach ($relative in $documentedPaths) {
+  if (-not (Test-Path -LiteralPath (Join-Path $root $relative))) { throw "INSTALLATION.md references a missing path: $relative" }
+}
+
+$manifest = Get-Content -LiteralPath (Join-Path $root 'infra\deployment\services.json') -Raw | ConvertFrom-Json
+$services = @($manifest.services); $workers = @($manifest.workers)
+if ($services.Count -ne 10 -or $workers.Count -ne 2) { throw 'Service manifest must define ten APIs and two workers.' }
+$ids = @($services.id) + @($workers.id)
+if (($ids | Sort-Object -Unique).Count -ne $ids.Count) { throw 'Service manifest contains duplicate component IDs.' }
+$ports = @($services.port | ForEach-Object { [int]$_ })
+if (($ports | Sort-Object -Unique).Count -ne $ports.Count) { throw 'Service manifest contains duplicate API ports.' }
+if (@($ports | Where-Object { $_ -lt 1 -or $_ -gt 65535 }).Count) { throw 'Service manifest contains an invalid API port.' }
+
+$lockEntries = Get-Content -LiteralPath (Join-Path $root 'backend\requirements-lock.txt') |
+  Where-Object { $_ -and -not $_.StartsWith('#') }
+if (-not $lockEntries -or @($lockEntries | Where-Object { $_ -notmatch '^[a-z0-9][a-z0-9.-]*==[^ ]+ --hash=sha256:[0-9a-f]{64}$' }).Count) {
+  throw 'Production Python dependencies must all be exact-version and SHA-256 pinned.'
+}
+
+$migrationFiles = @(Get-ChildItem -LiteralPath (Join-Path $root 'infra\postgres\migrations') -Filter '*.sql' -File | Sort-Object Name)
+$versions = @()
+foreach ($file in $migrationFiles) {
+  if ($file.Name -notmatch '^(\d{3})_[a-z][a-z0-9_]*\.sql$') { throw "Invalid migration filename: $($file.Name)" }
+  $versions += [int]$matches[1]
+}
+if (-not $versions -or $versions[0] -ne 0 -or ($versions | Sort-Object -Unique).Count -ne $versions.Count) { throw 'Migration versions must start at 000 and be unique.' }
+for ($index = 0; $index -lt $versions.Count; $index++) {
+  if ($versions[$index] -ne $index) { throw "Migration sequence has a gap before version $index." }
+}
+
+[pscustomobject]@{
+  status = 'ok'; powershell_scripts = @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.ps1' -File).Count
+  documented_paths = $documentedPaths.Count; services = $services.Count; workers = $workers.Count
+  locked_python_distributions = $lockEntries.Count; postgres_migrations = $migrationFiles.Count
+} | ConvertTo-Json -Compress | Write-Output

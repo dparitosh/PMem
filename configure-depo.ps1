@@ -19,6 +19,7 @@ if ($GatewayUrl -and $GatewayUrl -notmatch '^https://') { throw 'GatewayUrl must
 
 $parameters = @{ OutputPath = '.env.local'; AuthMode = $AuthMode }
 if ($Force) { $parameters.Force = $true }
+$global:LASTEXITCODE = 0
 if ($ConfirmInsecureLocalDemo) { $parameters.ConfirmInsecureLocalDemo = $true }
 & $serverGenerator @parameters
 if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "Server configuration generation failed with exit code $LASTEXITCODE." }

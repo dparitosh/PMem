@@ -61,7 +61,8 @@ def verify_schema(connection):
             raise RuntimeError('Missing PostgreSQL indexes: ' + ', '.join(missing_indexes))
         cursor.execute(f'SELECT version, name FROM "{schema}".depo_schema_migrations')
         applied = dict(cursor.fetchall())
-        if any(applied.get(version) != name for version, name, _ in MIGRATIONS):
+        expected_history = {version: name for version, name, _ in MIGRATIONS}
+        if applied != expected_history:
             raise RuntimeError('Database migration history does not match this release')
     return {'status': 'ok', 'schema': schema, 'relations_checked': len(EXPECTED_COLUMNS),
             'columns_checked': sum(map(len, EXPECTED_COLUMNS.values())),

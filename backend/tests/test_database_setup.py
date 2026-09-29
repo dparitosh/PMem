@@ -41,6 +41,12 @@ def test_incorrect_history_rejected():
         setup.verify_schema(connection(history=[(1, 'wrong')]))
 
 
+def test_database_newer_than_application_is_rejected():
+    history = [(v, n) for v, n, _ in setup.MIGRATIONS] + [(999, 'future_release')]
+    with pytest.raises(RuntimeError, match='migration history'):
+        setup.verify_schema(connection(history=history))
+
+
 def test_missing_constraint_rejected():
     with pytest.raises(RuntimeError, match='Missing PostgreSQL constraints'):
         setup.verify_schema(connection(constraints=[]))

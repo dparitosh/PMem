@@ -14,5 +14,6 @@ param(
   [switch]$SkipReleasePreflight
 )
 $ErrorActionPreference = 'Stop'
+$global:LASTEXITCODE = 0
 & (Join-Path $PSScriptRoot 'infra\windows\install-depo-windows.ps1') @PSBoundParameters
 if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "DEPO installation failed with exit code $LASTEXITCODE." }

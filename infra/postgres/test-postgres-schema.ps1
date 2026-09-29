@@ -16,6 +16,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $root 'backend\.dt_venv\Scripts\pyth
   throw 'Backend runtime is absent. Run the repository-root .\install-depo.ps1 once before validating the schema.'
 }
 Write-Host 'Running read-only PostgreSQL schema validation.' -ForegroundColor Cyan
+$global:LASTEXITCODE = 0
 & (Join-Path $root 'infra\windows\initialize-depo-schema.ps1') -EnvFile $envPath -CheckOnly
 if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "PostgreSQL schema validation failed with exit code $LASTEXITCODE." }
 Write-Host 'PostgreSQL schema validation passed.' -ForegroundColor Green

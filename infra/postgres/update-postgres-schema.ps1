@@ -19,6 +19,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $root 'backend\.dt_venv\Scripts\pyth
   throw 'Backend runtime is absent. Run the repository-root .\install-depo.ps1 once before applying schema-only updates.'
 }
 Write-Host 'Applying pending PostgreSQL migrations. No application services will be started.' -ForegroundColor Cyan
+$global:LASTEXITCODE = 0
 & (Join-Path $root 'infra\windows\initialize-depo-schema.ps1') -EnvFile $envPath
 if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "PostgreSQL schema update failed with exit code $LASTEXITCODE." }
 Write-Host 'PostgreSQL schema update and verification passed.' -ForegroundColor Green
