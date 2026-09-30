@@ -1611,6 +1611,21 @@ $response.Headers['Access-Control-Allow-Origin']
 
 The final command must print `http://127.0.0.1:3000`.
 
+If the browser console still names an old hashed file such as
+`index-DFbOVHXy.js`, the VM is serving a stale frontend build. Confirm the
+checked-out release and the bundle referenced by the deployed HTML:
+
+```powershell
+git branch --show-current
+git log -1 --oneline
+Select-String -Path .\frontend\dist\index.html -Pattern 'assets/index-.*\.js'
+```
+
+The branch must be `codex/semantic-bridge-release`, the commit must be the
+release commit being installed, and the browser console filename must match the
+filename printed from `dist\index.html`. The frontend start script now refuses
+to start when a source file is newer than the production build.
+
 Never put `GRAPH_READ_TOKEN` in `frontend\.env.local` or a `VITE_*` setting.
 The API access control is for a controlled direct-service installation. A
 customer gateway must authenticate browser requests and keep backend service

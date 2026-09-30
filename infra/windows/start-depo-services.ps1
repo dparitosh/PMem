@@ -19,6 +19,8 @@ if (-not (Test-Path $python)) { throw "Project Python runtime was not found: $py
 
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
+$corsProbeOrigin = @($env:ALLOWED_ORIGINS.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })[0]
+if (-not $corsProbeOrigin) { throw 'ALLOWED_ORIGINS must contain at least one browser origin.' }
 # Aura exports use USERNAME/PASSWORD while the customer template uses the
 # shorter USER/PASS names. Normalize only the child-process environment so
 # every Spark launch path receives the same credentials without duplicating
@@ -176,16 +178,26 @@ foreach ($service in $services | Where-Object { $_.Port }) {
   Write-Host "Waiting up to $ServiceStartupTimeoutSeconds seconds for '$($service.Name)' readiness on port $($service.Port)..."
   $deadline = (Get-Date).AddSeconds($ServiceStartupTimeoutSeconds)
   $ready = $false
+  $corsMismatch = ''
   do {
     try {
       # Liveness means a Python process exists; readiness also verifies every
       # configured shared dependency before a service is announced usable.
-      $response = Invoke-WebRequest -UseBasicParsing "http://${peerHost}:$($service.Port)/readyz" -TimeoutSec 5
+      $response = Invoke-WebRequest -UseBasicParsing "http://${peerHost}:$($service.Port)/readyz" -Headers @{ Origin = $corsProbeOrigin } -TimeoutSec 5
       $ready = $response.StatusCode -eq 200
+      if ($ready) {
+        $actualCorsOrigin = [string]$response.Headers['Access-Control-Allow-Origin']
+        if ($actualCorsOrigin -ne $corsProbeOrigin) {
+          $corsMismatch = "DEPO service '$($service.Name)' is running with stale CORS configuration. Expected Access-Control-Allow-Origin '$corsProbeOrigin' but received '$actualCorsOrigin'. Stop all DEPO services, then start them again so .env.local is reloaded."
+          $ready = $false
+          break
+        }
+      }
     } catch {
       Start-Sleep -Milliseconds 500
     }
   } while (-not $ready -and (Get-Date) -lt $deadline)
+  if ($corsMismatch) { throw $corsMismatch }
   if (-not $ready) { throw "DEPO service '$($service.Name)' did not become ready within $ServiceStartupTimeoutSeconds seconds. Check $stateDir\$($service.Name).err.log. For a slower cold start, retry with -ServiceStartupTimeoutSeconds 600." }
 }
 # Workers have no readiness port. Require every worker started by this

@@ -19,6 +19,18 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $index -PathType Leaf)) {
   throw "Built frontend was not found: $index. Run infra/windows/install-depo.ps1 or npm run build first."
 }
+$indexFile = Get-Item -LiteralPath $index
+$newestSource = Get-ChildItem -LiteralPath (Join-Path $root 'frontend\src') -File -Recurse |
+  Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+if ($newestSource -and $newestSource.LastWriteTimeUtc -gt $indexFile.LastWriteTimeUtc) {
+  throw "Frontend build is stale: $($newestSource.FullName) is newer than $index. Run npm run build in frontend, then start the frontend again."
+}
+$indexContent = Get-Content -LiteralPath $index -Raw
+$bundleMatch = [regex]::Match($indexContent, '<script[^>]+src="(/?assets/index-[^"]+\.js)"')
+if (-not $bundleMatch.Success) { throw "Could not identify the production bundle in $index. Run npm run build in frontend." }
+$bundleRelativePath = $bundleMatch.Groups[1].Value.TrimStart('/').Replace('/', [IO.Path]::DirectorySeparatorChar)
+$bundlePath = Join-Path $dist $bundleRelativePath
+if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) { throw "Frontend bundle referenced by index.html is missing: $bundlePath" }
 New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
 
 if (Test-Path -LiteralPath $pidFile) {
@@ -28,7 +40,7 @@ if (Test-Path -LiteralPath $pidFile) {
     try {
       $response = Invoke-WebRequest -Uri "http://${BindHost}:$Port/" -UseBasicParsing -TimeoutSec 5
       if ($response.StatusCode -eq 200) {
-        Write-Host "DEPO frontend is already ready at http://${BindHost}:$Port/"
+        Write-Host "DEPO frontend is already ready at http://${BindHost}:$Port/ using $($bundleMatch.Groups[1].Value)"
         return
       }
     } catch {}
@@ -57,7 +69,7 @@ do {
   try {
     $response = Invoke-WebRequest -Uri "http://${BindHost}:$Port/" -UseBasicParsing -TimeoutSec 3
     if ($response.StatusCode -eq 200 -and $response.Content -match '<div id="root"') {
-      Write-Host "DEPO frontend is ready at http://${BindHost}:$Port/"
+      Write-Host "DEPO frontend is ready at http://${BindHost}:$Port/ using $($bundleMatch.Groups[1].Value)"
       return
     }
   } catch {}
