@@ -85,17 +85,18 @@ class PostgresRegistry:
                 """
                 WITH candidate AS (
                   SELECT key FROM depo_registry
-                  WHERE namespace = %s AND (
+                  WHERE namespace = CAST(%s AS text) AND (
                     value->>'status' = 'queued' OR
-                    (value->>'status' = 'running' AND COALESCE(value->'lease'->>'expires_at','') < %s)
-                  ) AND COALESCE(value->>'available_at','') <= %s
+                    (value->>'status' = 'running' AND COALESCE(value->'lease'->>'expires_at','') < CAST(%s AS text))
+                  ) AND COALESCE(value->>'available_at','') <= CAST(%s AS text)
                   ORDER BY updated_at, key FOR UPDATE SKIP LOCKED LIMIT 1
                 )
                 UPDATE depo_registry AS r SET
                   value = r.value || jsonb_build_object(
-                    'status','running','worker_id',%s,'attempt',COALESCE((r.value->>'attempt')::int,0)+1,'lease',%s::jsonb
+                    'status','running','worker_id',CAST(%s AS text),'attempt',COALESCE((r.value->>'attempt')::int,0)+1,
+                    'lease',CAST(%s AS jsonb)
                   ), updated_at = now()
-                FROM candidate WHERE r.namespace = %s AND r.key = candidate.key
+                FROM candidate WHERE r.namespace = CAST(%s AS text) AND r.key = candidate.key
                 RETURNING r.value
                 """,
                 (self.namespace, now.isoformat(), now.isoformat(), worker_id, lease, self.namespace),
