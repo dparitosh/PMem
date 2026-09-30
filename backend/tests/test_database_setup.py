@@ -164,3 +164,20 @@ def test_runtime_schema_selection_rejects_missing_schema(monkeypatch):
 
     with pytest.raises(RuntimeError, match='initialize-depo-schema.ps1'):
         postgres_schema.select_schema(cursor)
+
+
+def test_migration_requires_dba_provisioned_schema(monkeypatch):
+    monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'semantic')
+    cursor = MagicMock()
+    cursor.fetchone.return_value = (False,)
+    with pytest.raises(RuntimeError, match='Create it as the database administrator'):
+        postgres_schema.initialise_schema(cursor)
+    assert not any('CREATE SCHEMA' in call.args[0] for call in cursor.execute.call_args_list)
+
+
+def test_migration_selects_existing_schema_without_database_create(monkeypatch):
+    monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'semantic')
+    cursor = MagicMock()
+    cursor.fetchone.return_value = (True,)
+    assert postgres_schema.initialise_schema(cursor) == 'semantic'
+    assert cursor.execute.call_args_list[-1].args[0] == 'SET search_path TO "semantic", public'

@@ -18,7 +18,7 @@ entry points; customers do not assemble an installation from them.
 | 1 | Complete Section 1 | Provision PostgreSQL, Neo4j and optional Spark before installing the application |
 | 2 | `.\configure-depo.ps1` | Create the only two editable configuration files |
 | 3 | `.\diagnose-depo.ps1 -Phase Prerequisites` | Check package integrity and required software without installing anything |
-| 4 | `.\install-depo.ps1` | Install dependencies, schemas, services and frontend in the correct order |
+| 4 | `.\install-depo.ps1` | Install dependencies, create the frontend build, migrate schemas and start backend services |
 | 5 | `.\diagnose-depo.ps1 -Phase All -Profile Production` | Verify the completed customer production installation and every service endpoint |
 | Release | `.\certify-depo-release.ps1` | Re-run production diagnostics and hash the mandatory acceptance evidence |
 | Later | `.\manage-depo.ps1 -Action Start` or `-Action Stop` | Operate an already installed deployment |
@@ -77,7 +77,8 @@ single reviewed provisioning script. It prompts securely for the application
 password instead of writing it into PowerShell history. Replace only the server
 administrator account when it differs from `postgres`. The `-v` values are
 identifiers, not passwords; choose the same values that will be used in
-`.env.local`.
+`.env.local`. The administrator retains database ownership; `depo_app` owns
+only the `semantic` schema.
 
 ```powershell
 & "$pgBin\psql.exe" -U postgres -h 127.0.0.1 `
@@ -100,7 +101,19 @@ If PostgreSQL is hosted on another VM, do **not** install PostgreSQL or set a
 Windows PostgreSQL service name on the DEPO application VM. Ask the DBA to
 create the database, role, and `semantic` schema on the database VM, permit the
 application VM's private IP on port `5432`, and provide the CA certificate.
-Configure the application VM as follows:
+For an existing customer database, run the following in pgAdmin Query Tool as
+its administrator **before** the DEPO installation. Replace the example role,
+database and schema with the customer's chosen identifiers:
+
+```sql
+CREATE SCHEMA IF NOT EXISTS semantic AUTHORIZATION depo_app;
+GRANT CONNECT ON DATABASE depo TO depo_app;
+GRANT USAGE, CREATE ON SCHEMA semantic TO depo_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA semantic TO depo_app;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA semantic TO depo_app;
+```
+
+After running `configure-depo.ps1` in Section 2, configure the application VM:
 
 ```powershell
 # Run from the DEPO repository root and edit the existing keys in this file.
@@ -160,7 +173,10 @@ schema is reachable. A pgAdmin connection
 proves PostgreSQL network access and credentials only; continue with the ODBC
 test below when another Windows application requires ODBC.
 
-On the application VM, test the **actual DEPO URL** before migration:
+The Section 3 installer tests the **actual DEPO URL** after installing backend
+dependencies and before migration. After the first installation, run the same
+connection-only check independently from the application VM whenever the
+database host, password, firewall or TLS settings change:
 
 ```powershell
 .\infra\postgres\test-postgres-connectivity.ps1 -EnvFile .env.local
@@ -1403,7 +1419,8 @@ failure:
 2. Creates `backend/.dt_venv`, installs backend dependencies, runs `npm ci`,
    and builds `frontend/dist`.
 3. Validates root `.env.local` and the ten-service deployment configuration.
-4. Applies and verifies PostgreSQL migrations.
+4. Tests PostgreSQL login through the configured `DEPO_DATABASE_URL`, then
+   applies and verifies migrations.
 5. Applies the idempotent Neo4j publication constraints, waits for their
    backing indexes, and verifies TLS, authentication and database access.
 6. When enabled, validates Spark/JDK/Hadoop paths and runs the DataFrame smoke
@@ -1533,20 +1550,9 @@ service ports directly to the browser or the public network.
 
 ### 4.3 Verify the PostgreSQL schema
 
-Before the first migration, open pgAdmin Query Tool as the PostgreSQL
-administrator and grant the dedicated DEPO role access. Replace the example
-role/schema if `.env.local` uses different values:
-
-```sql
-CREATE SCHEMA IF NOT EXISTS semantic AUTHORIZATION depo_app;
-GRANT CONNECT ON DATABASE depo TO depo_app;
-GRANT USAGE, CREATE ON SCHEMA semantic TO depo_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA semantic TO depo_app;
-GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA semantic TO depo_app;
-```
-
-The DBA/admin login owns this one-time provisioning step. Run DEPO services
-with the `depo_app` login rather than PostgreSQL's `postgres` administrator.
+The DBA provisioned the application schema in Section 1.1, and the installer
+applied the versioned DEPO tables. Connect as `depo_app` for this read-only
+verification.
 
 For a remote deployment, use pgAdmin Query Tool on the PostgreSQL VM or admin
 workstation, connected to database `depo`. For a local deployment, use pgAdmin

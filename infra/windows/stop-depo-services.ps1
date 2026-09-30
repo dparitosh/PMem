@@ -54,11 +54,15 @@ foreach ($service in ($serviceProcesses | Sort-Object { $_.ProcessId } -Descendi
   Stop-Process -Id $service.ProcessId -Force -ErrorAction SilentlyContinue
 }
 if (Test-Path $stateDir) {
-  Get-ChildItem $stateDir -Filter '*.pid' | ForEach-Object {
+  Get-ChildItem $stateDir -Filter '*.pid' | Where-Object BaseName -ne 'frontend' | ForEach-Object {
+    $serviceId = $_.BaseName
     $process = Get-Process -Id (Get-Content $_.FullName) -ErrorAction SilentlyContinue
-    # A PID can be reused after a prior run. Stop only this project's Python
-    # runtime, never an unrelated Windows process with a matching stale PID.
-    if ($process -and $process.Path -and $process.Path.ToLowerInvariant() -eq $expectedPython) {
+    # A stale PID can refer to another process in the same venv. Require the
+    # expected manifest module in the command line before stopping it.
+    $details = if ($process) { Get-CimInstance Win32_Process -Filter "ProcessId = $($process.Id)" -ErrorAction SilentlyContinue } else { $null }
+    $expectedModule = @($manifest.services + $manifest.workers | Where-Object { $_.id -eq $serviceId } | Select-Object -First 1).module
+    if ($details -and $details.ExecutablePath -and $details.ExecutablePath.ToLowerInvariant() -eq $expectedPython -and
+        $expectedModule -and $details.CommandLine -match [regex]::Escape([string]$expectedModule)) {
       Stop-Process -Id $process.Id -Force
     }
     Remove-Item $_.FullName -Force

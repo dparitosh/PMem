@@ -73,16 +73,18 @@ if (-not $SkipFrontend) {
   $frontend = Join-Path $root "frontend"
   Push-Location $frontend
   try {
-    if (Test-Path (Join-Path $frontend "package-lock.json")) { npm.cmd ci }
-    else { throw "Missing frontend/package-lock.json; restore the release lockfile before installation." }
-    if ($LASTEXITCODE -ne 0) {
-      # npm ci removes node_modules first. Windows returns EBUSY when a stale
-      # Vite/Node process still has a package directory open. Retry using the
-      # existing tree so a transient lock does not make installation fail.
-      Write-Warning 'npm ci could not replace frontend/node_modules. Retrying with npm install; close running Vite/Node processes if this also fails.'
-      npm.cmd install --no-audit --no-fund
+    if (-not (Test-Path (Join-Path $frontend "package-lock.json"))) { throw "Missing frontend/package-lock.json; restore the release lockfile before installation." }
+    # Preserve the exact reviewed lockfile. An npm install fallback may select
+    # a different graph after a transient Windows EBUSY and rewrite the lock.
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+      npm.cmd ci --no-audit --no-fund
+      if ($LASTEXITCODE -eq 0) { break }
+      if ($attempt -lt 3) {
+        Write-Warning "npm ci attempt $attempt failed. Close Vite/Node processes that may hold frontend/node_modules; retrying the locked install."
+        Start-Sleep -Seconds 2
+      }
     }
-    if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency installation failed. Close running node.exe/Vite processes and rerun install-depo.ps1.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend locked dependency installation failed after three attempts. Close Vite/Node processes, then rerun install-depo.ps1.' }
     npm.cmd run build
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
   } finally { Pop-Location }

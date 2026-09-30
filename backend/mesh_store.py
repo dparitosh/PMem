@@ -69,7 +69,11 @@ class PostgresRegistry:
         return self.put_many({key: value})[key]
 
     def put_many(self, values: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-        with self._connect() as connection, connection.cursor() as cursor:
+        if not values:
+            return values
+        # _connect() uses autocommit for single-statement operations. A bulk
+        # write must commit or roll back as one unit if any item is invalid.
+        with self._connect() as connection, connection.transaction(), connection.cursor() as cursor:
             cursor.executemany("INSERT INTO depo_registry(namespace, key, value) VALUES (%s, %s, %s::jsonb) ON CONFLICT(namespace, key) DO UPDATE SET value=excluded.value, updated_at=now()", [(self.namespace, key, json.dumps(value)) for key, value in values.items()])
         return values
 

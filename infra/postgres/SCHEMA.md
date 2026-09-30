@@ -68,8 +68,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Migration or schema verification failed.' }
 
 This applies pending migrations and checks 8 tables plus 1 view, all 40 column
 names/types, 15 critical constraints, 4 operational indexes, and recorded
-migration versions. It does not create the PostgreSQL
-server, login or database, and does not erase data. Start and ReleasePreflight
+migration versions. It requires the DBA-provisioned schema; it does not create
+the PostgreSQL server, login, database or schema, and does not erase data. Start and ReleasePreflight
 also run this migration/verification step. A check failure stops startup; do not
 drop/recreate tables or edit migration history to conceal a mismatch.
 

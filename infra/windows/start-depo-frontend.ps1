@@ -36,7 +36,9 @@ New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
 if (Test-Path -LiteralPath $pidFile) {
   $recordedPid = [int](Get-Content -LiteralPath $pidFile)
   $existing = Get-Process -Id $recordedPid -ErrorAction SilentlyContinue
-  if ($existing -and $existing.Path -and $existing.Path.ToLowerInvariant() -eq $python.ToLowerInvariant()) {
+  $details = if ($existing) { Get-CimInstance Win32_Process -Filter "ProcessId = $recordedPid" -ErrorAction SilentlyContinue } else { $null }
+  if ($details -and $details.ExecutablePath -and $details.ExecutablePath.ToLowerInvariant() -eq $python.ToLowerInvariant() -and
+      $details.CommandLine -match 'http\.server' -and $details.CommandLine -match 'frontend[\\/]dist') {
     try {
       $response = Invoke-WebRequest -Uri "http://${BindHost}:$Port/" -UseBasicParsing -TimeoutSec 5
       if ($response.StatusCode -eq 200) {

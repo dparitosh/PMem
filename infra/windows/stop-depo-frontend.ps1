@@ -10,7 +10,9 @@ if (-not (Test-Path -LiteralPath $pidFile)) {
 
 $recordedPid = [int](Get-Content -LiteralPath $pidFile)
 $process = Get-Process -Id $recordedPid -ErrorAction SilentlyContinue
-if ($process -and $process.Path -and $process.Path.ToLowerInvariant() -eq $expectedPython) {
+$details = if ($process) { Get-CimInstance Win32_Process -Filter "ProcessId = $recordedPid" -ErrorAction SilentlyContinue } else { $null }
+if ($details -and $details.ExecutablePath -and $details.ExecutablePath.ToLowerInvariant() -eq $expectedPython -and
+    $details.CommandLine -match 'http\.server' -and $details.CommandLine -match 'frontend[\\/]dist') {
   Stop-Process -Id $recordedPid -Force
 }
 Remove-Item -LiteralPath $pidFile -Force

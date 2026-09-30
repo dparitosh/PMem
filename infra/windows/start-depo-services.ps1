@@ -154,7 +154,10 @@ foreach ($service in $services) {
   if (Test-Path $pidFile) {
     $recordedPid = [int](Get-Content $pidFile)
     $existing = Get-Process -Id $recordedPid -ErrorAction SilentlyContinue
-    $expectedProcess = $existing -and $existing.Path -eq $python
+    $processDetails = if ($existing) { Get-CimInstance Win32_Process -Filter "ProcessId = $recordedPid" -ErrorAction SilentlyContinue } else { $null }
+    $expectedProcess = $existing -and $processDetails -and
+      $processDetails.ExecutablePath -eq $python -and
+      $processDetails.CommandLine -match [regex]::Escape($service.Module)
     if ($expectedProcess -and ($null -eq $service.Port -or $portListening)) { continue }
     if ($expectedProcess -and -not $portListening) { Stop-Process -Id $recordedPid -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $pidFile -Force

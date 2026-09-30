@@ -75,6 +75,9 @@ if (-not $SkipDependencyInstall) {
 Invoke-DepoStage 'Deployment configuration validation' {
   & (Join-Path $root 'infra\deployment\test-depo-deployment.ps1') -EnvFile $envPath -Profile $Profile -SkipEndpointChecks
 }
+Invoke-DepoStage 'PostgreSQL URL connectivity' {
+  & (Join-Path $root 'infra\postgres\test-postgres-connectivity.ps1') -EnvFile $envPath
+}
 Invoke-DepoStage 'PostgreSQL schema migration' {
   & (Join-Path $root 'infra\deployment\invoke-depo-lifecycle.ps1') -Action InitializeDatabase -EnvFile $envPath -Profile $Profile
 }

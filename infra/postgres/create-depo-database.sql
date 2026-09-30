@@ -22,7 +22,9 @@ SET password_encryption = 'scram-sha-256';
 
 CREATE ROLE :"depo_role" LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 \password :"depo_role"
-CREATE DATABASE :"depo_database" OWNER :"depo_role";
+-- Keep database ownership with the administrator. DEPO owns only its
+-- dedicated application schema and cannot administer the whole database.
+CREATE DATABASE :"depo_database";
 REVOKE ALL ON DATABASE :"depo_database" FROM PUBLIC;
 \connect :"depo_database"
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;

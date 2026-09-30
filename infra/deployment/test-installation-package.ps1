@@ -8,14 +8,19 @@ $requiredFiles = @(
   'INSTALLATION.md', 'configure-depo.ps1', 'install-depo.ps1', 'diagnose-depo.ps1',
   'manage-depo.ps1', 'certify-depo-release.ps1', 'backend/requirements-lock.txt',
   'frontend/package-lock.json', 'infra/deployment/services.json',
-  'infra/postgres/update-postgres-schema.ps1', 'infra/postgres/test-postgres-schema.ps1'
+  'infra/postgres/create-depo-database.sql', 'infra/postgres/update-postgres-schema.ps1',
+  'infra/postgres/test-postgres-schema.ps1', 'infra/postgres/test-postgres-connectivity.ps1',
+  'infra/postgres/test-postgres-odbc.ps1', 'infra/windows/start-depo-frontend.ps1',
+  'infra/windows/stop-depo-frontend.ps1'
 )
 foreach ($relative in $requiredFiles) {
   if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) { throw "Missing release file: $relative" }
 }
 
+$powerShellFiles = @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.ps1' -File |
+  Where-Object { $_.FullName -notmatch '[\\/](?:node_modules|\.release-test-tmp|\.git)[\\/]' })
 $parseFailures = @()
-Get-ChildItem -LiteralPath $root -Recurse -Filter '*.ps1' -File | ForEach-Object {
+$powerShellFiles | ForEach-Object {
   $tokens = $null; $errors = $null
   [void][Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors)
   if ($errors) { $parseFailures += @($errors | ForEach-Object { "$($_.Extent.File):$($_.Extent.StartLineNumber): $($_.Message)" }) }
@@ -56,7 +61,7 @@ for ($index = 0; $index -lt $versions.Count; $index++) {
 }
 
 [pscustomobject]@{
-  status = 'ok'; powershell_scripts = @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.ps1' -File).Count
+  status = 'ok'; powershell_scripts = $powerShellFiles.Count
   documented_paths = $documentedPaths.Count; services = $services.Count; workers = $workers.Count
   locked_python_distributions = $lockEntries.Count; postgres_migrations = $migrationFiles.Count
 } | ConvertTo-Json -Compress | Write-Output

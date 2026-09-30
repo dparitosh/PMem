@@ -38,8 +38,14 @@ def select_schema(cursor) -> str:
 
 
 def initialise_schema(cursor) -> str:
-    """Create and select the configured tenant/control-plane schema safely."""
+    """Select the DBA-provisioned schema without database-wide CREATE rights."""
     schema = configured_schema()
-    cursor.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+    cursor.execute("SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = %s)", (schema,))
+    row = cursor.fetchone()
+    if not row or not bool(row[0]):
+        raise RuntimeError(
+            f"Configured PostgreSQL schema '{schema}' does not exist. "
+            "Create it as the database administrator and grant the DEPO role USAGE, CREATE before migration."
+        )
     cursor.execute(f'SET search_path TO "{schema}", public')
     return schema
