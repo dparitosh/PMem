@@ -19,7 +19,7 @@ entry points; customers do not assemble an installation from them.
 | 2 | `.\configure-depo.ps1` | Create the only two editable configuration files |
 | 3 | `.\diagnose-depo.ps1 -Phase Prerequisites` | Check package integrity and required software without installing anything |
 | 4 | `.\install-depo.ps1` | Install dependencies, schemas, services and frontend in the correct order |
-| 5 | `.\diagnose-depo.ps1 -Phase All` | Verify the completed installation and every service endpoint |
+| 5 | `.\diagnose-depo.ps1 -Phase All -Profile Production` | Verify the completed customer production installation and every service endpoint |
 | Release | `.\certify-depo-release.ps1` | Re-run production diagnostics and hash the mandatory acceptance evidence |
 | Later | `.\manage-depo.ps1 -Action Start` or `-Action Stop` | Operate an already installed deployment |
 | Database update | `.\infra\postgres\update-postgres-schema.ps1` | Apply only pending PostgreSQL migrations and verify the schema |
@@ -29,6 +29,11 @@ Do not skip a sequence number. Every command stops on the first failure. The
 installer and diagnostics are safe to rerun after correcting that failure.
 The configuration command refuses to overwrite either `.env.local` file unless
 an administrator deliberately supplies `-Force` after preserving its secrets.
+
+The current direct-service Windows demonstration uses HTTP loopback origins and
+must replace `-Profile Production` with `-Profile Bootstrap` in install,
+diagnostic, and lifecycle commands. Production means a customer HTTPS frontend
+origin and deliberately rejects `localhost` and `127.0.0.1`.
 
 ## 1. Provision the customer dependencies
 

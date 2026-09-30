@@ -1,9 +1,9 @@
 import axios from 'axios';
-import { config, API, replaceParams } from '../config';
+import { config, API, buildSemanticServiceUrl, replaceParams } from '../config';
 import { serviceAuthHeaders } from './serviceAuth';
 
 const agenticClient = axios.create({
-  baseURL: config.agenticServiceUrl || undefined,
+  baseURL: undefined,
   timeout: config.requestTimeout || 300000,
   headers: { 'Content-Type': 'application/json' },
 });
@@ -14,23 +14,13 @@ agenticClient.interceptors.request.use((requestConfig) => {
   return requestConfig;
 });
 
-function requireConfiguredService() {
-  if (!config.agenticEnabled) {
-    throw new Error('Ontology agentic service is disabled. Set REACT_APP_AGENTIC_ENABLED=true to enable it.');
-  }
-  if (!config.agenticServiceUrl) {
-    throw new Error('Ontology agentic service is not configured. Set REACT_APP_AGENTIC_SERVICE_URL.');
-  }
-}
-
 function agenticUrl(endpoint) {
-  requireConfiguredService();
-  return `${config.agenticServiceUrl}${endpoint}`;
+  return buildSemanticServiceUrl('agentic', endpoint);
 }
 
 export const agenticAPI = {
-  isEnabled: () => Boolean(config.agenticEnabled),
-  isConfigured: () => Boolean(config.agenticEnabled && config.agenticServiceUrl),
+  isEnabled: () => true,
+  isConfigured: () => Boolean(config.semanticServiceUrls?.agentic),
   health: (options = {}) => agenticClient.get(agenticUrl(API.agentic.health), options),
   listAgents: (options = {}) => agenticClient.get(agenticUrl(API.agentic.agents), options),
   listTools: (options = {}) => agenticClient.get(agenticUrl(API.agentic.tools), options),

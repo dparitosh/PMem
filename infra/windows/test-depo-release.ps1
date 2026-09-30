@@ -31,8 +31,8 @@ if ($Bootstrap) {
     if ($values['DEPO_ALLOW_INSECURE_LOCAL_AUTH'] -ne 'true' -or $values['DEPO_SERVICE_HOST'] -notin @('127.0.0.1', 'localhost', '::1')) { throw 'Disabled authentication requires DEPO_ALLOW_INSECURE_LOCAL_AUTH=true and DEPO_SERVICE_HOST=127.0.0.1, localhost or ::1.' }
   } elseif ($LocalInsecureDemo) { throw '-LocalInsecureDemo requires AUTH_MODE=disabled.' }
 }
-foreach ($name in $required) { if (-not $values[$name]) { throw "Missing required setting: $name" } }
-if ($Production -and $values['DEPO_DATABASE_URL'] -match 'postgres:tcs12345') { throw 'Replace the local PostgreSQL administrator connection with a customer-managed least-privilege application account.' }
+foreach ($name in $required) { if (-not $values[$name] -or $values[$name] -match '<.*>') { throw "Missing customer value for required setting: $name" } }
+if ($Production -and $values['DEPO_DATABASE_URL'] -match '^postgres(?:ql)?://postgres(?::|@)') { throw 'Production cannot use the PostgreSQL postgres administrator. Configure a customer-managed least-privilege application role.' }
 $sparkFlags = @('DEPO_SPARK_ENABLED', 'DEPO_SPARK_NEO4J_ENABLED', 'DEPO_SPARK_POSTGRES_ENABLED', 'DEPO_PIPELINE_SCHEDULER_ENABLED')
 foreach ($name in $sparkFlags) {
   if ($values[$name] -and $values[$name] -notin @('true', 'false')) { throw "Invalid boolean setting: $name" }

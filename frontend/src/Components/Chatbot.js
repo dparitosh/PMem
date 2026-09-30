@@ -7,7 +7,7 @@ import { validateChatInput, ValidationError } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { formatChatMarkdown } from '../utils/chatMarkdown';
 import { clearClientSessionId, getClientSessionId, setClientSessionId } from '../services/apiClient';
-import { setServiceAuthToken } from '../services/serviceAuth';
+import { serviceAuthHeaders, setServiceAuthToken } from '../services/serviceAuth';
 
 const CHAT_COLORS = {
     primary: '#005a9c',
@@ -249,7 +249,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    ...(accessToken.trim() ? { Authorization: `Bearer ${accessToken.trim()}` } : {}),
+                    ...(accessToken.trim() ? { Authorization: `Bearer ${accessToken.trim()}` } : serviceAuthHeaders()),
                     ...(sessionId ? { 'X-Session-ID': sessionId } : {}),
                 },
                 body: JSON.stringify({ session_id: sessionId, message: validated, graph_context: graphContext }),
@@ -413,6 +413,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
+                        ...serviceAuthHeaders(),
                         ...(activeSessionId ? { 'X-Session-ID': activeSessionId } : {}),
                     },
                     signal: sampleController.signal,

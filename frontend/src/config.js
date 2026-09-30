@@ -141,11 +141,12 @@ const SERVICE_PATHS = [
   ['graph', /^\/api\/v1\/requirements(?:\/|$)/],
   ['ingestion', /^\/api\/v1\/(?:ingestion|ingest-data|ap242|schema-conversions|source-profiles|engineering-workflows)(?:\/|$)/],
   ['ingestion', /^\/api\/v1\/import(?:\/|$)/],
+  ['ingestion', /^\/api\/v1\/reports(?:\/|$)/],
   ['oslc', /^(?:\/api\/v1\/oslc|\/oslc)(?:\/|$)/],
   ['catalog', /^\/api\/v1\/catalog\/products(?:\/|$)/],
   ['dataProducts', /^\/api\/v1\/data-products(?:\/|$)/],
   ['dataPipeline', /^\/api\/v1\/pipeline(?:\/|$)/],
-  ['agentic', /^\/api\/v1\/(?:agents|tools|mcp-servers|workflows|plans|runs|workflow-runs|catalog\/validate|chat|ontology-agents)(?:\/|$)/],
+  ['agentic', /^\/api\/v1\/(?:agents|tools|mcp-servers|workflows|plans|runs|workflow-runs|observability|metrics|catalog\/validate|chat|ontology-agents)(?:\/|$)/],
   ['agentic', /^\/api\/v1\/code-audit(?:\/|$)/],
   ['graph', /^\/recommendations(?:\/|$)/],
 ];

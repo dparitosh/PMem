@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import os
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 
 from .profiles import profiles
@@ -30,6 +30,28 @@ def _ingestion_identity(request: Request) -> str:
 
 
 router = APIRouter(tags=["ingestion"], dependencies=[Depends(_ingestion_identity)])
+
+
+@router.get("/reports/xsd-relational", summary="Build a read-only relational projection of a registered XSD")
+def xsd_relational_report(ontology_id: str = Query(..., min_length=1, max_length=200)) -> dict:
+    from backend.Services.ontology_upload_manager import OntologyUploadManager
+    from backend.Services.xsd_relational_report import build_xsd_relational_report
+
+    result = OntologyUploadManager.get_ontology(ontology_id)
+    if result.get("status") != "success":
+        raise HTTPException(status_code=404, detail=result.get("error") or "Ontology not found")
+    metadata = result.get("metadata") or {}
+    file_path = Path(metadata.get("file_path") or "")
+    if file_path.suffix.lower() != ".xsd" or not file_path.is_file():
+        raise HTTPException(status_code=422, detail="The selected ontology does not have an accessible XSD source file")
+    try:
+        return {
+            "ontology_id": ontology_id,
+            "prefix": metadata.get("prefix") or "",
+            **build_xsd_relational_report(file_path),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"XSD relational report could not be generated: {exc}") from exc
 
 
 @router.post("/sysml-v2/import-commit", summary="Import the configured SysML v2 commit into an approved data job")

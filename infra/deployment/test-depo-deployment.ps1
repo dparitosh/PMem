@@ -58,7 +58,7 @@ foreach ($origin in $allowedOrigins) {
 }
 if ($Profile -eq "Production") {
   if ($values.AUTH_MODE -notin @('token', 'entra')) { throw 'Production requires API-key authentication (AUTH_MODE=token) or a configured gateway identity profile.' }
-  if ($values.ALLOWED_ORIGINS -match "localhost|127\.0\.0\.1") { throw "Production ALLOWED_ORIGINS must not use a loopback host." }
+  if ($values.ALLOWED_ORIGINS -match "localhost|127\.0\.0\.1") { throw "Production ALLOWED_ORIGINS must not use a loopback host. This configuration is local/bootstrap; rerun with -Profile Bootstrap, or configure the customer's HTTPS frontend origin." }
   foreach ($origin in $values.ALLOWED_ORIGINS.Split(',')) {
     if ($origin.Trim() -notmatch '^https://') { throw 'Production ALLOWED_ORIGINS must contain HTTPS origins only.' }
   }
