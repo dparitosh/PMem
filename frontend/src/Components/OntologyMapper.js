@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Search, Upload, FileText, Download, Network } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { useOntologies } from '../contexts/OntologyContext';
 import DataGridWidget from '../widgets/DataGridWidget';
 import ErrorBoundary from './ErrorBoundary';
@@ -1979,7 +1980,7 @@ export default function OntologyMapper() {
       } catch (e) {
         if (cancelled) return;
         console.error('Error loading ontology data:', e);
-        setError(e.response?.data?.detail || e.message || 'Failed to load ontology data.');
+        setError(apiErrorMessage(e, 'Failed to load ontology data.'));
       } finally {
         if (!cancelled) {
           setLoading(false);

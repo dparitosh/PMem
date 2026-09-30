@@ -7,10 +7,11 @@ Semantic Bridge and Graph Service approval paths.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
-from rdflib import Graph, RDF, OWL, RDFS
+from rdflib import Graph, RDF, OWL, RDFS, SKOS
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -50,6 +51,20 @@ def inspect_ontology(ontology_path: str) -> dict[str, Any]:
     datatype_properties = set(graph.subjects(RDF.type, OWL.DatatypeProperty))
     annotation_properties = set(graph.subjects(RDF.type, OWL.AnnotationProperty))
     individuals = set(graph.subjects(RDF.type, OWL.NamedIndividual))
+    typed_terms = [("Class", item) for item in classes]
+    typed_terms += [("ObjectProperty", item) for item in object_properties]
+    typed_terms += [("DatatypeProperty", item) for item in datatype_properties]
+    typed_terms += [("AnnotationProperty", item) for item in annotation_properties]
+    typed_terms.sort(key=lambda pair: (pair[0], str(pair[1])))
+    term_index = []
+    indexed_counts: dict[str, int] = {}
+    for kind, term in typed_terms:
+        if indexed_counts.get(kind, 0) >= 500:
+            continue
+        indexed_counts[kind] = indexed_counts.get(kind, 0) + 1
+        label = next((str(value) for predicate in (SKOS.prefLabel, RDFS.label)
+                      for value in graph.objects(term, predicate) if str(value).strip()), "")
+        term_index.append({"kind": kind, "iri": str(term), "label": label})
     return {
         "path": str(path.relative_to(ROOT)).replace("\\", "/") if ROOT in path.parents else path.name,
         "format": path.suffix.lower().lstrip("."),
@@ -64,6 +79,8 @@ def inspect_ontology(ontology_path: str) -> dict[str, Any]:
         "domain_edges": len(set(graph.triples((None, RDFS.domain, None)))),
         "range_edges": len(set(graph.triples((None, RDFS.range, None)))),
         "ontology_iris": sorted({str(item) for item in graph.subjects(RDF.type, OWL.Ontology)}),
+        "term_index": term_index,
+        "term_index_truncated": len(typed_terms) > len(term_index),
         "warnings": [],
     }
 
@@ -153,9 +170,41 @@ def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = N
         "relationship_to_objectproperty": len(instance_metadata.get("relationships") or []),
         "metadata_to_annotation_or_provenance": len(instance_metadata.get("metadata") or []),
     }
+    summary = ontology_summary if ontology_summary is not None else (inspect_ontology(ontology_path) if ontology_path else {})
+    kind_for_field = {"entities": "Class", "attributes": "DatatypeProperty",
+                      "relationships": "ObjectProperty", "metadata": "AnnotationProperty"}
+    normalize = lambda value: re.sub(r"[^a-z0-9]+", "", str(value).casefold())
+    candidates = []
+    for field, kind in kind_for_field.items():
+        for source in instance_metadata.get(field) or []:
+            source_name = str(source).strip()
+            if not source_name:
+                continue
+            key = normalize(source_name)
+            if not key:
+                continue
+            matches = []
+            for term in summary.get("term_index") or []:
+                if term.get("kind") != kind:
+                    continue
+                local_name = term.get("iri", "").rsplit("#", 1)[-1].rstrip("/").rsplit("/", 1)[-1]
+                evidence = "label" if term.get("label") and normalize(term["label"]) == key else (
+                    "iri_local_name" if normalize(local_name) == key else "")
+                if evidence:
+                    matches.append({"source": source_name, "source_category": field,
+                                    "target_iri": term["iri"], "target_type": kind,
+                                    "evidence": f"exact_normalized_{evidence}",
+                                    "status": "review_required"})
+            candidates.extend(matches[:3])
+            if len(candidates) >= 200:
+                break
+        if len(candidates) >= 200:
+            break
     result: dict[str, Any] = {
-        "ontology_summary": ontology_summary if ontology_summary is not None else (inspect_ontology(ontology_path) if ontology_path else {}),
+        "ontology_summary": summary,
         "alignment_plan": plan,
+        "alignment_candidates": candidates[:200],
+        "candidate_limit_reached": len(candidates) >= 200 or bool(summary.get("term_index_truncated")),
         "required_validations": ["class_existence_check", "property_type_check", "domain_range_check", "approval_required"],
         "status": "ready_for_mapping",
         "llm": _llm_suggestion(plan, instance_metadata),

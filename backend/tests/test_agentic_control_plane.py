@@ -57,6 +57,10 @@ def test_ontology_agent_orchestrator_returns_reviewable_bridge_plan(monkeypatch,
     assert body["publication"] == "requires_human_approval"
     assert body["steps"][0]["result"]["classes"] == 1
     assert body["steps"][2]["result"]["alignment_plan"]["relationship_to_objectproperty"] == 1
+    candidates = body["steps"][2]["result"]["alignment_candidates"]
+    assert any(row["source"] == "Motor" and row["target_iri"] == "https://example.test/Motor"
+               and row["status"] == "review_required" for row in candidates)
+    assert any(row["source"] == "hasPart" and row["target_type"] == "ObjectProperty" for row in candidates)
 
 
 def test_ontology_orchestrator_reuses_one_artifact_snapshot(monkeypatch):

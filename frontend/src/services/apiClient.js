@@ -136,7 +136,7 @@ apiClient.interceptors.request.use(
     return requestConfig;
   },
   (error) => {
-    logger.error('[API] Request Error:', error);
+    logger.error('[API] Request could not be prepared');
     return Promise.reject(error);
   }
 );
@@ -183,7 +183,6 @@ apiClient.interceptors.response.use(
       errorCode: error.response?.data?.error_code,
       detail: error.response?.data?.detail || error.response?.data?.message,
       url: error.config?.url,
-      data: error.response?.data,
     };
 
     // Keep the backend's standardized error contract available to all callers.
@@ -195,7 +194,11 @@ apiClient.interceptors.response.use(
     };
 
     if (config.debug) {
-      logger.error('[API] Response Error:', errorInfo);
+      logger.error('[API] Response Error:', {
+        status: errorInfo.status,
+        errorCode: errorInfo.errorCode,
+        url: errorInfo.url,
+      });
     }
 
     // Handle specific status codes
@@ -209,9 +212,9 @@ apiClient.interceptors.response.use(
     } else if (error.response?.status === 500) {
       logger.error('[API] Server error');
     } else if (error.response?.status === 503) {
-      logger.warn('[API] Service unavailable:', errorInfo.errorCode || errorInfo.detail);
+      logger.warn('[API] Service unavailable:', errorInfo.errorCode || errorInfo.status);
     } else if (error.response?.status === 504) {
-      logger.warn('[API] Service timeout:', errorInfo.errorCode || errorInfo.detail);
+      logger.warn('[API] Service timeout:', errorInfo.errorCode || errorInfo.status);
     }
 
     return Promise.reject(error);

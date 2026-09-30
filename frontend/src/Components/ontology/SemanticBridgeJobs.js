@@ -89,6 +89,13 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
     {agentReport && <div role="status" style={{ marginTop: 8, padding: 8, background: '#eef7fb', border: '1px solid #c5dce6' }}>
       <strong>Ontology agent review:</strong> {agentReport.steps?.length || 0} steps completed; publication requires human approval.
       {agentReport.steps?.[1]?.result?.issues?.length ? ` ${agentReport.steps[1].result.issues.length} structural issue(s) require review.` : ' No structural issues reported.'}
+      <p>{agentReport.steps?.at(-1)?.result?.alignment_candidates?.length || 0} exact-name candidate(s) found. These are review evidence only; use a saved Bridge preview to publish mappings.</p>
+      {(agentReport.steps?.at(-1)?.result?.alignment_candidates || []).length > 0 && <ul>
+        {agentReport.steps.at(-1).result.alignment_candidates.slice(0, 20).map((candidate, index) => <li key={`${candidate.source}:${candidate.target_iri}:${index}`}>
+          {candidate.source} → {candidate.target_iri} ({candidate.target_type}; {candidate.evidence})
+        </li>)}
+      </ul>}
+      {agentReport.steps?.at(-1)?.result?.candidate_limit_reached && <p>Candidate search was limited. Narrow the ontology or review the full Bridge preview.</p>}
     </div>}
     <label>Saved preview ID <input aria-label="Saved preview ID" value={resumeId} onChange={e => setResumeId(e.target.value)} /></label>
     <button type="button" style={buttonStyle} disabled={busy || !resumeId.trim() || !ontologyId || !importTaskId} onClick={() => invoke(async current => {

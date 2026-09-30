@@ -8,14 +8,16 @@ const agenticClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-agenticClient.interceptors.request.use((requestConfig) => {
+export function applyAgenticAuth(requestConfig) {
   requestConfig.headers = requestConfig.headers || {};
   // A call may provide a scoped credential (for example, the ontology review
   // read token). Keep it ahead of the app-wide bootstrap token.
   const explicit = requestConfig.headers.get?.('Authorization') || requestConfig.headers.Authorization;
   if (!explicit) Object.assign(requestConfig.headers, serviceAuthHeaders());
   return requestConfig;
-});
+}
+
+agenticClient.interceptors.request.use(applyAgenticAuth);
 
 function agenticUrl(endpoint) {
   return buildSemanticServiceUrl('agentic', endpoint);

@@ -3,6 +3,7 @@ import * as d3 from 'd3';
 import { AlertTriangle, FolderTree, Network, RefreshCw, Search } from 'lucide-react';
 import { IxBadge, IxButton, IxCheckbox, IxInput, IxSelect, IxSelectItem } from '@siemens/ix-react';
 import { apiClient } from '../services/apiClient';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 import '../CSS/CodeAuditPage.css';
 
 const languageLabel = (language) => ({
@@ -63,7 +64,7 @@ export default function CodeAuditPage() {
       setExpandedNodes((current) => current.size ? current : new Set([response.data?.hierarchy?.root].filter(Boolean)));
       retryRef.current.delayMs = 30000;
     } catch (requestError) {
-      setError(requestError?.response?.data?.detail || requestError.message || 'Unable to load code network');
+      setError(apiErrorMessage(requestError, 'Unable to load code network'));
       retryRef.current.delayMs = Math.min(retryRef.current.delayMs * 2, 300000);
     } finally {
       setLoading(false);
@@ -73,14 +74,16 @@ export default function CodeAuditPage() {
   useEffect(() => { load(false); }, [load]);
   useEffect(() => {
     if (!live) return undefined;
+    let active = true;
     const schedule = () => {
       retryRef.current.timerId = window.setTimeout(async () => {
         await load(true);
-        if (live) schedule();
+        if (active) schedule();
       }, retryRef.current.delayMs);
     };
     schedule();
     return () => {
+      active = false;
       if (retryRef.current.timerId) window.clearTimeout(retryRef.current.timerId);
     };
   }, [live, load]);

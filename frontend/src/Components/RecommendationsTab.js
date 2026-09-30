@@ -7,6 +7,7 @@ import {
   Info,
 } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { UI_COLORS as C } from '../styles/uiTokens';
 
 // Shared UI configuration
@@ -587,7 +588,7 @@ const RecommendationsTab = () => {
       }
       setResult(normalizeRecommendationResult(activeService, resp.data));
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Request failed');
+      setError(apiErrorMessage(err));
     } finally {
       setLoading(false);
     }

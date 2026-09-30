@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { dataPipelineAPI } from '../services/apiClient';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 import './DataFlowPage.css';
 
 const REFRESH_INTERVAL_MS = 15000;
@@ -135,7 +136,7 @@ export default function DataFlowPage() {
       if (failure) setError('Some processing-job evidence is temporarily unavailable. Showing the available data.');
     } catch (loadError) {
       if (sequence !== loadSequence.current) return;
-      setError(loadError?.response?.data?.detail || loadError?.message || 'Unable to load data-job telemetry.');
+      setError(apiErrorMessage(loadError, 'Unable to load data-job telemetry.'));
     } finally {
       if (sequence === loadSequence.current) {
         loadInFlight.current = false;
@@ -185,7 +186,7 @@ export default function DataFlowPage() {
       setReplayApprovalToken('');
       await load();
     } catch (replayFailure) {
-      setReplayError(replayFailure?.response?.data?.detail || replayFailure?.message || 'Replay could not be started.');
+      setReplayError(apiErrorMessage(replayFailure, 'Replay could not be started.'));
     } finally {
       setReplayingId('');
     }
@@ -220,7 +221,7 @@ export default function DataFlowPage() {
       setReplayApprovalToken('');
       await load();
     } catch (actionFailure) {
-      setReplayError(actionFailure?.response?.data?.detail || actionFailure?.message || 'Data-job lifecycle action could not be completed.');
+      setReplayError(apiErrorMessage(actionFailure, 'Data-job lifecycle action could not be completed.'));
     } finally {
       setDefinitionActionId('');
     }
@@ -233,7 +234,7 @@ export default function DataFlowPage() {
       await dataPipelineAPI.publishRun(run.run_id, {}, approval());
       await load();
     } catch (publishFailure) {
-      setReplayError(publishFailure?.response?.data?.detail || publishFailure?.message || 'Run could not be published.');
+      setReplayError(apiErrorMessage(publishFailure, 'Run could not be published.'));
     } finally {
       setPublishingId('');
     }
