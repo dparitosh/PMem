@@ -1200,6 +1200,34 @@ Keep this line empty in the file:
 VITE_API_GATEWAY_URL=
 ```
 
+For the current Windows installation with direct local service access, no
+gateway and no Spark, verify these exact values before running the installer.
+The first block belongs in the **root** `E:\App\PMem\.env.local`:
+
+```dotenv
+ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000
+DEPO_SERVICE_HOST=127.0.0.1
+DEPO_PIPELINE_EXECUTION_MODE=worker
+DEPO_SPARK_ENABLED=false
+DEPO_SPARK_NEO4J_ENABLED=false
+DEPO_SPARK_POSTGRES_ENABLED=false
+DEPO_PIPELINE_SCHEDULER_ENABLED=false
+```
+
+The durable `data-pipeline-worker` is required in `worker` mode even when
+`DEPO_SPARK_ENABLED=false`; it claims approved jobs from PostgreSQL and can run
+non-Spark handlers. Spark, its connectors, and its scheduler remain disabled.
+The second block belongs in `E:\App\PMem\frontend\.env.local`:
+
+```dotenv
+VITE_API_GATEWAY_URL=
+```
+
+Do not put `ALLOWED_ORIGINS` or server API keys in the frontend file. If the
+browser runs on another machine, the local verification server bound to
+`127.0.0.1` is not externally reachable; deploy `frontend\dist` through the
+customer HTTPS web server and use that exact HTTPS origin instead.
+
 Save the file and return to the repository root. Do not run `npm ci`, build, or
 start the frontend yet; the single installer in Section 3 performs the clean
 frontend installation and production build. Section 4.4 starts the completed
@@ -1533,6 +1561,16 @@ rendered application shell, and does not download another npm package:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\start-depo-frontend.ps1
+```
+
+The defaults are `-BindHost 127.0.0.1 -Port 3000`. An equivalent explicit
+command, useful when recording installation evidence, is:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\infra\windows\start-depo-frontend.ps1 `
+  -BindHost 127.0.0.1 `
+  -Port 3000
 ```
 
 Open `http://127.0.0.1:3000` in a browser and confirm the DEPO landing page

@@ -30,6 +30,15 @@ def test_windows_frontend_has_documented_start_and_stop_lifecycle():
     guide = (ROOT / "INSTALLATION.md").read_text(encoding="utf-8")
     assert "-File .\\infra\\windows\\start-depo-frontend.ps1" in guide
     assert "-File .\\infra\\windows\\stop-depo-frontend.ps1" in guide
+    for setting in (
+        "ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000",
+        "DEPO_PIPELINE_EXECUTION_MODE=worker",
+        "DEPO_SPARK_ENABLED=false",
+        "VITE_API_GATEWAY_URL=",
+    ):
+        assert setting in guide
+    deployment = (ROOT / "config" / "deployment.env.example").read_text(encoding="utf-8")
+    assert "DEPO_SPARK_ENABLED=false" in deployment
 
 
 def test_installer_provisions_neo4j_before_start_and_runs_read_only_preflight_afterward():
