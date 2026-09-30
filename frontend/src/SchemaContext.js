@@ -16,6 +16,11 @@ export function SchemaProvider({ children }) {
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
+    const schemaEndpoint = API.schema.schema;
+    if (!schemaEndpoint) {
+      setSchemaLoading(false);
+      return () => controller.abort();
+    }
     const wait = (ms) => new Promise((resolve, reject) => {
       const timer = setTimeout(resolve, ms);
       controller.signal.addEventListener('abort', () => {
@@ -43,7 +48,7 @@ export function SchemaProvider({ children }) {
       try {
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
           try {
-            const res = await apiClient.get(buildUrl(API.schema.schema), { timeout: 10000, signal: controller.signal });
+            const res = await apiClient.get(buildUrl(schemaEndpoint), { timeout: 10000, signal: controller.signal });
             if (!cancelled) setSchema(res.data);
             return;
           } catch (err) {

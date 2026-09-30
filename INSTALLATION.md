@@ -1574,7 +1574,29 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 ```
 
 Open `http://127.0.0.1:3000` in a browser and confirm the DEPO landing page
-loads. Stop that local frontend with:
+loads. In a direct-service installation without a gateway, complete the
+authentication step before opening a data page:
+
+1. Open the root server configuration without copying its contents to the
+   frontend configuration:
+
+   ```powershell
+   notepad .\.env.local
+   ```
+
+2. Copy the value after `GRAPH_READ_TOKEN=`.
+3. In the DEPO header, select **API access**, paste that value into **Graph read
+   API key**, and select **Apply and retry**.
+4. Open Graph, Data Products, Data Pipeline, or Code Audit and confirm their
+   requests return HTTP 200. The key exists only in the current browser tab's
+   memory; a full reload clears it, so repeat this step after reloading.
+
+Never put `GRAPH_READ_TOKEN` in `frontend\.env.local` or a `VITE_*` setting.
+The API access control is for a controlled direct-service installation. A
+customer gateway must authenticate browser requests and keep backend service
+ports private.
+
+Stop the local frontend with:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\stop-depo-frontend.ps1

@@ -178,7 +178,9 @@ const HEALTH_ENDPOINTS = {
  * Schema & Metadata Endpoints
  */
 const SCHEMA_ENDPOINTS = {
-  schema: process.env.REACT_APP_API_SCHEMA || '/schema',
+  // The retired aggregate backend owned /schema. Standalone deployments have
+  // no equivalent route, so fetch it only when an operator explicitly maps it.
+  schema: setting('API_SCHEMA'),
   ap242RotorPmi: process.env.REACT_APP_API_AP242_ROTOR_PMI || '/ap242/rotor-shaft-pmi',
   ap242Search: process.env.REACT_APP_API_AP242_SEARCH || '/ap242/search',
   reports: process.env.REACT_APP_API_REPORTS || '/reports',
@@ -493,13 +495,6 @@ if (baseConfig.debug) {
       import: IMPORT_ENDPOINTS,
     },
   });
-}
-
-// Validate required configuration
-const isTestRuntime = viteEnv.MODE === 'test' || processEnv.NODE_ENV === 'test';
-if (!configuredBackendUrl && baseConfig.environment !== 'test' && !isTestRuntime) {
-  // eslint-disable-next-line no-console
-  console.warn('[CONFIG] Missing BACKEND_URL. Explicit standalone-service routes remain available; unowned legacy routes are disabled.');
 }
 
 export default config;

@@ -190,6 +190,7 @@ function App() {
     setVisibleRelationships(null);
   }, []);
 
+  const [serviceAuthRevision, setServiceAuthRevision] = useState(0);
   const graphProps = useMemo(() => ({
     graphData: data,
     setData,
@@ -219,6 +220,7 @@ function App() {
             showChat={showChat}
             onToggleChat={toggleChat}
             serviceStatus={serviceStatus}
+            onServiceAuthChange={() => setServiceAuthRevision((revision) => revision + 1)}
             rightDrawer={(
               <ErrorBoundary>
                 <Suspense fallback={<PageFallback />}>
@@ -234,9 +236,10 @@ function App() {
             )}
             >
               {page === 'home' ? (
-                <LandingPage setChatResults={setChatResults} onNavigate={handleNavigate} />
+                <LandingPage key={`home-${serviceAuthRevision}`} setChatResults={setChatResults} onNavigate={handleNavigate} />
               ) : (
                 <AppPageOutlet
+                  key={`${activePage}-${serviceAuthRevision}`}
                   page={activePage}
                   pageContext={{
                     data,

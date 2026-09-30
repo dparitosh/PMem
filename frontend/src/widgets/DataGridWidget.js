@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import {
   ClientSideRowModelModule,
+  CellStyleModule,
   ColumnAutoSizeModule,
   ModuleRegistry,
   NumberFilterModule,
@@ -19,6 +20,7 @@ import { widgetCardStyle, widgetColors } from './widgetStyles';
 // export and other unused features into every lazy page that renders a grid.
 ModuleRegistry.registerModules([
   ClientSideRowModelModule,
+  CellStyleModule,
   ColumnAutoSizeModule,
   NumberFilterModule,
   PaginationModule,

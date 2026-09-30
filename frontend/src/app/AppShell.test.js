@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
 import AppShell from './AppShell';
+import { clearServiceAuthToken, getServiceAuthToken } from '../services/serviceAuth';
 
 // AppShell verifies our navigation contract, not Siemens IX internals. The
 // real custom elements need browser APIs JSDOM does not faithfully emulate.
@@ -18,8 +19,33 @@ vi.mock('@siemens/ix-react', () => ({
 }));
 
 beforeEach(() => {
+  clearServiceAuthToken();
   window.localStorage.clear();
   document.documentElement.dataset.ixColorSchema = 'light';
+});
+
+test('applies the standalone read key in memory and asks the active page to retry', () => {
+  const onServiceAuthChange = jest.fn();
+  render(
+    <AppShell
+      activePage="home"
+      onPageChange={jest.fn()}
+      onHome={jest.fn()}
+      showChat={false}
+      onToggleChat={jest.fn()}
+      onServiceAuthChange={onServiceAuthChange}
+    >
+      <div>Page content</div>
+    </AppShell>,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Configure API access' }));
+  fireEvent.change(screen.getByLabelText('Graph read API key'), { target: { value: 'read-secret' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply and retry' }));
+
+  expect(getServiceAuthToken()).toBe('read-secret');
+  expect(onServiceAuthChange).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
 test('exposes active navigation, backend status, chat drawer state, and persistent theme control', () => {

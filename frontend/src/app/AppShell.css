@@ -16,6 +16,16 @@
 }
 
 .depo-ix-content { position: relative; }
+.depo-api-access { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 1rem; background: rgba(0, 0, 0, 0.48); }
+.depo-api-access__panel { width: min(480px, 100%); padding: 20px; display: grid; gap: 12px; color: var(--theme-color-std-text, #1f2933); background: var(--theme-color-std-background, #fff); border: 1px solid var(--theme-color-weak-bdr, #cbd2d9); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28); }
+.depo-api-access__panel h2, .depo-api-access__panel p { margin: 0; }
+.depo-api-access__panel p { color: var(--theme-color-soft-text, #52606d); font-size: 0.875rem; line-height: 1.45; }
+.depo-api-access__input { min-height: 38px; padding: 7px 10px; color: inherit; background: inherit; border: 1px solid var(--theme-color-weak-bdr, #7b8794); }
+.depo-api-access__input:focus-visible { outline: 2px solid var(--theme-color-primary, #005f9e); outline-offset: 1px; }
+.depo-api-access__actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.depo-api-access__actions button { min-height: 36px; padding: 6px 12px; color: inherit; background: transparent; border: 1px solid var(--theme-color-weak-bdr, #7b8794); cursor: pointer; }
+.depo-api-access__actions button[type='submit'] { color: #fff; background: var(--theme-color-primary, #005f9e); border-color: var(--theme-color-primary, #005f9e); }
+.depo-api-access__actions button:disabled { opacity: 0.55; cursor: not-allowed; }
 .depo-ix-page { height: 100%; display: flex; flex-direction: column; min-height: 0; }
 .depo-ix-page__body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 2rem 2rem; }
 .depo-ix-drawer { position: absolute; top: 0; right: 0; bottom: 0; z-index: 10; width: min(360px, 100%); background: var(--theme-color-std-background, #ffffff); border-left: 1px solid var(--theme-color-weak-bdr, #d9e2ec); box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12); display: flex; flex-direction: column; }

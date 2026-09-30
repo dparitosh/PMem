@@ -11,6 +11,7 @@ import {
   IxMenuItem,
 } from '@siemens/ix-react';
 import { navigationItems, pageLabel } from './navigation';
+import { clearServiceAuthToken, getServiceAuthToken, setServiceAuthToken } from '../services/serviceAuth';
 import './AppShell.css';
 
 const THEME_STORAGE_KEY = 'depo.colorSchema';
@@ -33,9 +34,13 @@ export default function AppShell({
   onToggleChat,
   serviceStatus = 'checking',
   rightDrawer,
+  onServiceAuthChange,
   children,
 }) {
   const [colorSchema, setColorSchema] = useState(initialColorSchema);
+  const [showApiAccess, setShowApiAccess] = useState(false);
+  const [apiKey, setApiKey] = useState(() => getServiceAuthToken());
+  const [apiAccessConfigured, setApiAccessConfigured] = useState(() => Boolean(getServiceAuthToken()));
   useEffect(() => {
     document.documentElement.dataset.ixTheme = 'classic';
     document.documentElement.dataset.ixColorSchema = colorSchema;
@@ -77,6 +82,18 @@ export default function AppShell({
         <IxApplicationHeader name="DEPO | Digital Thread">
           <div className="depo-app-mark" aria-label="DEPO">D</div>
           <IxBadge type="label" variant={statusVariant} label={statusLabel} role="status" aria-live="polite" />
+          <IxButton
+            type="button"
+            variant="tertiary"
+            icon="key"
+            onClick={() => {
+              setApiKey(getServiceAuthToken());
+              setShowApiAccess(true);
+            }}
+            aria-label="Configure API access"
+          >
+            API access{apiAccessConfigured ? ' configured' : ''}
+          </IxButton>
           <IxButton
             id="depo-chat-toggle"
             type="button"
@@ -122,6 +139,46 @@ export default function AppShell({
         </IxMenu>
 
         <IxContent id="main-content" className="depo-ix-content">
+          {showApiAccess && (
+            <div className="depo-api-access" role="dialog" aria-modal="true" aria-labelledby="depo-api-access-title">
+              <form
+                className="depo-api-access__panel"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setServiceAuthToken(apiKey);
+                  setApiAccessConfigured(Boolean(apiKey.trim()));
+                  setShowApiAccess(false);
+                  onServiceAuthChange?.();
+                }}
+              >
+                <h2 id="depo-api-access-title">Standalone API access</h2>
+                <p>Enter the server GRAPH_READ_TOKEN. It remains only in this browser tab's memory and is cleared by a full reload.</p>
+                <label htmlFor="depo-api-read-key">Graph read API key</label>
+                <input
+                  id="depo-api-read-key"
+                  className="depo-api-access__input"
+                  type="password"
+                  autoComplete="off"
+                  value={apiKey}
+                  onChange={(event) => setApiKey(event.target.value)}
+                />
+                <div className="depo-api-access__actions">
+                  <button type="button" onClick={() => setShowApiAccess(false)}>Cancel</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearServiceAuthToken();
+                      setApiKey('');
+                      setApiAccessConfigured(false);
+                      setShowApiAccess(false);
+                      onServiceAuthChange?.();
+                    }}
+                  >Clear</button>
+                  <button type="submit" disabled={!apiKey.trim()}>Apply and retry</button>
+                </div>
+              </form>
+            </div>
+          )}
           <div className="depo-ix-page">
             <IxContentHeader
               headerTitle={pageLabel(activePage)}
