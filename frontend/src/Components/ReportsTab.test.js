@@ -39,4 +39,10 @@ test('ReportsTab falls back to graph nodes when search results are empty', () =>
 
   expect(screen.getByText('Rotor')).toBeInTheDocument();
   expect(screen.getAllByText('Part').length).toBeGreaterThan(0);
+  expect(screen.getByText('Analytics overview')).toBeInTheDocument();
+  expect(screen.getByText('Entity distribution')).toBeInTheDocument();
+  expect(screen.getByText('Relationship distribution')).toBeInTheDocument();
+  expect(screen.getByText('Ontology coverage')).toBeInTheDocument();
+  expect(screen.getByText('Data-job status')).toBeInTheDocument();
+  expect(screen.getByText('Data-quality outcome')).toBeInTheDocument();
 });

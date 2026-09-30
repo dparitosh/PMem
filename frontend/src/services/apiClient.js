@@ -419,7 +419,7 @@ export const qifAPI = {
 // telemetry and does not grant graph write authority.
 export const dataPipelineAPI = {
   health: () => apiClient.get(buildUrl('/api/v1/pipeline/health')),
-  telemetry: () => apiClient.get(buildUrl('/api/v1/pipeline/telemetry')),
+  telemetry: (config = {}) => apiClient.get(buildUrl('/api/v1/pipeline/telemetry'), config),
   definitions: () => apiClient.get(buildUrl('/api/v1/pipeline/jobs/definitions')),
   runs: (limit = 100) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/runs'), { params: { limit } }),
   approveDefinition: (jobId, version, approval = {}) => apiClient.post(

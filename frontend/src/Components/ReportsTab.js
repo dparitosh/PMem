@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { API, buildUrl } from '../config';
-import { apiClient } from '../services/apiClient';
+import { apiClient, dataPipelineAPI } from '../services/apiClient';
 import { graphApi } from '../services/graphApi';
 import { normalizeGraphDataset as normalizeGraphDatasetShared } from '../utils/graphUtils';
 import { useOntologies } from '../contexts/OntologyContext';
 import KpiStrip from '../widgets/KpiStrip';
+import ReportsAnalytics from './ReportsAnalytics';
+import './ReportsAnalytics.css';
 
 const NOISY_COLUMNS = new Set([
   'args',
@@ -326,6 +328,21 @@ const ReportsTab = ({ searchResults, graphData }) => {
   const [xsdReport, setXsdReport] = useState(null);
   const [xsdReportLoading, setXsdReportLoading] = useState(false);
   const [xsdReportError, setXsdReportError] = useState('');
+  const [pipelineTelemetry, setPipelineTelemetry] = useState(null);
+  const [pipelineTelemetryError, setPipelineTelemetryError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    dataPipelineAPI.telemetry({ signal: controller.signal })
+      .then((response) => { if (!cancelled) setPipelineTelemetry(response?.data || null); })
+      .catch((error) => {
+        if (!cancelled && !controller.signal.aborted) {
+          setPipelineTelemetryError(error?.response?.data?.detail || error?.message || 'Pipeline telemetry is unavailable.');
+        }
+      });
+    return () => { cancelled = true; controller.abort(); };
+  }, []);
 
   useEffect(() => {
     if (!selectedXsdOntology && ontologies?.length) {
@@ -818,6 +835,14 @@ const ReportsTab = ({ searchResults, graphData }) => {
               {graphLoading ? 'Loading graph data for reports...' : graphError}
             </div>
           )}
+
+          <ReportsAnalytics
+            entityTypes={availableTypes}
+            relationships={relTypesSummary}
+            ontologies={ontologyRows}
+            telemetry={pipelineTelemetry?.durable_job_telemetry || pipelineTelemetry?.totals || pipelineTelemetry}
+            telemetryError={pipelineTelemetryError}
+          />
 
           {activeReport === 'xsd-relational' ? (
             <XsdRelationalReport report={xsdReport} loading={xsdReportLoading} error={xsdReportError} selectedOntology={selectedXsdOntology} ontologies={ontologies} onOntologyChange={setSelectedXsdOntology} />
