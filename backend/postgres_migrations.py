@@ -39,6 +39,13 @@ def apply_migrations(connection) -> None:
         cursor.execute(SCHEMA_MIGRATIONS_SQL)
         cursor.execute("SELECT version, name FROM depo_schema_migrations")
         applied = {int(version): name for version, name in cursor.fetchall()}
+        known = {version: name for version, name, _ in MIGRATIONS}
+        unknown = sorted(set(applied) - set(known))
+        if unknown:
+            raise RuntimeError(
+                f"Database has migration versions newer than or unknown to this release: {unknown}. "
+                "Install the matching application release before modifying the schema."
+            )
         for version, name, statements in sorted(MIGRATIONS):
             existing = applied.get(version)
             if existing and existing != name:

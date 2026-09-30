@@ -44,6 +44,7 @@ def _failure_action(exc: Exception) -> dict[str, str]:
     sqlstate = getattr(exc, 'sqlstate', None)
     actions = {
         '28P01': 'PostgreSQL rejected the user/password. Correct DEPO_DATABASE_URL and test the same credentials in pgAdmin.',
+        '28000': 'PostgreSQL rejected this login. Check the role, database access, and pg_hba.conf rule for the application VM.',
         '3D000': 'The configured PostgreSQL database does not exist. Create it on the database VM or correct DEPO_DATABASE_URL.',
         '42501': 'The application role lacks privileges. Grant CONNECT on the database and USAGE, CREATE on the configured schema.',
         '23514': 'Existing data violates a new schema constraint. Correct the reported rows before rerunning the migration.',
@@ -51,8 +52,15 @@ def _failure_action(exc: Exception) -> dict[str, str]:
         '42P07': 'An untracked relation already exists. Do not delete it; compare it with the versioned migration and reconcile migration history.',
         '42710': 'An untracked constraint or index already exists. Do not delete it; reconcile it with the versioned migration.',
     }
+    diagnostic = str(exc).lower()
     if sqlstate and sqlstate.startswith('08'):
         action = 'PostgreSQL is unreachable. Verify host, port 5432, Windows firewall, listen_addresses and pg_hba.conf from the application VM.'
+    elif not sqlstate and 'no pg_hba.conf entry' in diagnostic:
+        action = 'PostgreSQL has no pg_hba.conf rule for this application VM, user, database and SSL mode. Add the matching rule on the database VM, reload PostgreSQL, and retry.'
+    elif not sqlstate and ('timeout' in diagnostic or 'timed out' in diagnostic or 'connection refused' in diagnostic):
+        action = 'The application VM cannot reach PostgreSQL. Verify the configured host and port, firewall, listen_addresses and server status.'
+    elif not sqlstate and ('certificate verify failed' in diagnostic or 'root certificate' in diagnostic):
+        action = 'PostgreSQL TLS certificate validation failed. Check sslmode, the trusted CA and the hostname in DEPO_DATABASE_URL.'
     else:
         action = actions.get(sqlstate, 'Check PostgreSQL connectivity, schema privileges, migration history and existing object compatibility.')
     result = {'status': 'failed', 'error_type': type(exc).__name__, 'action': action}
@@ -115,26 +123,35 @@ def verify_schema(connection):
             'migration_versions': sorted(version for version, _, _ in MIGRATIONS)}
 
 
-def setup_database(*, check_only=False):
+def setup_database(*, check_only=False, connection_only=False):
     import psycopg
     url = os.getenv('DEPO_DATABASE_URL') or os.getenv('DATABASE_URL')
     if not url:
         raise RuntimeError('DEPO_DATABASE_URL is required')
     with psycopg.connect(url, connect_timeout=connect_timeout_seconds(), autocommit=True, application_name='depo-database-setup') as connection:
-        if not check_only:
+        if connection_only:
             with connection.cursor() as cursor:
-                initialise_schema(cursor)
-            verify_migration_privileges(connection)
-            apply_migrations(connection)
+                cursor.execute('SELECT current_database(), current_user')
+                database, user = cursor.fetchone()
+            return {'status': 'ok', 'database': database, 'user': user, 'schema': configured_schema(), 'check': 'connectivity'}
+        if not check_only:
+            with connection.transaction():
+                with connection.cursor() as cursor:
+                    initialise_schema(cursor)
+                verify_migration_privileges(connection)
+                apply_migrations(connection)
         return verify_schema(connection)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check-only', action='store_true', help='Verify existing columns and migration versions without DDL or data writes')
+    parser.add_argument('--connection-only', action='store_true', help='Verify PostgreSQL login without requiring or modifying the application schema')
     args = parser.parse_args()
+    if args.check_only and args.connection_only:
+        parser.error('--check-only and --connection-only cannot be combined')
     try:
-        print(json.dumps(setup_database(check_only=args.check_only)))
+        print(json.dumps(setup_database(check_only=args.check_only, connection_only=args.connection_only)))
     except Exception as exc:
         # Driver exception strings can contain connection details. Emit only a
         # SQLSTATE-based action and DEPO-authored RuntimeError messages.

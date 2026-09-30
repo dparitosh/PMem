@@ -145,17 +145,29 @@ local label such as `DEPO PostgreSQL (remote)` for the General > Name field.
 Open **Tools > Query Tool** and run these read-only checks:
 
 ```sql
-SELECT current_database(), current_user, current_schema();
+SELECT current_database(), current_user;
+SELECT has_schema_privilege(current_user, 'semantic', 'USAGE, CREATE') AS can_migrate_semantic;
 SELECT table_schema, table_name
 FROM information_schema.tables
 WHERE table_schema = 'semantic'
 ORDER BY table_name;
 ```
 
-The first query must show `depo`, `depo_app`, and the expected schema. The
-second confirms that the application schema is reachable. A pgAdmin connection
+The first query must show `depo` and `depo_app`; the privilege query must return
+`true`. pgAdmin may report `public` for `current_schema()` because it does not
+use DEPO's runtime search path. The table query confirms that the application
+schema is reachable. A pgAdmin connection
 proves PostgreSQL network access and credentials only; continue with the ODBC
 test below when another Windows application requires ODBC.
+
+On the application VM, test the **actual DEPO URL** before migration:
+
+```powershell
+.\infra\postgres\test-postgres-connectivity.ps1 -EnvFile .env.local
+```
+
+Success reports the database and login. A failed check reports a sanitized
+PostgreSQL error category without printing the URL or password.
 
 ### 1.1.2 Install and test the PostgreSQL ODBC driver on a 64-bit Windows VM
 
@@ -177,24 +189,15 @@ the customer root CA if TLS is required. For an approved private non-TLS setup,
 set SSL mode to `disable`. Use a System DSN for a Windows service. Do not
 export the DSN with a plaintext password.
 
-Test the DSN without putting the password in command history:
+Test the System DSN without putting the password in command history:
 
 ```powershell
-$secure = Read-Host 'PostgreSQL password' -AsSecureString
-$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-$plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
-try {
-  $cn = [System.Data.Odbc.OdbcConnection]::new("DSN=DEPO_PG_REMOTE;UID=depo_app;PWD=$plain;")
-  $cn.Open(); $cmd = $cn.CreateCommand()
-  $cmd.CommandText = 'select current_database(), current_user, current_schema()'
-  $reader = $cmd.ExecuteReader()
-  while ($reader.Read()) { '{0} / {1} / {2}' -f $reader.GetValue(0), $reader.GetValue(1), $reader.GetValue(2) }
-  $reader.Close(); $cn.Close()
-} finally {
-  $plain = $null
-  if ($ptr -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
-}
+.\infra\postgres\test-postgres-odbc.ps1 -Dsn DEPO_PG_REMOTE -User depo_app
 ```
+
+The script checks for a 64-bit driver and System DSN, prompts for the password,
+and safely escapes connection string characters such as semicolons. It reports
+the connected database and user. It does not require DEPO tables to exist.
 
 The DEPO backend uses `DEPO_DATABASE_URL` through `psycopg`; ODBC is optional
 for external Windows tools. If no driver appears, check that the 64-bit driver
@@ -1540,10 +1543,6 @@ GRANT CONNECT ON DATABASE depo TO depo_app;
 GRANT USAGE, CREATE ON SCHEMA semantic TO depo_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA semantic TO depo_app;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA semantic TO depo_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO depo_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
-  GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO depo_app;
 ```
 
 The DBA/admin login owns this one-time provisioning step. Run DEPO services

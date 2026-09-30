@@ -47,16 +47,19 @@ GRANT CONNECT ON DATABASE depo TO depo_app;
 GRANT USAGE, CREATE ON SCHEMA semantic TO depo_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA semantic TO depo_app;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA semantic TO depo_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO depo_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
-  GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO depo_app;
 ```
 
 If the schema does not exist, the administrator should first run
 `CREATE SCHEMA semantic AUTHORIZATION depo_app;`. The migration command emits a
 sanitized `sqlstate` and a corrective `action` when authentication, networking,
 privileges, existing data, or untracked objects prevent an upgrade.
+
+On the application VM, confirm the actual `DEPO_DATABASE_URL` can log in
+before running DDL. This check works even when the schema is still empty:
+
+```powershell
+.\infra\postgres\test-postgres-connectivity.ps1 -EnvFile .env.local
+```
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\postgres\update-postgres-schema.ps1 -EnvFile .env.local

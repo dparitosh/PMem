@@ -74,6 +74,24 @@ def test_check_only_never_migrates(monkeypatch, check_only):
     assert privileges.call_count == (0 if check_only else 1)
 
 
+def test_connection_only_does_not_touch_schema(monkeypatch):
+    conn = MagicMock()
+    cursor = conn.cursor.return_value.__enter__.return_value
+    cursor.fetchone.return_value = ('depo', 'depo_app')
+    driver = MagicMock()
+    driver.connect.return_value.__enter__.return_value = conn
+    monkeypatch.setitem(sys.modules, 'psycopg', driver)
+    monkeypatch.setenv('DEPO_DATABASE_URL', 'postgresql://fixture')
+    initialize, migrate = MagicMock(), MagicMock()
+    monkeypatch.setattr(setup, 'initialise_schema', initialize)
+    monkeypatch.setattr(setup, 'apply_migrations', migrate)
+    result = setup.setup_database(connection_only=True)
+    assert result['check'] == 'connectivity'
+    assert (result['database'], result['user']) == ('depo', 'depo_app')
+    initialize.assert_not_called()
+    migrate.assert_not_called()
+
+
 def test_failure_action_classifies_postgres_errors_without_exception_text():
     class DatabaseError(Exception):
         sqlstate = '28P01'
@@ -87,6 +105,13 @@ def test_failure_action_classifies_postgres_errors_without_exception_text():
 def test_failure_action_reports_safe_application_errors():
     failure = setup._failure_action(RuntimeError('migration history mismatch'))
     assert failure['reason'] == 'migration history mismatch'
+
+
+def test_failure_action_classifies_hba_error_without_connection_details():
+    failure = setup._failure_action(Exception('no pg_hba.conf entry for host 10.1.2.3 password=secret'))
+    assert 'pg_hba.conf' in failure['action']
+    assert '10.1.2.3' not in str(failure)
+    assert 'secret' not in str(failure)
 
 
 def test_migration_privileges_rejected_with_schema_name(monkeypatch):
@@ -107,6 +132,16 @@ def test_invalid_schema_rejected(monkeypatch):
 def test_migration_versions_are_unique():
     versions = [version for version, _name, _statements in postgres_migrations.MIGRATIONS]
     assert len(versions) == len(set(versions))
+
+
+def test_newer_database_is_rejected_before_running_migration_ddl(monkeypatch):
+    conn = MagicMock()
+    cursor = conn.cursor.return_value.__enter__.return_value
+    cursor.fetchall.return_value = [(999, 'future_release')]
+    with pytest.raises(RuntimeError, match='newer than or unknown'):
+        postgres_migrations.apply_migrations(conn)
+    statements = [call.args[0] for call in cursor.execute.call_args_list]
+    assert not any('CREATE TABLE IF NOT EXISTS depo_registry' in sql for sql in statements)
 
 
 @pytest.mark.parametrize(('configured', 'expected'), [('1', 1), ('60', 60), ('10', 10)])
