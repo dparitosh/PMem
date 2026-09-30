@@ -5,6 +5,7 @@ from .router import router
 from .api.ontology_browser import router as ontology_browser_router
 from backend.Services.unified_import_router import ontology_router as compatibility_ontology_router
 from backend.Services.unified_import_router import router as compatibility_import_router
+from backend.Services.documents_api import router as documents_router
 from fastapi import Depends
 from .router import _ingestion_identity
 
@@ -25,6 +26,7 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Import workflow", "/api/v1/import/upload", "POST", "Upload and run the existing tracked import workflow"),
         ServiceCapability("Governed instance import", "/api/v1/governed-import", "POST", "Route STEP/AP242, ReqIF, QIF, or PLMXML into an approved semantic data job"),
         ServiceCapability("Import task", "/api/v1/import/status/{task_id}", description="Read tracked import workflow status"),
+        ServiceCapability("Document evidence jobs", "/api/v1/documents/jobs", "POST", "Create a governed OCR and document-evidence job"),
         ServiceCapability("Ontology upload compatibility", "/api/v1/ontology/upload", "POST", "Upload an ontology artifact through the ingestion boundary"),
     ],
 ))
@@ -35,3 +37,4 @@ app.include_router(ontology_browser_router, prefix="/api/v1")
 # retired aggregate server, while new engineering workflows use router.py.
 app.include_router(compatibility_import_router, prefix="/api/v1", dependencies=[Depends(_ingestion_identity)])
 app.include_router(compatibility_ontology_router, prefix="/api/v1", dependencies=[Depends(_ingestion_identity)])
+app.include_router(documents_router, prefix="/api/v1", dependencies=[Depends(_ingestion_identity)])

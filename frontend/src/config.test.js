@@ -81,6 +81,7 @@ test('routes published service contracts to their owning local service', () => {
   expect(getServiceForPath('/api/v1/ontology/registered')).toBe('ingestion');
   expect(getServiceForPath('/api/v1/ontology/ap242/taxonomy')).toBe('ingestion');
   expect(getServiceForPath('/api/v1/ap242/inspect')).toBe('ingestion');
+  expect(getServiceForPath('/api/v1/documents/jobs')).toBe('ingestion');
   expect(getServiceForPath('/api/v1/reports/xsd-relational')).toBe('ingestion');
   expect(getServiceForPath('/api/v1/oslc/health')).toBe('oslc');
   expect(getServiceForPath('/api/v1/ceim/contract')).toBe('ceim');
