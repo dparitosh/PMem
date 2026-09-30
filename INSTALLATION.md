@@ -1526,18 +1526,27 @@ Do not run `Start-Service` for PostgreSQL on the application VM.
 
 ### 4.4 Serve the frontend
 
-The installer creates static files in `frontend\dist`. For a smoke test only,
-serve them locally with the already-installed backend Python runtime. This
-command does not download an additional npm package:
+The installer creates static files in `frontend\dist`. Start the local frontend
+with the supplied lifecycle script. It uses the already-installed backend
+Python runtime, records a PID, checks for a conflicting port, verifies the
+rendered application shell, and does not download another npm package:
 
 ```powershell
-.\backend\.dt_venv\Scripts\python.exe -m http.server 3000 --bind 127.0.0.1 --directory .\frontend\dist
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\start-depo-frontend.ps1
 ```
 
 Open `http://127.0.0.1:3000` in a browser and confirm the DEPO landing page
-loads. For a customer release, copy or mount `frontend\dist` into the approved
-HTTPS web server document root and configure the single-page-application fallback
-to `index.html`.
+loads. Stop that local frontend with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\stop-depo-frontend.ps1
+```
+
+For a customer release, copy or mount `frontend\dist` into the approved HTTPS
+web server document root and configure the single-page-application fallback to
+`index.html`. The local script is intended for installation verification and a
+controlled demonstration; use the customer web server for unattended service,
+TLS, restart recovery, and external access.
 
 ### 4.5 Configure the customer gateway
 

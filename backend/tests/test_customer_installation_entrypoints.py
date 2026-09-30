@@ -19,6 +19,19 @@ def test_customer_entrypoints_exist_and_guide_does_not_expose_internal_lifecycle
     assert "-File .\\infra\\deployment\\invoke-depo-lifecycle.ps1" not in guide
 
 
+def test_windows_frontend_has_documented_start_and_stop_lifecycle():
+    windows = ROOT / "infra" / "windows"
+    for name in ("start-depo-frontend.ps1", "stop-depo-frontend.ps1"):
+        assert (windows / name).is_file(), name
+    start = (windows / "start-depo-frontend.ps1").read_text(encoding="utf-8")
+    assert "frontend\\dist" in start
+    assert "frontend.pid" in start
+    assert "Get-NetTCPConnection" in start
+    guide = (ROOT / "INSTALLATION.md").read_text(encoding="utf-8")
+    assert "-File .\\infra\\windows\\start-depo-frontend.ps1" in guide
+    assert "-File .\\infra\\windows\\stop-depo-frontend.ps1" in guide
+
+
 def test_installer_provisions_neo4j_before_start_and_runs_read_only_preflight_afterward():
     installer = (ROOT / "infra" / "windows" / "install-depo-windows.ps1").read_text(encoding="utf-8")
     provision = installer.index("test-depo-neo4j.ps1') -EnvFile $envPath -Bootstrap")
