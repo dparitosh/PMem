@@ -7,9 +7,9 @@ const serviceUrl = (service, path) => buildSemanticServiceUrl(service, path);
 
 function Detail({ label, value }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12, padding: '4px 0' }}>
-      <span style={{ color: '#52606d' }}>{label}</span>
-      <span style={{ fontWeight: 700, textAlign: 'right' }}>{value}</span>
+    <div className="depo-card-detail">
+      <span className="depo-card-detail__label">{label}</span>
+      <span className="depo-card-detail__value">{value}</span>
     </div>
   );
 }
@@ -40,8 +40,8 @@ export default function ServiceIntegrationPanel() {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <section aria-label="Platform service integrations" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 12, margin: '12px 0' }}>
-      <IxCard variant="outline">
+    <section aria-label="Platform service integrations" className="depo-service-integrations">
+      <IxCard variant="outline" className="depo-service-card">
         <IxCardTitle>OSLC integration</IxCardTitle>
         <IxCardContent>
           <Detail label="Service" value={state.oslc?.status || (state.loading ? 'Checking' : 'Unavailable')} />
@@ -49,14 +49,14 @@ export default function ServiceIntegrationPanel() {
           <Detail label="Remote provider" value={state.oslc?.remote_configured ? 'Configured' : 'Not configured'} />
         </IxCardContent>
       </IxCard>
-      <IxCard variant="outline">
+      <IxCard variant="outline" className="depo-service-card">
         <IxCardTitle>Data Catalog</IxCardTitle>
         <IxCardContent>
           <Detail label="Governed products" value={state.catalog?.count ?? '—'} />
           <Detail label="Endpoint" value="Catalog service" />
         </IxCardContent>
       </IxCard>
-      <IxCard variant="outline">
+      <IxCard variant="outline" className="depo-service-card">
         <IxCardTitle>Data Products</IxCardTitle>
         <IxCardContent>
           <Detail label="Published packages" value={state.products?.products?.length ?? '—'} />
@@ -64,7 +64,7 @@ export default function ServiceIntegrationPanel() {
           <IxButton variant="tertiary" onClick={load} disabled={state.loading}>Refresh integrations</IxButton>
         </IxCardContent>
       </IxCard>
-      {state.error && <div role="status" style={{ gridColumn: '1 / -1', color: '#b12704', fontSize: 12 }}>{state.error}</div>}
+      {state.error && <div role="status" className="depo-service-integrations__error">{state.error}</div>}
     </section>
   );
 }

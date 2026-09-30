@@ -16,6 +16,7 @@ html[data-ix-color-schema='dark'] { color-scheme: dark; }
   --ui-primary: #005a9c;
   --ui-primary-dark: #003f73;
   --ui-danger: #b42318;
+  --ui-warning: #8a5a00;
   --ui-surface: #ffffff;
   --ui-page: #f4f8fb;
   --ui-border: #d9e2ec;
@@ -29,6 +30,7 @@ html[data-ix-color-schema='dark'] {
   --ui-primary: #4db3ff;
   --ui-primary-dark: #8acbff;
   --ui-danger: #ff8a80;
+  --ui-warning: #ffd166;
   --ui-surface: #1f2933;
   --ui-page: #111820;
   --ui-border: #44515e;
@@ -85,6 +87,37 @@ html[data-ix-color-schema='dark'] textarea {
 html[data-ix-color-schema='dark'] .chat-messages {
   background-color: var(--ui-page) !important;
   color: var(--ui-text) !important;
+}
+
+/* Slotted IX content inherits from the custom-element host. Keep every card
+   bounded by its grid cell and make foreground colors follow the active IX
+   schema, including legacy pages that still emit common light-theme inline
+   colors. */
+ix-card,
+ix-card-content,
+ix-card-title {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--ui-text);
+  overflow-wrap: anywhere;
+}
+
+html[data-ix-color-schema='dark'] :where(.depo-page, .depo-ix-page)
+  :is(div, span, p, strong, small, label)[style*='color: rgb(82, 96, 109)'],
+html[data-ix-color-schema='dark'] :where(.depo-page, .depo-ix-page)
+  :is(div, span, p, strong, small, label)[style*='color: rgb(51, 78, 104)'],
+html[data-ix-color-schema='dark'] :where(.depo-page, .depo-ix-page)
+  :is(div, span, p, strong, small, label)[style*='color: rgb(31, 41, 51)'],
+html[data-ix-color-schema='dark'] :where(.depo-page, .depo-ix-page)
+  :is(div, span, p, strong, small, label)[style*='color: rgb(44, 44, 44)'] {
+  color: var(--ui-text) !important;
+}
+
+html[data-ix-color-schema='dark'] :where(.depo-page, .depo-ix-page)
+  :is(div, span, p, small, label)[style*='color: rgb(127, 140, 141)'],
+html[data-ix-color-schema='dark'] :where(.depo-page, .depo-ix-page)
+  :is(div, span, p, small, label)[style*='color: rgb(149, 165, 166)'] {
+  color: var(--ui-muted) !important;
 }
 
 *,

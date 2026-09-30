@@ -70,6 +70,69 @@ html[data-ix-color-schema='dark'] .depo-table th { background: #263441; color: v
 html[data-ix-color-schema='dark'] .depo-table tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.035); }
 html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(77, 179, 255, 0.12); }
 
+.depo-service-integrations {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
+  align-items: stretch;
+  gap: 12px;
+  margin: 12px 0;
+  min-width: 0;
+}
+
+.depo-service-card {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  color: var(--ui-text);
+}
+
+.depo-service-card ix-card-content {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.depo-card-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: start;
+  gap: 8px 12px;
+  min-width: 0;
+  padding: 5px 0;
+  color: var(--ui-text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.depo-card-detail__label {
+  min-width: 0;
+  color: var(--ui-muted);
+  overflow-wrap: anywhere;
+}
+
+.depo-card-detail__value {
+  min-width: 0;
+  max-width: 16rem;
+  color: var(--ui-text);
+  font-weight: 700;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.depo-service-integrations__error {
+  grid-column: 1 / -1;
+  color: var(--ui-danger);
+  font-size: 12px;
+}
+
+@media (max-width: 420px) {
+  .depo-card-detail { grid-template-columns: minmax(0, 1fr); }
+  .depo-card-detail__value { max-width: none; text-align: left; }
+}
+
 .depo-rail {
   grid-row: 1 / span 2;
   background: #132b42;
