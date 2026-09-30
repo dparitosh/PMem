@@ -47,6 +47,15 @@ $required = @("DEPO_DATABASE_URL", "DEPO_DATABASE_SCHEMA", "AUTH_MODE", "NEO4J_U
 $neo4jAuthMode = if ($values.NEO4J_AUTH_MODE) { $values.NEO4J_AUTH_MODE } else { 'token' }
 if ($neo4jAuthMode -ne 'none') { $required += @('NEO4J_USER', 'NEO4J_PASS') }
 foreach ($name in $required) { if (-not $values[$name] -or $values[$name] -match '<.*>') { throw "Missing customer value for $name in $path" } }
+$allowedOrigins = @($values.ALLOWED_ORIGINS.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+foreach ($origin in $allowedOrigins) {
+  $parsedOrigin = $null
+  if (-not [Uri]::TryCreate($origin, [UriKind]::Absolute, [ref]$parsedOrigin) -or
+      $parsedOrigin.Scheme -notin @('http','https') -or
+      $parsedOrigin.GetLeftPart([UriPartial]::Authority) -ne $origin) {
+    throw "Invalid ALLOWED_ORIGINS entry '$origin'. Use an exact origin such as http://127.0.0.1:3000 with no path or trailing slash."
+  }
+}
 if ($Profile -eq "Production") {
   if ($values.AUTH_MODE -notin @('token', 'entra')) { throw 'Production requires API-key authentication (AUTH_MODE=token) or a configured gateway identity profile.' }
   if ($values.ALLOWED_ORIGINS -match "localhost|127\.0\.0\.1") { throw "Production ALLOWED_ORIGINS must not use a loopback host." }
@@ -78,10 +87,18 @@ if (-not $SkipEndpointChecks) {
   if ($hostName -in @('0.0.0.0','::')) { $hostName = '127.0.0.1' }
   if ($hostName.Contains(':') -and -not $hostName.StartsWith('[')) { $hostName = '[' + $hostName + ']' }
   foreach ($service in $manifest.services) {
+    $corsChecked = $false
     foreach ($endpoint in $manifest.contract_endpoints) {
       $uri = "http://${hostName}:$($service.port)$endpoint"
-      try { $response = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 10 } catch { throw "$($service.id) did not respond at ${uri}: $($_.Exception.Message)" }
+      try { $response = Invoke-WebRequest -Uri $uri -Headers @{ Origin = $allowedOrigins[0] } -UseBasicParsing -TimeoutSec 10 } catch { throw "$($service.id) did not respond at ${uri}: $($_.Exception.Message)" }
       if ($response.StatusCode -ne 200) { throw "$($service.id) returned HTTP $($response.StatusCode) for $endpoint" }
+      if (-not $corsChecked) {
+        $corsOrigin = [string]$response.Headers['Access-Control-Allow-Origin']
+        if ($corsOrigin -ne $allowedOrigins[0]) {
+          throw "$($service.id) is running without ALLOWED_ORIGINS=$($allowedOrigins[0]). Restart the DEPO services after editing .env.local."
+        }
+        $corsChecked = $true
+      }
     }
     $openapi = Invoke-RestMethod -Uri "http://${hostName}:$($service.port)/openapi.json" -TimeoutSec 10
     if ($openapi.openapi -ne "3.0.3") { throw "$($service.id) is not publishing OpenAPI 3.0.3." }

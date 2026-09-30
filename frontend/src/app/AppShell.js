@@ -85,7 +85,6 @@ export default function AppShell({
           <IxButton
             type="button"
             variant="tertiary"
-            icon="key"
             onClick={() => {
               setApiKey(getServiceAuthToken());
               setShowApiAccess(true);

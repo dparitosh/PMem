@@ -1591,6 +1591,26 @@ authentication step before opening a data page:
    requests return HTTP 200. The key exists only in the current browser tab's
    memory; a full reload clears it, so repeat this step after reloading.
 
+If `ALLOWED_ORIGINS` was edited after the services started, restart every
+backend service before opening the UI. Environment-file changes cannot alter
+an already-running Python process:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Stop -EnvFile .env.local
+powershell -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Start -EnvFile .env.local -Profile Bootstrap -SkipPostgres
+```
+
+Verify that a service returns the configured CORS header:
+
+```powershell
+$response = Invoke-WebRequest -UseBasicParsing `
+  -Uri http://127.0.0.1:8011/api/v1/ontologies/health `
+  -Headers @{ Origin = 'http://127.0.0.1:3000' }
+$response.Headers['Access-Control-Allow-Origin']
+```
+
+The final command must print `http://127.0.0.1:3000`.
+
 Never put `GRAPH_READ_TOKEN` in `frontend\.env.local` or a `VITE_*` setting.
 The API access control is for a controlled direct-service installation. A
 customer gateway must authenticate browser requests and keep backend service
@@ -1720,7 +1740,7 @@ set in this order from the repository root:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Stop -EnvFile .env.local
-powershell -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Start -EnvFile .env.local -Profile Production -SkipPostgres
+powershell -NoProfile -ExecutionPolicy Bypass -File .\manage-depo.ps1 -Action Start -EnvFile .env.local -Profile Bootstrap -SkipPostgres
 ```
 
 `-SkipPostgres` means “do not operate a local PostgreSQL process”; database
