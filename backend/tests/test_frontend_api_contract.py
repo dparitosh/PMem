@@ -2,7 +2,7 @@ import importlib.util
 from pathlib import Path
 
 
-def test_frontend_endpoint_defaults_match_openapi_or_external_service():
+def test_frontend_endpoint_defaults_match_published_service_contracts():
     root = Path(__file__).resolve().parents[2]
     script = root / "scripts" / "frontend_api_contract.py"
     spec = importlib.util.spec_from_file_location("frontend_api_contract", script)
@@ -14,5 +14,5 @@ def test_frontend_endpoint_defaults_match_openapi_or_external_service():
 
     assert report["status"] == "pass", report["unclassified"]
     assert report["matched_backend_endpoint_count"] == report["configured_backend_endpoint_count"]
-    assert report["external_agentic_endpoint_count"] >= 15
-    assert report["service_contract_count"] == 9
+    assert report["external_agentic_endpoint_count"] == 0
+    assert report["service_contract_count"] == 10

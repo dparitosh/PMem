@@ -36,19 +36,12 @@ def _endpoint_defaults(block: str) -> set[str]:
 def classify_contract() -> dict[str, Any]:
     config_text = CONFIG_PATH.read_text(encoding="utf-8")
     configured = _endpoint_defaults(config_text)
-    def named_block(name: str) -> set[str]:
-        match = re.search(rf"const {name}\s*=\s*\{{(?P<body>.*?)\n\}};", config_text, flags=re.DOTALL)
-        return _endpoint_defaults(match.group("body")) if match else set()
-
-    # Agentic calls use their own opt-in client and configuration guard, so
-    # retain their separate classification while auditing every other UI
-    # endpoint against the independently deployed service contracts.
-    external = named_block("AGENTIC_ENDPOINTS") | named_block("CHAT_ENDPOINTS")
+    # Agentic is one of the ten mandatory standalone services and is audited
+    # against its published OpenAPI contract like every other service.
+    external: set[str] = set()
     manifest = json.loads(SERVICE_MANIFEST_PATH.read_text(encoding="utf-8"))
     service_contracts: dict[str, set[str]] = {}
     for item in manifest.get("services", []):
-        if item.get("id") == "agentic":
-            continue
         module_name, app_name = str(item["module"]).split(":", 1)
         app = getattr(importlib.import_module(module_name), app_name)
         service_contracts[str(item["id"])] = set(app.openapi()["paths"])
@@ -87,7 +80,7 @@ def main() -> int:
             f"{report['status'].upper()}: {report['matched_backend_endpoint_count']}/"
             f"{report['configured_backend_endpoint_count']} backend endpoint defaults match "
             f"{report['openapi_path_count']} OpenAPI paths; "
-            f"{report['external_agentic_endpoint_count']} agentic endpoints are external."
+            f"{report['service_contract_count']} standalone service contracts loaded."
         )
         for path in report["unclassified"]:
             print(f"UNCLASSIFIED {path}")

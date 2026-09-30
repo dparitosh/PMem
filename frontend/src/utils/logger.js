@@ -3,8 +3,12 @@
  * Disables verbose logging in production, keeps it in development
  */
 
-const isDevelopment = process.env.NODE_ENV === 'development';
-const isVerboseLoggingEnabled = process.env.REACT_APP_VERBOSE_LOGS === 'true';
+const viteEnv = import.meta.env || {};
+const processEnv = typeof process !== 'undefined' && process.env ? process.env : {};
+const isDevelopment = viteEnv.DEV === true || processEnv.NODE_ENV === 'development';
+const isVerboseLoggingEnabled = String(
+  viteEnv.VITE_VERBOSE_LOGS ?? viteEnv.REACT_APP_VERBOSE_LOGS ?? processEnv.REACT_APP_VERBOSE_LOGS ?? '',
+).toLowerCase() === 'true';
 const canDebugLog = isDevelopment && isVerboseLoggingEnabled;
 
 export const logger = {
