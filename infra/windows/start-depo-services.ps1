@@ -127,11 +127,10 @@ if (-not $SkipPostgres -and $env:DEPO_POSTGRES_MODE -ne 'external') {
   }
 }
 
-Push-Location $root
-try {
-  & $python -m backend.depo_platform.database_setup
-  if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL migration/column verification failed.' }
-} finally { Pop-Location }
+# Use the same reviewed migration entry point as schema-only upgrades. This
+# preserves the SQLSTATE-based corrective action and guarantees startup stops
+# before any service process is created when the database is incompatible.
+& (Join-Path $PSScriptRoot 'initialize-depo-schema.ps1') -EnvFile $EnvFile
 
 $stateDir = Join-Path $root "logs\windows-services"
 New-Item -ItemType Directory -Path $stateDir -Force | Out-Null

@@ -38,13 +38,33 @@ Provision the database/login/schema first using [INSTALLATION.md](../../INSTALLA
 install backend dependencies, and configure root `.env.local`. Back up existing
 customer data before an upgrade. With the database already running:
 
+The application role must be able to connect and migrate its dedicated schema.
+Run this once as the PostgreSQL administrator in pgAdmin Query Tool, replacing
+`depo_app` and `semantic` when the customer uses different names:
+
+```sql
+GRANT CONNECT ON DATABASE depo TO depo_app;
+GRANT USAGE, CREATE ON SCHEMA semantic TO depo_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA semantic TO depo_app;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA semantic TO depo_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO depo_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
+  GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO depo_app;
+```
+
+If the schema does not exist, the administrator should first run
+`CREATE SCHEMA semantic AUTHORIZATION depo_app;`. The migration command emits a
+sanitized `sqlstate` and a corrective `action` when authentication, networking,
+privileges, existing data, or untracked objects prevent an upgrade.
+
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\postgres\update-postgres-schema.ps1 -EnvFile .env.local
 if ($LASTEXITCODE -ne 0) { throw 'Migration or schema verification failed.' }
 ```
 
 This applies pending migrations and checks 8 tables plus 1 view, all 40 column
-names/types, 11 critical constraints, 4 operational indexes, and recorded
+names/types, 15 critical constraints, 4 operational indexes, and recorded
 migration versions. It does not create the PostgreSQL
 server, login or database, and does not erase data. Start and ReleasePreflight
 also run this migration/verification step. A check failure stops startup; do not

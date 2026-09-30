@@ -1530,6 +1530,25 @@ service ports directly to the browser or the public network.
 
 ### 4.3 Verify the PostgreSQL schema
 
+Before the first migration, open pgAdmin Query Tool as the PostgreSQL
+administrator and grant the dedicated DEPO role access. Replace the example
+role/schema if `.env.local` uses different values:
+
+```sql
+CREATE SCHEMA IF NOT EXISTS semantic AUTHORIZATION depo_app;
+GRANT CONNECT ON DATABASE depo TO depo_app;
+GRANT USAGE, CREATE ON SCHEMA semantic TO depo_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA semantic TO depo_app;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA semantic TO depo_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO depo_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA semantic
+  GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO depo_app;
+```
+
+The DBA/admin login owns this one-time provisioning step. Run DEPO services
+with the `depo_app` login rather than PostgreSQL's `postgres` administrator.
+
 For a remote deployment, use pgAdmin Query Tool on the PostgreSQL VM or admin
 workstation, connected to database `depo`. For a local deployment, use pgAdmin
 on the application VM. Run:

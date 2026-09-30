@@ -25,7 +25,7 @@ def test_schema_contract(monkeypatch):
     result = setup.verify_schema(connection())
     assert result['schema'] == 'customer'
     assert result['columns_checked'] == 40
-    assert result['constraints_checked'] == 11
+    assert result['constraints_checked'] == 15
     assert result['indexes_checked'] == 4
     assert result['migration_versions'] == [1, 2, 3, 4, 5, 6]
 
@@ -66,9 +66,36 @@ def test_check_only_never_migrates(monkeypatch, check_only):
     monkeypatch.setenv('DEPO_DATABASE_URL', 'postgresql://fixture')
     initialize, migrate = MagicMock(), MagicMock()
     monkeypatch.setattr(setup, 'initialise_schema', initialize)
+    privileges = MagicMock()
+    monkeypatch.setattr(setup, 'verify_migration_privileges', privileges)
     monkeypatch.setattr(setup, 'apply_migrations', migrate)
     assert setup.setup_database(check_only=check_only)['status'] == 'ok'
     assert initialize.call_count == migrate.call_count == (0 if check_only else 1)
+    assert privileges.call_count == (0 if check_only else 1)
+
+
+def test_failure_action_classifies_postgres_errors_without_exception_text():
+    class DatabaseError(Exception):
+        sqlstate = '28P01'
+
+    failure = setup._failure_action(DatabaseError('password=must-not-leak'))
+    assert failure['sqlstate'] == '28P01'
+    assert 'password' in failure['action'].lower()
+    assert 'reason' not in failure
+
+
+def test_failure_action_reports_safe_application_errors():
+    failure = setup._failure_action(RuntimeError('migration history mismatch'))
+    assert failure['reason'] == 'migration history mismatch'
+
+
+def test_migration_privileges_rejected_with_schema_name(monkeypatch):
+    monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'semantic')
+    conn = MagicMock()
+    cursor = conn.cursor.return_value.__enter__.return_value
+    cursor.fetchone.return_value = (True, False)
+    with pytest.raises(RuntimeError, match="schema 'semantic'"):
+        setup.verify_migration_privileges(conn)
 
 
 def test_invalid_schema_rejected(monkeypatch):
