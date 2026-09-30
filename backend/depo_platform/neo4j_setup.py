@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 SCHEMA_FILE = Path(__file__).resolve().parents[2] / "infra" / "deployment" / "neo4j-publication-index.cypher"
-REQUIRED_CONSTRAINTS = {"uq_ontologyresource_identity", "uq_ontologypublication_identity"}
+REQUIRED_CONSTRAINTS = {"uq_ontologyresource_identity", "uq_ontologypublication_identity", "depo_bridge_publication_id"}
 
 
 def _statements(text: str) -> list[str]:

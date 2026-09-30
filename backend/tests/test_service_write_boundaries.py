@@ -32,6 +32,16 @@ def test_modeling_and_metadata_writes_reject_missing_token(monkeypatch):
     assert client.post("/api/v1/metadata-registry/assets", json={}).status_code == 403
 
 
+def test_modeling_reads_require_graph_read_token(monkeypatch):
+    monkeypatch.setenv("AUTH_MODE", "token")
+    monkeypatch.setenv("GRAPH_READ_TOKEN", "graph-read-secret")
+    client = TestClient(ontology_app)
+    assert client.get("/api/v1/modeling/graph").status_code == 403
+    # The metamodel is static and exercises the authenticated GET path without
+    # requiring a live graph database.
+    assert client.get("/api/v1/modeling/metamodel", headers={"Authorization": "Bearer graph-read-secret"}).status_code == 200
+
+
 def test_ingestion_write_rejects_missing_token(monkeypatch):
     monkeypatch.setenv("AUTH_MODE", "token")
     monkeypatch.setenv("INGESTION_WRITE_TOKEN", "ingestion-secret")

@@ -76,14 +76,22 @@ def _resolve_ontology_path(ontology_path: str, ontology_id: str | None) -> str:
     from backend.Services.ontology_upload_manager import OntologyUploadManager
     record = OntologyUploadManager.get_ontology(ontology_id)
     metadata = record.get("metadata") if record.get("status") == "success" else None
-    path = str((metadata or {}).get("file_path") or "")
+    metadata = metadata or {}
+    source = str(metadata.get("file_path") or "")
+    # An uploaded XSD or other source artifact may have a generated RDF/OWL
+    # representation. Review that representation, not the non-RDF source.
+    supported = {".owl", ".rdf", ".xml", ".ttl", ".nt", ".n3", ".jsonld"}
+    generated = str(metadata.get("owl_file_path") or "")
+    path = generated or (source if Path(source).suffix.lower() in supported else "")
     if not path:
         raise ValueError("The selected ontology has no readable source artifact")
     return path
 
 
 def _instance_metadata(import_task_id: str | None, supplied: dict[str, Any] | None) -> dict[str, Any]:
-    if supplied:
+    if supplied is not None:
+        if not isinstance(supplied, dict):
+            raise ValueError("instance_metadata must be an object")
         return supplied
     if not import_task_id:
         return {}
@@ -113,7 +121,10 @@ def _instance_metadata(import_task_id: str | None, supplied: dict[str, Any] | No
 
 
 def review_ontology(ontology_path: str) -> dict[str, Any]:
-    summary = inspect_ontology(ontology_path)
+    return _review_summary(inspect_ontology(ontology_path))
+
+
+def _review_summary(summary: dict[str, Any]) -> dict[str, Any]:
     issues = []
     if not summary["classes"]:
         issues.append({"severity": "high", "code": "NO_CLASSES", "message": "No OWL classes were detected."})
@@ -128,7 +139,8 @@ def review_ontology(ontology_path: str) -> dict[str, Any]:
     return {"summary": summary, "issues": issues, "status": "review_required" if issues else "ready"}
 
 
-def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = None) -> dict[str, Any]:
+def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = None,
+                ontology_summary: dict[str, Any] | None = None) -> dict[str, Any]:
     if not isinstance(instance_metadata, dict):
         raise ValueError("instance_metadata must be an object")
     fields = ("entities", "attributes", "relationships", "metadata")
@@ -142,7 +154,7 @@ def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = N
         "metadata_to_annotation_or_provenance": len(instance_metadata.get("metadata") or []),
     }
     result: dict[str, Any] = {
-        "ontology_summary": inspect_ontology(ontology_path) if ontology_path else {},
+        "ontology_summary": ontology_summary if ontology_summary is not None else (inspect_ontology(ontology_path) if ontology_path else {}),
         "alignment_plan": plan,
         "required_validations": ["class_existence_check", "property_type_check", "domain_range_check", "approval_required"],
         "status": "ready_for_mapping",
@@ -179,10 +191,11 @@ def orchestrate(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"Unknown ontology agent workflow: {workflow_id}")
     ontology_path = _resolve_ontology_path(str(payload.get("ontology_path") or ""), str(payload.get("ontology_id") or "") or None)
     metadata = _instance_metadata(str(payload.get("import_task_id") or "") or None, payload.get("instance_metadata"))
-    steps = [{"agent": "ontology_intake_agent", "status": "completed", "result": inspect_ontology(ontology_path)}]
+    summary = inspect_ontology(ontology_path)
+    steps = [{"agent": "ontology_intake_agent", "status": "completed", "result": summary}]
     if workflow_id == "ontology_review":
-        steps.append({"agent": "ontology_structure_review_agent", "status": "completed", "result": review_ontology(ontology_path)})
-    steps.append({"agent": "semantic_bridge_planner_agent", "status": "completed", "result": plan_bridge(metadata, ontology_path)})
+        steps.append({"agent": "ontology_structure_review_agent", "status": "completed", "result": _review_summary(summary)})
+    steps.append({"agent": "semantic_bridge_planner_agent", "status": "completed", "result": plan_bridge(metadata, ontology_summary=summary)})
     return {"workflow_id": workflow_id, "steps": steps, "status": "completed", "publication": "requires_human_approval"}
 
 

@@ -119,7 +119,8 @@ apiClient.interceptors.request.use(
     // is kept in memory only; never read it from Vite build-time variables.
     if (isStandaloneServiceRequest(requestConfig.url)) {
       requestConfig.headers = requestConfig.headers || {};
-      Object.assign(requestConfig.headers, serviceAuthHeaders());
+      const explicit = requestConfig.headers.get?.('Authorization') || requestConfig.headers.Authorization;
+      if (!explicit) Object.assign(requestConfig.headers, serviceAuthHeaders());
     }
     if (adminApiKey && String(requestConfig.url || '').includes('/api/v1/admin/')) {
       requestConfig.headers = requestConfig.headers || {};
@@ -130,7 +131,6 @@ apiClient.interceptors.request.use(
       console.debug('[API] Request:', {
         method: requestConfig.method.toUpperCase(),
         url: requestConfig.url,
-        data: requestConfig.data,
       });
     }
     return requestConfig;
@@ -152,7 +152,6 @@ apiClient.interceptors.response.use(
       console.debug('[API] Response:', {
         status: response.status,
         url: response.config.url,
-        data: response.data,
       });
     }
     return response;

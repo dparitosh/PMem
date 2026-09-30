@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from backend.depo_platform.network import bounded_timeout_seconds
 from backend.mesh_store import PostgresRegistry
 
 
@@ -70,6 +71,8 @@ class BridgeJobs:
         return job
 
     def publish(self, preview_id, approved_ids, actor):
+        if not isinstance(preview_id, str) or not preview_id.startswith('bridge-preview-'):
+            raise ValueError('Select a saved Semantic Bridge preview before publication.')
         if not isinstance(approved_ids, list) or not approved_ids or not all(isinstance(x, str) for x in approved_ids):
             raise ValueError('Select at least one candidate from the saved preview.')
         if len(set(approved_ids)) != len(approved_ids):
@@ -121,6 +124,10 @@ class BridgeJobs:
             self.store.put(job_id, job)
             try:
                 receipt = self.graph.publish(command)
+            except BridgeConflict as exc:
+                job.update(status='stale', error=str(exc), updated_at=now())
+                self.store.put(job_id, job)
+                raise
             except Exception:
                 job.update(status='retryable', error='Publication response unavailable. Retry the same selection to reconcile its receipt.', updated_at=now())
                 self.store.put(job_id, job)
@@ -175,7 +182,7 @@ class GraphBridgeClient:
         # Existing peer configuration ends in /api/v1; graph routes own /graph.
         if base.endswith('/api/v1'):
             base = base[:-7]
-        with httpx.Client(timeout=120) as client:
+        with httpx.Client(timeout=bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180)) as client:
             response = client.request(method, base + '/api/v1/graph/bridge/' + path,
                                       headers={'Authorization': 'Bearer ' + token}, **kwargs)
         # A missing receipt is expected only for an idempotency lookup. A POST
@@ -183,6 +190,8 @@ class GraphBridgeClient:
         # recoverable publication response loss.
         if method == 'GET' and response.status_code == 404:
             return None
+        if method == 'POST' and response.status_code == 409:
+            raise BridgeConflict('Graph rejected the saved mapping because its source, target or publication state changed. Create a new preview.')
         response.raise_for_status()
         return response.json()
 

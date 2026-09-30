@@ -72,7 +72,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
     <h3>Preview → review → publish</h3>
     <p>Create a saved preview, select valid mappings, then approve publication. Nothing is selected automatically.</p>
     <details><summary>Bootstrap authentication (use gateway identity in production)</summary>
-      <p>Credentials are held only in this component’s memory. Do not use these fields on an untrusted connection.</p>
+      <p>Credentials stay in browser memory for this session; the read token also authorizes other service requests in this app. Use a trusted connection.</p>
       <label>Read token <input aria-label="Read token" type="password" autoComplete="off" value={readToken} onChange={e => { const value = e.target.value; setReadToken(value); setServiceAuthToken(value); }} /></label>{' '}
       <label>Approver <input aria-label="Approver" value={actor} onChange={e => setActor(e.target.value)} /></label>{' '}
       <label>Approval token <input aria-label="Approval token" type="password" autoComplete="off" value={approvalToken} onChange={e => setApprovalToken(e.target.value)} /></label>

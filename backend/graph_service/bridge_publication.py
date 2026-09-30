@@ -10,8 +10,12 @@ from backend.agentic_service.bridge_jobs import digest
 @contextmanager
 def session():
     from neo4j import GraphDatabase
-    with GraphDatabase.driver(os.environ['NEO4J_URI'], auth=(os.environ['NEO4J_USER'], os.environ['NEO4J_PASS'])) as driver:
-        with driver.session(database=os.environ['NEO4J_DATABASE']) as value:
+    from backend.depo_platform.neo4j_setup import _auth
+    uri = os.getenv('NEO4J_URI') or os.getenv('NEO4J_URL')
+    if not uri:
+        raise RuntimeError('NEO4J_URI is required for Semantic Bridge publication')
+    with GraphDatabase.driver(uri, auth=_auth(), connection_timeout=10) as driver:
+        with driver.session(database=os.getenv('NEO4J_DATABASE', 'neo4j')) as value:
             yield value
 
 
@@ -32,7 +36,12 @@ def publish(command):
         if not all(row.get(k) for k in ('candidate_id','import_id','import_row_key','ontology_class_element_id')) or row.get('target_ontology_type') not in {'Class','ObjectProperty','DatatypeProperty','AnnotationProperty'}:
             raise ValueError('Invalid approved mapping target or source.')
     with session() as graph:
-        graph.run('CREATE CONSTRAINT depo_bridge_publication_id IF NOT EXISTS FOR (p:DepoBridgePublication) REQUIRE p.publication_id IS UNIQUE').consume()
+        constraint = graph.run(
+            'SHOW CONSTRAINTS YIELD name WHERE name = $name RETURN count(*) AS found',
+            name='depo_bridge_publication_id',
+        ).single()
+        if not constraint or constraint['found'] != 1:
+            raise RuntimeError('Semantic Bridge publication constraint is missing. Run Neo4j schema provisioning before publishing.')
         return graph.execute_write(_publish_transaction, command)
 
 
@@ -56,6 +65,7 @@ def _publish_transaction(tx, command):
     written = tx.run('''UNWIND $rows AS row
         MATCH (n {import_row_key:row.import_row_key, import_id:row.import_id})
         MATCH (target) WHERE elementId(target)=row.ontology_class_element_id
+        AND (coalesce(row.target_ontology_iri,'')='' OR coalesce(target.iri,target.uri,target.resource_iri,'')=row.target_ontology_iri)
         MERGE (n)-[bridge:SEMANTICALLY_MAPPED_TO]->(target)
         SET bridge.mapping=row.mapping, bridge.ontology_term=row.ontology_term,
             bridge.target_ontology_type=row.target_ontology_type, bridge.source_type=row.source_type,

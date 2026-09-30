@@ -59,6 +59,39 @@ def test_ontology_agent_orchestrator_returns_reviewable_bridge_plan(monkeypatch,
     assert body["steps"][2]["result"]["alignment_plan"]["relationship_to_objectproperty"] == 1
 
 
+def test_ontology_orchestrator_reuses_one_artifact_snapshot(monkeypatch):
+    from backend.agentic_service import ontology_orchestrator as agents
+    summary = {"classes": 1, "object_properties": 1, "datatype_properties": 0,
+               "domain_edges": 1, "range_edges": 1, "individuals": 0}
+    calls = []
+    monkeypatch.setattr(agents, "_resolve_ontology_path", lambda path, ontology_id: "sample.ttl")
+    def inspect(path):
+        calls.append(path)
+        return summary
+    monkeypatch.setattr(agents, "inspect_ontology", inspect)
+    result = agents.orchestrate({"ontology_path": "sample.ttl", "instance_metadata": {}})
+    assert calls == ["sample.ttl"]
+    assert result["steps"][0]["result"] is result["steps"][1]["result"]["summary"]
+    assert result["steps"][0]["result"] is result["steps"][2]["result"]["ontology_summary"]
+
+
+def test_ontology_agent_rejects_invalid_supplied_metadata_even_with_import_task():
+    from backend.agentic_service.ontology_orchestrator import _instance_metadata
+    import pytest
+    with pytest.raises(ValueError, match="instance_metadata must be an object"):
+        _instance_metadata("task-1", ["invalid"])
+    assert _instance_metadata("task-1", {}) == {}
+
+
+def test_ontology_agent_uses_generated_rdf_for_non_rdf_upload(monkeypatch):
+    from backend.agentic_service import ontology_orchestrator as agents
+    from backend.Services.ontology_upload_manager import OntologyUploadManager
+    monkeypatch.setattr(OntologyUploadManager, "get_ontology", lambda ontology_id: {
+        "status": "success", "metadata": {
+            "file_path": "data/schema.xsd", "owl_file_path": "data/schema.generated.ttl"}})
+    assert agents._resolve_ontology_path("", "schema") == "data/schema.generated.ttl"
+
+
 def test_companion_returns_bounded_graph_evidence(monkeypatch):
     monkeypatch.setenv("AUTH_MODE", "token")
     monkeypatch.setenv("GRAPH_READ_TOKEN", "read-test")

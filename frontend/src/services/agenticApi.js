@@ -10,7 +10,10 @@ const agenticClient = axios.create({
 
 agenticClient.interceptors.request.use((requestConfig) => {
   requestConfig.headers = requestConfig.headers || {};
-  Object.assign(requestConfig.headers, serviceAuthHeaders());
+  // A call may provide a scoped credential (for example, the ontology review
+  // read token). Keep it ahead of the app-wide bootstrap token.
+  const explicit = requestConfig.headers.get?.('Authorization') || requestConfig.headers.Authorization;
+  if (!explicit) Object.assign(requestConfig.headers, serviceAuthHeaders());
   return requestConfig;
 });
 

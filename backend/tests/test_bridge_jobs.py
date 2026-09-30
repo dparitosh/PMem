@@ -1,6 +1,7 @@
 """Governance and response-loss tests; no live database or Spark runtime."""
 import copy
 import os
+import sys
 import unittest
 from contextlib import contextmanager
 from unittest.mock import patch
@@ -91,6 +92,11 @@ class BridgeJobTests(unittest.TestCase):
             with self.assertRaises(ValueError): self.jobs.publish(self.preview['job_id'], selection, 'reviewer')
         self.assertEqual(self.graph.calls, [])
 
+    def test_publication_requires_a_preview_id(self):
+        with self.assertRaisesRegex(ValueError, 'saved Semantic Bridge preview'):
+            self.jobs.publish('not-a-preview', self.ids, 'reviewer')
+        self.assertEqual(self.graph.calls, [])
+
     def test_manual_review_of_non_auto_candidate_is_applied(self):
         result = self.jobs.publish(self.preview['job_id'], self.ids, 'reviewer')
         self.assertEqual(result['status'], 'published')
@@ -112,6 +118,14 @@ class BridgeJobTests(unittest.TestCase):
         with self.assertRaises(BridgeConflict): self.jobs.publish(self.preview['job_id'], self.ids, 'reviewer')
         self.assertEqual(self.graph.calls, [])
         self.assertEqual(self.jobs.get(self.preview['publication_job_id'])['status'], 'stale')
+
+    def test_graph_conflict_requires_new_preview(self):
+        self.graph.publish = lambda command: (_ for _ in ()).throw(BridgeConflict('Graph target changed'))
+        with self.assertRaises(BridgeConflict):
+            self.jobs.publish(self.preview['job_id'], self.ids, 'reviewer')
+        job = self.jobs.get(self.preview['publication_job_id'])
+        self.assertEqual(job['status'], 'stale')
+        self.assertIn('Graph target changed', job['error'])
 
     def test_lost_response_reconciles_without_republication_even_if_source_changed(self):
         self.graph.lose_response = True
@@ -173,6 +187,47 @@ class BridgeRouteTests(unittest.TestCase):
 
 
 class GraphBridgeRouteTests(unittest.TestCase):
+    def test_graph_client_marks_publication_conflict_as_stale(self):
+        from unittest.mock import MagicMock
+        from backend.agentic_service.bridge_jobs import GraphBridgeClient
+        httpx = MagicMock()
+        response = MagicMock()
+        response.status_code = 409
+        httpx.Client.return_value.__enter__.return_value.request.return_value = response
+        with patch.dict(sys.modules, {'httpx': httpx}), patch.dict(os.environ, {'GRAPH_SERVICE_URL': 'http://graph:8013', 'GRAPH_PUBLICATION_TOKEN': 'private-test'}):
+            with self.assertRaisesRegex(BridgeConflict, 'Create a new preview'):
+                GraphBridgeClient().publish({'publication_id': 'job'})
+        response.raise_for_status.assert_not_called()
+
+    def test_bridge_session_supports_neo4j_without_authentication(self):
+        from unittest.mock import MagicMock
+        from backend.graph_service import bridge_publication
+        driver = MagicMock()
+        graph = MagicMock()
+        driver.__enter__.return_value.session.return_value.__enter__.return_value = graph
+        neo4j = MagicMock()
+        neo4j.GraphDatabase.driver.return_value = driver
+        with patch.dict(os.environ, {'NEO4J_URI': 'neo4j://127.0.0.1:7687', 'NEO4J_AUTH_MODE': 'none', 'NEO4J_DATABASE': 'ontology'}), patch.dict(sys.modules, {'neo4j': neo4j}):
+            with bridge_publication.session() as actual:
+                self.assertIs(actual, graph)
+        self.assertIsNone(neo4j.GraphDatabase.driver.call_args.kwargs['auth'])
+
+    def test_bridge_publication_requires_preprovisioned_constraint(self):
+        from unittest.mock import MagicMock
+        from backend.graph_service import bridge_publication
+        graph = MagicMock()
+        graph.run.return_value.single.return_value = {'found': 0}
+        command = {'publication_id': 'publication', 'rows': [{'candidate_id': 'candidate', 'import_id': 'import',
+            'import_row_key': 'row', 'ontology_class_element_id': 'element', 'target_ontology_type': 'Class'}]}
+        command['request_digest'] = bridge_publication.digest(command)
+        @contextmanager
+        def graph_session():
+            yield graph
+        with patch.object(bridge_publication, 'session', graph_session):
+            with self.assertRaisesRegex(RuntimeError, 'constraint is missing'):
+                bridge_publication.publish(command)
+        graph.execute_write.assert_not_called()
+
     def test_graph_client_uses_mounted_api_prefix(self):
         from unittest.mock import MagicMock
         from backend.agentic_service.bridge_jobs import GraphBridgeClient

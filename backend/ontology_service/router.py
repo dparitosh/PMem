@@ -23,6 +23,13 @@ merges = GovernedMergeService(catalog, intelligence, catalog.root)
 business_context = BusinessContextService(catalog.root)
 
 
+def _array_field(payload: dict[str, Any], name: str) -> list:
+    value = payload.get(name, [])
+    if not isinstance(value, list):
+        raise HTTPException(status_code=422, detail=f"{name} must be an array")
+    return value
+
+
 @router.get("/health", summary="Ontology service health")
 def health() -> dict:
     return {"status": "ok", "service": "ontology", "semantica": semantica.capabilities()}
@@ -87,7 +94,7 @@ def list_alignments() -> dict:
 @router.post("/reason", summary="Run explainable Semantica rule inference")
 def reason(payload: dict[str, Any]) -> dict:
     try:
-        return {"inferences": semantica.workspace.reason(facts=list(payload.get("facts", [])), rules=list(payload.get("rules", [])))}
+        return {"inferences": semantica.workspace.reason(facts=_array_field(payload, "facts"), rules=_array_field(payload, "rules"))}
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -96,7 +103,7 @@ def reason(payload: dict[str, Any]) -> dict:
 def quality_gate(payload: dict[str, Any]) -> dict:
     try:
         return intelligence.quality_gate(
-            entities=list(payload.get("entities", [])), deduplicate=bool(payload.get("deduplicate", True)),
+            entities=_array_field(payload, "entities"), deduplicate=bool(payload.get("deduplicate", True)),
             conflict_property=payload.get("conflict_property"), merge_strategy=str(payload.get("merge_strategy", "keep_most_complete")),
         )
     except (TypeError, ValueError) as exc:
@@ -149,7 +156,7 @@ def add_policy(payload: dict[str, Any]) -> dict:
 @router.post("/policies/evaluate", summary="Evaluate Semantica policies before a governed action")
 def evaluate_policies(payload: dict[str, Any]) -> dict:
     try:
-        return intelligence.evaluate_policies(dict(payload.get("decision") or {}), list(payload.get("exception_policy_ids") or []))
+        return intelligence.evaluate_policies(dict(payload.get("decision") or {}), _array_field(payload, "exception_policy_ids"))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -295,16 +302,24 @@ def list_ontologies() -> dict:
 @router.post("/migrations/legacy", summary="Adopt legacy ingestion artifacts into the native ontology catalog")
 def migrate_legacy_ontologies(payload: dict[str, Any]) -> dict:
     """Perform an additive, idempotent catalog migration for named standards."""
-    ontology_ids = [str(value).strip() for value in payload.get("ontology_ids", []) if str(value).strip()]
+    requested = payload.get("ontology_ids")
+    if not isinstance(requested, list) or not all(isinstance(value, str) for value in requested):
+        raise HTTPException(status_code=422, detail="ontology_ids must be an array of registered ontology IDs")
+    ontology_ids = list(dict.fromkeys(value.strip() for value in requested if value.strip()))
     if not ontology_ids:
         raise HTTPException(status_code=422, detail="ontology_ids must contain at least one registered ontology ID")
-    migrated: list[dict[str, Any]] = []
+    # Validate the whole request before the first catalog write. Otherwise a
+    # missing later ID leaves an unexpected partial migration behind.
+    sources = []
     for ontology_id in ontology_ids:
         result = OntologyUploadManager.get_ontology(ontology_id)
         metadata = result.get("metadata") if result.get("status") == "success" else None
         content = OntologyUploadManager.get_file_for_reuse(ontology_id)
         if not metadata or content is None:
             raise HTTPException(status_code=404, detail=f"Legacy ontology artifact not found: {ontology_id}")
+        sources.append((ontology_id, metadata, content))
+    migrated: list[dict[str, Any]] = []
+    for ontology_id, metadata, content in sources:
         migrated.append(catalog.adopt_legacy(
             ontology_id=ontology_id,
             content=content,

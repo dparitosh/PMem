@@ -233,6 +233,10 @@ installer does not install or operate either database server.
 The single installer in Section 3 applies the idempotent Neo4j publication
 constraints after it creates the backend environment. It then performs a
 read-only production verification. Do not run a separate Neo4j schema script.
+When upgrading an existing deployment, rerun the installer before restarting
+services. Semantic Bridge publication requires the `depo_bridge_publication_id`
+uniqueness constraint; publication fails closed until Neo4j schema provisioning
+has applied it.
 
 ### 1.2 Install optional Apache Spark and PySpark
 

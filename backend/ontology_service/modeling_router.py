@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from backend.Services import agentic_modeling_service, modeling_service
-from backend.depo_platform.authorization import service_write_identity
+from backend.depo_platform.authorization import graph_read_identity, service_write_identity
 
 
 def _modeling_identity(request: Request) -> str:
@@ -15,7 +15,13 @@ def _modeling_identity(request: Request) -> str:
     return service_write_identity(request, token_env="ONTOLOGY_APPROVAL_TOKEN", default_actor="ontology-modeler")
 
 
-router = APIRouter(prefix="/modeling", tags=["modeling"], dependencies=[Depends(_modeling_identity)])
+def _modeling_graph_identity(request: Request) -> str:
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return graph_read_identity(request)
+    return _modeling_identity(request)
+
+
+router = APIRouter(prefix="/modeling", tags=["modeling"], dependencies=[Depends(_modeling_graph_identity)])
 
 
 def _call(operation, *args, **kwargs):
