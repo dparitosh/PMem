@@ -19,7 +19,8 @@ if (-not (Test-Path $python)) { throw "Project Python runtime was not found: $py
 
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
-$corsProbeOrigin = @($env:ALLOWED_ORIGINS.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })[0]
+$configuredAllowedOrigins = [string]$env:ALLOWED_ORIGINS
+$corsProbeOrigin = @($configuredAllowedOrigins.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })[0]
 if (-not $corsProbeOrigin) { throw 'ALLOWED_ORIGINS must contain at least one browser origin.' }
 # Aura exports use USERNAME/PASSWORD while the customer template uses the
 # shorter USER/PASS names. Normalize only the child-process environment so
