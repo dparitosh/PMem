@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import re
 from typing import Any
 
-from neo4j import GraphDatabase
+from neo4j import GraphDatabase, Query
 from rdflib import Graph, Literal
 from rdflib.namespace import OWL, RDF, RDFS
 from semantica.kg import GraphAnalyzer
@@ -16,17 +16,26 @@ from . import query_repository as cypher
 
 class Neo4jPublisher:
     def __init__(self) -> None:
-        self.uri = os.getenv("NEO4J_URI", "neo4j://127.0.0.1:7687")
-        self.username = os.getenv("NEO4J_USER", "neo4j")
-        self.password = os.getenv("NEO4J_PASS", "")
+        self.uri = os.getenv("NEO4J_URI") or os.getenv("NEO4J_URL", "neo4j://127.0.0.1:7687")
+        self.username = os.getenv("NEO4J_USER") or os.getenv("NEO4J_USERNAME", "neo4j")
+        self.password = os.getenv("NEO4J_PASS") or os.getenv("NEO4J_PASSWORD", "")
+        self.auth_mode = os.getenv("NEO4J_AUTH_MODE", "token").strip().lower()
         self.database = os.getenv("NEO4J_DATABASE", "ontology")
 
+    def _driver(self):
+        if self.auth_mode not in {"token", "none"}:
+            raise RuntimeError("NEO4J_AUTH_MODE must be token or none")
+        auth = None if self.auth_mode == "none" else (self.username, self.password)
+        return GraphDatabase.driver(self.uri, auth=auth, connection_timeout=10, max_transaction_retry_time=0)
+
     def health(self) -> dict[str, Any]:
-        if not self.password:
+        if self.auth_mode != "none" and not self.password:
             return {"status": "not_configured", "database": self.database}
         try:
-            with GraphDatabase.driver(self.uri, auth=(self.username, self.password)) as driver:
+            with self._driver() as driver:
                 driver.verify_connectivity()
+                with driver.session(database=self.database) as session:
+                    session.run(Query("RETURN 1", timeout=3)).consume()
             return {"status": "ok", "database": self.database}
         except Exception as exc:
             return {"status": "unavailable", "database": self.database, "detail": f"{type(exc).__name__}: {exc}"}
@@ -38,7 +47,7 @@ class Neo4jPublisher:
         subclass/domain/range edges to stable graph relationship types for
         hierarchical exploration.  Repeating a publish is idempotent.
         """
-        if not self.password:
+        if self.auth_mode != "none" and not self.password:
             raise RuntimeError("NEO4J_PASS is not configured")
         rdf_graph = Graph()
         rdf_graph.parse(data=content, format="turtle")
@@ -130,7 +139,7 @@ class Neo4jPublisher:
                     published_at=now,
                 ).consume()
 
-        with GraphDatabase.driver(self.uri, auth=(self.username, self.password)) as driver:
+        with self._driver() as driver:
             with driver.session(database=self.database) as session:
                 session.execute_write(publish_transaction)
         return {
@@ -152,11 +161,13 @@ class Neo4jPublisher:
         return dict(rows[0]["receipt"]) if rows else None
 
     def _session_rows(self, query: str, **parameters: Any) -> list[dict[str, Any]]:
-        if not self.password:
+        if self.auth_mode != "none" and not self.password:
             raise RuntimeError("NEO4J_PASS is not configured")
-        with GraphDatabase.driver(self.uri, auth=(self.username, self.password)) as driver:
+        with self._driver() as driver:
             with driver.session(database=self.database) as session:
-                return session.run(query, parameters).data()
+                from backend.depo_platform.network import bounded_timeout_seconds
+                timeout = bounded_timeout_seconds("GRAPH_QUERY_TIMEOUT_SECONDS", default=30, maximum=300)
+                return session.run(Query(query, timeout=timeout), parameters).data()
 
     def projection(self, *, ontology_id: str, limit: int = 3000) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 10_000))

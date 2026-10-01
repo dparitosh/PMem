@@ -42,6 +42,8 @@ async def require_admin_api_key(request: Request) -> None:
     if not expected:
         raise HTTPException(status_code=503, detail="Admin API key is not configured")
     supplied = request.headers.get("X-API-Key", "")
+    from backend.depo_platform.authorization import require_active_token
+    require_active_token('ADMIN_API_KEY')
     if not hmac.compare_digest(supplied, expected):
         raise HTTPException(status_code=401, detail="Invalid or missing admin API key")
 
@@ -519,9 +521,9 @@ async def get_admin_registry(request: Request):
                 "type": "frontend",
                 "status": "configured",
                 "owner": "Digital Engineering",
-                "endpoint": "http://localhost:3000",
+                "endpoint": next(iter(os.getenv('ALLOWED_ORIGINS', '').split(',')), '').strip(),
                 "health_endpoint": "",
-                "config_source": "frontend/.env",
+                "config_source": "root .env.local: ALLOWED_ORIGINS",
                 "route_count": 0,
                 "frontend_mapped_count": 0,
             },

@@ -5,9 +5,32 @@ import base64
 import hmac
 import json
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException, Request
+
+
+def require_active_token(token_env: str) -> None:
+    """Optional server-controlled expiration, shared or per credential."""
+    expiry = os.getenv(token_env + '_EXPIRES_AT') or os.getenv('DEPO_TOKEN_EXPIRES_AT', '')
+    if not expiry:
+        return
+    try:
+        deadline = datetime.fromisoformat(expiry.replace('Z', '+00:00'))
+        if deadline.tzinfo is None:
+            raise ValueError('timezone required')
+    except ValueError:
+        raise HTTPException(503, 'API key expiration configuration is invalid') from None
+    if datetime.now(timezone.utc) >= deadline:
+        raise HTTPException(401, 'API key has expired; contact the deployment administrator')
+
+
+def token_actor(token_env: str, fallback: str) -> str:
+    actor = os.getenv(token_env + '_ACTOR', '').strip()
+    if not actor and os.getenv('DEPO_REQUIRE_TOKEN_ACTOR', '').lower() == 'true':
+        raise HTTPException(503, 'Server-assigned API key actor is not configured')
+    return actor or fallback
 
 
 def _request_api_key(request: Request) -> str:
@@ -52,11 +75,12 @@ def service_write_identity(request: Request, *, token_env: str, default_actor: s
         # Gateway identity is still required in enterprise mode.
         _require_trusted_gateway(request)
         return approval_identity(request, {}, token_env=token_env)
+    require_active_token(token_env)
     expected = os.getenv(token_env, "").strip()
     supplied = _request_api_key(request)
     if not expected or not supplied or not hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
         raise HTTPException(403, "A valid service write token is required")
-    return request.headers.get("x-depo-principal-id", default_actor)
+    return token_actor(token_env, default_actor)
 
 
 def approval_identity(request: Request, payload: dict[str, Any], *, token_env: str) -> str:
@@ -67,10 +91,11 @@ def approval_identity(request: Request, payload: dict[str, Any], *, token_env: s
             raise HTTPException(403, "Disabled authentication is allowed only for an explicitly enabled loopback-only process")
         return str(payload.get("approved_by") or "local-development")
     if mode != "entra":
+        require_active_token(token_env)
         expected = os.getenv(token_env, "")
         supplied = payload.get('approval_token') or _request_api_key(request)
         if expected and payload.get("approved_by") and isinstance(supplied, str) and hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
-            return str(payload["approved_by"])
+            return token_actor(token_env, str(payload['approved_by']))
         raise HTTPException(403, "A valid approval token and approver are required")
     _require_trusted_gateway(request)
     encoded = request.headers.get("x-ms-client-principal", "")
@@ -99,7 +124,8 @@ def graph_read_identity(request: Request) -> str:
     expected = os.getenv("GRAPH_READ_TOKEN", "")
     supplied = _request_api_key(request)
     if expected and supplied and hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
-        return "service-token-reader"
+        require_active_token('GRAPH_READ_TOKEN')
+        return token_actor('GRAPH_READ_TOKEN', 'service-token-reader')
     if mode == "disabled":
         client_host = request.client.host if request.client else ""
         if os.getenv("DEPO_ALLOW_INSECURE_LOCAL_AUTH", "").lower() != "true" or client_host not in {"127.0.0.1", "::1"}:

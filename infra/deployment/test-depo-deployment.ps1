@@ -21,6 +21,8 @@ $path = if ([System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-P
 if (-not (Test-Path $path)) { throw "Missing environment file: $path" }
 . (Join-Path $root 'infra/windows/runtime-config.ps1')
 $values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+$resolvedRouting = Resolve-DepoRouting $values
+foreach ($key in $resolvedRouting.Keys) { $values[$key] = $resolvedRouting[$key] }
 Assert-DepoNeo4jConfiguration -Values $values -Production:($Profile -eq 'Production')
 if ($values.DEPO_POSTGRES_MODE -notin @('external','service','portable')) { throw 'Set DEPO_POSTGRES_MODE to external, service or portable.' }
 if ($values.DEPO_POSTGRES_MODE -eq 'service' -and -not $values.DEPO_POSTGRES_SERVICE_NAME) { throw 'Service mode requires DEPO_POSTGRES_SERVICE_NAME.' }
@@ -57,10 +59,8 @@ foreach ($origin in $allowedOrigins) {
     throw "Invalid ALLOWED_ORIGINS entry '$origin'. Use an exact origin such as http://127.0.0.1:3000 with no path or trailing slash."
   }
 }
+Assert-DepoOslcConfiguration -Values $values -Required:($Profile -eq 'Production')
 if ($Profile -eq "Production") {
-  if (-not $values.OSLC_BASE_URL -or $values.OSLC_BASE_URL -match '<.*>' -or $values.OSLC_BASE_URL -notmatch '^https://') {
-    throw 'Production OSLC_BASE_URL must be a completed HTTPS customer URL. Browser ALLOWED_ORIGINS can use HTTP; OSLC publication has a separate HTTPS requirement.'
-  }
   if ($values.DEPO_DATABASE_URL -match '^postgres(?:ql)?://postgres(?::|@)') {
     throw 'Production cannot use the PostgreSQL postgres administrator. Configure the application role described in INSTALLATION.md section 1.1 before installation.'
   }

@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from backend.depo_platform.authorization import approval_identity
-from backend.depo_platform.network import bounded_timeout_seconds
+from backend.depo_platform.network import bounded_timeout_seconds, service_bearer_headers
 from backend.artifact_store import ArtifactStore
 from . import speed_path
 
@@ -58,12 +58,15 @@ async def publish(reconciliation_id: str, payload: dict[str, Any], request: Requ
         batch = json.loads(path.read_text(encoding="utf-8"))
         root = service_url("CEIM_SERVICE_URL", "http://127.0.0.1:8018/api/v1")
         root = root if root.endswith("/api/v1") else f"{root}/api/v1"
-        publication_payload = {**batch, "ontology_id": payload.get("ontology_id"), "prefix": payload.get("prefix", "ceim"), "semantic_release": payload.get("semantic_release"), "approved_by": actor, "approval_token": payload.get("approval_token")}
+        publication_payload = {**batch, "ontology_id": payload.get("ontology_id"), "prefix": payload.get("prefix", "ceim"), "semantic_release": payload.get("semantic_release"), "approved_by": actor, "approval_token": payload.get("approval_token"), "publication_id": reconciliation_id}
         publication_timeout = bounded_timeout_seconds("GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180)
         async with httpx.AsyncClient(timeout=publication_timeout) as client:
-            response = await client.post(f"{root}/ceim/publications/graph", json=publication_payload)
+            response = await client.post(f"{root}/ceim/publications/graph", json=publication_payload, headers=service_bearer_headers("CEIM_PUBLISH_APPROVAL_TOKEN", service_name="CEIM", endpoint=root))
         if response.is_error: raise RuntimeError(f"Canonical publication returned HTTP {response.status_code}: {response.text[:500]}")
-        published = {**record, "status": "published", "published_at": speed_path._now(), "published_by": actor, "publication": dict(response.json())}
+        publication = response.json()
+        if not isinstance(publication, dict) or publication.get("status") != "published":
+            raise RuntimeError("Canonical publication did not report success; reconciliation remains pending")
+        published = {**record, "status": "published", "published_at": speed_path._now(), "published_by": actor, "publication": publication}
         return speed_path.reconciliations.put(reconciliation_id, published)
     except (ValueError, json.JSONDecodeError) as exc: raise HTTPException(422, str(exc)) from exc
     except (RuntimeError, httpx.HTTPError) as exc: raise HTTPException(503, str(exc)) from exc

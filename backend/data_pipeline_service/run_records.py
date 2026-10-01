@@ -146,9 +146,15 @@ def heartbeat(record: dict[str, Any], *, worker_id: str, lease_seconds: int = 30
     return store.put(record["run_id"], {**record, "lease": lease})
 
 
+def _persist_execution(record: dict[str, Any], updated: dict[str, Any]) -> dict[str, Any]:
+    if record.get("worker_id") and hasattr(store, "transition_owned"):
+        return store.transition_owned(record["run_id"], record, updated)
+    return store.put(record["run_id"], updated)
+
+
 def requeue(record: dict[str, Any], *, message: str, backoff_seconds: int) -> dict[str, Any]:
     available = datetime.now(timezone.utc) + timedelta(seconds=max(1, min(int(backoff_seconds), 3600)))
-    return store.put(record["run_id"], {**record, "status": "queued", "available_at": available.isoformat(),
+    return _persist_execution(record, {**record, "status": "queued", "available_at": available.isoformat(),
                                          "last_error": message, "worker_id": None, "lease": None})
 
 
@@ -220,11 +226,11 @@ def complete(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
         output["checkpoint_candidate"] = next_checkpoint
         output["checkpoint_state"] = "awaiting_approved_publication"
     completed = {**record, "status": result.get("status", "completed"), "completed_at": _now(), "output_manifest": output}
-    return store.put(record["run_id"], completed)
+    return _persist_execution(record, completed)
 
 
 def failed(record: dict[str, Any], message: str) -> dict[str, Any]:
-    return store.put(record["run_id"], {**record, "status": "failed", "completed_at": _now(), "failure": {"message": message}})
+    return _persist_execution(record, {**record, "status": "failed", "completed_at": _now(), "failure": {"message": message}})
 
 
 def publication_succeeded(record: dict[str, Any], publication: dict[str, Any]) -> dict[str, Any]:

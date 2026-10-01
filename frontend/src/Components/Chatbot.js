@@ -249,7 +249,8 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    ...(accessToken.trim() ? { Authorization: `Bearer ${accessToken.trim()}` } : serviceAuthHeaders()),
+                    ...serviceAuthHeaders(),
+                    ...(accessToken.trim() ? { Authorization: `Bearer ${accessToken.trim()}` } : {}),
                     ...(sessionId ? { 'X-Session-ID': sessionId } : {}),
                 },
                 body: JSON.stringify({ session_id: sessionId, message: validated, graph_context: graphContext }),

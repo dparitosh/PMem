@@ -6,6 +6,7 @@ from backend.depo_platform.service_urls import service_url
 from typing import Any
 
 import httpx
+from backend.depo_platform.network import service_bearer_headers
 
 
 class SemanticIngestionWorkflow:
@@ -22,7 +23,9 @@ class SemanticIngestionWorkflow:
     ) -> dict[str, Any]:
         if not normalized.get("entities"):
             raise ValueError("The source profile produced no entities; revise records_path or mapping")
-        headers = {"X-Request-ID": request_id} if request_id else {}
+        headers = service_bearer_headers('ONTOLOGY_APPROVAL_TOKEN', service_name='the ontology workflow API', endpoint=self.ontology_url)
+        if request_id:
+            headers['X-Request-ID'] = request_id
         generation_payload = {
             "name": name, "base_uri": base_uri,
             "data": {"entities": normalized["entities"], "relationships": normalized["relationships"]},

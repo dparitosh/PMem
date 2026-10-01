@@ -216,7 +216,7 @@ async def _publish_to_graph(*, turtle: str, ontology_id: str, prefix: str, publi
             f"{graph_api_root}/graph/ontologies/publish",
             data={"ontology_id": ontology_id, "prefix": prefix, "publication_id": publication_id or ""},
             files={"artifact": (f"{ontology_id}.ttl", turtle.encode("utf-8"), "text/turtle")},
-            headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API"),
+            headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API", endpoint=graph_api_root),
         )
     if response.is_error:
         raise httpx.HTTPStatusError(

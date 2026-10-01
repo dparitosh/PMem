@@ -47,7 +47,7 @@ async def query(peer_id: str, payload: dict[str, Any], actor: str) -> dict[str, 
     if peer["ontology_allowlist"] and ontology_id not in peer["ontology_allowlist"]: raise ValueError("Ontology is not allow-listed for this federation peer")
     # Reuse the local parser/gate before forwarding; SERVICE remains prohibited.
     if _BLOCKED.search(document) or not re.match(r"^(?:PREFIX\s+[^\n]+\s*)*(SELECT|ASK)\b", document, re.IGNORECASE):
-        raise ValueError("Only bounded read-only SELECT or ASK queries without SERVICE are allowed")
+        raise ValueError("Only bounded read-only SELECT or ASK queries without SERVICE or external FROM datasets are allowed")
     token = os.getenv(f"SPARQL_PEER_{peer_id.upper().replace('-', '_')}_TOKEN", "")
     headers = {"x-depo-principal-id": actor}
     if token: headers["authorization"] = f"Bearer {token}"

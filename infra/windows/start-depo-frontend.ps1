@@ -1,4 +1,5 @@
 param(
+  [string]$EnvFile = '.env.local',
   [ValidateRange(1, 65535)][int]$Port = 3000,
   [string]$BindHost = '127.0.0.1'
 )
@@ -19,6 +20,16 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $index -PathType Leaf)) {
   throw "Built frontend was not found: $index. Run infra/windows/install-depo.ps1 or npm run build first."
 }
+. (Join-Path $PSScriptRoot 'runtime-config.ps1')
+$values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+$routing = Resolve-DepoRouting $values
+$browserRouting = @{}
+foreach ($key in $routing.Keys) {
+  if ($key.StartsWith('VITE_')) { $browserRouting[$key] = $routing[$key] }
+}
+if ($values['DEPO_ROUTING_MODE'] -and (Get-Content -LiteralPath $index -Raw) -notmatch 'depo-runtime-config.js') {
+  throw 'This frontend predates runtime routing. Rebuild once using npm run build in frontend.'
+}
 $indexFile = Get-Item -LiteralPath $index
 $newestSource = Get-ChildItem -LiteralPath (Join-Path $root 'frontend\src') -File -Recurse |
   Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
@@ -31,7 +42,11 @@ if (-not $bundleMatch.Success) { throw "Could not identify the production bundle
 $bundleRelativePath = $bundleMatch.Groups[1].Value.TrimStart('/').Replace('/', [IO.Path]::DirectorySeparatorChar)
 $bundlePath = Join-Path $dist $bundleRelativePath
 if (-not (Test-Path -LiteralPath $bundlePath -PathType Leaf)) { throw "Frontend bundle referenced by index.html is missing: $bundlePath" }
+if ($values['DEPO_ROUTING_MODE'] -and (Get-Content -LiteralPath $bundlePath -Raw) -notmatch 'DEPO_RUNTIME_CONFIG') {
+  throw 'The frontend HTML includes runtime routing but the compiled application does not. Rebuild from the updated frontend source before serving it.'
+}
 New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
+Write-DepoBrowserRouting -Root $root -EnvFile $EnvFile
 
 if (Test-Path -LiteralPath $pidFile) {
   $recordedPid = [int](Get-Content -LiteralPath $pidFile)

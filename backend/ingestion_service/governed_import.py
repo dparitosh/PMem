@@ -79,7 +79,10 @@ class GovernedImportService:
         # reaching an internal service.  The ingestion service uses its scoped
         # execution credential; local disabled-auth remains loopback-only in
         # the data-pipeline service.
-        headers = {"X-Request-ID": request_id} if request_id else {}
+        from backend.depo_platform.network import gateway_subscription_headers
+        headers = gateway_subscription_headers(self.pipeline_url)
+        if request_id:
+            headers["X-Request-ID"] = request_id
         execution_token = os.getenv("DATA_PIPELINE_SERVICE_TOKEN", "").strip()
         if execution_token:
             headers["Authorization"] = f"Bearer {execution_token}"

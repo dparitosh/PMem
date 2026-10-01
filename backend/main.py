@@ -963,28 +963,10 @@ class TimeoutMiddleware:
 
 app.add_middleware(TimeoutMiddleware)
 
-# ✅ SECURE: Load allowed origins from environment with fallback.
-# Include localhost, loopback, and the configured/LAN frontend host so the app
-# works when the UI is opened locally but calls a LAN-bound backend URL.
+# CORS is configured solely by the shared root environment.
 def _build_allowed_origins() -> list[str]:
-    configured = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
-    origins = {origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()}
-    raw_ports = os.getenv("FRONTEND_PORTS", os.getenv("FRONTEND_PORT", "3000"))
-    ports = set()
-    for raw_port in raw_ports.split(","):
-        try:
-            port = int(raw_port.strip())
-            if 1 <= port <= 65535:
-                ports.add(port)
-        except (TypeError, ValueError):
-            continue
-    ports.add(3000)
-    for host in ("localhost", "127.0.0.1", os.getenv("APP_HOST", "").strip()):
-        if host:
-            for port in ports:
-                origins.add(f"http://{host}:{port}")
-                origins.add(f"https://{host}:{port}")
-    return sorted(origins)
+    from backend.depo_platform.service_runtime import allowed_origins
+    return allowed_origins()
 
 
 allowed_origins = _build_allowed_origins()

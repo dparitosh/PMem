@@ -44,7 +44,7 @@ export default function D3NetworkGraph({
       const root = svg.append('g');
       svg.call(d3.zoom().scaleExtent([0.2, 4]).on('zoom', (event) => root.attr('transform', event.transform)));
       root.append('g').selectAll('line').data(links).join('line')
-        .attr('stroke', '#9fb3c8').attr('stroke-opacity', 0.72).attr('stroke-width', 1.2);
+        .attr('stroke', 'var(--theme-color-std-text, currentColor)').attr('stroke-opacity', 0.72).attr('stroke-width', 1.2);
       const node = root.append('g').selectAll('g').data(nodes, (item) => item.id).join('g')
         .attr('tabindex', 0)
         .attr('role', 'button')
@@ -61,11 +61,11 @@ export default function D3NetworkGraph({
       node.append('circle')
         .attr('r', (item) => (item.id === selectedId ? 10 : 7))
         .attr('fill', (item) => color(item.type))
-        .attr('stroke', (item) => (item.id === selectedId ? '#111827' : '#fff'))
+        .attr('stroke', (item) => (item.id === selectedId ? 'var(--theme-color-std-text, currentColor)' : 'var(--theme-color-component-1, #fff)'))
         .attr('stroke-width', (item) => (item.id === selectedId ? 3 : 1.5));
       if (showLabels && nodes.length <= 250) {
         node.append('text').attr('x', 11).attr('y', 4).attr('font-size', 10)
-          .attr('fill', '#243b53').text((item) => item.label);
+          .attr('fill', 'var(--theme-color-std-text, currentColor)').text((item) => item.label);
       }
       simulation?.stop();
       simulation = d3.forceSimulation(nodes)
@@ -99,7 +99,7 @@ export default function D3NetworkGraph({
     <section aria-label="Graph Miner visualization">
       <div ref={hostRef} style={{ minHeight: height, width: '100%' }} />
       <div className="depo-panel__meta" aria-live="polite" style={{ display: 'block' }}>
-        {metrics.nodeCount} nodes · {metrics.relationshipCount} relationships · {metrics.componentCount} components
+        {metrics.nodeCount} nodes Â· {metrics.relationshipCount} relationships Â· {metrics.componentCount} components
       </div>
     </section>
   );

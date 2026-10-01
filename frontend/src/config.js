@@ -10,6 +10,10 @@
 const viteEnv = import.meta.env || {};
 const processEnv = typeof process !== 'undefined' && process.env ? process.env : {};
 const setting = (name) => {
+  const runtime = typeof window !== 'undefined' ? window.DEPO_RUNTIME_CONFIG : null;
+  if (runtime && Object.prototype.hasOwnProperty.call(runtime, `VITE_${name}`)) {
+    return runtime[`VITE_${name}`];
+  }
   const viteValues = [viteEnv[`VITE_${name}`], viteEnv[`REACT_APP_${name}`]];
   const processValues = [processEnv[`VITE_${name}`], processEnv[`REACT_APP_${name}`]];
   // Vitest stubs process.env at runtime; production Vite configuration is

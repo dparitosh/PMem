@@ -77,7 +77,7 @@ if (-not $SkipDependencyInstall) {
     & (Join-Path $PSScriptRoot 'install-depo.ps1') -Python $Python -SkipFrontend:$SkipFrontend -CheckPrerequisites
   }
   Invoke-DepoStage 'Application dependencies and frontend build' {
-    & (Join-Path $PSScriptRoot 'install-depo.ps1') -Python $Python -SkipFrontend:$SkipFrontend
+    & (Join-Path $PSScriptRoot 'install-depo.ps1') -Python $Python -SkipFrontend:$SkipFrontend -EnvFile $envPath
   }
 }
 
@@ -132,5 +132,5 @@ Write-Host "`nDEPO Windows installation completed successfully." -ForegroundColo
 if (-not $SkipFrontend) {
   Write-Host 'Backend services are started. The frontend is built but is not yet served.'
   Write-Host 'For a local browser: powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\start-depo-frontend.ps1'
-  Write-Host 'Then open http://127.0.0.1:3000/. For customer access, publish frontend\dist through your configured web server.'
+  Write-Host 'Open the frontend URL reported by the frontend launcher; allow its exact origin through root .env.local ALLOWED_ORIGINS. For customer access, publish frontend\dist through your configured web server.'
 }

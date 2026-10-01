@@ -13,7 +13,9 @@ export function applyAgenticAuth(requestConfig) {
   // A call may provide a scoped credential (for example, the ontology review
   // read token). Keep it ahead of the app-wide bootstrap token.
   const explicit = requestConfig.headers.get?.('Authorization') || requestConfig.headers.Authorization;
-  if (!explicit) Object.assign(requestConfig.headers, serviceAuthHeaders());
+  const credentials = serviceAuthHeaders(requestConfig.url);
+  if (explicit) delete credentials.Authorization;
+  Object.assign(requestConfig.headers, credentials);
   return requestConfig;
 }
 

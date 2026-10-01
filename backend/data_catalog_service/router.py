@@ -32,6 +32,8 @@ def _semver(value: str) -> tuple:
 
 
 def _internal(token: str | None) -> None:
+    from backend.depo_platform.authorization import require_active_token
+    require_active_token('CATALOG_SERVICE_TOKEN')
     expected = os.getenv("CATALOG_SERVICE_TOKEN", "")
     if not expected or not token or not hmac.compare_digest(token, expected):
         raise HTTPException(403, "A valid internal catalog service token is required")

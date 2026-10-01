@@ -25,6 +25,8 @@ def tool_retry_allowed(tool: dict, *, attempt: int, retries: int, status_code: i
 
 
 def downstream_headers(request: Request, endpoint: str, *, graph_read=False, tool: dict | None = None) -> dict:
+    from backend.depo_platform.network import gateway_subscription_headers
+    gateway_headers = gateway_subscription_headers(endpoint)
     mode = os.getenv('AUTH_MODE', 'token').lower()
     if mode == 'entra':
         # The caller has already passed gateway/role validation. Forward its JWT
@@ -36,7 +38,7 @@ def downstream_headers(request: Request, endpoint: str, *, graph_read=False, too
         bearer = request.headers.get('authorization', '')
         if not bearer.lower().startswith('bearer ') or not bearer[7:].strip():
             raise HTTPException(503, 'The gateway must preserve the caller bearer token for downstream authorization')
-        return {'Authorization': bearer}
+        return {**gateway_headers, 'Authorization': bearer}
     if mode == 'token':
         token_key = 'GRAPH_READ_TOKEN' if graph_read else None
         if tool:
@@ -52,9 +54,11 @@ def downstream_headers(request: Request, endpoint: str, *, graph_read=False, too
         if not token_key:
             return {}
         token = os.getenv(token_key, '').strip()
+        from backend.depo_platform.authorization import require_active_token
+        require_active_token(token_key)
         if not token:
             raise HTTPException(503, f'{token_key} is required for downstream authorization')
-        return {'Authorization': 'Bearer ' + token}
+        return {**gateway_headers, 'Authorization': 'Bearer ' + token}
     return {}
 
 
@@ -69,6 +73,8 @@ def downstream_inputs(tool: dict, inputs: dict, actor: str | None) -> dict:
         result['approved_by'] = actor
         if os.getenv('AUTH_MODE', 'token').lower() == 'token':
             token = os.getenv(key, '').strip()
+            from backend.depo_platform.authorization import require_active_token
+            require_active_token(key)
             if not token:
                 raise HTTPException(503, f'{key} is required for this tool')
             result['approval_token'] = token

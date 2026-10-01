@@ -15,7 +15,24 @@ try {
   Set-Content -LiteralPath $envPath -Value @('DEPO_AUDIT_FIXTURE=one','DEPO_AUDIT_FIXTURE=two')
   Assert-Rejected { Import-DepoEnvironment $fixture '.env.local' } 'Duplicate'
   if ($env:DEPO_AUDIT_FIXTURE) { throw 'Invalid configuration partially changed environment.' }
+  Set-Content -LiteralPath $envPath -Encoding UTF8 -Value @('# valid comment', 'DEPO_AUDIT_FIXTURE = "value with spaces" # comment', 'BROKEN PRIVATE VALUE')
+  Assert-Rejected { Import-DepoEnvironment $fixture '.env.local' } 'line 3'
+  $secretSafeMessage = ''
+  try { Read-DepoEnvironment $fixture '.env.local' | Out-Null } catch { $secretSafeMessage = $_.Exception.Message }
+  if ($secretSafeMessage.Contains('PRIVATE VALUE')) { throw 'Parser error leaked the invalid input.' }
+  if ($env:DEPO_AUDIT_FIXTURE) { throw 'Malformed configuration partially changed environment.' }
+  Set-Content -LiteralPath $envPath -Encoding UTF8 -Value @('DEPO_AUDIT_FIXTURE = "value with spaces" # comment', 'LITERAL=''$(Write-Output unexpected)''', 'PATH_VALUE=C:\DEPO\data', 'HASH_VALUE=value#hash', 'BOOL_VALUE=false # explanation')
+  $parsed = Read-DepoEnvironment $fixture '.env.local'
+  if ($parsed.DEPO_AUDIT_FIXTURE -ne 'value with spaces' -or $parsed.LITERAL -ne '$(Write-Output unexpected)' -or $parsed.PATH_VALUE -ne 'C:\DEPO\data' -or $parsed.HASH_VALUE -ne 'value#hash' -or $parsed.BOOL_VALUE -ne 'false') { throw 'Literal dotenv parsing failed.' }
+  Set-Content -LiteralPath $envPath -Value 'DEPO_AUDIT_FIXTURE="unclosed'
+  Assert-Rejected { Read-DepoEnvironment $fixture '.env.local' } 'Invalid quoted value'
   Assert-Rejected { Import-DepoEnvironment $fixture 'missing.env' } 'Missing environment'
+  foreach ($baseUrl in @('http://127.0.0.1:8015', 'http://10.10.12.21:8015', 'https://api.example', 'http://api.example/prefix')) {
+    Assert-DepoOslcConfiguration @{ OSLC_BASE_URL=$baseUrl } -Required
+  }
+  foreach ($baseUrl in @('', 'https://<customer-api-host>', 'http:////127.0.0.1:8015', 'ftp://api.example', 'http://user:secret@api.example', 'http://api.example?key=secret', 'http://api.example#fragment')) {
+    Assert-Rejected { Assert-DepoOslcConfiguration @{ OSLC_BASE_URL=$baseUrl } -Required } 'HTTP or HTTPS'
+  }
   $savedFlags = @{}
   foreach ($key in @('DEPO_SPARK_ENABLED','DEPO_SPARK_NEO4J_ENABLED','DEPO_SPARK_POSTGRES_ENABLED','DEPO_PIPELINE_SCHEDULER_ENABLED')) {
     $savedFlags[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')

@@ -9,6 +9,32 @@ SCHEMA_FILE = Path(__file__).resolve().parents[2] / "infra" / "deployment" / "ne
 REQUIRED_CONSTRAINTS = {"uq_ontologyresource_identity", "uq_ontologypublication_identity", "depo_bridge_publication_id"}
 
 
+def failure_details(exc: Exception) -> dict:
+    result = {'status': 'failed', 'error_type': type(exc).__name__,
+              'action': 'Check Neo4j connectivity, database selection and schema privileges.'}
+    # Only expose allowlisted, DEPO-authored messages, never driver text or URIs.
+    reason = str(exc)
+    if type(exc) is RuntimeError:
+        if reason.startswith('Missing Neo4j publication constraints: '):
+            missing = reason.removeprefix('Missing Neo4j publication constraints: ').split(', ')
+            if set(missing) <= REQUIRED_CONSTRAINTS:
+                result['missing_constraints'] = missing
+                result['action'] = 'Run infra/windows/test-depo-neo4j.ps1 -Bootstrap with schema creation privileges, then rerun -Production.'
+        elif reason in {'NEO4J_AUTH_MODE must be token or none',
+                        'Neo4j credentials are required when NEO4J_AUTH_MODE=token', 'NEO4J_URI is required'}:
+            result['reason'] = reason
+    code = getattr(exc, 'code', '')
+    actions = {
+        'Neo.ClientError.Security.Unauthorized': 'Correct Neo4j username/password in root .env.local.',
+        'Neo.ClientError.Security.Forbidden': 'Grant the Neo4j role access to the configured database and required schema operations.',
+        'Neo.ClientError.Database.DatabaseNotFound': 'Set NEO4J_DATABASE to an existing Neo4j database; verify the name in Neo4j Browser.',
+    }
+    if code in actions:
+        result['code'] = code
+        result['action'] = actions[code]
+    return result
+
+
 def _statements(text: str) -> list[str]:
     lines = [line for line in text.splitlines() if not line.lstrip().startswith("//")]
     return [statement.strip() for statement in "\n".join(lines).split(";") if statement.strip()]
@@ -58,5 +84,5 @@ if __name__ == "__main__":
     try:
         print(json.dumps(provision(check_only=args.check_only)))
     except Exception as exc:
-        print(json.dumps({"status": "failed", "error_type": type(exc).__name__, "action": "Check Neo4j connectivity, database selection and schema privileges."}))
+        print(json.dumps(failure_details(exc)))
         raise SystemExit(1) from None

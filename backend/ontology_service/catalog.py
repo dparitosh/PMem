@@ -10,6 +10,7 @@ import os
 import re
 import uuid
 import threading
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,45 @@ from rdflib.namespace import OWL
 
 from backend.artifact_store import artifact_store
 from backend.mesh_store import PostgresRegistry
+
+
+def ontology_upload_limit() -> int:
+    try:
+        value = int(os.getenv('ONTOLOGY_MAX_UPLOAD_BYTES', '26214400'))
+    except ValueError:
+        raise ValueError('ONTOLOGY_MAX_UPLOAD_BYTES must be a positive integer') from None
+    if value <= 0:
+        raise ValueError('ONTOLOGY_MAX_UPLOAD_BYTES must be a positive integer')
+    return value
+
+
+def validate_rdf_input(content: bytes, rdf_format: str) -> None:
+    if len(content) > ontology_upload_limit():
+        raise ValueError('Ontology artifact exceeds ONTOLOGY_MAX_UPLOAD_BYTES')
+    if rdf_format == 'xml':
+        # Removing NULs recognizes declarations in UTF-16/32 as well as UTF-8.
+        probe = content.replace(b'\x00', b'').lower()
+        if b'<!doctype' in probe or b'<!entity' in probe:
+            raise ValueError('XML DTDs and entity declarations are not allowed')
+    if rdf_format == 'json-ld':
+        try:
+            document = json.loads(content)
+        except (ValueError, UnicodeError):
+            raise ValueError('JSON-LD must contain valid JSON') from None
+        def visit(node):
+            if isinstance(node, dict):
+                if '@import' in node:
+                    raise ValueError('JSON-LD context imports are not allowed')
+                context = node.get('@context')
+                contexts = context if isinstance(context, list) else [context]
+                if any(isinstance(value, str) for value in contexts):
+                    raise ValueError('JSON-LD remote contexts are not allowed; use inline contexts')
+                for value in node.values():
+                    visit(value)
+            elif isinstance(node, list):
+                for value in node:
+                    visit(value)
+        visit(document)
 
 
 def _now() -> str:
@@ -73,12 +113,15 @@ class OntologyCatalog:
         last_error: Exception | None = None
         for rdf_format in candidates:
             try:
+                validate_rdf_input(content, rdf_format)
                 graph = Graph()
                 graph.parse(data=content, format=rdf_format)
+                if not graph:
+                    raise ValueError('Ontology artifact contains no RDF triples')
                 return {"rdf_format": rdf_format, "triple_count": len(graph)}
             except Exception as exc:  # try the other supported syntax
                 last_error = exc
-        raise ValueError(f"Ontology RDF/OWL parsing failed: {last_error}") from last_error
+        raise ValueError('Ontology RDF/OWL parsing failed; check syntax and use inline JSON-LD contexts without XML DTDs') from last_error
 
     @classmethod
     def _analytics_from_content(cls, content: bytes, filename: str) -> dict[str, int]:
@@ -96,10 +139,18 @@ class OntologyCatalog:
     def register(self, *, content: bytes, filename: str, ontology_name: str, prefix: str, description: str = "", source: str = "api", extra_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         if not content:
             raise ValueError("An ontology artifact is required")
+        protected = {'ontology_id', 'artifact_path', 'artifact_id', 'validation', 'lifecycle_status',
+                     'lifecycle_events', 'created_at', 'prefix', 'original_filename'}
+        if protected.intersection(extra_metadata or {}):
+            raise ValueError('Extra metadata cannot replace catalog identity, artifact or lifecycle fields')
         prefix = _safe_token(prefix, field="prefix")
-        safe_filename = Path(filename or "ontology.ttl").name
-        if not safe_filename or safe_filename in {".", ".."}:
-            raise ValueError("A valid artifact filename is required")
+        safe_filename = Path((filename or "ontology.ttl").replace("\\", "/")).name
+        reserved = {'CON', 'PRN', 'AUX', 'NUL', *(f'COM{i}' for i in range(1, 10)), *(f'LPT{i}' for i in range(1, 10))}
+        if (not safe_filename or safe_filename.lower() in {'.', '..', 'metadata.json'}
+                or safe_filename.split('.')[0].upper() in reserved
+                or safe_filename.endswith((' ', '.'))
+                or any(ord(char) < 32 or char in '<>:"|?*' for char in safe_filename)):
+            raise ValueError('A valid non-reserved artifact filename is required')
         parse_result = self._parse_ontology(content, safe_filename)
         ontology_id = f"{prefix.lower()}_{uuid.uuid4().hex[:16]}"
         artifact_dir = self.root / ontology_id
@@ -216,6 +267,8 @@ class OntologyCatalog:
         if metadata is None:
             raise ValueError(f"Ontology artifact not found: {ontology_id}")
         path = Path(str(metadata["artifact_path"]))
+        if not path.resolve().is_relative_to((self.root / ontology_id).resolve()):
+            raise ValueError('Ontology artifact path is outside its catalog directory')
         if not path.is_file():
             raise ValueError(f"Ontology artifact is missing: {ontology_id}")
         return metadata, path.read_bytes()
@@ -309,11 +362,19 @@ class OntologyCatalog:
         entries = list(self.registry.all().values()) if self._postgres_enabled else []
         known = {str(item.get("ontology_id") or "") for item in entries}
         for metadata_path in self.root.glob("*/metadata.json"):
-            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                if not isinstance(metadata, dict) or metadata.get('ontology_id') != metadata_path.parent.name or not isinstance(metadata.get('created_at'), str) or not metadata['created_at']:
+                    raise ValueError('Invalid catalog metadata')
+                _safe_token(metadata['ontology_id'], field='ontology_id')
+            except (OSError, ValueError, UnicodeError):
+                logging.getLogger(__name__).warning('Skipping unreadable or invalid ontology catalog mirror; restore it from authoritative storage')
+                continue
             if metadata.get("ontology_id") not in known:
                 if self._postgres_enabled:
                     self.registry.put(str(metadata["ontology_id"]), metadata)
                 entries.append(metadata)
+                known.add(metadata['ontology_id'])
         active_entries = [entry for entry in entries if entry.get("status") != "superseded"]
         return sorted(active_entries, key=lambda item: item["created_at"], reverse=True)
 

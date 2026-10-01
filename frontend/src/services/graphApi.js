@@ -41,7 +41,14 @@ export const graphApi = {
       expandNeighbors: Boolean(params.expand_neighbors),
     };
     return apiClient.post(graphUrl('/api/v1/graphql'), { query, variables, operationName: 'ContextualSubgraph' }, { signal })
-      .then((response) => ({ ...response, data: response.data?.data?.contextualResult || {} }));
+      .then((response) => {
+        if (response.data?.errors?.length) {
+          throw new Error('Contextual graph query failed. Check graph service logs and access permissions.');
+        }
+        const result = response.data?.data?.contextualResult;
+        if (!result) throw new Error('Graph service returned no contextual result.');
+        return { ...response, data: result };
+      });
   },
   getTraversal(nodeId, depth = 2, signal) {
     return apiClient.get(graphUrl(`/api/v1/graph/traversal/${encodeURIComponent(nodeId)}`), {

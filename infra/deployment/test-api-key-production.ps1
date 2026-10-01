@@ -18,6 +18,17 @@ try {
     Set-Content -LiteralPath $testFile -Value ($content -replace '(?m)^ALLOWED_ORIGINS=.*$', "ALLOWED_ORIGINS=$origins")
     & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks
   }
+  foreach ($oslcBase in @('http://10.10.12.21:8015', 'http://127.0.0.1:8015', 'https://api.example')) {
+    Set-Content -LiteralPath $testFile -Value ($content -replace '(?m)^OSLC_BASE_URL=.*$', "OSLC_BASE_URL=$oslcBase")
+    & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks
+  }
+  foreach ($oslcBase in @('http:////127.0.0.1:8015', 'ftp://api.example', 'http://user:secret@api.example')) {
+    Set-Content -LiteralPath $testFile -Value ($content -replace '(?m)^OSLC_BASE_URL=.*$', "OSLC_BASE_URL=$oslcBase")
+    $rejected = $false
+    try { & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks }
+    catch { if ($_.Exception.Message -notlike '*HTTP or HTTPS*') { throw }; $rejected = $true }
+    if (-not $rejected) { throw 'Invalid OSLC base URL accepted.' }
+  }
   Set-Content -LiteralPath $testFile -Value ($content -replace 'neo4j\+s://graph.example', 'bolt+s://graph.example')
   & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks
   foreach ($invalid in @(($content -replace 'neo4j\+s://graph.example', 'neo4j+ssc://graph.example'), ($content + "`nAUTH_MODE=token"))) {

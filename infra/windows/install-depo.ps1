@@ -1,4 +1,5 @@
 param(
+  [string]$EnvFile = '.env.local',
   [string]$Python = "py",
   [switch]$SkipFrontend,
   [switch]$Development,
@@ -87,6 +88,11 @@ if (-not $SkipFrontend) {
     if ($LASTEXITCODE -ne 0) { throw 'Frontend locked dependency installation failed after three attempts. Close Vite/Node processes, then rerun install-depo.ps1.' }
     npm.cmd run build
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
+    . (Join-Path $PSScriptRoot 'runtime-config.ps1')
+    $configurationPath = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
+    if (Test-Path -LiteralPath $configurationPath -PathType Leaf) {
+      Write-DepoBrowserRouting -Root $root -EnvFile $EnvFile
+    }
   } finally { Pop-Location }
 }
 Write-Host 'Backend installed in backend/.dt_venv.'

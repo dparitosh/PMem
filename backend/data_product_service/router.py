@@ -32,7 +32,10 @@ def _key(payload: dict) -> str:
 
 def _artifact_records(payload: dict) -> tuple[list[tuple[dict, Path]], list[str]]:
     records, errors = [], []
-    for item in payload.get("artifacts", []):
+    items = payload.get("artifacts", [])
+    if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+        return [], ["artifacts must be a list of objects"]
+    for item in items:
         try:
             metadata, source = artifact_store.resolve(str(item.get("artifact_id") or ""))
             records.append((metadata, source))
@@ -88,12 +91,13 @@ async def _register_catalog(record: dict) -> dict:
         if not catalog_token:
             return {**record, "status": "pending_catalog_registration", "catalog_attempts": attempts, "catalog_error": "CATALOG_SERVICE_TOKEN is not configured"}
         async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.put(f"{catalog_url}/catalog/products/{record['product_id']}/versions/{record['version']}", json=_catalog_payload(record), headers={"X-DEPO-Service-Token": catalog_token})
+            from backend.depo_platform.network import gateway_subscription_headers
+            response = await client.put(f"{catalog_url}/catalog/products/{record['product_id']}/versions/{record['version']}", json=_catalog_payload(record), headers={**gateway_subscription_headers(catalog_url), "X-DEPO-Service-Token": catalog_token})
             response.raise_for_status()
     except httpx.HTTPError as exc:
         delay = min(3600, 2 ** min(attempts, 10))
         return {**record, "status": "pending_catalog_registration", "catalog_attempts": attempts, "catalog_error": str(exc), "last_catalog_attempt_at": _now(), "next_catalog_attempt_at": (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()}
-    return {**record, "status": "published", "catalog_attempts": attempts, "catalog_error": None, "catalog_registered_at": _now()}
+    return {**record, "status": "revoked" if record.get("lifecycle_state") == "revoked" else "published", "catalog_attempts": attempts, "catalog_error": None, "catalog_registered_at": _now()}
 
 
 async def reconcile_pending(limit: int = 100) -> dict:
@@ -132,8 +136,12 @@ async def publish(payload: dict, request: Request) -> dict:
         raise HTTPException(422, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(503, detail=str(exc)) from exc
-    package = build_package(output_root=root, payload=payload, artifacts=artifacts)
-    record = {**payload, "semantic_releases": semantic_releases, "artifacts": [metadata for metadata, _ in artifacts], "manifest": package["manifest"], "package_storage": {"zip_path": str(package["zip_path"]), "package_dir": str(package["package_dir"])}, "status": "pending_catalog_registration", "catalog_attempts": 0, "published_at": _now()}
+    try:
+        package = build_package(output_root=root, payload=payload, artifacts=artifacts)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    safe_payload = {key: value for key, value in payload.items() if key not in {"approval_token", "authorization", "api_key"}}
+    record = {**safe_payload, "semantic_releases": semantic_releases, "artifacts": [metadata for metadata, _ in artifacts], "manifest": package["manifest"], "package_storage": {"zip_path": str(package["zip_path"]), "package_dir": str(package["package_dir"])}, "status": "pending_catalog_registration", "catalog_attempts": 0, "published_at": _now()}
     store.put(key, record)
     approval_store.put(f"{key}:{record['published_at']}", {"product": key, "approved_by": approver, "approved_at": _now()})
     return store.put(key, await _register_catalog(record))
@@ -174,7 +182,7 @@ def list_products(limit: int = 100) -> dict:
         key=lambda record: str(record.get("published_at") or record.get("created_at") or ""),
         reverse=True,
     )[:safe_limit]
-    return {"products": [{key: value for key, value in record.items() if key != "package_storage"} for record in records], "limit": safe_limit}
+    return {"products": [{key: value for key, value in record.items() if key not in {"package_storage", "approval_token", "authorization", "api_key"}} for record in records], "limit": safe_limit}
 
 
 @router.get("/{product_version}/manifest", dependencies=[Depends(graph_read_identity)])
@@ -201,4 +209,4 @@ def get_product(product_version: str) -> dict:
     record = store.get(product_version)
     if not record:
         raise HTTPException(404, "Data product not found")
-    return {key: value for key, value in record.items() if key != "package_storage"}
+    return {key: value for key, value in record.items() if key not in {"package_storage", "approval_token", "authorization", "api_key"}}

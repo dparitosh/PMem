@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import logging
 import signal
 import threading
 
@@ -21,12 +22,17 @@ def run() -> None:
             pass
     worker_status.put(worker_id, status="idle", execution_mode="native-windows-worker")
     while not stop.is_set():
-        record = run_records.claim_next(worker_id=worker_id, lease_seconds=lease_seconds)
-        if not record:
-            worker_status.put(worker_id, status="idle", spark=runner.health())
+        try:
+            record = run_records.claim_next(worker_id=worker_id, lease_seconds=lease_seconds)
+            worker_status.put(worker_id, status="busy" if record else "idle",
+                              run_id=record["run_id"] if record else None, spark=runner.health())
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Pipeline control plane unavailable: %s", type(exc).__name__)
             stop.wait(poll_seconds)
             continue
-        worker_status.put(worker_id, status="busy", run_id=record["run_id"], spark=runner.health())
+        if not record:
+            stop.wait(poll_seconds)
+            continue
         heartbeat_stop = threading.Event()
         lease_record = [record]
         def renew_lease() -> None:
@@ -47,17 +53,32 @@ def run() -> None:
             payload = run_records.replay_payload(record)
             execute_claimed_job(definition, payload, record)
         except Exception as exc:
-            current_record = run_records.get(record["run_id"])
-            if current_record and current_record.get("status") == "running":
+            try:
+                current_record = run_records.get(record["run_id"])
+            except Exception as lookup_error:
+                logging.getLogger(__name__).warning("Run recovery deferred: %s", type(lookup_error).__name__)
+                current_record = None
+            if (current_record and current_record.get("status") == "running"
+                    and current_record.get("worker_id") == worker_id
+                    and current_record.get("attempt") == record.get("attempt")):
                 retry = (definition if 'definition' in locals() and definition else {}).get("retry_policy") or {"max_attempts": 1, "backoff_seconds": 30}
                 if int(current_record.get("attempt") or 1) < int(retry.get("max_attempts") or 1):
-                    run_records.requeue(current_record, message=str(exc), backoff_seconds=int(retry.get("backoff_seconds") or 30))
+                    try:
+                        run_records.requeue(current_record, message=str(exc), backoff_seconds=int(retry.get("backoff_seconds") or 30))
+                    except Exception as recovery_error:
+                        logging.getLogger(__name__).warning("Run requeue deferred: %s", type(recovery_error).__name__)
                 else:
-                    run_records.failed(current_record, str(exc))
+                    try:
+                        run_records.failed(current_record, str(exc))
+                    except Exception as recovery_error:
+                        logging.getLogger(__name__).warning("Run failure recording deferred: %s", type(recovery_error).__name__)
         finally:
             heartbeat_stop.set()
             heartbeat_thread.join(timeout=5)
-            worker_status.put(worker_id, status="idle", run_id=None, spark=runner.health())
+            try:
+                worker_status.put(worker_id, status="idle", run_id=None, spark=runner.health())
+            except Exception as status_error:
+                logging.getLogger(__name__).warning("Worker status deferred: %s", type(status_error).__name__)
     runner.shutdown()
     worker_status.put(worker_id, status="stopped", run_id=None, spark=runner.health())
 

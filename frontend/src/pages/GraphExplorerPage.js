@@ -23,16 +23,16 @@ export default function GraphExplorerPage(props) {
   useEffect(() => {
     const controller = new AbortController();
     platformAPI.health('graph', { signal: controller.signal, timeout: 5000 })
-      .then((response) => setServiceState({ loading: false, status: String(response?.data?.status || 'ready').toLowerCase() }))
-      .catch(() => setServiceState({ loading: false, status: 'unavailable' }));
+      .then((response) => !controller.signal.aborted && setServiceState({ loading: false, status: String(response?.data?.status || 'ready').toLowerCase() }))
+      .catch(() => !controller.signal.aborted && setServiceState({ loading: false, status: 'unavailable' }));
     return () => controller.abort();
   }, []);
 
   if (serviceState.loading) {
-    return <div className="depo-page-loading" role="status">Checking graph service…</div>;
+    return <div className="depo-page-loading" role="status">Checking graph serviceâ€¦</div>;
   }
 
-  if (['not_configured', 'offline', 'unavailable', 'error', 'failed'].includes(serviceState.status)) {
+  if (['not_configured', 'offline', 'unavailable', 'error', 'failed', 'not_ready', 'degraded'].includes(serviceState.status)) {
     return <div className="depo-page"><GraphServiceState state={serviceState.status} /></div>;
   }
 

@@ -11,7 +11,7 @@ import {
   IxMenuItem,
 } from '@siemens/ix-react';
 import { navigationItems, pageLabel } from './navigation';
-import { clearServiceAuthToken, getServiceAuthToken, setServiceAuthToken } from '../services/serviceAuth';
+import { clearServiceAuthToken, getServiceAuthToken, setServiceAuthToken, setGatewaySubscriptionKey, getGatewaySubscriptionKey } from '../services/serviceAuth';
 import './AppShell.css';
 
 const THEME_STORAGE_KEY = 'depo.colorSchema';
@@ -40,6 +40,7 @@ export default function AppShell({
   const [colorSchema, setColorSchema] = useState(initialColorSchema);
   const [showApiAccess, setShowApiAccess] = useState(false);
   const [apiKey, setApiKey] = useState(() => getServiceAuthToken());
+  const [subscriptionKey, setSubscriptionKey] = useState(() => getGatewaySubscriptionKey());
   const [apiAccessConfigured, setApiAccessConfigured] = useState(() => Boolean(getServiceAuthToken()));
   useEffect(() => {
     document.documentElement.dataset.ixTheme = 'classic';
@@ -86,7 +87,8 @@ export default function AppShell({
             type="button"
             variant="tertiary"
             onClick={() => {
-              setApiKey(getServiceAuthToken());
+                setApiKey(getServiceAuthToken());
+                setSubscriptionKey(getGatewaySubscriptionKey());
               setShowApiAccess(true);
             }}
             aria-label="Configure API access"
@@ -145,6 +147,7 @@ export default function AppShell({
                 onSubmit={(event) => {
                   event.preventDefault();
                   setServiceAuthToken(apiKey);
+                  setGatewaySubscriptionKey(subscriptionKey);
                   setApiAccessConfigured(Boolean(apiKey.trim()));
                   setShowApiAccess(false);
                   onServiceAuthChange?.();
@@ -161,6 +164,9 @@ export default function AppShell({
                   value={apiKey}
                   onChange={(event) => setApiKey(event.target.value)}
                 />
+                <label htmlFor="depo-apim-subscription">APIM subscription key (optional)</label>
+                <input id="depo-apim-subscription" type="password" autoComplete="off" value={subscriptionKey}
+                  onChange={(event) => setSubscriptionKey(event.target.value)} />
                 <div className="depo-api-access__actions">
                   <button type="button" onClick={() => setShowApiAccess(false)}>Cancel</button>
                   <button
@@ -168,6 +174,7 @@ export default function AppShell({
                     onClick={() => {
                       clearServiceAuthToken();
                       setApiKey('');
+                      setSubscriptionKey('');
                       setApiAccessConfigured(false);
                       setShowApiAccess(false);
                       onServiceAuthChange?.();

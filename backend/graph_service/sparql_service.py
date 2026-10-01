@@ -11,7 +11,7 @@ from .neo4j_publisher import publisher
 
 
 DEPO = Namespace("urn:depo:graph:")
-_BLOCKED = re.compile(r"\b(insert|delete|load|clear|create|drop|copy|move|add|service)\b", re.IGNORECASE)
+_BLOCKED = re.compile(r"\b(insert|delete|load|clear|create|drop|copy|move|add|service|from)\b", re.IGNORECASE)
 
 
 class BoundedSparqlService:
@@ -40,7 +40,7 @@ class BoundedSparqlService:
         if not document or len(document) > 10_000:
             raise ValueError("query is required and must be at most 10000 characters")
         if _BLOCKED.search(document) or not re.match(r"^(?:PREFIX\s+[^\n]+\s*)*(SELECT|ASK)\b", document, re.IGNORECASE):
-            raise ValueError("Only read-only SELECT or ASK queries without SERVICE are allowed")
+            raise ValueError("Only read-only SELECT or ASK queries without SERVICE or external FROM datasets are allowed")
         projection_limit = max(1, min(int(limit), self.max_results))
         projection = publisher.projection(ontology_id=ontology_id, limit=self.max_projection_nodes)
         graph = Graph()

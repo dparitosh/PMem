@@ -33,7 +33,10 @@ $content = [regex]::Replace($content, '(?m)^(?<key>[A-Z0-9_]*TOKEN)=<[^>\r\n]+>$
 if ($AuthMode -eq "disabled") {
   $content = $content -replace '(?m)^DEPO_ALLOW_INSECURE_LOCAL_AUTH=.*$', 'DEPO_ALLOW_INSECURE_LOCAL_AUTH=true'
   $content = $content -replace '(?m)^DEPO_SERVICE_HOST=.*$', 'DEPO_SERVICE_HOST=127.0.0.1'
-  $content = $content -replace '(?m)^ALLOWED_ORIGINS=.*$', 'ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000'
+  # Browser origins remain customer-managed in the generated environment.
+}
+if ($AuthMode -ne 'token') {
+  $content = $content -replace '(?m)^DEPO_ROUTING_MODE=.*$', 'DEPO_ROUTING_MODE='
 }
 Set-Content -LiteralPath $target -Value $content -NoNewline
 if ([IO.Path]::GetFileName($target) -eq '.env.local') {

@@ -66,3 +66,27 @@ def test_invalid_legacy_artifact_cannot_be_approved(tmp_path):
     with pytest.raises(ValueError, match="parsing failed"):
         catalog.transition(ontology_id="legacy", target="approved", actor="steward")
     assert catalog.get("legacy")["lifecycle_status"] == "in_review"
+
+
+def test_registration_rejects_reserved_metadata_filename(tmp_path):
+    instance = OntologyCatalog(root=tmp_path / 'reserved')
+    with pytest.raises(ValueError):
+        instance.register(content=b'{}', filename='metadata.json', ontology_name='Example', prefix='ex')
+
+
+def test_registration_rejects_identity_override(tmp_path):
+    instance = OntologyCatalog(root=tmp_path / 'override')
+    with pytest.raises(ValueError):
+        instance.register(content=b'@prefix ex: <https://example.test/> . ex:A ex:p ex:B .',
+                          filename='example.ttl', ontology_name='Example', prefix='ex',
+                          extra_metadata={'artifact_path': '/outside'})
+
+
+def test_registration_blocks_remote_jsonld_context():
+    with pytest.raises(ValueError):
+        OntologyCatalog._parse_ontology(b'{"@context":"https://remote.invalid/context", "@id":"https://example.test/A"}', 'example.jsonld')
+
+
+def test_registration_blocks_external_xml_entities():
+    with pytest.raises(ValueError):
+        OntologyCatalog._parse_ontology(b'<!DOCTYPE rdf [<!ENTITY file SYSTEM "file:///secret">]><rdf>&file;</rdf>', 'example.rdf')

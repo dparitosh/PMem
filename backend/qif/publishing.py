@@ -30,6 +30,7 @@ class ServicePublisher:
                 f"{self.ontology_url}/ontologies/register",
                 data={"ontology_name": ontology_name, "prefix": prefix, "description": description, "source": "qif"},
                 files={"artifact": (artifact.name, content, "text/turtle")},
+                headers=service_bearer_headers('ONTOLOGY_APPROVAL_TOKEN', service_name='the ontology registration API', endpoint=self.ontology_url),
             )
         response.raise_for_status()
         payload = response.json()
@@ -41,7 +42,7 @@ class ServicePublisher:
                 f"{self.graph_url}/graph/ontologies/publish",
                 data={"ontology_id": ontology_id, "prefix": ontology_id.split("_", 1)[0]},
                 files={"artifact": (artifact.name, content, "text/turtle")},
-                headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API"),
+                headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API", endpoint=self.graph_url),
             )
         response.raise_for_status()
         return response.json()

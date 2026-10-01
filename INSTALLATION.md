@@ -1,5 +1,212 @@
 # DEPO installation and release guide
 
+## Start here: run DEPO without Azure API Management
+
+This walkthrough explains each setting and gives commands you can copy into **Windows PowerShell on the application VM**. It supplements the existing installation sections; those sections and their commands are retained. Use this walkthrough for **direct service access**. Use the later Azure API Management walkthrough for **gateway access**. Do not combine the two routing examples.
+
+**Example used throughout:** the application is installed at `E:\App\PMem`, the application VM is `10.0.2.16`, PostgreSQL runs separately at `10.0.2.22`, and the browser opens `http://10.0.2.16:3000`. Replace these addresses with your actual addresses. An IP in this guide is an example, not a value automatically applied to your installation.
+
+### Step A — Understand what is being started
+
+The frontend is the web interface on port `3000`. The backend consists of ten separate services on ports `8010`–`8019`. PostgreSQL and Neo4j are separate dependencies. In direct mode, the browser connects to those services without Azure API Management. Disabling the gateway does not disable a separately configured Azure LLM provider.
+
+`127.0.0.1` means **the computer making the request**. In a browser on your laptop, it means your laptop, not the application VM. Services listening only on `10.0.2.16` cannot be reached using `127.0.0.1` on that VM either. Use one consistent VM address in the settings and browser URL below.
+
+### Step B — Open the correct folder and inspect the deployment
+
+Open PowerShell on the application VM. Copy and run:
+
+```powershell
+Set-Location 'E:\App\PMem'
+Get-Location
+Test-Path .\INSTALLATION.md
+Test-Path .\infra\windows\start-depo-services.ps1
+Test-Path .\infra\windows\start-depo-frontend.ps1
+```
+
+Expected: the location is `E:\App\PMem`; all three checks return `True`. If a check returns `False`, deploy the complete release files before continuing. Copying only INSTALLATION.md or one script is insufficient.
+
+### Step C — Create configuration only for a first installation
+
+Check the root configuration:
+
+```powershell
+Test-Path .\.env.local
+```
+
+If this returns `True`, keep the existing file and continue to Step D. If this is a new installation and it returns `False`, run:
+
+```powershell
+.\configure-depo.ps1
+```
+
+Follow its prompts and the dependency setup sections in this guide. Do not use `-Force` on an existing customer configuration. The root file holds backend credentials and runtime routing. The configuration wizard may also create `frontend\.env.local`; keep that file for other browser/build settings. With the updated runtime-routing implementation, the **root routing switch** supplies service addresses to the frontend. Never copy server keys into the frontend environment file.
+
+### Step D — Edit the root configuration and understand each value
+
+Open the root file:
+
+```powershell
+notepad.exe 'E:\App\PMem\.env.local'
+```
+
+Find and update existing entries. If an entry does not exist, add it once. Do not paste a second copy of an existing key. Use this example for direct access from the application VM or another allowed computer:
+
+```dotenv
+DEPO_ROUTING_MODE=local
+AUTH_MODE=token
+DEPO_SERVICE_HOST=10.0.2.16
+DEPO_LOCAL_SERVICE_HOST=10.0.2.16
+ALLOWED_ORIGINS=http://10.0.2.16:3000
+OSLC_BASE_URL=http://10.0.2.16:8015
+DEPO_SPARK_ENABLED=false
+```
+
+| Setting | What it means in this example |
+| --- | --- |
+| DEPO_ROUTING_MODE=local | Bypass Azure API Management; use direct service ports. |
+| AUTH_MODE=token | Backend services require DEPO API keys. Local routing does not disable authentication. |
+| DEPO_SERVICE_HOST=10.0.2.16 | Backend services listen on this VM interface. |
+| DEPO_LOCAL_SERVICE_HOST=10.0.2.16 | Frontend and peer services use this address to call the backend. |
+| ALLOWED_ORIGINS=http://10.0.2.16:3000 | Permit browser requests from this exact frontend address. This is not an API address or token. |
+| OSLC_BASE_URL=http://10.0.2.16:8015 | Public service root used to construct OSLC links. |
+| DEPO_SPARK_ENABLED=false | Spark is disabled; it does not disable the API services or durable non-Spark job worker. |
+
+If you also open the frontend at `http://localhost:3000` or `http://127.0.0.1:3000`, add those exact origins to the **same** ALLOWED_ORIGINS line. They do not change backend listener addresses. Keep existing PostgreSQL, Neo4j, artifact-storage and generated API-key settings. Do not replace passwords or generated tokens with sample text. APIM subscription credentials are unnecessary for direct mode. Save and close the editor.
+
+If you disable Spark, also set any enabled Spark connector/scheduler flags to false: `DEPO_SPARK_NEO4J_ENABLED`, `DEPO_SPARK_POSTGRES_ENABLED`, and `DEPO_PIPELINE_SCHEDULER_ENABLED`. The main dependency sections explain their separate configuration.
+
+### Step E — Validate before installing or restarting
+
+Run:
+
+```powershell
+Set-Location 'E:\App\PMem'
+.\diagnose-depo.ps1 -Phase Prerequisites
+.\diagnose-depo.ps1 -Phase Configuration -EnvFile .env.local -Profile Production
+```
+
+These checks do not start services. Resolve the first failure before continuing. A security prompt `[D] Do not run [R] Run once` is PowerShell's downloaded-script warning: choose `R` only after verifying that the script is from your approved release. It is not a database connection failure.
+
+For a new installation, complete the PostgreSQL and Neo4j setup sections, then use the supported installer:
+
+```powershell
+.\install-depo.ps1 -EnvFile .env.local -Profile Production
+```
+
+The installer installs dependencies, builds the frontend, sets up schemas and starts backend services. For an existing installation with dependencies and schemas already verified, continue to Step F. Do not interpret an endpoint diagnostic failure before startup as a schema failure.
+
+### Step F — Apply a source update and rebuild the frontend once
+
+If a newer release changed frontend source, deploy **all** release files together. First stop the existing application processes:
+
+```powershell
+Set-Location 'E:\App\PMem'
+.\infra\windows\stop-depo-frontend.ps1
+.\infra\windows\stop-depo-services.ps1
+```
+
+Then build. The commands stop if installation or compilation fails:
+
+```powershell
+Set-Location 'E:\App\PMem\frontend'
+if (-not (Test-Path .\node_modules\.bin\vite.cmd)) {
+    npm.cmd ci --no-audit --no-fund
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency installation failed; stop here.' }
+}
+npm.cmd run build
+if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed; stop here.' }
+Set-Location 'E:\App\PMem'
+Test-Path .\frontend\dist\index.html
+```
+
+Expected: a successful build and `True`. `vite is not recognized` means frontend dependencies are missing; running only `npm run build` cannot install them. If npm reports EBUSY, close frontend development processes holding node_modules and retry the locked installation. The next frontend launcher writes the root-derived runtime routes into dist. Subsequent routing-only changes require restart and browser refresh, not another source rebuild.
+
+### Step G — Start backend services and prove they are reachable
+
+```powershell
+Set-Location 'E:\App\PMem'
+.\infra\windows\start-depo-services.ps1 -EnvFile .env.local
+```
+
+Wait for `DEPO services are ready`. If startup fails, stop here and read its first error and the named service log. Do not proceed to the browser assuming that starting the frontend starts the backend.
+
+Check graph and ontology service liveness:
+
+```powershell
+Invoke-RestMethod 'http://10.0.2.16:8013/healthz'
+Invoke-RestMethod 'http://10.0.2.16:8011/healthz'
+```
+
+Expected: JSON with `status` equal to `ok`. Then inspect listeners:
+
+```powershell
+Get-NetTCPConnection -State Listen |
+    Where-Object { $_.LocalPort -ge 8010 -and $_.LocalPort -le 8019 } |
+    Select-Object LocalAddress, LocalPort
+```
+
+Expected: ten API ports. For this example their address is `10.0.2.16`. If a request is refused, check listeners and startup logs before changing tokens. For browsers on another computer, the customer's network/firewall must allow access to the frontend and direct API ports; do not expose these ports indiscriminately to the internet.
+
+### Step H — Start the frontend and verify its service addresses
+
+```powershell
+.\infra\windows\start-depo-frontend.ps1 -EnvFile .env.local -BindHost 10.0.2.16 -Port 3000
+```
+
+Expected: `DEPO frontend is ready at http://10.0.2.16:3000/`. Open that exact URL in your browser and press Ctrl+F5. Do not open port `8000`; this topology does not need an aggregate gateway at that port.
+
+Check the generated public file on the application VM:
+
+```powershell
+Get-Content .\frontend\dist\depo-runtime-config.js
+```
+
+Expected: a nonempty `window.DEPO_RUNTIME_CONFIG = ...` assignment containing service URLs such as `http://10.0.2.16:8013`. This file contains public routes, not server keys. If the file is missing or empty, stop and fix the launcher/configuration failure.
+
+In browser Developer Tools → Console, run:
+
+```javascript
+window.DEPO_RUNTIME_CONFIG
+```
+
+Expected: `VITE_GRAPH_SERVICE_URL` is `http://10.0.2.16:8013`. If it is undefined, the runtime script has not loaded. If this is correct but network requests still call `127.0.0.1`, the application bundle is old or ignores runtime routing; rebuild from the complete updated source. Refresh alone cannot fix an old source bundle.
+
+### Step I — Enter the correct token and use the application
+
+1. On the application VM, open root `.env.local` in the editor. Find `GRAPH_READ_TOKEN`. Copy only its value to the approved user, not the whole file. A demonstration line `GRAPH_READ_TOKEN=YOUR_ACTUAL_GENERATED_KEY` means copy the actual generated key after `=`; the literal placeholder is never a valid key.
+2. In the frontend header, click **API access**. Paste the read key into **Graph read API key**. Leave **APIM subscription key** empty in direct mode. Click **Apply and retry**.
+3. Open **Ontology Registry** and refresh its list. A successful response may contain no records if no ontology has been registered; an empty database is different from a failed connection. Open other read views after API access is applied.
+4. For administrator functions, open **Admin**, enter the separate `ADMIN_API_KEY` in **Admin API key**, then click **Refresh**. Do not enter the admin key in the read-key field.
+5. For Semantic Bridge approval, job execution or product publication, use the matching approval key and approver field described in the later action/key table. The read key does not authorize writes. For example Semantic Bridge's approval flow uses `AGENTIC_APPROVAL_TOKEN`, while data-job execution uses `DATA_JOB_EXECUTION_TOKEN`.
+6. After a full browser reload, enter the read key again. Keys are memory-only. **Clear** resets credentials; never store them in bookmarks, URLs or frontend build variables.
+
+HTTP works, but it does not encrypt credentials on the network. HTTPS is required when the customer's confidentiality policy requires encrypted access. Do not disable authentication to resolve a routing or CORS error.
+
+### Step J — Finish diagnostics and perform future changes safely
+
+```powershell
+Set-Location 'E:\App\PMem'
+.\diagnose-depo.ps1 -Phase All -EnvFile .env.local -Profile Production
+```
+
+Expected: all diagnostic stages pass. This checks installation contracts and running services; it is not proof that every business workflow has been demonstrated.
+
+| Symptom | Meaning and next action |
+| --- | --- |
+| ERR_CONNECTION_REFUSED | Nothing accepts the connection at the requested host/port. Compare browser routes with service listeners. |
+| 403 after a protected request | The service was reached; supply the endpoint's correct read or approval key. |
+| CORS error | Compare the browser's exact origin with root ALLOWED_ORIGINS, then restart the backend. |
+| 401 expired key | Rotate that key, restart all processes using it, then enter the replacement. |
+| Missing release script | Deploy the complete release. Do not remove the diagnostic or documentation reference. |
+| PostgreSQL no pg_hba.conf entry | Add a matching database-VM rule for the application's actual IP, role, database and SSL mode; use the PostgreSQL section. |
+| Missing Neo4j constraints | Run the idempotent Neo4j Bootstrap command in its setup section, then verify Production. |
+
+When changing root runtime settings, save the file, stop frontend and backend, repeat Steps G and H, refresh the browser, then repeat Step I. Do not rerun the configuration wizard over existing secrets. When changing frontend source, also repeat Step F. To enable Azure API Management later, use the separate gateway walkthrough and change DEPO_ROUTING_MODE to gateway; direct-mode success does not verify Azure routing or policies.
+
+---
+
+
 This is the single installation guide for the DEPO frontend, backend, PostgreSQL,
 Neo4j, Spark and PySpark. Run each command from the repository root in the shell
 named by its section. The primary complete application runtime is 64-bit CPython
@@ -1113,6 +1320,28 @@ not extra environment files. `standalone/ontology_agentic_service/.env.example`
 belongs only to that separate standalone component; do not create it for this
 application deployment.
 
+Both environment files are UTF-8 text containing one `KEY=value` setting per
+physical line. Do not paste PowerShell prompts, `$env:KEY=...` commands, JSON,
+Markdown backticks or wrapped value continuations into them. In the root file,
+spaces around `=` and balanced single/double quotes are supported; quotes do not
+expand variables or execute commands. Full-line `#` comments and comments after
+whitespace are supported. Quote a value if a whitespace-plus-`#` sequence is part
+of the value. Keep Windows paths literal, for example `ARTIFACT_STORAGE=C:\DEPO\data\artifacts`.
+
+Before starting services, validate the root file from the repository root without
+printing any credentials:
+
+```powershell
+. .\infra\windows\runtime-config.ps1
+Read-DepoEnvironment -Root (Get-Location).Path -EnvFile '.env.local' | Out-Null
+Write-Host 'PASS: environment file syntax'
+```
+
+A parser failure reports the file and one-based line number. Open that line in
+an editor, correct its syntax and repeat validation. Values are hidden in error
+messages. Syntax validation does not verify database connectivity or required
+customer settings; continue with the deployment diagnostic afterward.
+
 ### 2.1 Create the root server file
 
 From the repository root, run this command once. It creates both supported
@@ -1232,7 +1461,14 @@ Invoke-WebRequest http://127.0.0.1:8012/api/v1/metrics | Select-Object -ExpandPr
    frontend, or `ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000`
    when browsing on the application VM. Both profiles accept these exact
    origins. Use no path or trailing slash. Set
-   `OSLC_BASE_URL=https://<customer-api-host>`.
+   `OSLC_BASE_URL` to the reachable API base using HTTP or HTTPS. For direct
+   access to the OSLC service on an application VM at `10.10.12.21`, use
+   `OSLC_BASE_URL=http://10.10.12.21:8015`. For access only on that VM, use
+   `OSLC_BASE_URL=http://127.0.0.1:8015`. A gateway example is
+   `OSLC_BASE_URL=https://api.customer.example`. Replace example addresses with
+   the actual deployment address. Both Bootstrap and Production support HTTP;
+   do not include credentials, placeholders, query parameters, fragments or the
+   `/oslc` resource suffix. Restart services after changing this published base.
    Set `ARTIFACT_STORAGE=C:\DEPO\data\artifacts`, create that directory, and
    grant the DEPO service account Modify permission. The API services and the
    data-pipeline worker must resolve this exact same absolute path.
@@ -1887,3 +2123,255 @@ start the application, contact Neo4j, or run Spark. It applies each new file in
 `infra\postgres\migrations` once, in numeric order, under an advisory lock and
 then verifies the full released schema contract. `test-postgres-schema.ps1`
 uses the same contract in read-only mode and is safe for routine diagnostics.
+# Switching local services and API gateway routing
+
+## Azure API Management: deploy and verify every service
+
+1. Configure root `.env.local` (replace the customer hostname):
+
+```dotenv
+DEPO_ROUTING_MODE=gateway
+DEPO_API_GATEWAY_URL=https://customer-apim.azure-api.net/depo
+AUTH_MODE=token
+DEPO_SERVICE_HOST=10.0.2.16
+ALLOWED_ORIGINS=http://10.0.2.16:3000
+OSLC_BASE_URL=https://customer-apim.azure-api.net/depo/oslc
+DEPO_APIM_SUBSCRIPTION_KEY=
+```
+
+Retain all server read/approval keys. If APIM requires a subscription key, set `DEPO_APIM_SUBSCRIPTION_KEY` to the actual server subscription credential. For browser calls, enter a browser-authorized subscription key in **API access → APIM subscription key (optional)**; it remains in memory and is cleared with the read key. The subscription key is separate from `GRAPH_READ_TOKEN`, not its replacement. Never embed either key into a bundle or URL. In Entra mode use `AUTH_MODE=entra`, HTTPS, trusted gateway addresses and a gateway-validated JWT; the gateway diagnostic requires a valid JWT supplied as a SecureString.
+
+2. In Azure Portal, open API Management → APIs. Create/import the ten service APIs using the port/suffix table below. With the example root `/depo`, API URL suffixes are `depo/qif`, `depo/ontology`, `depo/agentic`, `depo/graph`, `depo/ingestion`, `depo/oslc`, `depo/catalog`, `depo/data-products`, `depo/ceim`, `depo/data-pipeline`. Each Web service URL is its backend root, for example graph `http://10.0.2.16:8013` (not `/api/v1`). Import that service's `/openapi.json`. APIM must also expose `/healthz`, `/readyz` and `/openapi.json` explicitly: the health routes are omitted from the imported OpenAPI. Preserve `/api/v1/...` when forwarding functional operations. If actual API suffixes differ, set the corresponding root override, such as `DEPO_GATEWAY_GRAPH_PATH=engineering/graph`; use relative segments without a leading slash or `/api/v1`.
+
+3. Ensure APIM can reach `10.0.2.16:8010` through `8019` through customer routing/VNet/VPN or a self-hosted gateway. A cloud gateway cannot reach a private VM merely because a URL is configured. Keep authentication enabled, preserve Authorization, and preserve `X-DEPO-Service-Token` for internal catalog calls. In token mode do not apply JWT validation to DEPO's opaque API keys. Entra mode requires a separate JWT validation/identity forwarding policy; these policies are customer-controlled.
+
+4. Configure API-level CORS from the same exact origins in root `ALLOWED_ORIGINS`. Allow GET, POST, PUT, PATCH, DELETE and OPTIONS, and headers `Authorization`, `Content-Type`, `X-API-Key`, `X-Request-ID`, `X-Session-ID`, and `Ocp-Apim-Subscription-Key` if used. Expose `X-Request-ID`, `X-Session-ID`, `X-Session-Expires-At`, `X-DEPO-Run-ID` and `OData-Version`. Browser preflight does not send the bearer/subscription credentials, so ensure OPTIONS is handled before authentication. Do not add an explicit OPTIONS operation that bypasses the intended APIM CORS policy. Microsoft references: https://learn.microsoft.com/en-us/azure/api-management/cors-policy and https://learn.microsoft.com/en-us/azure/api-management/set-backend-service-policy .
+
+5. Deploy all changed source files together, including the runtime helper, frontend configuration and launcher. Rebuild once, then restart services and frontend:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\stop-depo-frontend.ps1
+.\infra\windows\stop-depo-services.ps1
+Set-Location .\frontend
+npm.cmd run build
+Set-Location ..
+.\infra\windows\start-depo-services.ps1 -EnvFile .env.local
+.\infra\windows\start-depo-frontend.ps1 -EnvFile .env.local -BindHost 10.0.2.16
+.\infra\deployment\test-depo-gateway.ps1 -EnvFile .env.local
+```
+
+The gateway test checks all ten public routes for health, readiness, OpenAPI and unauthenticated browser preflight, then a protected graph read. It performs no writes. Failures identify the service route without displaying credentials. Run it on the VM and, for remote access, from an authorized client network. For Entra testing:
+
+```powershell
+$depoGatewayJwt = Read-Host 'Paste a valid gateway JWT' -AsSecureString
+try {
+    .\infra\deployment\test-depo-gateway.ps1 -EnvFile .env.local -AccessToken $depoGatewayJwt
+} finally { Remove-Variable depoGatewayJwt -ErrorAction SilentlyContinue }
+```
+
+Open the frontend, refresh with Ctrl+F5, and check `window.DEPO_RUNTIME_CONFIG` in Developer Tools. All ten service URLs must reference your configured gateway, not `127.0.0.1`. An old compiled bundle is now rejected by the launcher even if its HTML has the runtime script tag. The installer writes runtime routes into the built output so customer web servers receive the same routes. Rebuilding directly with npm replaces the public configuration stub; rerun the frontend launcher or `Write-DepoBrowserRouting` before publishing the rebuilt output.
+
+## Using services and tokens: application VM example
+
+This example uses application VM `10.0.2.16`, frontend port `3000`, and an independently configured PostgreSQL VM. Replace the application IP if yours differs. Complete dependency installation and PostgreSQL/Neo4j setup first. Root `E:\App\PMem\.env.local` holds server credentials; browser configuration must never contain keys.
+
+### 1. Configure service access in root .env.local
+
+Edit existing entries rather than adding duplicate keys:
+
+```dotenv
+DEPO_ROUTING_MODE=local
+AUTH_MODE=token
+DEPO_SERVICE_HOST=10.0.2.16
+DEPO_LOCAL_SERVICE_HOST=10.0.2.16
+ALLOWED_ORIGINS=http://10.0.2.16:3000,http://127.0.0.1:3000,http://localhost:3000
+OSLC_BASE_URL=http://10.0.2.16:8015
+```
+
+Keep the generated `GRAPH_READ_TOKEN`, `ADMIN_API_KEY` and distinct approval/service keys already in this file. Do not replace them with these variable names or example placeholders. `ALLOWED_ORIGINS` is a list of frontend browser addresses, not backend service addresses; it does not authenticate a user or start a listener.
+
+### 2. Start backend services, then frontend
+
+Run on the application VM from the repository root. If services already run, stop them before applying changed settings:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\stop-depo-frontend.ps1
+.\infra\windows\stop-depo-services.ps1
+.\infra\windows\start-depo-services.ps1 -EnvFile .env.local
+.\infra\windows\start-depo-frontend.ps1 -EnvFile .env.local -BindHost 10.0.2.16 -Port 3000
+```
+
+The frontend must already be built using the installation instructions. Open `http://10.0.2.16:3000` after both launchers report readiness. Remote browsers require customer firewall rules permitting the configured frontend and direct API ports. With a gateway deployment, expose the gateway instead of direct service ports.
+
+| Service | Direct port | Gateway service suffix |
+| --- | --- | --- |
+| Schema sets / QIF | 8010 | /qif |
+| Ontology | 8011 | /ontology |
+| Agentic | 8012 | /agentic |
+| Graph | 8013 | /graph |
+| Ingestion | 8014 | /ingestion |
+| OSLC | 8015 | /oslc |
+| Catalog | 8016 | /catalog |
+| Data products | 8017 | /data-products |
+| CEIM | 8018 | /ceim |
+| Data pipeline | 8019 | /data-pipeline |
+
+### 3. Enable authenticated reads in the UI
+
+On the application VM, open root `.env.local` in your approved editor and locate `GRAPH_READ_TOKEN`. Copy only its value, without `GRAPH_READ_TOKEN=` or surrounding quotes. In the frontend header, choose **API access**, paste into **Graph read API key**, then select **Apply and retry**. This enables protected read requests; it does not authorize publication or job execution. A full browser reload clears the key, so enter it again after reloading. **Clear** removes active browser credentials and resets credential-bearing controls. Do not distribute the root environment file to users; an administrator should provide only the key authorized for their role.
+
+### 4. Use separate credentials for protected actions
+
+| Action | Root environment key | Where to use it |
+| --- | --- | --- |
+| Protected graph/evidence reads | GRAPH_READ_TOKEN | Header API access dialog |
+| Administrative endpoints | ADMIN_API_KEY | Admin page: Admin API key, then Refresh |
+| Agent tools and Semantic Bridge approval | AGENTIC_APPROVAL_TOKEN | Matching approval controls with approver identity |
+| Ontology registration/transitions/merge | ONTOLOGY_APPROVAL_TOKEN | Matching ontology approval controls |
+| Run approved data jobs | DATA_JOB_EXECUTION_TOKEN | Job execution approval controls |
+| Approve data jobs | DATA_JOB_APPROVAL_TOKEN | Job approval controls |
+| Publish data products | DATA_PRODUCT_APPROVAL_TOKEN | Product publication approval controls |
+
+The endpoint defines the required key; keys are not interchangeable. Other specialized actions use their corresponding key, such as `CEIM_PUBLISH_APPROVAL_TOKEN` or `VOCABULARY_APPROVAL_TOKEN`. Protected JSON actions generally require `approved_by` and `approval_token`; header-authorized writes use a Bearer token. Backend-to-backend credentials such as `CATALOG_SERVICE_TOKEN`, `GRAPH_PUBLICATION_TOKEN` and `INGESTION_WRITE_TOKEN` remain on the server and are selected by the calling service. Never put approval/admin keys into the read-key dialog or compile any key into Vite configuration.
+
+### 5. Test a service without displaying the token
+
+First check liveness (no token required):
+
+```powershell
+Set-Location E:\App\PMem
+Invoke-RestMethod -Uri 'http://10.0.2.16:8013/healthz'
+```
+
+Then load the same root configuration parser used by the launcher and test a protected read:
+
+```powershell
+. .\infra\windows\runtime-config.ps1
+$depoSettings = Read-DepoEnvironment -Root 'E:\App\PMem' -EnvFile '.env.local'
+$depoReadHeaders = @{ Authorization = 'Bearer ' + $depoSettings['GRAPH_READ_TOKEN'] }
+try {
+    Invoke-RestMethod -Uri 'http://10.0.2.16:8013/api/v1/graph/overview?limit=10' -Headers $depoReadHeaders
+} finally {
+    $depoReadHeaders.Clear()
+    $depoSettings.Clear()
+    Remove-Variable depoReadHeaders, depoSettings -ErrorAction SilentlyContinue
+}
+```
+
+Do not print the settings or header variables. For gateway mode, substitute the configured gateway root followed by `/graph/api/v1/graph/overview?limit=10`; the gateway must preserve the authorization header.
+
+### 6. Interpret failures before changing credentials
+
+| Result | Next step |
+| --- | --- |
+| Cannot connect | Check startup logs and listener/interface; credentials cannot fix a stopped service. |
+| Browser CORS failure | Check the exact browser origin against root ALLOWED_ORIGINS, then restart backend services. |
+| 403 invalid read/approval key | Use the key required by that endpoint and re-enter it after rotation/reload. |
+| 401 key expired | Rotate the key and restart services; enter the replacement in the UI. |
+| 503 actor/expiry configuration | Correct the named server configuration; do not disable authentication. |
+| Health succeeds, protected query fails | Authentication and downstream readiness still need checking; health alone is not a functional test. |
+
+Finally run `.\diagnose-depo.ps1` after starting services. Never paste `.env.local`, authorization headers or keys into diagnostic tickets. HTTP is supported but does not encrypt credentials; use HTTPS for remote confidential access.
+
+## Central origins and API key lifecycle
+
+Root `.env.local` is the sole CORS allowlist: set `ALLOWED_ORIGINS` to comma-separated exact browser origins. Services do not add localhost, LAN IPs, HTTPS variants or other ports automatically. Missing origins permit no cross-origin requests. Restart backend services after editing it.
+
+API keys remain server-side. Enter the read key through the UI API access dialog. Clear removes the read key, admin key, chat session identifier and remounts page/chat controls to discard approval inputs. Browser reload clears in-memory credentials.
+
+Optional root settings:
+
+```dotenv
+DEPO_TOKEN_EXPIRES_AT=2026-12-31T23:59:59Z
+GRAPH_READ_TOKEN_ACTOR=customer-reader
+AGENTIC_APPROVAL_TOKEN_ACTOR=customer-approver
+DEPO_REQUIRE_TOKEN_ACTOR=false
+```
+
+Replace the deadline with your actual UTC expiry. A `<KEY>_EXPIRES_AT` setting overrides the shared deadline. Expired keys return 401; malformed deadlines return 503. Configure `<KEY>_ACTOR` for each read/approval key before enabling `DEPO_REQUIRE_TOKEN_ACTOR=true`. These are key identities; distinct human identities require distinct credentials or gateway authentication.
+
+Rotate one existing key without displaying its value:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\rotate-depo-api-key.ps1 -EnvFile .env.local -Key GRAPH_READ_TOKEN -Actor customer-reader -ValidDays 90
+```
+
+The command updates the key, its expiry and actor in the protected environment file. Restart all services/workers sharing the file, then clear and re-enter browser credentials. Old process environments continue using the previous key until restarted. Rotation is explicit; no scheduler is installed.
+
+HTTP remains supported. It cannot encrypt bearer keys in transit; use HTTPS for remote access when confidentiality is required. A gateway must preserve Authorization and, in Entra mode, validate JWTs and supply verified identity headers from configured trusted gateway addresses. The routing switch does not provision APIM policies.
+
+Set these entries in the repository-root `.env.local` to bypass Azure API Management:
+
+```dotenv
+DEPO_ROUTING_MODE=local
+DEPO_LOCAL_SERVICE_HOST=127.0.0.1
+AUTH_MODE=token
+ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000
+OSLC_BASE_URL=http://127.0.0.1:8015
+```
+
+Use the application VM's reachable IP or hostname instead of `127.0.0.1` when browsers run on other computers. Set `DEPO_SERVICE_HOST` to a listening interface reachable by those browsers and include their exact frontend origin in `ALLOWED_ORIGINS`.
+
+For gateway routing, replace the routing entries with:
+
+```dotenv
+DEPO_ROUTING_MODE=gateway
+DEPO_API_GATEWAY_URL=https://customer.example/depo
+```
+
+Replace the example with the actual gateway API root. It must route `/qif`, `/ontology`, `/agentic`, `/graph`, `/ingestion`, `/oslc`, `/catalog`, `/data-products`, `/ceim` and `/data-pipeline`, preserving the subsequent `/api/v1` paths. HTTP gateway URLs are supported. Set `OSLC_BASE_URL` separately to the public OSLC service URL. API keys, PostgreSQL, Neo4j and the LLM provider retain their independent settings.
+
+An explicit routing mode overrides all ten backend peer URLs and browser service URLs. Omitting the mode preserves the existing explicit configuration. Local routing requires API-key mode, not Entra header forwarding. Keep credentials out of frontend environment variables.
+
+Run from PowerShell after deploying this release:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\stop-depo-frontend.ps1
+.\infra\windows\stop-depo-services.ps1
+# One-time rebuild if the deployed frontend predates runtime routing:
+Set-Location .\frontend
+npm.cmd run build
+Set-Location ..
+.\infra\windows\start-depo-services.ps1 -EnvFile .env.local
+.\infra\windows\start-depo-frontend.ps1 -EnvFile .env.local
+```
+
+Subsequent routing changes only require restarting the launchers and refreshing the browser. The frontend launcher writes a public `frontend/dist/depo-runtime-config.js` containing only routing URLs. Retain the normal installation/diagnostic prerequisites; this switch does not install dependencies or alter database authentication.
+
+## Check and use ontology registration
+
+Registration belongs to the ontology service on port 8011. It creates a **draft catalog artifact**; it does not approve the ontology or publish nodes to Neo4j. The ingestion service's historical registry is a compatibility view, not the native registration endpoint.
+
+Direct endpoints: `GET /api/v1/ontologies` lists records, `POST /api/v1/ontologies/register` uploads a draft, and `GET /api/v1/ontologies/{ontology_id}` reads its metadata. Through APIM prepend the configured ontology suffix, for example `/depo/ontology/api/v1/ontologies/register`.
+
+Check service liveness on the application VM:
+
+```powershell
+Set-Location E:\App\PMem
+Invoke-RestMethod 'http://10.0.2.16:8011/healthz'
+Invoke-RestMethod 'http://10.0.2.16:8011/api/v1/ontologies'
+```
+
+Registration requires `ONTOLOGY_APPROVAL_TOKEN` in `Authorization: Bearer ...`, not GRAPH_READ_TOKEN. Multipart fields: `artifact` (the file), `ontology_name`, `prefix`; optional fields: `description`, `source`. Prefixes start with a letter and contain letters, digits, underscores or hyphens. Files may be `.ttl`, `.rdf`, `.xml`, `.owl`, `.jsonld` or `.json` containing RDF/OWL or JSON-LD. Generic business XML/XSD must first be converted through ingestion. XML DTD/entity declarations and remote/imported JSON-LD contexts are rejected. Use inline JSON-LD contexts. The filename `metadata.json` is reserved.
+
+`ONTOLOGY_MAX_UPLOAD_BYTES` defaults to 26214400 (25 MiB). Oversized HTTP uploads return 413. Invalid syntax/fields return 422, invalid registration keys return 403. Success returns 201 with `ontology_id`, `lifecycle_status=draft` and syntax-validation details. Refresh Ontology Registry to see the draft; graph views can remain empty until approved publication. Backend ingestion/QIF workflows use the server ontology write credential rather than forwarding an unrelated client token.
+
+
+### Service readiness and gateway credential checks
+
+`/healthz` confirms that a service process is running. `/readyz` also checks its configured dependencies. In production, missing database configuration reports `503`; Neo4j readiness checks the database selected by `NEO4J_DATABASE`, not only the server connection.
+
+Pipeline publication uses `CEIM_PUBLISH_APPROVAL_TOKEN`; publication recovery reads use `GRAPH_READ_TOKEN`. Keep both in the root `.env.local`. In gateway mode, backend calls also use the root `DEPO_APIM_SUBSCRIPTION_KEY`, scoped to `DEPO_API_GATEWAY_URL`. Do not copy server credentials into frontend environment files.
+
+After editing backend configuration, restart backend services with the installation's stop/start sequence. Once services are running, execute the full diagnostic from the repository root:
+
+```powershell
+Set-Location E:\App\PMem
+.\diagnose-depo.ps1 -EnvFile .env.local
+```
+
+Expected result: every enabled service responds and the diagnostic completes without a failed check. A successful offline package check alone does not prove that PostgreSQL, Neo4j or Azure APIM can be reached.

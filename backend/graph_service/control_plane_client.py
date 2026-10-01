@@ -25,6 +25,8 @@ class ControlPlaneClient:
         try:
             token = os.getenv("GRAPH_READ_TOKEN", "").strip()
             headers = {"Authorization": f"Bearer {token}"} if token else {}
+            from backend.depo_platform.network import gateway_subscription_headers
+            headers.update(gateway_subscription_headers(f'{base_url}{path}'))
             response = httpx.get(f"{base_url}{path}", headers=headers, timeout=self.timeout_seconds)
             response.raise_for_status()
             payload = response.json()

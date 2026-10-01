@@ -6,8 +6,9 @@ from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from starlette.concurrency import run_in_threadpool
 
-from .catalog import catalog
+from .catalog import catalog, ontology_upload_limit
 from .intelligence import SemanticIntelligence
 from .merge_service import GovernedMergeService
 from .business_context import BusinessContextService
@@ -282,7 +283,7 @@ async def publish_vocabulary(scheme_id: str, version: str, payload: dict[str, An
                 f"{graph_root}/graph/ontologies/publish",
                 data={"ontology_id": f"skos-{scheme_id}-{version.replace('.', '-')}", "prefix": "skos"},
                 files={"artifact": (artifact["filename"], content, "text/turtle")},
-                headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API"),
+                headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API", endpoint=graph_root),
             )
         if response.is_error:
             raise RuntimeError(f"Graph service returned HTTP {response.status_code}")
@@ -368,8 +369,12 @@ async def register_ontology(
     source: Annotated[str, Form()] = "api",
 ) -> dict:
     try:
-        return catalog.register(
-            content=await artifact.read(), filename=artifact.filename or "ontology.ttl",
+        limit = ontology_upload_limit()
+        content = await artifact.read(limit + 1)
+        if len(content) > limit:
+            raise HTTPException(status_code=413, detail='Ontology artifact exceeds ONTOLOGY_MAX_UPLOAD_BYTES')
+        return await run_in_threadpool(catalog.register,
+            content=content, filename=artifact.filename or "ontology.ttl",
             ontology_name=ontology_name, prefix=prefix, description=description, source=source,
         )
     except ValueError as exc:

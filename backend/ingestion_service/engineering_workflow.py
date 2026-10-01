@@ -37,7 +37,9 @@ class EngineeringWorkflow:
         if not register:
             return {"status": "converted", "conversion": conversion}
         ontology = conversion["ontology"]
-        headers = {"X-Request-ID": request_id} if request_id else {}
+        headers = service_bearer_headers('ONTOLOGY_APPROVAL_TOKEN', service_name='the ontology workflow API', endpoint=self.ontology_url)
+        if request_id:
+            headers['X-Request-ID'] = request_id
         data = {
             "ontology_name": ontology_name or ontology["name"],
             "prefix": prefix or ontology["prefix"],
@@ -82,7 +84,7 @@ class EngineeringWorkflow:
                 f"{self.graph_url}/graph/ontologies/publish",
                 data={"ontology_id": registration["ontology_id"], "prefix": data["prefix"]},
                 files={"artifact": (f"{PathName.safe_stem(filename)}.ttl", ontology["turtle"].encode("utf-8"), "text/turtle")},
-                headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API"),
+                headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API", endpoint=self.graph_url),
             )
             published.raise_for_status()
             result["status"] = "published"

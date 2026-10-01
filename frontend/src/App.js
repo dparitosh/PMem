@@ -224,7 +224,8 @@ function App() {
             rightDrawer={(
               <ErrorBoundary>
                 <Suspense fallback={<PageFallback />}>
-                  <Chatbot
+                    <Chatbot
+                      key={`chat-${serviceAuthRevision}`}
                     graphData={data}
                     searchResults={searchResults}
                     chatResults={chatResults}

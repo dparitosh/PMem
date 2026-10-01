@@ -14,11 +14,16 @@ export function normalizeCommonNode(raw = {}) {
   return { id, label, type, properties, metadata, style, x: raw.x ?? properties.x, y: raw.y ?? properties.y };
 }
 
+function endpointId(value) {
+  const id = value && typeof value === 'object' ? (value.id ?? value.elementId ?? value.uid) : value;
+  return id == null ? '' : String(id);
+}
+
 export function normalizeCommonLink(raw = {}) {
   const properties = raw.properties && typeof raw.properties === 'object' ? raw.properties : {};
   const metadata = raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : {};
-  const source = String(raw.source || raw.start || properties.source || '');
-  const target = String(raw.target || raw.end || properties.target || '');
+  const source = endpointId(raw.source ?? raw.start ?? properties.source);
+  const target = endpointId(raw.target ?? raw.end ?? properties.target);
   if (!source || !target) return null;
   const type = String(raw.type || raw.relationship_type || properties.type || 'RELATED_TO');
   const id = String(raw.id || raw.elementId || properties.id || `${source}:${type}:${target}`);

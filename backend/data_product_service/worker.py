@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import logging
 
 from .router import reconcile_pending
 
@@ -10,7 +11,10 @@ from .router import reconcile_pending
 async def run() -> None:
     interval = max(5, int(os.getenv("DATA_PRODUCT_RECONCILE_SECONDS", "30")))
     while True:
-        await reconcile_pending()
+        try:
+            await reconcile_pending()
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Catalog reconciliation deferred: %s", type(exc).__name__)
         await asyncio.sleep(interval)
 
 

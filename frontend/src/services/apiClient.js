@@ -25,6 +25,12 @@ const MAX_GET_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 700;
 const SESSION_STORAGE_KEY = 'depo.sessionId.v1';
 let adminApiKey = '';
+if (typeof window !== 'undefined') {
+  window.addEventListener('depo:credentials-cleared', () => {
+    adminApiKey = '';
+    clearClientSessionId();
+  });
+}
 
 // Administrative credentials are deliberately memory-only. They must never
 // be placed in Vite environment variables, local storage, or server logs.
@@ -120,9 +126,11 @@ apiClient.interceptors.request.use(
     if (isStandaloneServiceRequest(requestConfig.url)) {
       requestConfig.headers = requestConfig.headers || {};
       const explicit = requestConfig.headers.get?.('Authorization') || requestConfig.headers.Authorization;
-      if (!explicit) Object.assign(requestConfig.headers, serviceAuthHeaders());
+      const credentials = serviceAuthHeaders(requestConfig.url);
+      if (explicit) delete credentials.Authorization;
+      Object.assign(requestConfig.headers, credentials);
     }
-    if (adminApiKey && String(requestConfig.url || '').includes('/api/v1/admin/')) {
+    if (adminApiKey && isStandaloneServiceRequest(requestConfig.url) && String(requestConfig.url || '').includes('/api/v1/admin/')) {
       requestConfig.headers = requestConfig.headers || {};
       requestConfig.headers['X-API-Key'] = adminApiKey;
     }

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.artifact_store import ArtifactStore
 from backend.depo_platform.authorization import approval_identity, graph_read_identity
-from backend.depo_platform.network import bounded_timeout_seconds
+from backend.depo_platform.network import bounded_timeout_seconds, service_bearer_headers, gateway_subscription_headers
 
 from . import job_definitions
 from . import run_records
@@ -112,7 +112,7 @@ async def _reconcile_graph_publication(
     try:
         async with httpx.AsyncClient(timeout=min(timeout_seconds, 15)) as client:
             response = await client.get(
-                f"{graph_root}/graph/ontologies/{ontology_id}/publications/{publication_id}", headers=headers,
+                f"{graph_root}/graph/ontologies/{ontology_id}/publications/{publication_id}", headers=service_bearer_headers("GRAPH_READ_TOKEN", service_name="graph publication receipts", endpoint=graph_root),
             )
         return dict(response.json()) if response.status_code == 200 else None
     except httpx.HTTPError:
@@ -376,9 +376,9 @@ async def publish_job_run(run_id: str, payload: dict[str, Any], request: Request
             key: value for key, value in request.headers.items()
             if key.lower() in {"x-ms-client-principal", "x-depo-principal-id", "x-depo-roles"}
         }
-        publication_token = os.getenv("GRAPH_PUBLICATION_TOKEN", "").strip()
-        if publication_token:
-            forwarded_headers["Authorization"] = f"Bearer {publication_token}"
+        forwarded_headers.update(service_bearer_headers(
+            "CEIM_PUBLISH_APPROVAL_TOKEN", service_name="CEIM", endpoint=ceim_root,
+        ))
         publication_timeout = bounded_timeout_seconds("GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180)
         try:
             async with httpx.AsyncClient(timeout=publication_timeout) as client:

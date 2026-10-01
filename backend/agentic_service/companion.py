@@ -31,6 +31,8 @@ class KnowledgeCompanion:
             async with httpx.AsyncClient(timeout=float(os.getenv("COMPANION_RETRIEVAL_TIMEOUT_SECONDS", "15"))) as client:
                 if headers is None:
                     headers = {"Authorization": f"Bearer {os.environ['GRAPH_READ_TOKEN']}"} if os.getenv('GRAPH_READ_TOKEN') else {}
+                from backend.depo_platform.network import gateway_subscription_headers
+                headers = {**headers, **gateway_subscription_headers(endpoint)}
                 response = await client.get(endpoint, params={"query": query, "limit": min(self.max_nodes, 200)}, headers=headers)
                 response.raise_for_status()
         except httpx.HTTPError as exc:

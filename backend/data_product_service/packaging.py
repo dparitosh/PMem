@@ -5,6 +5,7 @@ import hashlib
 import json
 import shutil
 import zipfile
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -19,7 +20,14 @@ def _checksum(path: Path) -> str:
 
 def build_package(*, output_root: Path, payload: dict, artifacts: list[tuple[dict, Path]]) -> dict:
     product_id, version = str(payload["product_id"]), str(payload["version"])
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9._-]{0,127}", product_id):
+        raise ValueError("product_id must be a safe identifier")
+    if not re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?", version):
+        raise ValueError("version must use semantic versioning")
+    packages_root = (output_root / "packages").resolve()
     package_dir = output_root / "packages" / product_id / version
+    if not package_dir.resolve().is_relative_to(packages_root):
+        raise ValueError("Product package path is outside product storage")
     zip_path = output_root / "packages" / product_id / f"{version}.zip"
     if package_dir.exists() or zip_path.exists():
         manifest = package_dir / "manifest.json"

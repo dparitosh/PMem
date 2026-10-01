@@ -29,8 +29,23 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
 
 def allowed_origins() -> list[str]:
-    configured = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
-    return [origin.strip() for origin in configured.split(",") if origin.strip()]
+    from urllib.parse import urlsplit
+    configured = os.getenv("ALLOWED_ORIGINS", "")
+    origins = list(dict.fromkeys(origin.strip() for origin in configured.split(',') if origin.strip()))
+    for origin in origins:
+        try:
+            parsed = urlsplit(origin)
+            parsed.port
+            valid = (parsed.scheme in {'http', 'https'} and parsed.hostname
+                     and not parsed.username and not parsed.password and not parsed.path
+                     and not parsed.query and not parsed.fragment and '*' not in origin
+                     and not any(char in origin for char in '<>\\')
+                     and not any(char.isspace() for char in origin))
+        except ValueError:
+            valid = False
+        if not valid:
+            raise RuntimeError('ALLOWED_ORIGINS must contain exact HTTP/HTTPS origins without paths or wildcards')
+    return origins
 
 
 def configured_dependency_status(dependencies: Collection[str] = ("postgres", "neo4j")) -> dict[str, dict[str, str]]:
@@ -42,6 +57,8 @@ def configured_dependency_status(dependencies: Collection[str] = ("postgres", "n
     being advertised as ready.
     """
     status: dict[str, dict[str, str]] = {}
+    production = any(os.getenv(key, '').strip().lower() in {'prod', 'production'}
+                     for key in ('DEPO_ENV', 'ENVIRONMENT', 'APP_ENV', 'DEPLOYMENT_ENV'))
     database_url = os.getenv("DEPO_DATABASE_URL") or os.getenv("DATABASE_URL")
     if "postgres" in dependencies and database_url:
         try:
@@ -52,22 +69,29 @@ def configured_dependency_status(dependencies: Collection[str] = ("postgres", "n
             status["postgres"] = {"status": "ready"}
         except Exception as exc:
             status["postgres"] = {"status": "unavailable", "reason": type(exc).__name__}
-    neo4j_uri = os.getenv("NEO4J_URI")
+    neo4j_uri = os.getenv("NEO4J_URI") or os.getenv("NEO4J_URL")
     if "neo4j" in dependencies and neo4j_uri:
         try:
-            from neo4j import GraphDatabase
+            from neo4j import GraphDatabase, Query
             auth = None if os.getenv("NEO4J_AUTH_MODE", "token").lower() == "none" else (
-                os.getenv("NEO4J_USER", ""), os.getenv("NEO4J_PASS", "")
+                os.getenv("NEO4J_USER") or os.getenv("NEO4J_USERNAME", ""), os.getenv("NEO4J_PASS") or os.getenv("NEO4J_PASSWORD", "")
             )
             with GraphDatabase.driver(
                 neo4j_uri,
                 auth=auth,
                 connection_timeout=3,
+                max_transaction_retry_time=0,
             ) as driver:
                 driver.verify_connectivity()
+                with driver.session(database=os.getenv("NEO4J_DATABASE", "neo4j")) as session:
+                    session.run(Query("RETURN 1", timeout=3)).consume()
             status["neo4j"] = {"status": "ready"}
         except Exception as exc:
             status["neo4j"] = {"status": "unavailable", "reason": type(exc).__name__}
+    if production:
+        for dependency in dependencies:
+            if dependency not in status:
+                status[dependency] = {"status": "unavailable", "reason": "MissingConfiguration"}
     return status
 
 
@@ -103,7 +127,7 @@ def create_service_app(
         allow_origins=allowed_origins(),
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID", "X-Session-ID"],
+        allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID", "X-Session-ID", "Ocp-Apim-Subscription-Key"],
         expose_headers=["X-Request-ID", "X-Session-ID", "X-Session-Expires-At", "X-DEPO-Run-ID", "OData-Version"],
     )
 

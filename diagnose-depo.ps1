@@ -37,7 +37,7 @@ if ($Phase -in @('Configuration','Runtime','All')) {
   }
   if (-not $SkipFrontend) {
     Invoke-Diagnostic 'frontend configuration' {
-      & (Join-Path $root 'infra\deployment\test-depo-frontend-config.ps1')
+      & (Join-Path $root 'infra\deployment\test-depo-frontend-config.ps1') -RootEnvFile $envPath
     }
   }
 }
@@ -51,6 +51,13 @@ if ($Phase -in @('Runtime','All')) {
   }
   Invoke-Diagnostic 'running service endpoints' {
     & (Join-Path $root 'infra\deployment\test-depo-deployment.ps1') -EnvFile $envPath -Profile $Profile
+  }
+  . (Join-Path $root 'infra/windows/runtime-config.ps1')
+  $gatewaySettings = Read-DepoEnvironment $root $envPath
+  if ($gatewaySettings['DEPO_ROUTING_MODE'] -eq 'gateway' -and $gatewaySettings['AUTH_MODE'] -eq 'token') {
+    Invoke-Diagnostic 'API gateway service routes' {
+      & (Join-Path $root 'infra/deployment/test-depo-gateway.ps1') -EnvFile $envPath
+    }
   }
 }
 Write-Host "`nDEPO diagnostics completed successfully for phase: $Phase" -ForegroundColor Green

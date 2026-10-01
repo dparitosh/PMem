@@ -5,6 +5,8 @@ router = APIRouter(prefix="/graph", tags=["semantic-bridge"])
 def bridge_service_identity(request: Request):
     """Private service credential, never forwarded to browser clients."""
     import os, hmac
+    from backend.depo_platform.authorization import require_active_token
+    require_active_token('GRAPH_PUBLICATION_TOKEN')
     expected = os.getenv('GRAPH_PUBLICATION_TOKEN', '')
     supplied = request.headers.get('authorization', '')
     if not expected or not hmac.compare_digest(supplied, 'Bearer ' + expected):

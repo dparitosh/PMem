@@ -108,6 +108,23 @@ class PostgresRegistry:
             row = cursor.fetchone()
             return row[0] if row else None
 
+    def transition_owned(self, key: str, expected: dict[str, Any], value: dict[str, Any]) -> dict[str, Any]:
+        """Fence writes from workers whose claim has already been replaced."""
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE depo_registry SET value=%s::jsonb, updated_at=now()
+                   WHERE namespace=%s AND key=%s AND value->>'status'='running'
+                     AND value->>'worker_id'=%s
+                     AND COALESCE((value->>'attempt')::int,0)=%s
+                     AND (value->'lease'->>'expires_at')::timestamptz > now()
+                   RETURNING value""",
+                (json.dumps(value), self.namespace, key, expected.get("worker_id"), int(expected.get("attempt") or 0)),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise ValueError("Worker no longer owns this run lease")
+            return row[0]
+
     def heartbeat(self, *, key: str, worker_id: str, lease: dict[str, Any]) -> dict[str, Any] | None:
         with self._connect() as connection, connection.cursor() as cursor:
             cursor.execute(

@@ -630,18 +630,18 @@ export const normalizeGraphDataset = (payload, options = {}) => {
   const { collapseHiddenBridges = false } = options;
   const normalizedRaw = normalizeRawDataset(payload);
   if (collapseHiddenBridges) {
-    return collapseBridgeNodes(normalizedRaw.nodes, normalizedRaw.links, {
+    return { ...normalizedRaw, ...collapseBridgeNodes(normalizedRaw.nodes, normalizedRaw.links, {
       collapseMetadataWrappers: true,
       collapseRelationshipCarriers: true,
-    });
+    }) };
   }
 
   const containsRelationshipCarrier = normalizedRaw.nodes.some((node) => isRelationshipCarrierNode(node));
   if (containsRelationshipCarrier) {
-    return collapseBridgeNodes(normalizedRaw.nodes, normalizedRaw.links, {
+    return { ...normalizedRaw, ...collapseBridgeNodes(normalizedRaw.nodes, normalizedRaw.links, {
       collapseMetadataWrappers: false,
       collapseRelationshipCarriers: true,
-    });
+    }) };
   }
 
   const nodes = normalizedRaw.nodes.filter((node) => node?.elementId && !isMetadataWrapperNode(node));
@@ -652,7 +652,7 @@ export const normalizeGraphDataset = (payload, options = {}) => {
     return link?.elementId && nodeIds.has(sourceId) && nodeIds.has(targetId);
   });
 
-  return deduplicateNodesAndLinks(nodes, links);
+  return { ...normalizedRaw, ...deduplicateNodesAndLinks(nodes, links) };
 };
 
 export { getLinkEndpointId };
