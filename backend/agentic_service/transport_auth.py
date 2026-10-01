@@ -4,9 +4,9 @@ from urllib.parse import urlsplit
 
 from fastapi import HTTPException, Request
 
-# These endpoints consume approval fields in their JSON body, not bearer tokens.
+# Human approval contracts; service boundary headers are handled separately.
 APPROVAL_TOKENS = {
-    'ontology.register': 'AGENTIC_APPROVAL_TOKEN',
+    'ontology.register': 'ONTOLOGY_APPROVAL_TOKEN',
     'ontology.transition': 'ONTOLOGY_APPROVAL_TOKEN',
     'ontology.merge.apply': 'ONTOLOGY_APPROVAL_TOKEN',
     'data.product.publish': 'DATA_PRODUCT_APPROVAL_TOKEN',
@@ -19,7 +19,12 @@ APPROVAL_TOKENS = {
 }
 
 
-def downstream_headers(request: Request, endpoint: str, *, graph_read=False) -> dict:
+def tool_retry_allowed(tool: dict, *, attempt: int, retries: int, status_code: int) -> bool:
+    """Only explicitly non-mutating tools may retry an uncertain failure."""
+    return attempt <= retries and status_code >= 500 and tool.get('mutates') is False
+
+
+def downstream_headers(request: Request, endpoint: str, *, graph_read=False, tool: dict | None = None) -> dict:
     mode = os.getenv('AUTH_MODE', 'token').lower()
     if mode == 'entra':
         # The caller has already passed gateway/role validation. Forward its JWT
@@ -32,10 +37,23 @@ def downstream_headers(request: Request, endpoint: str, *, graph_read=False) -> 
         if not bearer.lower().startswith('bearer ') or not bearer[7:].strip():
             raise HTTPException(503, 'The gateway must preserve the caller bearer token for downstream authorization')
         return {'Authorization': bearer}
-    if mode == 'token' and graph_read:
-        token = os.getenv('GRAPH_READ_TOKEN', '').strip()
+    if mode == 'token':
+        token_key = 'GRAPH_READ_TOKEN' if graph_read else None
+        if tool:
+            service = tool.get('service')
+            method = str(tool.get('method', 'GET')).upper()
+            if method not in {'GET', 'HEAD', 'OPTIONS'} and service in {'ontology', 'qif', 'ingestion'}:
+                token_key = 'INGESTION_WRITE_TOKEN' if service == 'ingestion' else 'ONTOLOGY_APPROVAL_TOKEN'
+            else:
+                # Protected read/evidence APIs span several services. A read
+                # credential also accompanies body-authorized mutations; it
+                # never substitutes for their approval token.
+                token_key = 'GRAPH_READ_TOKEN'
+        if not token_key:
+            return {}
+        token = os.getenv(token_key, '').strip()
         if not token:
-            raise HTTPException(503, 'GRAPH_READ_TOKEN is required for downstream reads')
+            raise HTTPException(503, f'{token_key} is required for downstream authorization')
         return {'Authorization': 'Bearer ' + token}
     return {}
 

@@ -306,6 +306,7 @@ const WhereUsedView = ({
             const ancestorMap = new Map([[startNode.elementId, startNode]]);
             const linkSet = new Map();
             const visited = new Set();
+            let failedBranches = 0;
             const queue = [startNode.elementId];
 
             while (queue.length > 0) {
@@ -355,6 +356,7 @@ const WhereUsedView = ({
                 } catch (e) {
                     if (controller.signal.aborted) return;
                     logger.warn('Traverse fetch failed for %s: %s', currentNodeId, e.message);
+                    failedBranches += 1;
                 }
             }
 
@@ -398,7 +400,8 @@ const WhereUsedView = ({
                 links: parentLinks,
                 root: startNode
             });
-            setAutoExpanded(true);
+            setAutoExpanded(failedBranches === 0);
+            if (failedBranches) setExpansionError(`Partial hierarchy: ${failedBranches} parent branch request(s) failed. Retry expansion to complete the evidence.`);
         } catch (err) {
             if (controller.signal.aborted || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.name === 'AbortError') return;
             setExpansionError(err.message);
@@ -570,6 +573,8 @@ const WhereUsedView = ({
     const totalSearchableNodes = (effectiveGraphData?.nodes || []).length;
 
     return (
+        <>
+        <p role="status">Search covers only the loaded graph snapshot (up to 1200 nodes for the overview). A missing match does not prove that an entity is unused.</p>
         <div style={{ padding: '14px 18px', boxSizing: 'border-box', overflow: 'hidden', display:'flex', flexDirection:'column', flex:1, minHeight:0, background: WU.bg }}>
             <div style={{ ...panelStyle, marginBottom: 12, padding: '10px 12px' }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: WU.text, marginBottom: 4 }}>Business object where-used analysis</div>
@@ -654,6 +659,7 @@ const WhereUsedView = ({
                 </div>
             )}
         </div>
+        </>
     );
 };
 

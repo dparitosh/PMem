@@ -1,3 +1,4 @@
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 import React, { useEffect, useMemo, useState } from 'react';
 import { API, buildUrl } from '../config';
 import { apiClient, dataPipelineAPI } from '../services/apiClient';
@@ -330,19 +331,24 @@ const ReportsTab = ({ searchResults, graphData }) => {
   const [xsdReportError, setXsdReportError] = useState('');
   const [pipelineTelemetry, setPipelineTelemetry] = useState(null);
   const [pipelineTelemetryError, setPipelineTelemetryError] = useState('');
+  const [telemetryRevision, setTelemetryRevision] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setTelemetryRevision(value => value + 1), 15000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
     dataPipelineAPI.telemetry({ signal: controller.signal })
-      .then((response) => { if (!cancelled) setPipelineTelemetry(response?.data || null); })
+      .then((response) => { if (!cancelled) { setPipelineTelemetry(response?.data || null); setPipelineTelemetryError(''); } })
       .catch((error) => {
         if (!cancelled && !controller.signal.aborted) {
-          setPipelineTelemetryError(error?.response?.data?.detail || error?.message || 'Pipeline telemetry is unavailable.');
+          setPipelineTelemetryError(apiErrorMessage(error, 'Pipeline telemetry is unavailable.'));
         }
       });
     return () => { cancelled = true; controller.abort(); };
-  }, []);
+  }, [telemetryRevision]);
 
   useEffect(() => {
     if (!selectedXsdOntology && ontologies?.length) {
@@ -358,7 +364,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
     setXsdReportError('');
     apiClient.get(buildUrl(API.reports.xsdRelational), { params: { ontology_id: selectedXsdOntology }, signal: controller.signal })
       .then((response) => { if (!cancelled) setXsdReport(response.data || null); })
-      .catch((error) => { if (!cancelled && !controller.signal.aborted) setXsdReportError(error?.response?.data?.detail || error.message || 'XSD relational report failed.'); })
+      .catch((error) => { if (!cancelled && !controller.signal.aborted) setXsdReportError(apiErrorMessage(error, 'XSD relational report failed.')); })
       .finally(() => { if (!cancelled) setXsdReportLoading(false); });
     return () => { cancelled = true; controller.abort(); };
   }, [activeReport, selectedXsdOntology]);
@@ -383,7 +389,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
         if (!cancelled) setFallbackGraphData(normalized);
       } catch (error) {
         if (controller.signal.aborted) return;
-        if (!cancelled) setGraphError(error?.response?.data?.detail || error.message || 'Failed to load graph data for reports.');
+        if (!cancelled) setGraphError(apiErrorMessage(error, 'Failed to load graph data for reports.'));
       } finally {
         if (!cancelled) setGraphLoading(false);
       }

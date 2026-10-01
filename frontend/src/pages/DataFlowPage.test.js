@@ -26,6 +26,14 @@ test('shows configuration status and explicitly bounded telemetry totals', async
   expect(screen.getByText(/not lifetime history/)).toBeInTheDocument();
 });
 
+test('marks quality unknown when the run evidence endpoint fails', async () => {
+  const { dataPipelineAPI } = await import('../services/apiClient');
+  dataPipelineAPI.runs.mockRejectedValueOnce(new Error('Run evidence unavailable'));
+  render(<DataFlowPage />);
+  expect(await screen.findByText(/Evidence is unavailable or stale/)).toBeInTheDocument();
+  expect(screen.getByText('unknown')).toBeInTheDocument();
+});
+
 test('sends explicit in-memory approval data for a direct replay', async () => {
   const { dataPipelineAPI } = await import('../services/apiClient');
   render(<DataFlowPage />);

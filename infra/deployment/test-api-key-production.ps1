@@ -14,6 +14,10 @@ try {
   foreach ($key in $replacements.Keys) { $content = $content -replace "(?m)^$key=.*$", "$key=$($replacements[$key])" }
   Set-Content -LiteralPath $testFile -Value $content
   & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks
+  foreach ($origins in @('http://10.10.12.21:3000', 'http://127.0.0.1:3000,http://localhost:3000')) {
+    Set-Content -LiteralPath $testFile -Value ($content -replace '(?m)^ALLOWED_ORIGINS=.*$', "ALLOWED_ORIGINS=$origins")
+    & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks
+  }
   Set-Content -LiteralPath $testFile -Value ($content -replace 'neo4j\+s://graph.example', 'bolt+s://graph.example')
   & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $testFile -Profile Production -SkipEndpointChecks
   foreach ($invalid in @(($content -replace 'neo4j\+s://graph.example', 'neo4j+ssc://graph.example'), ($content + "`nAUTH_MODE=token"))) {

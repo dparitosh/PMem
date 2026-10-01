@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 
 const { qifAPI } = vi.hoisted(() => ({ qifAPI: {
@@ -47,7 +47,7 @@ test('starts a reference task with accessible metadata controls', async () => {
   expect(screen.getByLabelText(/select qif xsd files/i)).toHaveAttribute('multiple');
 
   fireEvent.click(start);
-  await waitFor(() => expect(qifAPI.startReferenceTask).toHaveBeenCalledWith(expect.objectContaining({ prefix: 'qif' })));
+  await waitFor(() => expect(qifAPI.startReferenceTask).toHaveBeenCalledWith(expect.objectContaining({ prefix: 'qif' }), {}));
   await screen.findByText(/approve and publish ontology/i);
 });
 
@@ -56,6 +56,37 @@ test('sanitizes the ontology prefix before submitting a task', async () => {
   const prefix = await screen.findByLabelText(/^prefix$/i);
   fireEvent.change(prefix, { target: { value: 'qif invalid!' } });
   expect(prefix).toHaveValue('qifinvalid');
+});
+
+test('uses a scoped ontology write key for actions', async () => {
+  render(<QifPage workflowMode />);
+  const start = await screen.findByRole('button', { name: /start reference task/i });
+  await waitFor(() => expect(start).toBeEnabled());
+  fireEvent.change(screen.getByLabelText('Ontology write key'), { target: { value: 'write-only-key' } });
+  fireEvent.click(start);
+  await waitFor(() => expect(qifAPI.startReferenceTask).toHaveBeenCalledWith(expect.any(Object), { headers: { Authorization: 'Bearer write-only-key' } }));
+  const publish = await screen.findByRole('button', { name: /approve and publish ontology/i });
+  await waitFor(() => expect(publish).toBeEnabled());
+  fireEvent.click(publish);
+  await waitFor(() => expect(qifAPI.commit).toHaveBeenCalledWith(task.task_id, { headers: { Authorization: 'Bearer write-only-key' } }));
+});
+
+test('ignores an older task response after another task is selected', async () => {
+  const other = { ...task, task_id: 'b'.repeat(32), ontology_name: 'Other ontology' };
+  let resolveOther;
+  qifAPI.listTasks.mockResolvedValue({ data: { tasks: [task, other] } });
+  qifAPI.getTask.mockImplementation(id => id === other.task_id
+    ? new Promise(resolve => { resolveOther = resolve; }) : Promise.resolve({ data: task }));
+  render(<QifPage workflowMode />);
+  const a = await screen.findByRole('button', { name: /Open QIF task QIF 3.0 Ontology/ });
+  const b = await screen.findByRole('button', { name: /Open QIF task Other ontology/ });
+  await waitFor(() => expect(a).toHaveAttribute('aria-pressed', 'true'));
+  fireEvent.click(b);
+  fireEvent.click(a);
+  await waitFor(() => expect(a).toHaveAttribute('aria-pressed', 'true'));
+  await act(async () => { resolveOther({ data: other }); });
+  expect(a).toHaveAttribute('aria-pressed', 'true');
+  expect(b).toHaveAttribute('aria-pressed', 'false');
 });
 
 test('renders task artifact links through the QIF API helper', async () => {

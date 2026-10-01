@@ -12,7 +12,7 @@ from fastapi.responses import Response, StreamingResponse
 from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from backend.mesh_store import PostgresRegistry
 from .companion import companion
-from .transport_auth import APPROVAL_TOKENS, downstream_headers, downstream_inputs
+from .transport_auth import APPROVAL_TOKENS, downstream_headers, downstream_inputs, tool_retry_allowed
 from .oslc_graph_rag import oslc_graph_rag
 from .dt_requirements_adapter import assess_manifest
 from .dt_gateway import execute_current_plan
@@ -345,7 +345,7 @@ async def run(payload: dict[str, Any], request: Request) -> dict:
     try:
         path = _render(str(tool["path"]), inputs)
         endpoint = _base(tool["service"]) + path
-        headers = downstream_headers(request, endpoint, graph_read=tool["service"] in {"graph", "agentic"})
+        headers = downstream_headers(request, endpoint, tool=tool)
         inputs = downstream_inputs(tool, inputs, approved_by)
         async with httpx.AsyncClient(timeout=float(os.getenv("AGENTIC_TOOL_TIMEOUT_SECONDS", "30"))) as client:
             if tool.get("input_kind") == "multipart":
@@ -415,7 +415,7 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
                     # Never blindly repeat a mutating operation after an
                     # uncertain downstream response. Mutation APIs must offer
                     # their own receipt/reconciliation contract first.
-                    if attempt <= retries and exc.status_code >= 500 and not step.get('mutates', False):
+                    if tool_retry_allowed(planned['steps'][index]['tool'], attempt=attempt, retries=retries, status_code=exc.status_code):
                         continue
                     record.update({"status": "failed", "finished_at": _now()})
                     record["traces"].append({"sequence": index + 1, "tool_id": step["tool_id"], "attempt": attempt, "status": "failed", "duration_ms": duration_ms, "error": str(exc.detail)})

@@ -173,38 +173,52 @@ def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = N
     summary = ontology_summary if ontology_summary is not None else (inspect_ontology(ontology_path) if ontology_path else {})
     kind_for_field = {"entities": "Class", "attributes": "DatatypeProperty",
                       "relationships": "ObjectProperty", "metadata": "AnnotationProperty"}
-    normalize = lambda value: re.sub(r"[^a-z0-9]+", "", str(value).casefold())
+    normalize = lambda value: re.sub(r"[\W_]+", "", str(value).casefold())
+    if sum(plan.values()) > 2000:
+        raise ValueError("Bridge planning supports at most 2000 source items; narrow the supplied metadata")
+    index = {}
+    for term in summary.get("term_index") or []:
+        local_name = term.get("iri", "").rsplit("#", 1)[-1].rstrip("/").rsplit("/", 1)[-1]
+        if "/" not in term.get("iri", ""):
+            local_name = local_name.rsplit(":", 1)[-1]
+        for value, evidence in ((term.get("label"), "label"), (local_name, "iri_local_name")):
+            key = normalize(value) if value else ""
+            if key:
+                index.setdefault((term.get("kind"), key), {}).setdefault(term["iri"], (term, evidence))
     candidates = []
+    items = []
+    validations = ["datatype_compatibility", "domain_range_compatibility", "duplicate_check", "scope_check", "human_approval"]
     for field, kind in kind_for_field.items():
         for source in instance_metadata.get(field) or []:
-            source_name = str(source).strip()
-            if not source_name:
-                continue
+            if isinstance(source, dict):
+                source = source.get("name") or source.get("label") or source.get("source")
+            if not isinstance(source, str) or not source.strip():
+                raise ValueError(f"instance_metadata.{field} items require a non-empty name")
+            source_name = source.strip()
             key = normalize(source_name)
-            if not key:
-                continue
             matches = []
-            for term in summary.get("term_index") or []:
-                if term.get("kind") != kind:
-                    continue
-                local_name = term.get("iri", "").rsplit("#", 1)[-1].rstrip("/").rsplit("/", 1)[-1]
-                evidence = "label" if term.get("label") and normalize(term["label"]) == key else (
-                    "iri_local_name" if normalize(local_name) == key else "")
-                if evidence:
-                    matches.append({"source": source_name, "source_category": field,
-                                    "target_iri": term["iri"], "target_type": kind,
-                                    "evidence": f"exact_normalized_{evidence}",
-                                    "status": "review_required"})
-            candidates.extend(matches[:3])
-            if len(candidates) >= 200:
-                break
-        if len(candidates) >= 200:
-            break
+            for term, evidence in index.get((kind, key), {}).values():
+                matches.append({"source": source_name, "source_category": field,
+                                "target_iri": term["iri"], "target_type": kind,
+                                "evidence": f"exact_normalized_{evidence}",
+                                "status": "review_required", "unresolved_checks": validations[:]})
+            items.append({"source": source_name, "source_category": field,
+                          "status": "ambiguous" if len(matches) > 1 else "candidate" if matches else "unmatched",
+                          "candidate_iris": [row["target_iri"] for row in matches[:3]],
+                          "candidate_count": len(matches), "candidates_truncated": len(matches) > 3,
+                          "unresolved_checks": validations[:],
+                          "rationale": "Exact names require semantic and human validation" if matches else
+                                       "No exact name found in the inspected term index; further review is required"})
+            if len(candidates) < 200:
+                candidates.extend(matches[:min(3, 200 - len(candidates))])
     result: dict[str, Any] = {
         "ontology_summary": summary,
         "alignment_plan": plan,
         "alignment_candidates": candidates[:200],
-        "candidate_limit_reached": len(candidates) >= 200 or bool(summary.get("term_index_truncated")),
+        "alignment_items": items,
+        "unmatched_count": sum(item["status"] == "unmatched" for item in items),
+        "ambiguous_count": sum(item["status"] == "ambiguous" for item in items),
+        "candidate_limit_reached": sum(item["candidate_count"] for item in items) > len(candidates) or bool(summary.get("term_index_truncated")),
         "required_validations": ["class_existence_check", "property_type_check", "domain_range_check", "approval_required"],
         "status": "ready_for_mapping",
         "llm": _llm_suggestion(plan, instance_metadata),

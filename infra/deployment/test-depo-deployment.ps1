@@ -48,6 +48,7 @@ $neo4jAuthMode = if ($values.NEO4J_AUTH_MODE) { $values.NEO4J_AUTH_MODE } else {
 if ($neo4jAuthMode -ne 'none') { $required += @('NEO4J_USER', 'NEO4J_PASS') }
 foreach ($name in $required) { if (-not $values[$name] -or $values[$name] -match '<.*>') { throw "Missing customer value for $name in $path" } }
 $allowedOrigins = @($values.ALLOWED_ORIGINS.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+if (-not $allowedOrigins.Count) { throw 'ALLOWED_ORIGINS must contain at least one exact HTTP or HTTPS browser origin.' }
 foreach ($origin in $allowedOrigins) {
   $parsedOrigin = $null
   if (-not [Uri]::TryCreate($origin, [UriKind]::Absolute, [ref]$parsedOrigin) -or
@@ -57,11 +58,15 @@ foreach ($origin in $allowedOrigins) {
   }
 }
 if ($Profile -eq "Production") {
-  if ($values.AUTH_MODE -notin @('token', 'entra')) { throw 'Production requires API-key authentication (AUTH_MODE=token) or a configured gateway identity profile.' }
-  if ($values.ALLOWED_ORIGINS -match "localhost|127\.0\.0\.1") { throw "Production ALLOWED_ORIGINS must not use a loopback host. This configuration is local/bootstrap; rerun with -Profile Bootstrap, or configure the customer's HTTPS frontend origin." }
-  foreach ($origin in $values.ALLOWED_ORIGINS.Split(',')) {
-    if ($origin.Trim() -notmatch '^https://') { throw 'Production ALLOWED_ORIGINS must contain HTTPS origins only.' }
+  if (-not $values.OSLC_BASE_URL -or $values.OSLC_BASE_URL -match '<.*>' -or $values.OSLC_BASE_URL -notmatch '^https://') {
+    throw 'Production OSLC_BASE_URL must be a completed HTTPS customer URL. Browser ALLOWED_ORIGINS can use HTTP; OSLC publication has a separate HTTPS requirement.'
   }
+  if ($values.DEPO_DATABASE_URL -match '^postgres(?:ql)?://postgres(?::|@)') {
+    throw 'Production cannot use the PostgreSQL postgres administrator. Configure the application role described in INSTALLATION.md section 1.1 before installation.'
+  }
+  if ($values.AUTH_MODE -notin @('token', 'entra')) { throw 'Production requires API-key authentication (AUTH_MODE=token) or a configured gateway identity profile.' }
+  # Exact HTTP and HTTPS browser origins are supported in every profile.
+  # The customer's network and reverse proxy determine frontend transport.
   if ($values.AUTH_MODE -eq 'entra' -and (-not $values.DEPO_TRUSTED_GATEWAY_IPS -or $values.DEPO_TRUSTED_GATEWAY_IPS -match '<.*>')) { throw "Gateway identity mode requires DEPO_TRUSTED_GATEWAY_IPS." }
   if ($values.DEPO_PIPELINE_EXECUTION_MODE -ne 'worker') { throw 'Production requires DEPO_PIPELINE_EXECUTION_MODE=worker so Spark jobs do not execute inside HTTP requests.' }
   if (-not $values.ARTIFACT_STORAGE -or -not [System.IO.Path]::IsPathRooted($values.ARTIFACT_STORAGE)) { throw 'Production requires an absolute ARTIFACT_STORAGE path accessible to the API and pipeline worker.' }

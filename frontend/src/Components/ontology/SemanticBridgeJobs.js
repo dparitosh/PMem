@@ -90,6 +90,8 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
       <strong>Ontology agent review:</strong> {agentReport.steps?.length || 0} steps completed; publication requires human approval.
       {agentReport.steps?.[1]?.result?.issues?.length ? ` ${agentReport.steps[1].result.issues.length} structural issue(s) require review.` : ' No structural issues reported.'}
       <p>{agentReport.steps?.at(-1)?.result?.alignment_candidates?.length || 0} exact-name candidate(s) found. These are review evidence only; use a saved Bridge preview to publish mappings.</p>
+      <p>{agentReport.steps?.at(-1)?.result?.unmatched_count || 0} unmatched sources; {agentReport.steps?.at(-1)?.result?.ambiguous_count || 0} ambiguous sources.</p>
+      {(agentReport.steps?.at(-1)?.result?.alignment_items || []).map((item, index) => <div key={`${item.source}:${index}`}><strong>{item.source}</strong>: {item.status}. Checks requiring review: {(item.unresolved_checks || []).join(', ')}</div>)}
       {(agentReport.steps?.at(-1)?.result?.alignment_candidates || []).length > 0 && <ul>
         {agentReport.steps.at(-1).result.alignment_candidates.slice(0, 20).map((candidate, index) => <li key={`${candidate.source}:${candidate.target_iri}:${index}`}>
           {candidate.source} → {candidate.target_iri} ({candidate.target_type}; {candidate.evidence})

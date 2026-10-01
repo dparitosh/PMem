@@ -30,7 +30,10 @@ $envPath = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path 
 function Invoke-DepoStage([string]$Name, [scriptblock]$Action) {
   Write-Host "`n=== DEPO: $Name ===" -ForegroundColor Cyan
   $global:LASTEXITCODE = 0
-  & $Action
+  try { & $Action } catch {
+    Write-Warning "Stopped at stage: $Name. Correct the error below, then rerun the same repository-root install command. Do not delete the environment files or database."
+    throw
+  }
   if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { throw "DEPO stage failed: $Name (exit code $LASTEXITCODE)." }
   Write-Host "=== DEPO: $Name complete ===" -ForegroundColor Green
 }
@@ -40,6 +43,12 @@ if (-not (Test-Path -LiteralPath $envPath -PathType Leaf)) {
 }
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 $settings = Read-DepoEnvironment -Root $root -EnvFile $envPath
+Invoke-DepoStage 'Deployment configuration preflight (before dependency installation)' {
+  & (Join-Path $root 'infra\deployment\test-depo-deployment.ps1') -EnvFile $envPath -Profile $Profile -SkipEndpointChecks
+  if (-not $SkipFrontend) {
+    & (Join-Path $root 'infra\deployment\test-depo-frontend-config.ps1')
+  }
+}
 $artifactStorage = $settings['ARTIFACT_STORAGE']
 if (-not $artifactStorage -or -not [IO.Path]::IsPathRooted($artifactStorage)) {
   throw 'ARTIFACT_STORAGE must be an absolute durable directory shared by the DEPO APIs and workers.'
@@ -120,4 +129,8 @@ if (-not $SkipReleasePreflight) {
 }
 
 Write-Host "`nDEPO Windows installation completed successfully." -ForegroundColor Green
-if (-not $SkipFrontend) { Write-Host 'Frontend build: frontend\dist. Serve it through the customer HTTPS reverse proxy.' }
+if (-not $SkipFrontend) {
+  Write-Host 'Backend services are started. The frontend is built but is not yet served.'
+  Write-Host 'For a local browser: powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\start-depo-frontend.ps1'
+  Write-Host 'Then open http://127.0.0.1:3000/. For customer access, publish frontend\dist through your configured web server.'
+}

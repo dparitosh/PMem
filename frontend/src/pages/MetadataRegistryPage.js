@@ -1,3 +1,4 @@
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock3, Database, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useOntologies } from '../contexts/OntologyContext';
@@ -98,7 +99,7 @@ export default function MetadataRegistryPage() {
       setRegistryMessage(null);
     } catch (err) {
       if (controller.signal.aborted) return;
-      setRegistryMessage({ kind: 'warning', text: err?.response?.data?.detail || err?.message || 'Governed registry is unavailable.' });
+      setRegistryMessage({ kind: 'warning', text: apiErrorMessage(err, 'Governed registry is unavailable.') });
     } finally {
       if (!controller.signal.aborted) setRegistryLoading(false);
       if (registryControllerRef.current === controller) registryControllerRef.current = null;
@@ -133,7 +134,7 @@ export default function MetadataRegistryPage() {
       setNewAsset({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '' });
     } catch (err) {
       if (controller.signal.aborted) return;
-      setRegistryMessage({ kind: 'warning', text: err?.response?.data?.detail || err?.message || 'Metadata asset could not be registered.' });
+      setRegistryMessage({ kind: 'warning', text: apiErrorMessage(err, 'Metadata asset could not be registered.') });
     } finally {
       mutationControllersRef.current.delete(controller);
       if (!controller.signal.aborted) setCreateLoading(false);
@@ -198,7 +199,7 @@ export default function MetadataRegistryPage() {
       setDictionary(nodes);
     } catch (err) {
       if (controller.signal.aborted) return;
-      setDictionaryError(err?.response?.data?.detail || err?.message || 'Data Dictionary is unavailable for this source.');
+      setDictionaryError(apiErrorMessage(err, 'Data Dictionary is unavailable for this source.'));
     } finally {
       if (!controller.signal.aborted) setDictionaryLoading(false);
       if (dictionaryControllerRef.current === controller) dictionaryControllerRef.current = null;
@@ -219,7 +220,7 @@ export default function MetadataRegistryPage() {
       setRegistryMessage({ kind: 'success', text: `Lifecycle changed to ${statusLabel(action.status)}.` });
     } catch (err) {
       if (!controller.signal.aborted) {
-        setRegistryMessage({ kind: 'warning', text: err?.response?.data?.detail || err?.message || 'Lifecycle transition failed.' });
+        setRegistryMessage({ kind: 'warning', text: apiErrorMessage(err, 'Lifecycle transition failed.') });
       }
     } finally {
       mutationControllersRef.current.delete(controller);

@@ -1637,6 +1637,7 @@ const GraphHEB = ({
       }
     } catch (loadError) {
       logger.error('[CONTEXTUAL SEARCH] Failed to load selected root graph:', loadError);
+      setError('Unable to load the selected context. The graph shown is the previous snapshot; retry the selected root.');
     } finally {
       setSearchLoading(false);
     }

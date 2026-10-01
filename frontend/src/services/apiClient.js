@@ -391,16 +391,16 @@ export const qifAPI = {
   catalog: () => apiClient.get(buildUrl(API.qif.catalog)),
   health: () => apiClient.get(buildUrl(API.qif.health)),
   agents: () => apiClient.get(buildUrl(API.qif.agents)),
-  startReferenceTask: (metadata = {}) => {
+  startReferenceTask: (metadata = {}, options = {}) => {
     const formData = new FormData();
     Object.entries(metadata).forEach(([key, value]) => formData.append(key, value));
-    return apiClient.post(buildUrl(API.qif.startReferenceTask), formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 });
+    return apiClient.post(buildUrl(API.qif.startReferenceTask), formData, { ...options, headers: { 'Content-Type': 'multipart/form-data', ...options.headers }, timeout: 300000 });
   },
-  startUploadTask: (files, metadata = {}) => {
+  startUploadTask: (files, metadata = {}, options = {}) => {
     const formData = new FormData();
     Array.from(files).forEach((file) => formData.append('files', file));
     Object.entries(metadata).forEach(([key, value]) => formData.append(key, value));
-    return apiClient.post(buildUrl(API.qif.startUploadTask), formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 });
+    return apiClient.post(buildUrl(API.qif.startUploadTask), formData, { ...options, headers: { 'Content-Type': 'multipart/form-data', ...options.headers }, timeout: 300000 });
   },
   listTasks: () => apiClient.get(buildUrl(API.qif.tasks)),
   getTask: (taskId) => apiClient.get(buildUrl(replaceParams(API.qif.task, { task_id: taskId }))),
@@ -410,9 +410,9 @@ export const qifAPI = {
       task_id: taskId,
       artifact_path: artifactPath,
     }, { pathParams: ['artifact_path'] })),
-  commit: (taskId) => apiClient.post(buildUrl(replaceParams(API.qif.commit, { task_id: taskId }))),
-  cancel: (taskId) => apiClient.post(buildUrl(replaceParams(API.qif.cancel, { task_id: taskId }))),
-  retryGraph: (taskId) => apiClient.post(buildUrl(replaceParams(API.qif.retryGraph, { task_id: taskId }))),
+  commit: (taskId, options = {}) => apiClient.post(buildUrl(replaceParams(API.qif.commit, { task_id: taskId })), {}, options),
+  cancel: (taskId, options = {}) => apiClient.post(buildUrl(replaceParams(API.qif.cancel, { task_id: taskId })), {}, options),
+  retryGraph: (taskId, options = {}) => apiClient.post(buildUrl(replaceParams(API.qif.retryGraph, { task_id: taskId })), {}, options),
 };
 
 // ========== DATA-PIPELINE MONITORING ENDPOINTS ==========

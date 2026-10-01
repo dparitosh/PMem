@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import OntologyMetadataForm from './OntologyMetadataForm';
 import { API_METHODS, apiClient, getClientSessionId, setClientSessionId } from '../services/apiClient';
+import { serviceAuthHeaders } from '../services/serviceAuth';
 import { useOntologies } from '../contexts/OntologyContext';
 import { API, buildUrl, replaceParams } from '../config';
 import {
@@ -1311,6 +1312,7 @@ export default function DataImportPipeline() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...serviceAuthHeaders(),
         ...(activeSessionId ? { 'X-Session-ID': activeSessionId } : {}),
         ...(approvalToken ? { Authorization: `Bearer ${approvalToken}` } : {}),
       },

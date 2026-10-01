@@ -18,6 +18,7 @@ entry points; customers do not assemble an installation from them.
 | 1 | Complete Section 1 | Provision PostgreSQL, Neo4j and optional Spark before installing the application |
 | 2 | `.\configure-depo.ps1` | Create the only two editable configuration files |
 | 3 | `.\diagnose-depo.ps1 -Phase Prerequisites` | Check package integrity and required software without installing anything |
+| 3a | `.\diagnose-depo.ps1 -Phase Configuration` | Check both configuration files before installing packages |
 | 4 | `.\install-depo.ps1` | Install dependencies, create the frontend build, migrate schemas and start backend services |
 | 5 | `.\diagnose-depo.ps1 -Phase All -Profile Production` | Verify the completed customer production installation and every service endpoint |
 | Release | `.\certify-depo-release.ps1` | Re-run production diagnostics and hash the mandatory acceptance evidence |
@@ -30,10 +31,41 @@ installer and diagnostics are safe to rerun after correcting that failure.
 The configuration command refuses to overwrite either `.env.local` file unless
 an administrator deliberately supplies `-Force` after preserving its secrets.
 
-The current direct-service Windows demonstration uses HTTP loopback origins and
-must replace `-Profile Production` with `-Profile Bootstrap` in install,
-diagnostic, and lifecycle commands. Production means a customer HTTPS frontend
-origin and deliberately rejects `localhost` and `127.0.0.1`.
+For an existing deployment, preserve both configuration files and run these
+checks from the repository root before reinstalling:
+
+```powershell
+Set-Location E:\App\PMem
+powershell -NoProfile -ExecutionPolicy Bypass -File .\diagnose-depo.ps1 -Phase Prerequisites
+powershell -NoProfile -ExecutionPolicy Bypass -File .\diagnose-depo.ps1 -Phase Configuration -EnvFile .env.local -Profile Production
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-depo.ps1 -EnvFile .env.local -Profile Production
+powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\start-depo-frontend.ps1
+Start-Process 'http://127.0.0.1:3000/'
+```
+
+Replace `E:\App\PMem` with the actual checkout directory. For a first installation,
+complete section 1 and create both files in section 2 before running this block.
+The install command starts backend APIs and workers; the next command serves
+the frontend locally. A customer web server serving `frontend/dist` replaces
+that local frontend command.
+
+| Failure | Corrective action and next command |
+| --- | --- |
+| Missing server/browser configuration | Follow section 2; preserve existing secrets. Rerun `diagnose-depo.ps1 -Phase Configuration`. |
+| Missing or placeholder `ALLOWED_ORIGINS` | Set the exact address entered in the browser, without a path or trailing slash. Rerun Configuration diagnostics. |
+| PostgreSQL timeout/refused | Start PostgreSQL on the database VM and verify the application VM can reach its configured port. Run `.\infra\postgres\test-postgres-connectivity.ps1 -EnvFile .env.local` after installing backend dependencies. |
+| Local PostgreSQL service stopped | Before the installer connectivity stage, run `Start-Service -Name 'postgresql-x64-16'` in an administrator PowerShell on the database VM, using the actual installed service name. Portable clusters must also be started before installation. |
+| Schema migration rejected | Use the structured SQLSTATE/action printed above the error; correct privileges or incompatible existing objects. Rerun `.\infra\postgres\update-postgres-schema.ps1 -EnvFile .env.local`. |
+| npm EBUSY | Close the running frontend/Node process holding this checkout, then rerun installation. The installer retries the locked `npm ci`; it does not replace the reviewed lockfile. |
+| Browser shows old URLs or blank pages | Edit `frontend/.env.local`, rebuild with `npm.cmd run build` from `frontend`, and reload the browser. Server restart alone does not rebuild browser settings. |
+| Port 8000 does not respond | The standalone APIs use ports 8010–8019. A gateway is configured separately; installation does not create a listener on 8000. |
+
+Exact HTTP and HTTPS browser origins are supported in both profiles, including
+localhost for access from the application VM. Production requires authentication
+and durable workers. Use Bootstrap only for an explicitly configured local demo
+with disabled authentication. A remote browser must use the application VM's
+reachable address rather than localhost; configure both browser service URLs
+and root `ALLOWED_ORIGINS` before building and starting.
 
 ## 1. Provision the customer dependencies
 
@@ -1163,7 +1195,11 @@ Invoke-WebRequest http://127.0.0.1:8012/api/v1/metrics | Select-Object -ExpandPr
    `NEO4J_AUTH_MODE=none` and leave `NEO4J_USER` and `NEO4J_PASS` empty. The
    explicit TLS mode prevents an accidental URI downgrade; production rejects
    non-TLS URIs unless `NEO4J_TLS_MODE=disabled` is present.
-3. Set `ALLOWED_ORIGINS=https://<customer-frontend-host>` and
+3. Set `ALLOWED_ORIGINS` to the actual browser origin (HTTP or HTTPS), for
+   example `ALLOWED_ORIGINS=http://10.10.12.21:3000` for a private-network
+   frontend, or `ALLOWED_ORIGINS=http://127.0.0.1:3000,http://localhost:3000`
+   when browsing on the application VM. Both profiles accept these exact
+   origins. Use no path or trailing slash. Set
    `OSLC_BASE_URL=https://<customer-api-host>`.
    Set `ARTIFACT_STORAGE=C:\DEPO\data\artifacts`, create that directory, and
    grant the DEPO service account Modify permission. The API services and the
@@ -1419,7 +1455,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install-depo.ps1 -EnvFile 
 The installer performs these stages in this fixed order and stops at the first
 failure:
 
-1. Validates Python, Node.js, npm, and the frontend lockfile.
+1. Validates server and frontend configuration before dependency installation,
+   then validates Python, Node.js, npm, and the frontend lockfile.
 2. Creates `backend/.dt_venv`, installs backend dependencies, runs `npm ci`,
    and builds `frontend/dist`.
 3. Validates root `.env.local` and the ten-service deployment configuration.

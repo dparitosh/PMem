@@ -35,6 +35,11 @@ if ($Phase -in @('Configuration','Runtime','All')) {
   Invoke-Diagnostic 'deployment configuration' {
     & (Join-Path $root 'infra\deployment\test-depo-deployment.ps1') -EnvFile $envPath -Profile $Profile -SkipEndpointChecks
   }
+  if (-not $SkipFrontend) {
+    Invoke-Diagnostic 'frontend configuration' {
+      & (Join-Path $root 'infra\deployment\test-depo-frontend-config.ps1')
+    }
+  }
 }
 if ($Phase -in @('Runtime','All')) {
   if (-not (Test-Path -LiteralPath (Join-Path $root 'backend\.dt_venv\Scripts\python.exe'))) { throw 'Backend runtime is absent. Run .\install-depo.ps1 before Runtime diagnostics.' }

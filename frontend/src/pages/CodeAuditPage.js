@@ -54,8 +54,11 @@ export default function CodeAuditPage() {
   const [expandedNodes, setExpandedNodes] = useState(new Set());
   const [showSemanticLinks, setShowSemanticLinks] = useState(false);
   const retryRef = useRef({ delayMs: 30000, timerId: null });
+  const loadInFlight = useRef(false);
 
   const load = useCallback(async (refresh = false) => {
+    if (loadInFlight.current) return;
+    loadInFlight.current = true;
     setLoading(true);
     setError('');
     try {
@@ -67,6 +70,7 @@ export default function CodeAuditPage() {
       setError(apiErrorMessage(requestError, 'Unable to load code network'));
       retryRef.current.delayMs = Math.min(retryRef.current.delayMs * 2, 300000);
     } finally {
+      loadInFlight.current = false;
       setLoading(false);
     }
   }, []);

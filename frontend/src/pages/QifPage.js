@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { qifAPI } from '../services/apiClient';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 import KpiStrip from '../widgets/KpiStrip';
 import { CheckCircle2, Loader2, RefreshCw, Upload, Workflow, X } from '../ui/IxIcons';
 import QifDigitalThreadOverview from './qif/QifDigitalThreadOverview';
 import './QifPage.css';
 
-const panelStyle = { background: '#fff', border: '1px solid #d8e0e8', borderRadius: 6, padding: 16 };
-const inputStyle = { width: '100%', boxSizing: 'border-box', border: '1px solid #aebbc7', borderRadius: 4, padding: '8px 10px', font: 'inherit' };
+const panelStyle = { background: 'var(--ui-surface)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)', borderRadius: 6, padding: 16 };
+const inputStyle = { width: '100%', boxSizing: 'border-box', color: 'var(--ui-text)', background: 'var(--ui-surface)', border: '1px solid var(--ui-border)', borderRadius: 4, padding: '8px 10px', font: 'inherit' };
 const terminal = new Set(['completed', 'completed_with_warnings', 'failed', 'cancelled', 'awaiting_approval', 'requires_review']);
 
 function detailOf(error) {
@@ -49,11 +50,19 @@ export default function QifPage({ workflowMode = false }) {
   const [loading, setLoading] = useState(true);
   const [actionBusy, setActionBusy] = useState(false);
   const [error, setError] = useState('');
+  const [writeToken, setWriteToken] = useState('');
+  const selectedTask = useRef(null);
+  const taskRequest = useRef(0);
+  useEffect(() => () => { selectedTask.current = null; taskRequest.current += 1; }, []);
+  const writeOptions = () => writeToken.trim() ? { headers: { Authorization: `Bearer ${writeToken.trim()}` } } : {};
 
   const refreshHistory = useCallback(() => qifAPI.listTasks().then((response) => setHistory(payloadOf(response).tasks || [])).catch((requestError) => { setError(detailOf(requestError)); }), []);
   const refreshTask = useCallback(async (taskId) => {
+    if (selectedTask.current !== taskId) return null;
+    const requestId = ++taskRequest.current;
     const response = await qifAPI.getTask(taskId);
     const value = payloadOf(response);
+    if (requestId !== taskRequest.current || selectedTask.current !== taskId) return value;
     setTask(value);
     setHistory((items) => items.map((item) => item.task_id === taskId ? { ...item, ...value } : item));
     return value;
@@ -63,8 +72,11 @@ export default function QifPage({ workflowMode = false }) {
     let active = true;
     const loadWorkspace = async () => {
       try {
-        const [catalogResponse, agentResponse, taskResponse] = await Promise.all([qifAPI.catalog(), qifAPI.agents(), qifAPI.listTasks()]);
+        const sections = await Promise.allSettled([qifAPI.catalog(), qifAPI.agents(), qifAPI.listTasks()]);
+        const [catalogResponse, agentResponse, taskResponse] = sections.map(result => result.status === 'fulfilled' ? result.value : {});
         if (!active) return;
+        const failed = sections.find(result => result.status === 'rejected');
+        if (failed) setError(apiErrorMessage(failed.reason, 'Some QIF workspace sections are unavailable.'));
         const tasks = payloadOf(taskResponse).tasks || [];
         setCatalog(payloadOf(catalogResponse));
         setAgents(payloadOf(agentResponse).agents || []);
@@ -73,10 +85,10 @@ export default function QifPage({ workflowMode = false }) {
         // results instead of leaving a blank workspace after a refresh.
         if (tasks[0]?.task_id) {
           const taskResponse = await qifAPI.getTask(tasks[0].task_id);
-          if (active) setTask(payloadOf(taskResponse));
+          if (active && !selectedTask.current) { selectedTask.current = tasks[0].task_id; setTask(payloadOf(taskResponse)); }
         }
-      } catch (_requestError) {
-        if (active) setError('The QIF service is unavailable. Start the backend and refresh this page.');
+      } catch (requestError) {
+        if (active) setError(apiErrorMessage(requestError, 'The QIF service is unavailable.'));
       } finally {
         if (active) setLoading(false);
       }
@@ -87,17 +99,26 @@ export default function QifPage({ workflowMode = false }) {
 
   useEffect(() => {
     if (!task?.task_id || terminal.has(task.status)) return undefined;
-    const timer = window.setInterval(() => refreshTask(task.task_id).catch((requestError) => setError(detailOf(requestError))), 1000);
-    return () => window.clearInterval(timer);
+    let active = true;
+    let timer;
+    const poll = async () => {
+      try { await refreshTask(task.task_id); }
+      catch (requestError) { if (active) setError(detailOf(requestError)); }
+      if (active) timer = window.setTimeout(poll, 1000);
+    };
+    timer = window.setTimeout(poll, 1000);
+    return () => { active = false; window.clearTimeout(timer); taskRequest.current += 1; };
   }, [task?.task_id, task?.status, refreshTask]);
 
   const metadata = { ontology_name: name, prefix, description };
   const start = async (source) => {
+    selectedTask.current = null; taskRequest.current += 1;
     setActionBusy(true); setError(''); setTask(null);
     try {
       const response = source === 'reference'
-        ? await qifAPI.startReferenceTask(metadata)
-        : await qifAPI.startUploadTask(files, metadata);
+        ? await qifAPI.startReferenceTask(metadata, writeOptions())
+        : await qifAPI.startUploadTask(files, metadata, writeOptions());
+      selectedTask.current = payloadOf(response).task_id;
       await refreshTask(payloadOf(response).task_id);
       await refreshHistory();
     } catch (requestError) { setError(detailOf(requestError)); }
@@ -105,19 +126,19 @@ export default function QifPage({ workflowMode = false }) {
   };
   const commit = async () => {
     setActionBusy(true); setError('');
-    try { await qifAPI.commit(task.task_id); await refreshTask(task.task_id); await refreshHistory(); }
+    try { await qifAPI.commit(task.task_id, writeOptions()); await refreshTask(task.task_id); await refreshHistory(); }
     catch (requestError) { setError(detailOf(requestError)); }
     finally { setActionBusy(false); }
   };
   const cancel = async () => {
     setActionBusy(true); setError('');
-    try { const response = await qifAPI.cancel(task.task_id); setTask(payloadOf(response)); await refreshHistory(); }
+    try { const response = await qifAPI.cancel(task.task_id, writeOptions()); taskRequest.current += 1; setTask(payloadOf(response)); await refreshHistory(); }
     catch (requestError) { setError(detailOf(requestError)); }
     finally { setActionBusy(false); }
   };
   const retryGraph = async () => {
     setActionBusy(true); setError('');
-    try { await qifAPI.retryGraph(task.task_id); await refreshTask(task.task_id); await refreshHistory(); }
+    try { await qifAPI.retryGraph(task.task_id, writeOptions()); await refreshTask(task.task_id); await refreshHistory(); }
     catch (requestError) { setError(detailOf(requestError)); }
     finally { setActionBusy(false); }
   };
@@ -133,6 +154,7 @@ export default function QifPage({ workflowMode = false }) {
     finally { setActionBusy(false); }
   };
   const openTask = async (taskId) => {
+    selectedTask.current = taskId; taskRequest.current += 1;
     setActionBusy(true); setError('');
     try { await refreshTask(taskId); }
     catch (requestError) { setError(detailOf(requestError)); }
@@ -146,6 +168,7 @@ export default function QifPage({ workflowMode = false }) {
 
   return (
     <div className="depo-page" aria-busy={loading || actionBusy}>
+      {workflowMode && <label>Ontology write key <input type="password" autoComplete="off" aria-label="Ontology write key" value={writeToken} onChange={event => setWriteToken(event.target.value)} /><small> Use ONTOLOGY_APPROVAL_TOKEN for QIF actions. This key stays in page memory; the global read key is unchanged. Gateway users may leave it empty.</small></label>}
       <header style={{ marginBottom: 16 }}>
         <div className="depo-panel__meta">{workflowMode ? 'QIF schema workflow' : 'QIF ontology details'}</div>
         <h2 style={{ margin: '4px 0 6px' }}>{workflowMode ? 'Build and publish a QIF ontology' : 'QIF ontology results and traceability'}</h2>

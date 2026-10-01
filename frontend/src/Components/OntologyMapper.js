@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Search, Upload, FileText, Download, Network } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
+import { hierarchyEdge } from '../utils/taxonomyHierarchy';
 import { useOntologies } from '../contexts/OntologyContext';
 import DataGridWidget from '../widgets/DataGridWidget';
 import ErrorBoundary from './ErrorBoundary';
@@ -34,7 +35,7 @@ const SOURCE_FORMATS = [
   { id: 'excel', label: 'Excel' },
 ];
 
-const TAXONOMY_HIERARCHY_TYPES = new Set(['subClassOf', 'broader', 'narrower', 'isA', 'parentOf', 'relatedTo', 'containedBy']);
+const TAXONOMY_HIERARCHY_TYPES = new Set(['subClassOf', 'broader', 'narrower', 'isA', 'parentOf', 'containedBy']);
 const TAXONOMY_MAX_ROOTS = 18;
 const TAXONOMY_MAX_CHILDREN = 12;
 const TAXONOMY_MAX_DEPTH = 3;
@@ -56,24 +57,29 @@ export function RequirementsWorkbench({ filter = "", onNavigate }) {
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphError, setGraphError] = useState('');
   const [sourceFilter, setSourceFilter] = useState('all');
+  const requirementRequest = useRef(0);
   const q = String(filter || '').trim().toLowerCase();
 
   const loadGraphRequirements = useCallback(async () => {
+    const requestId = ++requirementRequest.current;
     setGraphLoading(true);
     setGraphError('');
     try {
       const response = await API_METHODS.requirements.list({ source: sourceFilter, limit: 1000 });
+      if (requestId !== requirementRequest.current) return;
       setGraphRequirements(response?.data?.requirements || []);
     } catch (err) {
-      setGraphError(err?.response?.data?.detail?.message || err?.response?.data?.detail || err?.message || 'Unable to load graph requirements.');
+      if (requestId !== requirementRequest.current) return;
+      setGraphError(apiErrorMessage(err, 'Unable to load graph requirements.'));
       setGraphRequirements([]);
     } finally {
-      setGraphLoading(false);
+      if (requestId === requirementRequest.current) setGraphLoading(false);
     }
   }, [sourceFilter]);
 
   useEffect(() => {
     loadGraphRequirements();
+    return () => { requirementRequest.current += 1; };
   }, [loadGraphRequirements]);
 
   const graphRequirementRows = useMemo(() => (graphRequirements || []).map((row) => ({
@@ -454,7 +460,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
       visibleNodes.map((node) => [node.term_id, node.label || node.term_id])
     );
 
-    taxonomyEdges.forEach((edge) => {
+    taxonomyEdges.map(hierarchyEdge).forEach((edge) => {
       if (!TAXONOMY_HIERARCHY_TYPES.has(edge.mapping_type)) return;
       if (!visibleIds.has(edge.source_term) || !visibleIds.has(edge.target_term)) return;
       if (!childrenByParent.has(edge.target_term)) childrenByParent.set(edge.target_term, []);
@@ -845,7 +851,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
     const childrenByParent = new Map();
     const parentByChild = new Map();
 
-    taxonomyEdges.forEach((edge) => {
+    taxonomyEdges.map(hierarchyEdge).forEach((edge) => {
       if (!TAXONOMY_HIERARCHY_TYPES.has(edge.mapping_type)) return;
       if (!visibleIds.has(edge.source_term) || !visibleIds.has(edge.target_term)) return;
       if (!childrenByParent.has(edge.target_term)) childrenByParent.set(edge.target_term, []);
@@ -1552,6 +1558,10 @@ export default function OntologyMapper() {
   const [bridgeApproved, setBridgeApproved] = useState(false);
   const [mergeSourceOntologyId, setMergeSourceOntologyId] = useState('');
   const [mergeBusy, setMergeBusy] = useState(false);
+  const mergeGeneration = useRef(0);
+  const inferenceGeneration = useRef(0);
+  useEffect(() => { mergeGeneration.current += 1; setMergeBusy(false); }, [mergeSourceOntologyId, selectedMapping]);
+  useEffect(() => { inferenceGeneration.current += 1; setInferenceBusy(false); }, [selectedOntologyApi]);
   const [mergeResult, setMergeResult] = useState(null);
   const [mergeApprover, setMergeApprover] = useState('');
   const [mergeApprovalToken, setMergeApprovalToken] = useState('');
@@ -1812,7 +1822,7 @@ export default function OntologyMapper() {
         }
       } catch (e) {
         if (!cancelled) {
-          setImportTasksError(e?.response?.data?.detail || e.message || 'Failed to load instance tasks.');
+          setImportTasksError(apiErrorMessage(e, 'Failed to load instance tasks.'));
         }
       } finally {
         if (!cancelled) {
@@ -2128,6 +2138,7 @@ export default function OntologyMapper() {
   }, [mergeSourceOntologyId, selectedMapping]);
 
   const handlePreviewOntologyMerge = async () => {
+    const generation = ++mergeGeneration.current;
     if (!mergeSourceOntologyId || !selectedMapping) {
       setMergeResult({ kind: 'error', text: 'Select both source and active target ontology before reviewing the merge.' });
       return;
@@ -2148,6 +2159,7 @@ export default function OntologyMapper() {
         [mergeSourceOntologyId, selectedMapping],
         { ontology_name: `Merged ${selectedMapping}`, prefix: `merged_${Date.now()}` },
       );
+      if (generation !== mergeGeneration.current) return;
       setMergeResult({
         kind: 'success',
         text: 'Merge plan ready. Review overlaps, additions, conflicts, and subclass gaps before commit.',
@@ -2157,9 +2169,10 @@ export default function OntologyMapper() {
         governedPreview: governed.data || governed,
       });
     } catch (e) {
-      setMergeResult({ kind: 'error', text: e?.response?.data?.detail || e?.message || 'Merge plan preview failed.' });
+      if (generation !== mergeGeneration.current) return;
+      setMergeResult({ kind: 'error', text: apiErrorMessage(e, 'Merge plan preview failed.') });
     } finally {
-      setMergeBusy(false);
+      if (generation === mergeGeneration.current) setMergeBusy(false);
     }
   };
 
@@ -2179,10 +2192,12 @@ export default function OntologyMapper() {
     setMergeBusy(true);
     setMergeResult(null);
     if (!mergeApprover.trim()) {
+      setMergeBusy(false);
       setMergeResult({ kind: 'error', text: 'Enter the approving steward identity before committing the governed merge.' });
       return;
     }
     if (!mergeResult?.governedPreview?.preview_id) {
+      setMergeBusy(false);
       setMergeResult({ kind: 'error', text: 'Create a governed merge preview before committing.' });
       return;
     }
@@ -2196,7 +2211,7 @@ export default function OntologyMapper() {
         artifact_manifest: null,
       });
     } catch (e) {
-      setMergeResult({ kind: 'error', text: e?.response?.data?.detail || e?.message || 'Ontology merge failed.' });
+      setMergeResult({ kind: 'error', text: apiErrorMessage(e, 'Ontology merge failed.') });
     } finally {
       setMergeApprovalToken('');
       setMergeBusy(false);
@@ -2356,6 +2371,7 @@ export default function OntologyMapper() {
   };
 
   const runInferencePreview = async () => {
+    const generation = ++inferenceGeneration.current;
     if (!selectedOntologyApi) {
       setInferenceError('Select an active ontology before running inference preview.');
       return;
@@ -2367,11 +2383,12 @@ export default function OntologyMapper() {
         rules: inferenceRules,
         limit: Number(inferenceLimit) || 250,
       });
-      setInferenceResult(response.data || null);
+      if (generation === inferenceGeneration.current) setInferenceResult(response.data || null);
     } catch (err) {
-      setInferenceError(err?.response?.data?.detail || err?.message || 'Inference preview failed.');
+      if (generation !== inferenceGeneration.current) return;
+      setInferenceError(apiErrorMessage(err, 'Inference preview failed.'));
     } finally {
-      setInferenceBusy(false);
+      if (generation === inferenceGeneration.current) setInferenceBusy(false);
     }
   };
 
@@ -2394,7 +2411,7 @@ export default function OntologyMapper() {
       setSwrlValidation(response.data?.validation || null);
     } catch (err) {
       setSwrlValidation(null);
-      setInferenceError(err?.response?.data?.detail || err?.message || 'SWRL rule validation failed.');
+      setInferenceError(apiErrorMessage(err, 'SWRL rule validation failed.'));
     } finally {
       setSwrlBusy(false);
     }

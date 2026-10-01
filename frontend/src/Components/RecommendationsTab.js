@@ -511,6 +511,8 @@ const AIInsightBanner = ({ service, data }) => {
 const RecommendationsTab = () => {
   const [activeService, setActiveService] = useState(null);
   const [inputValue, setInputValue] = useState('');
+  const analysisGeneration = useRef(0);
+  useEffect(() => { analysisGeneration.current += 1; setResult(null); setLoading(false); }, [activeService, inputValue]);
   const [topN, setTopN] = useState(10);
   const [loading, setLoading] = useState(false);
   const [health, setHealth] = useState(null);
@@ -537,7 +539,7 @@ const RecommendationsTab = () => {
             status: 'degraded',
             readiness: {
               scenario_ready: false,
-              message: err.response?.data?.detail || err.message || 'Recommendation service is not reachable.',
+              message: apiErrorMessage(err, 'Recommendation service is not reachable.'),
             },
           });
         }
@@ -575,6 +577,7 @@ const RecommendationsTab = () => {
   }, []);
 
   const handleAnalyse = useCallback(async () => {
+    const generation = ++analysisGeneration.current;
     if (!inputValue.trim() || !activeService) return;
     setLoading(true); setError(''); setResult(null);
     try {
@@ -586,11 +589,11 @@ const RecommendationsTab = () => {
       } else if (activeService === 'manufacturing') {
         resp = await API_METHODS.recommendations.manufacturing(inputValue.trim(), {});
       }
-      setResult(normalizeRecommendationResult(activeService, resp.data));
+      if (generation === analysisGeneration.current) setResult(normalizeRecommendationResult(activeService, resp.data));
     } catch (err) {
-      setError(apiErrorMessage(err));
+      if (generation === analysisGeneration.current) setError(apiErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (generation === analysisGeneration.current) setLoading(false);
     }
   }, [activeService, inputValue, topN]);
 

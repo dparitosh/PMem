@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, useEffect, useCallback } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { IxBadge, IxButton, IxCard, IxCardContent, IxCardTitle, IxCol, IxLayoutGrid } from '@siemens/ix-react';
 import { apiClient, platformAPI } from '../services/apiClient';
 import { buildUrl } from '../config';
@@ -150,8 +150,12 @@ export default function LandingPage({ setChatResults, onNavigate }) {
   const [metricsError, setMetricsError] = useState('');
   const [ontologiesError, setOntologiesError] = useState('');
   const [lastRefreshed, setLastRefreshed] = useState(null);
+  const metricsInFlight = useRef(false);
+  const ontologiesInFlight = useRef(false);
 
   const loadMetrics = useCallback(async () => {
+    if (metricsInFlight.current) return;
+    metricsInFlight.current = true;
     setMetricsLoading(true);
     setMetricsError('');
     try {
@@ -189,11 +193,14 @@ export default function LandingPage({ setChatResults, onNavigate }) {
         ontology_kpis: {},
       });
     } finally {
+      metricsInFlight.current = false;
       setMetricsLoading(false);
     }
   }, []);
 
   const loadOntologies = useCallback(async () => {
+    if (ontologiesInFlight.current) return;
+    ontologiesInFlight.current = true;
     setOntologiesLoading(true);
     setOntologiesError('');
     try {
@@ -205,6 +212,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
       setOntologiesError('Ontology registry is currently unavailable.');
       setOntologies([]);
     } finally {
+      ontologiesInFlight.current = false;
       setOntologiesLoading(false);
     }
   }, []);

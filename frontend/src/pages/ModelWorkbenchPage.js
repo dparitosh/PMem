@@ -1,3 +1,4 @@
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Boxes, Network, GitFork, Layers, RefreshCcw, ZoomIn, ZoomOut, ScanSearch } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
@@ -364,7 +365,7 @@ export default function ModelWorkbenchPage({ onNavigate }) {
       setActiveRepresentationId('');
       setDecompositionRootId('');
       setReactFlowGraph(null);
-      setStatus({ loading: false, error: err?.response?.data?.detail || err?.message || 'Unable to load model viewer data.' });
+      setStatus({ loading: false, error: apiErrorMessage(err, 'Unable to load model viewer data.') });
     }
   }, [activeView]);
 
