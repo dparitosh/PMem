@@ -12,6 +12,18 @@ SERVICE_KEYS = ('AGENTIC_SERVICE_URL', 'GRAPH_SERVICE_URL', 'ONTOLOGY_SERVICE_UR
 
 def configuration_status():
     errors = []
+    for key, default, minimum, maximum in (
+        ('AGENT_SESSION_IDLE_SECONDS', '1800', 60, 86400),
+        ('AGENT_SESSION_MAX_SECONDS', '86400', 60, 2592000),
+        ('AGENTIC_RUN_TIMEOUT_SECONDS', '300', 1, 3600),
+        ('LLM_REQUEST_TIMEOUT_SECONDS', '30', 1, 300),
+        ('AGENT_MEMORY_RETENTION_DAYS', '30', 1, 3650),
+    ):
+        try:
+            if not minimum <= int(os.getenv(key, default)) <= maximum:
+                raise ValueError()
+        except ValueError:
+            errors.append(key)
     def require(key):
         value = os.getenv(key, '').strip()
         if not value or '<' in value:
@@ -28,6 +40,8 @@ def configuration_status():
             valid = False
         if not valid and key not in errors:
             errors.append(key)
+    if os.getenv('AGENT_MEMORY_ENABLED', 'false').lower() == 'true':
+        require('AGENT_MEMORY_SCOPE')
     if not (os.getenv('DEPO_DATABASE_URL') or os.getenv('DATABASE_URL')):
         errors.append('DEPO_DATABASE_URL')
     for key in ('NEO4J_URI', 'NEO4J_DATABASE'):

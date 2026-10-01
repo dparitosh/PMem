@@ -31,6 +31,33 @@ vi.mock('@siemens/ix-react', () => ({
 
 const bytes = (value) => new Uint8Array(Array.from(value).map((character) => character.charCodeAt(0)));
 
+test('expired chat session retries retrieval once without its old identifier', async () => {
+  window.sessionStorage.clear();
+  window.sessionStorage.setItem('depo.sessionId.v1', 'expired-session');
+  let submissions = 0;
+  global.fetch = jest.fn((_url, options = {}) => {
+    if (options.method !== 'POST') return Promise.resolve({ ok: true, headers: { get: () => null }, json: async () => ({ queries: [] }) });
+    submissions += 1;
+    if (submissions === 1) return Promise.resolve({ ok: false, status: 410, headers: { get: () => null } });
+    let sent = false;
+    return Promise.resolve({ ok: true, status: 200, headers: { get: () => 'new-session' },
+      body: { getReader: () => ({ read: async () => {
+        if (sent) return { done: true };
+        sent = true;
+        return { done: false, value: bytes('data: {"token":"Fresh evidence"}\n\ndata: {"done":true}\n\n') };
+      } }) } });
+  });
+  render(<Chatbot setChatResults={jest.fn()} graphData={{ nodes: [], links: [] }} searchResults={[]} />);
+  fireEvent.change(screen.getByLabelText('Chat API key'), { target: { value: 'read-key' } });
+  fireEvent.change(screen.getByLabelText('Chat question'), { target: { value: 'Show product' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send chat question' }));
+  await waitFor(() => expect(submissions).toBe(2));
+  const requests = global.fetch.mock.calls.filter(([, options]) => options.method === 'POST');
+  expect(JSON.parse(requests[0][1].body).session_id).toBe('expired-session');
+  expect(JSON.parse(requests[1][1].body).session_id).toBeNull();
+  await waitFor(() => expect(window.sessionStorage.getItem('depo.sessionId.v1')).toBe('new-session'));
+});
+
 test('keeps chat input locked until the SSE stream completes and clears the server session', async () => {
   window.sessionStorage.clear();
   let releaseDone;

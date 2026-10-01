@@ -1131,7 +1131,8 @@ Open the new root `.env.local` and edit these values in order:
 For customer-isolated agent memory, add a unique scope and retention period.
 Use the actual customer and program identifiers; do not copy the example value
 unchanged. Leave `AGENT_MEMORY_ENABLED=false` when Neo4j conversation memory is
-not approved. PostgreSQL conversation history remains available to the agent.
+not approved. PostgreSQL stores session metadata and execution traces; companion
+conversation memory requires the Neo4j memory option.
 
 ```env
 DEPO_TENANT_ID=customer-acme
@@ -1140,10 +1141,41 @@ AGENT_MEMORY_ENABLED=true
 AGENT_MEMORY_SCOPE=customer-acme:program-alpha
 AGENT_MEMORY_QUERY_TIMEOUT=5
 AGENT_MEMORY_RETENTION_DAYS=30
+AGENT_SESSION_IDLE_SECONDS=1800
+AGENT_SESSION_MAX_SECONDS=86400
+AGENTIC_RUN_TIMEOUT_SECONDS=300
+LLM_REQUEST_TIMEOUT_SECONDS=30
 AGENT_PROMPT_VERSION=1
 AGENT_FAILURE_RATE_ALERT_THRESHOLD=0.2
 AGENT_STUCK_RUN_SECONDS=900
 ```
+
+The companion creates a session on the first request without `session_id`.
+Reuse the returned ID with the same authenticated identity. The defaults expire
+it after 30 minutes without a request or 24 hours from creation; activity does
+not extend the maximum lifetime. HTTP 410 means expired and HTTP 404 means
+unknown: start without an ID. The frontend retries read-only retrieval once with
+a fresh session for these responses. Separate users need separate credentials;
+a shared API key represents a shared identity. Every five minutes, the running
+Agentic service cleans expired session metadata and prunes scoped graph memory.
+Expired memory is also excluded during retrieval.
+
+Workflow execution has a five-minute deadline by default. Terminal states are
+`completed`, `failed`, `timed_out` and `interrupted`. Error responses include
+`X-DEPO-Run-ID` after a run was created. Read `GET /api/v1/workflow-runs/{run_id}`
+before retrying. If `reconciliation_required=true`, a downstream write may have
+executed: check its receipt first. After a process interruption, reads project
+`interrupted` once the persisted deadline passes. This does not prove whether a
+downstream write completed and does not automatically repeat it.
+
+Use `POST /api/v1/runs` with `agent_id`, `tool_id` and `inputs`; use
+`POST /api/v1/workflow-runs` with `workflow_id`, optional `step_inputs` (one object
+per step), and approval fields when required. Only completed prior steps can be
+referenced with `$steps.1.result` or `$steps.1.result.field`. Arbitrary imported
+OpenAPI operations are not executable. Chat jobs run synchronously and return
+HTTP 200 with `status=completed`; SSE emits completed-response events rather
+than progressive LLM generation. JSON-LD artifacts must use `.jsonld` and inline
+contexts; remote contexts and `@import` are rejected.
 
 After the installer starts the Agentic service, verify its monitoring loop as
 part of Section 4.7. Do not run these commands during configuration. The

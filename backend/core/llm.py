@@ -117,6 +117,8 @@ def _init_azure_llm() -> AzureChatOpenAI:
         api_version=AZURE_OPENAI_API_VERSION,
         azure_deployment=AZURE_OPENAI_DEPLOYMENT,
         temperature=0,
+        timeout=float(os.getenv('LLM_REQUEST_TIMEOUT_SECONDS', '30')),
+        max_retries=0,
         model_kwargs={
             "user": "user-1234",
         },
@@ -148,9 +150,10 @@ def _init_azure_embeddings() -> AzureOpenAIEmbeddings:
 def _init_ollama_llm() -> ChatOllama:
     if not OLLAMA_BASE_URL or not LLM_MODEL_NAME:
         raise ValueError("Missing OLLAMA_BASE_URL or LLM_MODEL_NAME")
-    kwargs = dict(model=LLM_MODEL_NAME, base_url=_normalize_ollama_base_url(OLLAMA_BASE_URL))
+    kwargs = dict(model=LLM_MODEL_NAME, base_url=_normalize_ollama_base_url(OLLAMA_BASE_URL),
+                  client_kwargs={'timeout': float(os.getenv('LLM_REQUEST_TIMEOUT_SECONDS', '30'))})
     if OLLAMA_API_KEY:
-        kwargs["client_kwargs"] = {"headers": {"api-key": OLLAMA_API_KEY}}
+        kwargs['client_kwargs']['headers'] = {'api-key': OLLAMA_API_KEY}
     return ChatOllama(**kwargs)
 
 

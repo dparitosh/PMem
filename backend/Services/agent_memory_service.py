@@ -291,6 +291,7 @@ class AgentMemoryService:
         rows = cls._query(
             """
             MATCH (:AgentMemorySession {memory_key: $memory_key, scope: $scope})-[:HAS_MESSAGE]->(m:AgentMemoryMessage)
+            WHERE datetime(m.created_at) >= datetime() - duration({seconds: $max_age})
             RETURN m.role AS role, m.text AS text, m.created_at AS created_at
             ORDER BY m.created_at DESC
             LIMIT toInteger($limit)
@@ -299,6 +300,7 @@ class AgentMemoryService:
                 "memory_key": cls._memory_key(session_id),
                 "scope": cls.scope(),
                 "limit": max(1, min(int(limit or 6), 20)),
+                'max_age': max(1, int(os.getenv('AGENT_SESSION_MAX_SECONDS', '86400'))),
             },
         )
         return {"enabled": True, "messages": rows or [], "facts": []}

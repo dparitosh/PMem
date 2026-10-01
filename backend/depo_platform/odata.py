@@ -10,9 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from html import escape
 from typing import Iterable
+from hashlib import sha256
 
-from fastapi import APIRouter, Query
-from fastapi.responses import Response
+from fastapi import APIRouter, Request
+from fastapi.responses import Response, JSONResponse
 
 
 @dataclass(frozen=True)
@@ -57,7 +58,7 @@ def create_odata_catalog_router(
     """
     entries = [
         {
-            "Id": f"{cap.method.upper()}:{cap.path}",
+            "Id": sha256(f'{cap.method.upper()}:{cap.path}:{cap.name}'.encode()).hexdigest()[:24],
             "Name": cap.name,
             "Path": cap.path,
             "Method": cap.method.upper(),
@@ -65,30 +66,60 @@ def create_odata_catalog_router(
         }
         for cap in capabilities
     ]
+    if len({entry['Id'] for entry in entries}) != len(entries):
+        raise ValueError('Duplicate OData capability identity')
+    headers = {'OData-Version': '4.0'}
+    def error(code, message, status=400):
+        return JSONResponse({'error': {'code': code, 'message': message}}, status_code=status, headers=headers)
     router = APIRouter(prefix="/odata", tags=["odata"])
 
     @router.get("", summary="OData v4 service document", include_in_schema=False)
     @router.get("/", summary="OData v4 service document", include_in_schema=False)
     def service_document() -> dict:
-        return {
+        return JSONResponse({
             "@odata.context": "$metadata",
             "value": [{"name": "ServiceCapabilities", "kind": "EntitySet", "url": "ServiceCapabilities"}],
-        }
+        }, headers=headers)
 
     @router.get("/$metadata", summary="OData v4 metadata document", include_in_schema=False)
     def metadata() -> Response:
-        return Response(content=_metadata(service_name), media_type="application/xml")
+        return Response(content=_metadata(service_name), media_type="application/xml", headers=headers)
 
     @router.get("/ServiceCapabilities", summary="List service capabilities", include_in_schema=False)
-    def service_capabilities(
-        top: int | None = Query(default=None, alias="$top", ge=1, le=1000),
-        skip: int = Query(default=0, alias="$skip", ge=0),
-        include_count: bool = Query(default=False, alias="$count"),
-    ) -> dict:
+    def service_capabilities(request: Request):
+        options = request.query_params
+        for name in options.keys():
+            if name.startswith('$') and name not in {'$top', '$skip', '$count'}:
+                return error('UnsupportedQueryOption', f'Query option {name} is not supported by this discovery catalog')
+            if len(options.getlist(name)) > 1:
+                return error('InvalidQueryOption', 'Duplicate query options are not allowed')
+        try:
+            raw_top, raw_skip = options.get('$top'), options.get('$skip', '0')
+            if (raw_top is not None and not raw_top.isascii()) or not raw_skip.isascii():
+                raise ValueError()
+            if (raw_top is not None and not raw_top.isdecimal()) or not raw_skip.isdecimal():
+                raise ValueError()
+            top, skip = int(raw_top) if raw_top is not None else None, int(raw_skip)
+            if top is not None and top > 1000:
+                raise ValueError()
+            if options.get('$count', 'false') not in {'true', 'false'}:
+                raise ValueError()
+            include_count = options.get('$count') == 'true'
+        except ValueError:
+            return error('InvalidQueryOption', 'Use non-negative $top (up to 1000), non-negative $skip, and $count=true or false')
         selected = entries[skip : skip + top if top is not None else None]
         response: dict = {"@odata.context": "$metadata#ServiceCapabilities", "value": selected}
         if include_count:
             response["@odata.count"] = len(entries)
-        return response
+        return JSONResponse(response, headers=headers)
+
+    @router.get("/ServiceCapabilities('{capability_id}')", include_in_schema=False)
+    def service_capability(capability_id: str, request: Request):
+        if any(key.startswith('$') for key in request.query_params):
+            return error('UnsupportedQueryOption', 'Entity lookup does not support system query options')
+        entry = next((entry for entry in entries if entry['Id'] == capability_id), None)
+        if entry is None:
+            return error('NotFound', 'Capability does not exist', 404)
+        return JSONResponse({'@odata.context': '$metadata#ServiceCapabilities/$entity', **entry}, headers=headers)
 
     return router

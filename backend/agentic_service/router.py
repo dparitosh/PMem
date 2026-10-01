@@ -1,6 +1,10 @@
 """Catalog and bounded execution for independently extensible agents/tools."""
 from __future__ import annotations
-import base64, binascii, json, os, time
+import asyncio, base64, binascii, json, os, time
+import logging
+from string import Formatter
+from urllib.parse import quote
+from datetime import timedelta
 from uuid import uuid4
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +22,24 @@ from .dt_requirements_adapter import assess_manifest
 from .dt_gateway import execute_current_plan
 from .dt_bindings import extend_catalog, capabilities as dt_capabilities
 from .telemetry import telemetry
+from . import sessions
+from backend.Services.agent_memory_service import AgentMemoryService
+
+logger = logging.getLogger(__name__)
+
+
+def _finish_observation(*args, **kwargs):
+    try:
+        return telemetry.finish(*args, **kwargs)
+    except Exception:
+        logger.exception('Unable to persist terminal agent telemetry')
+
+
+def _tool_span(*args, **kwargs):
+    try:
+        return telemetry.tool_span(*args, **kwargs)
+    except Exception:
+        logger.exception('Unable to persist agent tool span')
 
 router = APIRouter(prefix="/api/v1", tags=["agentic-control-plane"])
 
@@ -48,8 +70,21 @@ def _base(service: str) -> str:
     return value
 
 def _render(path: str, values: dict[str, Any]) -> str:
-    try: return path.format(**values)
-    except KeyError as exc: raise ValueError(f"Missing path parameter: {exc.args[0]}") from exc
+    result = []
+    for literal, field, spec, conversion in Formatter().parse(path):
+        result.append(literal)
+        if field is None:
+            continue
+        if spec or conversion or not field.isidentifier():
+            raise ValueError('Unsupported tool path placeholder')
+        if field not in values:
+            raise ValueError(f'Missing path parameter: {field}')
+        value = str(values[field])
+        if (not value or value in {'.', '..'} or any(c in value for c in '/\\%?#')
+                or any(ord(c) < 32 or ord(c) == 127 for c in value)):
+            raise ValueError(f'Invalid path parameter: {field}')
+        result.append(quote(value, safe=''))
+    return ''.join(result)
 
 @router.get("/agents")
 def agents() -> dict: return {"agents": catalog.read()["agents"]}
@@ -151,21 +186,21 @@ def execute_semantic_workflow(payload: dict[str, Any]) -> dict:
 @router.post("/ontology-agents/orchestrate", dependencies=[Depends(graph_read_identity)])
 def orchestrate_ontology_agents(payload: dict[str, Any]) -> dict:
     """Run read-only ontology intake/review/Bridge planning agents."""
-    try:
-        from .ontology_orchestrator import orchestrate
-        return orchestrate(payload)
-    except (ValueError, OSError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail="Ontology agent could not parse the supplied artifact") from exc
+    from .ontology_orchestrator import orchestrate
+    return _ontology_agent_call(orchestrate, payload)
 
 
 def _ontology_agent_call(operation, payload: dict[str, Any]) -> dict:
+    observation, started = telemetry.start(operation='ontology_agent:' + operation.__name__)
     try:
-        return operation(payload)
+        result = operation(payload)
+        _finish_observation(observation, started, status='completed')
+        return result
     except (ValueError, OSError) as exc:
+        _finish_observation(observation, started, status='failed', error_type=type(exc).__name__)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
+        _finish_observation(observation, started, status='failed', error_type=type(exc).__name__)
         raise HTTPException(status_code=422, detail="Ontology agent could not parse the supplied artifact") from exc
 
 
@@ -214,52 +249,79 @@ async def companion_chat(payload: dict[str, Any], request: Request) -> dict:
     message = " ".join(str(payload.get("message") or "").split())
     if not message:
         raise HTTPException(status_code=422, detail="message is required")
+    actor = graph_read_identity(request)
+    session = await run_in_threadpool(sessions.open_session, request, actor, payload.get('session_id'))
     observation, observed_at = telemetry.start(
         operation="knowledge_companion",
         request_id=getattr(request.state, "request_id", ""),
-        session_id=str(payload.get("session_id") or ""),
+        session_id=session['session_id'],
     )
     try:
         headers = downstream_headers(request, companion._graph_root(), graph_read=True)
-        result = await companion.ask(message, headers=headers)
-        telemetry.finish(
+        memory_key = sessions.memory_id(session)
+        context = await run_in_threadpool(AgentMemoryService.recent_context, memory_key, 6)
+        # History supports follow-up retrieval only; graph evidence remains the
+        # answer authority and memory text cannot authorize tools or writes.
+        query = message
+        if len(message.split()) <= 4:
+            prior = next((item['text'] for item in context.get('messages', []) if item.get('role') == 'user'), '')
+            if prior:
+                query = f'{str(prior)[:1000]} {message}'
+        async with asyncio.timeout(float(os.getenv('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', '15')) + 5):
+            result = await companion.ask(query, headers=headers)
+        if not isinstance(result, dict) or not isinstance(result.get('response'), str) or not isinstance(result.get('evidence'), list):
+            raise RuntimeError('Knowledge companion returned an invalid evidence response')
+        await run_in_threadpool(AgentMemoryService.record_chat_turn, session_id=memory_key,
+            user_message=message, assistant_response=result['response'])
+        _finish_observation(
             observation,
             observed_at,
             status="completed",
             evidence_count=len(result.get("evidence") or []),
         )
-        return {"session_id": str(payload.get("session_id") or uuid4()), **result, "mode": "evidence-grounded"}
-    except RuntimeError as exc:
-        telemetry.finish(observation, observed_at, status="failed", error_type=type(exc).__name__)
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return {**result, 'session_id': session['session_id'], 'session_expires_at': session['expires_at'],
+                'session_idle_seconds': int(os.getenv('AGENT_SESSION_IDLE_SECONDS', '1800')), 'mode': 'evidence-grounded'}
+    except BaseException as exc:
+        status = 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
+        _finish_observation(observation, observed_at, status=status, error_type=type(exc).__name__)
+        if isinstance(exc, (asyncio.CancelledError, HTTPException)) or not isinstance(exc, Exception):
+            raise
+        if isinstance(exc, RuntimeError):
+            raise HTTPException(503, str(exc)) from exc
+        raise HTTPException(504 if isinstance(exc, TimeoutError) else 503, 'Knowledge companion request failed; no answer was generated') from exc
 
 
-@router.post("/chat/jobs", status_code=202, dependencies=[Depends(graph_read_identity)])
+@router.post("/chat/jobs", dependencies=[Depends(graph_read_identity)])
 async def companion_job(payload: dict[str, Any], request: Request) -> dict:
+    created_at = _now()
     response = await companion_chat(payload, request)
     job_id = f"companion-{uuid4()}"
-    record = {"job_id": job_id, "status": "completed", "session_id": response["session_id"], "response": response["response"], "answerable": response["answerable"], "evidence": response["evidence"], "sources": response["sources"], "created_at": _now(), "finished_at": _now()}
+    record = {"job_id": job_id, "status": "completed", "session_id": response["session_id"], "response": response["response"], "answerable": response["answerable"], "evidence": response["evidence"], "sources": response["sources"], "created_at": created_at, "finished_at": _now()}
+    record['owner'] = sessions.owner(request, graph_read_identity(request))
     companion_job_store.put(job_id, record)
-    return {"status": "accepted", "job_id": job_id, "poll_endpoint": f"/api/v1/chat/jobs/{job_id}", "session_id": response["session_id"]}
+    return {"status": "completed", "execution_mode": 'synchronous', "job_id": job_id, "poll_endpoint": f"/api/v1/chat/jobs/{job_id}", "session_id": response["session_id"]}
 
 
 @router.get("/chat/jobs/{job_id}", dependencies=[Depends(graph_read_identity)])
-def companion_job_status(job_id: str) -> dict:
+def companion_job_status(job_id: str, request: Request) -> dict:
     record = companion_job_store.get(job_id)
     if not record:
         raise HTTPException(status_code=404, detail="Chat job not found")
-    return record
+    if record.get('owner') != sessions.owner(request, graph_read_identity(request)):
+        raise HTTPException(403, 'Chat job belongs to another identity')
+    sessions.open_session(request, graph_read_identity(request), record['session_id'])
+    return {key: value for key, value in record.items() if key != 'owner'}
 
 
 @router.get("/chat/health")
 @router.get("/chat/status")
 def companion_health() -> dict:
-    return {"status": "ok", "service": "knowledge-companion", "mode": "evidence-grounded", "streaming": True, "fail_closed": True}
+    return {"status": "ok", "service": "knowledge-companion", "mode": "evidence-grounded", "streaming": True, 'incremental_generation': False, 'job_execution': 'synchronous', "fail_closed": True}
 
 
 @router.get("/chat/capabilities")
 def companion_capabilities() -> dict:
-    return {"name": "knowledge-companion", "mode": "evidence-grounded", "operations": ["validate", "ask", "stream", "job", "sample-queries"], "evidence_required": True}
+    return {"name": "knowledge-companion", "mode": "evidence-grounded", "operations": ["validate", "ask", "stream", "job", "sample-queries"], 'stream_mode': 'completed-response-events', 'job_execution': 'synchronous', "evidence_required": True}
 
 
 @router.post("/chat-stream", dependencies=[Depends(graph_read_identity)])
@@ -271,7 +333,7 @@ async def companion_stream(payload: dict[str, Any], request: Request) -> Streami
         yield f"data: {json.dumps({'evidence': response['evidence'], 'sources': response['sources'], 'answerable': response['answerable']})}\n\n"
         yield "data: {\"done\": true}\n\n"
 
-    return StreamingResponse(events(), media_type="text/event-stream", headers={'X-Session-ID': response['session_id']})
+    return StreamingResponse(events(), media_type="text/event-stream", headers={'X-Session-ID': response['session_id'], 'X-Session-Expires-At': response['session_expires_at']})
 
 @router.post("/plans")
 def plan(payload: dict[str, Any]) -> dict:
@@ -304,11 +366,22 @@ def _lookup(value: Any, traces: list[dict[str, Any]]) -> Any:
     if not isinstance(value, str) or not value.startswith("$steps."):
         return value
     parts = value.split(".")
-    if len(parts) < 4 or parts[2] != "result":
+    if len(parts) < 3 or parts[2] != "result":
         raise ValueError("workflow reference must use $steps.N.result[.field]")
     try:
-        current: Any = traces[int(parts[1]) - 1]["result"]
-        for part in parts[3:]: current = current[part]
+        if not parts[1].isascii() or not parts[1].isdecimal() or not 1 <= int(parts[1]) <= len(traces):
+            raise ValueError('Reference must name a completed prior step')
+        trace = traces[int(parts[1]) - 1]
+        if trace.get('status', 'completed') != 'completed':
+            raise ValueError('Referenced step did not complete')
+        current: Any = trace['result']
+        for part in parts[3:]:
+            if isinstance(current, list):
+                if not part.isascii() or not part.isdecimal():
+                    raise ValueError('List reference requires a nonnegative index')
+                current = current[int(part)]
+            else:
+                current = current[part]
         return current
     except (IndexError, KeyError, ValueError, TypeError) as exc:
         raise ValueError(f"workflow reference cannot be resolved: {value}") from exc
@@ -324,21 +397,28 @@ def _multipart(inputs: dict[str, Any], file_field: str = 'file') -> tuple[dict[s
     encoded = str(upload.get("content_base64") or "")
     if not upload.get("filename") or not encoded:
         raise ValueError("Multipart tools require inputs.file.filename and inputs.file.content_base64")
+    limit = int(os.getenv('AGENTIC_MAX_UPLOAD_BYTES', str(25 * 1024 * 1024)))
+    if len(encoded) > 4 * ((limit + 2) // 3):
+        raise ValueError('Agent file exceeds AGENTIC_MAX_UPLOAD_BYTES')
     try: content = base64.b64decode(encoded, validate=True)
     except (ValueError, binascii.Error) as exc: raise ValueError("file.content_base64 must be valid base64") from exc
     if len(content) > int(os.getenv("AGENTIC_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024))):
         raise ValueError("Agent file exceeds AGENTIC_MAX_UPLOAD_BYTES")
     form = dict(inputs.get("form") or {})
+    for key in ('approved_by', 'approval_token'):
+        if key in inputs:
+            form[key] = inputs[key]
     return form, {file_field: (str(upload["filename"]), content, str(upload.get("content_type") or "application/octet-stream"))}
 
-@router.post("/runs")
-async def run(payload: dict[str, Any], request: Request) -> dict:
+async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
     plan_result = plan(payload)
     approved_by = None
     if plan_result["requires_approval"]:
         approved_by = approval_identity(request, payload, token_env="AGENTIC_APPROVAL_TOKEN")
     else:
         graph_read_identity(request)
+    if not isinstance(payload.get('inputs', {}), dict):
+        raise HTTPException(422, 'inputs must be an object')
     tool, inputs = plan_result["tool"], dict(payload.get("inputs") or {})
     if tool.get("transport") != "openapi":
         raise HTTPException(status_code=501, detail="This transport is catalogued but not HTTP-executable")
@@ -360,79 +440,146 @@ async def run(payload: dict[str, Any], request: Request) -> dict:
             result = {"content_base64": base64.b64encode(response.content).decode("ascii"),
                       "content_type": response.headers.get("content-type", "application/octet-stream")}
         else:
-            result = response.json()
+            try:
+                result = response.json()
+            except ValueError as exc:
+                raise HTTPException(502, 'Downstream tool returned invalid JSON') from exc
         return {"agent_id": plan_result["agent"], "tool_id": tool["id"], "approved_by": approved_by, "result": result}
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
     except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail="Downstream tool request failed; inspect service status before retrying") from exc
 
 
-@router.post("/workflow-runs")
-async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
-    """Execute an ordered declarative workflow and persist its trace.
-
-    Callers provide ``step_inputs`` indexed from zero.  Values may reference a
-    prior result using ``$steps.1.result.some_field``.  Individual step retry
-    counts are declared in the workflow manifest, keeping retry behavior out of
-    page/UI code.
-    """
+@router.post('/runs')
+async def run(payload: dict[str, Any], request: Request) -> dict:
+    planned = plan(payload)
+    if planned['requires_approval']:
+        approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
+    else:
+        graph_read_identity(request)
+    observation, started = telemetry.start(operation='tool', request_id=getattr(request.state, 'request_id', ''))
     try:
-        workflow = catalog.item("workflows", str(payload["workflow_id"]))
+        async with asyncio.timeout(float(os.getenv('AGENTIC_RUN_TIMEOUT_SECONDS', '300'))):
+            result = await _dispatch(payload, request)
+        _tool_span(observation, tool_id=result['tool_id'], attempt=1, status='completed', duration_ms=(time.perf_counter()-started)*1000)
+        _finish_observation(observation, started, status='completed')
+        return result
+    except BaseException as exc:
+        status = 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
+        _tool_span(observation, tool_id=str(payload.get('tool_id', '')), attempt=1, status=status, duration_ms=(time.perf_counter()-started)*1000, error_type=type(exc).__name__)
+        _finish_observation(observation, started, status=status, error_type=type(exc).__name__)
+        if isinstance(exc, TimeoutError):
+            raise HTTPException(504, 'Tool deadline exceeded; reconcile any downstream write before retrying') from exc
+        if isinstance(exc, Exception) and not isinstance(exc, HTTPException):
+            raise HTTPException(503, 'Tool execution failed; reconcile any downstream write before retrying') from exc
+        raise
+
+
+@router.post('/workflow-runs')
+async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
+    """Execute a bounded workflow; uncertain writes require reconciliation."""
+    record = observation = None
+    dispatched_mutation = False
+    active_step = None
+    attempt = 0
+    try:
+        workflow = catalog.item('workflows', str(payload['workflow_id']))
         planned = workflow_plan(payload)
         approved_workflow = any(step['requires_approval'] for step in planned['steps'])
         if approved_workflow:
-            approval_identity(request, payload, token_env="AGENTIC_APPROVAL_TOKEN")
+            approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
         else:
             graph_read_identity(request)
-        requested = list(payload.get("step_inputs") or [])
-        if requested and len(requested) != len(workflow.get("steps", [])):
-            raise ValueError("step_inputs must contain one entry for each workflow step")
-        run_id = f"run-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
-        request_id = getattr(request.state, "request_id", "")
-        observation, observed_at = telemetry.start(
-            operation="workflow",
-            request_id=request_id,
-            workflow_id=workflow["id"],
-        )
-        record: dict[str, Any] = {"run_id": run_id, "workflow_id": workflow["id"], "request_id": request_id, "status": "running", "started_at": _now(), "traces": []}
+        requested = payload.get('step_inputs')
+        if requested is not None and (not isinstance(requested, list) or len(requested) != len(workflow['steps']) or any(not isinstance(item, dict) for item in requested)):
+            raise ValueError('step_inputs must contain one object for each workflow step')
+        if not isinstance(payload.get('inputs', {}), dict):
+            raise ValueError('inputs must be an object')
+        retries_by_step = []
+        for step in workflow['steps']:
+            retries = int(step.get('retries', 0))
+            if not 0 <= retries <= 5:
+                raise ValueError('Workflow retries must be between zero and five')
+            retries_by_step.append(retries)
+        timeout = float(os.getenv('AGENTIC_RUN_TIMEOUT_SECONDS', '300'))
+        run_id = f'run-{uuid4()}'
+        request_id = getattr(request.state, 'request_id', '')
+        observation, observed_at = telemetry.start(operation='workflow', request_id=request_id, workflow_id=workflow['id'])
+        record = {'run_id': run_id, 'workflow_id': workflow['id'], 'request_id': request_id,
+                  'status': 'running', 'started_at': _now(), 'updated_at': _now(),
+                  'deadline_at': (datetime.now(timezone.utc) + timedelta(seconds=timeout)).isoformat(), 'traces': []}
         workflow_store.put(run_id, record)
-        for index, step in enumerate(workflow["steps"]):
-            inputs = _resolve_inputs(requested[index] if requested else payload.get("inputs", {}), record["traces"])
-            command = {**step, "approval_required": approved_workflow or step.get('approval_required', False), "inputs": inputs, "approved_by": payload.get("approved_by"), "approval_token": payload.get("approval_token")}
-            retries, attempt = max(0, int(step.get("retries", 0))), 0
-            while True:
-                attempt += 1
-                tool_started = time.perf_counter()
-                try:
-                    result = await run(command, request)
-                    duration_ms = round((time.perf_counter() - tool_started) * 1000, 2)
-                    record["traces"].append({"sequence": index + 1, "tool_id": step["tool_id"], "attempt": attempt, "status": "completed", "duration_ms": duration_ms, "result": result.get("result", {})})
-                    telemetry.tool_span(observation, tool_id=step["tool_id"], attempt=attempt, status="completed", duration_ms=duration_ms)
-                    workflow_store.put(run_id, record)
-                    break
-                except HTTPException as exc:
-                    duration_ms = round((time.perf_counter() - tool_started) * 1000, 2)
-                    telemetry.tool_span(observation, tool_id=step["tool_id"], attempt=attempt, status="failed", duration_ms=duration_ms, error_type=type(exc).__name__)
-                    # Never blindly repeat a mutating operation after an
-                    # uncertain downstream response. Mutation APIs must offer
-                    # their own receipt/reconciliation contract first.
-                    if tool_retry_allowed(planned['steps'][index]['tool'], attempt=attempt, retries=retries, status_code=exc.status_code):
-                        continue
-                    record.update({"status": "failed", "finished_at": _now()})
-                    record["traces"].append({"sequence": index + 1, "tool_id": step["tool_id"], "attempt": attempt, "status": "failed", "duration_ms": duration_ms, "error": str(exc.detail)})
-                    workflow_store.put(run_id, record)
-                    telemetry.finish(observation, observed_at, status="failed", error_type=type(exc).__name__)
-                    raise
-        record.update({"status": "completed", "finished_at": _now()})
-        telemetry.finish(observation, observed_at, status="completed")
-        return workflow_store.put(run_id, record)
-    except (KeyError, ValueError) as exc:
-        raise HTTPException(422, str(exc)) from exc
+        async with asyncio.timeout(timeout):
+            for index, step in enumerate(workflow['steps']):
+                active_step, attempt = step, 0
+                inputs = _resolve_inputs(requested[index] if requested is not None else payload.get('inputs', {}), record['traces'])
+                command = {**step, 'approval_required': approved_workflow or step.get('approval_required', False),
+                           'inputs': inputs, 'approved_by': payload.get('approved_by'), 'approval_token': payload.get('approval_token')}
+                tool = planned['steps'][index]['tool']
+                while True:
+                    attempt += 1
+                    tool_started = time.perf_counter()
+                    try:
+                        dispatched_mutation = bool(tool.get('mutates'))
+                        result = await _dispatch(command, request)
+                        duration = (time.perf_counter() - tool_started)*1000
+                        record['traces'].append({'sequence': index+1, 'tool_id': step['tool_id'], 'attempt': attempt, 'status': 'completed', 'duration_ms': round(duration, 2), 'result': result.get('result', {})})
+                        _tool_span(observation, tool_id=step['tool_id'], attempt=attempt, status='completed', duration_ms=duration)
+                        record['updated_at'] = _now()
+                        workflow_store.put(run_id, record)
+                        dispatched_mutation = False
+                        active_step = None
+                        break
+                    except HTTPException as exc:
+                        _tool_span(observation, tool_id=step['tool_id'], attempt=attempt, status='failed', duration_ms=(time.perf_counter()-tool_started)*1000, error_type=type(exc).__name__)
+                        if tool_retry_allowed(tool, attempt=attempt, retries=retries_by_step[index], status_code=exc.status_code):
+                            await asyncio.sleep(min(attempt, 5))
+                            continue
+                        raise
+        record.update(status='completed', finished_at=_now(), updated_at=_now())
+        workflow_store.put(run_id, record)
+        _finish_observation(observation, observed_at, status='completed')
+        return record
+    except BaseException as exc:
+        status = 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
+        if record is not None:
+            record.update(status=status, finished_at=_now(), updated_at=_now(), error_type=type(exc).__name__, reconciliation_required=dispatched_mutation)
+            if active_step:
+                record['traces'].append({'sequence': len(record['traces'])+1, 'tool_id': active_step['tool_id'], 'attempt': attempt, 'status': status, 'error_type': type(exc).__name__})
+            # Persist state and telemetry independently. A DB outage must not
+            # replace the original exception; deadline-based reads expose an
+            # interrupted process even if final persistence could not succeed.
+            try:
+                workflow_store.put(record['run_id'], record)
+            except Exception:
+                logger.exception('Unable to persist terminal workflow state')
+        if observation is not None:
+            try:
+                if active_step and attempt and not isinstance(exc, HTTPException):
+                    _tool_span(observation, tool_id=active_step['tool_id'], attempt=attempt,
+                               status=status, duration_ms=(time.perf_counter()-tool_started)*1000, error_type=type(exc).__name__)
+                _finish_observation(observation, observed_at, status=status, error_type=type(exc).__name__)
+            except Exception:
+                logger.exception('Unable to persist terminal workflow telemetry')
+        if isinstance(exc, (KeyError, ValueError, TypeError)):
+            raise HTTPException(422, str(exc), headers={'X-DEPO-Run-ID': record['run_id']} if record else None) from exc
+        if isinstance(exc, TimeoutError):
+            raise HTTPException(504, 'Workflow deadline exceeded; inspect run state before retrying', headers={'X-DEPO-Run-ID': record['run_id']} if record else None) from exc
+        if isinstance(exc, HTTPException) and record:
+            exc.headers = {**(exc.headers or {}), 'X-DEPO-Run-ID': record['run_id']}
+        if isinstance(exc, (HTTPException, asyncio.CancelledError)) or not isinstance(exc, Exception):
+            raise
+        raise HTTPException(503, 'Workflow execution failed; inspect run state before retrying', headers={'X-DEPO-Run-ID': record['run_id']} if record else None) from exc
 
 
 @router.get("/workflow-runs/{run_id}", dependencies=[Depends(graph_read_identity)])
 def workflow_run(run_id: str) -> dict:
     record = workflow_store.get(run_id)
     if not record: raise HTTPException(404, "Workflow run not found")
+    if record.get('status') == 'running' and record.get('deadline_at') and datetime.now(timezone.utc) >= datetime.fromisoformat(record['deadline_at']):
+        # A process may die before writing its terminal state. This projection
+        # does not overwrite a concurrently completing run or repeat its writes.
+        return {**record, 'status': 'interrupted', 'reconciliation_required': True,
+                'error_type': 'ExecutionDeadlineElapsed', 'state_source': 'deadline_projection'}
     return record
 
 
@@ -457,19 +604,33 @@ async def validate_openapi_catalog() -> dict:
     """Compare declarative HTTP tools with their live OpenAPI operations."""
     errors: list[dict[str, str]] = []
     documents: dict[str, dict] = {}
+    from backend.depo_platform.openapi_contract import contract_errors
+    unavailable = set()
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             for tool in catalog.read()["tools"]:
                 if tool.get("transport") != "openapi": continue
                 service = str(tool["service"])
+                if service in unavailable:
+                    continue
                 if service not in documents:
-                    response = await client.get(_base(service).removesuffix("/api/v1") + "/openapi.json")
-                    response.raise_for_status(); documents[service] = response.json()
+                    try:
+                        response = await client.get(_base(service).removesuffix("/api/v1") + "/openapi.json")
+                        response.raise_for_status()
+                        document = response.json()
+                        if not isinstance(document, dict):
+                            raise ValueError('OpenAPI document must be an object')
+                        documents[service] = document
+                        errors.extend({'service': service, 'error': issue} for issue in contract_errors(documents[service]))
+                    except (ValueError, httpx.HTTPError):
+                        unavailable.add(service)
+                        errors.append({'service': service, 'error': 'OpenAPI contract is unavailable or invalid JSON'})
+                        continue
                 operation = documents[service].get("paths", {}).get("/api/v1" + tool["path"], {}).get(str(tool["method"]).lower())
                 if not operation: errors.append({"tool_id": tool["id"], "error": "operation is absent from live OpenAPI"})
     except (ValueError, httpx.HTTPError) as exc:
         raise HTTPException(503, f"Unable to validate live OpenAPI contracts: {exc}") from exc
-    return {"valid": not errors, "errors": errors, "services": sorted(documents)}
+    return {"valid": not errors, "errors": errors, "services": sorted(documents), "unavailable_services": sorted(unavailable)}
 
 
 @router.get("/code-audit", dependencies=[Depends(graph_read_identity)], summary="Generate or read the bounded repository dependency graph")

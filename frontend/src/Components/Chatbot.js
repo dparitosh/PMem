@@ -257,6 +257,14 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             });
 
             let response = await sendRequest(activeSessionId);
+            if (activeSessionId && [404, 410].includes(response.status)) {
+                // An expired session must not be silently reused. Retrieval is
+                // read-only, so retry once with a fresh server-owned session.
+                clearClientSessionId();
+                sessionIdRef.current = null;
+                activeSessionId = null;
+                response = await sendRequest(null);
+            }
             let returnedSessionId = response.headers.get('x-session-id');
             if (returnedSessionId) {
                 sessionIdRef.current = returnedSessionId;

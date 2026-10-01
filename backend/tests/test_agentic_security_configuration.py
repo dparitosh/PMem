@@ -84,6 +84,7 @@ def test_api_key_header_supports_read_and_approval(client, monkeypatch):
 def test_ontology_registration_uses_artifact_upload_field(client, monkeypatch):
     import base64
     monkeypatch.setenv('ONTOLOGY_SERVICE_URL', 'http://ontology/api/v1')
+    monkeypatch.setenv('ONTOLOGY_APPROVAL_TOKEN', 'ontology-test')
     def handler(request):
         assert b'name="artifact"' in request.content
         assert b'name="file"' not in request.content

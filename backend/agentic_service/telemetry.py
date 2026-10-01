@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -28,6 +28,7 @@ class AgentTelemetry:
             "session_id": str(session_id or ""),
             "status": "running",
             "started_at": _now(),
+            'deadline_at': (datetime.now(timezone.utc) + timedelta(seconds=float(os.getenv('AGENTIC_RUN_TIMEOUT_SECONDS', '300')))).isoformat(),
             "model": os.getenv("LLM_MODEL") or os.getenv("AZURE_OPENAI_DEPLOYMENT") or "deterministic",
             "prompt_version": os.getenv("AGENT_PROMPT_VERSION", "1"),
             "tool_spans": [],
@@ -57,13 +58,17 @@ class AgentTelemetry:
         return self.store.put(record["run_id"], record)
 
     def recent(self, limit: int = 100) -> list[dict[str, Any]]:
-        return self.store.recent(limit)
+        records = self.store.recent(limit)
+        current = datetime.now(timezone.utc)
+        return [{**item, 'status': 'interrupted', 'error_type': 'ExecutionDeadlineElapsed', 'state_source': 'deadline_projection'}
+                if item.get('status') == 'running' and item.get('deadline_at') and current >= datetime.fromisoformat(item['deadline_at']) else item
+                for item in records]
 
     def summary(self, limit: int = 500) -> dict[str, Any]:
         runs = self.recent(limit)
         completed = [item for item in runs if item.get("status") == "completed"]
-        failed = [item for item in runs if item.get("status") == "failed"]
-        durations = [float(item.get("duration_ms") or 0) for item in runs if item.get("status") != "running"]
+        failed = [item for item in runs if item.get("status") in {'failed', 'timed_out', 'interrupted'}]
+        durations = [float(item['duration_ms']) for item in runs if item.get('status') != 'running' and 'duration_ms' in item]
         tool_spans = [span for item in runs for span in item.get("tool_spans", [])]
         failure_rate = round(len(failed) / len(runs), 4) if runs else 0.0
         threshold = max(0.0, min(float(os.getenv("AGENT_FAILURE_RATE_ALERT_THRESHOLD", "0.2")), 1.0))
@@ -92,10 +97,12 @@ class AgentTelemetry:
             "running": sum(1 for item in runs if item.get("status") == "running"),
             "completed": len(completed),
             "failed": len(failed),
+            'timed_out': sum(item.get('status') == 'timed_out' for item in runs),
+            'interrupted': sum(item.get('status') == 'interrupted' for item in runs),
             "failure_rate": failure_rate,
             "average_duration_ms": round(sum(durations) / len(durations), 2) if durations else 0.0,
             "tool_calls": len(tool_spans),
-            "tool_failures": sum(1 for span in tool_spans if span.get("status") == "failed"),
+            "tool_failures": sum(1 for span in tool_spans if span.get('status') in {'failed', 'timed_out', 'interrupted'}),
             "evidence_total": sum(int(item.get("evidence_count") or 0) for item in runs),
         }
 

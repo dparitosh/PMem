@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { config, API, buildSemanticServiceUrl, replaceParams } from '../config';
+import { config, API, buildSemanticServiceUrl } from '../config';
 import { serviceAuthHeaders } from './serviceAuth';
 
 const agenticClient = axios.create({
@@ -29,17 +29,17 @@ export const agenticAPI = {
   health: (options = {}) => agenticClient.get(agenticUrl(API.agentic.health), options),
   listAgents: (options = {}) => agenticClient.get(agenticUrl(API.agentic.agents), options),
   listTools: (options = {}) => agenticClient.get(agenticUrl(API.agentic.tools), options),
-  importOpenApi: (document, sourceName = '') => agenticClient.post(
-    agenticUrl(API.agentic.openApiImport),
-    { document, source_name: sourceName },
+  runAgent: (agentId, toolId, inputs = {}, approval = {}, options = {}) => agenticClient.post(
+    agenticUrl(API.agentic.runAgent),
+    { agent_id: agentId, tool_id: toolId, inputs,
+      approved_by: approval.approved_by, approval_token: approval.approval_token },
+    options,
   ),
-  runAgent: (agentName, inputs = {}) => agenticClient.post(
-    agenticUrl(replaceParams(API.agentic.runAgent, { agent_name: agentName })),
-    { inputs },
-  ),
-  runWorkflow: (workflowId, inputs = {}) => agenticClient.post(
+  runWorkflow: (workflowId, inputs = {}, execution = {}, options = {}) => agenticClient.post(
     agenticUrl(API.agentic.runWorkflow),
-    { workflow_id: workflowId, inputs },
+    { workflow_id: workflowId, inputs, step_inputs: execution.step_inputs,
+      approved_by: execution.approved_by, approval_token: execution.approval_token },
+    options,
   ),
   orchestrateOntology: (payload = {}, options = {}) => agenticClient.post(
     agenticUrl(API.agentic.orchestrateOntology),

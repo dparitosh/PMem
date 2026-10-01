@@ -42,10 +42,13 @@ def _isolate_agent_telemetry(monkeypatch):
     try:
         from backend.agentic_service.telemetry import telemetry
         from backend.mesh_store import InMemoryRegistry
+        from backend.agentic_service import sessions
     except ImportError:
         yield
         return
     monkeypatch.setattr(telemetry, "store", InMemoryRegistry("agent-telemetry-test"))
+    monkeypatch.setattr(sessions, 'store', InMemoryRegistry('agent-session-test'))
+    monkeypatch.setattr(sessions, 'prune', lambda: None)
     yield
 
 

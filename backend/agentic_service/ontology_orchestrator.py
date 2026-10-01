@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import json
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +40,25 @@ def _allowed_path(value: str) -> Path:
 
 def _load(path: Path) -> Graph:
     graph = Graph()
-    graph.parse(path.as_posix())
+    formats = {'.owl': 'xml', '.rdf': 'xml', '.xml': 'xml', '.ttl': 'turtle',
+               '.nt': 'nt', '.n3': 'n3', '.jsonld': 'json-ld'}
+    if path.suffix.lower() == '.jsonld':
+        document = json.loads(path.read_text(encoding='utf-8-sig'))
+        def local_context(value):
+            if isinstance(value, dict):
+                context = value.get('@context')
+                contexts = context if isinstance(context, list) else [context]
+                if any(isinstance(item, str) for item in contexts) or '@import' in value:
+                    raise ValueError('JSON-LD remote contexts and @import are disabled; use inline contexts')
+                for item in value.values():
+                    local_context(item)
+            elif isinstance(value, list):
+                for item in value:
+                    local_context(item)
+        local_context(document)
+        graph.parse(data=json.dumps(document), format='json-ld')
+    else:
+        graph.parse(path.as_posix(), format=formats[path.suffix.lower()])
     return graph
 
 

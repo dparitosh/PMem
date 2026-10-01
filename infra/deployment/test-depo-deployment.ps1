@@ -107,6 +107,16 @@ if (-not $SkipEndpointChecks) {
     }
     $openapi = Invoke-RestMethod -Uri "http://${hostName}:$($service.port)/openapi.json" -TimeoutSec 10
     if ($openapi.openapi -ne "3.0.3") { throw "$($service.id) is not publishing OpenAPI 3.0.3." }
+    $contractPython = Join-Path $root 'backend\.dt_venv\Scripts\python.exe'
+    if (-not (Test-Path -LiteralPath $contractPython -PathType Leaf)) { throw 'Backend runtime is required to validate generated OpenAPI contracts.' }
+    Push-Location $root
+    try {
+      $openapi | ConvertTo-Json -Depth 100 -Compress | & $contractPython -m backend.depo_platform.openapi_contract
+      if ($LASTEXITCODE -ne 0) { throw "$($service.id) has an incompatible OpenAPI schema or duplicate operation IDs." }
+    } finally { Pop-Location }
+    $odata = Invoke-RestMethod -Uri "http://${hostName}:$($service.port)/odata/ServiceCapabilities?`$count=true" -TimeoutSec 10
+    $capabilityIds = @($odata.value | ForEach-Object { $_.Id })
+    if (($capabilityIds | Sort-Object -Unique).Count -ne $capabilityIds.Count) { throw "$($service.id) has duplicate OData capability identities." }
   }
 }
 Write-Host "DEPO deployment validation passed for $Profile using manifest $ManifestPath."

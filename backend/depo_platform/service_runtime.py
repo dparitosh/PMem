@@ -91,6 +91,12 @@ def create_service_app(
     # APIM registration is standardized on OpenAPI 3.0.x across all DEPO services.
     app = FastAPI(title=title, version=version, lifespan=lifespan)
     app.openapi_version = "3.0.3"
+    from .openapi_contract import normalize_openapi, describe_security
+    original_openapi = app.openapi
+    def compatible_openapi():
+        app.openapi_schema = describe_security(normalize_openapi(original_openapi()), app.routes)
+        return app.openapi_schema
+    app.openapi = compatible_openapi
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(
         CORSMiddleware,
@@ -98,7 +104,7 @@ def create_service_app(
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID", "X-Session-ID"],
-        expose_headers=["X-Request-ID", "X-Session-ID"],
+        expose_headers=["X-Request-ID", "X-Session-ID", "X-Session-Expires-At", "X-DEPO-Run-ID", "OData-Version"],
     )
 
     @app.get("/healthz", include_in_schema=False)
