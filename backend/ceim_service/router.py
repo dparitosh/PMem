@@ -250,6 +250,14 @@ async def publish_graph(payload: dict[str, Any], request: Request) -> dict[str, 
             "standard": standard, "entities": entities, "relationships": relationships,
             "representation": payload.get("representation"), "ceim_version": payload.get("ceim_version"), "resolution_case_ids": payload.get("resolution_case_ids"),
         })
+        from backend.ceim.identity import scope_batch
+        production = any(os.getenv(key, '').lower() in {'prod','production'} for key in ('DEPO_ENV','ENVIRONMENT','APP_ENV','DEPLOYMENT_ENV'))
+        mode = os.getenv('DEPO_CEIM_IDENTITY_MODE', 'scoped').strip().lower()
+        if mode not in {'scoped','legacy'}:
+            raise ValueError('DEPO_CEIM_IDENTITY_MODE must be scoped or legacy')
+        if mode == 'scoped':
+            normalized['entities'], normalized['relationships'] = scope_batch(
+                normalized['entities'], normalized['relationships'], source_system=payload.get('source_system',''), required=production)
         validation = contract.validate_projection(entities=list(normalized["entities"]), relationships=list(normalized["relationships"]))
         if not validation.get("conforms"):
             raise HTTPException(status_code=422, detail={"message": "CEIM SHACL validation failed; graph publication was not attempted", "validation": validation})

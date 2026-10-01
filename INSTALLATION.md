@@ -2375,3 +2375,24 @@ Set-Location E:\App\PMem
 ```
 
 Expected result: every enabled service responds and the diagnostic completes without a failed check. A successful offline package check alone does not prove that PostgreSQL, Neo4j or Azure APIM can be reached.
+
+
+### Publish a completed semantic data job
+
+1. Open **Metadata Registry** and create/review the semantic release. Complete its steward and approval evidence, then approve it.
+2. Open **Data Flow** and click **Load approved semantic releases**. Select the approved asset/version.
+3. Enter a stable **Source system** identifier, for example `teamcenter-customer-prod`. Reuse this value on subsequent publications from that same system.
+4. In token mode, enter the approver and the key for the action: execution/replay uses `DATA_JOB_EXECUTION_TOKEN`; definition governance uses `DATA_JOB_APPROVAL_TOKEN`; semantic publication uses `CEIM_PUBLISH_APPROVAL_TOKEN`. Keys stay in browser memory.
+5. Publish the completed accepted semantic run. The backend rechecks release approval and SHACL before graph publication.
+
+For new scoped publications, root `.env.local` must contain completed tenant/project values and the scope mode:
+
+```dotenv
+DEPO_TENANT_ID=customer-a
+DEPO_PROJECT_ID=engineering-prod
+DEPO_CEIM_IDENTITY_MODE=scoped
+```
+
+Scoped IDs include the tenant/project/source-system boundary. Existing graph IDs are not rewritten. To preserve an existing single-source legacy integration temporarily, explicitly set `DEPO_CEIM_IDENTITY_MODE=legacy`; agree a data migration before switching its historical graph to scoped IDs. Do not use legacy mode to combine unrelated systems whose local identifiers overlap. Rebuild the frontend after updating these UI files and restart backend services after changing configuration.
+
+Generic XML profiles retain existing leaf text fields, preserve qualified element/attribute names and mixed text/tails under `_xml`, and expose repeated leaf attributes under `<field>_attributes`. For `<Value unit="mm">3.2</Value>`, map `Value` to the value and `Value_attributes.0.unit` to the unit. The extraction helper supports numeric list indexes in dotted paths.

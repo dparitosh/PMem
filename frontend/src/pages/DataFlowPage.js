@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { dataPipelineAPI } from '../services/apiClient';
+import { dataPipelineAPI, metadataRegistryAPI } from '../services/apiClient';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import './DataFlowPage.css';
 
@@ -94,6 +94,18 @@ export default function DataFlowPage() {
   const [scheduleInterval, setScheduleInterval] = useState(300);
   const [replayApprover, setReplayApprover] = useState('');
   const [replayApprovalToken, setReplayApprovalToken] = useState('');
+  const [governanceToken, setGovernanceToken] = useState('');
+  const [publicationToken, setPublicationToken] = useState('');
+  const [semanticReleases, setSemanticReleases] = useState([]);
+  const [releaseIndex, setReleaseIndex] = useState('');
+  const [publicationSource, setPublicationSource] = useState('');
+  const loadReleases = async () => {
+    try {
+      const response = await metadataRegistryAPI.list({ limit: 200, lifecycle_status: 'approved' });
+      setSemanticReleases((responsePayload(response)?.assets || []).filter((asset) => asset.lifecycle_status === 'approved'));
+      setReleaseIndex('');
+    } catch (failure) { setReplayError(apiErrorMessage(failure, 'Approved releases could not be loaded.')); }
+  };
   const loadSequence = useRef(0);
   const loadInFlight = useRef(false);
 
@@ -192,8 +204,8 @@ export default function DataFlowPage() {
     }
   };
 
-  const approval = () => {
-    const approvalToken = replayApprovalToken.trim();
+  const approval = (token = replayApprovalToken) => {
+    const approvalToken = token.trim();
     return approvalToken ? { approved_by: replayApprover.trim(), approval_token: approvalToken } : {};
   };
 
@@ -202,16 +214,16 @@ export default function DataFlowPage() {
     setDefinitionActionId(key);
     setReplayError('');
     try {
-      if (action === 'approve') await dataPipelineAPI.approveDefinition(definition.job_id, definition.version, approval());
-      if (action === 'disable') await dataPipelineAPI.disableDefinition(definition.job_id, definition.version, approval());
-      if (action === 'unschedule') await dataPipelineAPI.disableSchedule(definition.job_id, definition.version, approval());
+      if (action === 'approve') await dataPipelineAPI.approveDefinition(definition.job_id, definition.version, approval(governanceToken));
+      if (action === 'disable') await dataPipelineAPI.disableDefinition(definition.job_id, definition.version, approval(governanceToken));
+      if (action === 'unschedule') await dataPipelineAPI.disableSchedule(definition.job_id, definition.version, approval(governanceToken));
       if (action === 'schedule') {
         const priorRun = runs.find((run) => run.job_id === definition.job_id && run.job_version === definition.version);
         if (!priorRun) throw new Error('Run this job once before scheduling it; schedules replay a retained immutable input.');
         await dataPipelineAPI.scheduleDefinition(definition.job_id, definition.version, {
           replay_run_id: priorRun.run_id,
           interval_seconds: Number(scheduleInterval),
-        }, approval());
+        }, approval(governanceToken));
       }
       if (action === 'run') {
         const result = await dataPipelineAPI.runDefinition(definition.job_id, definition.version, {}, approval());
@@ -219,6 +231,7 @@ export default function DataFlowPage() {
         if (run?.run_id) setSelectedRun(run);
       }
       setReplayApprovalToken('');
+      setGovernanceToken('');
       await load();
     } catch (actionFailure) {
       setReplayError(apiErrorMessage(actionFailure, 'Data-job lifecycle action could not be completed.'));
@@ -231,7 +244,14 @@ export default function DataFlowPage() {
     setPublishingId(run.run_id);
     setReplayError('');
     try {
-      await dataPipelineAPI.publishRun(run.run_id, {}, approval());
+      const release = semanticReleases[Number(releaseIndex)];
+      if (releaseIndex === '' || !release) throw new Error('Load and select an approved semantic release before publishing.');
+      if (!publicationSource.trim() && !run.source_system) throw new Error('Enter the stable source-system identifier before publishing.');
+      await dataPipelineAPI.publishRun(run.run_id, {
+        semantic_release: { asset_id: release.asset_id, version: release.version, lifecycle_status: 'approved' },
+        source_system: publicationSource.trim() || run.source_system,
+      }, approval(publicationToken));
+      setPublicationToken('');
       await load();
     } catch (publishFailure) {
       setReplayError(apiErrorMessage(publishFailure, 'Run could not be published.'));
@@ -260,8 +280,18 @@ export default function DataFlowPage() {
         <summary>Data-job approval credentials (only when the API gateway does not provide identity)</summary>
         <p>These values are held only in memory and the API key is cleared after a lifecycle action starts.</p>
         <label>Approver <input aria-label="Replay approver" value={replayApprover} onChange={(event) => setReplayApprover(event.target.value)} autoComplete="off" /></label>{' '}
-        <label>Execution / publish API key <input aria-label="Replay execution API key" type="password" value={replayApprovalToken} onChange={(event) => setReplayApprovalToken(event.target.value)} autoComplete="off" /></label>
+        <label>Execution API key <input aria-label="Replay execution API key" type="password" value={replayApprovalToken} onChange={(event) => setReplayApprovalToken(event.target.value)} autoComplete="off" /></label>
+        <label>Governance API key <input type="password" aria-label="Governance API key" value={governanceToken} onChange={(event) => setGovernanceToken(event.target.value)} autoComplete="off" /></label>
+        <label>Publication API key <input type="password" aria-label="Publication API key" value={publicationToken} onChange={(event) => setPublicationToken(event.target.value)} autoComplete="off" /></label>
       </details>
+      <section className="data-flow-notice" aria-label="Semantic publication settings">
+        <button type="button" onClick={loadReleases}>Load approved semantic releases</button>
+        <label>Semantic release <select value={releaseIndex} onChange={(event) => setReleaseIndex(event.target.value)}>
+          <option value="">Select an approved release</option>
+          {semanticReleases.map((asset, index) => <option key={`${asset.asset_id}:${asset.version}`} value={index}>{asset.name || asset.asset_id} — {asset.version}</option>)}
+        </select></label>
+        <label>Source system <input value={publicationSource} onChange={(event) => setPublicationSource(event.target.value)} placeholder="e.g. teamcenter-customer-prod" /></label>
+      </section>
 
       {error && <div className="data-flow-notice" role="status">{error}</div>}
       {replayError && <div className="data-flow-notice data-flow-notice--error" role="alert">{replayError}</div>}

@@ -161,6 +161,7 @@ class CEIMContract:
         entities = resolution["entities"]
         entity_uris: dict[str, URIRef] = {}
         for entity in entities:
+            provenance = dict(entity.get("provenance") or {})
             entity_id = str(entity.get("id") or "").strip()
             entity_type = str(entity.get("ceim_type") or "").strip()
             if not entity_id or entity_type not in self.entity_types:

@@ -365,6 +365,7 @@ async def publish_job_run(run_id: str, payload: dict[str, Any], request: Request
             **batch,
             "ontology_id": ontology_id, "prefix": payload.get("prefix", "ceim"),
             "semantic_release": payload.get("semantic_release"),
+            "source_system": payload.get("source_system") or batch.get("source_system") or record.get("source_system"),
             # A stable run id makes a successful graph commit recoverable if
             # the caller loses the CEIM response while the commit completes.
             "publication_id": run_id,

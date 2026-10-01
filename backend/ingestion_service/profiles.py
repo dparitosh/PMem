@@ -181,9 +181,13 @@ class SourceProfileStore:
         for part in str(path or "").replace("/", ".").split("."):
             if not part:
                 continue
-            if not isinstance(value, dict):
+            if isinstance(value, list) and part.isdigit():
+                index = int(part)
+                value = value[index] if index < len(value) else None
+            elif isinstance(value, dict):
+                value = value.get(part)
+            else:
                 return None
-            value = value.get(part)
         return value
 
     @staticmethod
@@ -192,15 +196,29 @@ class SourceProfileStore:
 
     def _xml_record(self, element: Any) -> dict[str, Any]:
         record: dict[str, Any] = {self._local_name(key): value for key, value in element.attrib.items()}
+        qualified_children = []
         for child in element:
+            child_record = self._xml_record(child)
+            qualified_children.append(child_record['_xml'])
             key = self._local_name(child.tag)
             value = (child.text or "").strip()
             if len(child):
-                value = self._xml_record(child)
+                value = child_record
+            elif child.attrib:
+                attributes = {self._local_name(name): item for name, item in child.attrib.items()}
+                attribute_key = f"{key}_attributes"
+                record.setdefault(attribute_key, []).append(attributes)
             if key in record:
                 record[key] = record[key] + [value] if isinstance(record[key], list) else [record[key], value]
             else:
                 record[key] = value
+        # Preserve the qualified tree alongside legacy convenience fields.
+        # Existing text mappings keep working; attributes/namespaces are no longer lost.
+        record['_xml'] = {
+            'tag': str(element.tag), 'attributes': dict(element.attrib),
+            'text': element.text or '', 'tail': element.tail or '',
+            'children': qualified_children,
+        }
         return record
 
     def extract_records(self, *, profile: dict[str, Any], filename: str, content: bytes) -> list[dict[str, Any]]:

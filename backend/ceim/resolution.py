@@ -14,9 +14,9 @@ def _digest(value: Any) -> str:
     return "sha256:" + hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
 
 
-def _key(entity: dict[str, Any]) -> tuple[str, str]:
+def _key(entity: dict[str, Any]) -> tuple[str, str, str]:
     properties = dict(entity.get("properties") or {})
-    return str(entity.get("ceim_type") or ""), str(properties.get("external_id") or entity.get("id") or "")
+    return str((entity.get("provenance") or {}).get("identity_scope") or ""), str(entity.get("ceim_type") or ""), str(properties.get("external_id") or entity.get("id") or "")
 
 
 def _without_provenance(entity: dict[str, Any]) -> dict[str, Any]:
@@ -25,7 +25,7 @@ def _without_provenance(entity: dict[str, Any]) -> dict[str, Any]:
 
 def analyze_entities(entities: list[dict[str, Any]]) -> dict[str, Any]:
     """Merge exact duplicates only; divergent facts become blocking review cases."""
-    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for entity in entities: groups.setdefault(_key(entity), []).append(entity)
     canonical, merges, conflicts = [], [], []
     for key, group in groups.items():
