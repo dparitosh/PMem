@@ -1,0 +1,26 @@
+# XSD serialization → relational analytics audit — 2026-10-02
+
+## Conclusion
+
+Entities/properties/cardinality/datatypes can form a structural input contract for relational generation, but the current report is not complete enough to generate production DDL or analytical facts/dimensions automatically. It is explicitly a read-only mapping report. The schema-conversion analytics artifact currently retains ontology statistics and validation metadata, not a complete relational model or dimensional warehouse contract.
+
+## Confirmed defects and gaps
+
+1. **P1 — False successful parsing/closure.** `backend/Services/xsd_relational_report.py:45-65,190` silently skips missing or malformed schemas/includes and returns success even for malformed root XSD. No schema grammar compilation occurs in this report. Fail closed on invalid roots/missing closure; return explicit unsupported constructs and validation status. Restrict include resolution to the approved schema-set root; current schemaLocation traversal has no containment boundary.
+2. **P1 — Root anonymous entities omitted.** `:83-88,180` maps only named top-level complex types. An element containing an anonymous complexType is omitted entirely. Traverse global elements, retain their expanded names and resolve anonymous type owners.
+3. **P1 — Choice and compositor cardinality lost.** `:23-33,133` reads occurrence only on each element. Choice siblings default to required=true together, while a child of optional/repeating sequence is reported 1..1. Retain the particle tree, effective occurrence ranges and choice-group constraints; do not blindly map every required flag to NOT NULL. The OWL engine at owl_xsd_engine.py:801-806 also reads direct element occurrence, so Turtle alone is not a lossless source for these compositor semantics.
+4. **P1 — Namespace/type reference collisions.** `:20,88,137` strips QName prefixes and indexes named types by local name. Imported namespaces with identical type names can collapse into the wrong entity. Element/attribute refs are not fully resolved to their declarations. Use expanded namespace-qualified identifiers and resolve refs across the validated schema closure.
+5. **P2 — Repeated simple values have no child-table plan.** `:141-143` emits a scalar column even for maxOccurs>1, unlike repeated complex children. Represent repeated primitives as owner-key/value/position rows; preserve repeated compositor instance grouping as well as element position.
+6. **P2 — Datatype/facet and inheritance contracts incomplete.** Simple types are counted, not resolved. No SQL type, decimal precision/scale, enumeration/range/pattern/length constraint, list/union policy or complex/simple-content inheritance mapping is emitted. Keep source lexical types and facets, map safely to PostgreSQL, and explicitly reject unsupported mappings. Prohibited attributes are reported max_occurs=1 instead of 0.
+7. **P2 — Keys and FK candidates are not implementable constraints.** Names such as partnumber imply PK candidates without proving uniqueness. Key/keyref records omit selector/owner scope; keyrefs are copied onto every table. Some FKs exist only as candidate names without corresponding typed columns, and junction FK/sequence columns have no complete constraint definition. Resolve selectors/fields to owner paths; generate surrogate instance keys when needed and scoped UNIQUE/FK/ordering rules.
+8. **P2 — Persistence and analytics generation are not implemented by this path.** The endpoint /reports/xsd-relational returns a report only. schema_conversion.py's schema-analytics-profile-v1 contains generated statistics and artifacts, not executable table DDL, XML row materialization, upgrade plans or fact/dimension grain. Add an immutable structural model artifact, reviewed DDL plan, versioned schema migration, XSD-validated instance loader with atomic writes, reconciliation/data-quality evidence and business metric/dimension mappings. Source structure cannot determine KPI aggregation, units, grain or slowly changing dimensions by itself.
+
+## Direct reproductions
+
+A synthetic schema showed: anonymous Root table absent; both choice alternatives required; a child inside minOccurs=0/maxOccurs=unbounded sequence incorrectly 1..1; prohibited attribute max_occurs=1; restricted Money type without SQL precision/facets. Replacing the root with malformed XML still yielded status=success. These reproduce structural reporting bugs; no live customer tables were generated or modified.
+
+## Required functional sequence
+
+Validate schema closure → build namespace-aware structural model with particle/cardinality/type/identity semantics → review relational plan → create/update versioned PostgreSQL tables → validate and load XML instances transactionally → define business facts/dimensions/metrics → execute data jobs with quality/lineage → expose report APIs/UI. Structural entity/property metadata is useful in both the ontology and database paths, but both must retain the validated source semantics and explicit unsupported cases.
+
+No application code changed in this audit. The previous agent/OSLC/PostgreSQL fixes do not address these separate XSD model defects. This review does not certify full XSD 1.0/1.1 or QIF/AP242/AP239 conformance.
