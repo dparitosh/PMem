@@ -24,3 +24,12 @@ A synthetic schema showed: anonymous Root table absent; both choice alternatives
 Validate schema closure → build namespace-aware structural model with particle/cardinality/type/identity semantics → review relational plan → create/update versioned PostgreSQL tables → validate and load XML instances transactionally → define business facts/dimensions/metrics → execute data jobs with quality/lineage → expose report APIs/UI. Structural entity/property metadata is useful in both the ontology and database paths, but both must retain the validated source semantics and explicit unsupported cases.
 
 No application code changed in this audit. The previous agent/OSLC/PostgreSQL fixes do not address these separate XSD model defects. This review does not certify full XSD 1.0/1.1 or QIF/AP242/AP239 conformance.
+
+
+## Implementation follow-up
+
+Conversion now retains structural-model-v2 and review-only analytics-schema-plan artifacts in the v2 XSD data-product draft. The report fails closed on bad/missing/traversing schema closure and compiles XSD grammar with lxml when available. Named/root/anonymous entities are namespace-aware, refs resolve across closure, effective cardinality and particle paths are retained, repeated scalars have entity tables, facets/decimal precision are retained, prohibited attributes are omitted and nillability is reflected. Unsupported choice/group/identity/facet/temporal/mixed-content cases explicitly block SQL generation instead of unsafe flattening. Existing schema analytics jobs accept v1/v2 drafts and no longer require Spark for bounded schema statistics.
+
+Remaining implementation: generic instance materialization, approved execution/versioning of generated relational schemas, complete specialized mappings for blocked constructs, dimensional business profiles and operational warehouse reporting. This change provides a structural design data product; it does not claim to deliver a full analytics warehouse. OWL compositor semantics remain a separate limitation; the analytics model reads original XSD instead.
+
+Tests cover source closure, QName collisions, anonymous/repeated entities, choice/group blockers, datatype facets, prohibited/nillable fields, actual conversion artifact wiring and the v2 data job without Spark. Commit and push status is recorded in Git.

@@ -62,9 +62,9 @@ def test_relational_projection_uses_child_and_junction_tables(tmp_path):
     report = build_xsd_relational_report(schema)
     tables = {table["name"]: table for table in report["tables"]}
     assert "Node" in tables
-    assert "Node__children" in tables
-    assert "Node__children__link" in tables
-    assert any(rel["association_table"] == "Node__children__link"
+    assert "Node/children" in tables
+    assert any(rel["target_entity_id"].endswith("Node/children") and rel["repeating"]
                for rel in tables["Node"]["relationships"])
+    assert tables["Node/children"]["columns"]
     assert any(col["name"] == "revision" and col["required"]
                for col in tables["Node"]["columns"])

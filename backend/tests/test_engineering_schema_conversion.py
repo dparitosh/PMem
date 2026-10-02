@@ -31,8 +31,8 @@ def test_schema_serialization_retains_an_analytics_product_draft(monkeypatch, tm
     monkeypatch.setenv("ARTIFACT_STORAGE", str(tmp_path / "artifacts"))
     result = converter.convert(filename="demo.xsd", content=b'''<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:test"><xs:element name="Part" type="xs:string"/></xs:schema>''')
 
-    assert set(result["artifacts"]) == {"source", "serialization", "analytics_profile"}
-    assert result["data_product_draft"]["contract"] == "schema-analytics-data-product-v1"
+    assert set(result["artifacts"]) == {"source", "serialization", "analytics_profile", "structural_model", "analytics_schema_plan"}
+    assert result["data_product_draft"]["contract"] == "schema-analytics-data-product-v2"
     assert result["data_product_draft"]["artifacts"] == list(result["artifacts"].values())
     metadata, _ = ArtifactStore().resolve(result["artifacts"]["analytics_profile"])
     assert metadata["kind"] == "schema-analytics-profile"

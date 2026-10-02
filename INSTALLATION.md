@@ -2619,3 +2619,16 @@ After successful adoption, change `DEPO_ACCEPT_LEGACY_MIGRATION_CHECKSUMS=false`
 Verification checks 41 columns, 17 constraints, five named indexes, relation kinds, required nullability/defaults, the chat message sequence, analytics view definition and versions 1–7 with checksums. A drift failure does not grant permission to delete or recreate a customer table. Restore the matching immutable release SQL for checksum differences; use a reviewed corrective migration for schema/data changes. Read-only verification never adopts missing checksums.
 
 The ontology analytics view remains an ontology-statistics projection. This schema update does not create a dimensional warehouse or populate fact/dimension tables.
+
+
+### XSD structural analytics data-product output
+
+XSD conversion now returns a `schema-analytics-data-product-v2` draft with five retained artifact references: source XSD, Turtle serialization, analytics profile, structural model and analytics schema plan. Non-XSD conversion contracts remain compatible with v1. The existing `schema-analytics-product` data job accepts both versions and computes bounded schema statistics without requiring Spark.
+
+The structural model uses namespace-qualified entity IDs, effective occurrence ranges, particle paths and resolved datatype/facet metadata. Anonymous roots and repeated primitive values have entity-table plans. Prohibited attributes are excluded; nillable elements have nullable SQL projections. The source XSD remains the authority: Turtle alone does not preserve every closed-world XML constraint.
+
+To inspect an already registered XSD, request `/reports/xsd-relational?ontology_id=<registered-id>` at the ingestion service base with the configured read credential. Its response includes `analytics_schema_plan`. This endpoint requires an accessible original XSD and its local include/import closure. Dependencies must stay inside the approved schema-set directory; remote dependencies are not downloaded. A single-file conversion with missing dependencies retains a blocked model draft rather than claiming a complete schema.
+
+Inspect `ddl_blockers`, `validation.formal_xsd_validation`, `analytics_schema_plan.sql`, and `data_product_draft.quality_status`. The PostgreSQL SQL is a **new-schema review plan**, not an upgrade script; it is never executed by conversion. Plans with unsupported choice/group/identity/facet mappings contain no SQL. Review-only plans never authorize automatic DDL or publish a data product. Formal grammar compilation uses lxml when installed; lack of that compiler is an explicit blocker.
+
+This product is schema-design evidence. Before building reporting tables, define fact grain, dimension keys, measure expressions, units, aggregation and history policy; then implement and approve XSD-validated instance materialization with cardinality, identity, count reconciliation and lineage checks. Those business definitions and the generic XML-to-warehouse loader are still required. No fact/dimension data or customer tables are created by this change.

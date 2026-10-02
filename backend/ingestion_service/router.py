@@ -33,8 +33,11 @@ router = APIRouter(tags=["ingestion"], dependencies=[Depends(_ingestion_identity
 
 
 @router.get("/reports/xsd-relational", summary="Build a read-only relational projection of a registered XSD")
-def xsd_relational_report(ontology_id: str = Query(..., min_length=1, max_length=200)) -> dict:
+def xsd_relational_report(request: Request, ontology_id: str = Query(..., min_length=1, max_length=200)) -> dict:
     from backend.Services.ontology_upload_manager import OntologyUploadManager
+    from backend.depo_platform.authorization import graph_read_identity
+    graph_read_identity(request)
+    from backend.Services.xsd_analytics_plan import build_analytics_schema_plan
     from backend.Services.xsd_relational_report import build_xsd_relational_report
 
     result = OntologyUploadManager.get_ontology(ontology_id)
@@ -45,10 +48,12 @@ def xsd_relational_report(ontology_id: str = Query(..., min_length=1, max_length
     if file_path.suffix.lower() != ".xsd" or not file_path.is_file():
         raise HTTPException(status_code=422, detail="The selected ontology does not have an accessible XSD source file")
     try:
+        model = build_xsd_relational_report(file_path)
         return {
+            "analytics_schema_plan": build_analytics_schema_plan(model),
             "ontology_id": ontology_id,
             "prefix": metadata.get("prefix") or "",
-            **build_xsd_relational_report(file_path),
+            **model,
         }
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"XSD relational report could not be generated: {exc}") from exc

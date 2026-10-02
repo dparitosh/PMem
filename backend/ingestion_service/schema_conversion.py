@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import threading
+import tempfile
 import json
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,8 @@ from backend.Services.ap242_domain_model import (
 )
 from backend.Services.owl_generation_service import OWLGenerationService
 from backend.artifact_store import ArtifactStore
+from backend.Services.xsd_relational_report import build_xsd_relational_report
+from backend.Services.xsd_analytics_plan import build_analytics_schema_plan
 from .xsd_validation import inspect_xsd_structure
 
 
@@ -102,8 +105,27 @@ class EngineeringSchemaConverter:
             turtle_bytes, filename=f"{stem}.ttl", kind="serialized-ontology",
             media_type="text/turtle", provenance={"source_artifact_id": source_artifact["artifact_id"], "format": file_type.value},
         )
+        structural_model = schema_plan = None
+        structural_artifacts = {}
+        if file_type == FileType.XSD:
+            with tempfile.TemporaryDirectory(prefix='depo-xsd-model-') as temporary:
+                source_path = Path(temporary) / 'source.xsd'
+                source_path.write_bytes(content)
+                try:
+                    structural_model = build_xsd_relational_report(source_path)
+                except ValueError as exc:
+                    structural_model = {'contract': 'xsd-structural-model-v2', 'status': 'requires_review',
+                        'tables': [], 'columns': [], 'ddl_blockers': [str(exc)], 'source_file': Path(filename).name}
+            schema_plan = build_analytics_schema_plan(structural_model)
+            for key, document, kind in (('structural_model', structural_model, 'schema-structural-model'), ('analytics_schema_plan', schema_plan, 'analytics-schema-plan')):
+                artifact = store.ingest_bytes(json.dumps(document, sort_keys=True).encode('utf-8'),
+                    filename=f'{stem}-{key}.json', kind=kind, media_type='application/json',
+                    provenance={'source_artifact_id': source_artifact['artifact_id'], 'serialization_artifact_id': turtle_artifact['artifact_id']})
+                structural_artifacts[key] = artifact['artifact_id']
         analytics = {
-            "contract": "schema-analytics-profile-v1",
+            "contract": "schema-analytics-profile-v2" if file_type == FileType.XSD else "schema-analytics-profile-v1",
+            "structural_model": structural_model, "analytics_schema_plan": schema_plan,
+            "structural_artifacts": structural_artifacts,
             "source_artifact_id": source_artifact["artifact_id"],
             "serialization_artifact_id": turtle_artifact["artifact_id"],
             "format": str(generated.get("format") or file_type.value.upper()),
@@ -128,16 +150,19 @@ class EngineeringSchemaConverter:
                 "turtle": turtle,
             },
             "statistics": generated,
+            "structural_model": structural_model, "analytics_schema_plan": schema_plan,
             "artifacts": {
                 "source": source_artifact["artifact_id"], "serialization": turtle_artifact["artifact_id"],
-                "analytics_profile": analytics_artifact["artifact_id"],
+                "analytics_profile": analytics_artifact["artifact_id"], **structural_artifacts,
             },
             "data_product_draft": {
-                "contract": "schema-analytics-data-product-v1",
+                "contract": "schema-analytics-data-product-v2" if file_type == FileType.XSD else "schema-analytics-data-product-v1",
+                "product_kind": "schema-design-evidence",
+                "analytics_readiness": "requires_materialization_and_business_definition",
                 "name": f"{stem} schema analytics",
                 "domain": "semantic-engineering",
-                "artifacts": [source_artifact["artifact_id"], turtle_artifact["artifact_id"], analytics_artifact["artifact_id"]],
-                "quality_status": "validated" if not (schema_validation or {}).get("errors") else "requires_review",
+                "artifacts": [source_artifact["artifact_id"], turtle_artifact["artifact_id"], analytics_artifact["artifact_id"], *structural_artifacts.values()],
+                "quality_status": "requires_review" if file_type == FileType.XSD else ("validated" if not (schema_validation or {}).get("errors") else "requires_review"),
                 "publication_requirements": ["approved semantic release", "data-product steward approval", "explicit Data Product API publish request"],
             },
             "next_action": "Register the generated Turtle with the ontology service, then use the governed publish workflow.",

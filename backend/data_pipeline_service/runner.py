@@ -385,7 +385,7 @@ class SparkJobRunner:
 
         The input must already be a content-addressed schema artifact. The
         converter retains the XSD/EXPRESS source, Turtle serialization and
-        analytics profile. Spark contributes the scalable aggregate view while
+        analytics profile. Bounded schema statistics use the local Python runtime while
         publication remains an explicit Data Product API approval action.
         """
         artifact_id = str(payload.get("artifact_id") or "").strip()
@@ -401,17 +401,17 @@ class SparkJobRunner:
         from backend.ingestion_service.schema_conversion import converter
         converted = converter.convert(filename=filename, content=content)
         draft = dict(converted.get("data_product_draft") or {})
-        if draft.get("contract") != "schema-analytics-data-product-v1":
+        if draft.get("contract") not in {"schema-analytics-data-product-v1", "schema-analytics-data-product-v2"}:
             raise ValueError("Schema conversion did not return an analytics data-product draft")
         started = time.perf_counter()
         stats = dict(converted.get("statistics") or {})
         rows = [{"metric": str(key), "value": value if isinstance(value, (int, float, str, bool)) else json.dumps(value, sort_keys=True, default=str)} for key, value in stats.items()]
         if not rows:
             rows = [{"metric": "schema_artifacts", "value": len(draft.get("artifacts") or [])}]
-        with self._lock:
-            spark = self._spark_session()
-            series = [row.asDict() for row in spark.createDataFrame(rows).orderBy("metric").collect()]
+        series = sorted(rows, key=lambda row: row['metric'])
         result = {
+            "structural_model": converted.get("structural_model"),
+            "analytics_schema_plan": converted.get("analytics_schema_plan"),
             "job_id": str(uuid.uuid4()), "job_type": "schema-analytics-product", "status": "completed",
             "correlation_id": correlation_id, "completed_at": self._now(), "duration_ms": round((time.perf_counter() - started) * 1000, 2),
             "input_contract": "engineering-schema-artifact-v1", "output_contract": "schema-analytics-data-product-draft-v1",
