@@ -16,6 +16,7 @@ def configuration_status():
         ('AGENT_SESSION_IDLE_SECONDS', '1800', 60, 86400),
         ('AGENT_SESSION_MAX_SECONDS', '86400', 60, 2592000),
         ('AGENTIC_RUN_TIMEOUT_SECONDS', '300', 1, 3600),
+        ('DEPO_REGISTRY_STATEMENT_TIMEOUT_SECONDS', '30', 1, 300),
         ('LLM_REQUEST_TIMEOUT_SECONDS', '30', 1, 300),
         ('AGENT_MEMORY_RETENTION_DAYS', '30', 1, 3650),
     ):
@@ -32,11 +33,13 @@ def configuration_status():
     def url(key, https=False):
         value = require(key)
         try:
+            from backend.depo_platform.service_urls import service_url
+            value = service_url(key, value)
             parsed = urlsplit(value)
             valid = (parsed.scheme in ({'https'} if https else {'http', 'https'}) and
                      parsed.hostname and not parsed.username and not parsed.password and
                      not parsed.query and not parsed.fragment)
-        except ValueError:
+        except (ValueError, RuntimeError):
             valid = False
         if not valid and key not in errors:
             errors.append(key)
@@ -86,6 +89,7 @@ def configuration_status():
     for key, default in (('AGENTIC_TOOL_TIMEOUT_SECONDS', '30'),
                          ('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', '15'),
                          ('OSLC_CLIENT_TIMEOUT_SECONDS', '20'),
+                         ('AGENTIC_MAX_RESPONSE_BYTES', str(8 * 1024 * 1024)),
                          ('AGENTIC_MAX_UPLOAD_BYTES', str(25 * 1024 * 1024))):
         try:
             value = float(os.getenv(key, default))

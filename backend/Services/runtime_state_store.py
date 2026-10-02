@@ -7,7 +7,7 @@ import time
 from contextlib import contextmanager
 from typing import Any
 
-from backend.depo_platform.postgres_schema import connect_timeout_seconds, select_schema
+from backend.depo_platform.postgres_schema import connect_timeout_seconds, select_schema, statement_options
 
 
 @contextmanager
@@ -21,6 +21,7 @@ def _connection():
         autocommit=True,
         connect_timeout=connect_timeout_seconds(),
         application_name="depo-runtime-state",
+        options=statement_options(),
     ) as connection:
         with connection.cursor() as cursor:
             select_schema(cursor)
@@ -35,6 +36,7 @@ def _get(kind: str, key: str) -> dict[str, Any] | None:
 
 
 def _put(kind: str, key: str, value: dict[str, Any]) -> None:
+    if not isinstance(value, dict): raise ValueError("Runtime state must be a JSON object")
     with _connection() as connection, connection.cursor() as cursor:
         cursor.execute(
             """

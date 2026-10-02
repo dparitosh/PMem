@@ -1,5 +1,6 @@
 """Read a configured SysML repository commit; never publish graph mutations."""
 import json
+import os
 from urllib.parse import quote, urljoin, urlsplit
 import httpx
 from backend.Services.sysml_v2_connector_service import SysMLV2ConnectorConfig
@@ -11,13 +12,17 @@ async def read_snapshot(config=None):
         raise ValueError('Enable SysML v2 and configure base URL, project ID and commit ID')
     base = cfg.base_url.rstrip('/')
     parsed = urlsplit(base)
-    if parsed.scheme not in {'http', 'https'} or parsed.username or parsed.password:
+    if parsed.scheme not in {'http', 'https'} or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError('Invalid repository URL')
     path = f'{base}/projects/{quote(cfg.project_id, safe="")}/commits/{quote(cfg.commit_id, safe="")}/elements'
     url = path + '?page[size]=' + str(max(1, min(cfg.page_size, 1000)))
     headers = {'Accept': 'application/json'}
     if cfg.token:
         headers['Authorization'] = 'Bearer ' + cfg.token
+    max_bytes = min(int(os.getenv('SYSML_V2_MAX_SNAPSHOT_BYTES', str(64 * 1024 * 1024))), int(os.getenv('DEPO_MAX_INGEST_BYTES', str(500 * 1024 * 1024))))
+    if max_bytes < 1:
+        raise ValueError('SysML snapshot byte limit must be positive')
+    total_bytes = 0
     seen, elements = set(), []
     async with httpx.AsyncClient(timeout=cfg.request_timeout_seconds, follow_redirects=False) as client:
         while url:
@@ -33,6 +38,9 @@ async def read_snapshot(config=None):
                 chunks, size = [], 0
                 async for chunk in response.aiter_bytes():
                     size += len(chunk)
+                    total_bytes += len(chunk)
+                    if total_bytes > max_bytes:
+                        raise ValueError('Repository snapshot exceeds its aggregate byte limit')
                     if size > 16 * 1024 * 1024:
                         raise ValueError('Repository page exceeds 16 MiB')
                     chunks.append(chunk)

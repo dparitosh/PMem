@@ -1,6 +1,8 @@
 """Normalize FastAPI's JSON Schema output for the published OAS 3.0 contract."""
 from copy import deepcopy
 import inspect
+import ast
+import textwrap
 
 
 def normalize_openapi(document: dict) -> dict:
@@ -54,6 +56,54 @@ def normalize_openapi(document: dict) -> dict:
     return result
 
 
+def credential_profiles(endpoint, dependency_calls, *, method, path):
+    """Describe credential names from authorization code, never environment values.
+
+    Unknown/dynamic expressions stay unresolved rather than guessing a write key.
+    """
+    profiles = set()
+    visited = set()
+    def inspect_call(function):
+        name = getattr(function, '__name__', '')
+        if name == 'graph_read_identity':
+            profiles.add('GRAPH_READ_TOKEN')
+            return
+        if name == 'require_admin_api_key':
+            profiles.add('ADMIN_API_KEY')
+            return
+        if name == '_modeling_graph_identity':
+            profiles.add('GRAPH_READ_TOKEN' if method in {'GET', 'HEAD', 'OPTIONS'} else 'ONTOLOGY_APPROVAL_TOKEN')
+            return
+        if name in {'_qif_identity', '_ingestion_identity', '_metadata_registry_identity', '_modeling_identity'}:
+            if method in {'GET', 'HEAD', 'OPTIONS'}:
+                return
+            if name == '_ingestion_identity':
+                profiles.add('DATA_JOB_EXECUTION_TOKEN' if path.endswith(('/governed-import', '/sysml-v2/import-commit')) else 'INGESTION_WRITE_TOKEN')
+                return
+        if not callable(function) or id(function) in visited or len(visited) >= 32:
+            return
+        visited.add(id(function))
+        try:
+            tree = ast.parse(textwrap.dedent(inspect.getsource(function)))
+        except (TypeError, OSError, SyntaxError):
+            return
+        namespace = getattr(function, '__globals__', {})
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                continue
+            if node.func.id in {'approval_identity', 'service_write_identity'}:
+                for keyword in node.keywords:
+                    if keyword.arg == 'token_env' and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str):
+                        profiles.add(keyword.value.value)
+            helper = namespace.get(node.func.id)
+            if callable(helper) and str(getattr(helper, '__module__', '')).startswith('backend.'):
+                inspect_call(helper)
+    inspect_call(endpoint)
+    for function in dependency_calls:
+        inspect_call(function)
+    return sorted(profiles)
+
+
 def describe_security(document, routes):
     schemes = document.setdefault('components', {}).setdefault('securitySchemes', {})
     schemes.update({'BearerKey': {'type': 'http', 'scheme': 'bearer', 'description': 'Runtime service API key or gateway bearer. Credential scopes differ by service and operation.'},
@@ -67,9 +117,11 @@ def describe_security(document, routes):
         except (TypeError, OSError):
             source = ''
         dependency_names = set()
+        dependency_calls = []
         def visit(dependant):
             for dependency in getattr(dependant, 'dependencies', []):
                 dependency_names.add(getattr(dependency.call, '__name__', ''))
+                dependency_calls.append(dependency.call)
                 visit(dependency)
         visit(getattr(route, 'dependant', None))
         header_required = bool(dependency_names & {'graph_read_identity', '_qif_identity', '_ingestion_identity', '_modeling_identity', '_metadata_registry_identity'})
@@ -77,11 +129,11 @@ def describe_security(document, routes):
         header_required = header_required or 'graph_read_identity(' in source or 'service_write_identity(' in source
         for method in getattr(route, 'methods', []):
             operation = document['paths'][path].get(method.lower())
-            if not operation:
+            if operation is None:
                 continue
             # Public QIF/ingestion reads remain public; modeling reads require
             # graph-read identity. Body approval is a separate documented path.
-            public_read = method in {'GET', 'HEAD'} and dependency_names and dependency_names <= {'_qif_identity', '_ingestion_identity', '_metadata_registry_identity'}
+            public_read = method in {'GET', 'HEAD'} and dependency_names and dependency_names <= {'_qif_identity', '_ingestion_identity', '_metadata_registry_identity', '_modeling_identity'}
             if 'require_admin_api_key' in dependency_names:
                 operation['security'] = [{'ApiKey': []}]
                 operation.setdefault('responses', {}).setdefault('401', {'description': 'Invalid or missing administrator API key'})
@@ -89,8 +141,11 @@ def describe_security(document, routes):
                 operation['security'] = [{'BearerKey': []}, {'ApiKey': []}]
             elif approval:
                 operation['security'] = [{'BearerKey': []}, {'ApiKey': []}, {}]
-            if approval or (header_required and not public_read):
-                operation['x-depo-authorization'] = {'approval_fields': ['approved_by', 'approval_token'] if approval else [],
+            profiles = credential_profiles(route.endpoint, dependency_calls, method=method, path=path)
+            if profiles and 'security' not in operation:
+                operation['security'] = [{'ApiKey': []}] if profiles == ['ADMIN_API_KEY'] else [{'BearerKey': []}, {'ApiKey': []}]
+            if profiles or approval or (header_required and not public_read):
+                operation['x-depo-authorization'] = {'credential_profiles': profiles, 'resolution': 'explicit' if profiles else 'unresolved', 'approval_fields': ['approved_by', 'approval_token'] if approval else [],
                     'note': 'Runtime authorization remains enforced. Approval requires the configured operation token or trusted gateway role; the global read key does not grant write permission.'}
                 operation.setdefault('responses', {}).setdefault('403', {'description': 'Required identity, API key or approval is absent or invalid'})
     return document

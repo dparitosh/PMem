@@ -38,3 +38,6 @@ app.include_router(ontology_browser_router, prefix="/api/v1")
 app.include_router(compatibility_import_router, prefix="/api/v1", dependencies=[Depends(_ingestion_identity)])
 app.include_router(compatibility_ontology_router, prefix="/api/v1", dependencies=[Depends(_ingestion_identity)])
 app.include_router(documents_router, prefix="/api/v1", dependencies=[Depends(_ingestion_identity)])
+
+from backend.routes.sysml_v2_routes import router as sysml_readiness_router
+app.include_router(sysml_readiness_router, prefix="/api/v1")

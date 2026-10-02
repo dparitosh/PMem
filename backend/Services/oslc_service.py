@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from rdflib import Graph
 from rdflib.namespace import RDF, RDFS, SH
@@ -1172,7 +1172,20 @@ class OSLCService:
             "page": params.page_num,
             "pageSize": params.page_size,
             "members": members,
+            "nextPage": cls._next_query_page(cfg.base_url, response_resource_type, params, total_count),
         }
+
+    @classmethod
+    def _next_query_page(cls, base, resource_type, params, total):
+        if params.page_num * params.page_size >= total: return None
+        import json
+        query = {'oslc.paging': 'true', 'oslc.pageNum': params.page_num + 1, 'oslc.pageSize': params.page_size}
+        if params.where:
+            query['oslc.where'] = ' and '.join(f'{item.property_name}{item.operator}{json.dumps(item.value)}' for item in params.where)
+        if params.select: query['oslc.select'] = ','.join(params.select)
+        if params.order_by: query['oslc.orderBy'] = ','.join(f'{field} {direction}' for field, direction in params.order_by)
+        if params.search_terms: query['oslc.searchTerms'] = ','.join(json.dumps(term) for term in params.search_terms)
+        return f'{base}/oslc/query/{quote(resource_type, safe="")}?{urlencode(query)}'
 
     @classmethod
     def _ontology_domain_scope(cls, resource_type: str) -> Optional[Dict[str, str]]:

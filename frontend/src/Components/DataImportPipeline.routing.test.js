@@ -30,6 +30,8 @@ vi.mock('../config', () => ({
       merge: '/api/v1/ontology/merge',
     },
   },
+  config: { semanticServiceUrls: {}, gatewayUrl: '' },
+  buildSemanticServiceUrl: (service, path) => path,
   buildUrl: (value) => value,
   replaceParams: (endpoint, params = {}) => Object.keys(params).reduce((result, key) => result.replace(`{${key}}`, params[key]), endpoint),
 }));
@@ -53,6 +55,7 @@ const renderPipeline = async () => {
 };
 
 vi.mock('../services/apiClient', () => ({
+  dataPipelineAPI: { getRun: vi.fn() },
   API_METHODS: {
     ontology: {
       listRegistered: (...args) => mockListRegistered(...args),
@@ -180,6 +183,7 @@ describe('DataImportPipeline workflow routing', () => {
     expect(mockOntologyUpload).not.toHaveBeenCalled();
     expect(screen.getByText(/Metadata saved for 'BOM Ontology'. Click Start to register ontology./i)).toBeInTheDocument();
 
+    fireEvent.change(screen.getByLabelText('Ingestion write API key (INGESTION_WRITE_TOKEN)'), { target: { value: 'fixture-write' } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
       await flushAsyncEffects();
@@ -195,7 +199,8 @@ describe('DataImportPipeline workflow routing', () => {
         ontologyName: 'BOM Ontology',
         prefix: 'bom',
         generationType: 'shacl',
-      })
+      }),
+      'fixture-write'
     );
   });
 

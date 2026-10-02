@@ -3087,6 +3087,8 @@ class UnifiedDataImportService:
         Synchronous Neo4j write body — called via asyncio.to_thread so it never
         blocks the FastAPI event loop.
         """
+        from .import_completeness import require_complete_archimate
+        require_complete_archimate(task)
         import re as _re
         commit_started_at = time.perf_counter()
         rows = task.get('parsed_rows', [])
@@ -3691,6 +3693,8 @@ class UnifiedDataImportService:
                 raise ValueError(f"Task not found: {task_id}")
 
         task = import_tasks[task_id]
+        from .import_completeness import require_complete_archimate
+        require_complete_archimate(task)
 
         if task['status'] not in (
             ImportStatus.PROCESSING.value,

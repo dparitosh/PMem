@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from contextlib import contextmanager
 import json
 import os
@@ -259,7 +259,31 @@ class OSLCTRSService:
         }
 
     @classmethod
-    def base_resources(cls, limit: int = 200) -> Dict[str, Any]:
+    def base_resources(cls, limit: int = 200, snapshot_id: str | None = None, offset: int = 0) -> Dict[str, Any]:
+        if snapshot_id:
+            try: snapshot_id = str(uuid.UUID(snapshot_id))
+            except ValueError: raise RuntimeError('Invalid TRS snapshot ID')
+            if cls._storage_backend() == 'postgres':
+                snapshot = cls._store.get('base:' + snapshot_id)
+            else:
+                path = cls._storage_path().with_name('base-' + snapshot_id + '.json')
+                snapshot = json.loads(path.read_text(encoding='utf-8')) if path.exists() else None
+            if not snapshot or datetime.now(timezone.utc) >= datetime.fromisoformat(snapshot['expires_at']):
+                raise RuntimeError('TRS Base snapshot expired or missing; restart from /oslc/trs/base')
+            return cls._base_page(snapshot_id, snapshot, offset, limit)
+        if cls._storage_backend() == 'postgres':
+            with cls._store._connect() as connection, connection.cursor() as cursor:
+                cursor.execute("DELETE FROM depo_registry WHERE namespace = %s AND key LIKE 'base:%%' AND (value->>'expires_at')::timestamptz < now()", (cls._store.namespace,))
+        else:
+            for expired_path in cls._storage_path().parent.glob('base-*.json'):
+                try:
+                    uuid.UUID(expired_path.stem[5:])
+                    value = json.loads(expired_path.read_text(encoding='utf-8'))
+                    if datetime.now(timezone.utc) >= datetime.fromisoformat(value['expires_at']):
+                        expired_path.unlink()
+                except (ValueError, KeyError, OSError):
+                    continue
+        if offset: raise RuntimeError('TRS offset requires a snapshot_id')
         state = cls._load()
         safe_limit = max(1, min(1000, int(limit or 200)))
         try:
@@ -287,10 +311,13 @@ class OSLCTRSService:
                 ORDER BY elementId(n)
                 LIMIT $limit
                 """,
-                {'limit': safe_limit + 1},
+                {'limit': int(os.getenv('OSLC_TRS_MAX_BASE_RESOURCES', '50000')) + 1},
             )
         except Exception as exc:
             raise RuntimeError(f'Unable to build the OSLC TRS Base from the current graph: {exc}') from exc
+        maximum = int(os.getenv('OSLC_TRS_MAX_BASE_RESOURCES', '50000'))
+        if maximum < 1 or len(rows) > maximum:
+            raise RuntimeError('TRS Base exceeds OSLC_TRS_MAX_BASE_RESOURCES; raise the configured limit before rebasing')
         candidates: List[Dict[str, Any]] = []
         try:
             try:
@@ -322,7 +349,12 @@ class OSLCTRSService:
                     row.get('labels') or [], row.get('domain_properties') or {}
                 ),
             })
+        latest_events = {}
         for event in reversed(state.get('events') or []):
+            latest_events.setdefault(str(event.get('resource_uri') or ''), event)
+        deleted = {cls._external_resource_uri(uri) for uri, event in latest_events.items() if event.get('event_type') == 'Deletion'}
+        candidates = [candidate for candidate in candidates if candidate['resource_uri'] not in deleted]
+        for event in latest_events.values():
             if str(event.get('event_type') or '') == 'Deletion':
                 continue
             try:
@@ -341,16 +373,30 @@ class OSLCTRSService:
                 continue
             seen.add(uri)
             unique_members.append(candidate)
-        truncated = len(rows) > safe_limit or len(unique_members) > safe_limit
-        members = unique_members[:safe_limit]
-        return {
-            'uri': f'{cls.base_url()}/oslc/trs/base',
-            'type': 'trs:Base',
-            'members': members,
-            'count': len(members),
-            'cutoff_order': int(state.get('counter') or 0),
-            'truncated': truncated,
-        }
+        if len(unique_members) > maximum:
+            raise RuntimeError('TRS Base exceeds OSLC_TRS_MAX_BASE_RESOURCES')
+        snapshot_id = str(uuid.uuid4())
+        snapshot = {'members': unique_members, 'cutoff_order': int(state.get('counter') or 0),
+                    'expires_at': (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()}
+        if cls._storage_backend() == 'postgres':
+            cls._store.put('base:' + snapshot_id, snapshot)
+        else:
+            path = cls._storage_path().with_name('base-' + snapshot_id + '.json')
+            temporary = path.with_suffix('.tmp')
+            temporary.write_text(json.dumps(snapshot), encoding='utf-8')
+            os.replace(temporary, path)
+        return cls._base_page(snapshot_id, snapshot, 0, safe_limit)
+
+    @classmethod
+    def _base_page(cls, snapshot_id, snapshot, offset, limit):
+        safe_limit = max(1, min(1000, int(limit)))
+        members = snapshot['members'][offset:offset + safe_limit]
+        next_offset = offset + len(members)
+        more = next_offset < len(snapshot['members'])
+        return {'uri': cls.base_resource_uri(), 'type': 'trs:Base', 'members': members,
+                'count': len(members), 'total_count': len(snapshot['members']),
+                'snapshot_id': snapshot_id, 'cutoff_order': snapshot['cutoff_order'],
+                'truncated': more, 'nextPage': f'{cls.base_resource_uri()}?snapshot_id={snapshot_id}&offset={next_offset}&limit={safe_limit}' if more else None}
 
     @classmethod
     def change_log(cls, *, after: int = 0, limit: int = 200) -> Dict[str, Any]:

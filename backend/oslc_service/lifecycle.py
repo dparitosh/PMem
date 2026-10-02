@@ -66,7 +66,10 @@ def resource(kind: str, identifier: str, request: Request, identity: str = Depen
     payload = {"uri": f"{root}/{kind}/{quote(identifier, safe='')}",
                "type": f"{root}/types/{kind}", "identifier": identifier,
                "evidence": {key: item for key, item in value.items() if key in PUBLIC_FIELDS and isinstance(item, (str, int, float, bool))}}
-    accept = request.headers.get("accept", "application/json")
+    from .media import negotiate
+    accept = negotiate(request.headers.get("accept", "application/json"))
+    if accept is None:
+        raise HTTPException(406, 'No supported OSLC representation is acceptable')
     media = "application/json"
     if accept in {"text/turtle", "application/rdf+xml", "application/ld+json"}:
         media = accept

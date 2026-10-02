@@ -6,16 +6,20 @@ import pytest
 from backend.depo_platform import database_setup as setup
 from backend.depo_platform import postgres_schema
 from backend import postgres_migrations
+from backend.tests.test_schema_audit_fixes import catalog_fixture
 
 
 def connection(rows=None, history=None, constraints=None, indexes=None):
     conn = MagicMock()
     cursor = conn.cursor.return_value.__enter__.return_value
+    structures, singles = catalog_fixture(__import__('os').getenv('DEPO_DATABASE_SCHEMA','semantic'))
+    cursor.fetchone.side_effect = singles
     cursor.fetchall.side_effect = [
         rows if rows is not None else [(t, c, d) for t, cols in setup.EXPECTED_COLUMNS.items() for c, d in cols.items()],
         [(value,) for value in (constraints if constraints is not None else setup.EXPECTED_CONSTRAINTS)],
         [(value,) for value in (indexes if indexes is not None else setup.EXPECTED_INDEXES)],
-        history if history is not None else [(v, n) for v, n, _ in setup.MIGRATIONS],
+        *structures,
+        history if history is not None else [(v, n, postgres_migrations.migration_checksum(statements)) for v, n, statements in setup.MIGRATIONS],
     ]
     return conn
 
@@ -24,10 +28,10 @@ def test_schema_contract(monkeypatch):
     monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'customer')
     result = setup.verify_schema(connection())
     assert result['schema'] == 'customer'
-    assert result['columns_checked'] == 40
-    assert result['constraints_checked'] == 15
-    assert result['indexes_checked'] == 4
-    assert result['migration_versions'] == [1, 2, 3, 4, 5, 6]
+    assert result['columns_checked'] == 41
+    assert result['constraints_checked'] == 17
+    assert result['indexes_checked'] == 5
+    assert result['migration_versions'] == [1, 2, 3, 4, 5, 6, 7]
 
 
 @pytest.mark.parametrize('rows', [[], [('depo_registry', 'value', 'text')]])
@@ -38,11 +42,11 @@ def test_missing_or_incompatible_columns_rejected(rows):
 
 def test_incorrect_history_rejected():
     with pytest.raises(RuntimeError, match='migration history'):
-        setup.verify_schema(connection(history=[(1, 'wrong')]))
+        setup.verify_schema(connection(history=[(1, 'wrong', 'wrong')]))
 
 
 def test_database_newer_than_application_is_rejected():
-    history = [(v, n) for v, n, _ in setup.MIGRATIONS] + [(999, 'future_release')]
+    history = [(v, n, postgres_migrations.migration_checksum(statements)) for v, n, statements in setup.MIGRATIONS] + [(999, 'future_release', 'unknown')]
     with pytest.raises(RuntimeError, match='migration history'):
         setup.verify_schema(connection(history=history))
 
@@ -77,6 +81,7 @@ def test_check_only_never_migrates(monkeypatch, check_only):
 def test_connection_only_does_not_touch_schema(monkeypatch):
     conn = MagicMock()
     cursor = conn.cursor.return_value.__enter__.return_value
+    cursor.fetchone.side_effect = None
     cursor.fetchone.return_value = ('depo', 'depo_app')
     driver = MagicMock()
     driver.connect.return_value.__enter__.return_value = conn
@@ -137,7 +142,7 @@ def test_migration_versions_are_unique():
 def test_newer_database_is_rejected_before_running_migration_ddl(monkeypatch):
     conn = MagicMock()
     cursor = conn.cursor.return_value.__enter__.return_value
-    cursor.fetchall.return_value = [(999, 'future_release')]
+    cursor.fetchall.return_value = [(999, 'future_release', 'unknown')]
     with pytest.raises(RuntimeError, match='newer than or unknown'):
         postgres_migrations.apply_migrations(conn)
     statements = [call.args[0] for call in cursor.execute.call_args_list]

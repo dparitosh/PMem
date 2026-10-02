@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
+
+from backend.depo_platform.authorization import graph_read_identity
 
 from ..Services.oslc_query_service import OSLCQueryService, OSLCQueryValidationError
 from ..Services.oslc_service import OSLCService
@@ -11,7 +13,7 @@ router = APIRouter(prefix="/oslc", tags=["OSLC"])
 
 
 @router.get("/catalog")
-async def get_service_provider_catalog():
+def get_service_provider_catalog():
     if not OSLCService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
     result = OSLCService.service_provider_catalog()
@@ -20,7 +22,7 @@ async def get_service_provider_catalog():
 
 
 @router.get("/providers/{provider_id}")
-async def get_service_provider(provider_id: str):
+def get_service_provider(provider_id: str):
     if not OSLCService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
     service_provider = OSLCService.service_provider()
@@ -30,7 +32,7 @@ async def get_service_provider(provider_id: str):
 
 
 @router.get("/shapes")
-async def list_resource_shapes():
+def list_resource_shapes():
     if not OSLCService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
     try:
@@ -40,7 +42,7 @@ async def list_resource_shapes():
 
 
 @router.get("/shapes/{shape_id}")
-async def get_resource_shape(shape_id: str, request: Request):
+def get_resource_shape(shape_id: str, request: Request):
     if not OSLCService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
     try:
@@ -59,8 +61,8 @@ async def get_resource_shape(shape_id: str, request: Request):
         raise HTTPException(status_code=500, detail="Unable to retrieve the OSLC resource shape") from exc
 
 
-@router.get("/query/{resource_type}")
-async def query_resources(resource_type: str, request: Request):
+@router.get("/query/{resource_type}", dependencies=[Depends(graph_read_identity)])
+def query_resources(resource_type: str, request: Request):
     if not OSLCService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
     try:
@@ -74,8 +76,8 @@ async def query_resources(resource_type: str, request: Request):
         raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
 
 
-@router.get("/resources/{element_id:path}")
-async def get_resource(element_id: str, include_links: bool = Query(default=True)):
+@router.get("/resources/{element_id:path}", dependencies=[Depends(graph_read_identity)])
+def get_resource(element_id: str, include_links: bool = Query(default=True)):
     if not OSLCService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
     payload = OSLCService.get_resource(element_id)
@@ -87,8 +89,8 @@ async def get_resource(element_id: str, include_links: bool = Query(default=True
     return payload
 
 
-@router.get("/trs")
-async def get_trs_descriptor():
+@router.get("/trs", dependencies=[Depends(graph_read_identity)])
+def get_trs_descriptor():
     if not OSLCTRSService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC TRS is disabled.")
     try:
@@ -97,18 +99,18 @@ async def get_trs_descriptor():
         raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
 
 
-@router.get("/trs/base")
-async def get_trs_base(limit: int = Query(default=200, ge=1, le=1000)):
+@router.get("/trs/base", dependencies=[Depends(graph_read_identity)])
+def get_trs_base(limit: int = Query(default=200, ge=1, le=1000), snapshot_id: str | None = None, offset: int = Query(default=0, ge=0)):
     if not OSLCTRSService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC TRS is disabled.")
     try:
-        return OSLCTRSService.base_resources(limit=limit)
+        return OSLCTRSService.base_resources(limit=limit, snapshot_id=snapshot_id, offset=offset)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
 
 
-@router.get("/trs/changelog")
-async def get_trs_changelog(after: int = Query(default=0, ge=0), limit: int = Query(default=200, ge=1, le=1000)):
+@router.get("/trs/changelog", dependencies=[Depends(graph_read_identity)])
+def get_trs_changelog(after: int = Query(default=0, ge=0), limit: int = Query(default=200, ge=1, le=1000)):
     if not OSLCTRSService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC TRS is disabled.")
     try:
@@ -117,8 +119,8 @@ async def get_trs_changelog(after: int = Query(default=0, ge=0), limit: int = Qu
         raise HTTPException(status_code=503, detail="OSLC service unavailable. Please try again later.") from exc
 
 
-@router.get("/dictionaries/{prefix}")
-async def get_oslc_dictionary(
+@router.get("/dictionaries/{prefix}", dependencies=[Depends(graph_read_identity)])
+def get_oslc_dictionary(
     prefix: str,
     instance_limit: int = Query(default=2000, ge=100, le=20000),
     relationship_limit: int = Query(default=500, ge=50, le=5000),
@@ -139,8 +141,8 @@ async def get_oslc_dictionary(
         raise HTTPException(status_code=500, detail="Unable to retrieve the OSLC dictionary") from exc
 
 
-@router.get("/taxonomies")
-async def list_oslc_taxonomies():
+@router.get("/taxonomies", dependencies=[Depends(graph_read_identity)])
+def list_oslc_taxonomies():
     if not OSLCService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
     try:
@@ -149,8 +151,8 @@ async def list_oslc_taxonomies():
         raise HTTPException(status_code=500, detail="Unable to list OSLC taxonomies") from exc
 
 
-@router.get("/taxonomies/{ontology_id}")
-async def get_oslc_taxonomy(ontology_id: str):
+@router.get("/taxonomies/{ontology_id}", dependencies=[Depends(graph_read_identity)])
+def get_oslc_taxonomy(ontology_id: str):
     if not OSLCService.is_enabled():
         raise HTTPException(status_code=404, detail="OSLC integration is disabled.")
     try:

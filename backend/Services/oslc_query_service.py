@@ -167,12 +167,9 @@ class OSLCQueryService:
 
     @classmethod
     def _parse_condition(cls, token: str) -> OSLCCondition:
-        for operator in cls._OPERATORS:
-            if operator in token:
-                left, right = token.split(operator, 1)
-                property_name = cls._sanitize_property(left.strip())
-                value = cls._parse_value(right.strip())
-                return OSLCCondition(property_name=property_name, operator=operator, value=value)
+        match = re.match(r'^([A-Za-z_][A-Za-z0-9_:-]*)\s*(>=|<=|!=|>|<|=)\s*(.+)$', token)
+        if match:
+            return OSLCCondition(cls._sanitize_property(match[1]), match[2], cls._parse_value(match[3]))
         raise OSLCQueryValidationError(f"Unsupported oslc.where clause: {token}")
 
     @classmethod
@@ -200,7 +197,12 @@ class OSLCQueryService:
     def _parse_value(raw_value: str) -> Any:
         value = raw_value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-            value = value[1:-1]
+            if value[0] == '"':
+                import json
+                try: return json.loads(value)
+                except ValueError as exc: raise OSLCQueryValidationError('Invalid quoted value') from exc
+            inner = value[1:-1]
+            return re.sub(r'\\([\\"\'])', r'\1', inner)
         if re.fullmatch(r"-?\d+", value):
             return int(value)
         if re.fullmatch(r"-?\d+\.\d+", value):

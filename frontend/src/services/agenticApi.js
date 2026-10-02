@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { reportRunRecovery } from './runRecovery';
 import { config, API, buildSemanticServiceUrl } from '../config';
 import { serviceAuthHeaders } from './serviceAuth';
 
@@ -13,19 +14,21 @@ export function applyAgenticAuth(requestConfig) {
   // A call may provide a scoped credential (for example, the ontology review
   // read token). Keep it ahead of the app-wide bootstrap token.
   const explicit = requestConfig.headers.get?.('Authorization') || requestConfig.headers.Authorization;
-  const credentials = serviceAuthHeaders(requestConfig.url);
-  if (explicit) delete credentials.Authorization;
+  const credentials = serviceAuthHeaders(requestConfig.url, requestConfig.method);
+  if (explicit || requestConfig.headers.get?.('X-API-Key') || requestConfig.headers['X-API-Key']) { delete credentials.Authorization; delete credentials['X-API-Key']; }
   Object.assign(requestConfig.headers, credentials);
   return requestConfig;
 }
 
 agenticClient.interceptors.request.use(applyAgenticAuth);
+agenticClient.interceptors.response.use(response => response, error => { reportRunRecovery(error); return Promise.reject(error); });
 
 function agenticUrl(endpoint) {
   return buildSemanticServiceUrl('agentic', endpoint);
 }
 
 export const agenticAPI = {
+  getRun: (id, kind = 'workflow') => agenticClient.get(agenticUrl(`/api/v1/${kind === 'dt' ? 'integrations/dt-requirements-design/runs' : kind === 'workflow' ? 'workflow-runs' : 'runs'}/${encodeURIComponent(id)}`)),
   isEnabled: () => true,
   isConfigured: () => Boolean(config.semanticServiceUrls?.agentic),
   health: (options = {}) => agenticClient.get(agenticUrl(API.agentic.health), options),

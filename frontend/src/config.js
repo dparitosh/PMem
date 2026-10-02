@@ -1,3 +1,4 @@
+import { serviceForContractPath } from './services/serviceContractRegistry';
 /**
  * API Configuration - Centralized endpoint mapping
  * All backend API endpoints are configured here via environment variables
@@ -143,22 +144,22 @@ const SERVICE_PATHS = [
   ['graph', /^\/api\/v1\/graph(?:\/|$)/],
   ['graph', /^\/api\/v1\/(?:graphql|sparql)(?:\/|$)/],
   ['graph', /^\/api\/v1\/requirements(?:\/|$)/],
-  ['ingestion', /^\/api\/v1\/(?:ingestion|ingest-data|ap242|schema-conversions|source-profiles|engineering-workflows)(?:\/|$)/],
+  ['ingestion', /^\/api\/v1\/(?:ingestion|ingest-data|ap242|schema-conversions|source-profiles|engineering-workflows|governed-import|sysml-v2)(?:\/|$)/],
   ['ingestion', /^\/api\/v1\/import(?:\/|$)/],
   ['ingestion', /^\/api\/v1\/documents(?:\/|$)/],
   ['ingestion', /^\/api\/v1\/reports(?:\/|$)/],
   ['oslc', /^(?:\/api\/v1\/oslc|\/oslc)(?:\/|$)/],
-  ['catalog', /^\/api\/v1\/catalog\/products(?:\/|$)/],
+  ['catalog', /^\/api\/v1\/catalog\/(?:products|artifacts)(?:\/|$)/],
   ['dataProducts', /^\/api\/v1\/data-products(?:\/|$)/],
   ['dataPipeline', /^\/api\/v1\/pipeline(?:\/|$)/],
-  ['agentic', /^\/api\/v1\/(?:agents|tools|mcp-servers|workflows|plans|runs|workflow-runs|observability|metrics|catalog\/validate|chat|ontology-agents)(?:\/|$)/],
+  ['agentic', /^\/api\/v1\/(?:agents|tools|mcp-servers|workflows|plans|runs|workflow-runs|observability|metrics|catalog\/validate|chat|chat-stream|ontology-agents)(?:\/|$)/],
   ['agentic', /^\/api\/v1\/code-audit(?:\/|$)/],
   ['graph', /^\/recommendations(?:\/|$)/],
 ];
 
-export const getServiceForPath = (endpoint = '') => {
+export const getServiceForPath = (endpoint = '', method) => {
   if (typeof endpoint !== 'string' || !endpoint.startsWith('/')) return null;
-  return SERVICE_PATHS.find(([, pattern]) => pattern.test(endpoint))?.[0] || null;
+  return serviceForContractPath(endpoint.split('?')[0], method) || SERVICE_PATHS.find(([, pattern]) => pattern.test(endpoint))?.[0] || null;
 };
 
 // Deprecated: Keep old property for backward compatibility
@@ -407,7 +408,7 @@ const QIF_ENDPOINTS = {
 
 /** Optional ontology-agentic service endpoints. */
 const AGENTIC_ENDPOINTS = {
-  health: setting('AGENTIC_HEALTH') || '/health',
+  health: setting('AGENTIC_HEALTH') || '/healthz',
   agents: setting('AGENTIC_AGENTS') || '/api/v1/agents',
   tools: setting('AGENTIC_TOOLS') || '/api/v1/tools',
   runAgent: setting('AGENTIC_RUN_AGENT') || '/api/v1/runs',
@@ -429,14 +430,14 @@ const UI_CONFIG = {
 /**
  * Utility function to build full URL from base and endpoint
  */
-export const buildUrl = (endpoint) => {
+export const buildUrl = (endpoint, method) => {
   if (!endpoint || typeof endpoint !== 'string') {
     return '';
   }
   if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
     return endpoint;
   }
-  const service = getServiceForPath(endpoint);
+  const service = getServiceForPath(endpoint, method);
   if (service) return buildSemanticServiceUrl(service, endpoint);
   return `${config.backendUrl}${endpoint}`;
 };

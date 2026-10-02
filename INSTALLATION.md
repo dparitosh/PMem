@@ -2396,3 +2396,226 @@ DEPO_CEIM_IDENTITY_MODE=scoped
 Scoped IDs include the tenant/project/source-system boundary. Existing graph IDs are not rewritten. To preserve an existing single-source legacy integration temporarily, explicitly set `DEPO_CEIM_IDENTITY_MODE=legacy`; agree a data migration before switching its historical graph to scoped IDs. Do not use legacy mode to combine unrelated systems whose local identifiers overlap. Rebuild the frontend after updating these UI files and restart backend services after changing configuration.
 
 Generic XML profiles retain existing leaf text fields, preserve qualified element/attribute names and mixed text/tails under `_xml`, and expose repeated leaf attributes under `<field>_attributes`. For `<Value unit="mm">3.2</Value>`, map `Value` to the value and `Value_attributes.0.unit` to the unit. The extraction helper supports numeric list indexes in dotted paths.
+
+
+### Graph 403 and Create ontology from XSD: separate read, upload and publication
+
+A green Online indicator reports service availability, not permission to read or write.
+A 403 from `/api/v1/graph/overview` means the graph request was rejected. In the
+frontend header, select **API access**, enter the **GRAPH_READ_TOKEN** from the
+root `.env.local` loaded by the running services, and select **Apply and retry**.
+The updated dialog checks a protected graph request before confirming access.
+A full browser reload clears this key: enter it again afterwards. Changing a key
+in `.env.local` requires restarting backend services before using the new key.
+When routing through APIM, enter its subscription key too and ensure its policy
+forwards the Authorization header to the backend.
+
+For **Import → Create ontology**, use this sequence:
+
+1. Enter **INGESTION_WRITE_TOKEN** in **Ontology workflow credentials**. This is
+   a separate server key, not GRAPH_READ_TOKEN or ADMIN_API_KEY.
+2. To create and publish an XSD/XMI ontology, select **Convert XSD/XMI to OWL,
+   register and publish to Neo4j after policy and quality checks**. The ingestion
+   service calls the ontology service and graph service using its configured
+   ONTOLOGY_APPROVAL_TOKEN and GRAPH_PUBLICATION_TOKEN. These server keys must be
+   configured on the running services; do not enter them into frontend build files.
+3. Select the source XSD/XMI file, complete its ontology name and prefix, and
+   select **Start**. The publication option produces OWL through the engineering
+   conversion workflow. Leaving it unchecked uses the selected generation type
+   and retains/registers the source; it does not publish a graph.
+4. Read the result message. **Published** requires a successful graph publication
+   response. **Registered source** only confirms source registration. A policy,
+   quality or parsing error is not a successful publication.
+5. Open Graph Explorer with validated read access. For a restored failed row,
+   remove that row and select the original source file again. Persisted jobs do
+   not retain the browser's local File object and cannot retry from it.
+
+Related XSD includes/imports still require the schema-set workflow and their
+referenced files. Uploading a collection of unrelated single-file jobs does not
+make their dependencies available to each other. Inspect the detailed failure
+message before retrying a schema that refers to sibling XSD files.
+
+After applying the source changes, rebuild and restart the frontend. From a
+PowerShell prompt on the application VM:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\stop-depo-frontend.ps1
+Set-Location .\frontend
+# Close running Vite/Node processes for this frontend before replacing dependencies.
+# Run npm ci only when dependencies have not been installed or the lockfile changed.
+if (-not (Test-Path .\node_modules\vite\bin\vite.js)) { npm ci; if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' } }
+npm run build
+if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' }
+Set-Location ..
+.\infra\windows\start-depo-frontend.ps1 -EnvFile .env.local -BindHost 10.0.2.16
+```
+
+Replace `E:\App\PMem` and `10.0.2.16` with your installation path and application
+VM address. Reload the browser once to load the new bundle, then apply the read
+key and upload key in the UI. Do not reload again to retry authenticated requests.
+
+
+### Import service OpenAPI contracts and map runtime credentials
+
+After deploying this version, restart backend services to publish the updated
+`/openapi.json` metadata and rebuild the frontend using the commands above.
+
+1. Open **API access** in the frontend header. If using APIM, enter its
+   subscription key before importing contracts.
+2. Select **Import service OpenAPI contracts**. The frontend contacts all ten
+   configured service roots. It displays an imported operation count or a
+   connection/CORS/gateway failure for each service. It does not use server URLs
+   embedded inside an imported document to redirect credentials.
+3. The imported contracts list required key names, such as INGESTION_WRITE_TOKEN,
+   DATA_JOB_EXECUTION_TOKEN or DATA_PRODUCT_APPROVAL_TOKEN. Enter each required
+   value from the environment loaded by your running services into its password
+   field. Values stay only in the tab's memory; entering a key does not certify
+   its validity. The backend validates it when an operation runs.
+4. Enter GRAPH_READ_TOKEN in the existing read-key field and select **Apply and
+   retry** to validate graph reading. Successful validation refreshes the page
+   data without a full browser reload.
+5. Execute your workflow. A single explicit operation profile selects its runtime
+   key automatically. Credentials explicitly entered on a workflow page take
+   precedence. Multiple or unresolved protected profiles are not guessed; use
+   that workflow's explicit credential controls and inspect its error message.
+6. **Clear** removes all profile keys, the read key and the subscription key.
+   Reloading also clears them. Reopen API access to import current contracts after
+   a service upgrade or a switch between local and gateway routing.
+
+Contracts contain non-secret `x-depo-authorization.credential_profiles` names,
+not key values. Discovery adds route ownership while the existing route map
+remains available when a service is offline. Duplicate ownership is not resolved
+by guessing a service. OpenAPI discovery does not replace business approval,
+policy checks, database migrations or worker readiness.
+
+
+### SysML v2 repository import and ArchiMate completeness
+
+Configure these entries in the existing root `.env.local` (replace existing values
+rather than adding duplicate keys). The repository URL and IDs below are examples;
+replace them with values from your SysML server. Do not use a branch ID as a commit ID.
+
+```dotenv
+SYSML_V2_API_ENABLED=true
+SYSML_V2_API_BASE_URL=https://sysml.customer.example/api/rest
+SYSML_V2_API_TOKEN=<repository-read-token>
+SYSML_V2_PROJECT_ID=<repository-project-id>
+SYSML_V2_COMMIT_ID=<immutable-commit-id>
+SYSML_V2_PAGE_SIZE=500
+SYSML_V2_REQUEST_TIMEOUT_SECONDS=120
+SYSML_V2_MAX_SNAPSHOT_BYTES=67108864
+```
+
+The repository token is server-side and distinct from DEPO's
+DATA_JOB_EXECUTION_TOKEN. Snapshot download uses the smaller of the configured
+SysML snapshot limit and DEPO_MAX_INGEST_BYTES and stops while streaming if the
+aggregate limit is exceeded. It also limits page size, element count and page
+count and rejects pagination outside the configured commit.
+
+After updating server configuration, restart backend services from the app root:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\stop-depo-services.ps1
+.\infra\windows\start-depo-services.ps1 -EnvFile .env.local
+```
+
+Rebuild and restart the frontend after installing this version, using the
+frontend rebuild commands above. Then:
+
+1. Apply GRAPH_READ_TOKEN through **API access**, then open **Import → SysML repository**. Configuration and readiness endpoints require read authorization.
+2. Select **Check repository configuration** and verify the displayed project and
+   commit. This checks configuration; it does not certify repository connectivity.
+3. Enter DATA_JOB_EXECUTION_TOKEN in API access or the tab's execution-key field.
+4. Select **Import configured commit** once. Download, reference validation and
+   governed execution happen on the server. Read any validation error before retrying.
+5. Follow **Open Data Flow** to review the returned durable run and required
+   approval/publication steps. Import success does not itself publish a graph.
+
+This adapter consumes repository element JSON and SysML v1 XMI; it does not parse
+native `.sysml` or `.kerml` text. Invalid root shapes, IDs, types and references
+produce validation errors. Single-name type arrays are normalized; multiple type
+names require an explicit model conversion rather than an arbitrary choice.
+
+For **Import ArchiMate process model**, duplicate identifiers fail parsing.
+Unresolved element, view or folder references remain visible in preview diagnostics
+but block graph commit. Correct the source model and re-import it before loading;
+there is no implicit partial-publication bypass.
+
+
+### Track imports and recover interrupted agent runs
+
+1. After submitting a governed import or SysML repository commit, retain the returned `run_manifest.run_id`. Queued and running mean the durable worker has not finished; they do not mean the ontology is published.
+2. Click **View run** in the import monitor. It opens `#/data-flow/<run-id>` and fetches that exact run, including runs outside the recent list. A missing or inaccessible run displays an error; check API access before submitting again.
+3. In Data Flow, inspect the status and retained evidence. Replay creates a new run ID; the selected replay shows its **Replay of** parent. Retain both IDs for support.
+4. If an agent request fails after execution starts, the API returns `X-DEPO-Run-ID`. The frontend displays **Execution needs review**. Click **Load retained run status** before retrying. A deadline-expired run may require reconciliation of downstream writes.
+5. API clients can retrieve retained agent state using authenticated `GET /api/v1/workflow-runs/<run-id>` for workflows or `GET /api/v1/runs/<run-id>` for tool runs at the configured agentic service base. Use the read credential profile shown in API access. Workflow records include `telemetry_run_id`; telemetry includes `workflow_run_id`. These IDs identify different records and should not be substituted for one another.
+
+Rebuild the frontend and restart the agentic service after deploying these changes. Live worker recovery still requires verification against the customer's PostgreSQL and downstream services.
+
+
+### Agent execution limits and recovery access
+
+Configure these optional limits in the root `.env.local` before starting services:
+
+```dotenv
+AGENTIC_MAX_RESPONSE_BYTES=8388608
+DEPO_REGISTRY_STATEMENT_TIMEOUT_SECONDS=30
+```
+
+The first value bounds each decoded downstream tool response to 8 MiB, including chunked responses. Narrow requests that exceed it. The second value bounds PostgreSQL registry statements to 30 seconds (allowed 1–300); lock waits are capped at 10 seconds or the configured statement limit, whichever is smaller. Existing PostgreSQL connection timeout configuration also applies. Restart backend services after changing either value.
+
+Workflow results now require the same execution owner, or supervisory access with `AGENTIC_APPROVAL_TOKEN` in token mode. Configure that operation's credential in **API access** using its discovered profile when retrieving approved workflows or historical ownerless workflow records. A shared graph read key does not grant access to another execution owner's complete workflow traces. Entra deployments use the existing gateway approval-role checks for supervisory access. Ownerless historical records are never assigned to the first reader.
+
+Ontology and companion responses include telemetry run IDs, and processing errors expose `X-DEPO-Run-ID`. DT integration recovery uses `/api/v1/integrations/dt-requirements-design/runs/<run-id>` with its existing approval credential. `dispatch_uncertain` means inspect the remote outcome before retrying; it is not permission to resend. Cancellation stops waiting locally but cannot retract a PostgreSQL statement already executing in a background thread or a dispatched remote write. The statement deadline bounds that database work.
+
+
+### OSLC read access, remote synchronization and TRS paging
+
+OSLC graph/query/TRS/dictionary/taxonomy data endpoints require the configured read credential. Public catalog/provider discovery remains available. Configure OSLC API access using the service's imported OpenAPI credential profiles; a successful health response does not authorize data reads.
+
+Remote calls require `OSLC_REMOTE_ENABLED=true`, a completed `OSLC_REMOTE_BASE_URL`, and the provider credential in `OSLC_REMOTE_TOKEN` when required. Leave the switch false to disable outbound calls. `OSLC_MAX_RESPONSE_BYTES=8388608` optionally caps decoded remote responses to 8 MiB. Restart the OSLC service after configuration changes.
+
+Staged snapshot reads additionally require explicit grants in root `.env.local`. Replace the example actor with the identity returned by your read-credential configuration:
+
+```dotenv
+OSLC_LIFECYCLE_READ_GRANTS={"ui-user":["syncs:*"]}
+OSLC_TRS_MAX_BASE_RESOURCES=50000
+OSLC_MAX_RESPONSE_BYTES=8388608
+```
+
+Merge `syncs:*` into existing grants instead of replacing them. For access to only one snapshot use `syncs:<snapshot-uuid>`. Listing all snapshots requires `syncs:*`. The actor must match the configured read token actor; the example does not establish a new user identity.
+
+Remote synchronization strips approval fields before dispatch/storage. Existing snapshot parameter files are redacted when snapshots are listed or retrieved. Previously exposed credentials must be rotated using the existing rotation process; removing stored values does not revoke a key or erase remote logs.
+
+A remote snapshot with more pages is `staged_partial` with `complete=false`; retrieve the remaining pages before approving ingestion. Local OSLC query responses expose `nextPage` and preserve filters. Follow only URLs at the configured provider—do not paste a provider token into an arbitrary URL.
+
+For TRS Base, start with `/oslc/trs/base?limit=200`, retain its `snapshot_id` and `cutoff_order`, then follow `nextPage` until null. All pages use the same retained membership. Snapshots expire after 15 minutes; restart the Base if expired. After completing the Base, read `/oslc/trs/changelog?after=<cutoff_order>&limit=200` and advance `next_after`. If `rebase_required=true`, start a fresh Base. A Base above `OSLC_TRS_MAX_BASE_RESOURCES` fails explicitly; adjust capacity and restart the Base instead of accepting truncated state. Concurrent graph mutation/change-event publication still requires customer integration validation.
+
+
+### PostgreSQL schema upgrade integrity and legacy checksum adoption
+
+Schema updates now verify the final structure **before committing** migrations and history. Failure rolls back the update transaction. Migration 007 adds registry/runtime JSON object constraints and a namespace/history index. Invalid existing scalar/array JSON causes a clear constraint failure; diagnose the rows before retrying. No upgrade deletes customer records.
+
+Fresh installations record SQL checksums automatically. For an existing installation created before checksum tracking, first review the SQL files in `infra/postgres/migrations` against your deployed release and take a database backup using your DBA process. Adopt historical checksums explicitly in root `.env.local`:
+
+```dotenv
+DEPO_ACCEPT_LEGACY_MIGRATION_CHECKSUMS=true
+DEPO_MIGRATION_STATEMENT_TIMEOUT_SECONDS=300
+DEPO_REGISTRY_STATEMENT_TIMEOUT_SECONDS=30
+```
+
+From the repository root, run:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\postgres\update-postgres-schema.ps1 -EnvFile .env.local
+.\infra\postgres\test-postgres-schema.ps1 -EnvFile .env.local
+```
+
+After successful adoption, change `DEPO_ACCEPT_LEGACY_MIGRATION_CHECKSUMS=false`. Retain the two timeout values as appropriate. Migration statements allow 1–3600 seconds with lock waits capped at 60 seconds; registry and compatibility runtime statements allow 1–300 seconds with lock waits capped at 10 seconds. Connection timeout remains independently configured.
+
+Verification checks 41 columns, 17 constraints, five named indexes, relation kinds, required nullability/defaults, the chat message sequence, analytics view definition and versions 1–7 with checksums. A drift failure does not grant permission to delete or recreate a customer table. Restore the matching immutable release SQL for checksum differences; use a reviewed corrective migration for schema/data changes. Read-only verification never adopts missing checksums.
+
+The ontology analytics view remains an ontology-statistics projection. This schema update does not create a dimensional warehouse or populate fact/dimension tables.

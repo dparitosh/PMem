@@ -12,6 +12,9 @@ import {
 } from '@siemens/ix-react';
 import { navigationItems, pageLabel } from './navigation';
 import { clearServiceAuthToken, getServiceAuthToken, setServiceAuthToken, setGatewaySubscriptionKey, getGatewaySubscriptionKey } from '../services/serviceAuth';
+import { graphApi } from '../services/graphApi';
+import RunRecoveryNotice from './RunRecoveryNotice';
+import ServiceAccessDiscovery from './ServiceAccessDiscovery';
 import './AppShell.css';
 
 const THEME_STORAGE_KEY = 'depo.colorSchema';
@@ -41,6 +44,8 @@ export default function AppShell({
   const [showApiAccess, setShowApiAccess] = useState(false);
   const [apiKey, setApiKey] = useState(() => getServiceAuthToken());
   const [subscriptionKey, setSubscriptionKey] = useState(() => getGatewaySubscriptionKey());
+  const [accessBusy, setAccessBusy] = useState(false);
+  const [accessError, setAccessError] = useState('');
   const [apiAccessConfigured, setApiAccessConfigured] = useState(() => Boolean(getServiceAuthToken()));
   useEffect(() => {
     document.documentElement.dataset.ixTheme = 'classic';
@@ -144,13 +149,30 @@ export default function AppShell({
             <div className="depo-api-access" role="dialog" aria-modal="true" aria-labelledby="depo-api-access-title">
               <form
                 className="depo-api-access__panel"
-                onSubmit={(event) => {
+                onSubmit={async (event) => {
                   event.preventDefault();
+                  if (accessBusy) return;
+                  setAccessBusy(true);
+                  setAccessError('');
+                  const previousReadKey = getServiceAuthToken();
+                  const previousSubscriptionKey = getGatewaySubscriptionKey();
                   setServiceAuthToken(apiKey);
                   setGatewaySubscriptionKey(subscriptionKey);
-                  setApiAccessConfigured(Boolean(apiKey.trim()));
-                  setShowApiAccess(false);
-                  onServiceAuthChange?.();
+                  try {
+                    await graphApi.getOverview(1);
+                    setApiAccessConfigured(true);
+                    setShowApiAccess(false);
+                    onServiceAuthChange?.();
+                  } catch (error) {
+                    setServiceAuthToken(previousReadKey);
+                    setGatewaySubscriptionKey(previousSubscriptionKey);
+                    const status = error?.response?.status;
+                    setAccessError(status === 401 || status === 403
+                      ? 'Graph access rejected. Use GRAPH_READ_TOKEN from the environment loaded by the running services; restart services after changing it. For APIM, also check the subscription key and Authorization forwarding.'
+                      : 'Graph access could not be verified. Check the graph service URL, connectivity and service logs.');
+                  } finally {
+                    setAccessBusy(false);
+                  }
                 }}
               >
                 <h2 id="depo-api-access-title">Standalone API access</h2>
@@ -167,10 +189,13 @@ export default function AppShell({
                 <label htmlFor="depo-apim-subscription">APIM subscription key (optional)</label>
                 <input id="depo-apim-subscription" type="password" autoComplete="off" value={subscriptionKey}
                   onChange={(event) => setSubscriptionKey(event.target.value)} />
+                <ServiceAccessDiscovery subscriptionKey={subscriptionKey} />
+                {accessError && <p role="alert">{accessError}</p>}
                 <div className="depo-api-access__actions">
-                  <button type="button" onClick={() => setShowApiAccess(false)}>Cancel</button>
+                  <button type="button" disabled={accessBusy} onClick={() => setShowApiAccess(false)}>Cancel</button>
                   <button
                     type="button"
+                    disabled={accessBusy}
                     onClick={() => {
                       clearServiceAuthToken();
                       setApiKey('');
@@ -180,7 +205,7 @@ export default function AppShell({
                       onServiceAuthChange?.();
                     }}
                   >Clear</button>
-                  <button type="submit" disabled={!apiKey.trim()}>Apply and retry</button>
+                  <button type="submit" disabled={accessBusy || !apiKey.trim()}>{accessBusy ? 'Checking access...' : 'Apply and retry'}</button>
                 </div>
               </form>
             </div>
@@ -192,7 +217,7 @@ export default function AppShell({
               hasBackButton={false}
               variant="primary"
             />
-            <div className="depo-ix-page__body">{children}</div>
+            <div className="depo-ix-page__body"><RunRecoveryNotice />{children}</div>
           </div>
           {rightDrawer && (
             <aside id="depo-chat-drawer" className="depo-ix-drawer" aria-label="Knowledge Companion" hidden={!showChat} tabIndex={-1}>

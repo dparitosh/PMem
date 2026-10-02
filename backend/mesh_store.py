@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from typing import Any
 
-from backend.depo_platform.postgres_schema import connect_timeout_seconds, select_schema
+from backend.depo_platform.postgres_schema import connect_timeout_seconds, select_schema, statement_options
 
 
 class PostgresRegistry:
@@ -29,6 +29,7 @@ class PostgresRegistry:
             autocommit=True,
             connect_timeout=connect_timeout_seconds(),
             application_name="depo-control-plane",
+            options=statement_options(),
         ) as connection:
             with connection.cursor() as cursor:
                 select_schema(cursor)
@@ -50,7 +51,7 @@ class PostgresRegistry:
         bounded = max(1, min(int(limit), 1000))
         with self._connect() as connection, connection.cursor() as cursor:
             cursor.execute(
-                "SELECT value FROM depo_registry WHERE namespace = %s ORDER BY updated_at DESC LIMIT %s",
+                "SELECT value FROM depo_registry WHERE namespace = %s ORDER BY updated_at DESC, key LIMIT %s",
                 (self.namespace, bounded),
             )
             return [row[0] for row in cursor.fetchall()]
@@ -69,6 +70,8 @@ class PostgresRegistry:
         return self.put_many({key: value})[key]
 
     def put_many(self, values: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        if any(not isinstance(value, dict) for value in values.values()):
+            raise ValueError("Registry values must be JSON objects")
         if not values:
             return values
         # _connect() uses autocommit for single-statement operations. A bulk

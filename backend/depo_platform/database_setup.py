@@ -4,13 +4,14 @@ import json
 import os
 import sys
 
-from backend.depo_platform.postgres_schema import configured_schema, connect_timeout_seconds, initialise_schema
-from backend.postgres_migrations import MIGRATIONS, apply_migrations
+from backend.depo_platform.postgres_schema import configured_schema, connect_timeout_seconds, initialise_schema, statement_options
+from backend.depo_platform.schema_contract import verify_structure
+from backend.postgres_migrations import MIGRATIONS, apply_migrations, migration_checksum
 
 # Column/type contract for the tables owned by migrations 1-4. JSON documents
 # remain in value; there is no separate relational table for each job namespace.
 EXPECTED_COLUMNS = {
-    'depo_schema_migrations': {'version': 'integer', 'name': 'text', 'applied_at': 'timestamp with time zone'},
+    'depo_schema_migrations': {'version': 'integer', 'name': 'text', 'checksum': 'text', 'applied_at': 'timestamp with time zone'},
     'depo_registry': {'namespace': 'text', 'key': 'text', 'value': 'jsonb', 'updated_at': 'timestamp with time zone'},
     'depo_runtime_state': {'kind': 'text', 'key': 'text', 'value': 'jsonb', 'updated_at': 'double precision'},
     'depo_chat_messages': {'session_id': 'text', 'message_id': 'bigint', 'role': 'text', 'content': 'text', 'created_at': 'double precision'},
@@ -31,11 +32,11 @@ EXPECTED_CONSTRAINTS = {
     'depo_metadata_events_value_check', 'depo_metadata_outbox_status_check',
     'depo_metadata_events_asset_id_revision_key', 'depo_metadata_events_asset_id_fkey',
     'depo_metadata_events_revision_positive', 'depo_metadata_outbox_pkey',
-    'depo_metadata_outbox_event_id_fkey',
+    'depo_metadata_outbox_event_id_fkey', 'depo_registry_value_object', 'depo_runtime_state_value_object',
 }
 EXPECTED_INDEXES = {
     'idx_depo_chat_messages', 'idx_depo_rate_limits', 'idx_metadata_pending',
-    'idx_depo_pipeline_runnable',
+    'idx_depo_pipeline_runnable', 'idx_depo_registry_recent',
 }
 
 
@@ -111,9 +112,10 @@ def verify_schema(connection):
         missing_indexes = sorted(EXPECTED_INDEXES - indexes)
         if missing_indexes:
             raise RuntimeError('Missing PostgreSQL indexes: ' + ', '.join(missing_indexes))
-        cursor.execute(f'SELECT version, name FROM "{schema}".depo_schema_migrations')
-        applied = dict(cursor.fetchall())
-        expected_history = {version: name for version, name, _ in MIGRATIONS}
+        verify_structure(cursor, schema, EXPECTED_COLUMNS)
+        cursor.execute(f'SELECT version, name, checksum FROM "{schema}".depo_schema_migrations')
+        applied = {version: (name, checksum) for version, name, checksum in cursor.fetchall()}
+        expected_history = {version: (name, migration_checksum(statements)) for version, name, statements in MIGRATIONS}
         if applied != expected_history:
             raise RuntimeError('Database migration history does not match this release')
     return {'status': 'ok', 'schema': schema, 'relations_checked': len(EXPECTED_COLUMNS),
@@ -128,7 +130,7 @@ def setup_database(*, check_only=False, connection_only=False):
     url = os.getenv('DEPO_DATABASE_URL') or os.getenv('DATABASE_URL')
     if not url:
         raise RuntimeError('DEPO_DATABASE_URL is required')
-    with psycopg.connect(url, connect_timeout=connect_timeout_seconds(), autocommit=True, application_name='depo-database-setup') as connection:
+    with psycopg.connect(url, connect_timeout=connect_timeout_seconds(), autocommit=True, application_name='depo-database-setup', options=statement_options(migration=not check_only)) as connection:
         if connection_only:
             with connection.cursor() as cursor:
                 cursor.execute('SELECT current_database(), current_user')
@@ -140,6 +142,7 @@ def setup_database(*, check_only=False, connection_only=False):
                     initialise_schema(cursor)
                 verify_migration_privileges(connection)
                 apply_migrations(connection)
+                return verify_schema(connection)
         return verify_schema(connection)
 
 

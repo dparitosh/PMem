@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { dataPipelineAPI, metadataRegistryAPI } from '../services/apiClient';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
+import { readRequestedRunId, requireRunManifest } from '../workflows/runTracking';
 import './DataFlowPage.css';
 
 const REFRESH_INTERVAL_MS = 15000;
@@ -22,8 +23,7 @@ function responsePayload(response) {
 
 function requestedRunId() {
   if (typeof window === 'undefined') return '';
-  const parts = String(window.location.hash || '').split('?')[0].split('/');
-  return parts[2] ? decodeURIComponent(parts[2]) : '';
+  return readRequestedRunId(window.location.hash);
 }
 
 function displayTime(value) {
@@ -106,6 +106,7 @@ export default function DataFlowPage() {
       setReleaseIndex('');
     } catch (failure) { setReplayError(apiErrorMessage(failure, 'Approved releases could not be loaded.')); }
   };
+  const preferredRunId = useRef('');
   const loadSequence = useRef(0);
   const loadInFlight = useRef(false);
 
@@ -136,13 +137,23 @@ export default function DataFlowPage() {
       const nextRuns = asArray(runsPayload?.runs);
       if (runsResult.status === 'fulfilled') setRuns(nextRuns);
       if (definitionsResult.status === 'fulfilled') setDefinitions(asArray(definitionsPayload?.definitions));
-      const requestedId = requestedRunId();
-      if (runsResult.status === 'fulfilled') setSelectedRun((current) =>
-        nextRuns.find((run) => run.run_id === requestedId)
-        || nextRuns.find((run) => run.run_id === current?.run_id)
-        || nextRuns[0]
-        || null
-      );
+      const requestedId = preferredRunId.current || requestedRunId();
+      if (requestedId) {
+        let requested = nextRuns.find(run => run.run_id === requestedId);
+        if (!requested) {
+          try {
+            requested = responsePayload(await dataPipelineAPI.getRun(requestedId));
+            if (requested?.run_id !== requestedId) throw new Error('Requested run identity mismatch');
+          } catch (failure) {
+            if (sequence !== loadSequence.current) return;
+            setSelectedRun(null);
+            setError('Requested run is missing or inaccessible. No other run has been selected.');
+            return;
+          }
+        }
+        if (sequence !== loadSequence.current) return;
+        setSelectedRun(requested);
+      } else if (runsResult.status === 'fulfilled') setSelectedRun(current => nextRuns.find(run => run.run_id === current?.run_id) || nextRuns[0] || null);
       const failure = [healthResult, telemetryResult, runsResult, definitionsResult]
         .find((result) => result.status === 'rejected');
       if (failure) setError('Some processing-job evidence is temporarily unavailable. Showing the available data.');
@@ -191,10 +202,13 @@ export default function DataFlowPage() {
     setReplayError('');
     try {
       const approvalToken = replayApprovalToken.trim();
-      await dataPipelineAPI.replay(run.run_id, approvalToken ? {
+      const response = await dataPipelineAPI.replay(run.run_id, approvalToken ? {
         approved_by: replayApprover.trim(),
         approval_token: approvalToken,
       } : {});
+      const replayed = requireRunManifest(responsePayload(response));
+      preferredRunId.current = replayed.run_id;
+      setSelectedRun(replayed);
       setReplayApprovalToken('');
       await load();
     } catch (replayFailure) {
@@ -227,8 +241,9 @@ export default function DataFlowPage() {
       }
       if (action === 'run') {
         const result = await dataPipelineAPI.runDefinition(definition.job_id, definition.version, {}, approval());
-        const run = responsePayload(result)?.run || responsePayload(result)?.run_manifest;
-        if (run?.run_id) setSelectedRun(run);
+        const run = requireRunManifest(responsePayload(result));
+        preferredRunId.current = run.run_id;
+        setSelectedRun(run);
       }
       setReplayApprovalToken('');
       setGovernanceToken('');
@@ -346,7 +361,7 @@ export default function DataFlowPage() {
                 <thead><tr><th>Job</th><th>Source</th><th>Started</th><th>Quality</th><th>Status</th><th aria-label="Actions" /></tr></thead>
                 <tbody>
                   {visibleRuns.map((run) => <tr key={run.run_id} className={selectedRun?.run_id === run.run_id ? 'is-selected' : ''}>
-                    <td><button className="data-flow-link" type="button" onClick={() => setSelectedRun(run)}>{run.job_id || run.job_type || 'Unnamed job'}</button><small>{run.job_version || '—'} · {run.job_type || 'processing job'}</small></td>
+                    <td><button className="data-flow-link" type="button" onClick={() => { preferredRunId.current = run.run_id; setSelectedRun(run); }}>{run.job_id || run.job_type || 'Unnamed job'}</button><small>{run.job_version || '—'} · {run.job_type || 'processing job'}</small></td>
                     <td><span className="data-flow-source">{sourceStandard(run)}</span></td>
                     <td>{displayTime(run.started_at)}</td>
                     <td>{countFor(run, 'accepted_records')} accepted · {countFor(run, 'rejected_records')} rejected</td>
@@ -364,7 +379,7 @@ export default function DataFlowPage() {
           <h2>Run evidence</h2>
           {selectedRun ? <>
             <dl className="data-flow-evidence">
-              <dt>Run ID</dt><dd>{selectedRun.run_id}</dd>
+              <dt>Run ID</dt><dd>{selectedRun.run_id}</dd>{selectedRun.replay_of && <><dt>Replay of</dt><dd>{selectedRun.replay_of}</dd></>}
               <dt>Source standard</dt><dd>{sourceStandard(selectedRun)}</dd>
               <dt>Source system</dt><dd>{selectedRun.source_system || selectedRun.output_manifest?.source_system || 'Not recorded'}</dd>
               <dt>Input manifest</dt><dd>{selectedRun.input_manifest?.record_count ?? 0} record(s), {selectedRun.input_manifest?.artifact_ids?.length ?? 0} retained artifact(s)</dd>

@@ -5,6 +5,14 @@ import { serviceAuthHeaders } from './serviceAuth';
 // Dedicated client: approval credentials must never enter the debug-logging
 // interceptors used by the generic legacy API client.
 const client = axios.create({ timeout: 150000 });
+client.interceptors.request.use((request) => {
+  request.headers = request.headers || {};
+  const credentials = serviceAuthHeaders(request.url, request.method);
+  const explicit = request.headers.get?.('Authorization') || request.headers.Authorization;
+  if (explicit || request.headers.get?.('X-API-Key') || request.headers['X-API-Key']) { delete credentials.Authorization; delete credentials['X-API-Key']; }
+  Object.assign(request.headers, credentials);
+  return request;
+});
 const root = '/api/v1/workflows/bridge';
 const auth = (token) => ({ headers: { ...serviceAuthHeaders(), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
 export const bridgeApi = {

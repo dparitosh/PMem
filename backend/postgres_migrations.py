@@ -4,6 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 from collections.abc import Sequence
 import re
+import hashlib
+import os
 
 Migration = tuple[int, str, Sequence[str]]
 MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / 'infra' / 'postgres' / 'migrations'
@@ -32,13 +34,17 @@ MIGRATIONS: tuple[Migration, ...] = _discover_migrations()
 SCHEMA_MIGRATIONS_SQL = (MIGRATIONS_DIR / '000_schema_migrations.sql').read_text(encoding='utf-8')
 
 
+def migration_checksum(statements):
+    return hashlib.sha256('\n'.join(statement.replace('\r\n', '\n') for statement in statements).encode('utf-8')).hexdigest()
+
 def apply_migrations(connection) -> None:
     """Apply each migration once and record its immutable version/name pair."""
     with connection.transaction(), connection.cursor() as cursor:
         cursor.execute("SELECT pg_advisory_xact_lock(hashtextextended(current_schema() || ':depo-migrations', 0))")
         cursor.execute(SCHEMA_MIGRATIONS_SQL)
-        cursor.execute("SELECT version, name FROM depo_schema_migrations")
-        applied = {int(version): name for version, name in cursor.fetchall()}
+        cursor.execute("ALTER TABLE depo_schema_migrations ADD COLUMN IF NOT EXISTS checksum TEXT")
+        cursor.execute("SELECT version, name, checksum FROM depo_schema_migrations")
+        applied = {int(version): (name, checksum) for version, name, checksum in cursor.fetchall()}
         known = {version: name for version, name, _ in MIGRATIONS}
         unknown = sorted(set(applied) - set(known))
         if unknown:
@@ -48,10 +54,17 @@ def apply_migrations(connection) -> None:
             )
         for version, name, statements in sorted(MIGRATIONS):
             existing = applied.get(version)
-            if existing and existing != name:
+            if existing and existing[0] != name:
                 raise RuntimeError(f"PostgreSQL migration {version} was recorded as {existing!r}, not {name!r}")
+            checksum = migration_checksum(statements)
             if existing:
+                if existing[1] is None:
+                    if os.getenv('DEPO_ACCEPT_LEGACY_MIGRATION_CHECKSUMS', 'false').lower() != 'true':
+                        raise RuntimeError('Legacy migration checksums require explicit DEPO_ACCEPT_LEGACY_MIGRATION_CHECKSUMS=true after reviewing this release SQL against the deployed schema')
+                    cursor.execute('UPDATE depo_schema_migrations SET checksum=%s WHERE version=%s', (checksum, version))
+                elif existing[1] != checksum:
+                    raise RuntimeError(f'PostgreSQL migration {version} checksum differs from this release; restore the matching immutable migration')
                 continue
             for statement in statements:
                 cursor.execute(statement)
-            cursor.execute("INSERT INTO depo_schema_migrations(version, name) VALUES (%s, %s)", (version, name))
+            cursor.execute("INSERT INTO depo_schema_migrations(version, name, checksum) VALUES (%s, %s, %s)", (version, name, checksum))

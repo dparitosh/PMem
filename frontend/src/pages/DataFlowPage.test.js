@@ -15,7 +15,8 @@ vi.mock('../services/apiClient', () => ({
     disableDefinition: vi.fn().mockResolvedValue({ data: { lifecycle_state: 'disabled' } }),
     scheduleDefinition: vi.fn().mockResolvedValue({ data: { schedule: { interval_seconds: 300 } } }),
     disableSchedule: vi.fn().mockResolvedValue({ data: {} }),
-    replay: vi.fn().mockResolvedValue({ data: { status: 'queued' } }),
+    replay: vi.fn().mockResolvedValue({ data: { status: 'queued', run_manifest: { run_id: 'replayed', status: 'queued', replay_of: 'one' } } }),
+    getRun: vi.fn().mockImplementation(id => Promise.resolve({ data: { run_id: id, status: 'queued', replay_of: 'one' } })),
   },
 }));
 
@@ -47,6 +48,7 @@ test('sends explicit in-memory approval data for a direct replay', async () => {
     approved_by: 'pipeline-steward',
     approval_token: 'direct-token',
   }));
+  await screen.findByText('replayed');
   expect(screen.getByLabelText('Replay execution API key')).toHaveValue('');
 });
 
@@ -59,10 +61,28 @@ test('approves a registered data-job definition through the pipeline service', a
   render(<DataFlowPage />);
   await screen.findByText('QIF quality');
   fireEvent.change(screen.getByLabelText('Replay approver'), { target: { value: 'pipeline-steward' } });
-  fireEvent.change(screen.getByLabelText('Replay execution API key'), { target: { value: 'direct-token' } });
+  fireEvent.change(screen.getByLabelText('Governance API key'), { target: { value: 'direct-token' } });
   fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
   await waitFor(() => expect(dataPipelineAPI.approveDefinition).toHaveBeenCalledWith('qif-quality', '1.0.0', {
     approved_by: 'pipeline-steward', approval_token: 'direct-token',
   }));
+});
+
+test('fetches a requested historical run absent from the recent list', async () => {
+  const { dataPipelineAPI } = await import('../services/apiClient');
+  window.location.hash = '#/data-flow/historical';
+  render(<DataFlowPage />);
+  await screen.findByText('historical');
+  expect(dataPipelineAPI.getRun).toHaveBeenCalledWith('historical');
+  window.location.hash = '';
+});
+test('does not select another run when a requested run is missing', async () => {
+  const { dataPipelineAPI } = await import('../services/apiClient');
+  dataPipelineAPI.getRun.mockRejectedValueOnce(new Error('Missing'));
+  window.location.hash = '#/data-flow/missing';
+  render(<DataFlowPage />);
+  await screen.findByText(/Requested run is missing or inaccessible/);
+  expect(screen.queryByText('Run ID')).not.toBeInTheDocument();
+  window.location.hash = '';
 });

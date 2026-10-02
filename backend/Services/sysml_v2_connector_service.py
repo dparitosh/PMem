@@ -18,6 +18,11 @@ from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 
+class _NoRepositoryRedirect(urllib_request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 logger = logging.getLogger(__name__)
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -49,15 +54,17 @@ class SysMLV2ConnectorConfig:
 
     @property
     def configured(self) -> bool:
-        return bool(self.base_url)
+        try:
+            parsed = urlparse(self.base_url)
+            return parsed.scheme in {'http', 'https'} and bool(parsed.hostname) and not (parsed.username or parsed.password or parsed.query or parsed.fragment) and (parsed.port is None or parsed.port > 0)
+        except ValueError:
+            return False
 
     @property
     def masked_base_url(self) -> str:
-        if not self.base_url:
+        if not self.configured:
             return ""
         parsed = urlparse(self.base_url)
-        if not parsed.scheme or not parsed.netloc:
-            return self.base_url
         return f"{parsed.scheme}://{parsed.netloc}"
 
 
@@ -82,16 +89,18 @@ class SysMLV2ConnectorService:
             "configured": cfg.configured,
             "base_url": cfg.masked_base_url,
             "project_configured": bool(cfg.project_id),
+            "project_id": cfg.project_id,
+            "commit_id": cfg.commit_id,
             "branch_configured": bool(cfg.branch_id),
             "commit_configured": bool(cfg.commit_id),
             "page_size": cfg.page_size,
             "request_timeout_seconds": cfg.request_timeout_seconds,
-            "current_capability": "readiness_only",
-            "release_position": "planned_optional_connector",
+            "current_capability": "governed_commit_import",
+            "release_position": "optional_customer_repository",
             "message": (
                 "SysML v2 API sync is disabled. Current supported SysML-style ingestion remains file/XMI based."
                 if not cfg.enabled
-                else "SysML v2 API connector is configured for readiness checks only; repository sync is not implemented yet."
+                else "Configured repository commits can be imported through the governed data-job endpoint; live compatibility must be verified."
             ),
         }
 
@@ -115,7 +124,7 @@ class SysMLV2ConnectorService:
             "kerml_position": {
                 "status": "planned_not_implemented",
                 "role": "KerML is the semantic kernel foundation for SysML v2; current DEPO runtime does not parse .kerml files yet.",
-                "release_guidance": "Use XMI/MDXML for current MBSE file import. Use SysML v2 endpoints for readiness only until a real API server or KerML parser is validated.",
+                "release_guidance": "Use XMI/MDXML for current MBSE file import. Use the configured commit import endpoint for repository JSON after validating customer API compatibility. Native SysML/KerML text parsing is not implemented.",
             },
             "normalization_contract": {
                 "source_format": "sysmlv2",
@@ -145,24 +154,29 @@ class SysMLV2ConnectorService:
 
         req = urllib_request.Request(url, headers=headers, method="GET")
         try:
-            with urllib_request.urlopen(req, timeout=cfg.request_timeout_seconds) as resp:
-                body = resp.read(1024 * 1024).decode("utf-8", errors="replace")
+            with urllib_request.build_opener(_NoRepositoryRedirect()).open(req, timeout=cfg.request_timeout_seconds) as resp:
+                raw = resp.read(1024 * 1024 + 1)
+                if len(raw) > 1024 * 1024:
+                    return {**self.status(), "probe_status": "failed", "probe_message": "Repository project response exceeds 1 MiB."}
+                body = raw.decode("utf-8")
                 try:
                     payload: Any = json.loads(body) if body else None
                 except json.JSONDecodeError:
-                    payload = {"raw_preview": body[:1000]}
-                count = len(payload) if isinstance(payload, list) else None
+                    return {**self.status(), "probe_status": "failed", "probe_message": "Repository projects response is not valid JSON."}
+                if not isinstance(payload, list) or any(not isinstance(item, dict) for item in payload):
+                    return {**self.status(), "probe_status": "failed", "probe_message": "Repository projects response must be an array of objects."}
+                count = len(payload)
                 return {
                     **self.status(),
                     "probe_status": "ok",
                     "http_status": getattr(resp, "status", 200),
                     "projects_count": count,
-                    "payload_preview": payload if count is not None and count <= 5 else None,
+
                 }
         except HTTPError as exc:
             logger.warning("SysML v2 /projects probe failed with HTTP %s", exc.code)
             return {**self.status(), "probe_status": "failed", "http_status": exc.code, "probe_message": str(exc)}
-        except (URLError, TimeoutError, OSError) as exc:
+        except (URLError, TimeoutError, OSError, UnicodeError, ValueError) as exc:
             logger.warning("SysML v2 /projects probe failed: %s", exc)
             return {**self.status(), "probe_status": "failed", "probe_message": str(exc)}
 

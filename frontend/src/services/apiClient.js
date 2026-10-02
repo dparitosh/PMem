@@ -8,6 +8,7 @@ import axios from 'axios';
 import { config, API, buildSemanticServiceUrl, buildUrl, replaceParams } from '../config';
 import logger from '../utils/logger';
 import agenticAPI from './agenticApi';
+import { reportRunRecovery } from './runRecovery';
 import { serviceAuthHeaders } from './serviceAuth';
 
 /**
@@ -109,7 +110,7 @@ apiClient.interceptors.request.use(
     // it here as well as in buildUrl() so every caller reaches its owning
     // microservice during the monolith-to-services transition.
     if (typeof requestConfig.url === 'string' && requestConfig.url.startsWith('/')) {
-      requestConfig.url = buildUrl(requestConfig.url);
+      requestConfig.url = buildUrl(requestConfig.url, requestConfig.method);
       requestConfig.baseURL = undefined;
     }
     const sessionId = getClientSessionId();
@@ -126,8 +127,8 @@ apiClient.interceptors.request.use(
     if (isStandaloneServiceRequest(requestConfig.url)) {
       requestConfig.headers = requestConfig.headers || {};
       const explicit = requestConfig.headers.get?.('Authorization') || requestConfig.headers.Authorization;
-      const credentials = serviceAuthHeaders(requestConfig.url);
-      if (explicit) delete credentials.Authorization;
+      const credentials = serviceAuthHeaders(requestConfig.url, requestConfig.method);
+      if (explicit || requestConfig.headers.get?.('X-API-Key') || requestConfig.headers['X-API-Key']) { delete credentials.Authorization; delete credentials['X-API-Key']; }
       Object.assign(requestConfig.headers, credentials);
     }
     if (adminApiKey && isStandaloneServiceRequest(requestConfig.url) && String(requestConfig.url || '').includes('/api/v1/admin/')) {
@@ -166,6 +167,7 @@ apiClient.interceptors.response.use(
   },
   async (error) => {
     const requestConfig = error?.config || {};
+    if (/\/api\/v1\/(?:workflow-runs|runs|chat|chat-stream|ontology-agents|integrations\/dt-requirements-design\/runs)(?:[/?]|$)/.test(String(requestConfig.url || ''))) reportRunRecovery(error);
     const method = String(requestConfig.method || 'get').toLowerCase();
     const retryCount = requestConfig.__retryCount || 0;
     const canRetry = method === 'get' && !error?.response && isTransientNetworkError(error) && retryCount < MAX_GET_RETRIES;
@@ -270,7 +272,7 @@ export const chatAPI = {
 
 // ========== ONTOLOGY ENDPOINTS ==========
 export const ontologyAPI = {
-  upload: (file, metadata) => {
+  upload: (file, metadata, writeToken = '') => {
     const formData = new FormData();
     formData.append('file', file);
     
@@ -287,7 +289,7 @@ export const ontologyAPI = {
     });
     
     return apiClient.post(buildUrl(API.ontology.upload), formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { ...(writeToken ? { Authorization: `Bearer ${writeToken.trim()}` } : {}) },
       timeout: 300000, // 5 minutes for ontology uploads
     });
   },
@@ -432,6 +434,7 @@ export const dataPipelineAPI = {
   telemetry: (config = {}) => apiClient.get(buildUrl('/api/v1/pipeline/telemetry'), config),
   definitions: () => apiClient.get(buildUrl('/api/v1/pipeline/jobs/definitions')),
   runs: (limit = 100) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/runs'), { params: { limit } }),
+  getRun: (runId, options = {}) => apiClient.get(buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}`), options),
   approveDefinition: (jobId, version, approval = {}) => apiClient.post(
     buildUrl(`/api/v1/pipeline/jobs/definitions/${encodeURIComponent(jobId)}/${encodeURIComponent(version)}/approve`),
     approval,
@@ -556,16 +559,17 @@ export const documentAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  submitJob: (files, metadata = {}) => {
+  submitJob: (files, metadata = {}, writeToken = '') => {
     const formData = new FormData();
     (Array.isArray(files) ? files : [files]).forEach((file) => formData.append('files', file));
     Object.entries(metadata).forEach(([key, value]) => formData.append(key, value));
     return apiClient.post(buildUrl(API.document.jobs), formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { ...(writeToken ? { Authorization: `Bearer ${writeToken.trim()}` } : {}) },
     });
   },
   getJob: (taskId) => apiClient.get(buildUrl(replaceParams(API.document.job, { task_id: taskId }))),
-  cancelJob: (taskId) => apiClient.post(buildUrl(replaceParams(API.document.cancelJob, { task_id: taskId }))),
+  cancelJob: (taskId, writeToken = '') => apiClient.post(buildUrl(replaceParams(API.document.cancelJob, { task_id: taskId })), undefined,
+    writeToken ? { headers: { Authorization: `Bearer ${writeToken.trim()}` } } : undefined),
   getJobArtifacts: (taskId) => apiClient.get(buildUrl(replaceParams(API.document.jobArtifacts, { task_id: taskId }))),
   checkHealth: () => apiClient.get(buildUrl(API.document.health)),
 };

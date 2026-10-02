@@ -225,6 +225,13 @@ def parse_archimate_model_exchange(file_content: bytes) -> Tuple[List[Dict[str, 
         tmp_path.unlink(missing_ok=True)
 
     namespace = root.tag[1: root.tag.index("}")] if str(root.tag).startswith("{") else ""
+    declared_ids = set()
+    for item in root.iter():
+        identifier = _ref_id(_attr(item, 'identifier', 'id'))
+        if identifier:
+            if identifier in declared_ids:
+                raise ValueError(f'Duplicate ArchiMate identifier: {identifier}')
+            declared_ids.add(identifier)
     model_metadata = _collect_model_metadata(root)
     property_definitions = _collect_property_definitions(root)
 
@@ -233,6 +240,8 @@ def parse_archimate_model_exchange(file_content: bytes) -> Tuple[List[Dict[str, 
             folder_index = [0]
         folder_index[0] += 1
         folder_id = _folder_id(folder, folder_index[0], parent_folder_id)
+        if not _attr(folder, 'identifier', 'id') and folder_id in declared_ids:
+            raise ValueError(f'Generated folder identifier conflicts with a declared ArchiMate identifier: {folder_id}')
         folder_name = _folder_name(folder, f"Folder {folder_index[0]}")
         folder_type = _attr(folder, "type", "xsi:type") or "Folder"
         row = {
@@ -453,6 +462,15 @@ def parse_archimate_model_exchange(file_content: bytes) -> Tuple[List[Dict[str, 
                 },
             })
 
+    relationship_ids = {_ref_id(_attr(item, 'identifier', 'id')) for item in raw_relationship_elements}
+    for reference in view_refs:
+        known_ids = relationship_ids if reference.get('kind') == 'relationship' else set(element_index)
+        if reference.get('ref') not in known_ids:
+            unresolved_relationships.append({'id': reference.get('view_id', ''), 'target': reference.get('ref', ''), 'type': 'ViewReference'})
+    for relationship in folder_relationships:
+        if relationship['to_props']['id'] not in element_index:
+            unresolved_relationships.append({'id': relationship['properties']['id'], 'target': relationship['to_props']['id'], 'type': 'FolderReference'})
+    folder_relationships = [relationship for relationship in folder_relationships if relationship['to_props']['id'] in element_index]
     relationships.extend(folder_relationships)
     relationships.extend(view_relationships)
     view_lookup = {view.get("id"): view for view in views if view.get("id")}

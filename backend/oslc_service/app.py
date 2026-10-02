@@ -7,7 +7,7 @@ from .lifecycle import router as lifecycle_router
 
 # Lifecycle resources and the default TRS store are PostgreSQL-backed. Keep
 # readiness aligned with the capabilities advertised by this service.
-app = create_service_app(title="DEPO OSLC Service", version="1.0.0", dependencies=("postgres",))
+app = create_service_app(title="DEPO OSLC Service", version="1.0.0", dependencies=("postgres", "neo4j"))
 app.include_router(create_odata_catalog_router(
     service_name="DEPOOSLC",
     capabilities=[

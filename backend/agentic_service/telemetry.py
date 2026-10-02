@@ -18,12 +18,13 @@ class AgentTelemetry:
     def __init__(self) -> None:
         self.store = PostgresRegistry("agentic_observability")
 
-    def start(self, *, operation: str, request_id: str = "", session_id: str = "", workflow_id: str = "") -> tuple[dict[str, Any], float]:
+    def start(self, *, operation: str, request_id: str = "", session_id: str = "", workflow_id: str = "", workflow_run_id: str = "") -> tuple[dict[str, Any], float]:
         run_id = f"agent-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}-{uuid4().hex[:8]}"
         record = {
             "run_id": run_id,
             "operation": operation,
             "workflow_id": workflow_id,
+            "workflow_run_id": workflow_run_id or None,
             "request_id": str(request_id or ""),
             "session_id": str(session_id or ""),
             "status": "running",

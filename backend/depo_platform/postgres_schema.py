@@ -49,3 +49,12 @@ def initialise_schema(cursor) -> str:
         )
     cursor.execute(f'SET search_path TO "{schema}", public')
     return schema
+
+
+def statement_options(*, migration=False):
+    key = 'DEPO_MIGRATION_STATEMENT_TIMEOUT_SECONDS' if migration else 'DEPO_REGISTRY_STATEMENT_TIMEOUT_SECONDS'
+    default, maximum = (300, 3600) if migration else (30, 300)
+    try: seconds = int(os.getenv(key, str(default)))
+    except ValueError as exc: raise RuntimeError(f'{key} must be an integer') from exc
+    if not 1 <= seconds <= maximum: raise RuntimeError(f'{key} must be between 1 and {maximum}')
+    return f'-c statement_timeout={seconds * 1000} -c lock_timeout={min(seconds, 10 if not migration else 60) * 1000}'

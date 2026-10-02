@@ -12,9 +12,9 @@ import {
 } from 'lucide-react';
 import OntologyMetadataForm from './OntologyMetadataForm';
 import { API_METHODS, apiClient, getClientSessionId, setClientSessionId } from '../services/apiClient';
-import { serviceAuthHeaders } from '../services/serviceAuth';
+import { serviceAuthHeaders, getCredentialProfile } from '../services/serviceAuth';
 import { useOntologies } from '../contexts/OntologyContext';
-import { API, buildUrl, replaceParams } from '../config';
+import { API, buildUrl, buildSemanticServiceUrl, replaceParams } from '../config';
 import {
   backendToFrontendStage,
   buildWorkflowStages,
@@ -28,6 +28,8 @@ import {
   supportedFormats,
   workflowCatalog,
 } from '../workflows/workflowEngine';
+import { requireRunManifest, governedRunStatus, pipelineRunLink } from '../workflows/runTracking';
+import { dataPipelineAPI } from '../services/apiClient';
 import useMountedRef from '../hooks/useMountedRef';
 import usePollerRegistry from '../hooks/usePollerRegistry';
 import {
@@ -67,6 +69,14 @@ export default function DataImportPipeline() {
   const [previewData, setPreviewData] = useState(null);
   const [confirmingImport, setConfirmingImport] = useState(null);
   const [preCheck, setPreCheck] = useState(null); // { loading, ready, checks, reason }
+  const [ingestionWriteToken, setIngestionWriteToken] = useState('');
+  const [executionToken, setExecutionToken] = useState('');
+  const [publishOntology, setPublishOntology] = useState(false);
+  useEffect(() => {
+    const clear = () => { setIngestionWriteToken(''); setExecutionToken(''); };
+    window.addEventListener('depo:credentials-cleared', clear);
+    return () => window.removeEventListener('depo:credentials-cleared', clear);
+  }, []);
   const [commitApprover, setCommitApprover] = useState('');
   const [commitApprovalToken, setCommitApprovalToken] = useState('');
   const fileInputRef = useRef(null);
@@ -531,6 +541,14 @@ export default function DataImportPipeline() {
   };
 
   const startOntologyRegistration = async (file) => {
+    if (!file.fileObj) {
+      setError('Re-attach the source file to retry this restored job.');
+      return;
+    }
+    if (!(ingestionWriteToken.trim() || getCredentialProfile('INGESTION_WRITE_TOKEN'))) {
+      setError('Enter INGESTION_WRITE_TOKEN in the ontology workflow credentials before starting.');
+      return;
+    }
     const fileId = file.fileId;
     if (file.pendingMetadata || !file.ontologyName || !file.prefix || !file.generationType) {
       setMetadataFormPrefill({
@@ -562,15 +580,34 @@ export default function DataImportPipeline() {
         }
       }));
 
-      const uploadData = await API_METHODS.ontology.upload(file.fileObj, {
+      const shouldPublish = publishOntology && ['xsd', 'xmi'].includes(file.fileType);
+      let uploadData;
+      if (shouldPublish) {
+        const form = new FormData();
+        form.append('file', file.fileObj);
+        form.append('ontology_name', file.ontologyName);
+        form.append('prefix', file.prefix);
+        form.append('description', file.description || '');
+        form.append('publish', 'true');
+        uploadData = await apiClient.post(buildSemanticServiceUrl('ingestion', '/api/v1/engineering-workflows'), form, {
+          headers: { Authorization: `Bearer ${ingestionWriteToken.trim() || getCredentialProfile('INGESTION_WRITE_TOKEN')}` }, timeout: 300000,
+        });
+        if (uploadData.data.status !== 'published' || !uploadData.data.graph_publication) {
+          throw new Error(uploadData.data.message || 'Policy or quality checks blocked graph publication.');
+        }
+      } else uploadData = await API_METHODS.ontology.upload(file.fileObj, {
         ontologyName: file.ontologyName,
         prefix: file.prefix,
         description: file.description || '',
         generationType: file.generationType,
         schemaType: file.schemaType || 'schema',
         fileType: file.fileType,
-      });
-      const uploadDataBody = uploadData.data || uploadData;
+      }, ingestionWriteToken || getCredentialProfile('INGESTION_WRITE_TOKEN'));
+      const responseBody = uploadData.data || uploadData;
+      const uploadDataBody = shouldPublish ? {
+        ...responseBody.ontology_registration,
+        task_id: responseBody.ontology_registration.ontology_id,
+      } : responseBody;
 
       setFiles(prev => prev.map(f => (
         f.fileId === fileId
@@ -592,8 +629,10 @@ export default function DataImportPipeline() {
           backendStage: 'verify',
           progress: 100,
           status: 'completed',
-          committed: true,
-          message: `Ontology '${file.ontologyName}' uploaded and registered`,
+          committed: shouldPublish,
+          registered: true,
+          published: shouldPublish,
+          message: shouldPublish ? `Ontology '${file.ontologyName}' published to Neo4j` : `Ontology '${file.ontologyName}' registered; graph publication has not run.`,
           stats: {
             entities_found: uploadDataBody.nodes_merged ?? null,
             relationships_found: null,
@@ -673,7 +712,8 @@ export default function DataImportPipeline() {
         },
       }));
 
-      const submissionResponse = await API_METHODS.document.submitJob([file.fileObj]);
+      if (!(ingestionWriteToken.trim() || getCredentialProfile('INGESTION_WRITE_TOKEN'))) throw new Error('Enter INGESTION_WRITE_TOKEN before submitting a document job.');
+      const submissionResponse = await API_METHODS.document.submitJob([file.fileObj], {}, ingestionWriteToken || getCredentialProfile('INGESTION_WRITE_TOKEN'));
       const submission = submissionResponse.data || submissionResponse;
       const taskId = submission?.task_id;
       if (!taskId) throw new Error('Document service did not return a task ID.');
@@ -779,6 +819,11 @@ export default function DataImportPipeline() {
 
     const fileId = file.fileId;
     const governedProfile = workflow?.id === 'instance.import' ? governedSourceProfile(file.name) : null;
+    const uploadToken = (governedProfile ? executionToken : ingestionWriteToken).trim() || getCredentialProfile(governedProfile ? 'DATA_JOB_EXECUTION_TOKEN' : 'INGESTION_WRITE_TOKEN');
+    if (!uploadToken) {
+      setError(`Enter ${governedProfile ? 'DATA_JOB_EXECUTION_TOKEN' : 'INGESTION_WRITE_TOKEN'} in workflow credentials before starting.`);
+      return;
+    }
 
     try {
       const formData = new FormData();
@@ -794,19 +839,18 @@ export default function DataImportPipeline() {
         setStartedFiles(prev => new Set([...prev, fileId]));
         setPipelineStatus(prev => ({ ...prev, [fileId]: { stage: 'upload', progress: 5, message: 'Retaining governed source artifact…' } }));
         const response = await apiClient.post(buildUrl(API.import.governed), formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }, timeout: getImportTimeoutMs(),
+          headers: { Authorization: `Bearer ${uploadToken}` }, timeout: getImportTimeoutMs(),
         });
         const result = response.data || response;
-        const runId = result?.run_manifest?.run_id;
+        const run = requireRunManifest(result);
+        const runId = run.run_id;
         setPipelineStatus(prev => ({
           ...prev,
           [fileId]: {
             // A governed data-job run is deliberately not a legacy import
             // task. Keeping it out of taskId prevents preview/commit/export
             // controls from invoking the legacy direct-to-graph endpoints.
-            ...(prev[fileId] || {}), dataJobRunId: runId, governedImport: true,
-            stage: 'complete', backendStage: 'completed', status: 'completed', progress: 100,
-            message: `${String(result.standard || '').toUpperCase()} validated by governed data job. Open Data Flow for lineage and replay.`,
+            ...(prev[fileId] || {}), ...governedRunStatus(run),
             stats: result.source_summary || {}, sourceStandard: result.standard, sourceArtifactId: result.source_artifact_id,
           },
         }));
@@ -831,7 +875,7 @@ export default function DataImportPipeline() {
       }
 
       const uploadData = await apiClient.post(API.import.upload, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { Authorization: `Bearer ${uploadToken}` },
         timeout: getImportTimeoutMs(),
       });
       const taskId = (uploadData.data || uploadData).task_id;
@@ -1125,6 +1169,33 @@ export default function DataImportPipeline() {
       pollPipelineProgress(file.taskId, file.fileId);
     });
   }, [files, pipelineStatus, pollPipelineProgress, startedFiles]);
+
+  const verifiedGovernedRunsRef = useRef(new Set());
+  useEffect(() => {
+    const active = Object.entries(pipelineStatus).filter(([, status]) => status.dataJobRunId && (['queued', 'running'].includes(status.status) || !verifiedGovernedRunsRef.current.has(status.dataJobRunId)));
+    if (!active.length) return undefined;
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      const outcomes = await Promise.all(active.map(async ([fileId, previous]) => {
+        try {
+          const response = await dataPipelineAPI.getRun(previous.dataJobRunId, { signal: controller.signal });
+          const run = response.data;
+          if (run?.run_id !== previous.dataJobRunId) throw new Error('Run identity mismatch');
+          verifiedGovernedRunsRef.current.add(run.run_id);
+          return [fileId, governedRunStatus(run)];
+        } catch (failure) {
+          return [fileId, { message: 'Run status unavailable. Inspect this run in Data Flow before retrying.' }];
+        }
+      }));
+      if (!cancelled && isMountedRef.current) setPipelineStatus(current => {
+        const updated = { ...current };
+        for (const [fileId, status] of outcomes) if (updated[fileId]) updated[fileId] = { ...updated[fileId], ...status };
+        return updated;
+      });
+    }, 5000);
+    return () => { cancelled = true; clearTimeout(timer); controller.abort(); };
+  }, [pipelineStatus, isMountedRef]);
 
   const startAllImports = async () => {
     const workflow = workflowOptions.find(w => w.id === selectedWorkflow) || resolveWorkflow(selectedWorkflow);
@@ -1436,7 +1507,7 @@ export default function DataImportPipeline() {
     if (fileStatus?.taskId && fileStatus?.status === 'processing') {
       const queuedFile = files.find(item => item.fileId === fileId);
       const cancelRequest = queuedFile?.workflowId === 'document.unstructured'
-        ? API_METHODS.document.cancelJob(fileStatus.taskId)
+        ? API_METHODS.document.cancelJob(fileStatus.taskId, ingestionWriteToken || getCredentialProfile('INGESTION_WRITE_TOKEN'))
         : apiClient.post(replaceParams(API.import.cancel, { task_id: fileStatus.taskId }), {});
       cancelRequest
         .catch(err => console.warn('Cancel failed:', err));
@@ -1769,6 +1840,18 @@ export default function DataImportPipeline() {
 
   return (
     <div style={{ background: C.bg, minHeight: '100%', padding: 0, boxSizing: 'border-box' }}>
+      <fieldset style={{ marginBottom: '12px', color: C.textPrimary }}>
+        <legend>Workflow credentials</legend>
+        <label>Ingestion write API key (INGESTION_WRITE_TOKEN)
+          <input type="password" autoComplete="off" value={ingestionWriteToken} onChange={event => setIngestionWriteToken(event.target.value)} />
+        </label>
+        <label>Governed instance execution API key (DATA_JOB_EXECUTION_TOKEN)
+          <input type="password" autoComplete="off" value={executionToken} onChange={event => setExecutionToken(event.target.value)} />
+        </label>
+        <p>This key authorizes uploads. API access in the header uses GRAPH_READ_TOKEN for reading. Keys stay in memory; a full reload clears them.</p>
+        <label><input type="checkbox" checked={publishOntology} onChange={event => setPublishOntology(event.target.checked)} /> Convert XSD/XMI to OWL, register and publish to Neo4j after policy and quality checks</label>
+        <p>Leave unchecked to retain the source using the selected generation type. For a restored failed job, remove the row and select the original source file again.</p>
+      </fieldset>
       {/* Ontology Metadata Form Modal */}
       {showMetadataForm && (
         <OntologyMetadataForm
@@ -2968,7 +3051,9 @@ export default function DataImportPipeline() {
               const fileId = file.fileId;
               const status = fileStatusIndex.get(fileId) || { stage: 'upload', progress: 0 };
               const isStarted = startedFiles.has(fileId);
-              const statusBadge = getStatusBadge(status.stage, status.progress, status.error, status.backendStage, status.committing, status.commitError, status.commitPhase);
+              const statusBadge = file.workflowId === 'ontology.create' && status.status === 'completed' && !status.error
+                ? { text: status.committed && status.registered ? 'Published' : 'Registered source', bg: '#E8F5E9', color: C.green }
+                : getStatusBadge(status.stage, status.progress, status.error, status.backendStage, status.committing, status.commitError, status.commitPhase);
 
               return (
                 <div
@@ -3005,7 +3090,7 @@ export default function DataImportPipeline() {
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
                         }}>
-                          {file.persisted && !file.fileObj ? 'Persisted job monitor' : status.message}
+                          {status.message || 'Persisted job monitor'}{status.dataJobRunId && <a href={pipelineRunLink(status.dataJobRunId)}> View run</a>}{file.persisted && !file.fileObj && status.error ? ' Re-attach the source file to retry.' : ''}
                         </div>
                       )}
                     </div>
@@ -3248,6 +3333,7 @@ export default function DataImportPipeline() {
                       && (isReadyToLoad(status) || status.commitPhase === 'error' || status.commitError)
                       && !status.error
                       && !status.committed
+                      && file.workflowId !== 'ontology.create'
                       && !isCommitInFlight(status)
                       && (
                       <button
@@ -3307,7 +3393,7 @@ export default function DataImportPipeline() {
                         <Loader2 size={12} /> {getCommitPhaseLabel(status.commitPhase) ? `${getCommitPhaseLabel(status.commitPhase)}...` : 'Loading to Neo4j...'}
                       </button>
                     )}
-                    {status.taskId && (status.status === 'completed' || status.progress === 100) && !status.error && (
+                    {status.taskId && !status.published && (status.status === 'completed' || status.progress === 100) && !status.error && (
                       <select
                         defaultValue=""
                         onChange={(event) => {
@@ -3334,7 +3420,7 @@ export default function DataImportPipeline() {
                         <option value="jsonld">JSON-LD</option>
                       </select>
                     )}
-                    {status.progress === 100 && !status.error && status.committed && (
+                    {status.progress === 100 && !status.error && status.committed && (file.workflowId !== 'ontology.create' || status.registered) && (
                       <div style={{
                         padding: '6px 10px',
                         background: '#E8F5E9',
@@ -3346,7 +3432,7 @@ export default function DataImportPipeline() {
                         alignItems: 'center',
                         gap: '4px',
                       }}>
-                        <Check size={12} /> Committed
+                        <Check size={12} /> {file.workflowId === 'ontology.create' ? 'Published' : 'Committed'}
                       </div>
                     )}
                     <button
@@ -3608,7 +3694,7 @@ export default function DataImportPipeline() {
             </div>
 
             <details style={{ marginBottom: '12px', fontSize: '12px', color: C.textSec }}>
-              <summary>Approval credentials (only when your API gateway requires them)</summary>
+              <summary>Approval credentials (required by token authentication for loading)</summary>
               <p style={{ margin: '8px 0' }}>These values stay in memory and are cleared when the load starts or this dialog closes.</p>
               <label style={{ display: 'block', marginBottom: '6px' }}>
                 Approver
