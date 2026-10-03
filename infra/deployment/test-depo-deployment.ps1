@@ -105,6 +105,12 @@ if (-not $SkipEndpointChecks) {
         $corsChecked = $true
       }
     }
+    if ($values.AUTH_MODE -eq 'token') {
+      try {
+        $access = Invoke-RestMethod -Uri "http://${hostName}:$($service.port)/auth/access" -Headers @{ Authorization = "Bearer $($values.GRAPH_READ_TOKEN)" } -TimeoutSec 10
+        if ($access.status -ne 'authorized') { throw 'Access was not authorized.' }
+      } catch { throw "$($service.id) rejected the configured read key. Restart services after key changes and verify matching release versions." }
+    }
     $openapi = Invoke-RestMethod -Uri "http://${hostName}:$($service.port)/openapi.json" -TimeoutSec 10
     if ($openapi.openapi -ne "3.0.3") { throw "$($service.id) is not publishing OpenAPI 3.0.3." }
     $contractPython = Join-Path $root 'backend\.dt_venv\Scripts\python.exe'

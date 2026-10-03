@@ -46,7 +46,7 @@ $settings = Read-DepoEnvironment -Root $root -EnvFile $envPath
 Invoke-DepoStage 'Deployment configuration preflight (before dependency installation)' {
   & (Join-Path $root 'infra\deployment\test-depo-deployment.ps1') -EnvFile $envPath -Profile $Profile -SkipEndpointChecks
   if (-not $SkipFrontend) {
-    & (Join-Path $root 'infra\deployment\test-depo-frontend-config.ps1')
+    & (Join-Path $root 'infra\deployment\test-depo-frontend-config.ps1') -RootEnvFile $envPath
   }
 }
 $artifactStorage = $settings['ARTIFACT_STORAGE']
@@ -83,6 +83,9 @@ if (-not $SkipDependencyInstall) {
 
 Invoke-DepoStage 'Deployment configuration validation' {
   & (Join-Path $root 'infra\deployment\test-depo-deployment.ps1') -EnvFile $envPath -Profile $Profile -SkipEndpointChecks
+}
+Invoke-DepoStage 'Selected PostgreSQL runtime startup' {
+  & (Join-Path $PSScriptRoot 'start-depo-postgres.ps1') -EnvFile $envPath
 }
 Invoke-DepoStage 'PostgreSQL URL connectivity' {
   & (Join-Path $root 'infra\postgres\test-postgres-connectivity.ps1') -EnvFile $envPath

@@ -96,35 +96,8 @@ if ($EnablePipelineScheduler) {
   $env:DEPO_PIPELINE_SCHEDULER_ENABLED = 'true'
 }
 
-if (-not $SkipPostgres -and $env:DEPO_POSTGRES_MODE -ne 'external') {
-  if ($env:DEPO_POSTGRES_MODE -notin @('service','portable')) { throw 'Set DEPO_POSTGRES_MODE=external, service or portable. No PostgreSQL instance is selected automatically.' }
-  $postgres = $null
-  if ($env:DEPO_POSTGRES_MODE -eq 'service') {
-    if (-not $env:DEPO_POSTGRES_SERVICE_NAME) { throw 'DEPO_POSTGRES_SERVICE_NAME is required for service mode.' }
-    $postgres = Get-Service -Name $env:DEPO_POSTGRES_SERVICE_NAME -ErrorAction Stop
-  }
-  if ($postgres) {
-    if ($postgres.Status -ne 'Running') { Start-Service -Name $postgres.Name; $postgres.WaitForStatus('Running', [TimeSpan]::FromSeconds(30)) }
-  } else {
-    if (-not $PostgresBinDir -or -not $PostgresDataDir) { throw 'Portable PostgreSQL requires DEPO_POSTGRES_BIN_DIR and DEPO_POSTGRES_DATA_DIR.' }
-    $pgCtl = Join-Path $PostgresBinDir 'pg_ctl.exe'
-    $pgVersion = Join-Path $PostgresDataDir 'PG_VERSION'
-    if (-not (Test-Path $pgCtl) -or -not (Test-Path $pgVersion)) {
-      throw "No PostgreSQL Windows service was found. Set -PostgresBinDir and -PostgresDataDir to an initialized PostgreSQL installation, or use -SkipPostgres for a remote instance."
-    }
-    $pgIsReady = Join-Path $PostgresBinDir 'pg_isready.exe'
-    if (-not (Test-Path $pgIsReady)) { throw "PostgreSQL readiness executable was not found: $pgIsReady" }
-    & $pgCtl status -D $PostgresDataDir | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-      # Keep the active log outside PGDATA: crash recovery fsyncs that tree,
-      # and an open Windows log handle can cause sharing violations there.
-      $postgresLogDir = Join-Path $root 'logs\windows-services'
-      New-Item -ItemType Directory -Path $postgresLogDir -Force | Out-Null
-      $logFile = Join-Path $postgresLogDir 'postgres.log'
-      & $pgCtl start -D $PostgresDataDir -l $logFile -w -t 60
-      if ($LASTEXITCODE -ne 0) { throw "PostgreSQL could not start. See $logFile." }
-    }
-  }
+if (-not $SkipPostgres) {
+  & (Join-Path $PSScriptRoot 'start-depo-postgres.ps1') -EnvFile $EnvFile -PostgresBinDir $PostgresBinDir -PostgresDataDir $PostgresDataDir
 }
 
 # Use the same reviewed migration entry point as schema-only upgrades. This
@@ -200,6 +173,12 @@ foreach ($service in $services | Where-Object { $_.Port }) {
       Start-Sleep -Milliseconds 500
     }
   } while (-not $ready -and (Get-Date) -lt $deadline)
+  if ($env:AUTH_MODE -eq 'token') {
+    try {
+      $access = Invoke-RestMethod -Uri "http://${peerHost}:$($service.Port)/auth/access" -Headers @{ Authorization = "Bearer $($env:GRAPH_READ_TOKEN)" } -TimeoutSec 10
+      if ($access.status -ne 'authorized') { throw 'Read access was not authorized.' }
+    } catch { throw "Service '$($service.Name)' does not accept the configured read key. Stop and restart all services after key changes; deploy matching backend modules if /auth/access is missing." }
+  }
   if ($corsMismatch) { throw $corsMismatch }
   if (-not $ready) { throw "DEPO service '$($service.Name)' did not become ready within $ServiceStartupTimeoutSeconds seconds. Check $stateDir\$($service.Name).err.log. For a slower cold start, retry with -ServiceStartupTimeoutSeconds 600." }
 }

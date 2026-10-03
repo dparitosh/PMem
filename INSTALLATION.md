@@ -2680,3 +2680,37 @@ Rebuild once after upgrading to the build-receipt release. `npm run build` now e
 Do not hand-edit the receipt. Run the documented frontend build after changing build inputs. Root `.env.local` runtime routing changes still use the runtime-routing launcher and are not frontend build inputs. Inherited build-only environment changes also require a rebuild; they cannot be verified from filesystem hashes.
 
 Conflicting `VITE_*` and matching `REACT_APP_*` settings now stop the build. Use the current `VITE_*` setting or identical compatibility values. The managed Windows environment importer sets `DEPO_ENV_INJECTED=true`; production and managed Neo4j consumers skip legacy `.env` discovery. Configure every required value in the selected root deployment file or process-manager environment instead of relying on old defaults.
+
+
+### Integration release fixes: definition authoring, startup and acceptance
+
+Creating a data-job definition (`POST /api/v1/pipeline/jobs/definitions`) now requires the existing `DATA_JOB_APPROVAL_TOKEN` header credential. The backend derives `owner` from `DATA_JOB_APPROVAL_TOKEN_ACTOR`, or `data-job-author` when that optional actor is absent. A caller's owner field cannot impersonate another author. In the API-access dialog import current OpenAPI contracts, then enter the `DATA_JOB_APPROVAL_TOKEN` profile for definition authoring/approval. The baseline seeder uses that key and the selected local/gateway routing configuration; `DATA_PIPELINE_SERVICE_TOKEN` is no longer its credential. Definitions are inserted atomically; an existing job/version returns HTTP 409 and is never overwritten during creation.
+
+`infra/windows/start-depo-postgres.ps1` starts only the explicitly selected service/portable PostgreSQL runtime. External mode makes no server changes. The installer invokes it before URL connectivity and schema migration; API startup reuses the same helper. Custom `-EnvFile` now also reaches frontend routing preflight.
+
+Every service exposes `/auth/access` for read-key validation without shared-store queries. Token-mode startup and deployment validation require the current `GRAPH_READ_TOKEN` to pass that check on all ten services. An old running process using a different key must be stopped and restarted; a missing `/auth/access` means backend modules must be upgraded together. This detects stale read keys, not every possible configuration change. Restart services after other configuration changes too.
+
+Certification now requires structured JSON acceptance evidence for this deployment and commit. Add a unique nonsecret value, for example `DEPO_DEPLOYMENT_ID=customer-depo-vm01`, to the selected root environment. Each of the four evidence JSON files must contain:
+
+```json
+{
+  "contract_version": "depo-acceptance-v1",
+  "deployment_id": "customer-depo-vm01",
+  "git_commit": "<full-release-commit>",
+  "evidence_type": "browser_acceptance",
+  "status": "pending",
+  "reviewer": "<reviewer-name>",
+  "executed_at": "<actual-UTC-time-with-Z>",
+  "checks": [{"name": "<actual-check-name>", "status": "pending"}]
+}
+```
+
+This is an intentionally nonpassing template. After executing and reviewing the real checks, record their actual results, the commit from `git rev-parse HEAD`, and the actual timezone-qualified execution timestamp. All checks and the overall status must be `passed` for certification. Use evidence types `supervisor`, `backup_restore`, `browser_acceptance`, and `rollback` in their matching files. Certification rejects failed results, wrong commits/deployments/types, empty checks, missing reviewers and future timestamps. It verifies the evidence contract, not whether a person truthfully performed the claimed check; retain supporting logs/screenshots and review them.
+
+From the repository root, after successful customer acceptance:
+
+```powershell
+.\certify-depo-release.ps1 -EnvFile .env.local -SupervisorEvidencePath release-evidence/supervisor.json -BackupRestoreEvidencePath release-evidence/backup_restore.json -BrowserAcceptanceEvidencePath release-evidence/browser_acceptance.json -RollbackEvidencePath release-evidence/rollback.json
+```
+
+Offline regression scripts exercise authorization boundaries, insert-only conflict semantics, PostgreSQL runtime selection and evidence rejection. They do not replace real concurrent PostgreSQL requests, live gateway tests or browser workflow acceptance. Do not certify a customer release from offline checks alone.

@@ -66,6 +66,17 @@ class PostgresRegistry:
             cursor.execute("SELECT key FROM depo_registry WHERE namespace = %s AND right(key, 7) <> ':latest' ORDER BY key LIMIT %s OFFSET %s", (self.namespace, limit, offset))
             return total, [row[0] for row in cursor.fetchall()]
 
+    def create(self, key: str, value: dict[str, Any]) -> dict[str, Any]:
+        """Insert an immutable record atomically; never overwrite a conflict."""
+        if not isinstance(value, dict):
+            raise ValueError("Registry values must be JSON objects")
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("INSERT INTO depo_registry(namespace, key, value) VALUES (%s, %s, %s::jsonb) ON CONFLICT(namespace, key) DO NOTHING RETURNING value", (self.namespace, key, json.dumps(value)))
+            row = cursor.fetchone()
+            if row is None:
+                raise FileExistsError("A record with this identity already exists")
+            return row[0]
+
     def put(self, key: str, value: dict[str, Any]) -> dict[str, Any]:
         return self.put_many({key: value})[key]
 
@@ -159,6 +170,11 @@ class InMemoryRegistry:
     def all(self) -> dict[str, Any]: return dict(self.values)
     def get(self, key: str) -> dict[str, Any] | None: return self.values.get(key)
     def recent(self, limit: int = 100) -> list[dict[str, Any]]: return list(reversed(list(self.values.values())))[:limit]
+    def create(self, key: str, value: dict[str, Any]) -> dict[str, Any]:
+        if key in self.values: raise FileExistsError("A record with this identity already exists")
+        if not isinstance(value, dict): raise ValueError("Registry values must be JSON objects")
+        self.values[key] = value
+        return value
     def put(self, key: str, value: dict[str, Any]) -> dict[str, Any]: self.values[key] = value; return value
     def put_many(self, values: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]: self.values.update(values); return values
     def heartbeat(self, *, key: str, worker_id: str, lease: dict[str, Any]) -> dict[str, Any] | None:

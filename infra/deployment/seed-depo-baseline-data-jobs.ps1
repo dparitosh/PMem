@@ -8,6 +8,8 @@ $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 . (Join-Path $root 'infra/windows/runtime-config.ps1')
 $settings = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+$routing = Resolve-DepoRouting $settings
+foreach ($key in $routing.Keys) { $settings[$key] = $routing[$key] }
 if (-not $PipelineBaseUrl -and $settings.DATA_PIPELINE_SERVICE_URL) { $PipelineBaseUrl = $settings.DATA_PIPELINE_SERVICE_URL.TrimEnd('/') + '/pipeline' }
 if (-not $PipelineBaseUrl) {
   $hostName = if ($settings.DEPO_SERVICE_HOST) { $settings.DEPO_SERVICE_HOST } else { "127.0.0.1" }
@@ -18,7 +20,8 @@ if (-not $PipelineBaseUrl) {
 $manifestFile = if ($ManifestPath) { $ManifestPath } else { Join-Path $PSScriptRoot "baseline-data-jobs.json" }
 $definitions = (Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json).definitions
 $headers = @{}
-if ($settings.DATA_PIPELINE_SERVICE_TOKEN) { $headers.Authorization = "Bearer $($settings.DATA_PIPELINE_SERVICE_TOKEN)" }
+if ($settings.DATA_JOB_APPROVAL_TOKEN) { $headers.Authorization = "Bearer $($settings.DATA_JOB_APPROVAL_TOKEN)" }
+if ($settings.DEPO_APIM_SUBSCRIPTION_KEY) { $headers['Ocp-Apim-Subscription-Key'] = $settings.DEPO_APIM_SUBSCRIPTION_KEY }
 foreach ($definition in $definitions) {
   $key = "$($definition.job_id)/$($definition.version)"
   try { $current = Invoke-RestMethod -Uri "$PipelineBaseUrl/jobs/definitions/$key" -Headers $headers -TimeoutSec 20 }

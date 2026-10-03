@@ -114,10 +114,7 @@ def create(payload: dict[str, Any]) -> dict[str, Any]:
         "approved_at": None,
         "approved_by": None,
     }
-    existing = store.get(key(record["job_id"], record["version"]))
-    if existing:
-        raise FileExistsError("A job definition with this job_id and version already exists")
-    return store.put(key(record["job_id"], record["version"]), record)
+    return store.create(key(record["job_id"], record["version"]), record)
 
 
 def all_definitions() -> list[dict[str, Any]]:

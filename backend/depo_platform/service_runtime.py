@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from collections.abc import Collection
 from typing import AsyncIterator, Callable
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -130,6 +130,12 @@ def create_service_app(
         allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID", "X-Session-ID", "Ocp-Apim-Subscription-Key"],
         expose_headers=["X-Request-ID", "X-Session-ID", "X-Session-Expires-At", "X-DEPO-Run-ID", "OData-Version"],
     )
+
+    from .authorization import graph_read_identity
+
+    @app.get("/auth/access", summary="Verify service read authentication without querying shared stores")
+    def authenticated_access(identity: str = Depends(graph_read_identity)) -> dict[str, str]:
+        return {"status": "authorized", "service": title}
 
     @app.get("/healthz", include_in_schema=False)
     def liveness() -> dict[str, str]:

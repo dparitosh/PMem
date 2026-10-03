@@ -13,6 +13,7 @@ from backend.mesh_store import InMemoryRegistry
 def isolated_artifact_store(monkeypatch, tmp_path):
     monkeypatch.setenv("ARTIFACT_STORAGE", str(tmp_path / "artifacts"))
     monkeypatch.setattr("backend.data_pipeline_service.router.approval_identity", lambda *args, **kwargs: "test-operator")
+    monkeypatch.setattr("backend.data_pipeline_service.router.service_write_identity", lambda *args, **kwargs: "test-author")
     monkeypatch.setattr("backend.data_pipeline_service.speed_router.approval_identity", lambda *args, **kwargs: "test-operator")
 
 
@@ -769,3 +770,21 @@ def test_publish_run_reconciles_gateway_error_from_durable_graph_receipt(monkeyp
     assert response.status_code == 200
     assert response.json()["checkpoint"] == {"offset": 3}
     assert response.json()["output_manifest"]["publication"]["reconciled_after_gateway_error"] is True
+
+
+def test_job_definition_write_requires_key_and_ignores_spoofed_owner(monkeypatch):
+    from backend.depo_platform.authorization import service_write_identity
+    monkeypatch.setattr("backend.data_pipeline_service.router.service_write_identity", service_write_identity)
+    monkeypatch.setenv("AUTH_MODE", "token")
+    monkeypatch.setenv("DATA_JOB_APPROVAL_TOKEN", "definition-test-key")
+    monkeypatch.setenv("DATA_JOB_APPROVAL_TOKEN_ACTOR", "verified-author")
+    monkeypatch.delenv("DATA_JOB_APPROVAL_TOKEN_EXPIRES_AT", raising=False)
+    monkeypatch.delenv("DEPO_TOKEN_EXPIRES_AT", raising=False)
+    monkeypatch.setattr("backend.data_pipeline_service.job_definitions.store", InMemoryRegistry())
+    client = TestClient(app)
+    payload = {"job_id":"authenticated-quality", "name":"Quality", "version":"1.0.0", "owner":"spoofed", "job_type":"data-quality-assessment", "quality_profile":"data-quality-core-v1"}
+    assert client.post("/api/v1/pipeline/jobs/definitions", json=payload).status_code == 403
+    response = client.post("/api/v1/pipeline/jobs/definitions", json=payload, headers={"Authorization":"Bearer definition-test-key"})
+    assert response.status_code == 201
+    assert response.json()["owner"] == "verified-author"
+    assert client.post("/api/v1/pipeline/jobs/definitions", json=payload, headers={"Authorization":"Bearer definition-test-key"}).status_code == 409

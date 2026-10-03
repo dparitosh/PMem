@@ -10,7 +10,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.artifact_store import ArtifactStore
-from backend.depo_platform.authorization import approval_identity, graph_read_identity
+from backend.depo_platform.authorization import approval_identity, graph_read_identity, service_write_identity
 from backend.depo_platform.network import bounded_timeout_seconds, service_bearer_headers, gateway_subscription_headers
 
 from . import job_definitions
@@ -234,9 +234,10 @@ def get_job_definition(job_id: str, version: str) -> dict[str, Any]:
 
 
 @router.post("/jobs/definitions", status_code=201, summary="Create an immutable draft data-job definition")
-def create_job_definition(payload: dict[str, Any]) -> dict[str, Any]:
+def create_job_definition(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    actor = service_write_identity(request, token_env="DATA_JOB_APPROVAL_TOKEN", default_actor="data-job-author")
     try:
-        return job_definitions.create(payload)
+        return job_definitions.create({**payload, "owner": actor})
     except FileExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
