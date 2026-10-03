@@ -139,7 +139,7 @@ def heartbeat(record: dict[str, Any], *, worker_id: str, lease_seconds: int = 30
     lease = {**(record.get("lease") or {}), "heartbeat_at": now.isoformat(),
              "expires_at": (now + timedelta(seconds=lease_seconds)).isoformat()}
     if hasattr(store, "heartbeat"):
-        updated = store.heartbeat(key=record["run_id"], worker_id=worker_id, lease=lease)
+        updated = store.heartbeat(key=record["run_id"], worker_id=worker_id, attempt=int(record.get("attempt") or 0), lease=lease)
         if not updated:
             raise ValueError("Worker no longer owns this run lease")
         return updated
@@ -242,7 +242,9 @@ def publication_succeeded(record: dict[str, Any], publication: dict[str, Any]) -
     reporting a failure for a successfully published batch.
     """
     output = dict(record.get("output_manifest") or {})
-    if output.get("checkpoint_state") == "advanced":
+    if output.get("publication"):
+        if output["publication"] != publication:
+            raise ValueError("Run already has a different publication receipt")
         return record
     if publication.get("status") != "published":
         raise ValueError("Canonical publication did not report success")

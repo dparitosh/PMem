@@ -11,6 +11,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import OntologyMetadataForm from './OntologyMetadataForm';
+import SemanticBridgeJobs from './ontology/SemanticBridgeJobs';
 import { API_METHODS, apiClient, getClientSessionId, setClientSessionId } from '../services/apiClient';
 import { serviceAuthHeaders, getCredentialProfile } from '../services/serviceAuth';
 import { useOntologies } from '../contexts/OntologyContext';
@@ -88,7 +89,6 @@ export default function DataImportPipeline() {
   const [workflowSourceFileId, setWorkflowSourceFileId] = useState('');
   const [workflowRun, setWorkflowRun] = useState(null);
   const [workflowLoading, setWorkflowLoading] = useState(false);
-  const [workflowApplyLinks, setWorkflowApplyLinks] = useState(false);
 
   function normalizeOntologyOptions(ontologyList = []) {
     const allOntologies = ontologyList.map(ont => ({
@@ -323,12 +323,6 @@ export default function DataImportPipeline() {
       setWorkflowTargetOntologyId('');
     }
   }, [selectedWorkflow, workflowOntologyId, workflowTargetOntologyId]);
-
-  useEffect(() => {
-    if (selectedWorkflow !== 'instance.link' && workflowApplyLinks) {
-      setWorkflowApplyLinks(false);
-    }
-  }, [selectedWorkflow, workflowApplyLinks]);
 
   useEffect(() => {
     if (selectedWorkflow !== 'instance.link' && workflowSourceFileId) {
@@ -1256,7 +1250,7 @@ export default function DataImportPipeline() {
       source_ontology_id: workflowOntologyId,
       import_artifact_manifest: selectedImportManifest,
       import_source_file_id: selectedImportArtifactEntry?.fileId || null,
-      apply_links: selectedWorkflow === 'instance.link' ? workflowApplyLinks : false,
+      apply_links: false,
     };
     if (selectedWorkflow === 'ontology.merge') {
       payload.target_ontology_id = workflowTargetOntologyId;
@@ -2272,21 +2266,7 @@ export default function DataImportPipeline() {
               </>
             )}
             {selectedWorkflow === 'instance.link' && (
-              <label style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '10px',
-                color: C.textPrimary,
-                fontWeight: '600',
-              }}>
-                <input
-                  type="checkbox"
-                  checked={workflowApplyLinks}
-                  onChange={(e) => setWorkflowApplyLinks(e.target.checked)}
-                />
-                Apply approved links to Neo4j
-              </label>
+              <SemanticBridgeJobs ontologyId={workflowOntologyId} importTaskId={selectedImportArtifactEntry?.artifactManifest?.task_id || ''} />
             )}
             {selectedWorkflow === 'instance.link' && (
               <div style={{
@@ -2299,7 +2279,7 @@ export default function DataImportPipeline() {
                 fontSize: '10px',
                 lineHeight: 1.45,
               }}>
-                <strong style={{ color: C.textPrimary }}>Bridge sequence:</strong> select the completed import artifact, choose the target ontology, run preview, review candidates, then apply approved links. For CAD STEP/STP/STPX, use <strong style={{ color: C.primary }}>{ap242OntologyOption?.name || 'step_ap242_mbd3d / AP242 MBD/3D'}</strong>; this creates semantic mapping relationships and class links for matched instances.
+                <strong style={{ color: C.textPrimary }}>Bridge sequence:</strong> select the completed import artifact, choose the target ontology, create a Bridge preview job, review candidate IDs, then publish approved mappings. For CAD STEP/STP/STPX, use <strong style={{ color: C.primary }}>{ap242OntologyOption?.name || 'step_ap242_mbd3d / AP242 MBD/3D'}</strong>; this creates semantic mapping relationships and class links for matched instances.
                 {!ap242OntologyOption && (
                   <span style={{ display: 'block', color: C.orange, fontWeight: 700, marginTop: '3px' }}>
                     AP242 ontology is not registered yet. Upload AP242 MBD/3D ontology in Create ontology before applying STEP links.
@@ -2376,9 +2356,7 @@ export default function DataImportPipeline() {
                 )}
                 {selectedWorkflow === 'instance.link' && workflowRun?.result?.summary && (
                   <div style={{ marginTop: '6px', color: C.textPrimary }}>
-                    {workflowApplyLinks
-                      ? 'Only high-confidence, non-ambiguous semantic links are written to Neo4j.'
-                      : 'Dry-run mode: review entity, attribute, relationship, and metadata mappings before applying links to Neo4j.'}
+                    Preview report. Use the Bridge job above to review and publish candidate IDs.
                   </div>
                 )}
                 {selectedWorkflow === 'ontology.merge' && (
@@ -2912,7 +2890,7 @@ export default function DataImportPipeline() {
               fontSize: '10px',
               lineHeight: 1.45,
             }}>
-              <strong>STEP/AP242 guidance:</strong> 1. Start this import and commit the CAD graph. 2. Switch workflow to <strong>Link instances to ontology</strong>. 3. Select the completed STEP import as source instance. 4. Select <strong>{ap242OntologyOption?.name || 'step_ap242_mbd3d / AP242 MBD/3D'}</strong>. 5. Keep <strong>Apply approved links to Neo4j</strong> enabled and run the bridge.
+              <strong>STEP/AP242 guidance:</strong> 1. Start this import and commit the CAD graph. 2. Switch workflow to <strong>Link instances to ontology</strong>. 3. Select the completed STEP import as source instance. 4. Select <strong>{ap242OntologyOption?.name || 'step_ap242_mbd3d / AP242 MBD/3D'}</strong>. 5. Create a Bridge preview, review candidate IDs, and publish approved mappings.
               {!ap242OntologyOption && (
                 <span style={{ display: 'block', color: C.orange, fontWeight: 700, marginTop: '3px' }}>
                   AP242 ontology is not visible in the catalog yet. Upload/register it before semantic linking.

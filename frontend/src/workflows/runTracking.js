@@ -10,7 +10,7 @@ export function readRequestedRunId(hash = '') {
 }
 export function governedRunStatus(run) {
   const status = String(run.status || 'unknown');
-  return { dataJobRunId: run.run_id, governedImport: true, stage: ['completed', 'failed', 'cancelled'].includes(status) ? 'complete' : 'convert', backendStage: status, status,
-    progress: status === 'completed' ? 100 : 10, error: status === 'failed' || status === 'cancelled',
-    message: `Governed run ${run.run_id}: ${status}. Open Data Flow for retained evidence.`, lastUpdatedAt: new Date().toISOString() };
+  return { dataJobRunId: run.run_id, governedImport: true, stage: ['completed', 'quality_warning', 'failed', 'cancelled'].includes(status) ? 'complete' : 'convert', backendStage: status, status,
+    progress: ['completed', 'quality_warning'].includes(status) ? 100 : 10, error: status === 'failed' || status === 'cancelled',
+    qualityWarning: status === 'quality_warning', message: status === 'quality_warning' ? `Run ${run.run_id} finished with quality findings. Review retained evidence in Data Flow before publication.` : `Governed run ${run.run_id}: ${status}. Open Data Flow for retained evidence.`, lastUpdatedAt: new Date().toISOString() };
 }

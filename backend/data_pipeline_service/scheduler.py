@@ -72,7 +72,7 @@ class ScheduledJobSupervisor:
                 if not prior or prior.get("job_id") != definition["job_id"] or prior.get("job_version") != definition["version"]:
                     self._last_error = f"Scheduled job {definition['job_id']} has no compatible replay input"
                     continue
-                latest = next((run for run in run_records.list_runs(limit=1000) if run.get("job_id") == definition["job_id"] and run.get("job_version") == definition["version"]), None)
+                latest = run_records.store.latest_job_run(definition["job_id"], definition["version"])
                 if latest and self._seconds_since(latest.get("started_at")) < int(schedule["interval_seconds"]):
                     continue
                 payload = {**run_records.replay_payload(prior), "execution_actor": "pipeline-scheduler"}

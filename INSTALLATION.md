@@ -2733,3 +2733,14 @@ The worker checks run ownership, attempt identity, and lease expiry before execu
 Catalog reconciliation reads a bounded batch of due records, serializes publication, retry, and revocation with a per-product advisory lock, and conditionally updates unchanged records. HTTP 409 means another product operation owns the lock; retry after it completes. A remote catalog call and a local PostgreSQL update are not one atomic transaction.
 
 Code Network excludes generated `dist` files and includes JavaScript modules, PowerShell, SQL, and JSON source files. Literal file references and Python launch references contribute impact edges. Dynamic paths and environment-dependent routing still require manual inspection; the complete graph analysis requires the installed NetworkX dependency. Registry namespace ownership is recorded in `docs/architecture/REGISTRY_NAMESPACE_OWNERSHIP.md`.
+
+
+## Tracked imports, Bridge approval, and publication retries
+
+Standalone ingestion on port 8014 hosts `/api/v1/import/upload`, `/status/{task_id}`, `/preview/{task_id}`, `/pre-commit/{task_id}`, `/commit/{task_id}`, and `/cancel/{task_id}`. Configure `INGESTION_WRITE_TOKEN` for upload, cancellation, and commit; use `GRAPH_READ_TOKEN` for status, preview, and pre-commit reads. Commit additionally requires the approver and approval key through the frontend review dialog. Restart services after updating server keys. Import API access profiles must match the keys loaded by the running services.
+
+For instance-to-ontology linking, select a completed instance import and target ontology in Import. Use the embedded Bridge job controls to create a preview, review candidate IDs, and publish approved mappings. The older semantic workflow report is preview-only.
+
+After a concurrent-change conflict, refresh the job definition before retrying; stale approval must not undo disable. Quality-warning runs are finished executions requiring evidence review; they are not automatically approved for publication.
+
+The first semantic publication attempt binds its ontology, prefix, release, source, and batch digest. Retry the same values to reconcile an interrupted call. Conflicting destinations return HTTP 409. Published runs return the stored receipt even without a checkpoint. Do not change destinations to bypass an uncertain result.

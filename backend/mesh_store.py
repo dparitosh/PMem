@@ -57,6 +57,12 @@ class PostgresRegistry:
             )
             return [row[0] for row in cursor.fetchall()]
 
+    def latest_job_run(self, job_id: str, version: str) -> dict[str, Any] | None:
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT value FROM depo_registry WHERE namespace=%s AND value->>'job_id'=%s AND value->>'job_version'=%s ORDER BY (value->>'started_at')::timestamptz DESC, key DESC LIMIT 1", (self.namespace, job_id, version))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
     def page_keys(self, offset: int, limit: int) -> tuple[int, list[str]]:
         """Page identifiers without loading every manifest into process memory."""
         if offset < 0 or not 1 <= limit <= 200:
@@ -154,13 +160,15 @@ class PostgresRegistry:
                 raise ValueError("Worker no longer owns this run lease")
             return row[0]
 
-    def heartbeat(self, *, key: str, worker_id: str, lease: dict[str, Any]) -> dict[str, Any] | None:
+    def heartbeat(self, *, key: str, worker_id: str, attempt: int, lease: dict[str, Any]) -> dict[str, Any] | None:
         with self._connect() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """UPDATE depo_registry SET value=jsonb_set(value,'{lease}',%s::jsonb), updated_at=now()
                    WHERE namespace=%s AND key=%s AND value->>'status'='running' AND value->>'worker_id'=%s
+                     AND COALESCE((value->>'attempt')::int,0)=%s
+                     AND (value->'lease'->>'expires_at')::timestamptz > now()
                    RETURNING value""",
-                (json.dumps(lease), self.namespace, key, worker_id),
+                (json.dumps(lease), self.namespace, key, worker_id, attempt),
             )
             row = cursor.fetchone()
             return row[0] if row else None
@@ -184,6 +192,9 @@ class InMemoryRegistry:
     def __init__(self, namespace: str = "test") -> None: self.values: dict[str, dict[str, Any]] = {}
     def all(self) -> dict[str, Any]: return dict(self.values)
     def get(self, key: str) -> dict[str, Any] | None: return self.values.get(key)
+    def latest_job_run(self, job_id, version):
+        matches = [v for v in self.values.values() if v.get('job_id') == job_id and v.get('job_version') == version]
+        return max(matches, key=lambda v: v.get('started_at', ''), default=None)
     def recent(self, limit: int = 100) -> list[dict[str, Any]]: return list(reversed(list(self.values.values())))[:limit]
     def create(self, key: str, value: dict[str, Any]) -> dict[str, Any]:
         if key in self.values: raise FileExistsError("A record with this identity already exists")
@@ -199,9 +210,10 @@ class InMemoryRegistry:
         if self.values.get(key) != expected: return False
         self.values[key] = value
         return True
-    def heartbeat(self, *, key: str, worker_id: str, lease: dict[str, Any]) -> dict[str, Any] | None:
+    def heartbeat(self, *, key: str, worker_id: str, attempt: int, lease: dict[str, Any]) -> dict[str, Any] | None:
         value = self.values.get(key)
-        if not value or value.get("status") != "running" or value.get("worker_id") != worker_id: return None
+        if not value or value.get("status") != "running" or value.get("worker_id") != worker_id or value.get("attempt") != attempt: return None
+        if datetime.fromisoformat(value["lease"]["expires_at"]) <= datetime.now(timezone.utc): return None
         return self.put(key, {**value, "lease": lease})
     @contextmanager
     def advisory_lock(self, key: str):

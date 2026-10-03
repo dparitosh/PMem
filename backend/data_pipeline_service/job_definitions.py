@@ -125,6 +125,12 @@ def get(job_id: str, version: str) -> dict[str, Any] | None:
     return store.get(key(job_id, version))
 
 
+def _update(record: dict[str, Any], updated: dict[str, Any]) -> dict[str, Any]:
+    if not store.compare_and_put(key(record['job_id'], record['version']), record, updated):
+        raise ValueError('Job definition changed concurrently; reload before retrying')
+    return updated
+
+
 def approve(job_id: str, version: str, approved_by: str) -> dict[str, Any]:
     record = get(job_id, version)
     if not record:
@@ -132,7 +138,7 @@ def approve(job_id: str, version: str, approved_by: str) -> dict[str, Any]:
     if record["lifecycle_state"] == "disabled":
         raise ValueError("A disabled job version cannot be approved")
     approved = {**record, "lifecycle_state": "approved", "approved_at": now(), "approved_by": approved_by}
-    return store.put(key(job_id, version), approved)
+    return _update(record, approved)
 
 
 def disable(job_id: str, version: str, disabled_by: str) -> dict[str, Any]:
@@ -140,7 +146,7 @@ def disable(job_id: str, version: str, disabled_by: str) -> dict[str, Any]:
     if not record:
         raise LookupError("Data job definition was not found")
     disabled = {**record, "enabled": False, "lifecycle_state": "disabled", "disabled_at": now(), "disabled_by": disabled_by}
-    return store.put(key(job_id, version), disabled)
+    return _update(record, disabled)
 
 
 def configure_schedule(job_id: str, version: str, payload: dict[str, Any], configured_by: str) -> dict[str, Any]:
@@ -158,11 +164,11 @@ def configure_schedule(job_id: str, version: str, payload: dict[str, Any], confi
         "schedule": {**schedule, "configured_at": now(), "configured_by": configured_by},
         "retry_policy": dict(payload.get("retry_policy") or record.get("retry_policy") or {"max_attempts": 1, "backoff_seconds": 30}),
     }
-    return store.put(key(job_id, version), updated)
+    return _update(record, updated)
 
 
 def clear_schedule(job_id: str, version: str, configured_by: str) -> dict[str, Any]:
     record = get(job_id, version)
     if not record:
         raise LookupError("Data job definition was not found")
-    return store.put(key(job_id, version), {**record, "schedule": None, "schedule_cleared_at": now(), "schedule_cleared_by": configured_by})
+    return _update(record, {**record, "schedule": None, "schedule_cleared_at": now(), "schedule_cleared_by": configured_by})

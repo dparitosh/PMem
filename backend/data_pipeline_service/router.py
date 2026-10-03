@@ -144,7 +144,11 @@ def execute_configured_job(definition: dict[str, Any], payload: dict[str, Any], 
     except Exception as exc:
         run_records.failed(run, str(exc))
         raise
-    persisted = run_records.complete(run, result)
+    try:
+        persisted = run_records.complete(run, result)
+    except Exception as exc:
+        run_records.failed(run, 'Handler finished but result persistence failed; inspect external effects before replay: ' + str(exc))
+        raise
     return {**result, "configured_job": {field: definition[field] for field in ("job_id", "name", "version", "job_type", "quality_profile", "owner")}, "run_manifest": persisted}
 
 
@@ -268,6 +272,8 @@ def disable_job_definition(job_id: str, version: str, payload: dict[str, Any], r
         return job_definitions.disable(job_id, version, approver)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise _registry_error(exc) from exc
 
@@ -296,6 +302,8 @@ def disable_job_schedule(job_id: str, version: str, payload: dict[str, Any], req
         return job_definitions.clear_schedule(job_id, version, actor)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise _registry_error(exc) from exc
 
@@ -349,74 +357,88 @@ def get_job_run(run_id: str) -> dict[str, Any]:
 async def publish_job_run(run_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
     """Use the canonical CEIM API; advance the checkpoint only after success."""
     actor = approval_identity(request, payload, token_env="CEIM_PUBLISH_APPROVAL_TOKEN")
-    try:
-        record = run_records.get(run_id)
-        if not record:
-            raise LookupError("Data job run was not found")
-        output = dict(record.get("output_manifest") or {})
-        if output.get("checkpoint_state") == "advanced":
-            return record
-        if record.get("status") != "completed" or record.get("job_type") not in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim"}:
-            raise ValueError("Only a completed semantic batch can be published")
-        artifact_id = str((output.get("partition_artifacts") or {}).get("accepted") or "")
-        metadata, path = ArtifactStore().resolve(artifact_id)
-        if metadata.get("kind") != "accepted-semantic-partition":
-            raise ValueError("Run does not reference an accepted semantic partition")
-        batch = json.loads(path.read_text(encoding="utf-8"))
-        ontology_id = str(payload.get("ontology_id") or f"ceim-{batch.get('standard') or record.get('source_standard') or 'batch'}").strip().lower()
-        publication_payload = {
-            **batch,
-            "ontology_id": ontology_id, "prefix": payload.get("prefix", "ceim"),
-            "semantic_release": payload.get("semantic_release"),
-            "source_system": payload.get("source_system") or batch.get("source_system") or record.get("source_system"),
-            # A stable run id makes a successful graph commit recoverable if
-            # the caller loses the CEIM response while the commit completes.
-            "publication_id": run_id,
-            "approved_by": actor, "approval_token": payload.get("approval_token"),
-        }
-        ceim_url = service_url("CEIM_SERVICE_URL", "http://127.0.0.1:8018/api/v1")
-        ceim_root = ceim_url if ceim_url.endswith("/api/v1") else f"{ceim_url}/api/v1"
-        forwarded_headers = {
-            key: value for key, value in request.headers.items()
-            if key.lower() in {"x-ms-client-principal", "x-depo-principal-id", "x-depo-roles"}
-        }
-        forwarded_headers.update(service_bearer_headers(
-            "CEIM_PUBLISH_APPROVAL_TOKEN", service_name="CEIM", endpoint=ceim_root,
-        ))
-        publication_timeout = bounded_timeout_seconds("GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180)
+    with run_records.store.advisory_lock('publish:' + run_id) as acquired:
+        if not acquired:
+            raise HTTPException(status_code=409, detail='Run publication is already in progress; retry to reconcile')
         try:
-            async with httpx.AsyncClient(timeout=publication_timeout) as client:
-                response = await client.post(f"{ceim_root}/ceim/publications/graph", json=publication_payload, headers=forwarded_headers)
-        except httpx.TimeoutException as exc:
-            # Never retry a mutation blindly. Query the graph's durable
-            # receipt keyed by this run before reporting an uncertain result.
-            receipt = await _reconcile_graph_publication(
-                ontology_id=ontology_id, publication_id=run_id, headers=forwarded_headers, timeout_seconds=publication_timeout,
-            )
-            if receipt:
-                return run_records.publication_succeeded(record, {
-                    "status": "published", "ontology_id": ontology_id,
-                    "publication_id": run_id, "reconciled_after_timeout": True, "publication": receipt,
-                })
-            raise RuntimeError("Canonical publication timed out and no durable graph receipt was found; retry the same run to reconcile safely") from exc
-        if response.is_error:
-            if response.status_code in {502, 503, 504}:
+            record = run_records.get(run_id)
+            if not record:
+                raise LookupError("Data job run was not found")
+            output = dict(record.get("output_manifest") or {})
+            if record.get("status") != "completed" or record.get("job_type") not in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim"}:
+                raise ValueError("Only a completed semantic batch can be published")
+            artifact_id = str((output.get("partition_artifacts") or {}).get("accepted") or "")
+            metadata, path = ArtifactStore().resolve(artifact_id)
+            if metadata.get("kind") != "accepted-semantic-partition":
+                raise ValueError("Run does not reference an accepted semantic partition")
+            batch = json.loads(path.read_text(encoding="utf-8"))
+            ontology_id = str(payload.get("ontology_id") or f"ceim-{batch.get('standard') or record.get('source_standard') or 'batch'}").strip().lower()
+            publication_payload = {
+                **batch,
+                "ontology_id": ontology_id, "prefix": payload.get("prefix", "ceim"),
+                "semantic_release": payload.get("semantic_release"),
+                "source_system": payload.get("source_system") or batch.get("source_system") or record.get("source_system"),
+                # A stable run id makes a successful graph commit recoverable if
+                # the caller loses the CEIM response while the commit completes.
+                "publication_id": run_id,
+                "approved_by": actor, "approval_token": payload.get("approval_token"),
+            }
+            intent = {key: publication_payload.get(key) for key in ("ontology_id", "prefix", "semantic_release", "source_system")}
+            intent['batch_digest'] = run_records._digest(batch)
+            previous_intent = output.get('publication_intent')
+            previous_receipt = output.get('publication')
+            if previous_intent and previous_intent != intent:
+                raise ValueError('Run publication destination or content differs from the first attempt')
+            if previous_receipt:
+                if previous_receipt.get('ontology_id') != ontology_id:
+                    raise ValueError('Run already published to a different ontology')
+                return record
+            output['publication_intent'] = intent
+            record = {**record, 'output_manifest': output}
+            run_records.store.put(run_id, record)
+            ceim_url = service_url("CEIM_SERVICE_URL", "http://127.0.0.1:8018/api/v1")
+            ceim_root = ceim_url if ceim_url.endswith("/api/v1") else f"{ceim_url}/api/v1"
+            forwarded_headers = {
+                key: value for key, value in request.headers.items()
+                if key.lower() in {"x-ms-client-principal", "x-depo-principal-id", "x-depo-roles"}
+            }
+            forwarded_headers.update(service_bearer_headers(
+                "CEIM_PUBLISH_APPROVAL_TOKEN", service_name="CEIM", endpoint=ceim_root,
+            ))
+            publication_timeout = bounded_timeout_seconds("GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180)
+            try:
+                async with httpx.AsyncClient(timeout=publication_timeout) as client:
+                    response = await client.post(f"{ceim_root}/ceim/publications/graph", json=publication_payload, headers=forwarded_headers)
+            except httpx.TimeoutException as exc:
+                # Never retry a mutation blindly. Query the graph's durable
+                # receipt keyed by this run before reporting an uncertain result.
                 receipt = await _reconcile_graph_publication(
                     ontology_id=ontology_id, publication_id=run_id, headers=forwarded_headers, timeout_seconds=publication_timeout,
                 )
                 if receipt:
                     return run_records.publication_succeeded(record, {
                         "status": "published", "ontology_id": ontology_id,
-                        "publication_id": run_id, "reconciled_after_gateway_error": True, "publication": receipt,
+                        "publication_id": run_id, "reconciled_after_timeout": True, "publication": receipt,
                     })
-            raise RuntimeError(f"Canonical publication returned HTTP {response.status_code}: {response.text[:500]}")
-        return run_records.publication_succeeded(record, dict(response.json()))
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except (RuntimeError, httpx.HTTPError) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+                raise RuntimeError("Canonical publication timed out and no durable graph receipt was found; retry the same run to reconcile safely") from exc
+            if response.is_error:
+                if response.status_code in {502, 503, 504}:
+                    receipt = await _reconcile_graph_publication(
+                        ontology_id=ontology_id, publication_id=run_id, headers=forwarded_headers, timeout_seconds=publication_timeout,
+                    )
+                    if receipt:
+                        return run_records.publication_succeeded(record, {
+                            "status": "published", "ontology_id": ontology_id,
+                            "publication_id": run_id, "reconciled_after_gateway_error": True, "publication": receipt,
+                        })
+                raise RuntimeError(f"Canonical publication returned HTTP {response.status_code}: {response.text[:500]}")
+            return run_records.publication_succeeded(record, dict(response.json()))
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (RuntimeError, httpx.HTTPError) as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/jobs/runs/{run_id}/replay", summary="Replay a retained immutable data-job input")

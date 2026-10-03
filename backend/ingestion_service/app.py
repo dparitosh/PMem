@@ -41,3 +41,6 @@ app.include_router(documents_router, prefix="/api/v1", dependencies=[Depends(_in
 
 from backend.routes.sysml_v2_routes import router as sysml_readiness_router
 app.include_router(sysml_readiness_router, prefix="/api/v1")
+
+from .tracked_import import router as tracked_import_router
+app.include_router(tracked_import_router, prefix="/api/v1")

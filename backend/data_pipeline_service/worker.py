@@ -38,7 +38,8 @@ def run() -> None:
         lease_lost = threading.Event()
         lease_record = [record]
         def renew_lease() -> None:
-            while not heartbeat_stop.wait(max(10, lease_seconds // 3)):
+            stale_seconds = max(30, min(int(os.getenv("DEPO_PIPELINE_WORKER_STALE_SECONDS", "60")), 3600))
+            while not heartbeat_stop.wait(min(max(1, lease_seconds // 3), stale_seconds / 3)):
                 try:
                     lease_record[0] = run_records.heartbeat(lease_record[0], worker_id=worker_id, lease_seconds=lease_seconds)
                 except Exception:

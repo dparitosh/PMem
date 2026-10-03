@@ -55,7 +55,7 @@ export function getWorkflowNote({
   if (!canRunSelectedWorkflow) return `${fallbackWorkflow.title} is not connected yet.`;
   if (selectedWorkflow === 'instance.link') {
     return selectedImportArtifactEntry
-      ? 'Review one imported instance artifact against one ontology, then preview or apply semantic mappings.'
+      ? 'Review one imported instance artifact against one ontology, create a Bridge job preview, review candidate IDs, then publish approved mappings.'
       : 'Select one completed import artifact first, then choose the ontology you want to align against.';
   }
   if (selectedWorkflow === 'ontology.create') return 'Use this workflow only for ontology or schema registration. XSD, OWL, RDF, TTL, XMI, MDXML, and EXPRESS files belong here; instance files belong in Import instance graph.';

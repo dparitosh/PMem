@@ -3693,6 +3693,8 @@ class UnifiedDataImportService:
                 raise ValueError(f"Task not found: {task_id}")
 
         task = import_tasks[task_id]
+        if task.get('committing'):
+            raise ValueError('Import commit is already in progress; poll its status')
         from .import_completeness import require_complete_archimate
         require_complete_archimate(task)
 
