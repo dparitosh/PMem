@@ -192,6 +192,17 @@ foreach ($worker in $services | Where-Object { $null -eq $_.Port }) {
     throw "DEPO worker '$($worker.Name)' exited during startup. Check $stateDir\$($worker.Name).err.log."
   }
 }
+if ($env:DEPO_PIPELINE_EXECUTION_MODE -eq 'worker') {
+  $executionDeadline = (Get-Date).AddSeconds(30)
+  $executionReady = $false
+  do {
+    try {
+      $execution = Invoke-RestMethod -Uri "http://${peerHost}:8019/api/v1/pipeline/execution-ready" -TimeoutSec 5
+      $executionReady = $execution.status -eq 'ready'
+    } catch { Start-Sleep -Milliseconds 500 }
+  } while (-not $executionReady -and (Get-Date) -lt $executionDeadline)
+  if (-not $executionReady) { throw 'Pipeline API is alive but no current worker heartbeat is available. Check data-pipeline-worker logs and PostgreSQL connectivity.' }
+}
 } catch {
   foreach ($startedService in @($startedServices | Sort-Object { [int]$_.ProcessId } -Descending)) {
     Stop-Process -Id $startedService.ProcessId -Force -ErrorAction SilentlyContinue

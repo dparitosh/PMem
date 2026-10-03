@@ -111,6 +111,12 @@ if (-not $SkipEndpointChecks) {
         if ($access.status -ne 'authorized') { throw 'Access was not authorized.' }
       } catch { throw "$($service.id) rejected the configured read key. Restart services after key changes and verify matching release versions." }
     }
+    if ($service.id -eq 'data-pipeline' -and $values.DEPO_PIPELINE_EXECUTION_MODE -eq 'worker') {
+      try {
+        $execution = Invoke-RestMethod -Uri "http://${hostName}:$($service.port)/api/v1/pipeline/execution-ready" -TimeoutSec 10
+        if ($execution.status -ne 'ready') { throw 'No current worker heartbeat.' }
+      } catch { throw 'Pipeline execution is unavailable although the HTTP API may be alive; check durable worker heartbeat and logs.' }
+    }
     $openapi = Invoke-RestMethod -Uri "http://${hostName}:$($service.port)/openapi.json" -TimeoutSec 10
     if ($openapi.openapi -ne "3.0.3") { throw "$($service.id) is not publishing OpenAPI 3.0.3." }
     $contractPython = Join-Path $root 'backend\.dt_venv\Scripts\python.exe'

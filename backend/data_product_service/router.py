@@ -102,14 +102,20 @@ async def _register_catalog(record: dict) -> dict:
 
 async def reconcile_pending(limit: int = 100) -> dict:
     """Durably retry pending catalog registrations; safe to invoke repeatedly."""
-    now = datetime.now(timezone.utc)
-    pending = [(key, value) for key, value in store.all().items() if value.get("status") == "pending_catalog_registration" and (not value.get("next_catalog_attempt_at") or datetime.fromisoformat(value["next_catalog_attempt_at"]) <= now)][:limit]
+    pending = store.due_pending(limit)
     published = 0
+    examined = 0
     for key, record in pending:
-        updated = await _register_catalog(record)
-        store.put(key, updated)
-        published += int(updated.get("status") == "published")
-    return {"examined": len(pending), "published": published, "pending": len(pending) - published}
+        with store.advisory_lock(key) as acquired:
+            if not acquired: continue
+            current = store.get(key)
+            if current != record: continue
+            updated = await _register_catalog(current)
+            examined += 1
+            if store.compare_and_put(key, current, updated):
+                published += int(updated.get("status") == "published")
+    return {"examined": examined, "published": published, "pending": examined - published}
+
 
 
 @router.post("/preview")
@@ -124,38 +130,44 @@ async def publish(payload: dict, request: Request) -> dict:
     if errors:
         raise HTTPException(422, {"errors": errors})
     approver = approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
-    key, existing = _key(payload), store.get(_key(payload))
-    idempotency_key = str(payload.get("idempotency_key") or "")
-    if existing and existing.get("idempotency_key") == idempotency_key and idempotency_key:
-        return existing
-    if existing and existing.get("status") == "published":
-        raise HTTPException(409, "A published product version is immutable; publish a new version")
-    try:
-        semantic_releases = [await resolve_approved_release(release) for release in payload["semantic_releases"]]
-    except ValueError as exc:
-        raise HTTPException(422, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(503, detail=str(exc)) from exc
-    try:
-        package = build_package(output_root=root, payload=payload, artifacts=artifacts)
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
-    safe_payload = {key: value for key, value in payload.items() if key not in {"approval_token", "authorization", "api_key"}}
-    record = {**safe_payload, "semantic_releases": semantic_releases, "artifacts": [metadata for metadata, _ in artifacts], "manifest": package["manifest"], "package_storage": {"zip_path": str(package["zip_path"]), "package_dir": str(package["package_dir"])}, "status": "pending_catalog_registration", "catalog_attempts": 0, "published_at": _now()}
-    store.put(key, record)
-    approval_store.put(f"{key}:{record['published_at']}", {"product": key, "approved_by": approver, "approved_at": _now()})
-    return store.put(key, await _register_catalog(record))
+    key = _key(payload)
+    with store.advisory_lock(key) as acquired:
+        if not acquired: raise HTTPException(409, "Product operation is in progress; retry after it completes")
+        existing = store.get(key)
+        idempotency_key = str(payload.get("idempotency_key") or "")
+        if existing and existing.get("idempotency_key") == idempotency_key and idempotency_key:
+            return existing
+        if existing and existing.get("status") == "published":
+            raise HTTPException(409, "A published product version is immutable; publish a new version")
+        try:
+            semantic_releases = [await resolve_approved_release(release) for release in payload["semantic_releases"]]
+        except ValueError as exc:
+            raise HTTPException(422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(503, detail=str(exc)) from exc
+        try:
+            package = build_package(output_root=root, payload=payload, artifacts=artifacts)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        safe_payload = {key: value for key, value in payload.items() if key not in {"approval_token", "authorization", "api_key"}}
+        record = {**safe_payload, "semantic_releases": semantic_releases, "artifacts": [metadata for metadata, _ in artifacts], "manifest": package["manifest"], "package_storage": {"zip_path": str(package["zip_path"]), "package_dir": str(package["package_dir"])}, "status": "pending_catalog_registration", "catalog_attempts": 0, "published_at": _now()}
+        store.put(key, record)
+        approval_store.put(f"{key}:{record['published_at']}", {"product": key, "approved_by": approver, "approved_at": _now()})
+        return store.put(key, await _register_catalog(record))
 
 
 @router.post("/{product_version}/retry-catalog")
 async def retry_catalog(product_version: str, payload: dict, request: Request) -> dict:
-    record = store.get(product_version)
-    if not record:
-        raise HTTPException(404, "Data product not found")
     approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
-    if record.get("status") == "revoked":
-        raise HTTPException(409, "A revoked product cannot be published")
-    return store.put(product_version, await _register_catalog(record))
+    with store.advisory_lock(product_version) as acquired:
+        if not acquired: raise HTTPException(409, "Product operation is in progress; retry after it completes")
+        record = store.get(product_version)
+        if not record:
+            raise HTTPException(404, "Data product not found")
+        approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
+        if record.get("status") == "revoked":
+            raise HTTPException(409, "A revoked product cannot be published")
+        return store.put(product_version, await _register_catalog(record))
 
 
 @router.post("/reconcile")
@@ -166,12 +178,15 @@ async def reconcile(payload: dict, request: Request) -> dict:
 
 @router.post("/{product_version}/revoke")
 async def revoke(product_version: str, payload: dict, request: Request) -> dict:
-    record = store.get(product_version)
-    if not record:
-        raise HTTPException(404, "Data product not found")
-    approver = approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
-    revoked = {**record, "status": "revoked", "lifecycle_state": "revoked", "revoked_by": approver, "revoked_at": _now()}
-    return store.put(product_version, await _register_catalog(revoked))
+    approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
+    with store.advisory_lock(product_version) as acquired:
+        if not acquired: raise HTTPException(409, "Product operation is in progress; retry after it completes")
+        record = store.get(product_version)
+        if not record:
+            raise HTTPException(404, "Data product not found")
+        approver = approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
+        revoked = {**record, "status": "revoked", "lifecycle_state": "revoked", "revoked_by": approver, "revoked_at": _now()}
+        return store.put(product_version, await _register_catalog(revoked))
 
 
 @router.get("", dependencies=[Depends(graph_read_identity)])

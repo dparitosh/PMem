@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from typing import Any
 
+from backend.depo_platform.execution_guard import ensure_execution_allowed
 from backend.depo_platform.postgres_schema import connect_timeout_seconds, select_schema, statement_options
 
 
@@ -68,6 +69,7 @@ class PostgresRegistry:
 
     def create(self, key: str, value: dict[str, Any]) -> dict[str, Any]:
         """Insert an immutable record atomically; never overwrite a conflict."""
+        ensure_execution_allowed()
         if not isinstance(value, dict):
             raise ValueError("Registry values must be JSON objects")
         with self._connect() as connection, connection.cursor() as cursor:
@@ -81,6 +83,7 @@ class PostgresRegistry:
         return self.put_many({key: value})[key]
 
     def put_many(self, values: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+        ensure_execution_allowed()
         if any(not isinstance(value, dict) for value in values.values()):
             raise ValueError("Registry values must be JSON objects")
         if not values:
@@ -90,6 +93,18 @@ class PostgresRegistry:
         with self._connect() as connection, connection.transaction(), connection.cursor() as cursor:
             cursor.executemany("INSERT INTO depo_registry(namespace, key, value) VALUES (%s, %s, %s::jsonb) ON CONFLICT(namespace, key) DO UPDATE SET value=excluded.value, updated_at=now()", [(self.namespace, key, json.dumps(value)) for key, value in values.items()])
         return values
+
+    def due_pending(self, limit: int = 100) -> list[tuple[str, dict[str, Any]]]:
+        bounded = max(1, min(int(limit), 1000))
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT key, value FROM depo_registry WHERE namespace=%s AND value->>'status'='pending_catalog_registration' AND (value->>'next_catalog_attempt_at' IS NULL OR (value->>'next_catalog_attempt_at')::timestamptz <= now()) ORDER BY updated_at, key LIMIT %s", (self.namespace, bounded))
+            return cursor.fetchall()
+
+    def compare_and_put(self, key: str, expected: dict[str, Any], value: dict[str, Any]) -> bool:
+        ensure_execution_allowed()
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("UPDATE depo_registry SET value=%s::jsonb, updated_at=now() WHERE namespace=%s AND key=%s AND value=%s::jsonb RETURNING key", (json.dumps(value), self.namespace, key, json.dumps(expected)))
+            return cursor.fetchone() is not None
 
     def claim_next(self, *, worker_id: str, lease_seconds: int = 300) -> dict[str, Any] | None:
         """Atomically claim one data-job registry value using SKIP LOCKED."""
@@ -177,6 +192,13 @@ class InMemoryRegistry:
         return value
     def put(self, key: str, value: dict[str, Any]) -> dict[str, Any]: self.values[key] = value; return value
     def put_many(self, values: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]: self.values.update(values); return values
+    def due_pending(self, limit=100):
+        current = datetime.now(timezone.utc)
+        return [(k,v) for k,v in self.values.items() if v.get('status') == 'pending_catalog_registration' and (not v.get('next_catalog_attempt_at') or datetime.fromisoformat(v['next_catalog_attempt_at']) <= current)][:max(1,min(int(limit),1000))]
+    def compare_and_put(self, key, expected, value):
+        if self.values.get(key) != expected: return False
+        self.values[key] = value
+        return True
     def heartbeat(self, *, key: str, worker_id: str, lease: dict[str, Any]) -> dict[str, Any] | None:
         value = self.values.get(key)
         if not value or value.get("status") != "running" or value.get("worker_id") != worker_id: return None

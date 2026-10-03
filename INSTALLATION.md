@@ -2714,3 +2714,22 @@ From the repository root, after successful customer acceptance:
 ```
 
 Offline regression scripts exercise authorization boundaries, insert-only conflict semantics, PostgreSQL runtime selection and evidence rejection. They do not replace real concurrent PostgreSQL requests, live gateway tests or browser workflow acceptance. Do not certify a customer release from offline checks alone.
+
+
+## Worker execution readiness and lease fencing
+
+API readiness and job execution readiness are separate checks. `/readyz` checks API dependencies. In worker mode, `/api/v1/pipeline/execution-ready` returns HTTP 200 only when a current worker heartbeat exists; otherwise it returns HTTP 503. Inline mode does not require a worker. Authentication is checked separately through `/auth/access`.
+
+From PowerShell on the application VM, use the configured application host in this command (the example host is `10.0.2.16`):
+
+```powershell
+Invoke-RestMethod -Uri 'http://10.0.2.16:8019/api/v1/pipeline/execution-ready'
+```
+
+Windows startup and deployment diagnostics perform this worker readiness check automatically. If it fails, inspect `logs/windows-services/data-pipeline-worker.err.log`, PostgreSQL connectivity, and worker heartbeats. A live process ID alone does not establish execution readiness.
+
+The worker checks run ownership, attempt identity, and lease expiry before execution, registry writes, artifact retention, and completion. Renewal failure prevents subsequent guarded persistence. Already running native, Spark, or external operations may finish; this mechanism cannot undo external effects and does not guarantee exactly-once execution. Review external effects before replaying a failed run.
+
+Catalog reconciliation reads a bounded batch of due records, serializes publication, retry, and revocation with a per-product advisory lock, and conditionally updates unchanged records. HTTP 409 means another product operation owns the lock; retry after it completes. A remote catalog call and a local PostgreSQL update are not one atomic transaction.
+
+Code Network excludes generated `dist` files and includes JavaScript modules, PowerShell, SQL, and JSON source files. Literal file references and Python launch references contribute impact edges. Dynamic paths and environment-dependent routing still require manual inspection; the complete graph analysis requires the installed NetworkX dependency. Registry namespace ownership is recorded in `docs/architecture/REGISTRY_NAMESPACE_OWNERSHIP.md`.

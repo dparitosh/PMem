@@ -18,10 +18,11 @@ import networkx as nx
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data" / "code_audit" / "networkx_audit.json"
 EXCLUDED = {
-    ".git", ".dt_venv", "node_modules", "build", "coverage", "__pycache__",
+    ".git", ".dt_venv", "node_modules", "build", "dist", "coverage", "__pycache__",
     "data", "ontology_uploads", "uploads", "logs", "_restore_ingest", "external",
 }
-SOURCE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx"}
+SOURCE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".ps1", ".sql", ".json"}
+JS_SUFFIXES = {".js", ".jsx", ".ts", ".tsx", ".mjs"}
 TEST_MARKERS = ("test_", ".test.", ".spec.", "tests/", "tests\\")
 JS_CALL_EXCLUSIONS = {
     "if", "for", "while", "switch", "catch", "function", "return", "typeof", "import", "require",
@@ -88,7 +89,7 @@ def js_target(path: Path, spec: str, known: set[str]) -> str | None:
     # resolve() can turn `./App` into the existing `app/` directory and make
     # the real sibling `App.js` impossible to discover.
     base = Path(os.path.normpath(path.parent / spec))
-    source_extensions = {".js", ".jsx", ".ts", ".tsx"}
+    source_extensions = JS_SUFFIXES
     if base.suffix:
         candidates = [base] if base.suffix.lower() in source_extensions else []
     else:
@@ -363,7 +364,7 @@ def audit() -> dict:
                 "routes": len(facts.routes), "top_calls": facts.calls.most_common(10),
                 "symbols": facts.definitions,
             }
-        else:
+        elif path.suffix.lower() in JS_SUFFIXES:
             imports = re.findall(
                 r"(?:"
                 r"import\s+(?:[^;]*?\s+from\s+)?"
@@ -396,6 +397,23 @@ def audit() -> dict:
                 "definitions": len(definitions), "broad_excepts": 0, "routes": 0, "top_calls": [],
                 "symbols": definitions,
             }
+
+        else:
+            facts_by_file[name] = {"definitions": 0, "broad_excepts": 0, "routes": 0, "top_calls": [], "symbols": []}
+
+        # Literal deployment/config/schema references: conservative file edges.
+        for reference in re.findall(r"[\"']([^\"'\n]+\.(?:ps1|sql|json|mjs|py))[\"']", text):
+            reference = reference.replace('\\', '/')
+            for candidate in (ROOT / reference, path.parent / reference):
+                try: target = candidate.resolve().relative_to(ROOT).as_posix()
+                except ValueError: continue
+                if target in known and target != name:
+                    graph.add_edge(name, target, kind="file_reference")
+                    break
+        if path.suffix.lower() == '.ps1':
+            for module in re.findall(r"-m\s+(backend\.[A-Za-z0-9_.]+)", text):
+                target = module_map.get(module)
+                if target: graph.add_edge(name, target, kind="launches")
 
         for match in re.finditer(r"https?://(?:localhost|127\.0\.0\.1)(?::\d+)?", text):
             findings.append({"severity": "low", "kind": "hardcoded_local_url", "file": name, "line": text[:match.start()].count("\n") + 1, "detail": match.group(0)})

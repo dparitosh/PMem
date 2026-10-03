@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from backend.artifact_store import ArtifactStore
 from backend.depo_platform.authorization import approval_identity, graph_read_identity, service_write_identity
@@ -48,6 +49,15 @@ def _worker_summary() -> dict[str, Any]:
 @router.get("/health", summary="Read Spark data-job execution readiness")
 def health() -> dict[str, Any]:
     return {"service": "data-pipeline", **runner.health(), "scheduler": _supervisor_health(), **_worker_summary()}
+
+
+@router.get("/execution-ready", summary="Check durable execution availability separately from API readiness")
+def execution_ready() -> JSONResponse:
+    try:
+        evidence = worker_status.execution_readiness()
+        return JSONResponse(status_code=200 if evidence['status'] == 'ready' else 503, content=evidence)
+    except Exception:
+        return JSONResponse(status_code=503, content={'status': 'not_ready', 'reason': 'WorkerRegistryUnavailable'})
 
 
 @router.get("/telemetry", summary="Read UI-ready job telemetry for Siemens IX/ECharts monitoring")
@@ -138,15 +148,7 @@ def execute_configured_job(definition: dict[str, Any], payload: dict[str, Any], 
     return {**result, "configured_job": {field: definition[field] for field in ("job_id", "name", "version", "job_type", "quality_profile", "owner")}, "run_manifest": persisted}
 
 
-def execute_claimed_job(definition: dict[str, Any], payload: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
-    """Execute a PostgreSQL-leased run without creating a duplicate manifest."""
-    if definition["job_type"] in {"normalize-ceim", "validate-semantic-batch", "normalize-unstructured-ceim"}:
-        standard = str(payload.get("standard") or "").strip().lower()
-        if standard not in definition.get("allowed_standards", []):
-            raise ValueError("The request standard is not allowed by this data-job definition")
-    result = handler_registry.get(definition["job_type"]).execute(runner, payload, correlation_id=run.get("correlation_id", ""))
-    persisted = run_records.complete(run, result)
-    return {**result, "run_manifest": persisted}
+from .execution import execute_claimed_job
 
 
 def _approved_definition(reference: Any) -> dict[str, Any]:

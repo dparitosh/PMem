@@ -1,6 +1,7 @@
 """Content-addressed artifact storage shared by producer services."""
 from __future__ import annotations
 
+from backend.depo_platform.execution_guard import ensure_execution_allowed
 import hashlib
 import json
 import os
@@ -97,6 +98,7 @@ class ArtifactStore:
                 metadata = {"artifact_id": artifact_id, "sha256": digest, "size": temporary.stat().st_size,
                             "filename": filename, "kind": kind, "media_type": media_type,
                             "created_at": datetime.now(timezone.utc).isoformat(), "provenance": provenance or {}}
+                ensure_execution_allowed()
                 metadata_tmp.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
                 os.replace(temporary, target)
                 os.replace(metadata_tmp, metadata_path)
@@ -108,10 +110,12 @@ class ArtifactStore:
     def ingest(self, source: Path, *, kind: str = "artifact", media_type: str = "application/octet-stream", provenance: dict[str, Any] | None = None) -> dict[str, Any]:
         if not source.is_file():
             raise ValueError("artifact source does not exist")
+        ensure_execution_allowed()
         return self._retain(self._digest(source), lambda temporary: shutil.copy2(source, temporary),
                             filename=source.name, kind=kind, media_type=media_type, provenance=provenance)
 
     def ingest_bytes(self, content: bytes, *, filename: str, kind: str = "artifact", media_type: str = "application/octet-stream", provenance: dict[str, Any] | None = None) -> dict[str, Any]:
+        ensure_execution_allowed()
         return self._retain(hashlib.sha256(content).hexdigest(), lambda temporary: temporary.write_bytes(content),
                             filename=filename, kind=kind, media_type=media_type, provenance=provenance)
 

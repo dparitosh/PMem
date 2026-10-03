@@ -7,7 +7,8 @@ import signal
 import threading
 
 from . import job_definitions, run_records, worker_status
-from .router import execute_claimed_job, runner
+from .execution import execute_claimed_job
+from .runner import runner
 
 
 def run() -> None:
@@ -34,14 +35,20 @@ def run() -> None:
             stop.wait(poll_seconds)
             continue
         heartbeat_stop = threading.Event()
+        lease_lost = threading.Event()
         lease_record = [record]
         def renew_lease() -> None:
             while not heartbeat_stop.wait(max(10, lease_seconds // 3)):
                 try:
                     lease_record[0] = run_records.heartbeat(lease_record[0], worker_id=worker_id, lease_seconds=lease_seconds)
-                    worker_status.put(worker_id, status="busy", run_id=record["run_id"], spark=runner.health())
                 except Exception:
+                    lease_lost.set()
                     heartbeat_stop.set()
+                    return
+                try:
+                    worker_status.put(worker_id, status="busy", run_id=record["run_id"], spark=runner.health())
+                except Exception as exc:
+                    logging.getLogger(__name__).warning("Worker telemetry deferred: %s", type(exc).__name__)
         heartbeat_thread = threading.Thread(target=renew_lease, name="depo-pipeline-lease-heartbeat", daemon=True)
         heartbeat_thread.start()
         definition = None
@@ -51,7 +58,7 @@ def run() -> None:
                 run_records.failed(record, "Job definition is missing, disabled, or no longer approved")
                 continue
             payload = run_records.replay_payload(record)
-            execute_claimed_job(definition, payload, record)
+            execute_claimed_job(definition, payload, record, lease_lost=lease_lost)
         except Exception as exc:
             try:
                 current_record = run_records.get(record["run_id"])

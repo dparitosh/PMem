@@ -7,7 +7,8 @@ import { apiErrorMessage } from '../utils/apiErrorMessage';
 import '../CSS/CodeAuditPage.css';
 
 const languageLabel = (language) => ({
-  '.py': 'Python', '.js': 'JavaScript', '.jsx': 'React', '.ts': 'TypeScript', '.tsx': 'React TS',
+  '.py': 'Python', '.js': 'JavaScript', '.mjs': 'JavaScript module', '.jsx': 'React', '.ts': 'TypeScript', '.tsx': 'React TS',
+  '.ps1': 'PowerShell', '.sql': 'SQL', '.json': 'JSON configuration',
 }[language] || language || 'Source');
 
 const shortFileName = (path) => {

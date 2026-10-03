@@ -33,3 +33,10 @@ def summary() -> dict[str, Any]:
     active = [item for item in workers if item["available"]]
     return {"workers": workers, "worker_count": len(active), "registered_worker_count": len(workers),
             "busy_workers": sum(1 for item in active if item.get("status") == "busy"), "worker_stale_after_seconds": stale_after}
+
+
+def execution_readiness() -> dict[str, Any]:
+    if os.getenv('DEPO_PIPELINE_EXECUTION_MODE', 'inline').strip().lower() != 'worker':
+        return {'status': 'ready', 'execution_mode': 'inline', 'worker_required': False}
+    evidence = summary()
+    return {'status': 'ready' if evidence['worker_count'] else 'not_ready', 'execution_mode': 'worker', 'worker_required': True, **evidence}
