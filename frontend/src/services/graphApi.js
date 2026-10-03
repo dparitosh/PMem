@@ -4,6 +4,13 @@ import { apiClient } from './apiClient';
 const graphUrl = (path) => buildSemanticServiceUrl('graph', path);
 
 export const graphApi = {
+  verifyAccess(token) {
+    // Verification must not depend on stale or unresolved imported metadata.
+    return apiClient.get(graphUrl('/api/v1/graph/access'), {
+      headers: { Authorization: `Bearer ${String(token || '').trim()}` },
+      timeout: 15000,
+    });
+  },
   getOverview(limit = 900, signal) {
     return apiClient.get(graphUrl('/api/v1/graph/overview'), {
       params: { limit },

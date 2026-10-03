@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import AppShell from './AppShell';
 import { graphApi } from '../services/graphApi';
-vi.mock('../services/graphApi', () => ({ graphApi: { getOverview: vi.fn() } }));
+vi.mock('../services/graphApi', () => ({ graphApi: { verifyAccess: vi.fn() } }));
 import { clearServiceAuthToken, getServiceAuthToken } from '../services/serviceAuth';
 
 // AppShell verifies our navigation contract, not Siemens IX internals. The
@@ -21,8 +21,8 @@ vi.mock('@siemens/ix-react', () => ({
 }));
 
 beforeEach(() => {
-  graphApi.getOverview.mockReset();
-  graphApi.getOverview.mockResolvedValue({ data: {} });
+  graphApi.verifyAccess.mockReset();
+  graphApi.verifyAccess.mockResolvedValue({ data: {} });
   clearServiceAuthToken();
   window.localStorage.clear();
   document.documentElement.dataset.ixColorSchema = 'light';
@@ -48,6 +48,7 @@ test('applies the standalone read key in memory and asks the active page to retr
   fireEvent.click(screen.getByRole('button', { name: 'Apply and retry' }));
 
   expect(getServiceAuthToken()).toBe('read-secret');
+  expect(graphApi.verifyAccess).toHaveBeenCalledWith('read-secret');
   await waitFor(() => expect(onServiceAuthChange).toHaveBeenCalledTimes(1));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });

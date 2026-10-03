@@ -1,3 +1,8 @@
+"""Legacy aggregate compatibility host, retained for tests and migrating callers.
+
+Customer deployment starts the ten modules in infra/deployment/services.json.
+Do not launch this module as the customer production API.
+"""
 from typing import Any, Dict
 import os
 import sys

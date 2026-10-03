@@ -7,8 +7,9 @@ and configure them separately; start DEPO before using plugin imports.
 
 Follow the [single installation sequence](../INSTALLATION.md)
 from the repository root. It is the only normative DEPO installation procedure.
-Use `infra/windows/install-depo-windows.ps1` as the single execution command;
-it owns dependency installation, frontend build, database initialization,
+Use root `install-depo.ps1` as the customer execution command; it delegates to
+`infra/windows/install-depo-windows.ps1`, which orchestrates the lifecycle. It
+owns dependency installation, frontend build, database initialization,
 service startup, validation, and release preflight. PostgreSQL, Neo4j and
 optional Java/Spark runtimes must be provisioned before that command.
 
@@ -44,7 +45,8 @@ Use smoke-job output and durable run/quality evidence for execution acceptance.
 
 The backend lifecycle script does not start a web server. After dependency
 installation, configure browser-safe service URLs/origins in `frontend/.env.local`.
-For local testing, the pipeline defaults to `http://127.0.0.1:8019`; gateway
+Without explicit routing configuration, the pipeline defaults to the browser
+host on port `8019`; gateway
 deployments use `VITE_API_GATEWAY_URL` or an explicit
 `VITE_DATA_PIPELINE_SERVICE_URL`. Never embed an admin key in frontend settings.
 
@@ -59,8 +61,9 @@ npm.cmd run dev -- --host 127.0.0.1 --port 3000
 Open `http://127.0.0.1:3000/#/data-flow` and verify health, definitions, run
 details, quality and lineage. Replay additionally requires an authorized
 execution identity through the gateway. This command is for local development;
-customer deployments must serve `frontend/dist` with their managed static web
-server and configured HTTPS/gateway authentication. Stop the local web server
+customer deployments serve `frontend/dist` with the supplied
+`infra/windows/start-depo-frontend.ps1` launcher or a customer-managed static web
+server. HTTP private-network token mode and gateway mode follow INSTALLATION.md. Stop the local web server
 with Ctrl+C. Do not expose Vite's development server as the customer web server.
 
 Enable Spark with `-EnableSpark` on the single Windows installer after installing
@@ -68,9 +71,12 @@ the supported Spark/Java runtime. Use `-EnablePipelineScheduler` to enable
 scheduled replay; this is separate from HTTP job execution. Configure
 `DEPO_SPARK_MASTER` for the chosen runtime; its default is `local[2]`.
 
-Job execution is still synchronous. The handler registry centralizes contracts
-and trusted execution strategies; it does not introduce an asynchronous worker.
-Do not configure agents to expect HTTP 202 or a durable submission queue yet.
+Customer deployments use `DEPO_PIPELINE_EXECUTION_MODE=worker`. Job submissions
+are persisted in PostgreSQL and executed by `data-pipeline-worker`; the HTTP API
+returns a run ID and clients poll its durable status. Inline execution is retained
+only for isolated developer compatibility. The outbox worker is a separate process
+for catalog registration. Use the documented endpoint response contract rather
+than assuming every workflow returns the same HTTP status.
 Cluster execution also requires shared artifact access; changing the master URL
 alone does not make local artifact paths available to remote executors.
 

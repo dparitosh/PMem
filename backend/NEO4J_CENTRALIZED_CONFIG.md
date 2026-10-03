@@ -33,11 +33,12 @@ implicitly load root `.env.local`. For a supported connection check, use
 
 ## Legacy compatibility
 
-`core/db_config.py` still searches legacy `.env` locations with `override=False`
-when configuration is first read. Deployment-injected values therefore take
-precedence. This fallback exists for older callers, not as a second installation
-procedure. Do not create new `backend/.env` files. Migrate existing required
-settings to root `.env.local` and use the lifecycle launcher.
+Managed Windows launches mark the injected environment with `DEPO_ENV_INJECTED=true`.
+`core/db_config.py` skips legacy file discovery for those launches and for
+production profiles. Missing settings fail validation instead of being filled
+from an old `.env` file. Unmanaged, nonproduction compatibility callers retain
+legacy discovery with `override=False`. Do not create new `backend/.env` files;
+migrate required settings to root `.env.local` and use the lifecycle launcher.
 
 Manual maintenance utilities have their own arguments. Inspect them before use
 and explicitly select the root `.env.local`. The supported cleanup utility

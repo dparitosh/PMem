@@ -171,7 +171,8 @@ The `/context/{elementId}` endpoint is GraphRAG-ready. It returns a bounded, con
 ## Files
 
 - Backend service: `backend/Services/modeling_service.py`
-- Backend routes: `backend/main.py`
+- Supported backend host: `backend/ontology_service/app.py` and its routers.
+- Legacy aggregate compatibility host: `backend/main.py`; not launched by customer deployment.
 - Frontend page and centralized graph-state hook: `frontend/src/pages/ModelWorkbenchPage.js`
 - Frontend styles: `frontend/src/pages/ModelWorkbenchPage.css`
 - Frontend API config: `frontend/src/config.js`

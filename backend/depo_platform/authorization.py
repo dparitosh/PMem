@@ -121,7 +121,7 @@ def graph_read_identity(request: Request) -> str:
     # token in every authentication profile. Gateway identity remains required
     # for browser requests in Entra mode, while backend GraphQL aggregation can
     # call the data-pipeline and data-product services without spoofing a user.
-    expected = os.getenv("GRAPH_READ_TOKEN", "")
+    expected = os.getenv("GRAPH_READ_TOKEN", "").strip()
     supplied = _request_api_key(request)
     if expected and supplied and hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
         require_active_token('GRAPH_READ_TOKEN')
@@ -132,7 +132,11 @@ def graph_read_identity(request: Request) -> str:
             raise HTTPException(403, "Disabled authentication is allowed only for an explicitly enabled loopback-only process")
         return "local-development"
     if mode != "entra":
-        raise HTTPException(403, "A valid graph read token is required")
+        if not expected:
+            raise HTTPException(503, "GRAPH_READ_TOKEN is not configured in the running service; configure the deployment environment and restart services")
+        if not supplied:
+            raise HTTPException(403, "Graph read Authorization header is missing; check browser credential selection and gateway forwarding")
+        raise HTTPException(403, "Graph read key does not match the running service GRAPH_READ_TOKEN; check the environment file used at startup and restart services after changes")
     _require_trusted_gateway(request)
     encoded = request.headers.get("x-ms-client-principal", "")
     try:

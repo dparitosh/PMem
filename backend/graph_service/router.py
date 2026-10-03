@@ -13,6 +13,11 @@ def health() -> dict:
     return {"service": "graph", **publisher.health()}
 
 
+@router.get("/access", summary="Verify graph read credentials without querying Neo4j")
+def access(identity: str = Depends(graph_read_identity)) -> dict:
+    return {"status": "authorized", "service": "graph"}
+
+
 @router.post("/ontologies/publish", summary="Publish a Turtle ontology as an explorable Neo4j hierarchy")
 async def publish_ontology(
     request: Request,

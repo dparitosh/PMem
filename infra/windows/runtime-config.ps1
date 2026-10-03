@@ -86,6 +86,7 @@ function Import-DepoEnvironment([string]$Root, [string]$EnvFile) {
   $routing = Resolve-DepoRouting $values
   foreach ($key in $routing.Keys) { $values[$key] = $routing[$key] }
   foreach ($key in $values.Keys) { [Environment]::SetEnvironmentVariable($key, $values[$key], 'Process') }
+  [Environment]::SetEnvironmentVariable('DEPO_ENV_INJECTED', 'true', 'Process')
 }
 
 function Assert-DepoNeo4jConfiguration([hashtable]$Values, [switch]$Production) {

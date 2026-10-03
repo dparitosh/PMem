@@ -31,10 +31,37 @@ if ($values['DEPO_ROUTING_MODE'] -and (Get-Content -LiteralPath $index -Raw) -no
   throw 'This frontend predates runtime routing. Rebuild once using npm run build in frontend.'
 }
 $indexFile = Get-Item -LiteralPath $index
-$newestSource = Get-ChildItem -LiteralPath (Join-Path $root 'frontend\src') -File -Recurse |
-  Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-if ($newestSource -and $newestSource.LastWriteTimeUtc -gt $indexFile.LastWriteTimeUtc) {
-  throw "Frontend build is stale: $($newestSource.FullName) is newer than $index. Run npm run build in frontend, then start the frontend again."
+# Configuration, dependency and public asset changes also require a rebuild.
+$frontendRoot = Join-Path $root 'frontend'
+$buildInputs = @(Get-ChildItem -LiteralPath (Join-Path $frontendRoot 'src') -File -Recurse)
+$publicRoot = Join-Path $frontendRoot 'public'
+if (Test-Path -LiteralPath $publicRoot -PathType Container) {
+  $buildInputs += @(Get-ChildItem -LiteralPath $publicRoot -File -Recurse)
+}
+$buildInputs += @(Get-ChildItem -LiteralPath $frontendRoot -File | Where-Object {
+  $_.Name -like '.env*' -or $_.Name -like 'vite.config.*' -or
+  $_.Name -in @('index.html', 'package.json', 'package-lock.json', 'buildReceipt.mjs')
+})
+$newestInput = $buildInputs | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+if ($newestInput -and $newestInput.LastWriteTimeUtc -gt $indexFile.LastWriteTimeUtc) {
+  throw "Frontend build is stale: $($newestInput.FullName) is newer than $index. Run npm run build in frontend, then start the frontend again."
+}
+# Compare content hashes as deployment copies may preserve timestamps.
+$receiptPath = Join-Path $dist 'depo-build-receipt.json'
+if (-not (Test-Path -LiteralPath $receiptPath -PathType Leaf)) {
+  throw 'Frontend build has no build receipt. Run npm run build in frontend from the current release before starting it.'
+}
+$receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
+if ($receipt.version -ne 1 -or -not $receipt.inputs) { throw 'Invalid frontend build receipt; rebuild frontend.' }
+$expectedInputs = @{}
+foreach ($property in $receipt.inputs.PSObject.Properties) { $expectedInputs[$property.Name] = [string]$property.Value }
+if ($expectedInputs.Count -ne $buildInputs.Count) { throw 'Frontend build inputs were added or removed; rebuild frontend.' }
+foreach ($inputFile in $buildInputs) {
+  $relativeInput = $inputFile.FullName.Substring($frontendRoot.Length + 1).Replace('\', '/')
+  if (-not $expectedInputs.ContainsKey($relativeInput) -or
+      (Get-FileHash -LiteralPath $inputFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedInputs[$relativeInput]) {
+    throw "Frontend build does not match input $relativeInput. Rebuild frontend before starting it."
+  }
 }
 $indexContent = Get-Content -LiteralPath $index -Raw
 $bundleMatch = [regex]::Match($indexContent, '<script[^>]+src="(/?assets/index-[^"]+\.js)"')

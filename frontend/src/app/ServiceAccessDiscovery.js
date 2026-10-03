@@ -7,7 +7,7 @@ export default function ServiceAccessDiscovery({ subscriptionKey }) {
   const [busy, setBusy] = useState(false);
   const profiles = [...new Set(results.flatMap(result => result.profiles || []))].filter(profile => profile !== 'GRAPH_READ_TOKEN');
   return <section aria-label="OpenAPI service discovery">
-    <p>Import contracts to discover service operations and their required credential profiles. Secret values are never imported. Entering a profile key stores it in this tab until Clear or reload; its validity is checked by the service when used.</p>
+    <p>Import contracts to discover service operations and their required credential profiles. Import success does not verify API keys or graph access. Secret values are never imported. Entering a profile key stores it in this tab until Clear or reload; its validity is checked by the service when used.</p>
     <button type="button" disabled={busy} onClick={async () => {
       setBusy(true);
       setGatewaySubscriptionKey(subscriptionKey);

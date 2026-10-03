@@ -159,7 +159,7 @@ export default function AppShell({
                   setServiceAuthToken(apiKey);
                   setGatewaySubscriptionKey(subscriptionKey);
                   try {
-                    await graphApi.getOverview(1);
+                    await graphApi.verifyAccess(apiKey);
                     setApiAccessConfigured(true);
                     setShowApiAccess(false);
                     onServiceAuthChange?.();
@@ -167,9 +167,12 @@ export default function AppShell({
                     setServiceAuthToken(previousReadKey);
                     setGatewaySubscriptionKey(previousSubscriptionKey);
                     const status = error?.response?.status;
+                    const serverDetail = typeof error?.response?.data?.detail === 'string' ? error.response.data.detail.slice(0, 300) : '';
+                    const rejectionDetail = serverDetail ? ` Server: ${serverDetail}` : '';
+                    const missingEndpoint = status === 404 ? ' The graph backend does not expose /graph/access. Deploy the matching backend release and restart services.' : '';
                     setAccessError(status === 401 || status === 403
-                      ? 'Graph access rejected. Use GRAPH_READ_TOKEN from the environment loaded by the running services; restart services after changing it. For APIM, also check the subscription key and Authorization forwarding.'
-                      : 'Graph access could not be verified. Check the graph service URL, connectivity and service logs.');
+                      ? `Graph access rejected. Use GRAPH_READ_TOKEN from the root .env.local loaded by the running graph service, not ADMIN_API_KEY, GRAPH_PUBLICATION_TOKEN or the APIM subscription key. Restart services after changing it. For APIM, check Authorization forwarding.${rejectionDetail}`
+                      : `Graph access could not be verified. Check the graph service URL, connectivity and service logs.${missingEndpoint}${rejectionDetail}`);
                   } finally {
                     setAccessBusy(false);
                   }

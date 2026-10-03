@@ -126,6 +126,12 @@ def _detect_deployment_type(uri: str) -> Neo4jDeploymentType:
 
 def _load_environment() -> None:
     """Load legacy defaults without replacing deployment-injected settings."""
+    # A managed deployment must never fill missing settings from old files.
+    managed = os.getenv('DEPO_ENV_INJECTED', '').lower() == 'true'
+    production = any(os.getenv(key, '').lower() in {'prod', 'production'}
+                     for key in ('DEPO_ENV', 'ENVIRONMENT', 'APP_ENV', 'DEPLOYMENT_ENV'))
+    if managed or production:
+        return
     project_root = Path(__file__).resolve().parents[2]
     possible_paths = [
         project_root / "backend" / ".env",

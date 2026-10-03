@@ -2632,3 +2632,51 @@ To inspect an already registered XSD, request `/reports/xsd-relational?ontology_
 Inspect `ddl_blockers`, `validation.formal_xsd_validation`, `analytics_schema_plan.sql`, and `data_product_draft.quality_status`. The PostgreSQL SQL is a **new-schema review plan**, not an upgrade script; it is never executed by conversion. Plans with unsupported choice/group/identity/facet mappings contain no SQL. Review-only plans never authorize automatic DDL or publish a data product. Formal grammar compilation uses lxml when installed; lack of that compiler is an explicit blocker.
 
 This product is schema-design evidence. Before building reporting tables, define fact grain, dimension keys, measure expressions, units, aggregation and history policy; then implement and approve XSD-validated instance materialization with cardinality, identity, count reconciliation and lineage checks. Those business definitions and the generic XML-to-warehouse loader are still required. No fact/dimension data or customer tables are created by this change.
+
+
+### Graph key rejected after OpenAPI import
+
+OpenAPI import discovers routes; it does not authenticate graph reads. In **API access**, paste only the value of `GRAPH_READ_TOKEN` from the root `.env.local` used to start the services. Do not paste `GRAPH_READ_TOKEN=`, `Bearer `, the administrator key, graph publication key, or APIM subscription key. Enter an APIM subscription key in its separate field when applicable.
+
+The Apply action calls `/api/v1/graph/access`, which validates read authorization without querying Neo4j. A rejected key must be corrected in the browser or the running service configuration. After changing the root `.env.local`, stop and start backend services so they load the new value. After deploying this frontend change, rebuild the frontend and reload the browser; keys are held only in tab memory.
+
+From PowerShell on the application VM, test the actual configured graph URL (replace the example host if needed) without writing the key into command history:
+
+```powershell
+$graphKey = Read-Host 'GRAPH_READ_TOKEN' -AsSecureString
+$graphCredential = New-Object System.Management.Automation.PSCredential('reader', $graphKey)
+$graphHeaders = @{ Authorization = 'Bearer ' + $graphCredential.GetNetworkCredential().Password }
+Invoke-RestMethod -Uri 'http://10.0.2.16:8013/api/v1/graph/access' -Headers $graphHeaders
+Remove-Variable graphKey, graphCredential, graphHeaders
+```
+
+For gateway mode use the configured gateway graph API base followed by `/graph/access` and supply the gateway subscription header if required. If this direct test succeeds but the browser fails, inspect the browser request URL and whether Authorization reaches the service. If it fails, use the returned detail to check the running graph service's key, expiration and authentication mode. Never include keys in screenshots or logs.
+
+
+Graph access diagnostics now distinguish these cases:
+
+- HTTP 503, `GRAPH_READ_TOKEN is not configured`: the running graph process did not load a usable read key. Check the root environment file supplied to the launcher and restart backend services.
+- HTTP 403, `Authorization header is missing`: inspect the request headers and gateway Authorization forwarding. OpenAPI import alone does not apply the read key.
+- HTTP 403, `key does not match`: use the read key loaded by the running graph service. Changing a file does not update an already running process.
+- HTTP 401, `API key has expired`: check `GRAPH_READ_TOKEN_EXPIRES_AT` and the shared `DEPO_TOKEN_EXPIRES_AT` policy with the deployment administrator.
+- HTTP 404 on `/api/v1/graph/access`: deploy the matching backend version; the browser and backend releases are out of sync.
+
+The access check explicitly sends the entered read key and does not depend on the imported contract's credential metadata. No key values are returned by this endpoint. An ingestion OpenAPI timeout is a separate connectivity/response failure; inspect the configured ingestion `/openapi.json` URL and the ingestion service logs rather than changing the graph key.
+
+
+### Prevent stale frontend and legacy deployment confusion
+
+The supported customer entry point is root `install-depo.ps1`. It orchestrates scripts under `infra/windows` and `infra/deployment`; `infra/windows/install-depo.ps1` installs dependencies only. The service inventory in `infra/deployment/services.json` defines ten APIs and two workers. Root `main.py` and `backend/main.py` are retained compatibility/test hosts, not customer startup targets.
+
+The frontend launcher checks source files, public assets, frontend environment files, Vite configuration and dependency manifests against the built index timestamp. Rebuild after changing any of those inputs. This timestamp check detects common stale builds; it is not a content-hash release attestation and preserved file timestamps can defeat it.
+
+Never add token, password, secret, API-key or subscription-key values under `VITE_*` or `REACT_APP_*` names. Vite can compile prefixed values into browser assets. The build now rejects credential-shaped setting names and reports names only. Keep server credentials in the root deployment environment and enter browser credentials through API access.
+
+
+### Build identity and compatibility configuration safeguards
+
+Rebuild once after upgrading to the build-receipt release. `npm run build` now emits `frontend/dist/depo-build-receipt.json` containing SHA-256 hashes of frontend source, public assets, environment files, Vite configuration, package manifests and the receipt plugin. The Windows frontend launcher compares the current file set and hashes with this receipt and refuses stale or missing receipts. This detects changed/deleted inputs even when deployment copies preserve timestamps. It is an input-consistency check, not a signature or complete bundle-integrity attestation. A source-free customer package needs a separate supported integrity procedure; this launcher expects the repository layout.
+
+Do not hand-edit the receipt. Run the documented frontend build after changing build inputs. Root `.env.local` runtime routing changes still use the runtime-routing launcher and are not frontend build inputs. Inherited build-only environment changes also require a rebuild; they cannot be verified from filesystem hashes.
+
+Conflicting `VITE_*` and matching `REACT_APP_*` settings now stop the build. Use the current `VITE_*` setting or identical compatibility values. The managed Windows environment importer sets `DEPO_ENV_INJECTED=true`; production and managed Neo4j consumers skip legacy `.env` discovery. Configure every required value in the selected root deployment file or process-manager environment instead of relying on old defaults.

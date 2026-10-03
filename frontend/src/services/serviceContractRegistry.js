@@ -1,5 +1,6 @@
 // Contract metadata only. Configured roots own credentials; OpenAPI servers are ignored.
 const contracts = new Map();
+const contractRoots = new Map();
 const methods = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options']);
 export function registerServiceContract(service, base, document) {
   if (!/^3\.[01]\./.test(document?.openapi || '') || !document.paths || typeof document.paths !== 'object') throw new Error('Invalid OpenAPI contract');
@@ -19,6 +20,7 @@ export function registerServiceContract(service, base, document) {
   }
   operations.sort((a, b) => (a.path.includes('{') - b.path.includes('{')) || b.path.length - a.path.length);
   contracts.set(service, operations);
+  contractRoots.set(service, base.replace(/\/$/, ''));
   return { service, operationCount: operations.length, profiles: [...new Set(operations.flatMap(operation => operation.profiles))] };
 }
 export function serviceForContractPath(path, method = null) {
@@ -29,16 +31,24 @@ export function operationForUrl(endpoint, method = 'get') {
   let target;
   try { target = new URL(endpoint); } catch { return null; }
   if (target.username || target.password) return null;
-  for (const operations of contracts.values()) {
-    for (const operation of operations) {
-      const root = new URL(operation.base);
-      if (target.origin !== root.origin || !target.pathname.startsWith(`${root.pathname.replace(/\/$/, '')}/`)) continue;
-      const path = target.pathname.slice(root.pathname.replace(/\/$/, '').length);
-      if (operation.method === method.toLowerCase() && operation.pattern.test(path)) return operation;
-    }
-  }
-  return null;
+  const owners = [...contractRoots.entries()].filter(([, base]) => {
+    const root = new URL(base);
+    return target.origin === root.origin && target.pathname.startsWith(`${root.pathname.replace(/\/$/, '')}/`);
+  }).sort((a, b) => new URL(b[1]).pathname.length - new URL(a[1]).pathname.length);
+  if (!owners.length) return null;
+  // The most specific root owns the request, even if its contract has no match.
+  const [service, base] = owners[0];
+  const path = target.pathname.slice(new URL(base).pathname.replace(/\/$/, '').length);
+  return contracts.get(service)?.find(operation => operation.method === method.toLowerCase() && operation.pattern.test(path)) || null;
 }
-export function clearServiceContracts() { contracts.clear(); }
+export function serviceContractSummary(service) {
+  const operations = contracts.get(service) || [];
+  return { service, operationCount: operations.length, profiles: [...new Set(operations.flatMap(operation => operation.profiles))] };
+}
+export function hasServiceContract(service, base) {
+  return contracts.has(service) && contractRoots.get(service) === base.replace(/\/$/, '');
+}
 
-export function removeServiceContract(service) { contracts.delete(service); }
+export function clearServiceContracts() { contracts.clear(); contractRoots.clear(); }
+
+export function removeServiceContract(service) { contracts.delete(service); contractRoots.delete(service); }
