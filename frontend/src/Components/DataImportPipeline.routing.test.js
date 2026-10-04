@@ -1,3 +1,4 @@
+import { setCredentialProfile } from '../services/serviceAuth';
 import React from 'react';
 import { act } from 'react';
 import { vi } from 'vitest';
@@ -183,7 +184,7 @@ describe('DataImportPipeline workflow routing', () => {
     expect(mockOntologyUpload).not.toHaveBeenCalled();
     expect(screen.getByText(/Metadata saved for 'BOM Ontology'. Click Start to register ontology./i)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Ingestion write API key (INGESTION_WRITE_TOKEN)'), { target: { value: 'fixture-write' } });
+    setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
       await flushAsyncEffects();

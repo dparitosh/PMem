@@ -70,16 +70,10 @@ export default function DataImportPipeline() {
   const [previewData, setPreviewData] = useState(null);
   const [confirmingImport, setConfirmingImport] = useState(null);
   const [preCheck, setPreCheck] = useState(null); // { loading, ready, checks, reason }
-  const [ingestionWriteToken, setIngestionWriteToken] = useState('');
-  const [executionToken, setExecutionToken] = useState('');
+  const ingestionWriteToken = '';
+  const executionToken = '';
   const [publishOntology, setPublishOntology] = useState(false);
-  useEffect(() => {
-    const clear = () => { setIngestionWriteToken(''); setExecutionToken(''); };
-    window.addEventListener('depo:credentials-cleared', clear);
-    return () => window.removeEventListener('depo:credentials-cleared', clear);
-  }, []);
   const [commitApprover, setCommitApprover] = useState('');
-  const [commitApprovalToken, setCommitApprovalToken] = useState('');
   const fileInputRef = useRef(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState('instance.import');
   const [showAdvancedWorkflows, setShowAdvancedWorkflows] = useState(false);
@@ -125,7 +119,7 @@ export default function DataImportPipeline() {
     }
   });
   const [mappingFileTypeContext, setMappingFileTypeContext] = useState('');
-  
+
   // Ontology metadata form for XSD/XMI files
   const [showMetadataForm, setShowMetadataForm] = useState(false);
   const [pendingFileForMetadata, setPendingFileForMetadata] = useState(null);
@@ -252,7 +246,7 @@ export default function DataImportPipeline() {
     loadOntologyOptions();
   }, [loadOntologyOptions]);
 
-  
+
 
   useEffect(() => {
     const loadWorkflowOptions = async () => {
@@ -540,7 +534,7 @@ export default function DataImportPipeline() {
       return;
     }
     if (!(ingestionWriteToken.trim() || getCredentialProfile('INGESTION_WRITE_TOKEN'))) {
-      setError('Enter INGESTION_WRITE_TOKEN in the ontology workflow credentials before starting.');
+      setError('Enter INGESTION_WRITE_TOKEN in Admin → Service credentials before starting.');
       return;
     }
     const fileId = file.fileId;
@@ -815,7 +809,7 @@ export default function DataImportPipeline() {
     const governedProfile = workflow?.id === 'instance.import' ? governedSourceProfile(file.name) : null;
     const uploadToken = (governedProfile ? executionToken : ingestionWriteToken).trim() || getCredentialProfile(governedProfile ? 'DATA_JOB_EXECUTION_TOKEN' : 'INGESTION_WRITE_TOKEN');
     if (!uploadToken) {
-      setError(`Enter ${governedProfile ? 'DATA_JOB_EXECUTION_TOKEN' : 'INGESTION_WRITE_TOKEN'} in workflow credentials before starting.`);
+      setError(`Enter ${governedProfile ? 'DATA_JOB_EXECUTION_TOKEN' : 'INGESTION_WRITE_TOKEN'} in Admin → Service credentials before starting.`);
       return;
     }
 
@@ -880,7 +874,7 @@ export default function DataImportPipeline() {
 
       setPipelineStatus(prev => ({
         ...prev,
-        [fileId]: { 
+        [fileId]: {
           ...prev[fileId],
           taskId,
           stage: 'convert',
@@ -896,11 +890,11 @@ export default function DataImportPipeline() {
       const detail = err?.response?.data?.detail || err?.response?.data?.error || err.message;
       setPipelineStatus(prev => ({
         ...prev,
-        [fileId]: { 
-          ...prev[fileId], 
-          stage: 'error', 
+        [fileId]: {
+          ...prev[fileId],
+          stage: 'error',
           message: String(detail),
-          error: true 
+          error: true
         }
       }));
       setStartedFiles(prev => {
@@ -995,7 +989,7 @@ export default function DataImportPipeline() {
           entities_found,
           relationships_found,
         };
-        
+
         const shaclConforms = data?.result?.shacl_conforms ?? data?.shacl_conforms ?? null;
         const shaclFile = data?._shacl_file ?? data?.result?._shacl_file ?? null;
 
@@ -1342,10 +1336,10 @@ export default function DataImportPipeline() {
     }
 
     // Close the review modal immediately — don't make the user wait 2-3 min
-    const approvalToken = commitApprovalToken.trim();
+    const approvalToken = getCredentialProfile('INGESTION_WRITE_TOKEN');
     const approvedBy = commitApprover.trim();
     setConfirmingImport(null);
-    setCommitApprovalToken('');
+
 
     // Mark as "loading to Neo4j" in the file card right away
     setPipelineStatus(prev => {
@@ -1496,7 +1490,7 @@ export default function DataImportPipeline() {
       setPendingMetadataFileId('');
       setMetadataFormPrefill(null);
     }
-    
+
     // Cancel task if in progress
     if (fileStatus?.taskId && fileStatus?.status === 'processing') {
       const queuedFile = files.find(item => item.fileId === fileId);
@@ -1835,14 +1829,8 @@ export default function DataImportPipeline() {
   return (
     <div style={{ background: C.bg, minHeight: '100%', padding: 0, boxSizing: 'border-box' }}>
       <fieldset style={{ marginBottom: '12px', color: C.textPrimary }}>
-        <legend>Workflow credentials</legend>
-        <label>Ingestion write API key (INGESTION_WRITE_TOKEN)
-          <input type="password" autoComplete="off" value={ingestionWriteToken} onChange={event => setIngestionWriteToken(event.target.value)} />
-        </label>
-        <label>Governed instance execution API key (DATA_JOB_EXECUTION_TOKEN)
-          <input type="password" autoComplete="off" value={executionToken} onChange={event => setExecutionToken(event.target.value)} />
-        </label>
-        <p>This key authorizes uploads. API access in the header uses GRAPH_READ_TOKEN for reading. Keys stay in memory; a full reload clears them.</p>
+        <legend>Workflow access</legend>
+        <p>Manage and validate keys in <a href="#/admin">Admin → Service credentials</a> before starting uploads or jobs.</p>
         <label><input type="checkbox" checked={publishOntology} onChange={event => setPublishOntology(event.target.checked)} /> Convert XSD/XMI to OWL, register and publish to Neo4j after policy and quality checks</label>
         <p>Leave unchecked to retain the source using the selected generation type. For a restored failed job, remove the row and select the original source file again.</p>
       </fieldset>
@@ -2584,7 +2572,7 @@ export default function DataImportPipeline() {
                   >
                     {idx + 1}
                   </div>
-                  
+
                   {/* Stage label */}
                   <div style={{
                     fontSize: '9px',
@@ -3505,7 +3493,7 @@ export default function DataImportPipeline() {
                 Preview
               </h3>
               <button
-                onClick={() => { setConfirmingImport(null); setCommitApprovalToken(''); }}
+                onClick={() => { setConfirmingImport(null);  }}
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -3673,14 +3661,13 @@ export default function DataImportPipeline() {
 
             <details style={{ marginBottom: '12px', fontSize: '12px', color: C.textSec }}>
               <summary>Approval credentials (required by token authentication for loading)</summary>
-              <p style={{ margin: '8px 0' }}>These values stay in memory and are cleared when the load starts or this dialog closes.</p>
+              <p style={{ margin: '8px 0' }}>The key is managed in Admin → Service credentials. Enter the approver here; confirmation is still required.</p>
               <label style={{ display: 'block', marginBottom: '6px' }}>
                 Approver
                 <input aria-label="Import approver" value={commitApprover} onChange={(event) => setCommitApprover(event.target.value)} autoComplete="off" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '3px' }} />
               </label>
               <label style={{ display: 'block' }}>
-                Approval API key
-                <input aria-label="Import approval API key" type="password" value={commitApprovalToken} onChange={(event) => setCommitApprovalToken(event.target.value)} autoComplete="off" style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '3px' }} />
+                Approval API key: configured in Admin → Service credentials
               </label>
             </details>
 
@@ -3691,7 +3678,7 @@ export default function DataImportPipeline() {
               justifyContent: 'flex-end',
             }}>
               <button
-                onClick={() => { setConfirmingImport(null); setCommitApprovalToken(''); }}
+                onClick={() => { setConfirmingImport(null);  }}
                 style={{
                   padding: '8px 16px',
                   background: C.border,

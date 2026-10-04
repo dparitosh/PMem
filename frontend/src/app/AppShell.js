@@ -11,10 +11,8 @@ import {
   IxMenuItem,
 } from '@siemens/ix-react';
 import { navigationItems, pageLabel } from './navigation';
-import { clearServiceAuthToken, getServiceAuthToken, setServiceAuthToken, setGatewaySubscriptionKey, getGatewaySubscriptionKey } from '../services/serviceAuth';
-import { graphApi } from '../services/graphApi';
+import { getServiceAuthToken } from '../services/serviceAuth';
 import RunRecoveryNotice from './RunRecoveryNotice';
-import ServiceAccessDiscovery from './ServiceAccessDiscovery';
 import './AppShell.css';
 
 const THEME_STORAGE_KEY = 'depo.colorSchema';
@@ -41,12 +39,13 @@ export default function AppShell({
   children,
 }) {
   const [colorSchema, setColorSchema] = useState(initialColorSchema);
-  const [showApiAccess, setShowApiAccess] = useState(false);
-  const [apiKey, setApiKey] = useState(() => getServiceAuthToken());
-  const [subscriptionKey, setSubscriptionKey] = useState(() => getGatewaySubscriptionKey());
-  const [accessBusy, setAccessBusy] = useState(false);
-  const [accessError, setAccessError] = useState('');
   const [apiAccessConfigured, setApiAccessConfigured] = useState(() => Boolean(getServiceAuthToken()));
+  useEffect(() => {
+    const changed = () => { setApiAccessConfigured(Boolean(getServiceAuthToken())); onServiceAuthChange?.(); };
+    window.addEventListener('depo:credentials-changed', changed);
+    window.addEventListener('depo:credentials-cleared', changed);
+    return () => { window.removeEventListener('depo:credentials-changed', changed); window.removeEventListener('depo:credentials-cleared', changed); };
+  }, [onServiceAuthChange]);
   useEffect(() => {
     document.documentElement.dataset.ixTheme = 'classic';
     document.documentElement.dataset.ixColorSchema = colorSchema;
@@ -92,13 +91,11 @@ export default function AppShell({
             type="button"
             variant="tertiary"
             onClick={() => {
-                setApiKey(getServiceAuthToken());
-                setSubscriptionKey(getGatewaySubscriptionKey());
-              setShowApiAccess(true);
+              onPageChange('admin');
             }}
             aria-label="Configure API access"
           >
-            API access{apiAccessConfigured ? ' configured' : ''}
+            API access{apiAccessConfigured ? ' key stored' : ''}
           </IxButton>
           <IxButton
             id="depo-chat-toggle"
@@ -145,74 +142,7 @@ export default function AppShell({
         </IxMenu>
 
         <IxContent id="main-content" className="depo-ix-content">
-          {showApiAccess && (
-            <div className="depo-api-access" role="dialog" aria-modal="true" aria-labelledby="depo-api-access-title">
-              <form
-                className="depo-api-access__panel"
-                onSubmit={async (event) => {
-                  event.preventDefault();
-                  if (accessBusy) return;
-                  setAccessBusy(true);
-                  setAccessError('');
-                  const previousReadKey = getServiceAuthToken();
-                  const previousSubscriptionKey = getGatewaySubscriptionKey();
-                  setServiceAuthToken(apiKey);
-                  setGatewaySubscriptionKey(subscriptionKey);
-                  try {
-                    await graphApi.verifyAccess(apiKey);
-                    setApiAccessConfigured(true);
-                    setShowApiAccess(false);
-                    onServiceAuthChange?.();
-                  } catch (error) {
-                    setServiceAuthToken(previousReadKey);
-                    setGatewaySubscriptionKey(previousSubscriptionKey);
-                    const status = error?.response?.status;
-                    const serverDetail = typeof error?.response?.data?.detail === 'string' ? error.response.data.detail.slice(0, 300) : '';
-                    const rejectionDetail = serverDetail ? ` Server: ${serverDetail}` : '';
-                    const missingEndpoint = status === 404 ? ' The graph backend does not expose /graph/access. Deploy the matching backend release and restart services.' : '';
-                    setAccessError(status === 401 || status === 403
-                      ? `Graph access rejected. Use GRAPH_READ_TOKEN from the root .env.local loaded by the running graph service, not ADMIN_API_KEY, GRAPH_PUBLICATION_TOKEN or the APIM subscription key. Restart services after changing it. For APIM, check Authorization forwarding.${rejectionDetail}`
-                      : `Graph access could not be verified. Check the graph service URL, connectivity and service logs.${missingEndpoint}${rejectionDetail}`);
-                  } finally {
-                    setAccessBusy(false);
-                  }
-                }}
-              >
-                <h2 id="depo-api-access-title">Standalone API access</h2>
-                <p>Enter the server GRAPH_READ_TOKEN. It remains only in this browser tab's memory and is cleared by a full reload.</p>
-                <label htmlFor="depo-api-read-key">Graph read API key</label>
-                <input
-                  id="depo-api-read-key"
-                  className="depo-api-access__input"
-                  type="password"
-                  autoComplete="off"
-                  value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                />
-                <label htmlFor="depo-apim-subscription">APIM subscription key (optional)</label>
-                <input id="depo-apim-subscription" type="password" autoComplete="off" value={subscriptionKey}
-                  onChange={(event) => setSubscriptionKey(event.target.value)} />
-                <ServiceAccessDiscovery subscriptionKey={subscriptionKey} />
-                {accessError && <p role="alert">{accessError}</p>}
-                <div className="depo-api-access__actions">
-                  <button type="button" disabled={accessBusy} onClick={() => setShowApiAccess(false)}>Cancel</button>
-                  <button
-                    type="button"
-                    disabled={accessBusy}
-                    onClick={() => {
-                      clearServiceAuthToken();
-                      setApiKey('');
-                      setSubscriptionKey('');
-                      setApiAccessConfigured(false);
-                      setShowApiAccess(false);
-                      onServiceAuthChange?.();
-                    }}
-                  >Clear</button>
-                  <button type="submit" disabled={accessBusy || !apiKey.trim()}>{accessBusy ? 'Checking access...' : 'Apply and retry'}</button>
-                </div>
-              </form>
-            </div>
-          )}
+
           <div className="depo-ix-page">
             <IxContentHeader
               headerTitle={pageLabel(activePage)}

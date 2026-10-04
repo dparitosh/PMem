@@ -13,6 +13,8 @@ from backend.postgres_migrations import MIGRATIONS, apply_migrations, migration_
 # Column/type contract for the tables owned by migrations 1-4. JSON documents
 # remain in value; there is no separate relational table for each job namespace.
 EXPECTED_COLUMNS = {
+    'depo_api_credentials': {'profile': 'text', 'salt': 'text', 'digest': 'text', 'actor': 'text', 'expires_at': 'timestamp with time zone', 'revoked': 'boolean', 'updated_at': 'timestamp with time zone'},
+    'depo_api_credential_events': {'event_id': 'bigint', 'profile': 'text', 'action': 'text', 'actor': 'text', 'created_at': 'timestamp with time zone'},
     'depo_schema_migrations': {'version': 'integer', 'name': 'text', 'checksum': 'text', 'applied_at': 'timestamp with time zone'},
     'depo_registry': {'namespace': 'text', 'key': 'text', 'value': 'jsonb', 'updated_at': 'timestamp with time zone'},
     'depo_runtime_state': {'kind': 'text', 'key': 'text', 'value': 'jsonb', 'updated_at': 'double precision'},
@@ -28,6 +30,7 @@ EXPECTED_COLUMNS = {
 }
 
 EXPECTED_CONSTRAINTS = {
+    'depo_api_credentials_pkey', 'depo_api_credential_events_pkey',
     'depo_schema_migrations_pkey', 'depo_registry_pkey', 'depo_runtime_state_pkey',
     'depo_chat_messages_pkey', 'depo_metadata_assets_pkey', 'depo_metadata_events_pkey',
     'depo_metadata_assets_revision_check', 'depo_metadata_assets_value_check',
@@ -173,6 +176,8 @@ def setup_database(*, check_only=False, connection_only=False):
                     initialise_schema(cursor)
                 verify_migration_privileges(connection)
                 apply_migrations(connection)
+                from .credentials import bootstrap_environment
+                bootstrap_environment(connection)
                 return verify_schema(connection)
         return verify_schema(connection)
 

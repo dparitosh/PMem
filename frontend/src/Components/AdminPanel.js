@@ -105,7 +105,6 @@ export default function AdminPanel({ onSchemaCleaned }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [adminKey, setAdminKey] = useState('');
   const [deleteLabel, setDeleteLabel] = useState('');
   const [deletePrefix, setDeletePrefix] = useState('');
   const [deleteProperty, setDeleteProperty] = useState('');
@@ -175,7 +174,6 @@ export default function AdminPanel({ onSchemaCleaned }) {
     return () => {
       adminLoadControllerRef.current?.abort();
       confirmationResolverRef.current?.(false);
-      setAdminApiKey('');
     };
   }, [loadAdminState]);
 
@@ -416,21 +414,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       <ConfirmationDialog confirmation={confirmation} onResolve={resolveConfirmation} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-          <label style={{ fontSize: 11, color: colors.muted }}>
-            Admin API key
-            <input
-              aria-label="Admin API key"
-              type="password"
-              value={adminKey}
-              autoComplete="off"
-              onChange={(event) => {
-                const value = event.target.value;
-                setAdminKey(value);
-                setAdminApiKey(value);
-              }}
-              style={{ marginLeft: 6, width: 180 }}
-            />
-          </label>
+          <a href="#/admin">Manage ADMIN_API_KEY in Service credentials above</a>
           <button type="button" onClick={loadAdminState} disabled={loading} style={buttonStyle}>
             <RefreshCw size={11} />
             Refresh

@@ -1,3 +1,4 @@
+import { setCredentialProfile, getCredentialProfile } from '../services/serviceAuth';
 import React from 'react';
 import { vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -48,7 +49,7 @@ test('expired chat session retries retrieval once without its old identifier', a
       } }) } });
   });
   render(<Chatbot setChatResults={jest.fn()} graphData={{ nodes: [], links: [] }} searchResults={[]} />);
-  fireEvent.change(screen.getByLabelText('Chat API key'), { target: { value: 'read-key' } });
+  setCredentialProfile('GRAPH_READ_TOKEN', 'read-key');
   fireEvent.change(screen.getByLabelText('Chat question'), { target: { value: 'Show product' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send chat question' }));
   await waitFor(() => expect(submissions).toBe(2));
@@ -90,7 +91,7 @@ test('keeps chat input locked until the SSE stream completes and clears the serv
 
   const setChatResults = jest.fn();
   render(<Chatbot setChatResults={setChatResults} graphData={{ nodes: [], links: [] }} searchResults={[]} />);
-  fireEvent.change(screen.getByLabelText('Chat API key'), { target: { value: 'read-test-key' } });
+  setCredentialProfile('GRAPH_READ_TOKEN', 'read-test-key');
 
   const input = screen.getByRole('textbox', { name: 'Chat question' });
   fireEvent.change(input, { target: { value: 'Explain this graph' } });

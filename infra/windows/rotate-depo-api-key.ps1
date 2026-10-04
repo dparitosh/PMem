@@ -9,6 +9,9 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 $values = Read-DepoEnvironment $root $EnvFile
+if ($values['DEPO_CREDENTIAL_STORE'] -eq 'postgres') {
+  throw 'Keys are managed in PostgreSQL. Use Admin > Service credentials > Register / rotate in database; changing this file alone does not rotate the central key. Update outbound values after central rotation.'
+}
 if ($Key -notmatch '^[A-Z][A-Z0-9_]*(?:_TOKEN|_API_KEY)$' -or -not $values.ContainsKey($Key)) {
   throw 'Key must name an existing deployment TOKEN or API_KEY setting.'
 }

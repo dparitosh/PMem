@@ -9,7 +9,7 @@ import { config, API, buildSemanticServiceUrl, buildUrl, replaceParams } from '.
 import logger from '../utils/logger';
 import agenticAPI from './agenticApi';
 import { reportRunRecovery } from './runRecovery';
-import { serviceAuthHeaders } from './serviceAuth';
+import { serviceAuthHeaders, getCredentialProfile, setCredentialProfile } from './serviceAuth';
 
 /**
  * Create axios instance with base configuration
@@ -25,10 +25,8 @@ const apiClient = axios.create({
 const MAX_GET_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 700;
 const SESSION_STORAGE_KEY = 'depo.sessionId.v1';
-let adminApiKey = '';
 if (typeof window !== 'undefined') {
   window.addEventListener('depo:credentials-cleared', () => {
-    adminApiKey = '';
     clearClientSessionId();
   });
 }
@@ -36,7 +34,7 @@ if (typeof window !== 'undefined') {
 // Administrative credentials are deliberately memory-only. They must never
 // be placed in Vite environment variables, local storage, or server logs.
 export function setAdminApiKey(value) {
-  adminApiKey = String(value || '').trim();
+  setCredentialProfile('ADMIN_API_KEY', value);
 }
 
 export function getClientSessionId() {
@@ -131,9 +129,9 @@ apiClient.interceptors.request.use(
       if (explicit || requestConfig.headers.get?.('X-API-Key') || requestConfig.headers['X-API-Key']) { delete credentials.Authorization; delete credentials['X-API-Key']; }
       Object.assign(requestConfig.headers, credentials);
     }
-    if (adminApiKey && isStandaloneServiceRequest(requestConfig.url) && String(requestConfig.url || '').includes('/api/v1/admin/')) {
+    if (getCredentialProfile('ADMIN_API_KEY') && isStandaloneServiceRequest(requestConfig.url) && String(requestConfig.url || '').includes('/api/v1/admin/')) {
       requestConfig.headers = requestConfig.headers || {};
-      requestConfig.headers['X-API-Key'] = adminApiKey;
+      requestConfig.headers['X-API-Key'] = getCredentialProfile('ADMIN_API_KEY');
     }
     if (config.debug) {
       // eslint-disable-next-line no-console

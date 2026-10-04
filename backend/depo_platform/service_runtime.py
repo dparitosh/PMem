@@ -119,6 +119,16 @@ def create_service_app(
     original_openapi = app.openapi
     def compatible_openapi():
         app.openapi_schema = describe_security(normalize_openapi(original_openapi()), app.routes)
+        from .credentials import PROFILES
+        check = app.openapi_schema.get('paths', {}).get('/auth/credential-check', {}).get('get')
+        if check is not None:
+            check['x-depo-credential-check'] = {'profile_parameter': 'profile', 'supported_profiles': sorted(PROFILES - {'GRAPH_READ_TOKEN', 'ADMIN_API_KEY'}), 'mutates': False}
+            check['security'] = [{'BearerKey': []}, {'ApiKey': []}]
+        for path, method in [('/auth/credentials', 'get'), ('/auth/admin-access', 'get'), ('/auth/credentials/{profile}', 'post'), ('/auth/credentials/{profile}', 'delete')]:
+            operation = app.openapi_schema.get('paths', {}).get(path, {}).get(method)
+            if operation is not None:
+                operation['security'] = [{'ApiKey': []}]
+                operation['x-depo-authorization'] = {'credential_profiles': ['ADMIN_API_KEY'], 'resolution': 'explicit'}
         return app.openapi_schema
     app.openapi = compatible_openapi
     app.add_middleware(RequestIdMiddleware)
@@ -132,6 +142,66 @@ def create_service_app(
     )
 
     from .authorization import graph_read_identity
+
+    @app.get('/auth/credential-check', summary='Validate a workflow credential without executing a write')
+    def credential_check(request: Request, profile: str) -> dict[str, str]:
+        from fastapi import HTTPException
+        from .authorization import service_write_identity
+        if profile not in {'DATA_JOB_EXECUTION_TOKEN', 'SPEED_PATH_APPROVAL_TOKEN', 'ADMIN_API_KEY', 'GRAPH_PUBLICATION_TOKEN', 'DATA_PRODUCT_APPROVAL_TOKEN', 'CEIM_RESOLUTION_APPROVAL_TOKEN', 'CATALOG_SERVICE_TOKEN', 'DATA_JOB_APPROVAL_TOKEN', 'ARTIFACT_RETENTION_APPROVAL_TOKEN', 'CEIM_PUBLISH_APPROVAL_TOKEN', 'INGESTION_WRITE_TOKEN', 'AGENTIC_APPROVAL_TOKEN', 'ONTOLOGY_APPROVAL_TOKEN', 'SPEED_EVENT_TOKEN', 'SPARQL_FEDERATION_APPROVAL_TOKEN', 'VOCABULARY_APPROVAL_TOKEN'}:
+            raise HTTPException(422, 'Unsupported credential profile')
+        if profile == 'ADMIN_API_KEY':
+            # Async admin validation is provided by the dedicated endpoint below.
+            raise HTTPException(422, 'Use /auth/admin-access for ADMIN_API_KEY')
+        service_write_identity(request, token_env=profile, default_actor='credential-check')
+        return {'status': 'authorized', 'profile': profile}
+
+    @app.get('/auth/admin-access')
+    async def admin_access(request: Request):
+        from backend.routes.admin_routes import require_admin_api_key
+        await require_admin_api_key(request)
+        return {'status': 'authorized', 'profile': 'ADMIN_API_KEY'}
+
+    @app.post('/auth/credentials/{profile}')
+    async def rotate_credential(profile: str, payload: dict, request: Request):
+        from fastapi import HTTPException
+        from datetime import datetime
+        from .credentials import uses_postgres, verify_key, register_key
+        if not uses_postgres():
+            raise HTTPException(409, 'Enable DEPO_CREDENTIAL_STORE=postgres and initialize the schema first')
+        actor = verify_key('ADMIN_API_KEY', request.headers.get('x-api-key', ''))
+        try:
+            expiry = datetime.fromisoformat(str(payload['expires_at']).replace('Z', '+00:00')) if payload.get('expires_at') else None
+            register_key(profile, payload.get('key', ''), payload.get('actor', ''), expiry, audit_actor=actor)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+        return {'status': 'registered', 'profile': profile}
+
+    @app.get('/auth/credentials')
+    def credential_status(request: Request):
+        from fastapi import HTTPException
+        from .credentials import uses_postgres, verify_key, connection
+        if not uses_postgres():
+            raise HTTPException(409, 'Central credentials are not enabled')
+        verify_key('ADMIN_API_KEY', request.headers.get('x-api-key', ''))
+        with connection() as db, db.cursor() as cursor:
+            cursor.execute('SELECT profile,actor,expires_at,revoked,updated_at FROM depo_api_credentials ORDER BY profile')
+            return {'profiles': [{'profile': row[0], 'actor': row[1], 'expires_at': row[2], 'revoked': row[3], 'updated_at': row[4]} for row in cursor.fetchall()]}
+
+    @app.delete('/auth/credentials/{profile}')
+    def revoke_credential(profile: str, request: Request):
+        from fastapi import HTTPException
+        from .credentials import uses_postgres, verify_key, connection, PROFILES
+        if not uses_postgres():
+            raise HTTPException(409, 'Central credentials are not enabled')
+        actor = verify_key('ADMIN_API_KEY', request.headers.get('x-api-key', ''))
+        if profile not in PROFILES or profile == 'ADMIN_API_KEY':
+            raise HTTPException(422, 'Unknown profile or administrator revocation would lock out recovery; rotate the admin key instead')
+        with connection() as db, db.transaction(), db.cursor() as cursor:
+            cursor.execute('UPDATE depo_api_credentials SET revoked=true,updated_at=now() WHERE profile=%s', (profile,))
+            if not cursor.rowcount:
+                raise HTTPException(404, 'Credential profile not registered')
+            cursor.execute('INSERT INTO depo_api_credential_events(profile,action,actor) VALUES (%s,%s,%s)', (profile, 'revoke', actor))
+        return {'status': 'revoked', 'profile': profile}
 
     @app.get("/auth/access", summary="Verify service read authentication without querying shared stores")
     def authenticated_access(identity: str = Depends(graph_read_identity)) -> dict[str, str]:

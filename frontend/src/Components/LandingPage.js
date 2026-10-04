@@ -183,7 +183,10 @@ export default function LandingPage({ setChatResults, onNavigate }) {
       });
       setLastRefreshed(new Date());
     } catch (error) {
-      setMetricsError('Graph metrics are currently unavailable.');
+      const detail = error?.response?.data?.detail;
+      setMetricsError(error?.response?.status === 401 || error?.response?.status === 403
+        ? 'Graph access is required. Open Admin → Service credentials, test and apply GRAPH_READ_TOKEN, then retry.'
+        : (typeof detail === 'string' ? detail : 'Graph metrics are currently unavailable.'));
       setMetrics({
         total_nodes: 0,
         total_relationships: 0,
@@ -310,16 +313,16 @@ export default function LandingPage({ setChatResults, onNavigate }) {
           </div>
         </IxCol>
         <IxCol size={8} sizeMd={12}>
-          <IxCard variant="outline" className="ix-landing-page__chat">
-          <IxCardTitle>Knowledge companion</IxCardTitle>
-          <IxCardContent>
+          <section className="ix-landing-page__chat" aria-label="Knowledge companion">
+          <h3 className="ix-landing-page__chat-title">Knowledge companion</h3>
+          <div className="ix-landing-page__chat-body">
             <ErrorBoundary>
               <Suspense fallback={<div className="depo-muted">Loading Knowledge Companion…</div>}>
                 <Chatbot setChatResults={setChatResults} />
               </Suspense>
             </ErrorBoundary>
-          </IxCardContent>
-          </IxCard>
+          </div>
+          </section>
         </IxCol>
       </IxLayoutGrid>
     </div>

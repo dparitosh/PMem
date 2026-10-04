@@ -1,3 +1,4 @@
+import { setCredentialProfile, getCredentialProfile } from '../../services/serviceAuth';
 import React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import SemanticBridgeJobs from './SemanticBridgeJobs';
@@ -97,10 +98,10 @@ test('resume restores publication selection and status', async () => {
 
 test('changing inputs discards old preview and credentials are not persisted', async () => {
   const view = mount();
-  fireEvent.change(screen.getByLabelText('Approval token'), { target: { value: 'secret-test-value' } });
+  setCredentialProfile('AGENTIC_APPROVAL_TOKEN', 'secret-test-value');
   await create();
   expect(JSON.stringify(sessionStorage)).not.toContain('secret-test-value');
   view.rerender(<SemanticBridgeJobs ontologyId="other" importTaskId="import" api={api} />);
   await waitFor(() => expect(screen.queryByLabelText('Approve part to Part')).toBeNull());
-  expect(screen.getByLabelText('Approval token')).toHaveValue('');
+  expect(screen.queryByLabelText('Approval token')).toBeNull();
 });

@@ -1,3 +1,4 @@
+import { getCredentialProfile } from '../services/serviceAuth';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { dataPipelineAPI, metadataRegistryAPI } from '../services/apiClient';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
@@ -93,9 +94,6 @@ export default function DataFlowPage() {
   const [publishingId, setPublishingId] = useState('');
   const [scheduleInterval, setScheduleInterval] = useState(300);
   const [replayApprover, setReplayApprover] = useState('');
-  const [replayApprovalToken, setReplayApprovalToken] = useState('');
-  const [governanceToken, setGovernanceToken] = useState('');
-  const [publicationToken, setPublicationToken] = useState('');
   const [semanticReleases, setSemanticReleases] = useState([]);
   const [releaseIndex, setReleaseIndex] = useState('');
   const [publicationSource, setPublicationSource] = useState('');
@@ -201,7 +199,7 @@ export default function DataFlowPage() {
     setReplayingId(run.run_id);
     setReplayError('');
     try {
-      const approvalToken = replayApprovalToken.trim();
+      const approvalToken = getCredentialProfile('DATA_JOB_EXECUTION_TOKEN').trim();
       const response = await dataPipelineAPI.replay(run.run_id, approvalToken ? {
         approved_by: replayApprover.trim(),
         approval_token: approvalToken,
@@ -209,7 +207,7 @@ export default function DataFlowPage() {
       const replayed = requireRunManifest(responsePayload(response));
       preferredRunId.current = replayed.run_id;
       setSelectedRun(replayed);
-      setReplayApprovalToken('');
+
       await load();
     } catch (replayFailure) {
       setReplayError(apiErrorMessage(replayFailure, 'Replay could not be started.'));
@@ -218,7 +216,7 @@ export default function DataFlowPage() {
     }
   };
 
-  const approval = (token = replayApprovalToken) => {
+  const approval = (token = getCredentialProfile('DATA_JOB_EXECUTION_TOKEN')) => {
     const approvalToken = token.trim();
     return approvalToken ? { approved_by: replayApprover.trim(), approval_token: approvalToken } : {};
   };
@@ -228,16 +226,16 @@ export default function DataFlowPage() {
     setDefinitionActionId(key);
     setReplayError('');
     try {
-      if (action === 'approve') await dataPipelineAPI.approveDefinition(definition.job_id, definition.version, approval(governanceToken));
-      if (action === 'disable') await dataPipelineAPI.disableDefinition(definition.job_id, definition.version, approval(governanceToken));
-      if (action === 'unschedule') await dataPipelineAPI.disableSchedule(definition.job_id, definition.version, approval(governanceToken));
+      if (action === 'approve') await dataPipelineAPI.approveDefinition(definition.job_id, definition.version, approval(getCredentialProfile('DATA_JOB_APPROVAL_TOKEN')));
+      if (action === 'disable') await dataPipelineAPI.disableDefinition(definition.job_id, definition.version, approval(getCredentialProfile('DATA_JOB_APPROVAL_TOKEN')));
+      if (action === 'unschedule') await dataPipelineAPI.disableSchedule(definition.job_id, definition.version, approval(getCredentialProfile('DATA_JOB_APPROVAL_TOKEN')));
       if (action === 'schedule') {
         const priorRun = runs.find((run) => run.job_id === definition.job_id && run.job_version === definition.version);
         if (!priorRun) throw new Error('Run this job once before scheduling it; schedules replay a retained immutable input.');
         await dataPipelineAPI.scheduleDefinition(definition.job_id, definition.version, {
           replay_run_id: priorRun.run_id,
           interval_seconds: Number(scheduleInterval),
-        }, approval(governanceToken));
+        }, approval(getCredentialProfile('DATA_JOB_APPROVAL_TOKEN')));
       }
       if (action === 'run') {
         const result = await dataPipelineAPI.runDefinition(definition.job_id, definition.version, {}, approval());
@@ -245,8 +243,8 @@ export default function DataFlowPage() {
         preferredRunId.current = run.run_id;
         setSelectedRun(run);
       }
-      setReplayApprovalToken('');
-      setGovernanceToken('');
+
+
       await load();
     } catch (actionFailure) {
       setReplayError(apiErrorMessage(actionFailure, 'Data-job lifecycle action could not be completed.'));
@@ -265,8 +263,8 @@ export default function DataFlowPage() {
       await dataPipelineAPI.publishRun(run.run_id, {
         semantic_release: { asset_id: release.asset_id, version: release.version, lifecycle_status: 'approved' },
         source_system: publicationSource.trim() || run.source_system,
-      }, approval(publicationToken));
-      setPublicationToken('');
+      }, approval(getCredentialProfile('CEIM_PUBLISH_APPROVAL_TOKEN')));
+
       await load();
     } catch (publishFailure) {
       setReplayError(apiErrorMessage(publishFailure, 'Run could not be published.'));
@@ -295,9 +293,6 @@ export default function DataFlowPage() {
         <summary>Data-job approval credentials (only when the API gateway does not provide identity)</summary>
         <p>These values are held only in memory and the API key is cleared after a lifecycle action starts.</p>
         <label>Approver <input aria-label="Replay approver" value={replayApprover} onChange={(event) => setReplayApprover(event.target.value)} autoComplete="off" /></label>{' '}
-        <label>Execution API key <input aria-label="Replay execution API key" type="password" value={replayApprovalToken} onChange={(event) => setReplayApprovalToken(event.target.value)} autoComplete="off" /></label>
-        <label>Governance API key <input type="password" aria-label="Governance API key" value={governanceToken} onChange={(event) => setGovernanceToken(event.target.value)} autoComplete="off" /></label>
-        <label>Publication API key <input type="password" aria-label="Publication API key" value={publicationToken} onChange={(event) => setPublicationToken(event.target.value)} autoComplete="off" /></label>
       </details>
       <section className="data-flow-notice" aria-label="Semantic publication settings">
         <button type="button" onClick={loadReleases}>Load approved semantic releases</button>

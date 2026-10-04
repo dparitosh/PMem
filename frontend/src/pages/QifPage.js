@@ -1,3 +1,4 @@
+import { getCredentialProfile } from '../services/serviceAuth';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { qifAPI } from '../services/apiClient';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
@@ -50,11 +51,10 @@ export default function QifPage({ workflowMode = false }) {
   const [loading, setLoading] = useState(true);
   const [actionBusy, setActionBusy] = useState(false);
   const [error, setError] = useState('');
-  const [writeToken, setWriteToken] = useState('');
   const selectedTask = useRef(null);
   const taskRequest = useRef(0);
   useEffect(() => () => { selectedTask.current = null; taskRequest.current += 1; }, []);
-  const writeOptions = () => writeToken.trim() ? { headers: { Authorization: `Bearer ${writeToken.trim()}` } } : {};
+  const writeOptions = () => getCredentialProfile('ONTOLOGY_APPROVAL_TOKEN').trim() ? { headers: { Authorization: `Bearer ${getCredentialProfile('ONTOLOGY_APPROVAL_TOKEN').trim()}` } } : {};
 
   const refreshHistory = useCallback(() => qifAPI.listTasks().then((response) => setHistory(payloadOf(response).tasks || [])).catch((requestError) => { setError(detailOf(requestError)); }), []);
   const refreshTask = useCallback(async (taskId) => {
@@ -168,7 +168,6 @@ export default function QifPage({ workflowMode = false }) {
 
   return (
     <div className="depo-page" aria-busy={loading || actionBusy}>
-      {workflowMode && <label>Ontology write key <input type="password" autoComplete="off" aria-label="Ontology write key" value={writeToken} onChange={event => setWriteToken(event.target.value)} /><small> Use ONTOLOGY_APPROVAL_TOKEN for QIF actions. This key stays in page memory; the global read key is unchanged. Gateway users may leave it empty.</small></label>}
       <header style={{ marginBottom: 16 }}>
         <div className="depo-panel__meta">{workflowMode ? 'QIF schema workflow' : 'QIF ontology details'}</div>
         <h2 style={{ margin: '4px 0 6px' }}>{workflowMode ? 'Build and publish a QIF ontology' : 'QIF ontology results and traceability'}</h2>

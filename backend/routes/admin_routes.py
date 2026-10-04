@@ -36,6 +36,10 @@ def _is_production_environment() -> bool:
 
 async def require_admin_api_key(request: Request) -> None:
     """Require a key in production; allow local development without one."""
+    from backend.depo_platform.credentials import uses_postgres, verify_key
+    if uses_postgres():
+        verify_key('ADMIN_API_KEY', request.headers.get('X-API-Key', ''))
+        return
     expected = os.getenv("ADMIN_API_KEY", "").strip()
     if not _is_production_environment() and not expected:
         return

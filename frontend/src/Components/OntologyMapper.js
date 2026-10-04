@@ -1,3 +1,4 @@
+import { getCredentialProfile } from '../services/serviceAuth';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Search, Upload, FileText, Download, Network } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
@@ -1564,7 +1565,6 @@ export default function OntologyMapper() {
   useEffect(() => { inferenceGeneration.current += 1; setInferenceBusy(false); }, [selectedOntologyApi]);
   const [mergeResult, setMergeResult] = useState(null);
   const [mergeApprover, setMergeApprover] = useState('');
-  const [mergeApprovalToken, setMergeApprovalToken] = useState('');
   const selectedImportTask = useMemo(
     () => importTasks.find((task) => task.task_id === selectedImportTaskId) || null,
     [importTasks, selectedImportTaskId],
@@ -2202,7 +2202,7 @@ export default function OntologyMapper() {
       return;
     }
     try {
-      const res = await API_METHODS.ontology.governedMergeApply(mergeResult.governedPreview.preview_id, mergeApprover.trim(), mergeApprovalToken);
+      const res = await API_METHODS.ontology.governedMergeApply(mergeResult.governedPreview.preview_id, mergeApprover.trim(), getCredentialProfile('ONTOLOGY_APPROVAL_TOKEN'));
       setMergeResult({
         kind: 'success',
         text: res?.data?.message || 'Ontology merge committed to Neo4j.',
@@ -2213,7 +2213,7 @@ export default function OntologyMapper() {
     } catch (e) {
       setMergeResult({ kind: 'error', text: apiErrorMessage(e, 'Ontology merge failed.') });
     } finally {
-      setMergeApprovalToken('');
+
       setMergeBusy(false);
     }
   };
@@ -2963,8 +2963,7 @@ export default function OntologyMapper() {
                     <input value={mergeApprover} onChange={(e) => setMergeApprover(e.target.value)} placeholder="name or service principal" style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }} />
                   </div>
                   <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Approval token</label>
-                    <input type="password" autoComplete="off" value={mergeApprovalToken} onChange={(e) => setMergeApprovalToken(e.target.value)} placeholder="approval secret" style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }} />
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Approval key: managed in Admin → Service credentials</label>
                   </div>
                   <button
                     type="button"
@@ -2977,7 +2976,7 @@ export default function OntologyMapper() {
                   <button
                     type="button"
                     onClick={handleCommitOntologyMerge}
-                    disabled={mergeBusy || !mergePlanReady || !mergeApprover.trim() || !mergeApprovalToken}
+                    disabled={mergeBusy || !mergePlanReady || !mergeApprover.trim() || !getCredentialProfile('ONTOLOGY_APPROVAL_TOKEN')}
                     title={mergePlanReady ? 'Commit the reviewed conflict-free merge plan' : 'Review a conflict-free merge plan before committing'}
                     style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: mergeBusy || !mergePlanReady ? C.textMuted : C.primaryDark, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: mergeBusy || !mergePlanReady ? 'not-allowed' : 'pointer' }}
                   >

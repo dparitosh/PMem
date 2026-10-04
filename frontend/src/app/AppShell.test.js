@@ -28,28 +28,11 @@ beforeEach(() => {
   document.documentElement.dataset.ixColorSchema = 'light';
 });
 
-test('applies the standalone read key in memory and asks the active page to retry', async () => {
-  const onServiceAuthChange = jest.fn();
-  render(
-    <AppShell
-      activePage="home"
-      onPageChange={jest.fn()}
-      onHome={jest.fn()}
-      showChat={false}
-      onToggleChat={jest.fn()}
-      onServiceAuthChange={onServiceAuthChange}
-    >
-      <div>Page content</div>
-    </AppShell>,
-  );
-
+test('opens central Admin credentials instead of a duplicate key dialog', () => {
+  const onPageChange = vi.fn();
+  render(<AppShell activePage="home" onPageChange={onPageChange} onHome={vi.fn()} showChat={false} onToggleChat={vi.fn()}><div>Page content</div></AppShell>);
   fireEvent.click(screen.getByRole('button', { name: 'Configure API access' }));
-  fireEvent.change(screen.getByLabelText('Graph read API key'), { target: { value: 'read-secret' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Apply and retry' }));
-
-  expect(getServiceAuthToken()).toBe('read-secret');
-  expect(graphApi.verifyAccess).toHaveBeenCalledWith('read-secret');
-  await waitFor(() => expect(onServiceAuthChange).toHaveBeenCalledTimes(1));
+  expect(onPageChange).toHaveBeenCalledWith('admin');
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 

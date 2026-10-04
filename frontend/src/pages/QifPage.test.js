@@ -1,3 +1,4 @@
+import { setCredentialProfile, getCredentialProfile } from '../services/serviceAuth';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 
@@ -62,7 +63,7 @@ test('uses a scoped ontology write key for actions', async () => {
   render(<QifPage workflowMode />);
   const start = await screen.findByRole('button', { name: /start reference task/i });
   await waitFor(() => expect(start).toBeEnabled());
-  fireEvent.change(screen.getByLabelText('Ontology write key'), { target: { value: 'write-only-key' } });
+  setCredentialProfile('ONTOLOGY_APPROVAL_TOKEN', 'write-only-key');
   fireEvent.click(start);
   await waitFor(() => expect(qifAPI.startReferenceTask).toHaveBeenCalledWith(expect.any(Object), { headers: { Authorization: 'Bearer write-only-key' } }));
   const publish = await screen.findByRole('button', { name: /approve and publish ontology/i });

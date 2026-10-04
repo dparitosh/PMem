@@ -3,6 +3,8 @@ import re
 from backend.postgres_migrations import MIGRATIONS_DIR
 
 CONSTRAINTS = {
+ 'depo_api_credentials_pkey': ('depo_api_credentials','PRIMARY KEY(profile)'),
+ 'depo_api_credential_events_pkey': ('depo_api_credential_events','PRIMARY KEY(event_id)'),
  'depo_schema_migrations_pkey': ('depo_schema_migrations','PRIMARY KEY(version)'),
  'depo_registry_pkey': ('depo_registry','PRIMARY KEY(namespace,key)'),
  'depo_registry_value_object': ('depo_registry',"CHECK(jsonb_typeof(value)='object')"),
@@ -45,6 +47,10 @@ def verify_structure(cursor, schema, columns):
         if table == 'depo_ontology_analytics': continue
         for column in names:
             nullable, default = attributes.get((table,column), (None,None))
+            if (table, column) == ('depo_api_credentials', 'expires_at'):
+                if nullable != 'YES':
+                    raise RuntimeError('Credential expiry must allow keys without expiration')
+                continue
             if column != 'checksum' and nullable != 'NO':
                 raise RuntimeError(f'Required column must be NOT NULL: {table}.{column}')
             if (table,column) in defaults and normalize(str(default),schema) != normalize(defaults[(table,column)],schema):

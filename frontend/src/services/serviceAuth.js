@@ -37,12 +37,12 @@ export function getServiceAuthToken() {
   return serviceToken;
 }
 
-export function serviceAuthHeaders(endpoint = '', method = 'get') {
+export function serviceAuthHeaders(endpoint = '', method = 'get', subscription = gatewaySubscriptionKey) {
   const operation = operationForUrl(endpoint, method);
   const profile = operation?.profiles.length === 1 ? operation.profiles[0] : null;
   const token = profile ? getCredentialProfile(profile) : (operation && (operation.profiles.length || operation.secured) ? '' : serviceToken);
   let subscriptionAllowed = false;
-  if (gatewaySubscriptionKey && config.gatewayUrl) {
+  if (subscription && config.gatewayUrl) {
     try {
       const gateway = new URL(config.gatewayUrl);
       const target = new URL(endpoint || config.gatewayUrl);
@@ -54,6 +54,6 @@ export function serviceAuthHeaders(endpoint = '', method = 'get') {
   }
   return {
     ...(token ? (profile === 'ADMIN_API_KEY' ? { 'X-API-Key': token } : { Authorization: `Bearer ${token}` }) : {}),
-    ...(subscriptionAllowed ? { 'Ocp-Apim-Subscription-Key': gatewaySubscriptionKey } : {}),
+    ...(subscriptionAllowed ? { 'Ocp-Apim-Subscription-Key': subscription } : {}),
   };
 }

@@ -7,7 +7,7 @@ import { validateChatInput, ValidationError } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { formatChatMarkdown } from '../utils/chatMarkdown';
 import { clearClientSessionId, getClientSessionId, setClientSessionId } from '../services/apiClient';
-import { serviceAuthHeaders, setServiceAuthToken } from '../services/serviceAuth';
+import { serviceAuthHeaders } from '../services/serviceAuth';
 
 const CHAT_COLORS = {
     primary: '#005a9c',
@@ -24,7 +24,6 @@ const CHAT_COLORS = {
 const Chatbot = ({ setChatResults, graphData, searchResults }) => {
     const [chatMessages, setChatMessages] = useState([]);
     const [question, setQuestion] = useState('');
-    const [accessToken, setAccessToken] = useState('');
     const [showSpinner, setShowSpinner] = useState(false);
     const [requestActive, setRequestActive] = useState(false);
     const [error, setError] = useState(null);
@@ -249,8 +248,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    ...serviceAuthHeaders(),
-                    ...(accessToken.trim() ? { Authorization: `Bearer ${accessToken.trim()}` } : {}),
+                    ...serviceAuthHeaders(buildUrl(API.chat.chatStream), 'post'),
                     ...(sessionId ? { 'X-Session-ID': sessionId } : {}),
                 },
                 body: JSON.stringify({ session_id: sessionId, message: validated, graph_context: graphContext }),
@@ -422,7 +420,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
-                        ...serviceAuthHeaders(),
+                        ...serviceAuthHeaders(buildUrl(API.chat.sampleQueries), 'get'),
                         ...(activeSessionId ? { 'X-Session-ID': activeSessionId } : {}),
                     },
                     signal: sampleController.signal,
@@ -478,12 +476,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             color: 'var(--theme-color-std-text, var(--ui-text, #252a2e))',
             overflow: 'hidden'
         }}>
-            <details style={{ padding: '8px 14px', flexShrink: 0 }}>
-                <summary>Connection credentials</summary>
-                <label>API key <input aria-label="Chat API key" type="password" autoComplete="off"
-                    value={accessToken} onChange={event => { const value = event.target.value; setAccessToken(value); setServiceAuthToken(value); }} /></label>
-                <small style={{ display: 'block' }}>Enter your graph read API key. Kept only in memory.</small>
-            </details>
+            <div style={{ padding: "8px 14px", flexShrink: 0 }}><a href="#/admin">Manage access in Admin → Service credentials</a></div>
             {/* Compact session utility row; the surrounding IX card owns the panel title. */}
             <div style={{
                 background: 'var(--theme-color-std-background, #f4f6f8)',

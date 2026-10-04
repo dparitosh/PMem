@@ -1,3 +1,4 @@
+import CredentialSettings from '../Components/CredentialSettings';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot } from 'lucide-react';
 import AdminPanel from '../Components/AdminPanel';
@@ -253,6 +254,7 @@ export default function AdminPage({ onSchemaCleaned }) {
         </div>
       )}
 
+      <CredentialSettings />
       <ServiceIntegrationPanel />
 
       <KpiStrip
@@ -273,7 +275,7 @@ export default function AdminPage({ onSchemaCleaned }) {
             <div className="depo-panel__meta">
               {agenticEnabled
                 ? 'Tool contracts and agent specifications available to a low-code/no-code orchestrator.'
-                : 'Disabled. Set REACT_APP_AGENTIC_ENABLED=true and restart the frontend to enable this optional service.'}
+                : 'Disabled. Set VITE_AGENTIC_ENABLED=true and rebuild the frontend to enable this optional service.'}
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -292,13 +294,13 @@ export default function AdminPage({ onSchemaCleaned }) {
             <RegistryWidget
               title={`Agents (${agenticCatalog.agents.length})`}
               rows={agenticCatalog.agents}
-              columns={[{ field: 'name', flex: 1.2 }, { field: 'handler_name', flex: 1 }, { field: 'use_case', flex: 1.5 }]}
+              columns={[{ field: 'name', flex: 1.2 }, { field: 'id', headerName: 'Agent ID', flex: 1 }, { field: 'tools', headerName: 'Allowed tools', flex: 1.5, valueFormatter: params => Array.isArray(params.value) ? params.value.join(', ') : (params.value || '—') }]}
               height={250}
             />
             <RegistryWidget
               title={`Tools (${agenticCatalog.tools.length})`}
               rows={agenticCatalog.tools}
-              columns={[{ field: 'name', flex: 1.5 }, { field: 'category', width: 120 }, { field: 'side_effect', width: 140 }, { field: 'requires_approval', headerName: 'Approval', width: 100 }]}
+              columns={[{ field: 'id', headerName: 'Tool ID', flex: 1.5 }, { field: 'service', headerName: 'Service', width: 120 }, { field: 'method', width: 100 }, { field: 'path', headerName: 'Endpoint', flex: 2 }, { field: 'mutates', headerName: 'Writes data', width: 120, valueFormatter: params => params.value === true ? 'Yes' : params.value === false ? 'No' : 'Not specified' }]}
               height={250}
             />
           </div>

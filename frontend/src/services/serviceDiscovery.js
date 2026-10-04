@@ -27,7 +27,7 @@ export async function readContractText(response) {
     throw error;
   } finally { reader.releaseLock(); }
 }
-export async function discoverServices(roots, request = fetch) {
+export async function discoverServices(roots, request = fetch, proposedSubscriptionKey = null) {
   return Promise.all(Object.entries(roots).map(async ([service, base]) => {
     // Retain a known contract during a same-root refresh; never reuse it at a new root.
     const retained = hasServiceContract(service, base);
@@ -36,7 +36,13 @@ export async function discoverServices(roots, request = fetch) {
     const timer = setTimeout(() => controller.abort(), 12000);
     try {
       const url = `${base.replace(/\/$/, '')}/openapi.json`;
-      const response = await request(url, { headers: serviceAuthHeaders(url), signal: controller.signal, redirect: 'error', credentials: 'omit' });
+      const headers = serviceAuthHeaders(url);
+      if (proposedSubscriptionKey !== null && Object.prototype.hasOwnProperty.call(serviceAuthHeaders(url, 'get', proposedSubscriptionKey), 'Ocp-Apim-Subscription-Key')) {
+        headers['Ocp-Apim-Subscription-Key'] = proposedSubscriptionKey;
+      } else if (proposedSubscriptionKey !== null) {
+        delete headers['Ocp-Apim-Subscription-Key'];
+      }
+      const response = await request(url, { headers, signal: controller.signal, redirect: 'error', credentials: 'omit' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const text = await readContractText(response);
       return { ...registerServiceContract(service, base, JSON.parse(text)), status: 'imported' };

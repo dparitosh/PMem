@@ -1,5 +1,11 @@
+import { getServiceAuthToken } from './serviceAuth';
 import { buildSemanticServiceUrl } from '../config';
 import { apiClient } from './apiClient';
+
+const readHeaders = () => {
+  const token = getServiceAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 const graphUrl = (path) => buildSemanticServiceUrl('graph', path);
 
@@ -15,18 +21,21 @@ export const graphApi = {
     return apiClient.get(graphUrl('/api/v1/graph/overview'), {
       params: { limit },
       signal,
+      headers: readHeaders(),
     });
   },
   getOntologyGraph(prefix, limit = 200, signal) {
     return apiClient.get(graphUrl(`/api/v1/graph/ontologies/${encodeURIComponent(prefix)}/projection`), {
       params: { limit },
       signal,
+      headers: readHeaders(),
     });
   },
   getArchitectureGraph(prefix = 'archimate', limit = 1000, signal) {
     return apiClient.get(graphUrl(`/api/v1/graph/ontologies/${encodeURIComponent(prefix)}/projection`), {
       params: { limit },
       signal,
+      headers: readHeaders(),
     });
   },
   getContextualSubgraph(params = {}, signal) {
@@ -47,7 +56,7 @@ export const graphApi = {
       searchMode: params.search_mode || 'best',
       expandNeighbors: Boolean(params.expand_neighbors),
     };
-    return apiClient.post(graphUrl('/api/v1/graphql'), { query, variables, operationName: 'ContextualSubgraph' }, { signal })
+    return apiClient.post(graphUrl('/api/v1/graphql'), { query, variables, operationName: 'ContextualSubgraph' }, { signal, headers: readHeaders() })
       .then((response) => {
         if (response.data?.errors?.length) {
           throw new Error('Contextual graph query failed. Check graph service logs and access permissions.');
@@ -61,6 +70,7 @@ export const graphApi = {
     return apiClient.get(graphUrl(`/api/v1/graph/traversal/${encodeURIComponent(nodeId)}`), {
       params: { depth },
       signal,
+      headers: readHeaders(),
     });
   },
   getStepParts(signal) {

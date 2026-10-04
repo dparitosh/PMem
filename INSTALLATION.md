@@ -2803,3 +2803,41 @@ Frontend content hashes in the build receipt determine whether a rebuild is need
 ```
 
 If a tracked backend listener has a different bind address, stop it before changing `DEPO_SERVICE_HOST` or `-BindHost`. A frontend process that has already lost its launcher cannot safely be identified by its port alone; inspect the reported owner rather than killing arbitrary Python processes.
+
+
+### Central browser credential setup in Admin
+
+Open the frontend, select **API access** in the header, and use **Admin → Service credentials**. Enter the administrator-issued `GRAPH_READ_TOKEN`, select **Test and apply**, and require **Validated and applied** before opening graph pages. Repeat for `INGESTION_WRITE_TOKEN` before creating an ontology, and `DATA_JOB_EXECUTION_TOKEN` before submitting governed instance jobs. Each test checks authorization without uploading data or executing a job. Enter the APIM subscription key only for gateway routing. A rejection means the running service does not accept the supplied key; check the root environment file selected at backend startup and restart after changing server keys.
+
+The Import page uses these shared credentials and no longer has separate upload/execution key fields. A full browser reload clears all keys; enter them again in Admin. OpenAPI contract import discovers operations and additional profiles but does not validate those additional credentials. With DEPO_CREDENTIAL_STORE=postgres, use the explicit database registration and rotation controls described below; Test and apply alone changes only browser credentials. For restored failed uploads, remove the row and attach the original file again before starting.
+
+
+All 17 application credential profiles, including `ADMIN_API_KEY`, approval, publication, vocabulary, federation, retention and speed-path keys, are entered and tested in **Admin → Service credentials**. Workflow pages consume the shared profile at the time of the action; users still enter approver names and confirm writes on those pages. A successful key test validates credentials on the selected service only; it does not approve a write or guarantee downstream dependencies. Backend `NEO4J_PASS`, database passwords, `DT_AGENT_GATEWAY_TOKEN`, `OSLC_REMOTE_TOKEN` and other outbound secrets remain server-side in the root configuration. Database registration stores salted key digests only when DEPO_CREDENTIAL_STORE=postgres; browser key values remain in tab memory.
+
+
+### PostgreSQL central API-key authority (migration 008)
+
+To enable central authentication on the application VM, set this entry in `E:\App\PMem\.env.local`:
+
+```dotenv
+DEPO_CREDENTIAL_STORE=postgres
+```
+
+Keep existing application keys in the root file for the first bootstrap. Each must be a random value of at least 32 characters. Supply `ADMIN_API_KEY` and `GRAPH_READ_TOKEN`. Database passwords and outbound integration secrets remain server-side. Use the same store mode and PostgreSQL database/schema for all services. This setting is opt-in for existing deployments; the customer template enables it.
+
+From PowerShell on the application VM:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\stop-depo-services.ps1
+.\infra\windows\initialize-depo-schema.ps1 -EnvFile .\.env.local
+.\infra\windows\start-depo-services.ps1 -EnvFile .\.env.local
+```
+
+Migration 008 creates `depo_api_credentials` (salted key digests, actor, expiry and revocation) and `depo_api_credential_events` (rotation/revocation audit events). No plaintext keys are stored. Bootstrap inserts missing profiles only: reinstall never overwrites rotated or revoked profiles. Services reject database outages rather than falling back to old environment keys.
+
+In Admin → Service credentials, test and apply the current `ADMIN_API_KEY`. Enter a new random profile key and an assigned actor, then use **Register / rotate in database** and confirm. This invalidates the prior key for that profile. Lost registration responses are ambiguous: test the proposed new key before retrying. Rotating the administrator key requires retaining the new key securely; there is no anonymous password recovery. The **Test and apply** button does not register a key. Graph-read testing checks all configured services, with individual results.
+
+Backend agent dispatch still needs plaintext outbound keys to authenticate to peer APIs. After rotating a profile used by backend calls, update that corresponding root environment value and restart the calling services. Incoming API validation immediately uses PostgreSQL and does not require a restart. This implementation does not distribute plaintext secrets from PostgreSQL. Keep the profile expiry and revocation managed in the authority; expiry changes in legacy environment mode still require restart. Browser keys remain memory-only and must be re-entered after a full reload.
+
+For Azure APIM, import the updated OpenAPI contracts and preserve the service-relative `/auth/access`, `/auth/credential-check`, `/auth/admin-access` and `/auth/credentials` routes under each service gateway prefix. Forward `Authorization` and `X-API-Key` without substituting the APIM subscription key. Add these routes to the same origin/CORS policy as the existing APIs. Credential management routes require ADMIN_API_KEY and return no plaintext keys or digests. The protected GET `/auth/credentials` returns profile, actor, expiry, revocation and update metadata only.

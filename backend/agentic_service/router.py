@@ -42,8 +42,9 @@ def _tool_span(*args, **kwargs):
     except Exception:
         logger.exception('Unable to persist agent tool span')
 
-async def _agent_io(operation, *args, **kwargs):
-    return await asyncio.to_thread(operation, *args, **kwargs)
+async def _agent_io(callback, /, *args, **kwargs):
+    """Offload blocking work without consuming the callback's keyword arguments."""
+    return await asyncio.to_thread(callback, *args, **kwargs)
 
 
 router = APIRouter(prefix="/api/v1", tags=["agentic-control-plane"])

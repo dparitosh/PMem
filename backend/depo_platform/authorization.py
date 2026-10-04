@@ -75,6 +75,9 @@ def service_write_identity(request: Request, *, token_env: str, default_actor: s
         # Gateway identity is still required in enterprise mode.
         _require_trusted_gateway(request)
         return approval_identity(request, {}, token_env=token_env)
+    from .credentials import uses_postgres, verify_key
+    if uses_postgres():
+        return verify_key(token_env, _request_api_key(request))
     require_active_token(token_env)
     expected = os.getenv(token_env, "").strip()
     supplied = _request_api_key(request)
@@ -91,8 +94,13 @@ def approval_identity(request: Request, payload: dict[str, Any], *, token_env: s
             raise HTTPException(403, "Disabled authentication is allowed only for an explicitly enabled loopback-only process")
         return str(payload.get("approved_by") or "local-development")
     if mode != "entra":
+        from .credentials import uses_postgres, verify_key
+        if uses_postgres() and mode != 'disabled':
+            if not payload.get('approved_by'):
+                raise HTTPException(403, 'An approver is required')
+            return verify_key(token_env, payload.get('approval_token') or _request_api_key(request))
         require_active_token(token_env)
-        expected = os.getenv(token_env, "")
+        expected = os.getenv(token_env, "").strip()
         supplied = payload.get('approval_token') or _request_api_key(request)
         if expected and payload.get("approved_by") and isinstance(supplied, str) and hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
             return token_actor(token_env, str(payload['approved_by']))
@@ -117,6 +125,9 @@ def approval_identity(request: Request, payload: dict[str, Any], *, token_env: s
 def graph_read_identity(request: Request) -> str:
     """Authorize graph reads for local, bootstrap-token, or gateway-Entra profiles."""
     mode = os.getenv("AUTH_MODE", "token").lower()
+    from .credentials import uses_postgres, verify_key
+    if mode == 'token' and uses_postgres():
+        return verify_key('GRAPH_READ_TOKEN', _request_api_key(request))
     # Internal service-to-service reads use the same narrowly scoped graph
     # token in every authentication profile. Gateway identity remains required
     # for browser requests in Entra mode, while backend GraphQL aggregation can
