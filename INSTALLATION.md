@@ -74,7 +74,7 @@ DEPO_SPARK_ENABLED=false
 
 If you also open the frontend at `http://localhost:3000` or `http://127.0.0.1:3000`, add those exact origins to the **same** ALLOWED_ORIGINS line. They do not change backend listener addresses. Keep existing PostgreSQL, Neo4j, artifact-storage and generated API-key settings. Do not replace passwords or generated tokens with sample text. APIM subscription credentials are unnecessary for direct mode. Save and close the editor.
 
-If you disable Spark, also set any enabled Spark connector/scheduler flags to false: `DEPO_SPARK_NEO4J_ENABLED`, `DEPO_SPARK_POSTGRES_ENABLED`, and `DEPO_PIPELINE_SCHEDULER_ENABLED`. The main dependency sections explain their separate configuration.
+If you disable Spark, also disable its connector flags: `DEPO_SPARK_NEO4J_ENABLED` and `DEPO_SPARK_POSTGRES_ENABLED`. `DEPO_PIPELINE_SCHEDULER_ENABLED` can remain enabled for approved non-Spark jobs. The main dependency sections explain their separate configuration.
 
 ### Step E — Validate before installing or restarting
 
@@ -2773,3 +2773,33 @@ SELECT pg_reload_conf();
 ```
 
 The error query should return zero rows. Retest connectivity before running `.\infra\windows\initialize-depo-schema.ps1 -EnvFile .\.env.local`. A working database-local pgAdmin connection does not establish remote application access. Never paste the full database URL or password into diagnostic reports.
+
+
+## Windows startup configuration and recovery
+
+Add these public frontend listener settings to the root `.env.local`, substituting your application VM address:
+
+```dotenv
+DEPO_SERVICE_HOST=10.0.2.16
+DEPO_FRONTEND_HOST=10.0.2.16
+DEPO_FRONTEND_PORT=3000
+```
+
+`DEPO_FRONTEND_HOST` defaults to `DEPO_SERVICE_HOST`, then loopback when neither is supplied. Explicit `-BindHost` and `-Port` arguments take precedence. Wildcard addresses are listener settings; open the VM's actual address in the browser.
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\start-depo-services.ps1 -EnvFile .\.env.local
+.\infra\windows\start-depo-frontend.ps1 -EnvFile .\.env.local
+```
+
+Backend command-line Spark switches are applied after schema initialization reloads configuration. Non-Spark approved jobs can be scheduled with `DEPO_SPARK_ENABLED=false` and `DEPO_PIPELINE_SCHEDULER_ENABLED=true`; Spark-dependent handlers still require Spark. Readiness and CORS errors are reported before testing API keys.
+
+Frontend content hashes in the build receipt determine whether a rebuild is needed; copying unchanged files with newer timestamps does not require one. Launchers check that the selected port/binding belongs to their verified process tree before accepting reuse. Startup rollback and frontend stop terminate verified descendants before parents, retaining tracking when cleanup fails. PID reuse or an unidentified port owner requires inspection; these scripts do not terminate unrelated processes.
+
+```powershell
+.\infra\windows\stop-depo-frontend.ps1
+.\infra\windows\stop-depo-services.ps1
+```
+
+If a tracked backend listener has a different bind address, stop it before changing `DEPO_SERVICE_HOST` or `-BindHost`. A frontend process that has already lost its launcher cannot safely be identified by its port alone; inspect the reported owner rather than killing arbitrary Python processes.

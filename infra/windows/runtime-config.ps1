@@ -169,6 +169,6 @@ if (-not $Overrides.ContainsKey('EnableSpark')) { $EnableSpark = $env:DEPO_SPARK
 if (-not $Overrides.ContainsKey('EnableNeo4jSparkConnector')) { $EnableNeo4jSparkConnector = $env:DEPO_SPARK_NEO4J_ENABLED -eq 'true' }
 if (-not $Overrides.ContainsKey('EnablePipelineScheduler')) { $EnablePipelineScheduler = $env:DEPO_PIPELINE_SCHEDULER_ENABLED -eq 'true' }
 if (-not $Overrides.ContainsKey('EnablePostgresSparkConnector')) { $EnablePostgresSparkConnector = $env:DEPO_SPARK_POSTGRES_ENABLED -eq 'true' }
-if (($EnableNeo4jSparkConnector -or $EnablePostgresSparkConnector -or $EnablePipelineScheduler) -and -not $EnableSpark) { throw 'Spark connectors and scheduler require Spark enabled.' }
+if (($EnableNeo4jSparkConnector -or $EnablePostgresSparkConnector) -and -not $EnableSpark) { throw 'Spark connectors require Spark enabled.' }
   return @{ EnableSpark = [bool]$EnableSpark; EnableNeo4jSparkConnector = [bool]$EnableNeo4jSparkConnector; EnablePostgresSparkConnector = [bool]$EnablePostgresSparkConnector; EnablePipelineScheduler = [bool]$EnablePipelineScheduler }
 }

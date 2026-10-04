@@ -1,19 +1,19 @@
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$expectedPython = (Join-Path $root 'backend\.dt_venv\Scripts\python.exe').ToLowerInvariant()
+. (Join-Path $PSScriptRoot 'process-control.ps1')
+$expectedPython = Join-Path $root 'backend\.dt_venv\Scripts\python.exe'
 $pidFile = Join-Path $root 'logs\windows-services\frontend.pid'
-
-if (-not (Test-Path -LiteralPath $pidFile)) {
-  Write-Host 'DEPO frontend is not recorded as running.'
-  return
+# Recover a missing launcher PID file only from this repository's verified runtime.
+$launchers = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+  $_.ExecutablePath -ieq $expectedPython -and $_.CommandLine -match 'http\.server' -and $_.CommandLine -match 'frontend[\\/]dist'
+})
+if (Test-Path -LiteralPath $pidFile) {
+  $recordedPid = [int](Get-Content -LiteralPath $pidFile)
+  $recorded = Get-CimInstance Win32_Process -Filter "ProcessId = $recordedPid" -ErrorAction Stop
+  if ($recorded -and $recorded.ProcessId -notin @($launchers.ProcessId)) {
+    throw 'Recorded frontend PID is not the expected project frontend. Tracking retained; inspect the process before retrying.'
+  }
 }
-
-$recordedPid = [int](Get-Content -LiteralPath $pidFile)
-$process = Get-Process -Id $recordedPid -ErrorAction SilentlyContinue
-$details = if ($process) { Get-CimInstance Win32_Process -Filter "ProcessId = $recordedPid" -ErrorAction SilentlyContinue } else { $null }
-if ($details -and $details.ExecutablePath -and $details.ExecutablePath.ToLowerInvariant() -eq $expectedPython -and
-    $details.CommandLine -match 'http\.server' -and $details.CommandLine -match 'frontend[\\/]dist') {
-  Stop-Process -Id $recordedPid -Force
-}
-Remove-Item -LiteralPath $pidFile -Force
-Write-Host 'DEPO frontend stopped.'
+foreach ($launcher in $launchers) { Stop-DepoProcessTree $launcher.ProcessId $expectedPython 'http.server' }
+if (Test-Path -LiteralPath $pidFile) { Remove-Item -LiteralPath $pidFile -Force }
+Write-Host 'DEPO frontend processes stopped. Untracked base-Python processes are not controlled.'

@@ -68,8 +68,8 @@ $effectiveSpark = [bool]($EnableSpark -or $configuredSpark)
 $effectiveConnector = [bool]($EnableNeo4jSparkConnector -or $configuredConnector)
 $effectivePostgresConnector = [bool]($EnablePostgresSparkConnector -or $configuredPostgresConnector)
 $effectiveScheduler = [bool]($EnablePipelineScheduler -or $configuredScheduler)
-if (($effectiveConnector -or $effectivePostgresConnector -or $effectiveScheduler) -and -not $effectiveSpark) {
-  throw 'Spark connector and scheduler require Spark enabled through -EnableSpark or DEPO_SPARK_ENABLED=true in .env.local.'
+if (($effectiveConnector -or $effectivePostgresConnector) -and -not $effectiveSpark) {
+  throw 'Spark connectors require Spark enabled through -EnableSpark or DEPO_SPARK_ENABLED=true in .env.local.'
 }
 
 if (-not $SkipDependencyInstall) {

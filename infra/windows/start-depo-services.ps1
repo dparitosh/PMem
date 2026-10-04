@@ -18,6 +18,7 @@ $python = Join-Path $root "backend\.dt_venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { throw "Project Python runtime was not found: $python" }
 
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
+. (Join-Path $PSScriptRoot 'process-control.ps1')
 Import-DepoEnvironment -Root $root -EnvFile $EnvFile
 $configuredAllowedOrigins = [string]$env:ALLOWED_ORIGINS
 $corsProbeOrigin = @($configuredAllowedOrigins.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })[0]
@@ -31,8 +32,7 @@ if (-not $env:NEO4J_PASS -and $env:NEO4J_PASSWORD) { $env:NEO4J_PASS = $env:NEO4
 if (-not $PostgresBinDir) { $PostgresBinDir = $env:DEPO_POSTGRES_BIN_DIR }
 if (-not $PostgresDataDir) { $PostgresDataDir = $env:DEPO_POSTGRES_DATA_DIR }
 if (-not $BindHost) { $BindHost = if ($env:DEPO_SERVICE_HOST) { $env:DEPO_SERVICE_HOST } else { "127.0.0.1" } }
-$peerHost = if ($BindHost -in @('0.0.0.0','::')) { '127.0.0.1' } else { $BindHost }
-  if ($peerHost.Contains(':') -and -not $peerHost.StartsWith('[')) { $peerHost = '[' + $peerHost + ']' }
+$peerHost = Get-DepoProbeHost $BindHost
 # Local peer URLs keep the control plane usable without duplicating service
 # addresses in every developer .env.local. Customer deployments override them
 # with private service discovery addresses.
@@ -54,7 +54,20 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Agentic configuration validation failed. Configure the listed settings before starting services.' }
 } finally { Pop-Location }
 
-$sparkOptions = Resolve-DepoSparkOptions $PSBoundParameters
+
+$requestedSparkOptions = Resolve-DepoSparkOptions $PSBoundParameters
+
+if (-not $SkipPostgres) {
+  & (Join-Path $PSScriptRoot 'start-depo-postgres.ps1') -EnvFile $EnvFile -PostgresBinDir $PostgresBinDir -PostgresDataDir $PostgresDataDir
+}
+
+# Use the same reviewed migration entry point as schema-only upgrades. This
+# preserves the SQLSTATE-based corrective action and guarantees startup stops
+# before any service process is created when the database is incompatible.
+& (Join-Path $PSScriptRoot 'initialize-depo-schema.ps1') -EnvFile $EnvFile
+
+# Apply CLI overrides after schema initialization reloads the selected file.
+$sparkOptions = $requestedSparkOptions
 $EnableSpark = $sparkOptions.EnableSpark
 $EnableNeo4jSparkConnector = $sparkOptions.EnableNeo4jSparkConnector
 $EnablePipelineScheduler = $sparkOptions.EnablePipelineScheduler
@@ -92,18 +105,9 @@ if ($EnableSpark) {
   }
 }
 if ($EnablePipelineScheduler) {
-  if (-not $EnableSpark) { throw "-EnablePipelineScheduler requires -EnableSpark." }
   $env:DEPO_PIPELINE_SCHEDULER_ENABLED = 'true'
 }
 
-if (-not $SkipPostgres) {
-  & (Join-Path $PSScriptRoot 'start-depo-postgres.ps1') -EnvFile $EnvFile -PostgresBinDir $PostgresBinDir -PostgresDataDir $PostgresDataDir
-}
-
-# Use the same reviewed migration entry point as schema-only upgrades. This
-# preserves the SQLSTATE-based corrective action and guarantees startup stops
-# before any service process is created when the database is incompatible.
-& (Join-Path $PSScriptRoot 'initialize-depo-schema.ps1') -EnvFile $EnvFile
 
 $stateDir = Join-Path $root "logs\windows-services"
 New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
@@ -131,8 +135,9 @@ foreach ($service in $services) {
     $expectedProcess = $existing -and $processDetails -and
       $processDetails.ExecutablePath -eq $python -and
       $processDetails.CommandLine -match [regex]::Escape($service.Module)
-    if ($expectedProcess -and ($null -eq $service.Port -or $portListening)) { continue }
-    if ($expectedProcess -and -not $portListening) { Stop-Process -Id $recordedPid -Force -ErrorAction SilentlyContinue }
+    if ($expectedProcess -and ($null -eq $service.Port -or (Test-DepoListener $recordedPid $python $service.Module $service.Port $BindHost))) { continue }
+    if ($expectedProcess -and $portListening) { throw "Tracked service '$($service.Name)' does not own the expected listener/binding. Stop it before changing BindHost; PID tracking is retained." }
+    if ($expectedProcess -and -not $portListening) { Stop-DepoProcessTree $recordedPid $python $service.Module }
     Remove-Item -LiteralPath $pidFile -Force
   }
   # A healthy process may have lost its PID file (for example after a manual
@@ -144,10 +149,10 @@ foreach ($service in $services) {
   $stdout = Join-Path $stateDir "$($service.Name).out.log"
   $stderr = Join-Path $stateDir "$($service.Name).err.log"
   $process = Start-Process -FilePath $python -ArgumentList $arguments -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
-  Set-Content -Path $pidFile -Value $process.Id
   # Roll back only processes launched by this invocation. Existing healthy
   # services are intentionally not part of a failed start attempt.
-  $startedServices += @{ ProcessId = $process.Id; PidFile = $pidFile }
+  $startedServices += @{ ProcessId = $process.Id; PidFile = $pidFile; Module = $service.Module }
+  Set-Content -LiteralPath $pidFile -Value $process.Id
 }
 
 foreach ($service in $services | Where-Object { $_.Port }) {
@@ -160,7 +165,7 @@ foreach ($service in $services | Where-Object { $_.Port }) {
       # Liveness means a Python process exists; readiness also verifies every
       # configured shared dependency before a service is announced usable.
       $response = Invoke-WebRequest -UseBasicParsing "http://${peerHost}:$($service.Port)/readyz" -Headers @{ Origin = $corsProbeOrigin } -TimeoutSec 5
-      $ready = $response.StatusCode -eq 200
+      $ready = $response.StatusCode -eq 200 -and (Test-DepoListener ([int](Get-Content -LiteralPath (Join-Path $stateDir "$($service.Name).pid"))) $python $service.Module $service.Port $BindHost)
       if ($ready) {
         $actualCorsOrigin = [string]$response.Headers['Access-Control-Allow-Origin']
         if ($actualCorsOrigin -ne $corsProbeOrigin) {
@@ -173,14 +178,15 @@ foreach ($service in $services | Where-Object { $_.Port }) {
       Start-Sleep -Milliseconds 500
     }
   } while (-not $ready -and (Get-Date) -lt $deadline)
+  if ($corsMismatch) { throw $corsMismatch }
+  if (-not $ready) { throw "DEPO service '$($service.Name)' did not become ready within $ServiceStartupTimeoutSeconds seconds. Check $stateDir\$($service.Name).err.log. For a slower cold start, retry with -ServiceStartupTimeoutSeconds 600." }
   if ($env:AUTH_MODE -eq 'token') {
     try {
       $access = Invoke-RestMethod -Uri "http://${peerHost}:$($service.Port)/auth/access" -Headers @{ Authorization = "Bearer $($env:GRAPH_READ_TOKEN)" } -TimeoutSec 10
       if ($access.status -ne 'authorized') { throw 'Read access was not authorized.' }
     } catch { throw "Service '$($service.Name)' does not accept the configured read key. Stop and restart all services after key changes; deploy matching backend modules if /auth/access is missing." }
   }
-  if ($corsMismatch) { throw $corsMismatch }
-  if (-not $ready) { throw "DEPO service '$($service.Name)' did not become ready within $ServiceStartupTimeoutSeconds seconds. Check $stateDir\$($service.Name).err.log. For a slower cold start, retry with -ServiceStartupTimeoutSeconds 600." }
+
 }
 # Workers have no readiness port. Require every worker started by this
 # invocation to remain alive through the complete HTTP-service readiness pass.
@@ -205,7 +211,8 @@ if ($env:DEPO_PIPELINE_EXECUTION_MODE -eq 'worker') {
 }
 } catch {
   foreach ($startedService in @($startedServices | Sort-Object { [int]$_.ProcessId } -Descending)) {
-    Stop-Process -Id $startedService.ProcessId -Force -ErrorAction SilentlyContinue
+    try { Stop-DepoProcessTree $startedService.ProcessId $python $startedService.Module }
+    catch { Write-Warning "Cleanup failed for $($startedService.Module): $($_.Exception.Message)"; continue }
     if (Test-Path -LiteralPath $startedService.PidFile) {
       Remove-Item -LiteralPath $startedService.PidFile -Force -ErrorAction SilentlyContinue
     }

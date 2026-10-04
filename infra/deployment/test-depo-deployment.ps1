@@ -35,8 +35,8 @@ $sparkEnabled = $values.DEPO_SPARK_ENABLED -eq 'true'
 $neo4jSparkEnabled = $values.DEPO_SPARK_NEO4J_ENABLED -eq 'true'
 $postgresSparkEnabled = $values.DEPO_SPARK_POSTGRES_ENABLED -eq 'true'
 $schedulerEnabled = $values.DEPO_PIPELINE_SCHEDULER_ENABLED -eq 'true'
-if (($neo4jSparkEnabled -or $postgresSparkEnabled -or $schedulerEnabled) -and -not $sparkEnabled) {
-  throw 'Spark connectors and scheduler require DEPO_SPARK_ENABLED=true.'
+if (($neo4jSparkEnabled -or $postgresSparkEnabled) -and -not $sparkEnabled) {
+  throw 'Spark connectors require DEPO_SPARK_ENABLED=true.'
 }
 if ($sparkEnabled) {
   Assert-DepoSparkRuntime $values.DEPO_SPARK_HOME $values.DEPO_JAVA_HOME $values.DEPO_HADOOP_HOME $values.DEPO_SPARK_OUTPUT_ROOT

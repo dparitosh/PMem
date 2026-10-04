@@ -12,7 +12,7 @@ $requiredFiles = @(
   'infra/postgres/test-postgres-schema.ps1', 'infra/postgres/test-postgres-connectivity.ps1',
   'infra/postgres/test-postgres-odbc.ps1', 'infra/windows/start-depo-frontend.ps1',
   'infra/windows/stop-depo-frontend.ps1', 'infra/windows/rotate-depo-api-key.ps1',
-  'frontend/public/depo-runtime-config.js', 'infra/windows/test-depo-routing.ps1'
+  'infra/windows/process-control.ps1', 'frontend/public/depo-runtime-config.js', 'infra/windows/test-depo-routing.ps1'
 )
 foreach ($relative in $requiredFiles) {
   if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) { throw "Missing release file: $relative" }

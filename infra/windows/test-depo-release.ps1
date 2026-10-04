@@ -39,8 +39,8 @@ $sparkEnabled = $values['DEPO_SPARK_ENABLED'] -eq 'true'
 $neo4jSparkEnabled = $values['DEPO_SPARK_NEO4J_ENABLED'] -eq 'true'
 $postgresSparkEnabled = $values['DEPO_SPARK_POSTGRES_ENABLED'] -eq 'true'
 $schedulerEnabled = $values['DEPO_PIPELINE_SCHEDULER_ENABLED'] -eq 'true'
-if (($neo4jSparkEnabled -or $postgresSparkEnabled -or $schedulerEnabled) -and -not $sparkEnabled) {
-  throw 'Spark connector and scheduler require DEPO_SPARK_ENABLED=true.'
+if (($neo4jSparkEnabled -or $postgresSparkEnabled) -and -not $sparkEnabled) {
+  throw 'Spark connectors require DEPO_SPARK_ENABLED=true.'
 }
 
 # Release preflight must prove the deployed schema is complete without changing
