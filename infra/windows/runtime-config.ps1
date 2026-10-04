@@ -83,6 +83,13 @@ function Write-DepoBrowserRouting([string]$Root, [string]$EnvFile = '.env.local'
 
 function Import-DepoEnvironment([string]$Root, [string]$EnvFile) {
   $values = Read-DepoEnvironment -Root $Root -EnvFile $EnvFile
+  # These aliases are one setting. Clear a previously imported alias when the
+  # selected file explicitly configures the other, so Python cannot prefer it.
+  if ($values.ContainsKey('DEPO_DATABASE_URL') -or $values.ContainsKey('DATABASE_URL')) {
+    foreach ($databaseKey in @('DEPO_DATABASE_URL','DATABASE_URL')) {
+      if (-not $values.ContainsKey($databaseKey)) { [Environment]::SetEnvironmentVariable($databaseKey, $null, 'Process') }
+    }
+  }
   $routing = Resolve-DepoRouting $values
   foreach ($key in $routing.Keys) { $values[$key] = $routing[$key] }
   foreach ($key in $values.Keys) { [Environment]::SetEnvironmentVariable($key, $values[$key], 'Process') }

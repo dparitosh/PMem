@@ -2744,3 +2744,32 @@ For instance-to-ontology linking, select a completed instance import and target 
 After a concurrent-change conflict, refresh the job definition before retrying; stale approval must not undo disable. Quality-warning runs are finished executions requiring evidence review; they are not automatically approved for publication.
 
 The first semantic publication attempt binds its ontology, prefix, release, source, and batch digest. Retry the same values to reconcile an interrupted call. Conflicting destinations return HTTP 409. Published runs return the stored receipt even without a checkpoint. Do not change destinations to bypass an uncertain result.
+
+
+## PostgreSQL connection rejection diagnostics
+
+Run from the application VM, using the root environment file:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\postgres\test-postgres-connectivity.ps1 -EnvFile .\.env.local
+```
+
+The selected file must contain `DEPO_DATABASE_URL` or its legacy alias `DATABASE_URL`. A stale shell alias cannot override the other alias configured in this file. Failure JSON reports password-free `connection` fields. An HBA rejection also reports PostgreSQL's validated `rejected_client_address` and, for simple database/role names, an `hba_rule_example`. The connection host is the database VM; the rejected client address is the application VM as seen by PostgreSQL, including any NAT. These addresses need not match.
+
+On the database VM, use pgAdmin's administrator Query Tool:
+
+```sql
+SHOW hba_file;
+SELECT line_number, type, database, user_name, address, auth_method, error
+FROM pg_hba_file_rules ORDER BY line_number;
+```
+
+Edit the exact returned file to add the diagnostic's example rule using your real user, database, and client address, before any applicable reject rule. `host` matches SSL and non-SSL TCP connections; `hostssl` will not match `sslmode=disable`. Then check errors and reload:
+
+```sql
+SELECT line_number, error FROM pg_hba_file_rules WHERE error IS NOT NULL;
+SELECT pg_reload_conf();
+```
+
+The error query should return zero rows. Retest connectivity before running `.\infra\windows\initialize-depo-schema.ps1 -EnvFile .\.env.local`. A working database-local pgAdmin connection does not establish remote application access. Never paste the full database URL or password into diagnostic reports.

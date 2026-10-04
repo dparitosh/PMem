@@ -3,6 +3,8 @@ import argparse
 import json
 import os
 import sys
+import re
+import ipaddress
 
 from backend.depo_platform.postgres_schema import configured_schema, connect_timeout_seconds, initialise_schema, statement_options
 from backend.depo_platform.schema_contract import verify_structure
@@ -40,7 +42,20 @@ EXPECTED_INDEXES = {
 }
 
 
-def _failure_action(exc: Exception) -> dict[str, str]:
+def _connection_context() -> dict[str, str]:
+    """Expose only explicit non-secret connection fields, never the DSN."""
+    url = os.getenv('DEPO_DATABASE_URL') or os.getenv('DATABASE_URL')
+    if not url:
+        return {}
+    try:
+        from psycopg.conninfo import conninfo_to_dict
+        values = conninfo_to_dict(url)
+        return {key: str(values[key]) for key in ('host', 'port', 'dbname', 'user', 'sslmode') if values.get(key)}
+    except Exception:
+        return {}  # Invalid DSNs must not be echoed even when parsing fails.
+
+
+def _failure_action(exc: Exception) -> dict:
     """Return useful diagnostics without echoing a DSN or credentials."""
     sqlstate = getattr(exc, 'sqlstate', None)
     actions = {
@@ -56,7 +71,7 @@ def _failure_action(exc: Exception) -> dict[str, str]:
     diagnostic = str(exc).lower()
     if sqlstate and sqlstate.startswith('08'):
         action = 'PostgreSQL is unreachable. Verify host, port 5432, Windows firewall, listen_addresses and pg_hba.conf from the application VM.'
-    elif not sqlstate and 'no pg_hba.conf entry' in diagnostic:
+    elif 'no pg_hba.conf entry' in diagnostic:
         action = 'PostgreSQL has no pg_hba.conf rule for this application VM, user, database and SSL mode. Add the matching rule on the database VM, reload PostgreSQL, and retry.'
     elif not sqlstate and ('timeout' in diagnostic or 'timed out' in diagnostic or 'connection refused' in diagnostic):
         action = 'The application VM cannot reach PostgreSQL. Verify the configured host and port, firewall, listen_addresses and server status.'
@@ -65,6 +80,22 @@ def _failure_action(exc: Exception) -> dict[str, str]:
     else:
         action = actions.get(sqlstate, 'Check PostgreSQL connectivity, schema privileges, migration history and existing object compatibility.')
     result = {'status': 'failed', 'error_type': type(exc).__name__, 'action': action}
+    context = _connection_context()
+    if context:
+        result['connection'] = context
+    if 'no pg_hba.conf entry' in diagnostic:
+        # PostgreSQL reports the client address it actually sees (possibly NAT).
+        # Extract only a validated IP address; never include driver error text.
+        match = re.search(r'no pg_hba\.conf entry for host "([^"]+)"', str(exc), re.IGNORECASE)
+        if match:
+            try:
+                address = ipaddress.ip_address(match.group(1))
+                result['rejected_client_address'] = str(address)
+                user, database = context.get('user', ''), context.get('dbname', '')
+                if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]*', user) and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]*', database):
+                    result['hba_rule_example'] = f'host    {database}    {user}    {address}/{address.max_prefixlen}    scram-sha-256'
+            except ValueError:
+                pass
     if sqlstate:
         result['sqlstate'] = sqlstate
     # RuntimeError text is authored by DEPO and cannot contain driver connection details.
