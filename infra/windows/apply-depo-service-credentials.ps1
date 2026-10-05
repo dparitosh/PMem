@@ -29,4 +29,7 @@ try {
   # Secret values travel only over stdin, never command-line arguments or logs.
   $selected | ConvertTo-Json -Compress | & $python @arguments
   if ($LASTEXITCODE -ne 0) { throw 'Central credential import failed. No partial batch was applied; follow the structured action above.' }
+  Write-Host 'Server credentials are synchronized. This does not sign a browser in.'
+  Write-Host 'Start the services, then open Admin -> Connect registered service credentials. Enter ADMIN_API_KEY once and choose read-only or workflow scopes.'
+  Write-Host ('Verify the running APIs with: .\infra\windows\test-depo-browser-session.ps1 -EnvFile "{0}"' -f $EnvFile)
 } finally { $OutputEncoding = $previousOutputEncoding; Pop-Location }

@@ -55,6 +55,8 @@ Find and update existing entries. If an entry does not exist, add it once. Do no
 ```dotenv
 DEPO_ROUTING_MODE=local
 AUTH_MODE=token
+DEPO_CREDENTIAL_STORE=postgres
+DEPO_POSTGRES_MODE=external
 DEPO_SERVICE_HOST=10.0.2.16
 DEPO_LOCAL_SERVICE_HOST=10.0.2.16
 ALLOWED_ORIGINS=http://10.0.2.16:3000
@@ -66,6 +68,8 @@ DEPO_SPARK_ENABLED=false
 | --- | --- |
 | DEPO_ROUTING_MODE=local | Bypass Azure API Management; use direct service ports. |
 | AUTH_MODE=token | Backend services require DEPO API keys. Local routing does not disable authentication. |
+| DEPO_CREDENTIAL_STORE=postgres | PostgreSQL holds the central credential authority; enables managed browser sessions. |
+| DEPO_POSTGRES_MODE=external | PostgreSQL is already managed on the separate database VM; do not initialize a local cluster. |
 | DEPO_SERVICE_HOST=10.0.2.16 | Backend services listen on this VM interface. |
 | DEPO_LOCAL_SERVICE_HOST=10.0.2.16 | Frontend and peer services use this address to call the backend. |
 | ALLOWED_ORIGINS=http://10.0.2.16:3000 | Permit browser requests from this exact frontend address. This is not an API address or token. |
@@ -94,11 +98,11 @@ For a new installation, complete the PostgreSQL and Neo4j setup sections, then u
 .\install-depo.ps1 -EnvFile .env.local -Profile Production
 ```
 
-The installer installs dependencies, builds the frontend, sets up schemas and starts backend services. For an existing installation with dependencies and schemas already verified, continue to Step F. Do not interpret an endpoint diagnostic failure before startup as a schema failure.
+The installer installs dependencies, builds the frontend, migrates the DBA-created application schema and starts backend services. If it succeeds on a first installation, skip Step F and the startup command in Step G; check the running endpoints in Step G and continue to Step H. For an existing installation with dependencies already installed, follow Step F before Step G. If dependency versions or lock files changed, use the full installer upgrade sequence later in this guide rather than the code-only path. Do not interpret an endpoint diagnostic failure before startup as a schema failure.
 
 ### Step F — Apply a source update and rebuild the frontend once
 
-If a newer release changed frontend source, deploy **all** release files together. First stop the existing application processes:
+For a code-only update with existing backend dependencies, first stop the application processes, then replace **all** matching release files together while preserving customer environment files and data:
 
 ```powershell
 Set-Location 'E:\App\PMem'
@@ -106,14 +110,25 @@ Set-Location 'E:\App\PMem'
 .\infra\windows\stop-depo-services.ps1
 ```
 
-Then build. The commands stop if installation or compilation fails:
+After replacing the release files, migrate/verify PostgreSQL and synchronize credentials **before starting any backend service**:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\postgres\update-postgres-schema.ps1 -EnvFile .\.env.local
+.\infra\postgres\test-postgres-schema.ps1 -EnvFile .\.env.local
+.\infra\windows\apply-depo-service-credentials.ps1 -EnvFile .\.env.local
+```
+
+For legacy `DEPO_CREDENTIAL_STORE=environment` deployments, omit the central-credential import command and follow the individual-key instructions in Step I.
+
+Checkpoint: schema checks return `status: ok` and credential import returns `status: ok` with created/unchanged profiles. A mismatch is a stop condition: review the selected file and centrally stored actor, expiry and revocation. Use `-ReplaceExisting` only for deliberate replacement of all supplied profiles, never as an automatic retry. These commands require the installed backend virtual environment.
+
+Then build. The commands stop if dependency installation or compilation fails:
 
 ```powershell
 Set-Location 'E:\App\PMem\frontend'
-if (-not (Test-Path .\node_modules\.bin\vite.cmd)) {
-    npm.cmd ci --no-audit --no-fund
-    if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency installation failed; stop here.' }
-}
+npm.cmd ci --no-audit --no-fund
+if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency installation failed; stop here.' }
 npm.cmd run build
 if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed; stop here.' }
 Set-Location 'E:\App\PMem'
@@ -123,6 +138,8 @@ Test-Path .\frontend\dist\index.html
 Expected: a successful build and `True`. `vite is not recognized` means frontend dependencies are missing; running only `npm run build` cannot install them. If npm reports EBUSY, close frontend development processes holding node_modules and retry the locked installation. The next frontend launcher writes the root-derived runtime routes into dist. Subsequent routing-only changes require restart and browser refresh, not another source rebuild.
 
 ### Step G — Start backend services and prove they are reachable
+
+If the full installer already succeeded, do not start again; proceed to the checks below. Otherwise, after Step F passes, run:
 
 ```powershell
 Set-Location 'E:\App\PMem'
@@ -172,16 +189,46 @@ window.DEPO_RUNTIME_CONFIG
 
 Expected: `VITE_GRAPH_SERVICE_URL` is `http://10.0.2.16:8013`. If it is undefined, the runtime script has not loaded. If this is correct but network requests still call `127.0.0.1`, the application bundle is old or ignores runtime routing; rebuild from the complete updated source. Refresh alone cannot fix an old source bundle.
 
-### Step I — Enter the correct token and use the application
+### Step I — Connect registered services and use the application
 
-1. On the application VM, open root `.env.local` in the editor. Find `GRAPH_READ_TOKEN`. Copy only its value to the approved user, not the whole file. A demonstration line `GRAPH_READ_TOKEN=YOUR_ACTUAL_GENERATED_KEY` means copy the actual generated key after `=`; the literal placeholder is never a valid key.
-2. In the frontend header, click **API access**. Paste the read key into **Graph read API key**. Leave **APIM subscription key** empty in direct mode. Click **Apply and retry**.
-3. Open **Ontology Registry** and refresh its list. A successful response may contain no records if no ontology has been registered; an empty database is different from a failed connection. Open other read views after API access is applied.
-4. For administrator functions, open **Admin**, enter the separate `ADMIN_API_KEY` in **Admin API key**, then click **Refresh**. Do not enter the admin key in the read-key field.
-5. For Semantic Bridge approval, job execution or product publication, use the matching approval key and approver field described in the later action/key table. The read key does not authorize writes. For example Semantic Bridge's approval flow uses `AGENTIC_APPROVAL_TOKEN`, while data-job execution uses `DATA_JOB_EXECUTION_TOKEN`.
-6. After a full browser reload, enter the read key again. Keys are memory-only. **Clear** resets credentials; never store them in bookmarks, URLs or frontend build variables.
+For the default token/PostgreSQL credential configuration, database registration and browser connection are two separate steps:
+
+1. Confirm the schema/credential checkpoints from Step F (or the first-time installer) and running services from Step G passed. Do not initialize a new PostgreSQL cluster on an existing or remote database.
+2. Verify central session access after the services are ready:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\test-depo-browser-session.ps1 -EnvFile .\.env.local
+```
+
+3. Checkpoint: ten service PASS lines followed by `Central browser-session checks passed`. The script disconnects its temporary read-only session and runs no jobs or uploads. It does not sign the browser in. If the gateway is configured with `DEPO_ROUTING_MODE=gateway`, additionally run `test-depo-browser-session.ps1 -EnvFile .\.env.local -Gateway`; first complete the separate gateway routing/CORS setup. Do not rerun backend or frontend startup here if Steps G and H already succeeded.
+
+4. Open the frontend URL printed by its launcher. Choose **Admin → Service credentials → Connect registered service credentials**. Enter only `ADMIN_API_KEY` from root `.env.local` in **Administrator key for connection**. Leave APIM subscription blank for direct/local access; enter the separate APIM subscription key for gateway access.
+5. Leave workflow scopes unchecked for browsing, graph reads and Knowledge Companion. For uploads, ontology registration, job execution or approved publication, explicitly enable **Enable registered upload, execution and approval scopes for this session**. Click **Connect registered services**. Connection checks each configured service before applying browser access; no individual service-key entry or repeated database registration is required.
+6. Open Ontology Registry and refresh. An empty successful response means no ontology records, rather than authentication failure. Continue the selected import/workflow with its review/approval requirements. A session is not a job approval.
+7. Reconnect after fifteen minutes or a full reload. **Clear credentials** disconnects the session when reachable and clears browser memory. The ordinary per-profile table remains available for limited user-issued keys and credential administration. Session credentials cannot administer keys; use the separate `ADMIN_API_KEY` profile for rotation/revocation actions.
+
+For `DEPO_CREDENTIAL_STORE=environment`, central sessions are unavailable. Use **Admin → Service credentials**, enter only the role-authorized profile keys and click **Test and apply**. Entra deployments continue their separate identity/gateway flow. Do not provide the root environment file or an administrator key to ordinary users; an administrator should establish the managed session or issue only the required scoped keys.
 
 HTTP works, but it does not encrypt credentials on the network. HTTPS is required when the customer's confidentiality policy requires encrypted access. Do not disable authentication to resolve a routing or CORS error.
+
+### Checkpoints — stop at the first failure
+
+Run each command separately and inspect its result before the next command. A block of PowerShell commands is not automatically a transaction: later lines can run after an earlier script fails. Never continue past a failed checkpoint.
+
+| Order | Step / command | Required result before continuing |
+| --- | --- | --- |
+| 1 | B: release files | Correct repository root and every required path exists. |
+| 2 | C–D: customer configuration | Preserve existing files; completed database URL, routing, origins, credential-store mode and keys. No placeholders or duplicate entries. |
+| 3 | E: prerequisites/configuration | Both diagnostics pass. On first install, DBA database/role/schema and Neo4j are provisioned before the installer. |
+| 4 | First install: install-depo.ps1 | All installer stages pass; backend is started, frontend is built. Skip the code-only update commands in F. |
+| 4 | Existing code-only update: F | Processes stopped before file replacement; migration and read-only schema verification pass; credential import succeeds; frontend build succeeds. Do not run first-time CREATE DATABASE/initdb scripts. |
+| 5 | G: backend startup and listeners | Services-ready message, ten API listeners, health status ok. Worker checks are separate from HTTP liveness. |
+| 6 | H: frontend | Ready URL and current bundle reported; runtime routes match the reachable VM or gateway. |
+| 7 | I: central-session diagnostic | All ten read-access checks and temporary-session disconnect pass. For gateway use, test APIM routing/CORS separately too. |
+| 8 | I: browser connection | Admin connection succeeds for all configured services; connected scopes/expiry appear. Enable workflow scopes explicitly for write operations. |
+| 9 | J: full diagnostic | Every applicable diagnostic stage passes. |
+| 10 | Customer acceptance | Demonstrate one read, one reviewed ontology upload/registration, and required job/publication workflows with persisted results. Infrastructure checks alone do not certify business workflows. |
 
 ### Step J — Finish diagnostics and perform future changes safely
 
@@ -197,7 +244,7 @@ Expected: all diagnostic stages pass. This checks installation contracts and run
 | ERR_CONNECTION_REFUSED | Nothing accepts the connection at the requested host/port. Compare browser routes with service listeners. |
 | 403 after a protected request | The service was reached; supply the endpoint's correct read or approval key. |
 | CORS error | Compare the browser's exact origin with root ALLOWED_ORIGINS, then restart the backend. |
-| 401 expired key | Rotate that key, restart all processes using it, then enter the replacement. |
+| 401 expired session/key | For a browser session, reconnect in Admin. For an expired underlying key, deliberately rotate it and update server callers before reconnecting. |
 | Missing release script | Deploy the complete release. Do not remove the diagnostic or documentation reference. |
 | PostgreSQL no pg_hba.conf entry | Add a matching database-VM rule for the application's actual IP, role, database and SSL mode; use the PostgreSQL section. |
 | Missing Neo4j constraints | Run the idempotent Neo4j Bootstrap command in its setup section, then verify Production. |
@@ -2106,6 +2153,39 @@ implementation stages, not separate customer installation instructions.
 
 ### First deployment versus an existing installation
 
+For a code-only upgrade to this central-session release, stop backend/frontend services first, replace the matching backend/frontend/infra files while preserving customer configuration, then use these commands. Existing installations must already have their dependencies and root/frontend environment files; this sequence installs no new dependencies and preserves the database:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\stop-depo-frontend.ps1
+.\infra\windows\stop-depo-services.ps1 -EnvFile .\.env.local
+# Replace the release files now; preserve .env.local and customer data.
+.\infra\postgres\update-postgres-schema.ps1 -EnvFile .\.env.local
+.\infra\windows\apply-depo-service-credentials.ps1 -EnvFile .\.env.local
+Set-Location E:\App\PMem\frontend
+npm run build
+if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed. Do not continue.' }
+Set-Location E:\App\PMem
+.\infra\windows\start-depo-services.ps1 -EnvFile .\.env.local
+.\infra\windows\test-depo-browser-session.ps1 -EnvFile .\.env.local
+.\infra\windows\start-depo-frontend.ps1 -EnvFile .\.env.local
+```
+
+Run commands individually in sequence and stop at the first error. If dependencies or lock files changed, use the full installer upgrade sequence below instead of this code-only sequence. Credential-import conflicts require deliberate review; do not add `-ReplaceExisting` automatically. Configure frontend aliases consistently before rebuilding. For a remote PostgreSQL VM, use `DEPO_POSTGRES_MODE=external`; none of these commands initializes a new local cluster.
+
+#### Connect the browser after importing credentials
+
+For `AUTH_MODE=token` and `DEPO_CREDENTIAL_STORE=postgres`, the PowerShell credential import registers server-side digests. It cannot inject plaintext keys into a browser. Use the new central session connection instead of entering each service key:
+
+1. Run `infra/windows/apply-depo-service-credentials.ps1 -EnvFile .env.local` and confirm `status: ok`. Start backend and frontend services using the steps below.
+2. Open the app, navigate to **Admin → Service credentials → Connect registered service credentials**.
+3. Copy only `ADMIN_API_KEY` from the selected root `.env.local` into **Administrator key for connection**. If APIM is enabled, enter the APIM subscription key in its separate field first.
+4. Leave workflow scopes unchecked for read-only browsing. To upload/register ontologies or execute approved workflows, explicitly check **Enable registered upload, execution and approval scopes for this session**.
+5. Click **Connect registered services**. The app checks read access on every configured service before applying the session. Rows report connected scopes; the administrator input is cleared. You do not need to copy the individual keys or register them again.
+6. Use the application. Reconnect after fifteen minutes or a full browser reload. **Clear credentials** disconnects the session when reachable and clears browser memory; a session that cannot be disconnected still expires server-side. Rotation/revocation invalidates the affected scope; rotating/revoking the issuing Admin key invalidates all its sessions.
+
+Deploy matching backend files to all services and rebuild the frontend before using this feature. No new database migration is needed beyond the existing registry and credential tables (migrations 001 and 008). Sessions store token digests and credential fingerprints in `depo_registry`; plaintext service keys are never returned. Sessions are held only in browser memory and cannot rotate or revoke credentials. Credential administration still requires the separate Admin key; workflow review/approval requirements remain in force. For APIM, import the updated OpenAPI and permit the ontology service's `POST /auth/browser-session` and `DELETE /auth/browser-session`, forwarding `X-API-Key` on connection and `Authorization` on disconnection.
+
 Knowledge Companion currently provides evidence-grounded ontology resource search. It is not an instance EBOM/MBOM comparison or change-impact engine. Its `/api/v1/chat/capabilities` reports this limit. The selected ontology filters server-side search; browser-provided graph labels are not trusted evidence. Applying a different graph read key in Admin resets the credential-owned chat session. In token mode, Companion forwards the verified caller read key to Graph, so read-key rotation does not require an environment copy for this retrieval path. Other outbound worker/tool credentials still follow their documented server configuration.
 
 On first deployment, the database administrator must first run the database/role/schema provisioning steps in this guide, including `infra/postgres/create-depo-database.sql`. That file is for **first installation only**: do not rerun it against an existing database. The application installer does not create the PostgreSQL database or schema.
@@ -2255,7 +2335,7 @@ The frontend must already be built using the installation instructions. Open `ht
 
 ### 3. Enable authenticated reads in the UI
 
-On the application VM, open root `.env.local` in your approved editor and locate `GRAPH_READ_TOKEN`. Copy only its value, without `GRAPH_READ_TOKEN=` or surrounding quotes. In the frontend header, choose **API access**, paste into **Graph read API key**, then select **Apply and retry**. This enables protected read requests; it does not authorize publication or job execution. A full browser reload clears the key, so enter it again after reloading. **Clear** removes active browser credentials and resets credential-bearing controls. Do not distribute the root environment file to users; an administrator should provide only the key authorized for their role.
+On the application VM, open root `.env.local` in your approved editor and locate `GRAPH_READ_TOKEN`. Copy only its value, without `GRAPH_READ_TOKEN=` or surrounding quotes. For limited individual-key access, choose **API access** to navigate to Admin → Service credentials, enter the value in the GRAPH_READ_TOKEN row and select **Test and apply**. For central PostgreSQL credentials, prefer the single Admin connection described in Step I. This enables protected read requests; it does not authorize publication or job execution. A full browser reload clears the key, so enter it again after reloading. **Clear** removes active browser credentials and resets credential-bearing controls. Do not distribute the root environment file to users; an administrator should provide only the key authorized for their role.
 
 ### 4. Use separate credentials for protected actions
 
@@ -2314,7 +2394,7 @@ Finally run `.\diagnose-depo.ps1` after starting services. Never paste `.env.loc
 
 Root `.env.local` is the sole CORS allowlist: set `ALLOWED_ORIGINS` to comma-separated exact browser origins. Services do not add localhost, LAN IPs, HTTPS variants or other ports automatically. Missing origins permit no cross-origin requests. Restart backend services after editing it.
 
-API keys remain server-side. Enter the read key through the UI API access dialog. Clear removes the read key, admin key, chat session identifier and remounts page/chat controls to discard approval inputs. Browser reload clears in-memory credentials.
+With central sessions, original service keys remain server-side. Connect once in Admin as described in Step I. For individual-key access, enter the read key in the Admin credential table. Clear removes the read key, admin key, chat session identifier and remounts page/chat controls to discard approval inputs. Browser reload clears in-memory credentials.
 
 Optional root settings:
 
@@ -2897,4 +2977,4 @@ If the selected file intentionally replaces existing central keys or metadata, r
 
 Replacement revives revoked profiles and invalidates their old keys. Update every caller's protected outbound environment file and restart callers after deliberate rotation. The script uses the protected PostgreSQL connection in this file and must be run by the deployment administrator with table write privileges; it does not require an API gateway or a running HTTP service.
 
-This applies keys to the server authority. It does not inject keys into browsers or persist browser secrets. Admin displays a table of credential profiles, services, key inputs, actions and status; browser Test and apply still establishes the current tab's credentials. Database passwords, Neo4j passwords and outbound connector tokens are excluded from the import.
+This applies keys to the server authority. It does not inject keys into browsers or persist browser secrets. Admin displays a table of credential profiles, services, key inputs, actions and status; Admin → Connect registered service credentials establishes the current tab's short-lived session using one Admin-key sign-in; per-profile Test and apply remains available as an alternative. Database passwords, Neo4j passwords and outbound connector tokens are excluded from the import.

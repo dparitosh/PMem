@@ -38,7 +38,12 @@ function Stop-DepoProcessTree([int]$ProcessId, [string]$ExpectedPython, [string]
     # Recheck creation time to avoid killing a reused PID after taking a snapshot.
     $current = Get-CimInstance Win32_Process -Filter "ProcessId = $($node.Process.ProcessId)" -ErrorAction Stop
     if ($current -and $current.CreationDate -eq $node.Process.CreationDate) {
-      Stop-Process -Id $current.ProcessId -Force -ErrorAction Stop
+      try { Stop-Process -Id $current.ProcessId -Force -ErrorAction Stop }
+      catch {
+        # The process can exit between the identity check and Stop-Process.
+        # Preserve real access/termination failures if it is still alive.
+        if (Get-Process -Id $current.ProcessId -ErrorAction SilentlyContinue) { throw }
+      }
     }
   }
   $owners = @($tree | ForEach-Object { [int]$_.Process.ProcessId })

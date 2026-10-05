@@ -134,6 +134,10 @@ if (-not $SkipReleasePreflight) {
 }
 
 Write-Host "`nDEPO Windows installation completed successfully." -ForegroundColor Green
+if ($settings['AUTH_MODE'] -eq 'token' -and $settings['DEPO_CREDENTIAL_STORE'] -eq 'postgres') {
+  Write-Host 'Next: verify central browser authentication with infra/windows/test-depo-browser-session.ps1 using the same -EnvFile.'
+  Write-Host 'In the browser open Admin -> Connect registered service credentials, enter ADMIN_API_KEY once, and explicitly choose workflow scopes if needed.'
+}
 if (-not $SkipFrontend) {
   Write-Host 'Backend services are started. The frontend is built but is not yet served.'
   Write-Host ('Start the frontend with the same configuration: .\infra\windows\start-depo-frontend.ps1 -EnvFile "{0}"' -f $envPath)

@@ -20,6 +20,24 @@ const enter = (profile, value) => {
 };
 const response = (status, body) => ({ ok: status === 200, status, json: async () => body });
 
+test('one admin connection applies registered scopes without exposing their keys', async () => {
+  fetch.mockResolvedValueOnce(response(200, { token: 'depo_session_opaque', expires_at: '2099-01-01T00:00:00Z', profiles: ['GRAPH_READ_TOKEN', 'INGESTION_WRITE_TOKEN'] }))
+    .mockResolvedValue(response(200, { status: 'authorized' }));
+  render(<CredentialSettings />);
+  fireEvent.change(screen.getByLabelText('Administrator key for connection'), { target: { value: 'admin-fixture' } });
+  fireEvent.click(screen.getByLabelText('Enable registered upload, execution and approval scopes for this session'));
+  fireEvent.click(screen.getByRole('button', { name: 'Connect registered services' }));
+  await waitFor(() => expect(getCredentialProfile('INGESTION_WRITE_TOKEN')).toBe('depo_session_opaque'));
+  expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_opaque');
+  expect(getCredentialProfile('ADMIN_API_KEY')).toBe('');
+  expect(screen.getByLabelText('Administrator key for connection')).toHaveValue('');
+  expect(screen.getByLabelText('GRAPH_READ_TOKEN')).toHaveValue('');
+  const [url, options] = fetch.mock.calls[0];
+  expect(url).toBe('http://ontology/auth/browser-session');
+  expect(options.headers['X-API-Key']).toBe('admin-fixture');
+  expect(JSON.parse(options.body)).toEqual({ include_writes: true });
+});
+
 test('read key is applied only after every configured service accepts it', async () => {
   fetch.mockResolvedValue(response(200, { status: 'authorized' }));
   render(<CredentialSettings />);

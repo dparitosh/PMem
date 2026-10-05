@@ -47,6 +47,13 @@ def verify_key(profile, supplied):
     if not row:
         raise HTTPException(503, f'{profile} has not been registered in the central credential authority')
     salt, digest, actor, expiry, revoked = row
+    if supplied.startswith('depo_session_'):
+        if revoked:
+            raise HTTPException(403, f'Revoked {profile}')
+        if expiry and expiry <= datetime.now(timezone.utc):
+            raise HTTPException(401, 'API key has expired; contact the administrator')
+        from .browser_credentials import verify_session
+        return verify_session(profile, supplied, digest)
     try:
         matches = hmac.compare_digest(key_digest(salt, supplied), digest)
     except (TypeError, ValueError):
@@ -62,6 +69,8 @@ def validate_registration(profile, key, actor, expires_at=None):
     if profile not in PROFILES:
         raise ValueError('Unsupported credential profile')
     key, actor = str(key).strip(), str(actor).strip()
+    if key.startswith('depo_session_'):
+        raise ValueError('The browser session prefix is reserved; generate a different API key')
     if len(key) < 32 or len(key) > 4096 or key.startswith('<'):
         raise ValueError('Use a random API key with 32-4096 characters')
     if not actor or len(actor) > 200:

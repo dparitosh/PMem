@@ -7,13 +7,49 @@ import './CredentialSettings.css';
 
 const profiles = Object.keys(credentialServices);
 export default function CredentialSettings() {
-  const [values, setValues] = useState(() => Object.fromEntries(profiles.map(p => [p, getCredentialProfile(p)])));
+  const [values, setValues] = useState(() => Object.fromEntries(profiles.map(p => [p, getCredentialProfile(p).startsWith('depo_session_') ? '' : getCredentialProfile(p)])));
   const [subscription, setSubscription] = useState(getGatewaySubscriptionKey);
   const [results, setResults] = useState({});
   const [busy, setBusy] = useState(false);
   const [clearVersion, setClearVersion] = useState(0);
   const [actor, setActor] = useState('');
   const [expiry, setExpiry] = useState('');
+  const [sessionAdminKey, setSessionAdminKey] = useState('');
+  const [includeWrites, setIncludeWrites] = useState(false);
+  const [sessionStatus, setSessionStatus] = useState('');
+  async function connectCentralSession() {
+    setBusy(true);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const previousSubscription = getGatewaySubscriptionKey();
+    try {
+      const url = buildSemanticServiceUrl('ontology', '/auth/browser-session');
+      const headers = { ...serviceAuthHeaders(url, 'post', subscription), 'Content-Type': 'application/json', 'X-API-Key': sessionAdminKey.trim() };
+      delete headers.Authorization;
+      const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ include_writes: includeWrites }), signal: controller.signal, credentials: 'omit', redirect: 'error' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `Connection failed (${response.status})`);
+      if (!body.token?.startsWith('depo_session_') || !Array.isArray(body.profiles) || !body.profiles.includes('GRAPH_READ_TOKEN') || !body.expires_at) throw new Error('Invalid central session response');
+      const checks = await Promise.all(Object.keys(config.semanticServiceUrls).map(async service => {
+        const endpoint = buildSemanticServiceUrl(service, '/auth/access');
+        const probe = await fetch(endpoint, { headers: { ...serviceAuthHeaders(endpoint, 'get', subscription), Authorization: `Bearer ${body.token}` }, signal: controller.signal, credentials: 'omit', redirect: 'error' });
+        const result = await probe.json().catch(() => ({}));
+        if (!probe.ok || result.status !== 'authorized') throw new Error(`${service} did not accept the central session. Deploy matching backend modules and check its credential-store configuration.`);
+      }));
+      if (!checks.length) throw new Error('No service endpoints are configured');
+      clearServiceAuthToken();
+      setGatewaySubscriptionKey(subscription);
+      body.profiles.filter(profile => profiles.includes(profile) && profile !== 'ADMIN_API_KEY').forEach(profile => setCredentialProfile(profile, body.token));
+      setValues(Object.fromEntries(profiles.map(profile => [profile, ''])));
+      setResults(Object.fromEntries(body.profiles.map(profile => [profile, `Connected via central session until ${new Date(body.expires_at).toLocaleTimeString()}`])));
+      setSessionAdminKey('');
+      setSessionStatus(`Connected ${body.profiles.length} registered scopes. Session expires ${new Date(body.expires_at).toLocaleTimeString()}. Credential administration still requires the separate admin key.`);
+      window.dispatchEvent(new Event('depo:credentials-changed'));
+    } catch (error) {
+      setGatewaySubscriptionKey(previousSubscription);
+      setSessionStatus(error.name === 'AbortError' ? 'Connection timed out; check service connectivity.' : error.message);
+    } finally { clearTimeout(timeout); setBusy(false); }
+  }
   async function validate(profile) {
     setBusy(true);
     const key = values[profile].trim();
@@ -84,6 +120,14 @@ export default function CredentialSettings() {
   }
   return <section className="depo-panel" aria-label="Service credentials">
     <h2>Service credentials</h2>
+    <div className="depo-panel depo-central-session">
+      <h3>Connect registered service credentials</h3>
+      <p>After the PowerShell import succeeds, enter ADMIN_API_KEY once here. A fifteen-minute session authorizes registered scopes without copying their keys into this browser. Reloading clears access; rotation, revocation or expiry invalidates affected scopes.</p>
+      <label>Administrator key for connection<input aria-label="Administrator key for connection" type="password" autoComplete="off" disabled={busy} value={sessionAdminKey} onChange={event => setSessionAdminKey(event.target.value)} /></label>
+      <label><input type="checkbox" disabled={busy} checked={includeWrites} onChange={event => setIncludeWrites(event.target.checked)} /> Enable registered upload, execution and approval scopes for this session</label>
+      <button type="button" disabled={busy || !sessionAdminKey.trim()} onClick={connectCentralSession}>Connect registered services</button>
+      <p role="status">{sessionStatus || 'Read-only by default. Enable workflow scopes only when required. No jobs run during connection.'}</p>
+    </div>
     <p>All application API-key profiles are listed here, even before OpenAPI import. Database passwords, Neo4j credentials and outbound integration tokens remain in server configuration; they are never exposed to the browser.</p>
     <p>Enter administrator-issued keys here. Read access uses GRAPH_READ_TOKEN; ontology uploads use INGESTION_WRITE_TOKEN; governed instance jobs use DATA_JOB_EXECUTION_TOKEN. Validation checks authentication without running a job. Keys remain in this tab only and are cleared by a full reload.</p>
     <div className="depo-credential-controls"><label>APIM subscription key (optional)<input type="password" autoComplete="off" disabled={busy} value={subscription} onChange={e => setSubscription(e.target.value)} /></label>
@@ -100,9 +144,20 @@ export default function CredentialSettings() {
       <button type="button" disabled={busy || !values[profile].trim()} onClick={() => validate(profile)}>Test and apply</button>
       <button type="button" disabled={busy || values[profile].trim().length < 32 || !actor.trim() || !getCredentialProfile('ADMIN_API_KEY')} onClick={() => register(profile)}>Register / rotate in database</button>
       {profile !== 'ADMIN_API_KEY' && <button type="button" disabled={busy || !getCredentialProfile('ADMIN_API_KEY')} onClick={() => revoke(profile)}>Revoke in database</button>}
-      </div></td><td><span role="status">{results[profile] || (getCredentialProfile(profile) ? 'Key stored; test to verify' : 'Not configured')}</span></td>
+      </div></td><td><span role="status">{results[profile] || (getCredentialProfile(profile)?.startsWith('depo_session_') ? 'Central session stored; reconnect if expired' : getCredentialProfile(profile) ? 'Key stored; test to verify' : 'Not entered in this browser')}</span></td>
     </tr>)}</tbody></table></div>
-    <button type="button" disabled={busy} onClick={() => { clearServiceAuthToken(); setValues(Object.fromEntries(profiles.map(p => [p, '']))); setSubscription(''); setResults({}); setClearVersion(v => v + 1); }}>Clear credentials</button>
+    <button type="button" disabled={busy} onClick={async () => {
+      const token = getCredentialProfile('GRAPH_READ_TOKEN');
+      if (token?.startsWith('depo_session_')) {
+        const url = buildSemanticServiceUrl('ontology', '/auth/browser-session');
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        try { await fetch(url, { method: 'DELETE', headers: { ...serviceAuthHeaders(url, 'delete'), Authorization: `Bearer ${token}` }, signal: controller.signal, credentials: 'omit', redirect: 'error' }); }
+        catch { /* Memory is cleared even when logout cannot reach the server. */ }
+        finally { clearTimeout(timeout); }
+      }
+      clearServiceAuthToken(); setValues(Object.fromEntries(profiles.map(p => [p, '']))); setSubscription(''); setResults({}); setSessionStatus('Browser access cleared.'); setSessionAdminKey(''); setClearVersion(v => v + 1);
+    }}>Clear credentials</button>
     <ServiceAccessDiscovery key={clearVersion} subscriptionKey={subscription} excludedProfiles={profiles} />
   </section>;
 }

@@ -124,7 +124,7 @@ def create_service_app(
         if check is not None:
             check['x-depo-credential-check'] = {'profile_parameter': 'profile', 'supported_profiles': sorted(PROFILES - {'GRAPH_READ_TOKEN', 'ADMIN_API_KEY'}), 'mutates': False}
             check['security'] = [{'BearerKey': []}, {'ApiKey': []}]
-        for path, method in [('/auth/credentials', 'get'), ('/auth/admin-access', 'get'), ('/auth/credentials/{profile}', 'post'), ('/auth/credentials/{profile}', 'delete')]:
+        for path, method in [('/auth/browser-session', 'post'), ('/auth/credentials', 'get'), ('/auth/admin-access', 'get'), ('/auth/credentials/{profile}', 'post'), ('/auth/credentials/{profile}', 'delete')]:
             operation = app.openapi_schema.get('paths', {}).get(path, {}).get(method)
             if operation is not None:
                 operation['security'] = [{'ApiKey': []}]
@@ -175,6 +175,25 @@ def create_service_app(
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
         return {'status': 'registered', 'profile': profile}
+
+    @app.post('/auth/browser-session', summary='Connect registered service scopes for fifteen minutes')
+    def browser_session(request: Request, payload: dict):
+        from fastapi import HTTPException
+        from .credentials import uses_postgres
+        from .browser_credentials import create_session
+        if os.getenv('AUTH_MODE', 'token').lower() != 'token' or not uses_postgres():
+            raise HTTPException(409, 'Browser service sessions require token authentication and PostgreSQL credential storage')
+        include_writes = payload.get('include_writes', False)
+        if type(include_writes) is not bool:
+            raise HTTPException(422, 'include_writes must be a boolean')
+        return JSONResponse(content=create_session(request.headers.get('x-api-key', ''), include_writes), headers={'Cache-Control': 'no-store'})
+
+    @app.delete('/auth/browser-session', summary='Disconnect this browser service session')
+    def disconnect_browser_session(request: Request):
+        from .browser_credentials import delete_session
+        header = request.headers.get('authorization', '')
+        delete_session(header[7:].strip() if header.lower().startswith('bearer ') else '')
+        return {'status': 'disconnected'}
 
     @app.get('/auth/credentials')
     def credential_status(request: Request):

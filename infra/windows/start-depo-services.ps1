@@ -184,7 +184,12 @@ foreach ($service in $services | Where-Object { $_.Port }) {
     try {
       $access = Invoke-RestMethod -Uri "http://${peerHost}:$($service.Port)/auth/access" -Headers @{ Authorization = "Bearer $($env:GRAPH_READ_TOKEN)" } -TimeoutSec 10
       if ($access.status -ne 'authorized') { throw 'Read access was not authorized.' }
-    } catch { throw "Service '$($service.Name)' does not accept the configured read key. Stop and restart all services after key changes; deploy matching backend modules if /auth/access is missing." }
+    } catch {
+      if ($env:DEPO_CREDENTIAL_STORE -eq 'postgres') {
+        throw "Service '$($service.Name)' rejected the root environment GRAPH_READ_TOKEN or its credential check failed. PostgreSQL stores the authoritative key; restart and schema migration preserve existing profiles. Check expiry/revocation and the selected file. If that file contains the intended replacement keys, deliberately run infra/windows/apply-depo-service-credentials.ps1 -EnvFile '$EnvFile' -ReplaceExisting, then retry startup. That command rotates all key profiles supplied in the file. Otherwise restore the current central read key in the file. Check service logs for database errors; ensure /auth/access exists in the deployed backend."
+      }
+      throw "Service '$($service.Name)' does not accept the configured read key. Stop and restart all services after key changes; deploy matching backend modules if /auth/access is missing."
+    }
   }
 
 }
