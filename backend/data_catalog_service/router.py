@@ -5,11 +5,11 @@ import hmac
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import Header
 
 from backend.mesh_store import PostgresRegistry
-from backend.depo_platform.authorization import approval_identity
+from backend.depo_platform.authorization import approval_identity, graph_read_identity, _request_api_key
 from .artifact_retention import retention
 from .product_contract import validate_revision, validate_registration
 
@@ -32,6 +32,10 @@ def _semver(value: str) -> tuple:
 
 
 def _internal(token: str | None) -> None:
+    from backend.depo_platform.credentials import uses_postgres, verify_key
+    if uses_postgres():
+        verify_key("CATALOG_SERVICE_TOKEN", token or "")
+        return
     from backend.depo_platform.authorization import require_active_token
     require_active_token('CATALOG_SERVICE_TOKEN')
     expected = os.getenv("CATALOG_SERVICE_TOKEN", "")
@@ -39,14 +43,14 @@ def _internal(token: str | None) -> None:
         raise HTTPException(403, "A valid internal catalog service token is required")
 
 
-@router.get("/products")
+@router.get("/products", dependencies=[Depends(graph_read_identity)])
 def products(domain: str = "") -> dict:
     values = [value for key, value in store.all().items() if not key.endswith(":latest")]
     values = [value for value in values if not domain or value.get("domain") == domain]
     return {"products": sorted(values, key=lambda value: value["updated_at"], reverse=True), "count": len(values)}
 
 
-@router.get("/products/{product_id}")
+@router.get("/products/{product_id}", dependencies=[Depends(graph_read_identity)])
 def product(product_id: str) -> dict:
     values = store.all()
     versions = [value for key, value in values.items() if key.startswith(f"{product_id}:") and not key.endswith(":latest")]
@@ -57,8 +61,8 @@ def product(product_id: str) -> dict:
 
 
 @router.put("/products/{product_id}/versions/{version}")
-def register(product_id: str, version: str, payload: dict, x_depo_service_token: str | None = Header(default=None)) -> dict:
-    _internal(x_depo_service_token)
+def register(product_id: str, version: str, payload: dict, request: Request = None, x_depo_service_token: str | None = Header(default=None)) -> dict:
+    _internal(x_depo_service_token or (_request_api_key(request) if request is not None else None))
     # Serialize versions of the same product so latest-version selection and
     # immutable-content checks cannot race across service processes.
     with store.advisory_lock(f"catalog-product:{product_id}") as acquired:
@@ -94,19 +98,19 @@ def _register_version(product_id: str, version: str, payload: dict) -> dict:
     return record
 
 
-@router.get("/artifacts/retention", summary="List artifact retention and tier policies")
+@router.get("/artifacts/retention", dependencies=[Depends(graph_read_identity)], summary="List artifact retention and tier policies")
 def retention_policies() -> dict:
     policies = retention.policies()
     return {"policies": policies, "count": len(policies)}
 
 
-@router.get("/artifacts/retention/due", summary="List artifacts eligible for approved purge")
+@router.get("/artifacts/retention/due", dependencies=[Depends(graph_read_identity)], summary="List artifacts eligible for approved purge")
 def retention_due() -> dict:
     records = retention.due()
     return {"artifacts": records, "count": len(records)}
 
 
-@router.get("/artifacts/{artifact_id:path}/retention/history", summary="Read immutable retention and purge evidence")
+@router.get("/artifacts/{artifact_id:path}/retention/history", dependencies=[Depends(graph_read_identity)], summary="Read immutable retention and purge evidence")
 def retention_history(artifact_id: str) -> dict:
     events = retention.history(artifact_id)
     return {"artifact_id": artifact_id, "events": events, "count": len(events)}

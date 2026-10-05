@@ -69,7 +69,7 @@ describe('OntologyMetadataForm Component', () => {
       expect(mockOnSubmit).not.toHaveBeenCalled();
     });
 
-    it('should show error when prefix is empty', async () => {
+    it('should derive a prefix when the field is empty', async () => {
       renderForm();
 
       const ontologyNameInput = screen.getByPlaceholderText(/e.g., Product Model/i);
@@ -79,9 +79,8 @@ describe('OntologyMetadataForm Component', () => {
       await userEvent.click(submitButton);
 
       await waitFor(() => {
-        expect(screen.getByText(/Prefix is required/i)).toBeInTheDocument();
+        expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ prefix: '' }));
       });
-      expect(mockOnSubmit).not.toHaveBeenCalled();
     });
 
     it('should show error when prefix contains invalid characters', async () => {

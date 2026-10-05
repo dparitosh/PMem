@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import json
 from backend.depo_platform.service_urls import service_url
 from typing import Any
 
@@ -45,7 +47,7 @@ class SemanticIngestionWorkflow:
             )
             quality_response.raise_for_status()
             quality = quality_response.json()
-            if publish and enforce_quality and not quality.get("publish_recommended", False):
+            if publish and not quality.get("publish_recommended", False):
                 return {
                     "status": "quality_blocked", "normalization": normalized["provenance"],
                     "records_processed": normalized["records_processed"], "quality": quality,
@@ -65,7 +67,9 @@ class SemanticIngestionWorkflow:
                 raise RuntimeError("Ontology service did not return a Turtle artifact")
             registered = await client.post(
                 f"{self.ontology_url}/ontologies/register",
-                data={"ontology_name": name, "prefix": prefix, "source": "source-profile-workflow"},
+                data={"ontology_name": name, "prefix": prefix, "source": "source-profile-workflow:" + hashlib.sha256(json.dumps(
+                    [normalized, name, prefix, base_uri], sort_keys=True, ensure_ascii=False, separators=(",", ":")
+                ).encode("utf-8")).hexdigest()},
                 files={"artifact": (f"{prefix}.ttl", turtle.encode("utf-8"), "text/turtle")},
             )
             registered.raise_for_status()

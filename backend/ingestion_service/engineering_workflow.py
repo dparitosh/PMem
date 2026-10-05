@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import json
+from starlette.concurrency import run_in_threadpool
 from backend.depo_platform.service_urls import service_url
 from typing import Any
 
@@ -31,7 +34,7 @@ class EngineeringWorkflow:
         enforce_quality: bool = True, policy_exception_ids: list[str] | None = None,
         request_id: str | None = None,
     ) -> dict[str, Any]:
-        conversion = self.converter.convert(filename=filename, content=content)
+        conversion = await run_in_threadpool(self.converter.convert, filename=filename, content=content)
         if publish and not register:
             raise ValueError("Graph publication requires ontology registration")
         if not register:
@@ -44,7 +47,9 @@ class EngineeringWorkflow:
             "ontology_name": ontology_name or ontology["name"],
             "prefix": prefix or ontology["prefix"],
             "description": description,
-            "source": f"engineering-conversion:{conversion['format'].lower()}",
+            "source": "engineering-workflow:" + hashlib.sha256(
+                json.dumps([filename, ontology_name, prefix, description], ensure_ascii=False).encode("utf-8") + b"\0" + content
+            ).hexdigest(),
         }
         async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
             policy_response = await client.post(
@@ -61,11 +66,11 @@ class EngineeringWorkflow:
                         "message": "Publication was blocked by policy checks."}
             quality_response = await client.post(
                 f"{self.ontology_url}/ontologies/quality-gate",
-                json={"entities": self._governance_entities(ontology["turtle"]), "deduplicate": True},
+                json={"entities": await run_in_threadpool(self._governance_entities, ontology["turtle"]), "deduplicate": True},
             )
             quality_response.raise_for_status()
             quality = quality_response.json()
-            if publish and enforce_quality and not quality.get("publish_recommended", False):
+            if publish and not quality.get("publish_recommended", False):
                 return {"status": "quality_blocked", "conversion": conversion, "policy": policy,
                         "quality": quality, "message": "Publication was blocked by quality checks."}
             response = await client.post(
@@ -80,9 +85,15 @@ class EngineeringWorkflow:
                                       "ontology_registration": registration}
             if not publish:
                 return result
+            # Re-read authoritative state: registration may have reused an artifact
+            # whose lifecycle was changed after the original request.
+            current = await client.get(f"{self.ontology_url}/ontologies/{registration['ontology_id']}")
+            current.raise_for_status()
+            self._require_publishable(current.json())
             published = await client.post(
                 f"{self.graph_url}/graph/ontologies/publish",
-                data={"ontology_id": registration["ontology_id"], "prefix": data["prefix"]},
+                data={"ontology_id": registration["ontology_id"], "prefix": data["prefix"],
+                      "publication_id": data["source"].split(":", 1)[1]},
                 files={"artifact": (f"{PathName.safe_stem(filename)}.ttl", ontology["turtle"].encode("utf-8"), "text/turtle")},
                 headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API", endpoint=self.graph_url),
             )
@@ -90,6 +101,12 @@ class EngineeringWorkflow:
             result["status"] = "published"
             result["graph_publication"] = published.json()
             return result
+
+    @staticmethod
+    def _require_publishable(metadata: dict[str, Any]) -> None:
+        if (metadata.get("lifecycle_status") not in {"draft", "in_review", "approved"}
+                or metadata.get("status") == "superseded"):
+            raise ValueError("Ontology publication is blocked by its current lifecycle state")
 
     @staticmethod
     def _governance_entities(turtle: str) -> list[dict[str, str]]:

@@ -5,6 +5,8 @@ export const navigationItems = [
   { id: 'import', label: 'Import', icon: ixIconName.cloudUpload },
   { id: 'data-flow', label: 'Data Flow', icon: ixIconName.gauge },
   { id: 'ontology', label: 'Ontology Junction', icon: ixIconName.assetNetwork },
+  { id: 'catalog', label: 'Data Catalog', icon: ixIconName.database },
+  { id: 'data-products', label: 'Data Products', icon: ixIconName.database },
   { id: 'registry', label: 'Metadata Registry', icon: ixIconName.database },
   { id: 'graph', label: 'Graph Explorer', icon: ixIconName.graph },
   { id: 'code-audit', label: 'Code Network', icon: ixIconName.code },
@@ -18,6 +20,10 @@ export const navigationItems = [
 ];
 
 export const pageAliases = {
+  catalog: 'catalog',
+  'data-catalog': 'catalog',
+  'data-products': 'data-products',
+  products: 'data-products',
   graph: 'graph',
   'code-audit': 'code-audit',
   code: 'code-audit',

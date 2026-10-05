@@ -19,6 +19,8 @@ from .ontology_upload_manager import OntologyUploadManager
 from .unified_data_import import UnifiedDataImportService
 from .workflow_artifact_service import WorkflowArtifactService
 from .oslc_trs_service import OSLCTRSService
+from .workflow_boundaries import chunk_size as validate_chunk_size, taxonomy_forest
+from .workflow_validation import validate_semantic_artifact
 
 try:
     from .agent_memory_service import AgentMemoryService
@@ -946,6 +948,16 @@ class SemanticWorkflowService:
         if text and "http://" not in text and "https://" not in text and "xmlns" not in text:
             findings.append({"severity": "info", "message": "No namespace URI detected in source text"})
 
+        try:
+            semantic_checks = validate_semantic_artifact(meta)
+            if not semantic_checks["shacl"]["conforms"]:
+                findings.append({"severity": "error", "message": "SHACL constraints do not conform"})
+            if semantic_checks["consistency"]["status"] != "passed":
+                findings.append({"severity": "error", "message": "OWL consistency checks found conflicting individuals"})
+        except Exception as exc:
+            semantic_checks = {"status": "failed", "error_type": type(exc).__name__}
+            findings.append({"severity": "error", "message": "Semantic validation failed or is unavailable; review source syntax, shapes and installed validators"})
+
         report = {
             "workflow_id": "ontology.validate",
             "ontology_id": ontology_id,
@@ -953,6 +965,7 @@ class SemanticWorkflowService:
             "prefix": meta.get("prefix"),
             "file_type": meta.get("file_type"),
             "checked_at": datetime.now().isoformat(),
+            "semantic_checks": semantic_checks,
             "findings": findings,
             "summary": {
                 "errors": sum(1 for f in findings if f["severity"] == "error"),
@@ -961,7 +974,7 @@ class SemanticWorkflowService:
             },
         }
         WorkflowArtifactService.write_json(task_id, "validation", "ontology_validation_report.json", report, "validation_report")
-        return {"task_id": task_id, "status": "completed", "result": report, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
+        return {"task_id": task_id, "status": "quality_warning" if report["summary"]["errors"] else "completed", "result": report, "artifact_manifest": WorkflowArtifactService.get_manifest(task_id)}
 
     @classmethod
     def generate_dictionary(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -1008,42 +1021,14 @@ class SemanticWorkflowService:
         extracted = OntologyTaxonomyService.get_taxonomy(ontology_id)
         nodes = extracted.get("nodes") or []
         edges = extracted.get("edges") or []
-        by_id = {str(node.get("term_id") or node.get("uri") or ""): node for node in nodes}
-        children_by_parent: Dict[str, List[str]] = {}
-        child_ids: set[str] = set()
-        for edge in edges:
-            child = str(edge.get("source_term") or "")
-            parent = str(edge.get("target_term") or "")
-            if child in by_id and parent in by_id and child != parent:
-                children_by_parent.setdefault(parent, []).append(child)
-                child_ids.add(child)
-
-        def branch(term_id: str, ancestry: set[str]) -> Dict[str, Any]:
-            node = by_id[term_id]
-            if term_id in ancestry:
-                return {"term_id": term_id, "label": node.get("label") or term_id, "cycle": True, "children": []}
-            next_ancestry = {*ancestry, term_id}
-            return {
-                "term_id": term_id,
-                "uri": node.get("uri"),
-                "label": node.get("label") or term_id,
-                "definition": node.get("definition") or "",
-                "children": [
-                    branch(child, next_ancestry)
-                    for child in sorted(set(children_by_parent.get(term_id, [])), key=lambda item: str(by_id[item].get("label") or item).casefold())
-                ],
-            }
-
-        root_ids = [term_id for term_id in by_id if term_id not in child_ids]
-        if not root_ids and by_id:
-            root_ids = sorted(by_id)[:1]
+        root_ids, trees = taxonomy_forest(nodes, edges)
         taxonomy = {
             "workflow_id": "taxonomy.generate",
             "ontology_id": ontology_id,
             "root": meta.get("ontology_name") or meta.get("prefix") or ontology_id,
             "term_source": extracted.get("extraction_source") or "empty",
             "generated_at": datetime.now().isoformat(),
-            "children": [branch(term_id, set()) for term_id in sorted(root_ids, key=lambda item: str(by_id[item].get("label") or item).casefold())],
+            "children": trees,
             "nodes": nodes,
             "edges": edges,
             "summary": {
@@ -1258,7 +1243,7 @@ class SemanticWorkflowService:
     @classmethod
     def chunk_graph(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
         ontology_id = cls._resolve_ontology_id(payload.get("ontology_id"))
-        chunk_size = int(payload.get("chunk_size") or 80)
+        chunk_size = validate_chunk_size(payload.get("chunk_size"))
         if not ontology_id:
             raise ValueError("ontology_id is required")
         meta = cls._ontology_metadata(ontology_id)

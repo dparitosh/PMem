@@ -1,4 +1,5 @@
 import CredentialSettings from '../Components/CredentialSettings';
+import AgentControlPanel from '../Components/AgentControlPanel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot } from 'lucide-react';
 import AdminPanel from '../Components/AdminPanel';
@@ -142,7 +143,13 @@ export default function AdminPage({ onSchemaCleaned }) {
 
   useEffect(() => {
     loadAgenticCatalog();
-    return () => agenticControllerRef.current?.abort();
+    window.addEventListener('depo:credentials-changed', loadAgenticCatalog);
+    window.addEventListener('depo:credentials-cleared', loadAgenticCatalog);
+    return () => {
+      agenticControllerRef.current?.abort();
+      window.removeEventListener('depo:credentials-changed', loadAgenticCatalog);
+      window.removeEventListener('depo:credentials-cleared', loadAgenticCatalog);
+    };
   }, [loadAgenticCatalog]);
 
   const importOpenApi = useCallback(async (event) => {
@@ -256,6 +263,7 @@ export default function AdminPage({ onSchemaCleaned }) {
 
       <CredentialSettings />
       <ServiceIntegrationPanel />
+      {agenticConfigured && <AgentControlPanel />}
 
       <KpiStrip
         items={[

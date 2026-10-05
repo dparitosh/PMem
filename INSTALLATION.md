@@ -100,6 +100,19 @@ For a new installation, complete the PostgreSQL and Neo4j setup sections, then u
 
 The installer installs dependencies, builds the frontend, migrates the DBA-created application schema and starts backend services. If it succeeds on a first installation, skip Step F and the startup command in Step G; check the running endpoints in Step G and continue to Step H. For an existing installation with dependencies already installed, follow Step F before Step G. If dependency versions or lock files changed, use the full installer upgrade sequence later in this guide rather than the code-only path. Do not interpret an endpoint diagnostic failure before startup as a schema failure.
 
+### Frontend build checkpoint: alias conflict versus a locked install
+
+If npm reports EBUSY, then retries successfully and reports packages added, dependency installation recovered. The blocking error is the later build error. Do not delete the database or regenerate tokens for a frontend build failure.
+
+With root `DEPO_ROUTING_MODE=local` or `gateway`, use the supported builder. It temporarily applies both VITE and REACT_APP aliases for each nonempty root routing URL, builds, writes public runtime routing, then restores the PowerShell process environment. Customer configuration files are not modified:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\build-depo-frontend.ps1 -EnvFile .\.env.local
+```
+
+Checkpoint: Vite completes and the builder reports `Frontend build and public runtime routing completed`. Only then restart the frontend launcher. `npm.cmd run build` by itself does not load the root routing switch. Without a root routing mode, correct mismatched aliases explicitly in frontend `.env`, `.env.local`, `.env.production`, `.env.production.local` and process environment. Keep one alias per setting or make the values identical. Non-routing conflicts and browser-secret configuration remain build errors. A deprecation warning is distinct from a failed build; an npm install-script approval warning must be reviewed against the release policy, not approved indiscriminately.
+
 ### Step F — Apply a source update and rebuild the frontend once
 
 For a code-only update with existing backend dependencies, first stop the application processes, then replace **all** matching release files together while preserving customer environment files and data:
@@ -129,9 +142,8 @@ Then build. The commands stop if dependency installation or compilation fails:
 Set-Location 'E:\App\PMem\frontend'
 npm.cmd ci --no-audit --no-fund
 if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency installation failed; stop here.' }
-npm.cmd run build
-if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed; stop here.' }
 Set-Location 'E:\App\PMem'
+.\infra\windows\build-depo-frontend.ps1 -EnvFile .\.env.local
 Test-Path .\frontend\dist\index.html
 ```
 
@@ -2163,9 +2175,8 @@ Set-Location E:\App\PMem
 .\infra\postgres\update-postgres-schema.ps1 -EnvFile .\.env.local
 .\infra\windows\apply-depo-service-credentials.ps1 -EnvFile .\.env.local
 Set-Location E:\App\PMem\frontend
-npm run build
-if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed. Do not continue.' }
 Set-Location E:\App\PMem
+.\infra\windows\build-depo-frontend.ps1 -EnvFile .\.env.local
 .\infra\windows\start-depo-services.ps1 -EnvFile .\.env.local
 .\infra\windows\test-depo-browser-session.ps1 -EnvFile .\.env.local
 .\infra\windows\start-depo-frontend.ps1 -EnvFile .\.env.local
@@ -2929,6 +2940,20 @@ The Import page uses these shared credentials and no longer has separate upload/
 
 All 17 application credential profiles, including `ADMIN_API_KEY`, approval, publication, vocabulary, federation, retention and speed-path keys, are entered and tested in **Admin → Service credentials**. Workflow pages consume the shared profile at the time of the action; users still enter approver names and confirm writes on those pages. A successful key test validates credentials on the selected service only; it does not approve a write or guarantee downstream dependencies. Backend `NEO4J_PASS`, database passwords, `DT_AGENT_GATEWAY_TOKEN`, `OSLC_REMOTE_TOKEN` and other outbound secrets remain server-side in the root configuration. Database registration stores salted key digests only when DEPO_CREDENTIAL_STORE=postgres; browser key values remain in tab memory.
 
+
+### Catalog, products and agent workflow checks
+
+After **Admin → Service credentials → GRAPH_READ_TOKEN → Test and apply** succeeds, open **Data Catalog** to browse registered product versions, or **Data Products** to inspect published package metadata. An empty list means that service has no registered products; registering an ontology does not automatically publish an analytics product. Credential changes refresh these views and clear previously loaded details.
+
+For a multi-step agent workflow, validate `AGENTIC_APPROVAL_TOKEN` in Admin, then enter its run ID in **Admin → Agent workflow control** and select **Inspect / refresh**. Pause, resume and cancel requests take effect at the next tool boundary. They retain completed writes and do not extend the original deadline. Standalone ontology review operations are single operations and do not use these controls.
+
+Ontology agents must be permitted to read their retained artifacts. The default `ONTOLOGY_AGENT_ALLOWED_ROOTS=data;ontology;backend/test_data;ontology_uploads` covers repository storage. If `ONTOLOGY_SERVICE_STORAGE` uses another location, add that exact durable directory to the allowed roots. For example, with native ontology storage at `C:\DEPO\data\ontologies`, use:
+
+```dotenv
+ONTOLOGY_AGENT_ALLOWED_ROOTS=data;ontology;backend/test_data;ontology_uploads;C:\DEPO\data\ontologies
+```
+
+Deploy the updated backend and frontend source together, rebuild using `infra/windows/build-depo-frontend.ps1` as described above, and restart the services and frontend. These controls use the existing PostgreSQL registry; they do not require an additional control table.
 
 ### PostgreSQL central API-key authority (migration 008)
 

@@ -160,7 +160,7 @@ class OntologyUploadManager:
                     result["semantic_artifacts_status"] = "source_registered"
                 return result
 
-            if file_type not in {"xsd", "xmi"}:
+            if file_type not in {"xsd", "xmi", "express"}:
                 return result
 
             from .owl_generation_service import OWLGenerationService

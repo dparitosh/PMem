@@ -1,4 +1,6 @@
 from typing import Annotated
+from starlette.concurrency import run_in_threadpool
+from backend.depo_platform.upload_limits import ontology_upload_limit
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from backend.depo_platform.authorization import service_write_identity, graph_read_identity
@@ -28,7 +30,11 @@ async def publish_ontology(
 ) -> dict:
     try:
         service_write_identity(request, token_env="GRAPH_PUBLICATION_TOKEN", default_actor="graph-publication-service")
-        return publisher.publish_turtle(content=await artifact.read(), ontology_id=ontology_id, prefix=prefix, publication_id=publication_id)
+        limit = ontology_upload_limit()
+        content = await artifact.read(limit + 1)
+        if len(content) > limit:
+            raise HTTPException(413, "Ontology artifact exceeds ONTOLOGY_MAX_UPLOAD_BYTES")
+        return await run_in_threadpool(publisher.publish_turtle, content=content, ontology_id=ontology_id, prefix=prefix, publication_id=publication_id)
     except HTTPException:
         raise
     except Exception as exc:

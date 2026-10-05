@@ -7,6 +7,7 @@ import logging
 from typing import Optional
 from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException, Form
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 # ✅ SECURITY: File size limits
@@ -223,10 +224,10 @@ async def upload_ontology_file(
         
         # Validate file type
         file_type = FileFormatDetector.detect(file.filename)
-        if not file_type or file_type.value not in ['xsd', 'xmi', 'ontology']:
+        if not file_type or file_type.value not in ['xsd', 'xmi', 'express', 'ontology']:
             raise HTTPException(
                 status_code=400,
-                detail="Only XSD, XMI, OWL, RDF/XML, and TTL files are supported for ontology upload."
+                detail="Only XSD, XMI, EXPRESS, OWL, RDF/XML, and TTL files are supported for ontology upload."
             )
 
         # Ontology files are loaded as-is (no XSD/XMI generation semantics required).
@@ -253,7 +254,7 @@ async def upload_ontology_file(
             base_uri = _normalize_base_uri(source_namespace, f"http://depo-onto.local/xsd#{Path(file.filename).stem}/")
         
         # Save ontology file and metadata
-        save_result = OntologyUploadManager.save_ontology_file(
+        save_result = await run_in_threadpool(OntologyUploadManager.save_ontology_file,
             file_content=file_content,
             filename=file.filename,
             ontology_name=ontology_name,

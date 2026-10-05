@@ -538,7 +538,7 @@ export default function DataImportPipeline() {
       return;
     }
     const fileId = file.fileId;
-    if (file.pendingMetadata || !file.ontologyName || !file.prefix || !file.generationType) {
+    if (file.pendingMetadata || !file.ontologyName || !file.generationType) {
       setMetadataFormPrefill({
         ontologyName: file.ontologyName || '',
         prefix: file.prefix || '',

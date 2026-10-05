@@ -91,6 +91,8 @@ def credential_profiles(endpoint, dependency_calls, *, method, path):
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
                 continue
+            if node.func.id == 'verify_key' and node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                profiles.add(node.args[0].value)
             if node.func.id in {'approval_identity', 'service_write_identity'}:
                 for keyword in node.keywords:
                     if keyword.arg == 'token_env' and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str):

@@ -73,6 +73,7 @@ class AgentAudit(unittest.TestCase):
         module = SimpleNamespace(service_write_identity=denied)
         with patch.dict(sys.modules, {'backend.depo_platform.authorization': module}):
             with self.assertRaises(HTTPException): namespace['workflow_run']('run-one', SimpleNamespace())
+            namespace['workflow_controls'] = SimpleNamespace(get=lambda key: None)
             namespace['sessions'] = SimpleNamespace(owner=lambda *a: 'owner')
             self.assertNotIn('owner', namespace['workflow_run']('run-one', SimpleNamespace()))
             record.pop('owner')

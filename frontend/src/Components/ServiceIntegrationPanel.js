@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { IxButton, IxCard, IxCardContent, IxCardTitle } from '@siemens/ix-react';
 import { apiClient } from '../services/apiClient';
 import { buildSemanticServiceUrl } from '../config';
@@ -17,16 +17,25 @@ function Detail({ label, value }) {
 export default function ServiceIntegrationPanel() {
   const [state, setState] = useState({ loading: true, error: '', oslc: null, catalog: null, products: null });
 
+  const requestRef = useRef(null);
+
   const load = useCallback(async () => {
-    setState((current) => ({ ...current, loading: true, error: '' }));
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    setState({ loading: true, error: '', oslc: null, catalog: null, products: null });
     const [oslc, catalog, products] = await Promise.allSettled([
-      apiClient.get(serviceUrl('oslc', '/api/v1/oslc/health')),
-      apiClient.get(serviceUrl('catalog', '/api/v1/catalog/products')),
-      apiClient.get(serviceUrl('dataProducts', '/api/v1/data-products')),
+      Promise.resolve().then(() => apiClient.get(serviceUrl('oslc', '/api/v1/oslc/health'), { signal: controller.signal })),
+      Promise.resolve().then(() => apiClient.get(serviceUrl('catalog', '/api/v1/catalog/products'), { signal: controller.signal })),
+      Promise.resolve().then(() => apiClient.get(serviceUrl('dataProducts', '/api/v1/data-products'), { signal: controller.signal })),
     ]);
+    if (controller.signal.aborted) return;
     const failed = [oslc, catalog, products]
       .filter((result) => result.status === 'rejected')
-      .map((result) => result.reason?.response?.data?.detail || result.reason?.message)
+      .map((result) => {
+        const detail = result.reason?.response?.data?.detail || result.reason?.message;
+        return typeof detail === 'string' ? detail : detail ? JSON.stringify(detail) : '';
+      })
       .filter(Boolean);
     setState({
       loading: false,
@@ -37,7 +46,16 @@ export default function ServiceIntegrationPanel() {
     });
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    window.addEventListener('depo:credentials-changed', load);
+    window.addEventListener('depo:credentials-cleared', load);
+    return () => {
+      requestRef.current?.abort();
+      window.removeEventListener('depo:credentials-changed', load);
+      window.removeEventListener('depo:credentials-cleared', load);
+    };
+  }, [load]);
 
   return (
     <section aria-label="Platform service integrations" className="depo-service-integrations">

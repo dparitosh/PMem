@@ -5,6 +5,7 @@ replacement persistence boundary for newly published ontology artifacts.
 """
 from __future__ import annotations
 
+from contextlib import nullcontext
 import json
 import os
 import re
@@ -20,16 +21,7 @@ from rdflib.namespace import OWL
 
 from backend.artifact_store import artifact_store
 from backend.mesh_store import PostgresRegistry
-
-
-def ontology_upload_limit() -> int:
-    try:
-        value = int(os.getenv('ONTOLOGY_MAX_UPLOAD_BYTES', '26214400'))
-    except ValueError:
-        raise ValueError('ONTOLOGY_MAX_UPLOAD_BYTES must be a positive integer') from None
-    if value <= 0:
-        raise ValueError('ONTOLOGY_MAX_UPLOAD_BYTES must be a positive integer')
-    return value
+from backend.depo_platform.upload_limits import ontology_upload_limit
 
 
 def validate_rdf_input(content: bytes, rdf_format: str) -> None:
@@ -136,7 +128,7 @@ class OntologyCatalog:
             "datatype_properties": len(set(graph.subjects(predicate=None, object=OWL.DatatypeProperty))),
         }
 
-    def register(self, *, content: bytes, filename: str, ontology_name: str, prefix: str, description: str = "", source: str = "api", extra_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _validate_registration(self, *, content: bytes, filename: str, prefix: str, extra_metadata: dict[str, Any] | None = None) -> tuple[str, str, dict[str, Any]]:
         if not content:
             raise ValueError("An ontology artifact is required")
         protected = {'ontology_id', 'artifact_path', 'artifact_id', 'validation', 'lifecycle_status',
@@ -152,6 +144,44 @@ class OntologyCatalog:
                 or any(ord(char) < 32 or char in '<>:"|?*' for char in safe_filename)):
             raise ValueError('A valid non-reserved artifact filename is required')
         parse_result = self._parse_ontology(content, safe_filename)
+        return prefix, safe_filename, parse_result
+
+    def register(self, **kwargs) -> dict[str, Any]:
+        prefix, safe_filename, parsed = self._validate_registration(
+            content=kwargs["content"], filename=kwargs["filename"], prefix=kwargs["prefix"],
+            extra_metadata=kwargs.get("extra_metadata"))
+        kwargs["prefix"] = prefix
+        kwargs["filename"] = safe_filename
+        kwargs["_validated"] = (prefix, safe_filename, parsed)
+        source = str(kwargs.get("source") or "api")
+        # Only engineering workflow operation identities opt into deduplication.
+        if not re.fullmatch(r"(?:engineering|source-profile)-workflow:[0-9a-f]{64}", source):
+            return self._register(**kwargs)
+        with self._transition_lock:
+            lock = self.registry.advisory_lock(f"register:{source}") if self._postgres_enabled else nullcontext(True)
+            with lock as acquired:
+                if not acquired:
+                    raise ValueError("This engineering registration is in progress; retry the same upload")
+                for existing in self.list():
+                    if existing.get("source") == source:
+                        if existing.get("lifecycle_status") in {"deprecated", "retired"} or existing.get("status") == "superseded":
+                            raise ValueError("This ontology is retired, deprecated or superseded; create a reviewed replacement")
+                        if (existing.get("prefix") != kwargs["prefix"]
+                                or existing.get("ontology_name") != kwargs["ontology_name"]
+                                or existing.get("description", "") != kwargs.get("description", "")):
+                            raise ValueError("Workflow registration identity conflicts with its metadata")
+                        from rdflib.compare import isomorphic
+                        _, retained = self.read_artifact(existing["ontology_id"])
+                        current = Graph().parse(data=retained, format=existing["validation"]["rdf_format"])
+                        proposed = Graph().parse(data=kwargs["content"], format=parsed["rdf_format"])
+                        if not isomorphic(current, proposed):
+                            raise ValueError("Workflow registration identity conflicts with its artifact")
+                        return existing
+                return self._register(**kwargs)
+
+    def _register(self, *, content: bytes, filename: str, ontology_name: str, prefix: str, description: str = "", source: str = "api", extra_metadata: dict[str, Any] | None = None, _validated: tuple | None = None) -> dict[str, Any]:
+        prefix, safe_filename, parse_result = _validated or self._validate_registration(
+            content=content, filename=filename, prefix=prefix, extra_metadata=extra_metadata)
         ontology_id = f"{prefix.lower()}_{uuid.uuid4().hex[:16]}"
         artifact_dir = self.root / ontology_id
         artifact_dir.mkdir(parents=True, exist_ok=False)

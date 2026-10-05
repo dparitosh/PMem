@@ -3,6 +3,7 @@ import { lazy } from 'react';
 // The route registry is the single source of truth for SPA page modules.
 // Keeping imports lazy preserves a fast initial shell while each page remains
 // independently owned and testable.
+const DataProductsPage = lazy(() => import('../pages/DataProductsPage'));
 const ImportPage = lazy(() => import('../pages/ImportPage'));
 const DataFlowPage = lazy(() => import('../pages/DataFlowPage'));
 const OntologyJunctionPage = lazy(() => import('../pages/OntologyJunctionPage'));
@@ -18,6 +19,8 @@ const RequirementsPage = lazy(() => import('../pages/RequirementsPage'));
 const QifPage = lazy(() => import('../pages/QifPage'));
 
 export const pageRegistry = {
+  catalog: { component: DataProductsPage, props: () => ({ mode: 'catalog' }) },
+  'data-products': { component: DataProductsPage },
   import: { component: ImportPage },
   'data-flow': { component: DataFlowPage },
   ontology: { component: OntologyJunctionPage },

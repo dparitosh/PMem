@@ -15,6 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response, StreamingResponse
 from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from backend.mesh_store import PostgresRegistry
+from .workflow_control import checkpoint as workflow_checkpoint, WorkflowCancelled
 from .companion import companion
 from .chat_request import ChatRequest
 from .transport_auth import APPROVAL_TOKENS, downstream_headers, downstream_inputs, tool_retry_allowed
@@ -66,6 +67,7 @@ class Catalog:
 
 catalog = Catalog()
 workflow_store = PostgresRegistry("agentic_workflow_runs")
+workflow_controls = PostgresRegistry("agentic_workflow_controls")
 dt_run_store = PostgresRegistry("dt_agent_runs")
 companion_job_store = PostgresRegistry("agentic_companion_jobs")
 _services = {"agentic": "AGENTIC_SERVICE_URL", "ontology": "ONTOLOGY_SERVICE_URL", "graph": "GRAPH_SERVICE_URL", "ingestion": "INGESTION_SERVICE_URL", "oslc": "OSLC_SERVICE_URL", "qif": "QIF_SERVICE_URL", "catalog": "DATA_CATALOG_URL", "data_products": "DATA_PRODUCT_SERVICE_URL", "ceim": "CEIM_SERVICE_URL", "data_pipeline": "DATA_PIPELINE_SERVICE_URL"}
@@ -564,6 +566,7 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
                            'inputs': inputs, 'approved_by': payload.get('approved_by'), 'approval_token': payload.get('approval_token')}
                 tool = planned['steps'][index]['tool']
                 while True:
+                    await workflow_checkpoint(workflow_controls, run_id)
                     attempt += 1
                     tool_started = time.perf_counter()
                     try:
@@ -583,12 +586,13 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
                             await asyncio.sleep(min(attempt, 5))
                             continue
                         raise
+            await workflow_checkpoint(workflow_controls, run_id)
         record.update(status='completed', finished_at=_now(), updated_at=_now())
         await _agent_io(workflow_store.put, run_id, record)
         await _agent_io(_finish_observation, observation, observed_at, status='completed')
         return {key: value for key, value in record.items() if key != 'owner'}
     except BaseException as exc:
-        status = 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
+        status = 'cancelled' if isinstance(exc, WorkflowCancelled) else 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
         if record is not None:
             record.update(status=status, finished_at=_now(), updated_at=_now(), error_type=type(exc).__name__, reconciliation_required=dispatched_mutation)
             if active_step:
@@ -608,6 +612,8 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
                 await _agent_io(_finish_observation, observation, observed_at, status=status, error_type=type(exc).__name__)
             except Exception:
                 logger.exception('Unable to persist terminal workflow telemetry')
+        if isinstance(exc, WorkflowCancelled) and record:
+            return {key: value for key, value in record.items() if key != 'owner'}
         if isinstance(exc, (KeyError, ValueError, TypeError)):
             raise HTTPException(422, str(exc), headers={'X-DEPO-Run-ID': record['run_id']} if record else None) from exc
         if isinstance(exc, TimeoutError):
@@ -617,6 +623,29 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
         if isinstance(exc, (HTTPException, asyncio.CancelledError)) or not isinstance(exc, Exception):
             raise
         raise HTTPException(503, 'Workflow execution failed; inspect run state before retrying', headers={'X-DEPO-Run-ID': record['run_id']} if record else None) from exc
+
+
+@router.post("/workflow-runs/{run_id}/control", summary="Pause, resume or cancel at the next tool boundary")
+def control_workflow(run_id: str, payload: dict[str, Any], request: Request) -> dict:
+    from backend.depo_platform.authorization import service_write_identity
+    actor = service_write_identity(request, token_env="AGENTIC_APPROVAL_TOKEN", default_actor="agent-supervisor")
+    action = payload.get("action")
+    if not isinstance(action, str) or action not in {"pause", "resume", "cancel"}:
+        raise HTTPException(422, "action must be pause, resume or cancel")
+    record = workflow_store.get(run_id)
+    if not record:
+        raise HTTPException(404, "Workflow run not found")
+    if record.get("status") != "running" or datetime.now(timezone.utc) >= datetime.fromisoformat(record["deadline_at"]):
+        raise HTTPException(409, "Only an active workflow can be controlled")
+    with workflow_controls.advisory_lock(run_id) as acquired:
+        if not acquired:
+            raise HTTPException(409, "Workflow control is being updated; retry")
+        prior = workflow_controls.get(run_id) or {}
+        if prior.get("action") == "cancel" and action != "cancel":
+            raise HTTPException(409, "Cancellation cannot be reversed")
+        workflow_controls.put(run_id, {"action": action, "actor": actor, "requested_at": _now()})
+    return {"run_id": run_id, "action": action, "status": "requested",
+            "scope": "next tool boundary; completed writes are retained; the original deadline still applies"}
 
 
 @router.get("/workflow-runs/{run_id}")
@@ -635,7 +664,8 @@ def workflow_run(run_id: str, request: Request) -> dict:
         # does not overwrite a concurrently completing run or repeat its writes.
         return {**{key: value for key, value in record.items() if key != 'owner'}, 'status': 'interrupted', 'reconciliation_required': True,
                 'error_type': 'ExecutionDeadlineElapsed', 'state_source': 'deadline_projection'}
-    return {key: value for key, value in record.items() if key != 'owner'}
+    control = workflow_controls.get(run_id) or {}
+    return {**{key: value for key, value in record.items() if key != 'owner'}, 'control': control}
 
 
 @router.get("/observability/summary", dependencies=[Depends(graph_read_identity)])

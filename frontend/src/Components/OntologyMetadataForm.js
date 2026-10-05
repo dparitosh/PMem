@@ -83,9 +83,7 @@ export default function OntologyMetadataForm({
       errors.ontologyName = 'Ontology name is required';
     }
     
-    if (!formData.prefix.trim()) {
-      errors.prefix = 'Prefix is required';
-    } else if (!/^[a-z][a-z0-9_]*$/.test(formData.prefix)) {
+    if (formData.prefix.trim() && !/^[a-z][a-z0-9_]{0,49}$/.test(formData.prefix.trim())) {
       errors.prefix = 'Prefix must start with a lowercase letter and contain only lowercase letters, numbers, or underscores';
     }
     
@@ -109,6 +107,7 @@ export default function OntologyMetadataForm({
     
     onSubmit({
       ...formData,
+      prefix: formData.prefix.trim(),
       fileType: normalizedFileType,
       selectedFile: selectedFile,
       schemaType: formData.schemaType || 'schema'
@@ -218,7 +217,7 @@ export default function OntologyMetadataForm({
               fontSize: '13px',
               color: C.primary
             }}>
-              Namespace Prefix *
+              Namespace Prefix (optional)
             </label>
             <input
               id="ontology-prefix-input"
@@ -246,7 +245,7 @@ export default function OntologyMetadataForm({
               color: C.textMuted,
               marginTop: '4px'
             }}>
-              Used in URIs: {formData.prefix || 'prefix'}:Entity
+              {formData.prefix ? `Used in URIs: ${formData.prefix}:Entity` : 'Leave blank to derive a prefix from the source namespace.'}
             </div>
           </div>
 

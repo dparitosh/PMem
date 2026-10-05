@@ -39,26 +39,22 @@ def _allowed_path(value: str) -> Path:
 
 
 def _load(path: Path) -> Graph:
-    graph = Graph()
-    formats = {'.owl': 'xml', '.rdf': 'xml', '.xml': 'xml', '.ttl': 'turtle',
-               '.nt': 'nt', '.n3': 'n3', '.jsonld': 'json-ld'}
-    if path.suffix.lower() == '.jsonld':
-        document = json.loads(path.read_text(encoding='utf-8-sig'))
-        def local_context(value):
-            if isinstance(value, dict):
-                context = value.get('@context')
-                contexts = context if isinstance(context, list) else [context]
-                if any(isinstance(item, str) for item in contexts) or '@import' in value:
-                    raise ValueError('JSON-LD remote contexts and @import are disabled; use inline contexts')
-                for item in value.values():
-                    local_context(item)
-            elif isinstance(value, list):
-                for item in value:
-                    local_context(item)
-        local_context(document)
-        graph.parse(data=json.dumps(document), format='json-ld')
+    from backend.ontology_service.catalog import OntologyCatalog, validate_rdf_input
+    limit = int(os.getenv("ONTOLOGY_AGENT_MAX_BYTES", str(25 * 1024 * 1024)))
+    if limit <= 0:
+        raise ValueError("ONTOLOGY_AGENT_MAX_BYTES must be positive")
+    with path.open("rb") as stream:
+        content = stream.read(limit + 1)
+    if len(content) > limit:
+        raise ValueError("Ontology agent input exceeds the configured byte limit")
+    if path.suffix.lower() in {".nt", ".n3"}:
+        rdf_format = "nt" if path.suffix.lower() == ".nt" else "n3"
     else:
-        graph.parse(path.as_posix(), format=formats[path.suffix.lower()])
+        rdf_format = OntologyCatalog._parse_ontology(content, path.name)["rdf_format"]
+        validate_rdf_input(content, rdf_format)
+    graph = Graph().parse(data=content, format=rdf_format)
+    if not graph:
+        raise ValueError("Ontology contains no RDF triples")
     return graph
 
 
@@ -112,6 +108,15 @@ def _resolve_ontology_path(ontology_path: str, ontology_id: str | None) -> str:
     from backend.Services.ontology_upload_manager import OntologyUploadManager
     record = OntologyUploadManager.get_ontology(ontology_id)
     metadata = record.get("metadata") if record.get("status") == "success" else None
+    if not metadata:
+        from backend.ontology_service.catalog import catalog
+        metadata = catalog.get(ontology_id)
+        if metadata:
+            # Resolve only catalog-owned paths, preserving directory containment.
+            artifact = Path(str(metadata["artifact_path"])).resolve()
+            if not artifact.is_relative_to((catalog.root / ontology_id).resolve()) or not artifact.is_file():
+                raise ValueError("Native ontology artifact is missing or outside its catalog directory")
+            return str(artifact)
     metadata = metadata or {}
     source = str(metadata.get("file_path") or "")
     # An uploaded XSD or other source artifact may have a generated RDF/OWL

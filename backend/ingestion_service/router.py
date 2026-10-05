@@ -18,8 +18,23 @@ from .governed_import import governed_import, profile_for_filename
 from .tabular import MAX_IMPORT_ROWS, MAX_UPLOAD_BYTES, constraint_query, index_query, load_table, node_query, records, relationship_query
 import json
 import httpx
+from starlette.concurrency import run_in_threadpool
 from defusedxml import ElementTree as ET
 from backend.depo_platform.authorization import service_write_identity
+
+
+async def _read_bounded_upload(file: UploadFile) -> bytes:
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
+    return content
+
+
+def _policy_exceptions(raw: str) -> list[str]:
+    value = json.loads(raw)
+    if not isinstance(value, list) or not all(isinstance(item, str) and item.strip() for item in value):
+        raise ValueError("policy_exception_ids must be a JSON array of non-empty strings")
+    return value
 
 
 def _ingestion_identity(request: Request) -> str:
@@ -123,9 +138,7 @@ async def run_governed_import(
     The selected job must already be approved.  Importing never publishes to
     Neo4j; publication remains an explicit canonical approval action.
     """
-    content = await file.read()
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
+    content = await _read_bounded_upload(file)
     try:
         return await governed_import.run_job(
             filename=file.filename or "source", content=content, profile=profile,
@@ -153,11 +166,9 @@ def import_tasks() -> dict:
 
 @router.post("/schema-conversions/inspect", summary="Convert EXPRESS, STEP/STP/STPX, XMI, or XSD to a normalized Turtle contract")
 async def inspect_engineering_schema(file: UploadFile = File(...)) -> dict:
-    content = await file.read()
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
+    content = await _read_bounded_upload(file)
     try:
-        return converter.convert(filename=file.filename or "source", content=content)
+        return await run_in_threadpool(converter.convert, filename=file.filename or "source", content=content)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -165,11 +176,9 @@ async def inspect_engineering_schema(file: UploadFile = File(...)) -> dict:
 @router.post("/ap242/inspect", summary="Inspect AP242 XSD schemas, EXPRESS schemas, or STEP instance files")
 async def inspect_ap242(file: UploadFile = File(...)) -> dict:
     """Use explicit AP242 adapters; schema publication remains governed and opt-in."""
-    content = await file.read()
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
+    content = await _read_bounded_upload(file)
     try:
-        result = converter.convert(filename=file.filename or "source", content=content)
+        result = await run_in_threadpool(converter.convert, filename=file.filename or "source", content=content)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if result.get("standard") != "ap242":
@@ -194,22 +203,18 @@ def validate_ap242_reference() -> dict:
 
 @router.post("/ap242/mbd/extract", summary="Extract AP242 MBD product, geometry, PMI, and presentation mappings")
 async def extract_ap242_mbd(file: UploadFile = File(...)) -> dict:
-    content = await file.read()
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
+    content = await _read_bounded_upload(file)
     try:
-        return ap242_mbd.extract(filename=file.filename or "source.stp", content=content)
+        return await run_in_threadpool(ap242_mbd.extract, filename=file.filename or "source.stp", content=content)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/ap242/mbd/export-part28", summary="Losslessly export an AP242 Part-28 XML source")
 async def export_ap242_part28(file: UploadFile = File(...)) -> Response:
-    content = await file.read()
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
+    content = await _read_bounded_upload(file)
     try:
-        exported = ap242_mbd.export_part28(filename=file.filename or "source.stpx", content=content)
+        exported = await run_in_threadpool(ap242_mbd.export_part28, filename=file.filename or "source.stpx", content=content)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     name = Path(file.filename or "ap242_exchange.stpx").stem + ".stpx"
@@ -222,20 +227,18 @@ async def run_engineering_workflow(
     file: UploadFile = File(...),
     ontology_name: str = Form(""),
     prefix: str = Form(""),
-      description: str = Form(""),
-      register_ontology: bool = Form(True),
-      publish: bool = Form(False),
-      enforce_quality: bool = Form(True),
-      policy_exception_ids: list[str] = Form([]),
+    description: str = Form(""),
+    register_ontology: bool = Form(True),
+    publish: bool = Form(False),
+    enforce_quality: bool = Form(True),
+    policy_exception_ids: list[str] = Form([]),
 ) -> dict:
-    content = await file.read()
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
+    content = await _read_bounded_upload(file)
     try:
         return await engineering_workflow.run(
             filename=file.filename or "source", content=content, ontology_name=ontology_name, prefix=prefix,
-              description=description, register=register_ontology, request_id=getattr(request.state, "request_id", None),
-              publish=publish, enforce_quality=enforce_quality, policy_exception_ids=policy_exception_ids,
+            description=description, register=register_ontology, request_id=getattr(request.state, "request_id", None),
+            publish=publish, enforce_quality=enforce_quality, policy_exception_ids=policy_exception_ids,
         )
     except (httpx.HTTPError, RuntimeError) as exc:
         raise HTTPException(status_code=503, detail=f"Ontology service is unavailable: {exc}") from exc
@@ -246,7 +249,10 @@ async def run_engineering_workflow(
 @router.post("/source-profiles/inspect", summary="Inspect a schema or sample file for profile creation")
 async def inspect_source_profile(file: UploadFile = File(...)) -> dict:
     try:
-        return profiles.inspect(filename=file.filename or "source", content=await file.read())
+        content = await _read_bounded_upload(file)
+        return await run_in_threadpool(profiles.inspect, filename=file.filename or "source", content=content)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Source inspection failed: {exc}") from exc
 
@@ -282,10 +288,8 @@ async def execute_source_profile(profile_id: str, file: UploadFile = File(...)) 
     surprise.
     """
     try:
-        content = await file.read()
-        if len(content) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
-        return profiles.normalize_batch(
+        content = await _read_bounded_upload(file)
+        return await run_in_threadpool(profiles.normalize_batch,
             profile=profiles.get(profile_id), filename=file.filename or "source", content=content,
         )
     except HTTPException:
@@ -315,10 +319,8 @@ async def run_source_profile_workflow(
     """
     try:
         profile = profiles.get(profile_id)
-        content = await file.read()
-        if len(content) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
-        normalized = profiles.normalize_batch(profile=profile, filename=file.filename or "source", content=content)
+        content = await _read_bounded_upload(file)
+        normalized = await run_in_threadpool(profiles.normalize_batch, profile=profile, filename=file.filename or "source", content=content)
         selected_prefix = prefix or str(profile.get("prefix") or profile_id)
         return await workflow.run(
             normalized=normalized,
@@ -327,7 +329,7 @@ async def run_source_profile_workflow(
             base_uri=base_uri,
             publish=publish,
             enforce_quality=enforce_quality,
-            policy_exception_ids=list(json.loads(policy_exception_ids)),
+            policy_exception_ids=_policy_exceptions(policy_exception_ids),
             request_id=getattr(request.state, "request_id", None),
         )
     except HTTPException:
@@ -355,9 +357,7 @@ async def ingest_data(
         node_defs, rel_defs, index_defs, constraint_defs = [json.loads(item) for item in (nodeDefinitions, relationshipDefinitions, indexes, constraints)]
         if not all(isinstance(item, list) for item in (node_defs, rel_defs, index_defs, constraint_defs)):
             raise ValueError("All ingestion configuration fields must be JSON arrays")
-        content = await file.read()
-        if len(content) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status_code=413, detail=f"Upload exceeds the configured ingestion limit ({MAX_UPLOAD_BYTES} bytes)")
+        content = await _read_bounded_upload(file)
         table = load_table(content, file.filename or "")
         if len(table) > MAX_IMPORT_ROWS:
             raise HTTPException(status_code=413, detail="Import exceeds the 100,000 row limit")

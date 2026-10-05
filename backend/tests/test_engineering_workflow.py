@@ -30,6 +30,8 @@ async def test_engineering_publication_uses_the_private_graph_credential(monkeyp
     class Client:
         async def __aenter__(self): return self
         async def __aexit__(self, *args): return None
+        async def get(self, url, **kwargs):
+            return Response({"lifecycle_status": "draft", "status": "registered"})
         async def post(self, url, **kwargs):
             calls.append((url, kwargs))
             if url.endswith("/policies/evaluate"): return Response({"compliant": True})

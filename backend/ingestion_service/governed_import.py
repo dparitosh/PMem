@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from starlette.concurrency import run_in_threadpool
 
 from backend.artifact_store import ArtifactStore
 from backend.ceim.ap242_adapter import ap242_to_ceim_batch
@@ -68,7 +69,7 @@ class GovernedImportService:
         self, *, filename: str, content: bytes, job_id: str, job_version: str,
         profile: str = "auto", source_system: str = "", request_id: str = "",
     ) -> dict[str, Any]:
-        normalized = self.normalize(filename=filename, content=content, profile=profile, source_system=source_system)
+        normalized = await run_in_threadpool(self.normalize, filename=filename, content=content, profile=profile, source_system=source_system)
         payload = {
             "standard": normalized["standard"], "representation": "normalized-ceim-v1",
             "ceim_version": normalized.get("ceim_version", contract.version), "entities": normalized["entities"],
