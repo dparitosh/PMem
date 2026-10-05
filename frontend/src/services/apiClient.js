@@ -22,6 +22,20 @@ const apiClient = axios.create({
   },
 });
 
+export function prepareMultipartHeaders(requestConfig) {
+    // Axios may serialize FormData as JSON when the instance default is JSON.
+    // Let the browser supply multipart/form-data with its generated boundary.
+    if (typeof FormData !== 'undefined' && requestConfig.data instanceof FormData) {
+      if (typeof requestConfig.headers?.delete === 'function') requestConfig.headers.delete('Content-Type');
+      else if (requestConfig.headers) {
+        Object.keys(requestConfig.headers).forEach(key => {
+          if (key.toLowerCase() === 'content-type') delete requestConfig.headers[key];
+        });
+      }
+    }
+    return requestConfig;
+}
+
 const MAX_GET_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 700;
 const SESSION_STORAGE_KEY = 'depo.sessionId.v1';
@@ -104,6 +118,7 @@ function isStandaloneServiceRequest(url) {
  */
 apiClient.interceptors.request.use(
   (requestConfig) => {
+    prepareMultipartHeaders(requestConfig);
     // Older feature modules pass a relative path directly to Axios.  Resolve
     // it here as well as in buildUrl() so every caller reaches its owning
     // microservice during the monolith-to-services transition.

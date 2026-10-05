@@ -185,6 +185,17 @@ foreach ($service in $services | Where-Object { $_.Port }) {
       $access = Invoke-RestMethod -Uri "http://${peerHost}:$($service.Port)/auth/access" -Headers @{ Authorization = "Bearer $($env:GRAPH_READ_TOKEN)" } -TimeoutSec 10
       if ($access.status -ne 'authorized') { throw 'Read access was not authorized.' }
     } catch {
+      $probeStatus = 0
+      if ($_.Exception.Response -and $_.Exception.Response.StatusCode) { $probeStatus = [int]$_.Exception.Response.StatusCode }
+      $probeAction = switch ($probeStatus) {
+        401 { 'Credential/session expiry: verify the active central profile before any rotation.' }
+        403 { 'Authentication rejected: verify the selected read key and revocation state.' }
+        404 { 'The /auth/access route is missing: deploy matching backend service files.' }
+        500 { 'Backend execution failed: inspect schema-sets.err.log; do not rotate keys to repair a server exception.' }
+        503 { 'Credential authority/dependency unavailable: inspect the service log and PostgreSQL privileges/connectivity.' }
+        default { 'Inspect the service log and endpoint response; this failure is not proven to be a key mismatch.' }
+      }
+      Write-Warning "Read-access probe for '$($service.Name)' failed (HTTP $probeStatus; 0 means no HTTP status). $probeAction Log: $stateDir\$($service.Name).err.log"
       if ($env:DEPO_CREDENTIAL_STORE -eq 'postgres') {
         throw "Service '$($service.Name)' rejected the root environment GRAPH_READ_TOKEN or its credential check failed. PostgreSQL stores the authoritative key; restart and schema migration preserve existing profiles. Check expiry/revocation and the selected file. If that file contains the intended replacement keys, deliberately run infra/windows/apply-depo-service-credentials.ps1 -EnvFile '$EnvFile' -ReplaceExisting, then retry startup. That command rotates all key profiles supplied in the file. Otherwise restore the current central read key in the file. Check service logs for database errors; ensure /auth/access exists in the deployed backend."
       }

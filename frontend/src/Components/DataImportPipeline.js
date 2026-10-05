@@ -631,7 +631,10 @@ export default function DataImportPipeline() {
       }));
       setError(null);
     } catch (err) {
-      const detail = err?.response?.data?.detail || err.message;
+      const backendDetail = err?.response?.data?.detail;
+      const detail = Array.isArray(backendDetail)
+        ? backendDetail.map(item => `${Array.isArray(item.loc) ? item.loc.join('.') : 'Upload'}: ${item.msg || 'Invalid value'}`).join('; ')
+        : typeof backendDetail === 'string' ? backendDetail : err.message;
       setPipelineStatus(prev => ({
         ...prev,
         [fileId]: {
