@@ -14,12 +14,14 @@ export const navigationItems = [
   { id: 'requirements', label: 'ReqIF', icon: ixIconName.documentReference },
   { id: 'qif', label: 'QIF', icon: ixIconName.processControl },
   { id: 'whereused', label: 'Where Used', icon: ixIconName.listGraphics },
+  { id: 'data-quality', label: 'Data Quality', icon: ixIconName.auditReport },
   { id: 'quality', label: 'Recommendations', icon: ixIconName.auditReport },
   { id: 'reports', label: 'Reports', icon: ixIconName.documentCode },
   { id: 'admin', label: 'Admin', icon: ixIconName.projectSettings },
 ];
 
 export const pageAliases = {
+  'data-quality': 'data-quality',
   catalog: 'catalog',
   'data-catalog': 'catalog',
   'data-products': 'data-products',

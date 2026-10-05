@@ -428,7 +428,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
     relationships: ontology.relationship_count || 0,
   })), [ontologies]);
 
-  const processedResults = useMemo(() => buildNodeReportRows(effectiveGraphData, reportOntology ? [] : searchResults), [effectiveGraphData, searchResults, reportOntology]);
+  const processedResults = useMemo(() => buildNodeReportRows(effectiveGraphData, []), [effectiveGraphData, searchResults, reportOntology]);
   const baseNodeHeaders = useMemo(() => getHeaders(processedResults), [processedResults]);
   const discoveredTypes = useMemo(() => discoverTypes(processedResults), [processedResults]);
   const [stableAvailableTypes, setStableAvailableTypes] = useState([]);

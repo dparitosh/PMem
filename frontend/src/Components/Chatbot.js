@@ -7,7 +7,7 @@ import { validateChatInput, ValidationError } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { formatChatMarkdown } from '../utils/chatMarkdown';
 import { clearClientSessionId, getClientSessionId, setClientSessionId } from '../services/apiClient';
-import { serviceAuthHeaders, getCredentialProfile } from '../services/serviceAuth';
+import { serviceAuthHeaders, getCredentialProfile, expireBrowserSession } from '../services/serviceAuth';
 
 const CHAT_COLORS = {
     primary: '#005a9c',
@@ -214,6 +214,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                     setClientSessionId(returnedSessionId);
                 }
             }
+            if (response.status === 401) expireBrowserSession(getCredentialProfile('GRAPH_READ_TOKEN'));
             if (!response.ok) {
                 const payload = await response.json().catch(() => ({}));
                 throw new Error(payload?.detail || `Server error ${response.status}`);

@@ -1,6 +1,6 @@
 import { getCredentialProfile } from '../services/serviceAuth';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { qifAPI } from '../services/apiClient';
+import { qifAPI, apiClient } from '../services/apiClient';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import KpiStrip from '../widgets/KpiStrip';
 import { CheckCircle2, Loader2, RefreshCw, Upload, Workflow, X } from '../ui/IxIcons';
@@ -110,6 +110,24 @@ export default function QifPage({ workflowMode = false }) {
     return () => { active = false; window.clearTimeout(timer); taskRequest.current += 1; };
   }, [task?.task_id, task?.status, refreshTask]);
 
+  const notifiedPublication = useRef(new Set());
+  useEffect(() => {
+    if (!task?.ontology_id || !['completed', 'completed_with_warnings'].includes(task.status)) return;
+    const key = `${task.task_id}:${task.ontology_id}`;
+    if (notifiedPublication.current.has(key)) return;
+    notifiedPublication.current.add(key);
+    window.dispatchEvent(new Event('depo:ontologies-changed'));
+  }, [task?.task_id, task?.ontology_id, task?.status]);
+  const downloadArtifact = async (artifact) => {
+    setError('');
+    try {
+      const response = await apiClient.get(qifAPI.artifactUrl(task.task_id, artifact.path), { responseType: 'blob' });
+      const objectUrl = URL.createObjectURL(response.data);
+      const link = document.createElement('a'); link.href = objectUrl; link.download = artifact.name || 'qif-artifact';
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (failure) { setError(apiErrorMessage(failure, 'Artifact download failed.')); }
+  };
   const metadata = { ontology_name: name, prefix, description };
   const start = async (source) => {
     selectedTask.current = null; taskRequest.current += 1;
@@ -241,7 +259,7 @@ export default function QifPage({ workflowMode = false }) {
 
       {workflowMode && validation && <section style={{ ...panelStyle, marginTop: 14, borderColor: validation.valid ? '#57a773' : '#d14343' }}><div className="depo-panel__title">3. Validation and dependency review</div><p className="depo-panel__meta">{validation.valid ? `${validation.resolved_references.length} local references resolved across ${validation.namespace_count} namespace(s).` : 'Resolve the blocking errors before continuing.'}</p>{validation.errors?.map((item, index) => <div key={`error-${index}`} className="qif-message qif-message--error">{item.file}: {item.error}</div>)}{validation.warnings?.map((item, index) => <div key={`warning-${index}`} className="qif-message qif-message--warning">{item.source ? `${item.source}: ` : ''}{item.message}</div>)}</section>}
 
-      {workflowMode && task?.summary && <section id={`qif-artifacts-${task.task_id}`} style={{ ...panelStyle, marginTop: 14 }}><div className="depo-panel__title">4. Ontology preview and artifacts</div><p className="depo-panel__meta">{task.summary.files_processed} files · {task.summary.classes_created} classes · {task.summary.properties_created} properties · {task.summary.references_found} schema references.</p><div className="qif-artifact-list">{task.artifacts?.map((artifact) => <a key={artifact.path} href={qifAPI.artifactUrl(task.task_id, artifact.path)}>{artifact.name}<small>{artifact.kind}</small></a>)}</div>{task.graph_sync?.status && <div style={{ marginTop: 10, fontSize: 12 }}>Graph synchronization: {statusLabel(task.graph_sync.status)}</div>}{task.graph_sync?.status === 'failed' && <button type="button" className="depo-action-button" disabled={actionBusy} style={{ marginTop: 10 }} onClick={retryGraph}><Workflow size={15} /> Retry graph synchronization</button>}</section>}
+      {workflowMode && task?.summary && <section id={`qif-artifacts-${task.task_id}`} style={{ ...panelStyle, marginTop: 14 }}><div className="depo-panel__title">4. Ontology preview and artifacts</div><p className="depo-panel__meta">{task.summary.files_processed} files · {task.summary.classes_created} classes · {task.summary.properties_created} properties · {task.summary.references_found} schema references.</p><div className="qif-artifact-list">{task.artifacts?.map((artifact) => <button type="button" key={artifact.path} onClick={() => downloadArtifact(artifact)}>{artifact.name}<small>{artifact.kind}</small></button>)}</div>{task.graph_sync?.status && <div style={{ marginTop: 10, fontSize: 12 }}>Graph synchronization: {statusLabel(task.graph_sync.status)}</div>}{task.graph_sync?.status === 'failed' && <button type="button" className="depo-action-button" disabled={actionBusy} style={{ marginTop: 10 }} onClick={retryGraph}><Workflow size={15} /> Retry graph synchronization</button>}</section>}
 
       {workflowMode && task?.events?.length > 0 && <section style={{ ...panelStyle, marginTop: 14 }}><div className="depo-panel__title">Task event trail</div>{task.events.map((event, index) => <div key={`${event.at}-${index}`} style={{ display: 'grid', gridTemplateColumns: '120px 105px 1fr', gap: 8, borderTop: index ? '1px solid #edf1f5' : 'none', padding: '7px 0', fontSize: 12 }}><span>{new Date(event.at).toLocaleTimeString()}</span><strong>{event.stage}</strong><span>{event.message}</span></div>)}</section>}
 

@@ -11,6 +11,7 @@ const MetadataRegistryPage = lazy(() => import('../pages/MetadataRegistryPage'))
 const GraphExplorerPage = lazy(() => import('../pages/GraphExplorerPage'));
 const CodeAuditPage = lazy(() => import('../pages/CodeAuditPage'));
 const ModelWorkbenchPage = lazy(() => import('../pages/ModelWorkbenchPage'));
+const QualityPage = lazy(() => import('../pages/QualityPage'));
 const RecommendationsPage = lazy(() => import('../pages/RecommendationsPage'));
 const ReportsPage = lazy(() => import('../pages/ReportsPage'));
 const AdminPage = lazy(() => import('../pages/AdminPage'));
@@ -19,6 +20,7 @@ const RequirementsPage = lazy(() => import('../pages/RequirementsPage'));
 const QifPage = lazy(() => import('../pages/QifPage'));
 
 export const pageRegistry = {
+  'data-quality': { component: QualityPage },
   catalog: { component: DataProductsPage, props: () => ({ mode: 'catalog' }) },
   'data-products': { component: DataProductsPage },
   import: { component: ImportPage },

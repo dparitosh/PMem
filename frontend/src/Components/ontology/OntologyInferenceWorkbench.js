@@ -76,7 +76,7 @@ export default function OntologyInferenceWorkbench(props) {
               {swrlBusy ? 'Validating' : 'Validate rule'}
             </button>
             {swrlValidation && (
-              <div style={{ marginTop: '8px', border: `1px solid ${swrlValidation.valid ? C.green : C.red}`, background: swrlValidation.valid ? '#F0FFF4' : '#FFF5F5', color: swrlValidation.valid ? C.green : C.red, borderRadius: '6px', padding: '8px', fontSize: '11px', lineHeight: 1.4 }}>
+              <div style={{ marginTop: '8px', border: `1px solid ${swrlValidation.valid ? C.green : C.red}`, background: swrlValidation.valid ? 'var(--ui-surface)'  : 'var(--ui-surface)' , color: swrlValidation.valid ? C.green : C.red, borderRadius: '6px', padding: '8px', fontSize: '11px', lineHeight: 1.4 }}>
                 <div style={{ fontWeight: 800 }}>{swrlValidation.valid ? 'Rule supported' : 'Rule needs correction'}</div>
                 <div style={{ color: C.textPrimary, marginTop: '4px' }}>{swrlValidation.preview}</div>
                 {(swrlValidation.issues || []).slice(0, 4).map((issue, idx) => (
@@ -97,7 +97,7 @@ export default function OntologyInferenceWorkbench(props) {
         </div>
         <div style={{ minWidth: 0 }}>
           {inferenceError && (
-            <div style={{ marginBottom: '10px', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${C.red}`, background: '#FFF5F5', color: C.red, fontSize: '12px', fontWeight: 700 }}>{inferenceError}</div>
+            <div style={{ marginBottom: '10px', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${C.red}`, background: 'var(--ui-surface)' , color: C.red, fontSize: '12px', fontWeight: 700 }}>{inferenceError}</div>
           )}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
             {[
@@ -110,7 +110,7 @@ export default function OntologyInferenceWorkbench(props) {
             ))}
           </div>
           {(inferenceResult?.warnings || []).map((warning, idx) => (
-            <div key={idx} style={{ marginBottom: '8px', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F7C948', background: '#FFF8E1', color: '#8A5A00', fontSize: '12px', fontWeight: 700 }}>{warning}</div>
+            <div key={idx} style={{ marginBottom: '8px', padding: '8px 10px', borderRadius: '6px', border: '1px solid #F7C948', background: 'var(--ui-surface)' , color: 'var(--ui-text)' , fontSize: '12px', fontWeight: 700 }}>{warning}</div>
           ))}
           <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden', background: C.surface }}>
             <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr 130px 1fr 90px', gap: 0, background: C.primary, color: '#fff', fontSize: '11px', fontWeight: 800 }}>

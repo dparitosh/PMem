@@ -448,7 +448,7 @@ export const dataPipelineAPI = {
   health: () => apiClient.get(buildUrl('/api/v1/pipeline/health')),
   telemetry: (config = {}) => apiClient.get(buildUrl('/api/v1/pipeline/telemetry'), config),
   definitions: () => apiClient.get(buildUrl('/api/v1/pipeline/jobs/definitions')),
-  runs: (limit = 100) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/runs'), { params: { limit } }),
+  runs: (limit = 100, options = {}) => apiClient.get(buildUrl('/api/v1/pipeline/jobs/runs'), { ...options, params: { ...options.params, limit } }),
   getRun: (runId, options = {}) => apiClient.get(buildUrl(`/api/v1/pipeline/jobs/runs/${encodeURIComponent(runId)}`), options),
   approveDefinition: (jobId, version, approval = {}) => apiClient.post(
     buildUrl(`/api/v1/pipeline/jobs/definitions/${encodeURIComponent(jobId)}/${encodeURIComponent(version)}/approve`),

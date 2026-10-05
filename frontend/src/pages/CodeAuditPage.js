@@ -56,23 +56,29 @@ export default function CodeAuditPage() {
   const [showSemanticLinks, setShowSemanticLinks] = useState(false);
   const retryRef = useRef({ delayMs: 30000, timerId: null });
   const loadInFlight = useRef(false);
+  const requestController = useRef(null);
+  useEffect(() => () => requestController.current?.abort(), []);
 
   const load = useCallback(async (refresh = false) => {
     if (loadInFlight.current) return;
     loadInFlight.current = true;
+    const controller = new AbortController();
+    requestController.current = controller;
     setLoading(true);
     setError('');
     try {
-      const response = await apiClient.get('/api/v1/code-audit', { params: { refresh } });
+      const response = await apiClient.get('/api/v1/code-audit', { params: { refresh }, signal: controller.signal });
+      if (controller.signal.aborted) return;
       setReport(response.data);
       setExpandedNodes((current) => current.size ? current : new Set([response.data?.hierarchy?.root].filter(Boolean)));
       retryRef.current.delayMs = 30000;
     } catch (requestError) {
+      if (controller.signal.aborted) return;
       setError(apiErrorMessage(requestError, 'Unable to load code network'));
       retryRef.current.delayMs = Math.min(retryRef.current.delayMs * 2, 300000);
     } finally {
       loadInFlight.current = false;
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, []);
 

@@ -70,8 +70,8 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
   return <section aria-label="Governed Semantic Bridge jobs" style={{ background: 'var(--ui-surface, #fff)', color: 'var(--ui-text, #1f2933)', padding: 16, border: '1px solid var(--ui-border, #ccd5df)', borderRadius: 8, marginTop: 16 }}>
     <h3>Preview → review → publish</h3>
     <p>Create a saved preview, select valid mappings, then approve publication. Nothing is selected automatically.</p>
-    <details><summary>Bootstrap authentication (use gateway identity in production)</summary>
-      <p>Credentials stay in browser memory for this session; the read token also authorizes other service requests in this app. Use a trusted connection.</p>
+    <details><summary>Approval identity</summary>
+      <p>Manage and validate service credentials in Admin. Supply the approver identity for reviewed publication here.</p>
       <label>Approver <input aria-label="Approver" value={actor} onChange={e => setActor(e.target.value)} /></label>{' '}
     </details>
     <button type="button" style={buttonStyle} disabled={busy || !ontologyId || !importTaskId} onClick={() => invoke(async current => {
@@ -83,9 +83,9 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
       if (current()) setAgentReport(result.data);
     })}>Run ontology agent review</button>
     {!agenticAPI.isConfigured() && <small>Enable the Agentic service to run ontology intake and review.</small>}
-    {agentReport && <div role="status" style={{ marginTop: 8, padding: 8, background: '#eef7fb', border: '1px solid #c5dce6' }}>
+    {agentReport && <div role="status" style={{ marginTop: 8, padding: 8, background: 'var(--ui-surface)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)' }}>
       <strong>Ontology agent review:</strong> {agentReport.steps?.length || 0} steps completed; publication requires human approval.
-      {agentReport.steps?.[1]?.result?.issues?.length ? ` ${agentReport.steps[1].result.issues.length} structural issue(s) require review.` : ' No structural issues reported.'}
+      {agentReport.steps?.[1]?.result?.issues?.length ? ` ${agentReport.steps[1].result.issues.length} structural issue(s) require review.` : Array.isArray(agentReport.steps?.[1]?.result?.issues) ? ' No structural issues reported.' : ' Structural review results are unavailable.'}
       <p>{agentReport.steps?.at(-1)?.result?.alignment_candidates?.length || 0} exact-name candidate(s) found. These are review evidence only; use a saved Bridge preview to publish mappings.</p>
       <p>{agentReport.steps?.at(-1)?.result?.unmatched_count || 0} unmatched sources; {agentReport.steps?.at(-1)?.result?.ambiguous_count || 0} ambiguous sources.</p>
       {(agentReport.steps?.at(-1)?.result?.alignment_items || []).map((item, index) => <div key={`${item.source}:${index}`}><strong>{item.source}</strong>: {item.status}. Checks requiring review: {(item.unresolved_checks || []).join(', ')}</div>)}
