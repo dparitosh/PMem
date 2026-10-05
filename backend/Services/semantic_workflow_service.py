@@ -82,15 +82,11 @@ class SemanticWorkflowService:
 
     @staticmethod
     def _ontology_metadata(ontology_id: str) -> Dict[str, Any]:
-        result = OntologyUploadManager.get_ontology(ontology_id)
-        if result.get("status") != "success":
-            resolved = SemanticWorkflowService._resolve_ontology_id(ontology_id)
-            if not resolved or resolved == ontology_id:
-                raise ValueError(result.get("error") or f"Ontology not found: {ontology_id}")
-            result = OntologyUploadManager.get_ontology(resolved)
-            if result.get("status") != "success":
-                raise ValueError(result.get("error") or f"Ontology not found: {ontology_id}")
-        return result["metadata"]
+        from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+        meta = dict(OntologyTaxonomyService._resolve_metadata(ontology_id))
+        # Existing workflows consume file_path; native catalogs use artifact_path.
+        meta["file_path"] = meta.get("file_path") or meta.get("artifact_path") or ""
+        return meta
 
     @staticmethod
     def _resolve_ontology_id(ontology_ref: str) -> str:

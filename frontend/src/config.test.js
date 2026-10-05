@@ -77,7 +77,7 @@ test('does not expose API credentials through browser configuration', async () =
 test('routes published service contracts to their owning local service', () => {
   expect(getServiceForPath('/api/v1/qif/catalog')).toBe('qif');
   expect(getServiceForPath('/api/v1/ontologies/capabilities')).toBe('ontology');
-  expect(getServiceForPath('/api/v1/ontology/ap242/data-dictionary')).toBe('ontology');
+  expect(getServiceForPath('/api/v1/ontology/ap242/data-dictionary')).toBe('ingestion');
   expect(getServiceForPath('/api/v1/ontology/registered')).toBe('ingestion');
   expect(getServiceForPath('/api/v1/ontology/ap242/taxonomy')).toBe('ingestion');
   expect(getServiceForPath('/api/v1/ap242/inspect')).toBe('ingestion');

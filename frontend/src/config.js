@@ -136,7 +136,7 @@ const SERVICE_PATHS = [
   // Retained ingestion-owned artifact registry.  Keep these narrow routes
   // ahead of the semantic workbench compatibility namespace below.
   ['ingestion', /^\/api\/v1\/ontology\/(?:upload|registered|merge|cleanup-old-xsd)(?:\/|$)/],
-  ['ingestion', /^\/api\/v1\/ontology\/[^/]+\/(?:taxonomy|reason|inference\/preview|export)(?:\/|$)/],
+  ['ingestion', /^\/api\/v1\/ontology\/[^/]+\/(?:taxonomy|reason|inference\/preview|export|data-dictionary)(?:\/|$)/],
   ['ingestion', /^\/api\/v1\/ontology\/[^/]+$/],
   // The workbench contract is owned by the ontology service. XSD/XML source
   // profiles remain under ingestion; this namespace is semantic workbench only.
@@ -154,6 +154,7 @@ const SERVICE_PATHS = [
   ['dataPipeline', /^\/api\/v1\/pipeline(?:\/|$)/],
   ['agentic', /^\/api\/v1\/(?:agents|tools|mcp-servers|workflows|plans|runs|workflow-runs|observability|metrics|catalog\/validate|chat|chat-stream|ontology-agents)(?:\/|$)/],
   ['agentic', /^\/api\/v1\/code-audit(?:\/|$)/],
+  ['agentic', /^\/api\/v1\/llm(?:\/|$)/],
   ['graph', /^\/recommendations(?:\/|$)/],
 ];
 

@@ -7,6 +7,7 @@ import ErrorBoundary from './ErrorBoundary';
 import logger from '../utils/logger';
 import { UI_COLORS } from '../styles/uiTokens';
 import './LandingPage.css';
+import { useOntologies } from '../contexts/OntologyContext';
 
 const DASHBOARD_ENABLED = true;
 const Chatbot = lazy(() => import('./Chatbot'));
@@ -59,7 +60,7 @@ function OntologyList({ ontologies, loading }) {
           {ontologies.map((o, i) => (
             <tr key={o.id || i} style={{ background: i % 2 === 0 ? '#f8f9fa' : '#fff' }}>
               <td style={{ padding: '6px 10px', fontWeight: 600, color: UI_COLORS.primary }}>
-                {o.name || o.ontology_name || o.prefix || o.id || o.ontology_id}
+                {o.label || o.name || o.ontology_name || o.prefix || o.id || o.ontology_id}
               </td>
               <td style={{ padding: '6px 10px' }}>
                 <span style={{
@@ -145,26 +146,25 @@ const responsePayload = (response) => {
 export default function LandingPage({ setChatResults, onNavigate }) {
   const [metrics, setMetrics] = useState(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
-  const [ontologies, setOntologies] = useState([]);
-  const [ontologiesLoading, setOntologiesLoading] = useState(true);
+  const { ontologies, loading: ontologiesLoading, error: ontologiesError, fetchOntologies: loadOntologies } = useOntologies();
   const [metricsError, setMetricsError] = useState('');
-  const [ontologiesError, setOntologiesError] = useState('');
   const [lastRefreshed, setLastRefreshed] = useState(null);
-  const metricsInFlight = useRef(false);
-  const ontologiesInFlight = useRef(false);
+  const metricsRequest = useRef(null);
 
   const loadMetrics = useCallback(async () => {
-    if (metricsInFlight.current) return;
-    metricsInFlight.current = true;
+    metricsRequest.current?.abort();
+    const controller = new AbortController(); metricsRequest.current = controller;
+    setMetrics(null);
     setMetricsLoading(true);
     setMetricsError('');
     try {
-      const response = await platformAPI.health('graph');
+      const response = await platformAPI.health('graph', { signal: controller.signal, timeout: 10000 });
       const graphStatus = String(responsePayload(response).status || '').toLowerCase();
       if (graphStatus === 'not_configured') {
         setMetricsError('Graph storage is not configured. Configure the graph service to display graph metrics.');
       }
-      const overviewResponse = await graphApi.getOverview(200);
+      const overviewResponse = await graphApi.getOverview(200, controller.signal);
+      if (controller.signal.aborted) return;
       const graph = responsePayload(overviewResponse);
       const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
       const relationships = Array.isArray(graph.relationships) ? graph.relationships : [];
@@ -183,6 +183,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
       });
       setLastRefreshed(new Date());
     } catch (error) {
+      if (controller.signal.aborted) return;
       const detail = error?.response?.data?.detail;
       setMetricsError(error?.response?.status === 401 || error?.response?.status === 403
         ? 'Graph access is required. Open Admin → Service credentials, test and apply GRAPH_READ_TOKEN, then retry.'
@@ -196,35 +197,24 @@ export default function LandingPage({ setChatResults, onNavigate }) {
         ontology_kpis: {},
       });
     } finally {
-      metricsInFlight.current = false;
-      setMetricsLoading(false);
-    }
-  }, []);
-
-  const loadOntologies = useCallback(async () => {
-    if (ontologiesInFlight.current) return;
-    ontologiesInFlight.current = true;
-    setOntologiesLoading(true);
-    setOntologiesError('');
-    try {
-      const response = await apiClient.get(buildUrl('/api/v1/ontologies'));
-      const payload = responsePayload(response);
-      setOntologies(payload.ontologies || payload.items || payload.results || []);
-    } catch (error) {
-      logger.error('Failed to load ontologies:', error);
-      setOntologiesError('Ontology registry is currently unavailable.');
-      setOntologies([]);
-    } finally {
-      ontologiesInFlight.current = false;
-      setOntologiesLoading(false);
+      if (!controller.signal.aborted) setMetricsLoading(false);
     }
   }, []);
 
   useEffect(() => {
     if (!DASHBOARD_ENABLED) return;
     loadMetrics();
-    loadOntologies();
-  }, [loadMetrics, loadOntologies]);
+    const refresh = () => loadMetrics();
+    window.addEventListener('depo:credentials-changed', refresh);
+    window.addEventListener('depo:credentials-cleared', refresh);
+    window.addEventListener('depo:ontologies-changed', refresh);
+    return () => {
+      metricsRequest.current?.abort();
+      window.removeEventListener('depo:credentials-changed', refresh);
+      window.removeEventListener('depo:credentials-cleared', refresh);
+      window.removeEventListener('depo:ontologies-changed', refresh);
+    };
+  }, [loadMetrics]);
 
   if (!DASHBOARD_ENABLED) {
     return (

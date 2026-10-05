@@ -1576,10 +1576,12 @@ export default function DataImportPipeline() {
     return `${scope}${batchProgress.batch_index || 0}/${batchProgress.total_batches}`;
   };
 
-  const downloadOntologyExport = async (taskId, format = 'ttl') => {
+  const downloadOntologyExport = async (taskId, format = 'ttl', registered = false) => {
     if (!taskId) return;
     try {
-      const response = await API_METHODS.import.exportOWL(taskId, format);
+      const response = registered
+        ? await API_METHODS.ontology.exportRegistered(taskId, format)
+        : await API_METHODS.import.exportOWL(taskId, format);
       const blob = response.data instanceof Blob ? response.data : new Blob([response.data]);
       const disposition = response.headers?.['content-disposition'] || '';
       const match = disposition.match(/filename="?([^";]+)"?/i);
@@ -3368,7 +3370,7 @@ export default function DataImportPipeline() {
                         onChange={(event) => {
                           const format = event.target.value;
                           event.target.value = '';
-                          if (format) downloadOntologyExport(status.taskId, format);
+                          if (format) downloadOntologyExport(status.taskId, format, Boolean(status.registered));
                         }}
                         title="Export generated ontology"
                         style={{
@@ -3387,6 +3389,7 @@ export default function DataImportPipeline() {
                         <option value="rdf">RDF/XML</option>
                         <option value="owl">OWL/XML</option>
                         <option value="jsonld">JSON-LD</option>
+                        {Boolean(status.registered) && <option value="shacl">SHACL shapes (TTL)</option>}
                       </select>
                     )}
                     {status.progress === 100 && !status.error && status.committed && (file.workflowId !== 'ontology.create' || status.registered) && (

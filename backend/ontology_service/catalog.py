@@ -154,8 +154,8 @@ class OntologyCatalog:
         kwargs["filename"] = safe_filename
         kwargs["_validated"] = (prefix, safe_filename, parsed)
         source = str(kwargs.get("source") or "api")
-        # Only engineering workflow operation identities opt into deduplication.
-        if not re.fullmatch(r"(?:engineering|source-profile)-workflow:[0-9a-f]{64}", source):
+        # Governed operation identities opt into artifact retry deduplication.
+        if not re.fullmatch(r"(?:(?:engineering|source-profile)-workflow|governed-merge):[0-9a-f]{64}", source):
             return self._register(**kwargs)
         with self._transition_lock:
             lock = self.registry.advisory_lock(f"register:{source}") if self._postgres_enabled else nullcontext(True)
@@ -176,6 +176,10 @@ class OntologyCatalog:
                         proposed = Graph().parse(data=kwargs["content"], format=parsed["rdf_format"])
                         if not isomorphic(current, proposed):
                             raise ValueError("Workflow registration identity conflicts with its artifact")
+                        additions = {key: value for key, value in (kwargs.get('extra_metadata') or {}).items()
+                                     if key in {'engineering_artifacts', 'data_product_draft', 'source_filename'} and key not in existing}
+                        if additions:
+                            existing = self._save_metadata({**existing, **additions})
                         return existing
                 return self._register(**kwargs)
 

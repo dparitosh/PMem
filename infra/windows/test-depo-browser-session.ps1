@@ -10,6 +10,24 @@ Use -Gateway to check configured APIM routing; otherwise checks local APIs.
 [CmdletBinding()]
 param([string]$EnvFile = '.env.local', [switch]$Gateway)
 $ErrorActionPreference = 'Stop'
+function Get-DepoSessionFailureHint($Failure) {
+  $status = $null
+  if ($Failure.Exception.Response) {
+    try { $status = [int]$Failure.Exception.Response.StatusCode } catch { }
+  }
+  $hint = switch ($status) {
+    401 { 'Check the current key and its expiry in the PostgreSQL credential store.' }
+    403 { 'The supplied key or session was rejected. Check central key matching, revocation, and gateway header forwarding.' }
+    404 { 'The authentication route is missing. Deploy matching backend files and check gateway route mapping.' }
+    405 { 'The HTTP method is blocked. Check gateway POST/GET authentication route policies.' }
+    422 { 'The deployed authentication contract differs. Deploy matching service files.' }
+    500 { 'Check ontology service error logs for the underlying database or session creation exception.' }
+    503 { 'Check PostgreSQL connectivity, migrations and credential-store privileges in the service logs.' }
+    default { 'Check service listeners, network reachability and gateway routing; inspect service logs if an HTTP response was received.' }
+  }
+  $label = if ($null -eq $status) { 'no HTTP status (connection, timeout or transport failure)' } else { "HTTP $status" }
+  return "$label. $hint Response bodies and credentials are hidden."
+}
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 . (Join-Path $PSScriptRoot 'process-control.ps1')
@@ -38,7 +56,7 @@ $failed = $false
 try {
   $headers['X-API-Key'] = $values['ADMIN_API_KEY']
   try { $session = Invoke-RestMethod -Uri $url -Method Post -ContentType 'application/json' -Body '{"include_writes":false}' -Headers $headers -MaximumRedirection 0 -TimeoutSec 15 }
-  catch { throw 'Central browser connection failed. Verify the current ADMIN_API_KEY, PostgreSQL credential store, matching service release, and gateway /auth/browser-session route. Response bodies and credentials are hidden.' }
+  catch { throw ('Central browser connection failed at ontology POST /auth/browser-session: ' + (Get-DepoSessionFailureHint $_)) }
   $headers.Remove('X-API-Key')
   if (-not $session.token -or $session.token -notlike 'depo_session_*' -or $session.profiles -notcontains 'GRAPH_READ_TOKEN' -or $session.profiles.Count -ne 1) {
     throw 'Service returned an invalid read-only browser session.'
@@ -48,7 +66,7 @@ try {
     try {
       $access = Invoke-RestMethod -Uri ($bases[$service.id] + '/auth/access') -Headers $headers -MaximumRedirection 0 -TimeoutSec 15
       if ($access.status -ne 'authorized') { throw 'Not authorized' }
-    } catch { throw "Browser session rejected by $($service.id). Check matching backend files, shared PostgreSQL database/schema and credential-store mode, and gateway Authorization forwarding. Credentials are hidden." }
+    } catch { throw ("Browser session check failed at $($service.id) GET /auth/access: " + (Get-DepoSessionFailureHint $_)) }
     Write-Host "PASS: central browser session accepted by $($service.id)."
   }
 } catch { $failed = $true; throw }

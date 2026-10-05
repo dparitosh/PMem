@@ -47,6 +47,11 @@ class EngineeringWorkflow:
             "ontology_name": ontology_name or ontology["name"],
             "prefix": prefix or ontology["prefix"],
             "description": description,
+            "extra_metadata": json.dumps({
+                'engineering_artifacts': conversion.get('artifacts') or {},
+                'data_product_draft': conversion.get('data_product_draft') or {},
+                'source_filename': filename,
+            }),
             "source": "engineering-workflow:" + hashlib.sha256(
                 json.dumps([filename, ontology_name, prefix, description], ensure_ascii=False).encode("utf-8") + b"\0" + content
             ).hexdigest(),

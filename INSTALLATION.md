@@ -2955,6 +2955,39 @@ ONTOLOGY_AGENT_ALLOWED_ROOTS=data;ontology;backend/test_data;ontology_uploads;C:
 
 Deploy the updated backend and frontend source together, rebuild using `infra/windows/build-depo-frontend.ps1` as described above, and restart the services and frontend. These controls use the existing PostgreSQL registry; they do not require an additional control table.
 
+### Offline Ollama configuration and functional checkpoints
+
+Ollama must already be installed and its model available on the application VM. Environment entries select a server and model; they do not install either. In root `.env.local`, use the exact model name shown by `ollama list`, for example:
+
+```dotenv
+USE_LLM=ollama
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+LLM_MODEL_NAME=llama3:latest
+LLM_REQUEST_TIMEOUT_SECONDS=30
+ONTOLOGY_AGENT_LLM_ENABLED=true
+COMPANION_LLM_ENABLED=true
+```
+
+On the application VM, check the runtime:
+
+```powershell
+ollama list
+Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 5
+```
+
+If Ollama is installed but its server is not running, open a separate PowerShell window and run `ollama serve`. Keep it open during this manual test. If the model is missing, transfer/install it using your approved model distribution process; a disconnected VM cannot download it by changing `.env.local`. Restart DEPO after changes. In **Admin → Agent workflow controls → Check offline Ollama**, require `ready` and check the model and enablement flags. The diagnostic requires read access. Model suggestions cannot approve or publish data.
+
+After rebuilding and restarting matching backend/frontend files, check these flows in order:
+
+1. Connect credentials in Admin. The central browser session lasts fifteen minutes. After expiry or rejection, reconnect; writes are never automatically retried.
+2. Import an XSD, then confirm it appears on Home. Both native and legacy registries are included; different IDs sharing a prefix remain selectable.
+3. Select the ontology in Junction. Mapping Vocabulary displays returned mapping edges. A valid empty list means no mappings exist; authorization and service failures must appear as errors.
+4. In Semantic Bridge select the imported instance and target ontology directly. For ontology merging, select two different ontology IDs, review the preview, and apply the steward-approved merge. Its result is a registered draft, not automatic graph publication. Retrying the same applied preview returns its retained result.
+5. Data Products shows new schema conversions under **Schema design drafts**. Published packages remain separate and require an approved semantic release and product steward approval.
+6. In Reports choose **All ontologies** or one ID. Graph reports are bounded projections, not complete warehouse totals. The separate XSD selector remains available after a report error. New native conversions use their retained structural model. Reimport an older conversion if source references were not retained; missing source evidence is not fabricated.
+
+The merge registry uses the existing PostgreSQL registry table; these changes require no new SQL migration.
+
 ### PostgreSQL central API-key authority (migration 008)
 
 To enable central authentication on the application VM, set this entry in `E:\App\PMem\.env.local`:
@@ -3003,3 +3036,10 @@ If the selected file intentionally replaces existing central keys or metadata, r
 Replacement revives revoked profiles and invalidates their old keys. Update every caller's protected outbound environment file and restart callers after deliberate rotation. The script uses the protected PostgreSQL connection in this file and must be run by the deployment administrator with table write privileges; it does not require an API gateway or a running HTTP service.
 
 This applies keys to the server authority. It does not inject keys into browsers or persist browser secrets. Admin displays a table of credential profiles, services, key inputs, actions and status; Admin → Connect registered service credentials establishes the current tab's short-lived session using one Admin-key sign-in; per-profile Test and apply remains available as an alternative. Database passwords, Neo4j passwords and outbound connector tokens are excluded from the import.
+
+
+### RDF, OWL and SHACL artifact checkpoints
+
+New engineering conversions retain a SHACL shapes artifact alongside the source and serialized ontology. Registration records its content-addressed identifier in PostgreSQL metadata for that ontology version. In **Import**, use the completed ontology row's **Export → SHACL shapes (TTL)** option. Older versions without shapes return an explicit unavailable message; re-import the original source to retain the association.
+
+These shapes currently enforce default ontology checks, not every XSD cardinality, choice or datatype constraint. Semantic validation reports `shape_source`, `shape_artifact_id` and `scope`. Use XML/XSD validation for source instance conformance. Full schema-derived shape generation and a shape editor remain unavailable. Rebuild the frontend and restart affected services after this update. No PostgreSQL migration is needed: the association uses existing registry metadata.

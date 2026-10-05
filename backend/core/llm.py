@@ -61,7 +61,7 @@ USE_EMBEDDER = (_first_env("USE_EMBEDDER") or USE_LLM).lower()
 
 OLLAMA_BASE_URL = _first_env("OLLAMA_BASE_URL") or "http://localhost:11434"
 OLLAMA_API_KEY = _first_env("OLLAMA_API_KEY") or ""
-LLM_MODEL_NAME = _first_env("LLM_MODEL_NAME") or "llama3:latest"
+LLM_MODEL_NAME = _first_env("LLM_MODEL_NAME", "OLLAMA_MODEL") or "llama3:latest"
 EMBED_MODEL_NAME = _first_env("EMBED_MODEL_NAME", "LLM_MODEL_NAME") or "nomic-embed-text:latest"
 
 

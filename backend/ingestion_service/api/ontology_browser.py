@@ -17,25 +17,41 @@ router = APIRouter(prefix="/ontology", tags=["ontology-browser"])
 @router.get("/{ontology_id}/export")
 def export_ontology(ontology_id: str, format: str = "ttl") -> Response:
     formats = {"ttl": ("turtle", "text/turtle"), "rdf": ("xml", "application/rdf+xml"), "owl": ("xml", "application/rdf+xml"), "jsonld": ("json-ld", "application/ld+json")}
-    if format not in formats:
-        raise HTTPException(422, "Supported export formats: ttl, rdf, owl, jsonld")
+    if format not in formats and format != "shacl":
+        raise HTTPException(422, "Supported export formats: ttl, rdf, owl, jsonld, shacl")
     try:
         context = OntologyReasoningService.semantic_context(ontology_id)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
+    if format == "shacl":
+        metadata = context["meta"]
+        shape_id = (metadata.get("engineering_artifacts") or {}).get("shacl")
+        if shape_id:
+            from backend.artifact_store import ArtifactStore
+            shape_path = ArtifactStore().resolve(shape_id)[1]
+        else:
+            from pathlib import Path
+            shape_path = Path(metadata.get("shacl_file_path") or "")
+        if not shape_path.is_file():
+            raise HTTPException(404, "No retained SHACL shapes are associated with this ontology version")
+        from backend.depo_platform.upload_limits import ontology_upload_limit
+        with shape_path.open("rb") as stream:
+            content = stream.read(ontology_upload_limit() + 1)
+        if len(content) > ontology_upload_limit():
+            raise HTTPException(413, "SHACL artifact exceeds the export size limit")
+        return Response(content, media_type="text/turtle", headers={"Content-Disposition": 'attachment; filename="ontology.shacl.ttl"'})
     path = context["file_path"]
-    content = path.read_bytes()
-    graph = None
-    for syntax in (["turtle"] if path.suffix.lower() == ".ttl" else ["xml", "turtle"]):
-        try:
-            candidate = Graph()
-            candidate.parse(data=content, format=syntax)
-            graph = candidate
-            break
-        except Exception:
-            continue
-    if graph is None:
-        raise HTTPException(422, "No valid RDF/OWL artifact is available for export")
+    from backend.depo_platform.upload_limits import ontology_upload_limit
+    from backend.ontology_service.catalog import OntologyCatalog
+    with path.open("rb") as stream:
+        content = stream.read(ontology_upload_limit() + 1)
+    if len(content) > ontology_upload_limit():
+        raise HTTPException(413, "Ontology artifact exceeds the export size limit")
+    try:
+        parsed = OntologyCatalog._parse_ontology(content, path.name)
+        graph = Graph().parse(data=content, format=parsed["rdf_format"])
+    except ValueError as exc:
+        raise HTTPException(422, "No valid RDF/OWL artifact is available for export") from exc
     syntax, media_type = formats[format]
     return Response(graph.serialize(format=syntax), media_type=media_type, headers={"Content-Disposition": f'attachment; filename="ontology.{format}"'})
 
@@ -46,6 +62,8 @@ def reasoning(ontology_id: str) -> dict:
         return OntologyTaxonomyService.get_reasoning(_resolve_ontology_id(ontology_id))
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
 
 
 @router.post("/{ontology_id}/inference/preview")

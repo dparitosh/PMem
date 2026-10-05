@@ -1708,7 +1708,7 @@ export default function OntologyMapper() {
       value: ont.ontology_id || ont.id,
       type: normalizeSourceFormat(ont.file_type || ont.type, ont.ontology_id || ont.id),
       ontologyKey: ont.prefix || '',
-      label: `${ont.ontology_name || ont.name || ont.ontology_id} [${ont.prefix || ''}]`,
+      label: `${ont.label || ont.ontology_name || ont.name || ont.ontology_id} [${ont.prefix || ''}]`,
       prefix: ont.prefix || '',
       uploaded_at: ont.uploaded_at || '',
       source: ont.source,
@@ -1719,7 +1719,7 @@ export default function OntologyMapper() {
     // that happen to share an empty or reused prefix.
     const byIdentity = new Map();
     allOptions.forEach((o) => {
-      const identity = o.prefix || o.value || o.ontologyKey || `${o.label}-${o.uploaded_at || ''}`;
+      const identity = o.value || o.ontologyKey || o.prefix || `${o.label}-${o.uploaded_at || ''}`;
       if (!byIdentity.has(identity) || o.uploaded_at > byIdentity.get(identity).uploaded_at) {
         byIdentity.set(identity, o);
       }
@@ -1751,13 +1751,13 @@ export default function OntologyMapper() {
   }, []);
 
   // Get ontology options from centralized context (shared across all components)
-  const { ontologies: contextOntologies } = useOntologies();
+  const { ontologies: contextOntologies, loading: registryLoading, error: registryError } = useOntologies();
 
   useEffect(() => {
     // Load available mapping options from centralized context
     // Important: do NOT overwrite Alignment source/target selections on unrelated state changes.
     try {
-      setMappingOptionsError(null);
+      setMappingOptionsError(registryError || null);
       const options = buildOntologyOptions(contextOntologies || []);
       setMappingOptions((prev) => (
         JSON.stringify(prev.map(({ value, prefix, type, uploaded_at }) => ({ value, prefix, type, uploaded_at }))) ===
@@ -1767,7 +1767,7 @@ export default function OntologyMapper() {
       ));
 
       if (options.length === 0) {
-        setMappingOptionsError('No ontologies available. Please upload an ontology first.');
+        setMappingOptionsError(registryError || (registryLoading ? 'Loading ontology registries…' : 'No ontologies are registered. Import an ontology first.'));
         setLoading(false);
         return;
       }
@@ -1799,7 +1799,7 @@ export default function OntologyMapper() {
       setLoading(false);
       console.warn('Failed to process ontologies:', e);
     }
-  }, [contextOntologies, buildOntologyOptions, resolveSelectedOntologyOption, selectedMapping, selectedMappingType, selectedOntologyApi]);
+  }, [contextOntologies, registryLoading, registryError, buildOntologyOptions, resolveSelectedOntologyOption, selectedMapping, selectedMappingType, selectedOntologyApi]);
 
   useEffect(() => {
     if (!selectedMappingType) {
@@ -1893,6 +1893,9 @@ export default function OntologyMapper() {
           API_METHODS.ontology.getDataDictionary(selectedOntologyApi),
           API_METHODS.ontology.getMappings(selectedOntologyApi, selectedMappingType),
         ]);
+        const rejectedAccess = [dictRes, mapRes].find(result => result.status === 'rejected' && [401, 403].includes(result.reason?.response?.status));
+        if (rejectedAccess) throw rejectedAccess.reason;
+        if (mapRes.status === 'rejected') throw mapRes.reason;
 
         const dictDataRaw = (dictRes.status === 'fulfilled' ? dictRes.value.data.data : null) || {};
         const hasPrimaryDictionary = Object.keys(dictDataRaw.entities || {}).length > 0;
@@ -1973,7 +1976,7 @@ export default function OntologyMapper() {
         setDictionarySourceMode(usingFallbackDictionary ? 'taxonomy-fallback' : 'primary');
         setData({ nodes, edges });
         setMappingEdges(edges);
-        setVocabEdges(vocabFromDict);
+        setVocabEdges(edges.length ? edges : vocabFromDict);
         setTaxonomy(taxonomyData);
         setReasoning(null);
         setSemanticDetailsError(null);
@@ -1981,7 +1984,7 @@ export default function OntologyMapper() {
           total_terms: taxonomyData
             ? taxonomyData?.summary?.terms ?? nodes.length
             : nodes.length,
-          total_vocabulary_mappings: vocabFromDict.length,
+          total_vocabulary_mappings: edges.length || vocabFromDict.length,
           owlready_classes: taxonomyData?.reasoning_summary?.classes ?? 0,
           owlready_object_properties: taxonomyData?.reasoning_summary?.object_properties ?? 0,
           owlready_datatype_properties: taxonomyData?.reasoning_summary?.datatype_properties ?? 0,
@@ -2037,6 +2040,7 @@ export default function OntologyMapper() {
     setData({ nodes: [], edges: [] });
     setMappingEdges([]);
     setVocabEdges([]);
+    setOntologyDictionary({ entities: {}, relationships: {}, properties: {} });
     setFilter('');
     setSemanticDetailsError(null);
     setSemanticDetailsLoading(Boolean(selectedOntologyApi));
@@ -2189,6 +2193,7 @@ export default function OntologyMapper() {
       setMergeResult({ kind: 'error', text: 'Create a current conflict-free merge plan before committing.' });
       return;
     }
+    const generation = ++mergeGeneration.current;
     setMergeBusy(true);
     setMergeResult(null);
     if (!mergeApprover.trim()) {
@@ -2203,18 +2208,20 @@ export default function OntologyMapper() {
     }
     try {
       const res = await API_METHODS.ontology.governedMergeApply(mergeResult.governedPreview.preview_id, mergeApprover.trim(), getCredentialProfile('ONTOLOGY_APPROVAL_TOKEN'));
+      if (generation !== mergeGeneration.current) return;
       setMergeResult({
         kind: 'success',
-        text: res?.data?.message || 'Ontology merge committed to Neo4j.',
+        text: res?.data?.message || 'Merged ontology registered as a draft. Graph publication requires its separate governed action.',
         report: { ...(mergeResult.report || {}), governed: res?.data || res },
         governedPreview: mergeResult.governedPreview,
         artifact_manifest: null,
       });
     } catch (e) {
+      if (generation !== mergeGeneration.current) return;
       setMergeResult({ kind: 'error', text: apiErrorMessage(e, 'Ontology merge failed.') });
     } finally {
 
-      setMergeBusy(false);
+      if (generation === mergeGeneration.current) setMergeBusy(false);
     }
   };
 
@@ -2661,7 +2668,10 @@ export default function OntologyMapper() {
             </>
           )}
           {activeView === 'vocabulary' && (
-            <VocabularyTable edges={vocabEdges} filter={filter} />
+            <div>
+              {!loading && !error && !vocabEdges.length && <p>No mapping vocabulary exists for this ontology and source format. Import instance data and review Semantic Bridge mappings; ontology registration alone creates no mappings.</p>}
+              <VocabularyTable edges={vocabEdges} filter={filter} />
+            </div>
           )}
           {activeView === 'inference' && (
             <OntologyInferenceWorkbench
@@ -2752,6 +2762,10 @@ export default function OntologyMapper() {
                   </div>
                   <div style={{ border: `1px solid ${selectedOntologyApi ? C.borderDark : C.red}`, borderRadius: '6px', background: C.surface, padding: '10px 12px', minHeight: '42px' }}>
                     <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, marginBottom: '4px' }}>Active ontology</div>
+                    <select aria-label="Semantic Bridge target ontology" value={selectedMapping} onChange={event => applyOntologySelection(event.target.value)} style={{ width: '100%', background: C.surface, color: C.textPrimary }}>
+                      <option value="">Select target ontology</option>
+                      {mappingOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
                     <div style={{ fontSize: '12px', color: selectedOntologyApi ? C.textPrimary : C.red, fontWeight: 600 }}>
                       {selectedOntologyOption?.label || 'Select an ontology in the header above'}
                     </div>

@@ -9,10 +9,35 @@ export function setCredentialProfile(profile, value) {
   if (profile === 'GRAPH_READ_TOKEN') { serviceToken = token; return; }
   if (token) profileTokens.set(profile, token); else profileTokens.delete(profile);
 }
-export function getCredentialProfile(profile) { return profile === 'GRAPH_READ_TOKEN' ? serviceToken : (profileTokens.get(profile) || ''); }
+export function getCredentialProfile(profile) { checkBrowserSessionExpiry(); return profile === 'GRAPH_READ_TOKEN' ? serviceToken : (profileTokens.get(profile) || ''); }
 
 let serviceToken = '';
 let gatewaySubscriptionKey = '';
+let browserSession = null;
+let expiryTimer = null;
+function checkBrowserSessionExpiry() {
+  if (browserSession && Date.now() >= browserSession.deadline) expireBrowserSession(browserSession.token);
+}
+
+export function expireBrowserSession(token) {
+  if (!browserSession || browserSession.token !== token) return;
+  if (serviceToken === token) serviceToken = '';
+  for (const [profile, value] of profileTokens) if (value === token) profileTokens.delete(profile);
+  browserSession = null;
+  clearTimeout(expiryTimer); expiryTimer = null;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('depo:session-expired'));
+    window.dispatchEvent(new Event('depo:credentials-changed'));
+  }
+}
+
+export function setBrowserSessionExpiry(token, expiresAt) {
+  const deadline = Date.parse(expiresAt);
+  if (!token?.startsWith('depo_session_') || !Number.isFinite(deadline) || deadline <= Date.now()) throw new Error('Central session expiry is invalid or already elapsed.');
+  clearTimeout(expiryTimer);
+  browserSession = { token, deadline };
+  expiryTimer = setTimeout(() => expireBrowserSession(token), Math.min(deadline - Date.now(), 2147483647));
+}
 
 export function setGatewaySubscriptionKey(value) {
   gatewaySubscriptionKey = String(value || '').trim();
@@ -27,6 +52,7 @@ export function setServiceAuthToken(value) {
 }
 
 export function clearServiceAuthToken() {
+  clearTimeout(expiryTimer); expiryTimer = null; browserSession = null;
   serviceToken = '';
   profileTokens.clear();
   gatewaySubscriptionKey = '';
@@ -34,10 +60,12 @@ export function clearServiceAuthToken() {
 }
 
 export function getServiceAuthToken() {
+  checkBrowserSessionExpiry();
   return serviceToken;
 }
 
 export function serviceAuthHeaders(endpoint = '', method = 'get', subscription = gatewaySubscriptionKey) {
+  checkBrowserSessionExpiry();
   const operation = operationForUrl(endpoint, method);
   const profile = operation?.profiles.length === 1 ? operation.profiles[0] : null;
   const token = profile ? getCredentialProfile(profile) : (operation && (operation.profiles.length || operation.secured) ? '' : serviceToken);

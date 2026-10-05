@@ -456,6 +456,15 @@ async def get_generic_data_dictionary(
         if not normalized_prefix:
             raise HTTPException(status_code=400, detail="Ontology prefix is required")
 
+        # Browsers select immutable catalog IDs, while graph vocabulary retains
+        # the human-facing prefix. Resolve the selected artifact before querying.
+        from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+        try:
+            metadata = OntologyTaxonomyService._resolve_metadata(normalized_prefix)
+            normalized_prefix = metadata.get("prefix") or metadata.get("ontology_prefix") or normalized_prefix
+        except ValueError:
+            pass  # Graph-only baseline ontologies remain browseable by prefix.
+
         from ..core.graph import get_graph
         graph = get_graph()
 
@@ -742,6 +751,15 @@ async def get_generic_mappings(
         normalized_prefix = (prefix or "").strip()
         if not normalized_prefix:
             raise HTTPException(status_code=400, detail="Ontology prefix is required")
+
+        # Browsers select immutable catalog IDs, while graph vocabulary retains
+        # the human-facing prefix. Resolve the selected artifact before querying.
+        from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+        try:
+            metadata = OntologyTaxonomyService._resolve_metadata(normalized_prefix)
+            normalized_prefix = metadata.get("prefix") or metadata.get("ontology_prefix") or normalized_prefix
+        except ValueError:
+            pass  # Graph-only baseline ontologies remain browseable by prefix.
 
         from ..core.graph import get_graph
         graph = get_graph()

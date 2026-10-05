@@ -207,6 +207,8 @@ def execute_semantic_workflow(payload: dict[str, Any]) -> dict:
         return SemanticWorkflowService.execute(workflow_id, dict(payload.get("payload") or {}))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail='Semantic workflow dependency is unavailable; check ontology catalog and service logs') from exc
 
 
 @router.post("/ontology-agents/orchestrate", dependencies=[Depends(graph_read_identity)])
@@ -293,7 +295,11 @@ async def companion_chat(payload: ChatRequest, request: Request) -> dict:
             prior = next((item['text'] for item in context.get('messages', []) if item.get('role') == 'user'), '')
             if prior:
                 query = f'{str(prior)[:1000]} {message}'
-        async with asyncio.timeout(float(os.getenv('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', '15')) + 5):
+        generation_budget = 0
+        if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true':
+            from .local_llm import settings
+            generation_budget = settings()[3]
+        async with asyncio.timeout(float(os.getenv('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', '15')) + generation_budget + 5):
             result = await companion.ask(query, headers=headers, ontology_id=(payload.get('graph_context') or {}).get('ontology', ''))
         if (not isinstance(result, dict) or not isinstance(result.get('response'), str)
                 or not isinstance(result.get('evidence'), list) or not isinstance(result.get('sources'), list)
@@ -345,6 +351,12 @@ def companion_job_status(job_id: str, request: Request) -> dict:
 @router.get("/chat/status")
 def companion_health() -> dict:
     return {"status": "ok", "service": "knowledge-companion", "mode": "ontology-search", "streaming": True, 'incremental_generation': False, 'job_execution': 'synchronous', "fail_closed": True}
+
+
+@router.get('/llm/health', dependencies=[Depends(graph_read_identity)])
+async def local_llm_health() -> dict:
+    from .local_llm import health
+    return await health()
 
 
 @router.get("/chat/capabilities")

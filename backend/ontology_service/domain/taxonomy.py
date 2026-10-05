@@ -186,10 +186,12 @@ class OntologyTaxonomyService:
                 }
                 if lookup in candidates:
                     return meta
-        except Exception:
-            # The legacy registry remains a supported source when the native
-            # catalog is unavailable during a staged migration.
+        except (ImportError, ValueError):
+            # A staged legacy deployment or an invalid native identifier can
+            # still resolve an existing upload. Do not disguise DB failures.
             pass
+        except Exception as exc:
+            raise RuntimeError('Native ontology catalog is unavailable; check its PostgreSQL configuration and service logs') from exc
 
         direct = OntologyUploadManager.get_ontology(identifier)
         if direct.get("status") == "success":

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 from backend.depo_platform.service_urls import service_url
 from typing import Annotated, Any
 
@@ -367,8 +368,14 @@ async def register_ontology(
     prefix: Annotated[str, Form()],
     description: Annotated[str, Form()] = "",
     source: Annotated[str, Form()] = "api",
+    extra_metadata: Annotated[str, Form()] = "{}",
 ) -> dict:
     try:
+        if len(extra_metadata) > 262144:
+            raise ValueError('Registration metadata exceeds 256 KiB')
+        metadata = json.loads(extra_metadata)
+        if not isinstance(metadata, dict):
+            raise ValueError('extra_metadata must be a JSON object')
         limit = ontology_upload_limit()
         content = await artifact.read(limit + 1)
         if len(content) > limit:
@@ -376,6 +383,7 @@ async def register_ontology(
         return await run_in_threadpool(catalog.register,
             content=content, filename=artifact.filename or "ontology.ttl",
             ontology_name=ontology_name, prefix=prefix, description=description, source=source,
+            extra_metadata=metadata,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

@@ -56,11 +56,37 @@ def xsd_relational_report(request: Request, ontology_id: str = Query(..., min_le
     from backend.Services.xsd_relational_report import build_xsd_relational_report
 
     result = OntologyUploadManager.get_ontology(ontology_id)
-    if result.get("status") != "success":
-        raise HTTPException(status_code=404, detail=result.get("error") or "Ontology not found")
-    metadata = result.get("metadata") or {}
-    file_path = Path(metadata.get("file_path") or "")
-    if file_path.suffix.lower() != ".xsd" or not file_path.is_file():
+    if result.get('status') == 'success':
+        metadata = result.get('metadata') or {}
+        file_path = Path(metadata.get('file_path') or '')
+    else:
+        from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+        try:
+            metadata = OntologyTaxonomyService._resolve_metadata(ontology_id)
+            references = metadata.get('engineering_artifacts') or {}
+            structural_id = references.get('structural_model')
+            from backend.artifact_store import ArtifactStore
+            if structural_id:
+                import json
+                _, structural_path = ArtifactStore().resolve(structural_id)
+                model = json.loads(structural_path.read_text(encoding='utf-8'))
+                if not isinstance(model, dict) or not isinstance(model.get('tables'), list):
+                    raise ValueError('Retained XSD structural model has an invalid contract')
+                model['source_file'] = metadata.get('source_filename') or model.get('source_file')
+                return {'ontology_id': metadata['ontology_id'], 'prefix': metadata.get('prefix') or '',
+                        **model, 'analytics_schema_plan': build_analytics_schema_plan(model)}
+            source_id = references.get('source')
+            if not source_id:
+                file_path = Path(metadata.get('file_path') or '')
+                if not file_path.is_file():
+                    raise ValueError('No retained XSD source reference exists for this ontology; reimport the source with this release')
+            else:
+                source_metadata, file_path = ArtifactStore().resolve(source_id)
+                if Path(source_metadata.get('filename') or '').suffix.lower() != '.xsd':
+                    raise ValueError('The retained engineering source is not an XSD')
+        except ValueError as exc:
+            raise HTTPException(404, detail=str(exc)) from exc
+    if (not (metadata.get('engineering_artifacts') or {}).get('source') and file_path.suffix.lower() != ".xsd") or not file_path.is_file():
         raise HTTPException(status_code=422, detail="The selected ontology does not have an accessible XSD source file")
     try:
         model = build_xsd_relational_report(file_path)

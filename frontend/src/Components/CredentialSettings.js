@@ -1,7 +1,7 @@
 import { credentialServices } from '../services/credentialProfiles';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { buildSemanticServiceUrl, config } from '../config';
-import { getCredentialProfile, setCredentialProfile, clearServiceAuthToken, getGatewaySubscriptionKey, setGatewaySubscriptionKey, serviceAuthHeaders } from '../services/serviceAuth';
+import { getCredentialProfile, setCredentialProfile, clearServiceAuthToken, getGatewaySubscriptionKey, setGatewaySubscriptionKey, serviceAuthHeaders, setBrowserSessionExpiry } from '../services/serviceAuth';
 import ServiceAccessDiscovery from '../app/ServiceAccessDiscovery';
 import './CredentialSettings.css';
 
@@ -17,6 +17,11 @@ export default function CredentialSettings() {
   const [sessionAdminKey, setSessionAdminKey] = useState('');
   const [includeWrites, setIncludeWrites] = useState(false);
   const [sessionStatus, setSessionStatus] = useState('');
+  useEffect(() => {
+    const expired = () => { setSessionStatus('Central session expired or was rejected. Reconnect here; no operation was automatically retried.'); setResults({}); };
+    window.addEventListener('depo:session-expired', expired);
+    return () => window.removeEventListener('depo:session-expired', expired);
+  }, []);
   async function connectCentralSession() {
     setBusy(true);
     const controller = new AbortController();
@@ -30,6 +35,7 @@ export default function CredentialSettings() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `Connection failed (${response.status})`);
       if (!body.token?.startsWith('depo_session_') || !Array.isArray(body.profiles) || !body.profiles.includes('GRAPH_READ_TOKEN') || !body.expires_at) throw new Error('Invalid central session response');
+      if (!Number.isFinite(Date.parse(body.expires_at)) || Date.parse(body.expires_at) <= Date.now()) throw new Error('Central session is already expired; check application and database VM clocks.');
       const checks = await Promise.all(Object.keys(config.semanticServiceUrls).map(async service => {
         const endpoint = buildSemanticServiceUrl(service, '/auth/access');
         const probe = await fetch(endpoint, { headers: { ...serviceAuthHeaders(endpoint, 'get', subscription), Authorization: `Bearer ${body.token}` }, signal: controller.signal, credentials: 'omit', redirect: 'error' });
@@ -40,6 +46,7 @@ export default function CredentialSettings() {
       clearServiceAuthToken();
       setGatewaySubscriptionKey(subscription);
       body.profiles.filter(profile => profiles.includes(profile) && profile !== 'ADMIN_API_KEY').forEach(profile => setCredentialProfile(profile, body.token));
+      setBrowserSessionExpiry(body.token, body.expires_at);
       setValues(Object.fromEntries(profiles.map(profile => [profile, ''])));
       setResults(Object.fromEntries(body.profiles.map(profile => [profile, `Connected via central session until ${new Date(body.expires_at).toLocaleTimeString()}`])));
       setSessionAdminKey('');

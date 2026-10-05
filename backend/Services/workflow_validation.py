@@ -10,19 +10,28 @@ def validate_semantic_artifact(metadata):
     from pyshacl import validate
     from backend.depo_platform.upload_limits import ontology_upload_limit
 
-    path = Path(metadata.get("owl_file_path") or metadata.get("file_path") or "")
+    path = Path(metadata.get("owl_file_path") or metadata.get("file_path") or metadata.get("artifact_path") or "")
     if not path.is_file():
         raise ValueError("A retained RDF/OWL artifact is required for semantic validation")
     limit = ontology_upload_limit()
     with path.open("rb") as stream:
         content = stream.read(limit + 1)
+    if len(content) > limit:
+        raise ValueError("Ontology artifact exceeds the validation size limit")
     parsed = OntologyCatalog._parse_ontology(content, path.name)
     graph = Graph().parse(data=content, format=parsed["rdf_format"])
     shape_path = metadata.get("shacl_file_path")
+    shape_id = (metadata.get("engineering_artifacts") or {}).get("shacl")
+    shape_source = "retained" if shape_path or shape_id else "default"
+    if shape_id:
+        from backend.artifact_store import ArtifactStore
+        shape_metadata, shape_path = ArtifactStore().resolve(shape_id)
     if shape_path:
         with Path(shape_path).open("rb") as stream:
             shapes_content = stream.read(limit + 1)
-        shape_format = OntologyCatalog._parse_ontology(shapes_content, Path(shape_path).name)
+        if len(shapes_content) > limit:
+            raise ValueError("SHACL artifact exceeds the validation size limit")
+        shape_format = OntologyCatalog._parse_ontology(shapes_content, shape_metadata.get("filename", "shapes.ttl") if shape_id else Path(shape_path).name)
         shapes = Graph().parse(data=shapes_content, format=shape_format["rdf_format"])
     else:
         shapes = Graph().parse(data=ShaclValidationService().create_default_shapes(), format="turtle")
@@ -34,6 +43,6 @@ def validate_semantic_artifact(metadata):
     for left, right in graph.subject_objects(OWL.disjointWith):
         inconsistent.update(set(graph.subjects(RDF.type, left)) & set(graph.subjects(RDF.type, right)))
     return {"syntax": {"status": "passed", **parsed},
-            "shacl": {"conforms": conforms, "report": str(report)[:20000]},
+            "shacl": {"conforms": conforms, "report": str(report)[:20000], "shape_source": shape_source, "shape_artifact_id": shape_id, "scope": metadata.get("shacl_scope") or "Default ontology checks; complete XSD instance validation is not established"},
             "consistency": {"status": "failed" if inconsistent else "passed", "conflicting_individuals": len(inconsistent),
                             "scope": "OWL-RL inferred disjoint-class membership and owl:Nothing; full OWL DL consistency is not established"}}

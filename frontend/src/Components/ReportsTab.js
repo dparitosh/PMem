@@ -326,15 +326,26 @@ const ReportsTab = ({ searchResults, graphData }) => {
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphError, setGraphError] = useState('');
   const [selectedXsdOntology, setSelectedXsdOntology] = useState('');
+  const [reportOntology, setReportOntology] = useState('');
   const [xsdReport, setXsdReport] = useState(null);
   const [xsdReportLoading, setXsdReportLoading] = useState(false);
   const [xsdReportError, setXsdReportError] = useState('');
   const [pipelineTelemetry, setPipelineTelemetry] = useState(null);
   const [pipelineTelemetryError, setPipelineTelemetryError] = useState('');
   const [telemetryRevision, setTelemetryRevision] = useState(0);
+  const [contentRevision, setContentRevision] = useState(0);
   useEffect(() => {
-    const timer = window.setInterval(() => setTelemetryRevision(value => value + 1), 15000);
-    return () => window.clearInterval(timer);
+    const refresh = () => { setContentRevision(value => value + 1); setTelemetryRevision(value => value + 1); };
+    const timer = window.setInterval(() => { if (!document.hidden) setTelemetryRevision(value => value + 1); }, 15000);
+    window.addEventListener('depo:credentials-changed', refresh);
+    window.addEventListener('depo:credentials-cleared', refresh);
+    window.addEventListener('depo:ontologies-changed', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('depo:credentials-changed', refresh);
+      window.removeEventListener('depo:credentials-cleared', refresh);
+      window.removeEventListener('depo:ontologies-changed', refresh);
+    };
   }, []);
 
   useEffect(() => {
@@ -352,7 +363,8 @@ const ReportsTab = ({ searchResults, graphData }) => {
 
   useEffect(() => {
     if (!selectedXsdOntology && ontologies?.length) {
-      setSelectedXsdOntology(ontologies[0].ontology_id || ontologies[0].value || ontologies[0].prefix || '');
+      const preferred = ontologies.find(ontology => ontology.engineering_artifacts?.structural_model || ontology.type === 'xsd') || ontologies[0];
+      setSelectedXsdOntology(preferred.ontology_id || preferred.value || preferred.prefix || '');
     }
   }, [ontologies, selectedXsdOntology]);
 
@@ -360,6 +372,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
     if (activeReport !== 'xsd-relational' || !selectedXsdOntology) return undefined;
     let cancelled = false;
     const controller = new AbortController();
+    setXsdReport(null);
     setXsdReportLoading(true);
     setXsdReportError('');
     apiClient.get(buildUrl(API.reports.xsdRelational), { params: { ontology_id: selectedXsdOntology }, signal: controller.signal })
@@ -367,24 +380,28 @@ const ReportsTab = ({ searchResults, graphData }) => {
       .catch((error) => { if (!cancelled && !controller.signal.aborted) setXsdReportError(apiErrorMessage(error, 'XSD relational report failed.')); })
       .finally(() => { if (!cancelled) setXsdReportLoading(false); });
     return () => { cancelled = true; controller.abort(); };
-  }, [activeReport, selectedXsdOntology]);
+  }, [activeReport, selectedXsdOntology, contentRevision]);
 
   const effectiveGraphData = useMemo(() => {
     const hasPrimaryGraph = (graphData?.nodes || []).length > 0 || (graphData?.links || []).length > 0;
-    return hasPrimaryGraph ? graphData : fallbackGraphData;
-  }, [fallbackGraphData, graphData]);
+    if (reportOntology) return fallbackGraphData;
+    return fallbackGraphData.nodes.length ? fallbackGraphData : (hasPrimaryGraph ? graphData : fallbackGraphData);
+  }, [fallbackGraphData, graphData, reportOntology]);
 
   useEffect(() => {
     const hasPrimaryGraph = (graphData?.nodes || []).length > 0 || (graphData?.links || []).length > 0;
-    if (hasPrimaryGraph || (fallbackGraphData.nodes || []).length > 0) return undefined;
+    // Fetch the selected scope independently of the current graph canvas.
 
     let cancelled = false;
     const controller = new AbortController();
     const loadGraph = async () => {
       setGraphLoading(true);
       setGraphError('');
+      setFallbackGraphData({ nodes: [], links: [] });
       try {
-        const response = await graphApi.getOverview(1200, controller.signal);
+        const response = reportOntology
+          ? await graphApi.getOntologyGraph(reportOntology, 1200, controller.signal)
+          : await graphApi.getOverview(1200, controller.signal);
         const normalized = normalizeGraphDatasetShared(response.data);
         if (!cancelled) setFallbackGraphData(normalized);
       } catch (error) {
@@ -397,7 +414,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
 
     loadGraph();
     return () => { cancelled = true; controller.abort(); };
-  }, [fallbackGraphData.nodes, graphData]);
+  }, [reportOntology, contentRevision]);
 
   const ontologyRows = useMemo(() => (ontologies || []).map((ontology) => ({
     ontology: ontology.label || ontology.ontology_id || ontology.prefix,
@@ -411,14 +428,12 @@ const ReportsTab = ({ searchResults, graphData }) => {
     relationships: ontology.relationship_count || 0,
   })), [ontologies]);
 
-  const processedResults = useMemo(() => buildNodeReportRows(effectiveGraphData, searchResults), [effectiveGraphData, searchResults]);
+  const processedResults = useMemo(() => buildNodeReportRows(effectiveGraphData, reportOntology ? [] : searchResults), [effectiveGraphData, searchResults, reportOntology]);
   const baseNodeHeaders = useMemo(() => getHeaders(processedResults), [processedResults]);
   const discoveredTypes = useMemo(() => discoverTypes(processedResults), [processedResults]);
   const [stableAvailableTypes, setStableAvailableTypes] = useState([]);
   useEffect(() => {
-    if (discoveredTypes.length > 0) {
-      setStableAvailableTypes(discoveredTypes);
-    }
+    setStableAvailableTypes(discoveredTypes);
   }, [discoveredTypes]);
   const availableTypes = stableAvailableTypes.length > 0 ? stableAvailableTypes : discoveredTypes;
   const relationshipRows = useMemo(() => buildRelationshipRows(effectiveGraphData), [effectiveGraphData]);
@@ -434,10 +449,10 @@ const ReportsTab = ({ searchResults, graphData }) => {
   }, [relationshipRows]);
 
   const nodeRows = useMemo(() => {
-    if (activeReport === 'ontologies') return ontologyRows;
+    if (activeReport === 'ontologies') return reportOntology ? ontologyRows.filter(row => row.ontology_id === reportOntology) : ontologyRows;
     if (activeReport === 'search') return processedResults;
     return processedResults.filter((row) => getPrimaryType(row) === activeReport);
-  }, [activeReport, ontologyRows, processedResults]);
+  }, [activeReport, ontologyRows, processedResults, reportOntology]);
 
   const relationshipScopeLabel = useMemo(() => {
     const searchCount = Array.isArray(searchResults) ? searchResults.length : 0;
@@ -620,6 +635,12 @@ const ReportsTab = ({ searchResults, graphData }) => {
 
   return (
     <div style={{ minHeight: '100%', padding: '8px 0 0' }}>
+      <label>Report ontology <select aria-label="Report ontology" value={reportOntology} onChange={event => { setReportOntology(event.target.value); setCurrentPage(1); setFilters({}); }}>
+        <option value="">All ontologies</option>
+        {ontologies.map(ontology => <option key={ontology.ontology_id} value={ontology.ontology_id}>{ontology.label || ontology.prefix}</option>)}
+      </select></label>
+      <button type="button" onClick={() => { setContentRevision(value => value + 1); setTelemetryRevision(value => value + 1); }}>Refresh reports</button>
+      <p>Graph reports use a bounded service projection (up to 1,200 nodes); they are not full warehouse totals. Pipeline/job telemetry remains system-wide.</p>
       <div
         style={{
           display: 'grid',
@@ -851,7 +872,9 @@ const ReportsTab = ({ searchResults, graphData }) => {
           />
 
           {activeReport === 'xsd-relational' ? (
-            <XsdRelationalReport report={xsdReport} loading={xsdReportLoading} error={xsdReportError} selectedOntology={selectedXsdOntology} ontologies={ontologies} onOntologyChange={setSelectedXsdOntology} />
+            <div><label>XSD ontology <select aria-label="Select XSD ontology" value={selectedXsdOntology} onChange={event => setSelectedXsdOntology(event.target.value)}>
+              <option value="">Select an ontology</option>{ontologies.map(ontology => <option key={ontology.ontology_id} value={ontology.ontology_id}>{ontology.label || ontology.prefix}</option>)}
+            </select></label><XsdRelationalReport report={xsdReport} loading={xsdReportLoading} error={xsdReportError} selectedOntology={selectedXsdOntology} ontologies={ontologies} onOntologyChange={setSelectedXsdOntology} /></div>
           ) : activeReport === 'relationships' ? (
             <>
               <div style={{ fontSize: 12, color: '#52606d', marginBottom: 12 }}>
@@ -1330,7 +1353,7 @@ function XsdRelationalReport({ report, loading, error, selectedOntology, ontolog
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={selectedOntology} onChange={(event) => onOntologyChange(event.target.value)} style={{ minWidth: 280, padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 6 }} aria-label="Select XSD ontology">
+        <select value={selectedOntology} onChange={(event) => onOntologyChange(event.target.value)} style={{ minWidth: 280, padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 6 }} aria-label="Change loaded XSD ontology">
           {ontologies.map((ontology) => <option key={ontology.ontology_id || ontology.value || ontology.prefix} value={ontology.ontology_id || ontology.value || ontology.prefix}>{ontology.label || ontology.prefix}</option>)}
         </select>
         <span style={{ fontSize: 12, color: '#52606d' }}>Source: {report.source_file}</span>

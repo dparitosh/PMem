@@ -9,7 +9,8 @@ import { config, API, buildSemanticServiceUrl, buildUrl, replaceParams } from '.
 import logger from '../utils/logger';
 import agenticAPI from './agenticApi';
 import { reportRunRecovery } from './runRecovery';
-import { serviceAuthHeaders, getCredentialProfile, setCredentialProfile } from './serviceAuth';
+import { notifyOntologyChange } from '../utils/ontologyEvents';
+import { serviceAuthHeaders, getCredentialProfile, setCredentialProfile, expireBrowserSession } from './serviceAuth';
 
 /**
  * Create axios instance with base configuration
@@ -169,6 +170,7 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => {
     adoptServerSession(response);
+    notifyOntologyChange(response);
     if (config.debug) {
       // eslint-disable-next-line no-console
       console.debug('[API] Response:', {
@@ -226,8 +228,8 @@ apiClient.interceptors.response.use(
 
     // Handle specific status codes
     if (error.response?.status === 401) {
-      // Unauthorized - could trigger logout
-      // dispatch(logout());
+      const authorization = error.config?.headers?.Authorization || error.config?.headers?.authorization || '';
+      if (authorization.startsWith('Bearer depo_session_')) expireBrowserSession(authorization.slice(7));
     } else if (error.response?.status === 403) {
       logger.warn('[API] Access forbidden');
     } else if (error.response?.status === 404) {

@@ -17,7 +17,7 @@ class OllamaService:
     """Service for Ollama local LLM"""
     
     DEFAULT_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    DEFAULT_MODEL = os.getenv("LLM_MODEL_NAME", "mistral")
+    DEFAULT_MODEL = os.getenv("LLM_MODEL_NAME") or os.getenv('OLLAMA_MODEL') or 'llama3:latest'
     DEFAULT_API_KEY = os.getenv("OLLAMA_API_KEY", "")
     
     def __init__(self, base_url: str = DEFAULT_BASE_URL, model: str = DEFAULT_MODEL, api_key: str = DEFAULT_API_KEY):
@@ -308,7 +308,7 @@ def get_ollama_service(base_url: str = OllamaService.DEFAULT_BASE_URL,
     """Get or create Ollama service singleton"""
     global _ollama_service
     # Read model from environment at call time to respect runtime .env changes
-    env_model = os.getenv('LLM_MODEL_NAME', model)
+    env_model = os.getenv('LLM_MODEL_NAME') or os.getenv('OLLAMA_MODEL') or model
     env_api_key = os.getenv('OLLAMA_API_KEY', api_key)
     env_base = os.getenv('OLLAMA_BASE_URL', base_url)
 

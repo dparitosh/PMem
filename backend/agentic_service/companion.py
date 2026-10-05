@@ -77,9 +77,19 @@ class KnowledgeCompanion:
         response_text = f"Grounded graph matches: {', '.join(labels[:6])}."
         if relation_types:
             response_text += f" Connected relationship types: {', '.join(relation_types[:6])}."
+        generation = {'enabled': False, 'status': 'disabled'}
+        if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true':
+            try:
+                from .local_llm import summarize
+                summary = await summarize(query, evidence)
+                response_text += '\n\nModel-assisted summary (review against the evidence): ' + summary
+                generation = {'enabled': True, 'status': 'completed', 'provider': 'ollama'}
+            except Exception:
+                generation = {'enabled': True, 'status': 'unavailable', 'action': 'Check Admin Ollama diagnostics.'}
+                response_text += '\n\nThe configured language model is unavailable; the graph evidence above remains available.'
         return {
             "status": "grounded", "answerable": True, "response": response_text,
-            "evidence": evidence, "sources": [endpoint], "retrieval": retrieval,
+            "evidence": evidence, "sources": [endpoint], "retrieval": retrieval, 'generation': generation,
         }
 
 

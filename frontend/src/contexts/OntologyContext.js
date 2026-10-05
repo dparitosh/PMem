@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { apiClient } from '../services/apiClient';
 import { buildUrl } from '../config';
 import logger from '../utils/logger';
+import { normalizeOntologyRows as normalizeRegistryRows } from '../utils/ontologyRegistry';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 
 /**
  * Centralized Ontology Context
@@ -31,37 +33,12 @@ export const OntologyProvider = ({ children }) => {
    * Fetch ontologies from backend
    */
   const normalizeOntologyRows = useCallback((rows = []) => {
-    return (Array.isArray(rows) ? rows : []).map((o) => {
-      const value = o.ontology_id || o.id || o.prefix || o.value || o.name || o.ontology_prefix || '';
-      const prefix = o.prefix || o.ontology_prefix || o.ontology_id || o.id || value;
-      return {
-        value,
-        label: o.ontology_name || o.name || o.label || value || prefix,
-        prefix,
-        ontology_prefix: prefix,
-        ontology_id: o.ontology_id || o.id || prefix,
-        type: o.file_type || o.type,
-        source: o.source,
-        namespace: o.namespace || o.source_namespace || o.target_namespace || '',
-        source_namespace: o.source_namespace || o.namespace || '',
-        target_namespace: o.target_namespace || o.namespace || '',
-        status: o.status || o.availability,
-        availability: o.availability || o.status,
-        node_count: Number(o.node_count || o.neo4j_nodes_merged || 0),
-        relationship_count: Number(o.relationship_count || o.neo4j_relationships_merged || 0),
-        graph_available:
-          Boolean(o.graph_available) ||
-          Number(o.node_count || o.neo4j_nodes_merged || 0) > 0 ||
-          Number(o.relationship_count || o.neo4j_relationships_merged || 0) > 0 ||
-          String(o.status || o.availability || '').toLowerCase() === 'uploaded',
-        disabled: Boolean(o.disabled),
-        raw: o,
-      };
-    });
+    return normalizeRegistryRows(rows);
   }, []);
 
-  const fetchOntologies = useCallback(async () => {
-    if (requestRef.current) return requestRef.current;
+  const fetchOntologies = useCallback(async (force = false) => {
+    if (requestRef.current && !force) return requestRef.current;
+    if (force) abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     const request = (async () => {
@@ -72,31 +49,26 @@ export const OntologyProvider = ({ children }) => {
         // registry as a read-only bridge for already-published ontologies.
         // This prevents existing QIF/AP242 artifacts from disappearing while
         // their catalog migration is completed.
-        const endpoints = [
-          buildUrl('/api/v1/ontologies'),
-          buildUrl('/api/v1/ontology/registered'),
-        ];
-        let payload = null;
+        const paths = ['/api/v1/ontologies', '/api/v1/ontology/registered'];
+        const results = await Promise.allSettled(paths.map(path => Promise.resolve().then(() =>
+          apiClient.get(buildUrl(path), { signal: controller.signal, timeout: 15000 }))));
+        const merged = new Map();
+        let successes = 0;
         let lastError = null;
-        for (const endpoint of endpoints) {
-          try {
-            const response = await apiClient.get(endpoint, { signal: controller.signal });
-            payload = response?.data || null;
-            const rows = payload?.ontologies || payload?.items || payload?.results || payload?.data?.ontologies || payload?.data?.items || [];
-            if (Array.isArray(rows) && rows.length) break;
-          } catch (err) {
-            lastError = err;
+        for (const result of results) {
+          if (controller.signal.aborted) return [];
+          if (result.status === 'rejected') { lastError = result.reason; continue; }
+          const payload = result.value?.data || {};
+          const rows = payload.ontologies || payload.items || payload.results || payload.data?.ontologies || payload.data?.items;
+          if (!Array.isArray(rows)) { lastError = new Error('Registry returned an invalid ontology list.'); continue; }
+          successes += 1;
+          for (const row of normalizeOntologyRows(rows)) {
+            if (row.value && !merged.has(row.value)) merged.set(row.value, row);
           }
         }
-        if (!payload) throw lastError || new Error('Failed to load ontologies');
-        const ontologyRows =
-          payload.ontologies ||
-          payload.items ||
-          payload.results ||
-          payload.data?.ontologies ||
-          payload.data?.items ||
-          [];
-        const ontologyList = normalizeOntologyRows(ontologyRows);
+        if (!successes) throw lastError || new Error('Failed to load ontologies');
+        if (controller.signal.aborted) return [];
+        const ontologyList = [...merged.values()];
         if (mountedRef.current) {
           setOntologies(ontologyList);
           setLastUpdated(new Date());
@@ -106,14 +78,16 @@ export const OntologyProvider = ({ children }) => {
         if (err?.name === 'AbortError' || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') {
           return [];
         }
-        const errorMsg = err.response?.data?.detail || err.message || 'Failed to load ontologies';
+        const errorMsg = apiErrorMessage(err, 'Failed to load ontology registries.');
         if (mountedRef.current) setError(errorMsg);
         logger.error('[OntologyContext] Failed to fetch ontologies:', err);
         return [];
       } finally {
-        if (mountedRef.current) setLoading(false);
-        requestRef.current = null;
-        if (abortRef.current === controller) abortRef.current = null;
+        if (mountedRef.current && abortRef.current === controller) setLoading(false);
+        if (abortRef.current === controller) {
+          requestRef.current = null;
+          abortRef.current = null;
+        }
       }
     })();
     requestRef.current = request;
@@ -125,6 +99,16 @@ export const OntologyProvider = ({ children }) => {
    */
   useEffect(() => {
     fetchOntologies();
+    const refresh = () => { setOntologies([]); fetchOntologies(true); };
+    const changed = () => fetchOntologies(true);
+    window.addEventListener('depo:credentials-changed', refresh);
+    window.addEventListener('depo:credentials-cleared', refresh);
+    window.addEventListener('depo:ontologies-changed', changed);
+    return () => {
+      window.removeEventListener('depo:credentials-changed', refresh);
+      window.removeEventListener('depo:credentials-cleared', refresh);
+      window.removeEventListener('depo:ontologies-changed', changed);
+    };
   }, [fetchOntologies]);
 
   /**

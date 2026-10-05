@@ -3,6 +3,8 @@ import { IxButton } from '@siemens/ix-react';
 import RegistryWidget from '../widgets/RegistryWidget';
 import { apiClient } from '../services/apiClient';
 import { buildSemanticServiceUrl } from '../config';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
+import { useOntologies } from '../contexts/OntologyContext';
 
 const columns = [
   { field: 'product_id', headerName: 'Product ID', flex: 1.2 },
@@ -15,6 +17,10 @@ const columns = [
 export default function DataProductsPage({ mode = 'products' }) {
   const catalog = mode === 'catalog';
   const title = catalog ? 'Data Catalog' : 'Data Products';
+  const { ontologies } = useOntologies();
+  const drafts = (ontologies || []).filter(ontology => ontology.data_product_draft?.contract);
+  const [selectedDraft, setSelectedDraft] = useState('');
+  const draft = drafts.find(ontology => ontology.ontology_id === selectedDraft);
   const [state, setState] = useState({ loading: true, rows: [], error: '' });
   const [selected, setSelected] = useState('');
   const [detail, setDetail] = useState(null);
@@ -38,8 +44,7 @@ export default function DataProductsPage({ mode = 'products' }) {
       setState({ loading: false, rows: response.data.products, error: '' });
     } catch (error) {
       if (controller.signal.aborted) return;
-      const message = error.response?.data?.detail;
-      setState({ loading: false, rows: [], error: typeof message === 'string' ? message : error.message });
+      setState({ loading: false, rows: [], error: apiErrorMessage(error, 'Product service request failed.') });
     }
   }, [service, path]);
 
@@ -73,8 +78,18 @@ export default function DataProductsPage({ mode = 'products' }) {
     <div className="depo-panel__header"><h2>{title}</h2><IxButton onClick={load} disabled={state.loading}>Refresh</IxButton></div>
     <p>{catalog ? 'Browse governed product versions, ownership and lifecycle.' : 'Browse retained product packages and their catalog delivery status.'}</p>
     {state.loading && <p role="status">Loading products…</p>}
-    {state.error && <div role="alert" className="depo-alert depo-alert--warning">{state.error} Configure and test GRAPH_READ_TOKEN in Admin.</div>}
+    {state.error && <div role="alert" className="depo-alert depo-alert--warning">{state.error}</div>}
     {!state.loading && !state.error && state.rows.length === 0 && <p>No products are registered yet. Creating an ontology does not publish a data product.</p>}
+    {!catalog && <section aria-label="Schema design drafts">
+      <h3>Schema design drafts ({drafts.length})</h3>
+      <p>Retained conversion evidence is a draft, not a published warehouse. Publication requires an approved semantic release and data-product steward approval.</p>
+      <select aria-label="Schema design draft" value={draft ? selectedDraft : ''} onChange={event => setSelectedDraft(event.target.value)}>
+        <option value="">Select imported schema draft</option>
+        {drafts.map(ontology => <option key={ontology.ontology_id} value={ontology.ontology_id}>{ontology.label}</option>)}
+      </select>
+      {draft && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 350, overflow: 'auto' }}>{JSON.stringify(draft.data_product_draft, null, 2)}</pre>}
+      {!drafts.length && <p>No retained schema-design draft metadata is available. Older imports may need reimporting with this release to retain their evidence references.</p>}
+    </section>}
     <RegistryWidget title={`${title} (${state.rows.length})`} rows={state.rows} columns={columns} height={400} />
     <label htmlFor="product-detail">Product details and versions</label>
     <select style={{ color: 'var(--ui-text)', background: 'var(--ui-surface)', border: '1px solid var(--ui-border)', padding: 8, margin: 8 }} id="product-detail" value={selected} onChange={event => showDetail(event.target.value)}>

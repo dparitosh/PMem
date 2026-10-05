@@ -105,6 +105,13 @@ class EngineeringSchemaConverter:
             turtle_bytes, filename=f"{stem}.ttl", kind="serialized-ontology",
             media_type="text/turtle", provenance={"source_artifact_id": source_artifact["artifact_id"], "format": file_type.value},
         )
+        from backend.Services.shacl_service import ShaclValidationService
+        shapes_text = ShaclValidationService().create_default_shapes()
+        shapes_artifact = store.ingest_bytes(
+            shapes_text.encode("utf-8"), filename=f"{stem}.shacl.ttl", kind="shacl-shapes",
+            media_type="text/turtle", provenance={"source_artifact_id": source_artifact["artifact_id"],
+                "serialization_artifact_id": turtle_artifact["artifact_id"], "scope": "default-ontology-checks"},
+        )
         structural_model = schema_plan = None
         structural_artifacts = {}
         if file_type == FileType.XSD:
@@ -153,7 +160,7 @@ class EngineeringSchemaConverter:
             "structural_model": structural_model, "analytics_schema_plan": schema_plan,
             "artifacts": {
                 "source": source_artifact["artifact_id"], "serialization": turtle_artifact["artifact_id"],
-                "analytics_profile": analytics_artifact["artifact_id"], **structural_artifacts,
+                "analytics_profile": analytics_artifact["artifact_id"], "shacl": shapes_artifact["artifact_id"], **structural_artifacts,
             },
             "data_product_draft": {
                 "contract": "schema-analytics-data-product-v2" if file_type == FileType.XSD else "schema-analytics-data-product-v1",

@@ -54,15 +54,14 @@ class OntologyReasoningService:
 
     @classmethod
     def semantic_context(cls, ontology_identifier: str) -> Dict[str, Any]:
-        ontology_id = cls.resolve_ontology_id(ontology_identifier) or ontology_identifier
-        result = OntologyUploadManager.get_ontology(ontology_id)
-        if result.get("status") != "success":
-            raise ValueError(result.get("error") or f"Ontology not found: {ontology_identifier}")
-
-        meta = result["metadata"]
-        source_file_path = Path(meta.get("file_path", ""))
-        semantic_file_path = Path(meta.get("owl_file_path") or meta.get("file_path", ""))
-        if not str(meta.get("file_path") or "").strip() or not source_file_path.is_file():
+        # Reuse the native-catalog and legacy registry resolver used by taxonomy.
+        from .taxonomy import OntologyTaxonomyService
+        meta = OntologyTaxonomyService._resolve_metadata(ontology_identifier)
+        ontology_id = meta.get("ontology_id") or ontology_identifier
+        source_path = meta.get("file_path") or meta.get("artifact_path") or ""
+        source_file_path = Path(source_path)
+        semantic_file_path = Path(meta.get("owl_file_path") or meta.get("artifact_path") or source_path)
+        if not str(source_path).strip() or not source_file_path.is_file():
             raise ValueError(f"Ontology file is missing: {ontology_identifier}")
         if not semantic_file_path.is_file():
             semantic_file_path = source_file_path
