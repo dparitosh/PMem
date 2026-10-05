@@ -66,6 +66,11 @@ if (-not $SkipPostgres) {
 # before any service process is created when the database is incompatible.
 & (Join-Path $PSScriptRoot 'initialize-depo-schema.ps1') -EnvFile $EnvFile
 
+# Reconcile missing profiles and reject configuration conflicts before any API is launched.
+if ($env:AUTH_MODE -eq 'token' -and $env:DEPO_CREDENTIAL_STORE -eq 'postgres') {
+  & (Join-Path $PSScriptRoot 'apply-depo-service-credentials.ps1') -EnvFile $EnvFile
+}
+
 # Apply CLI overrides after schema initialization reloads the selected file.
 $sparkOptions = $requestedSparkOptions
 $EnableSpark = $sparkOptions.EnableSpark

@@ -31,14 +31,21 @@ def apply_values(values, replace=False):
     if not prepared:
         raise ImportValidationError('The selected file contains no application API keys')
     results = []
+    conflicts = []
     with connection() as db, db.transaction(), db.cursor() as cursor:
         cursor.execute("SELECT pg_advisory_xact_lock(hashtextextended(current_schema() || ':depo-credentials-import',0))")
         for profile, key, actor, expiry in prepared:
             cursor.execute('SELECT salt,digest,revoked,actor,expires_at FROM depo_api_credentials WHERE profile=%s FOR UPDATE', (profile,))
             existing = cursor.fetchone()
             if existing and not replace:
-                if existing[2] or existing[3] != actor or existing[4] != expiry or not hmac.compare_digest(key_digest(existing[0], key), existing[1]):
-                    raise ImportValidationError(f'{profile} differs from the central key/metadata or is revoked. Review the selected file, then use -ReplaceExisting only for deliberate rotation.')
+                reasons = []
+                if existing[2]: reasons.append('revoked')
+                if existing[3] != actor: reasons.append('actor mismatch')
+                if existing[4] != expiry: reasons.append('expiry mismatch')
+                if not hmac.compare_digest(key_digest(existing[0], key), existing[1]): reasons.append('key mismatch')
+                if reasons:
+                    conflicts.append(profile + ': ' + ', '.join(reasons))
+                    continue
                 results.append({'profile': profile, 'status': 'unchanged'})
                 continue
             register_key(profile, key, actor, expiry, db=db, audit_actor='deployment-import', bootstrap=not replace)
@@ -49,6 +56,8 @@ def apply_values(values, replace=False):
             if not actual or actual[2] or actual[3] != actor or actual[4] != expiry or not hmac.compare_digest(key_digest(actual[0], key), actual[1]):
                 raise ImportValidationError(f'{profile} changed concurrently. The batch was rolled back; retry after reviewing the central profile.')
             results.append({'profile': profile, 'status': 'replaced' if existing else 'created'})
+        if conflicts:
+            raise ImportValidationError('; '.join(conflicts) + '. Batch rolled back. Restore central values or use -ReplaceExisting for deliberate rotation.')
         cursor.execute("SELECT profile FROM depo_api_credentials WHERE profile IN ('ADMIN_API_KEY','GRAPH_READ_TOKEN') AND revoked=false AND (expires_at IS NULL OR expires_at > now())")
         if {row[0] for row in cursor.fetchall()} != {'ADMIN_API_KEY', 'GRAPH_READ_TOKEN'}:
             raise ImportValidationError('An active ADMIN_API_KEY and GRAPH_READ_TOKEN must exist after import. Add missing profiles to the selected file; no batch changes were applied.')

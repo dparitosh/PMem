@@ -28,10 +28,8 @@ class OllamaService:
         self._available_models = None
 
     def _headers(self) -> Dict[str, str]:
-        headers: Dict[str, str] = {}
-        if self.api_key:
-            headers["api-key"] = self.api_key
-        return headers
+        from backend.core.ollama_auth import ollama_headers
+        return ollama_headers(self.base_url, self.api_key)
 
     def _native_base_url(self) -> str:
         """Normalize configured endpoint to Ollama-native base URL.
@@ -81,52 +79,14 @@ class OllamaService:
             return None
     
     def health_check(self) -> bool:
-        """Check if Ollama is running and accessible
-        
-        Note: Azure APIM only exposes /api/generate endpoint, not /api/tags.
-        We test by attempting a minimal generate request instead.
-        Azure endpoints can be slow, so we use extended timeouts.
-        """
+        """Bounded read-only probe; never launch generation as a health check."""
         try:
-            native_base = self._native_base_url()
-            
-            # Try /api/tags first (standard Ollama) with short timeout
-            try:
-                response = requests.get(
-                    f"{native_base}/api/tags",
-                    headers=self._headers(),
-                    timeout=3,
-                )
-                if response.status_code == 200:
-                    return True
-            except (requests.Timeout, requests.ConnectionError):
-                pass  # Azure doesn't support /api/tags, fall through
-            except Exception:
-                pass
-            
-            # Fallback: Test /api/generate (works for Azure APIM)
-            # Azure can be very slow, use extended timeout (200s)
-            try:
-                response = requests.post(
-                    f"{native_base}/api/generate",
-                    json={
-                        "model": self.model,
-                        "prompt": "test",
-                        "stream": False,
-                    },
-                    headers=self._headers(),
-                    timeout=300,  # Azure APIM can be very slow (300s max)
-                )
-                return response.status_code == 200
-            except requests.Timeout:
-                # Timeout on Azure is often transient, log it but don't fail
-                logger.warning("Ollama health check timed out (Azure endpoint may be slow)")
-                return False
-            
-        except Exception as e:
-            logger.warning(f"Ollama health check failed: {e}")
+            response = requests.get(f"{self._native_base_url()}/api/tags", headers=self._headers(), timeout=5)
+            return response.status_code == 200
+        except requests.RequestException:
+            logger.warning("Ollama model-list health probe failed")
             return False
-    
+
     def list_models(self) -> list:
         """Get list of available models"""
         try:

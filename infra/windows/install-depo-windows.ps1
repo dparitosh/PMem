@@ -22,6 +22,7 @@ param(
   [switch]$SkipFrontend,
   [switch]$SkipBaselineProvisioning,
   [switch]$SkipDependencyInstall,
+  [switch]$ReplaceExistingCredentials,
   [switch]$SkipReleasePreflight
 )
 
@@ -95,6 +96,13 @@ Invoke-DepoStage 'PostgreSQL URL connectivity' {
 Invoke-DepoStage 'PostgreSQL schema migration' {
   & (Join-Path $root 'infra\deployment\invoke-depo-lifecycle.ps1') -Action InitializeDatabase -EnvFile $envPath -Profile $Profile
 }
+if ($settings['AUTH_MODE'] -eq 'token' -and $settings['DEPO_CREDENTIAL_STORE'] -eq 'postgres') {
+  Invoke-DepoStage 'Central credential synchronization (before service launch)' {
+    & (Join-Path $PSScriptRoot 'apply-depo-service-credentials.ps1') -EnvFile $envPath -ReplaceExisting:$ReplaceExistingCredentials
+  }
+} elseif ($ReplaceExistingCredentials) {
+  throw '-ReplaceExistingCredentials requires AUTH_MODE=token and DEPO_CREDENTIAL_STORE=postgres.'
+}
 Invoke-DepoStage 'Neo4j schema provisioning and validation' {
   # The schema file is idempotent. Provision it before the read-only release
   # preflight so a first Production installation cannot fail on missing indexes.
@@ -126,6 +134,14 @@ Invoke-DepoStage 'Service startup and endpoint validation' {
   if ($effectiveScheduler) { $startParameters.EnablePipelineScheduler = $true }
   if ($SkipBaselineProvisioning) { $startParameters.SkipBaselineProvisioning = $true }
   & (Join-Path $root 'infra\deployment\invoke-depo-lifecycle.ps1') @startParameters
+}
+if ($settings['AUTH_MODE'] -eq 'token' -and $settings['DEPO_CREDENTIAL_STORE'] -eq 'postgres') {
+  Invoke-DepoStage 'Central browser-session authentication verification' {
+    & (Join-Path $PSScriptRoot 'test-depo-browser-session.ps1') -EnvFile $envPath
+    if ($settings['DEPO_API_ROUTING_MODE'] -eq 'gateway') {
+      & (Join-Path $PSScriptRoot 'test-depo-browser-session.ps1') -EnvFile $envPath -Gateway
+    }
+  }
 }
 if (-not $SkipReleasePreflight) {
   Invoke-DepoStage 'Release preflight' {

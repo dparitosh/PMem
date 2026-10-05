@@ -17,7 +17,7 @@ def configuration_status():
         ('AGENT_SESSION_MAX_SECONDS', '86400', 60, 2592000),
         ('AGENTIC_RUN_TIMEOUT_SECONDS', '300', 1, 3600),
         ('DEPO_REGISTRY_STATEMENT_TIMEOUT_SECONDS', '30', 1, 300),
-        ('LLM_REQUEST_TIMEOUT_SECONDS', '30', 1, 300),
+        ('LLM_REQUEST_TIMEOUT_SECONDS', '30', 1, 120),
         ('AGENT_MEMORY_RETENTION_DAYS', '30', 1, 3650),
     ):
         try:

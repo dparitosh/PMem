@@ -20,7 +20,8 @@ def settings():
     timeout = float(os.getenv('LLM_REQUEST_TIMEOUT_SECONDS', '30'))
     if not 1 <= timeout <= 120:
         raise ValueError('LLM_REQUEST_TIMEOUT_SECONDS must be between 1 and 120')
-    headers = {'api-key': os.environ['OLLAMA_API_KEY']} if os.getenv('OLLAMA_API_KEY') else {}
+    from backend.core.ollama_auth import ollama_headers
+    headers = ollama_headers(base)
     return provider, model, base, timeout, headers
 
 
@@ -41,6 +42,12 @@ async def health():
                 'action': 'Ollama model is installed.' if found else 'Install or transfer the configured model to this Ollama server; .env.local does not install models.',
                 'ontology_agent_enabled': os.getenv('ONTOLOGY_AGENT_LLM_ENABLED', 'false').lower() == 'true',
                 'companion_enabled': os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true'}
+    except httpx.HTTPStatusError as failure:
+        code = failure.response.status_code
+        return {'status': 'authentication_rejected' if code in (401, 403) else 'route_missing' if code == 404 else 'upstream_error',
+                'http_status': code, 'provider': provider, 'model': model,
+                'action': 'Check the APIM subscription key and header.' if code in (401, 403) else
+                          'Expose GET /api/tags at the Ollama proxy API suffix.' if code == 404 else 'Check the Ollama proxy backend and its logs.'}
     except (httpx.HTTPError, TimeoutError, ValueError, TypeError, AttributeError):
         return {'status': 'unavailable', 'provider': provider, 'model': model,
                 'action': 'Check Ollama is running and its /api/tags endpoint is reachable from the application VM.'}

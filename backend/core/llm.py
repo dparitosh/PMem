@@ -9,6 +9,7 @@ from langchain_ollama import ChatOllama, OllamaEmbeddings
 
 from langchain_openai import AzureChatOpenAI
 from dotenv import load_dotenv
+from backend.core.ollama_auth import ollama_headers, ollama_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +50,8 @@ UNSTRUCTURED_AZURE_OPENAI_DEPLOYMENT = _first_env("UNSTRUCTURED_AZURE_OPENAI_DEP
 UNSTRUCTURED_AZURE_OPENAI_API_VERSION = _first_env("UNSTRUCTURED_AZURE_OPENAI_API_VERSION") or "2024-02-15-preview"
 
 # Ollama config for unstructured
-UNSTRUCTURED_OLLAMA_BASE_URL = _first_env("UNSTRUCTURED_OLLAMA_BASE_URL") or "http://localhost:11434"
-UNSTRUCTURED_OLLAMA_API_KEY = _first_env("UNSTRUCTURED_OLLAMA_API_KEY") or ""
+UNSTRUCTURED_OLLAMA_BASE_URL = _first_env("UNSTRUCTURED_OLLAMA_BASE_URL", "OLLAMA_BASE_URL") or "http://localhost:11434"
+UNSTRUCTURED_OLLAMA_API_KEY = _first_env("UNSTRUCTURED_OLLAMA_API_KEY", "OLLAMA_API_KEY") or ""
 UNSTRUCTURED_LLM_MODEL_NAME = _first_env("UNSTRUCTURED_LLM_MODEL_NAME") or "llava:7b"
 
 
@@ -62,7 +63,7 @@ USE_EMBEDDER = (_first_env("USE_EMBEDDER") or USE_LLM).lower()
 OLLAMA_BASE_URL = _first_env("OLLAMA_BASE_URL") or "http://localhost:11434"
 OLLAMA_API_KEY = _first_env("OLLAMA_API_KEY") or ""
 LLM_MODEL_NAME = _first_env("LLM_MODEL_NAME", "OLLAMA_MODEL") or "llama3:latest"
-EMBED_MODEL_NAME = _first_env("EMBED_MODEL_NAME", "LLM_MODEL_NAME") or "nomic-embed-text:latest"
+EMBED_MODEL_NAME = _first_env("EMBED_MODEL_NAME") or "nomic-embed-text:latest"
 
 
 def _normalize_ollama_base_url(base_url: str) -> str:
@@ -117,7 +118,7 @@ def _init_azure_llm() -> AzureChatOpenAI:
         api_version=AZURE_OPENAI_API_VERSION,
         azure_deployment=AZURE_OPENAI_DEPLOYMENT,
         temperature=0,
-        timeout=float(os.getenv('LLM_REQUEST_TIMEOUT_SECONDS', '30')),
+        timeout=ollama_timeout(),
         max_retries=0,
         model_kwargs={
             "user": "user-1234",
@@ -151,18 +152,18 @@ def _init_ollama_llm() -> ChatOllama:
     if not OLLAMA_BASE_URL or not LLM_MODEL_NAME:
         raise ValueError("Missing OLLAMA_BASE_URL or LLM_MODEL_NAME")
     kwargs = dict(model=LLM_MODEL_NAME, base_url=_normalize_ollama_base_url(OLLAMA_BASE_URL),
-                  client_kwargs={'timeout': float(os.getenv('LLM_REQUEST_TIMEOUT_SECONDS', '30'))})
+                  client_kwargs={'timeout': ollama_timeout()})
     if OLLAMA_API_KEY:
-        kwargs['client_kwargs']['headers'] = {'api-key': OLLAMA_API_KEY}
+        kwargs['client_kwargs']['headers'] = ollama_headers(OLLAMA_BASE_URL, OLLAMA_API_KEY)
     return ChatOllama(**kwargs)
 
 
 def _init_ollama_embeddings() -> OllamaEmbeddings:
     if not OLLAMA_BASE_URL or not EMBED_MODEL_NAME:
         raise ValueError("Missing OLLAMA_BASE_URL or EMBED_MODEL_NAME")
-    kwargs = dict(model=EMBED_MODEL_NAME, base_url=_normalize_ollama_base_url(OLLAMA_BASE_URL))
+    kwargs = dict(model=EMBED_MODEL_NAME, base_url=_normalize_ollama_base_url(OLLAMA_BASE_URL), client_kwargs={"timeout": ollama_timeout()})
     if OLLAMA_API_KEY:
-        kwargs["client_kwargs"] = {"headers": {"api-key": OLLAMA_API_KEY}}
+        kwargs["client_kwargs"]["headers"] = ollama_headers(OLLAMA_BASE_URL, OLLAMA_API_KEY)
     return OllamaEmbeddings(**kwargs)
 
 
@@ -219,9 +220,9 @@ def _init_unstructured_ollama_llm() -> ChatOllama:
     """Initialize Ollama LLM for unstructured document processing (vision-capable like llava)"""
     if not UNSTRUCTURED_OLLAMA_BASE_URL or not UNSTRUCTURED_LLM_MODEL_NAME:
         raise ValueError("Missing UNSTRUCTURED_OLLAMA_BASE_URL or UNSTRUCTURED_LLM_MODEL_NAME")
-    kwargs = dict(model=UNSTRUCTURED_LLM_MODEL_NAME, base_url=UNSTRUCTURED_OLLAMA_BASE_URL)
+    kwargs = dict(model=UNSTRUCTURED_LLM_MODEL_NAME, base_url=_normalize_ollama_base_url(UNSTRUCTURED_OLLAMA_BASE_URL), client_kwargs={"timeout": ollama_timeout()})
     if UNSTRUCTURED_OLLAMA_API_KEY:
-        kwargs["client_kwargs"] = {"headers": {"api-key": UNSTRUCTURED_OLLAMA_API_KEY}}
+        kwargs["client_kwargs"]["headers"] = ollama_headers(UNSTRUCTURED_OLLAMA_BASE_URL, UNSTRUCTURED_OLLAMA_API_KEY)
     return ChatOllama(**kwargs)
 
 

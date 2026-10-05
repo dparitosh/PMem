@@ -2538,8 +2538,7 @@ forwards the Authorization header to the backend.
 
 For **Import → Create ontology**, use this sequence:
 
-1. Enter **INGESTION_WRITE_TOKEN** in **Ontology workflow credentials**. This is
-   a separate server key, not GRAPH_READ_TOKEN or ADMIN_API_KEY.
+1. In **Admin → Connect registered service credentials**, connect using ADMIN_API_KEY and request the required workflow scopes. Alternatively test and apply INGESTION_WRITE_TOKEN in the central Service credentials table.
 2. To create and publish an XSD/XMI ontology, select **Convert XSD/XMI to OWL,
    register and publish to Neo4j after policy and quality checks**. The ingestion
    service calls the ontology service and graph service using its configured
@@ -3048,3 +3047,48 @@ These shapes currently enforce default ontology checks, not every XSD cardinalit
 ### QIF–AP242 agent review checkpoint
 
 In **QIF**, select two distinct registered versions identified as QIF and AP242. **Inspect selected schema inventories** reads retained version artifacts without requiring graph publication. **Run QIF–AP242 agent review** calls the Agentic service using the central graph-read credential. Review source IRIs, target IRIs, structural issues, ambiguity and truncation warnings. Candidates use typed name evidence; they do not establish PMI equivalence, unit conversion or instance traceability. No links are published by this agent. Open Ontology Junction / Semantic Bridge with the AP242 target, select the corresponding QIF instance import run and complete the existing review/approval workflow. A verified engineering mapping profile is still required. Deploy matching backend/frontend files, rebuild the frontend and restart affected services.
+
+
+### Credential consistency on installation and redeployment
+
+The installer migrates PostgreSQL, initializes missing profiles and checks supplied credential keys, actor metadata, expiry and revocation before launching APIs. Existing keys are preserved. Conflicts stop the installation with profile names and reasons; secret values are never printed.
+
+Normal first installation or redeployment, from the application repository root:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\install-depo-windows.ps1 -EnvFile 'E:\App\PMem\.env.local' -Profile Production
+```
+
+If the reviewed file intentionally replaces the central credentials, stop running services first, then use the explicit option. This rotates all supplied application key profiles and invalidates dependent browser sessions:
+
+```powershell
+.\infra\windows\stop-depo-services.ps1 -EnvFile 'E:\App\PMem\.env.local'
+.\infra\windows\install-depo-windows.ps1 -EnvFile 'E:\App\PMem\.env.local' -Profile Production -SkipDependencyInstall -ReplaceExistingCredentials
+.\infra\windows\test-depo-browser-session.ps1 -EnvFile 'E:\App\PMem\.env.local'
+.\infra\windows\start-depo-frontend.ps1 -EnvFile 'E:\App\PMem\.env.local'
+```
+
+The installer builds the frontend unless skipped; frontend serving remains an explicit final step. Reconnect in Admin after rotating credentials.
+
+### Ollama through an APIM proxy
+
+Put these values in the root `.env.local`, never the frontend environment. Replace the subscription placeholder with the issued key:
+
+```dotenv
+USE_LLM=ollama
+USE_EMBEDDER=ollama
+OLLAMA_BASE_URL=http://azdtapimanager.azure-api.net/ollama
+OLLAMA_API_KEY=<issued-subscription-key>
+OLLAMA_API_KEY_HEADER=Ocp-Apim-Subscription-Key
+LLM_MODEL_NAME=llama3.1:8b
+EMBED_MODEL_NAME=nomic-embed-text:latest
+LLM_REQUEST_TIMEOUT_SECONDS=60
+COMPANION_LLM_ENABLED=true
+ONTOLOGY_AGENT_LLM_ENABLED=true
+```
+
+The base URL must preserve the `/ollama` API suffix. Configure APIM operations and backend rewriting for GET `/api/tags`, POST `/api/chat`, POST `/api/generate` and the embedding operations used by the deployed Ollama SDK. The selected models must already exist on the Ollama server. Restart services and use Agent Control's Ollama check; an unexposed `/api/tags` operation prevents that model diagnostic even if chat works. This configuration uses an offline model server behind APIM, rather than a fully disconnected network deployment.
+
+
+Ollama timeout configuration is consistently bounded to 1–120 seconds for main chat, embeddings and unstructured chat. Unstructured Ollama inherits the main URL/key unless its own overrides are set; its model remains separately configured and must support the requested document/vision operation. Ollama health checks are read-only `/api/tags` probes and do not trigger generation. Agent Control distinguishes authentication rejection, missing route and upstream HTTP failures. The installer now verifies central browser-session authentication automatically after service startup; gateway mode also checks APIM session routing.
