@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { buildSemanticServiceUrl, config } from '../config';
 import { getCredentialProfile, setCredentialProfile, clearServiceAuthToken, getGatewaySubscriptionKey, setGatewaySubscriptionKey, serviceAuthHeaders } from '../services/serviceAuth';
 import ServiceAccessDiscovery from '../app/ServiceAccessDiscovery';
+import './CredentialSettings.css';
 
 const profiles = Object.keys(credentialServices);
 export default function CredentialSettings() {
@@ -85,16 +86,22 @@ export default function CredentialSettings() {
     <h2>Service credentials</h2>
     <p>All application API-key profiles are listed here, even before OpenAPI import. Database passwords, Neo4j credentials and outbound integration tokens remain in server configuration; they are never exposed to the browser.</p>
     <p>Enter administrator-issued keys here. Read access uses GRAPH_READ_TOKEN; ontology uploads use INGESTION_WRITE_TOKEN; governed instance jobs use DATA_JOB_EXECUTION_TOKEN. Validation checks authentication without running a job. Keys remain in this tab only and are cleared by a full reload.</p>
-    <label>APIM subscription key (optional)<input type="password" autoComplete="off" disabled={busy} value={subscription} onChange={e => setSubscription(e.target.value)} /></label>
+    <div className="depo-credential-controls"><label>APIM subscription key (optional)<input type="password" autoComplete="off" disabled={busy} value={subscription} onChange={e => setSubscription(e.target.value)} /></label>
     <label>Assigned actor for registration<input disabled={busy} value={actor} onChange={e => setActor(e.target.value)} /></label>
     <label>Optional expiry (UTC ISO timestamp, e.g. 2027-01-01T00:00:00Z)<input disabled={busy} value={expiry} onChange={e => setExpiry(e.target.value)} /></label>
-    {profiles.map(profile => <div key={profile}>
-      <label>{profile}<input type="password" autoComplete="off" disabled={busy} value={values[profile]} onChange={e => { setValues(prev => ({ ...prev, [profile]: e.target.value })); setResults(prev => ({ ...prev, [profile]: '' })); }} /></label>
+    </div>
+    <div className="depo-credential-table-scroll"><table className="depo-credential-table">
+      <caption>Application keys and validation results</caption>
+      <thead><tr><th scope="col">Credential profile</th><th scope="col">Service</th><th scope="col">API key</th><th scope="col">Actions</th><th scope="col">Status</th></tr></thead>
+      <tbody>{profiles.map(profile => <tr key={profile}>
+      <th scope="row">{profile}</th><td>{credentialServices[profile]}</td><td>
+      <input aria-label={profile} type="password" autoComplete="off" disabled={busy} value={values[profile]} onChange={e => { setValues(prev => ({ ...prev, [profile]: e.target.value })); setResults(prev => ({ ...prev, [profile]: '' })); }} /></td>
+      <td><div className="depo-credential-actions">
       <button type="button" disabled={busy || !values[profile].trim()} onClick={() => validate(profile)}>Test and apply</button>
       <button type="button" disabled={busy || values[profile].trim().length < 32 || !actor.trim() || !getCredentialProfile('ADMIN_API_KEY')} onClick={() => register(profile)}>Register / rotate in database</button>
       {profile !== 'ADMIN_API_KEY' && <button type="button" disabled={busy || !getCredentialProfile('ADMIN_API_KEY')} onClick={() => revoke(profile)}>Revoke in database</button>}
-      <p role="status">{results[profile]}</p>
-    </div>)}
+      </div></td><td><span role="status">{results[profile] || (getCredentialProfile(profile) ? 'Key stored; test to verify' : 'Not configured')}</span></td>
+    </tr>)}</tbody></table></div>
     <button type="button" disabled={busy} onClick={() => { clearServiceAuthToken(); setValues(Object.fromEntries(profiles.map(p => [p, '']))); setSubscription(''); setResults({}); setClearVersion(v => v + 1); }}>Clear credentials</button>
     <ServiceAccessDiscovery key={clearVersion} subscriptionKey={subscription} excludedProfiles={profiles} />
   </section>;

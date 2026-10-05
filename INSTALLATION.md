@@ -2104,6 +2104,39 @@ Only infrastructure utilities explicitly named in this guide should be run
 directly. Other scripts under `infra/windows/` and `infra/deployment/` are
 implementation stages, not separate customer installation instructions.
 
+### First deployment versus an existing installation
+
+On first deployment, the database administrator must first run the database/role/schema provisioning steps in this guide, including `infra/postgres/create-depo-database.sql`. That file is for **first installation only**: do not rerun it against an existing database. The application installer does not create the PostgreSQL database or schema.
+
+After completing root `.env.local` and the frontend configuration steps, run on the application VM:
+
+```powershell
+Set-Location E:\App\PMem
+.\install-depo.ps1 -EnvFile .\.env.local -Profile Production
+.\infra\windows\start-depo-frontend.ps1 -EnvFile .\.env.local
+```
+
+For an existing installation, arrange and verify the approved database backup first. Stop the frontend and backend before replacing release files or installing dependencies; running processes can lock `node_modules` and retain old code or configuration. Keep root `.env.local`, frontend configuration, durable artifacts and the existing PostgreSQL database. Run:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\stop-depo-frontend.ps1
+.\manage-depo.ps1 -Action Stop -EnvFile .\.env.local
+```
+
+Now deploy the new release files, preserving those customer settings and data. Then run:
+
+```powershell
+Set-Location E:\App\PMem
+.\install-depo.ps1 -EnvFile .\.env.local -Profile Production
+.\infra\postgres\test-postgres-schema.ps1 -EnvFile .\.env.local
+.\infra\windows\start-depo-frontend.ps1 -EnvFile .\.env.local
+```
+
+The installer applies pending migrations before starting backend services. Backend startup also performs migration/verification, so a subsequent restart can apply pending migrations with the installed backend runtime. Applied migration versions and checksums are recorded in the configured schema's `depo_schema_migrations` table; already applied files are skipped, and changed historical files are rejected. New releases must add numbered migrations rather than edit applied files. Failed migration or final schema verification rolls back the update transaction and prevents this startup from launching services; it does not stop services that were already running.
+
+With `DEPO_CREDENTIAL_STORE=postgres`, migration also inserts missing credential profiles from the selected environment. Existing rotated or revoked profiles are preserved. Reinstallation does not reset database-managed keys or make expired/revoked keys valid. Schema updates do not automatically create analytics tables from imported XSD plans.
+
 ### 4.8 Schema-only redeployment
 
 When a release changes only PostgreSQL DDL, stop the application services,
@@ -2841,3 +2874,25 @@ In Admin → Service credentials, test and apply the current `ADMIN_API_KEY`. En
 Backend agent dispatch still needs plaintext outbound keys to authenticate to peer APIs. After rotating a profile used by backend calls, update that corresponding root environment value and restart the calling services. Incoming API validation immediately uses PostgreSQL and does not require a restart. This implementation does not distribute plaintext secrets from PostgreSQL. Keep the profile expiry and revocation managed in the authority; expiry changes in legacy environment mode still require restart. Browser keys remain memory-only and must be re-entered after a full reload.
 
 For Azure APIM, import the updated OpenAPI contracts and preserve the service-relative `/auth/access`, `/auth/credential-check`, `/auth/admin-access` and `/auth/credentials` routes under each service gateway prefix. Forward `Authorization` and `X-API-Key` without substituting the APIM subscription key. Add these routes to the same origin/CORS policy as the existing APIs. Credential management routes require ADMIN_API_KEY and return no plaintext keys or digests. The protected GET `/auth/credentials` returns profile, actor, expiry, revocation and update metadata only.
+
+
+### Apply service keys from the root environment file automatically
+
+After migration 008 and setting `DEPO_CREDENTIAL_STORE=postgres`, run this on the application VM. No manual database-key entry is required:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\apply-depo-service-credentials.ps1 -EnvFile 'E:\App\PMem\.env.local'
+```
+
+The script reads only application API-key profiles and their `_ACTOR`/`_EXPIRES_AT` metadata from the selected file, registers missing profiles, and preserves identical records. Missing optional profiles are skipped. An active ADMIN_API_KEY and GRAPH_READ_TOKEN must exist after the batch; otherwise the entire import is rolled back. This command is for AUTH_MODE=token. Each provided key must be a random value of at least 32 characters; expiry must be a future timezone-aware ISO timestamp. A missing actor defaults to `deployment-bootstrap`. Only profile names and results are printed. Secrets are passed over stdin, never command-line arguments or temporary files. The entire batch rolls back on failure.
+
+If the selected file intentionally replaces existing central keys or metadata, review it first, then run:
+
+```powershell
+.\infra\windows\apply-depo-service-credentials.ps1 -EnvFile 'E:\App\PMem\.env.local' -ReplaceExisting
+```
+
+Replacement revives revoked profiles and invalidates their old keys. Update every caller's protected outbound environment file and restart callers after deliberate rotation. The script uses the protected PostgreSQL connection in this file and must be run by the deployment administrator with table write privileges; it does not require an API gateway or a running HTTP service.
+
+This applies keys to the server authority. It does not inject keys into browsers or persist browser secrets. Admin displays a table of credential profiles, services, key inputs, actions and status; browser Test and apply still establishes the current tab's credentials. Database passwords, Neo4j passwords and outbound connector tokens are excluded from the import.

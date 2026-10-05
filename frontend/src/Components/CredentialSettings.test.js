@@ -16,7 +16,7 @@ afterEach(() => { clearServiceAuthToken(); vi.unstubAllGlobals(); vi.restoreAllM
 const enter = (profile, value) => {
   const input = screen.getByLabelText(profile);
   fireEvent.change(input, { target: { value } });
-  return within(input.closest('div'));
+  return within(input.closest('tr'));
 };
 const response = (status, body) => ({ ok: status === 200, status, json: async () => body });
 

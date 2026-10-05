@@ -3,8 +3,10 @@
 Installs and starts a complete DEPO Windows deployment from one command.
 
 .DESCRIPTION
-This is the supported Windows release entry point. It never creates database,
-Neo4j, or API credentials: the reviewed root .env.local must exist first.
+This is the supported Windows release entry point. It does not generate secrets
+or create the PostgreSQL database: the reviewed root .env.local and DBA-created
+database/schema must exist first. Migration bootstraps missing hashed API-key
+profiles when PostgreSQL credential storage is enabled; existing profiles remain.
 Each stage delegates to the service-owned script so there is one source of
 truth for dependency installation, migration, startup, Spark validation and
 release readiness.
@@ -134,6 +136,6 @@ if (-not $SkipReleasePreflight) {
 Write-Host "`nDEPO Windows installation completed successfully." -ForegroundColor Green
 if (-not $SkipFrontend) {
   Write-Host 'Backend services are started. The frontend is built but is not yet served.'
-  Write-Host 'For a local browser: powershell -NoProfile -ExecutionPolicy Bypass -File .\infra\windows\start-depo-frontend.ps1'
+  Write-Host ('Start the frontend with the same configuration: .\infra\windows\start-depo-frontend.ps1 -EnvFile "{0}"' -f $envPath)
   Write-Host 'Open the frontend URL reported by the frontend launcher; allow its exact origin through root .env.local ALLOWED_ORIGINS. For customer access, publish frontend\dist through your configured web server.'
 }

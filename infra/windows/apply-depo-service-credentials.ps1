@@ -1,0 +1,32 @@
+[CmdletBinding()]
+param([string]$EnvFile = '.env.local', [switch]$ReplaceExisting)
+$ErrorActionPreference = 'Stop'
+$root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+. (Join-Path $PSScriptRoot 'runtime-config.ps1')
+$values = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+if ($values['DEPO_CREDENTIAL_STORE'] -ne 'postgres') { throw 'Set DEPO_CREDENTIAL_STORE=postgres in the selected root .env.local before applying central credentials.' }
+if ($values['AUTH_MODE'] -and $values['AUTH_MODE'] -ne 'token') { throw 'This script applies token-mode application keys. Configure AUTH_MODE=token; Entra identity uses its separate gateway configuration.' }
+if (-not $values['DEPO_DATABASE_URL'] -and -not $values['DATABASE_URL']) { throw 'The selected file must configure DEPO_DATABASE_URL or DATABASE_URL.' }
+Import-DepoEnvironment -Root $root -EnvFile $EnvFile
+$python = Join-Path $root 'backend/.dt_venv/Scripts/python.exe'
+if (-not (Test-Path -LiteralPath $python -PathType Leaf)) { throw 'Install backend dependencies first.' }
+Push-Location $root
+$previousOutputEncoding = $OutputEncoding
+try {
+  $OutputEncoding = New-Object Text.UTF8Encoding($false)
+  $profileJson = & $python -m backend.depo_platform.credential_import --list-profiles
+  if ($LASTEXITCODE -ne 0) { throw 'Could not load credential profiles from this release.' }
+  $profiles = $profileJson | ConvertFrom-Json
+  $selected = @{}
+  foreach ($profile in $profiles) {
+    foreach ($name in @($profile, "${profile}_ACTOR", "${profile}_EXPIRES_AT")) {
+      if ($values.ContainsKey($name)) { $selected[$name] = $values[$name] }
+    }
+  }
+  if ($values.ContainsKey('DEPO_TOKEN_EXPIRES_AT')) { $selected['DEPO_TOKEN_EXPIRES_AT'] = $values['DEPO_TOKEN_EXPIRES_AT'] }
+  $arguments = @('-m', 'backend.depo_platform.credential_import')
+  if ($ReplaceExisting) { $arguments += '--replace-existing' }
+  # Secret values travel only over stdin, never command-line arguments or logs.
+  $selected | ConvertTo-Json -Compress | & $python @arguments
+  if ($LASTEXITCODE -ne 0) { throw 'Central credential import failed. No partial batch was applied; follow the structured action above.' }
+} finally { $OutputEncoding = $previousOutputEncoding; Pop-Location }

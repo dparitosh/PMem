@@ -76,6 +76,7 @@ def register_key(profile, key, actor, expires_at=None, *, bootstrap=False, audit
     salt = secrets.token_hex(32)
     def write(connection):
         with connection.transaction(), connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(hashtextextended(current_schema() || ':depo-credentials-import',0))")
             statement = ('INSERT INTO depo_api_credentials(profile,salt,digest,actor,expires_at) VALUES (%s,%s,%s,%s,%s) '
                          + ('ON CONFLICT(profile) DO NOTHING' if bootstrap else
                             'ON CONFLICT(profile) DO UPDATE SET salt=excluded.salt,digest=excluded.digest,actor=excluded.actor,expires_at=excluded.expires_at,revoked=false,updated_at=now()'))

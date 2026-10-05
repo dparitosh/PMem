@@ -12,6 +12,7 @@ $requiredFiles = @(
   'infra/postgres/test-postgres-schema.ps1', 'infra/postgres/test-postgres-connectivity.ps1',
   'infra/postgres/test-postgres-odbc.ps1', 'infra/windows/start-depo-frontend.ps1',
   'infra/windows/stop-depo-frontend.ps1', 'infra/windows/rotate-depo-api-key.ps1',
+  'infra/windows/apply-depo-service-credentials.ps1', 'backend/depo_platform/credential_import.py',
   'infra/windows/process-control.ps1', 'frontend/public/depo-runtime-config.js', 'infra/windows/test-depo-routing.ps1'
 )
 foreach ($relative in $requiredFiles) {
