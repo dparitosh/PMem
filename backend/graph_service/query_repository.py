@@ -25,6 +25,7 @@ ONTOLOGY_TRAVERSAL_EDGES = (
 )
 ONTOLOGY_SEARCH_NODES = (
     "MATCH (n:OntologyResource) "
+    "WHERE $ontology_id = '' OR n.ontology_id = $ontology_id "
     "WITH n, reduce(score = 0, term IN $terms | score + CASE "
     "WHEN toLower(coalesce(n.label, '')) = term OR toLower(n.iri) ENDS WITH '/' + term OR toLower(n.iri) ENDS WITH '#' + term THEN 5 "
     "WHEN toLower(coalesce(n.label, '')) CONTAINS term OR toLower(n.iri) CONTAINS term THEN 1 ELSE 0 END) AS score "

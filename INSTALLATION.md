@@ -2106,6 +2106,8 @@ implementation stages, not separate customer installation instructions.
 
 ### First deployment versus an existing installation
 
+Knowledge Companion currently provides evidence-grounded ontology resource search. It is not an instance EBOM/MBOM comparison or change-impact engine. Its `/api/v1/chat/capabilities` reports this limit. The selected ontology filters server-side search; browser-provided graph labels are not trusted evidence. Applying a different graph read key in Admin resets the credential-owned chat session. In token mode, Companion forwards the verified caller read key to Graph, so read-key rotation does not require an environment copy for this retrieval path. Other outbound worker/tool credentials still follow their documented server configuration.
+
 On first deployment, the database administrator must first run the database/role/schema provisioning steps in this guide, including `infra/postgres/create-depo-database.sql`. That file is for **first installation only**: do not rerun it against an existing database. The application installer does not create the PostgreSQL database or schema.
 
 After completing root `.env.local` and the frontend configuration steps, run on the application VM:

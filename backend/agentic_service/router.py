@@ -16,6 +16,7 @@ from fastapi.responses import Response, StreamingResponse
 from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from backend.mesh_store import PostgresRegistry
 from .companion import companion
+from .chat_request import ChatRequest
 from .transport_auth import APPROVAL_TOKENS, downstream_headers, downstream_inputs, tool_retry_allowed
 from .oslc_graph_rag import oslc_graph_rag
 from .dt_requirements_adapter import assess_manifest
@@ -246,21 +247,20 @@ def ontology_agent_bridge_plan(payload: dict[str, Any]) -> dict:
 
 
 _COMPANION_PROMPTS = [
-    "Show MBSE to EBOM traceability for the Variable Speed Drive",
-    "Compare EBOM and MBOM for 5 HP MOTOR ASSEMBLY",
-    "Show the bill of process for MOTOR COVER",
-    "Show requirements linked to the Variable Speed Drive",
-    "Analyse change impact if ROTOR SHAFT tolerance is modified",
+    "Find ontology resources matching product",
+    "Find ontology resources matching requirement",
+    "Find ontology resources matching measurement",
 ]
 
 
 @router.get("/chat/sample-queries")
 def companion_sample_queries() -> dict:
-    return {"queries": _COMPANION_PROMPTS, "data_available": True, "mode": "evidence-grounded"}
+    return {"queries": _COMPANION_PROMPTS, "data_available": None, "mode": "ontology-search"}
 
 
 @router.post("/chat/validate", dependencies=[Depends(graph_read_identity)])
-def companion_validate(payload: dict[str, Any]) -> dict:
+def companion_validate(payload: ChatRequest) -> dict:
+    payload = payload.model_dump()
     message = " ".join(str(payload.get("message") or "").split())
     if not message:
         raise HTTPException(status_code=422, detail="message is required")
@@ -268,7 +268,8 @@ def companion_validate(payload: dict[str, Any]) -> dict:
 
 
 @router.post("/chat", dependencies=[Depends(graph_read_identity)])
-async def companion_chat(payload: dict[str, Any], request: Request) -> dict:
+async def companion_chat(payload: ChatRequest, request: Request) -> dict:
+    payload = payload.model_dump()
     message = " ".join(str(payload.get("message") or "").split())
     if not message:
         raise HTTPException(status_code=422, detail="message is required")
@@ -291,8 +292,10 @@ async def companion_chat(payload: dict[str, Any], request: Request) -> dict:
             if prior:
                 query = f'{str(prior)[:1000]} {message}'
         async with asyncio.timeout(float(os.getenv('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', '15')) + 5):
-            result = await companion.ask(query, headers=headers)
-        if not isinstance(result, dict) or not isinstance(result.get('response'), str) or not isinstance(result.get('evidence'), list):
+            result = await companion.ask(query, headers=headers, ontology_id=(payload.get('graph_context') or {}).get('ontology', ''))
+        if (not isinstance(result, dict) or not isinstance(result.get('response'), str)
+                or not isinstance(result.get('evidence'), list) or not isinstance(result.get('sources'), list)
+                or not isinstance(result.get('answerable'), bool)):
             raise RuntimeError('Knowledge companion returned an invalid evidence response')
         await run_in_threadpool(AgentMemoryService.record_chat_turn, session_id=memory_key,
             user_message=message, assistant_response=result['response'])
@@ -315,7 +318,7 @@ async def companion_chat(payload: dict[str, Any], request: Request) -> dict:
 
 
 @router.post("/chat/jobs", dependencies=[Depends(graph_read_identity)])
-async def companion_job(payload: dict[str, Any], request: Request) -> dict:
+async def companion_job(payload: ChatRequest, request: Request) -> dict:
     created_at = _now()
     response = await companion_chat(payload, request)
     job_id = f"companion-{uuid4()}"
@@ -339,16 +342,16 @@ def companion_job_status(job_id: str, request: Request) -> dict:
 @router.get("/chat/health")
 @router.get("/chat/status")
 def companion_health() -> dict:
-    return {"status": "ok", "service": "knowledge-companion", "mode": "evidence-grounded", "streaming": True, 'incremental_generation': False, 'job_execution': 'synchronous', "fail_closed": True}
+    return {"status": "ok", "service": "knowledge-companion", "mode": "ontology-search", "streaming": True, 'incremental_generation': False, 'job_execution': 'synchronous', "fail_closed": True}
 
 
 @router.get("/chat/capabilities")
 def companion_capabilities() -> dict:
-    return {"name": "knowledge-companion", "mode": "evidence-grounded", "operations": ["validate", "ask", "stream", "job", "sample-queries"], 'stream_mode': 'completed-response-events', 'job_execution': 'synchronous', "evidence_required": True}
+    return {"name": "knowledge-companion", "mode": "ontology-search", "operations": ["validate", "ask", "stream", "job", "sample-queries"], 'stream_mode': 'completed-response-events', 'job_execution': 'synchronous', "evidence_required": True, 'instance_comparison': False, 'change_impact_analysis': False}
 
 
 @router.post("/chat-stream", dependencies=[Depends(graph_read_identity)])
-async def companion_stream(payload: dict[str, Any], request: Request) -> StreamingResponse:
+async def companion_stream(payload: ChatRequest, request: Request) -> StreamingResponse:
     response = await companion_chat(payload, request)
 
     async def events():

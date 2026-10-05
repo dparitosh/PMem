@@ -40,6 +40,16 @@ def downstream_headers(request: Request, endpoint: str, *, graph_read=False, too
             raise HTTPException(503, 'The gateway must preserve the caller bearer token for downstream authorization')
         return {**gateway_headers, 'Authorization': bearer}
     if mode == 'token':
+        if graph_read:
+            # Caller has already passed graph_read_identity. Preserve its
+            # current credential across database-backed key rotation.
+            bearer = request.headers.get('authorization', '').strip()
+            if bearer.lower().startswith('bearer ') and bearer[7:].strip():
+                return {**gateway_headers, 'Authorization': bearer}
+            key = request.headers.get('x-api-key', '').strip()
+            if key:
+                return {**gateway_headers, 'Authorization': 'Bearer ' + key}
+            raise HTTPException(403, 'Verified graph read credential is required')
         token_key = 'GRAPH_READ_TOKEN' if graph_read else None
         if tool:
             service = tool.get('service')

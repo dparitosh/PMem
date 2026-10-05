@@ -32,6 +32,37 @@ vi.mock('@siemens/ix-react', () => ({
 
 const bytes = (value) => new Uint8Array(Array.from(value).map((character) => character.charCodeAt(0)));
 
+test('a truncated response is not published as a successful answer', async () => {
+  window.sessionStorage.clear();
+  let sent = false;
+  global.fetch = jest.fn((_url, options = {}) => Promise.resolve(options.method !== 'POST'
+    ? { ok: true, headers: { get: () => null }, json: async () => ({ queries: [] }) }
+    : { ok: true, status: 200, headers: { get: () => null }, body: { getReader: () => ({ read: async () => {
+      if (sent) return { done: true };
+      sent = true;
+      return { done: false, value: bytes('data: {"token":"Partial answer"}\n\n') };
+    } }) } }));
+  const results = jest.fn();
+  render(<Chatbot setChatResults={results} />);
+  setCredentialProfile('GRAPH_READ_TOKEN', 'read-key');
+  fireEvent.change(screen.getByLabelText('Chat question'), { target: { value: 'Find product' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send chat question' }));
+  expect(await screen.findByText(/stream ended before completion/)).toBeInTheDocument();
+  expect(results).not.toHaveBeenCalled();
+});
+
+test('read-key rotation discards the old credential-owned session', async () => {
+  window.sessionStorage.setItem('depo.sessionId.v1', 'old-session');
+  setCredentialProfile('GRAPH_READ_TOKEN', 'old-key');
+  global.fetch = jest.fn(() => Promise.resolve({ ok: true, headers: { get: () => null }, json: async () => ({ queries: [] }) }));
+  const results = jest.fn();
+  render(<Chatbot setChatResults={results} />);
+  setCredentialProfile('GRAPH_READ_TOKEN', 'new-key');
+  fireEvent(window, new Event('depo:credentials-changed'));
+  expect(window.sessionStorage.getItem('depo.sessionId.v1')).toBeNull();
+  expect(results).toHaveBeenCalledWith([]);
+});
+
 test('expired chat session retries retrieval once without its old identifier', async () => {
   window.sessionStorage.clear();
   window.sessionStorage.setItem('depo.sessionId.v1', 'expired-session');
@@ -45,7 +76,7 @@ test('expired chat session retries retrieval once without its old identifier', a
       body: { getReader: () => ({ read: async () => {
         if (sent) return { done: true };
         sent = true;
-        return { done: false, value: bytes('data: {"token":"Fresh evidence"}\n\ndata: {"done":true}\n\n') };
+        return { done: false, value: bytes('data: {"token":"Fresh evidence"}\n\ndata: {"evidence":[],"sources":[],"answerable":false}\n\ndata: {"done":true}\n\n') };
       } }) } });
   });
   render(<Chatbot setChatResults={jest.fn()} graphData={{ nodes: [], links: [] }} searchResults={[]} />);
@@ -104,7 +135,7 @@ test('keeps chat input locked until the SSE stream completes and clears the serv
   expect(input).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Send chat question' })).toBeDisabled();
 
-  releaseDone({ done: false, value: bytes('data: {"done":true}\n\n') });
+  releaseDone({ done: false, value: bytes('data: {"evidence":[],"sources":[],"answerable":false}\n\ndata: {"done":true}\n\n') });
   await waitFor(() => expect(input).not.toBeDisabled());
   expect(setChatResults).toHaveBeenCalledWith([expect.objectContaining({ response: 'Hello' })]);
   expect(window.sessionStorage.getItem('depo.sessionId.v1')).toBe('server-session');

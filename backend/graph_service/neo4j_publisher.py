@@ -247,13 +247,15 @@ class Neo4jPublisher:
             view={"type": "overview", "limit": safe_limit, "truncated": len(nodes) >= safe_limit},
         )
 
-    def search(self, *, query: str, limit: int = 50) -> dict[str, Any]:
+    def search(self, *, query: str, limit: int = 50, ontology_id: str = '') -> dict[str, Any]:
         stop_words = {"and", "the", "for", "from", "show", "with", "relationship", "relationships"}
         terms = sorted({token for token in re.findall(r"[a-z0-9]+", str(query).lower()) if len(token) >= 3 and token not in stop_words})
         if not terms:
             raise ValueError("query must contain at least one searchable term")
         safe_limit = max(1, min(int(limit), 200))
-        nodes = self._session_rows(cypher.ONTOLOGY_SEARCH_NODES, terms=terms, limit=safe_limit)
+        if len(ontology_id) > 128:
+            raise ValueError('ontology_id must be at most 128 characters')
+        nodes = self._session_rows(cypher.ONTOLOGY_SEARCH_NODES, terms=terms, limit=safe_limit, ontology_id=ontology_id)
         ids = [node["id"] for node in nodes]
         edges = [] if not ids else self._session_rows(cypher.ONTOLOGY_TRAVERSAL_EDGES, ids=ids, limit=safe_limit * 4)
         return self._explorer_payload(

@@ -7,18 +7,18 @@ import { validateChatInput, ValidationError } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { formatChatMarkdown } from '../utils/chatMarkdown';
 import { clearClientSessionId, getClientSessionId, setClientSessionId } from '../services/apiClient';
-import { serviceAuthHeaders } from '../services/serviceAuth';
+import { serviceAuthHeaders, getCredentialProfile } from '../services/serviceAuth';
 
 const CHAT_COLORS = {
     primary: '#005a9c',
-    primarySoft: '#e8f1fc',
+    primarySoft: 'var(--theme-color-soft-primary, var(--ui-surface, #e8f1fc))',
     primaryBorder: '#c2d9f0',
-    surfaceMuted: '#f8fafc',
-    assistantBubble: '#eef2f6',
+    surfaceMuted: 'var(--theme-color-std-background, #f8fafc)',
+    assistantBubble: 'var(--theme-color-2, var(--ui-surface, #eef2f6))',
     danger: '#c62828',
     dangerSoft: '#ffebee',
     dangerBorder: '#ffcdd2',
-    textMuted: '#66788a',
+    textMuted: 'var(--theme-color-soft-text, #66788a)',
 };
 
 const Chatbot = ({ setChatResults, graphData, searchResults }) => {
@@ -33,6 +33,32 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
     const messageSequenceRef = useRef(0);
     const messagesEndRef = useRef(null);
     const sessionIdRef = useRef(getClientSessionId());
+
+    useEffect(() => {
+        let readKey = getCredentialProfile('GRAPH_READ_TOKEN');
+        const reset = () => {
+            const nextKey = getCredentialProfile('GRAPH_READ_TOKEN');
+            if (nextKey === readKey) return;
+            readKey = nextKey;
+            abortRef.current?.abort();
+            abortRef.current = null;
+            requestActiveRef.current = false;
+            clearClientSessionId();
+            sessionIdRef.current = null;
+            setChatMessages([]);
+            setChatResults?.([]);
+            setRequestActive(false);
+            setShowSpinner(false);
+            setStatusLabel(null);
+            setError(null);
+        };
+        window.addEventListener('depo:credentials-changed', reset);
+        window.addEventListener('depo:credentials-cleared', reset);
+        return () => {
+            window.removeEventListener('depo:credentials-changed', reset);
+            window.removeEventListener('depo:credentials-cleared', reset);
+        };
+    }, [setChatResults]);
 
     const buildGraphContextSnapshot = () => {
         const summarizeNode = (node) => {
@@ -84,7 +110,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             selectedNode: selectedNode ? summarizeNode(selectedNode) : null,
             rootNode: graphData?.root ? summarizeNode(graphData.root) : null,
             viewMode: graphData?.view?.mode || graphData?.mode || '',
-            ontology: graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '',
+            ontology: graphData?.view?.ontology_id || graphData?.ontology_id || graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '',
             importId: graphData?.view?.import_id || graphData?.import_id || '',
             searchQuery: graphData?.view?.search || graphData?.search || '',
             visibleGraph: graphSummary(visibleGraph, 'visibleGraph'),
@@ -94,102 +120,10 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
 
     /* response formatting lives in utils/chatMarkdown.js */
     const parseMarkdown = formatChatMarkdown;
-    /*
-        if (!text) return '';
-
-        const escapeHtml = (value) => String(value || '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-        const inline = (value) => escapeHtml(value)
-            .replace(/`([^`]+)`/g, '<code>$1</code>')
-            .replace(/\*\*([^*]+)\*\* \/g, '<strong>$1</strong>')
-            .replace(/\*([^*]+)\* \/g, '<em>$1</em>');
-        const lines = String(text).replace(/\r\n/g, '\n').split('\n');
-        let html = '';
-        let paragraph = [];
-        let listType = null;
-        let listItems = [];
-        let tableRows = [];
-
-        const flushParagraph = () => {
-            if (paragraph.length) {
-                html += `<p class="chat-paragraph">${inline(paragraph.join(' '))}</p>`;
-                paragraph = [];
-            }
-        };
-        const flushList = () => {
-            if (!listItems.length) return;
-            html += `<${listType} class="chat-list">${listItems.map(item => `<li>${inline(item)}</li>`).join('')}</${listType}>`;
-            listItems = [];
-            listType = null;
-        };
-        const flushTable = () => {
-            if (!tableRows.length) return;
-            const rows = tableRows.filter(row => !/^\s*\|?\s*:?-{3,}/.test(row));
-            if (rows.length) {
-                const cells = rows.map(row => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim()));
-                const header = cells[0];
-                html += `<div class="chat-table-wrap"><table class="chat-table"><thead><tr>${header.map(cell => `<th>${inline(cell)}</th>`).join('')}</tr></thead><tbody>${cells.slice(1).map(row => `<tr>${row.map(cell => `<td>${inline(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
-            }
-            tableRows = [];
-        };
-
-        lines.forEach((rawLine) => {
-            const line = rawLine.trim();
-            if (!line) {
-                flushParagraph(); flushList(); flushTable();
-                return;
-            }
-            if (/^\|.*\|$/.test(line)) {
-                flushParagraph(); flushList(); tableRows.push(line); return;
-            }
-            flushTable();
-            const heading = line.match(/^(#{1,3})\s+(.+)$/);
-            if (heading) {
-                flushParagraph(); flushList();
-                const level = heading[1].length;
-                html += `<h${level} class="chat-heading chat-heading-${level}">${inline(heading[2])}</h${level}>`;
-                return;
-            }
-            if (/^---+$/.test(line)) {
-                flushParagraph(); flushList(); html += '<hr class="chat-rule" />'; return;
-            }
-            const bullet = line.match(/^[-*]\s+(.+)$/);
-            const numbered = line.match(/^\d+[.)]\s+(.+)$/);
-            if (bullet || numbered) {
-                flushParagraph();
-                const nextType = numbered ? 'ol' : 'ul';
-                if (listType && listType !== nextType) flushList();
-                listType = nextType;
-                listItems.push((bullet || numbered)[1]);
-                return;
-            }
-            const fact = line.match(/^([A-Za-z][A-Za-z0-9 _/-]{1,36}):\s+(.+)$/);
-            if (fact && !line.includes('://')) {
-                flushParagraph(); flushList();
-                html += `<div class="chat-fact"><span>${inline(fact[1])}</span><strong>${inline(fact[2])}</strong></div>`;
-                return;
-            }
-            paragraph.push(line);
-        });
-        flushParagraph(); flushList(); flushTable();
-
-        return DOMPurify.sanitize(html, {
-            ALLOWED_TAGS: ['p', 'strong', 'em', 'code', 'h1', 'h2', 'h3', 'ul', 'li', 'ol', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'div', 'span'],
-            ALLOWED_ATTR: ['class'],
-            KEEP_CONTENT: true,
-        });
-    }; */
-
     const [sampleQueries, setSampleQueries] = useState([
-        'Show MBSE to EBOM traceability for the Variable Speed Drive',
-        'Compare EBOM and MBOM for 5 HP MOTOR ASSEMBLY',
-        'Show the bill of process for MOTOR COVER',
-        'Show requirements linked to the Variable Speed Drive',
-        'Analyse change impact if ROTOR SHAFT tolerance is modified',
+        'Find ontology resources matching product',
+        'Find ontology resources matching requirement',
+        'Find ontology resources matching measurement',
     ]);
 
     // [OK] SECURE: Input validation + error handling
@@ -235,6 +169,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             let buffer = '';
             let streamCompleted = false;
             let streamFailed = false;
+            let evidenceReceived = false;
             let responseEvidence = [];
             let responseSources = [];
             let responseAnswerable = null;
@@ -264,6 +199,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                 activeSessionId = null;
                 response = await sendRequest(null);
             }
+            if (controller.signal.aborted) return;
             let returnedSessionId = response.headers.get('x-session-id');
             if (returnedSessionId) {
                 sessionIdRef.current = returnedSessionId;
@@ -288,6 +224,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             const decoder = new TextDecoder();
 
             const processLine = (line) => {
+                if (controller.signal.aborted) return;
                 if (!/^data:\s?/.test(line)) return;
                 const raw = line.slice(5).trim();
                 if (!raw) return;
@@ -301,6 +238,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                             m.id === assistantId ? { ...m, text: accumulated } : m
                         ));
                     } else if (Array.isArray(parsed.evidence)) {
+                        evidenceReceived = true;
                         responseEvidence = parsed.evidence;
                         responseSources = Array.isArray(parsed.sources) ? parsed.sources : [];
                         responseAnswerable = parsed.answerable;
@@ -311,9 +249,9 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                         setStatusLabel(parsed.status);
                     } else if (parsed.done) {
                         streamCompleted = true;
-                        if (!accumulated && !streamFailed) {
+                        if ((!accumulated || !evidenceReceived) && !streamFailed) {
                             streamFailed = true;
-                            const emptyMessage = 'The AI completed without returning an answer. Please try again.';
+                            const emptyMessage = 'The response was incomplete or missing evidence. Please try again.';
                             setError(emptyMessage);
                             setChatMessages(prev => prev.map(m =>
                                 m.id === assistantId ? { ...m, text: emptyMessage, streaming: false } : m
@@ -349,17 +287,8 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             }
             buffer += decoder.decode();
             if (buffer.trim()) processLine(buffer.trim());
-            if (!streamCompleted && accumulated) {
-                setChatMessages(prev => prev.map(item =>
-                    item.id === assistantId ? { ...item, streaming: false } : item
-                ));
-                setStatusLabel(null);
-                setShowSpinner(false);
-                if (setChatResults) {
-                    setChatResults([{ query: validated, response: accumulated, evidence: responseEvidence, sources: responseSources, answerable: responseAnswerable, timestamp: new Date().toISOString() }]);
-                }
-            } else if (!streamCompleted) {
-                throw new Error('The chat stream ended without a response.');
+            if (!streamCompleted) {
+                throw new Error('The chat stream ended before completion; the response is incomplete.');
             }
 
         } catch (err) {
@@ -382,6 +311,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                 return;
             }
 
+            if (controller?.signal.aborted) return;
             logger.error('Chat stream error:', err);
             setShowSpinner(false);
             setStatusLabel(null);
@@ -513,7 +443,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                         }}
                         title="Clear conversation"
                         style={{
-                            background: 'rgba(255,255,255,0.15)', color: '#fff',
+                            background: 'var(--theme-color-std-background)', color: 'var(--theme-color-std-text, #252a2e)',
                             border: '1px solid rgba(255,255,255,0.3)', borderRadius: 5,
                             padding: '2px 10px', fontSize: 11, cursor: 'pointer',
                         }}
@@ -589,7 +519,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                                         padding: '6px 8px',
                                         borderRadius: '6px',
                                         backgroundColor: msg.role === 'user' ? CHAT_COLORS.primary : CHAT_COLORS.assistantBubble,
-                                        color: msg.role === 'user' ? '#fff' : '#1a1a1a',
+                                        color: msg.role === 'user' ? '#fff' : 'var(--theme-color-std-text, #252a2e)',
                                         border: msg.role === 'assistant' ? '1px solid #e2e6ea' : 'none',
                                         boxShadow: msg.role === 'assistant' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
                                         fontSize: '12px',
@@ -649,7 +579,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                         state={requestActive ? 'processing' : 'input'}
                         placeholder="Ask about parts, traceability, CAD structure, or change impact..."
                         textareaLabel="Chat question"
-                        disclaimer="AI-generated content may require engineering review."
+                        disclaimer="Ontology search returns matching resources and evidence; comparison and impact analysis are not supported here."
                         onValueChange={(event) => setQuestion(event.detail)}
                         onPromptSubmit={(event) => handleAsk(event.detail)}
                     />

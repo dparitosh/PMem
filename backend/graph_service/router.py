@@ -57,9 +57,9 @@ def overview(limit: int = 900) -> dict:
 
 
 @router.get("/search", dependencies=[Depends(graph_read_identity)], summary="Search graph resources with bounded parameterized ranking")
-def search(query: str, limit: int = 50) -> dict:
+def search(query: str, limit: int = 50, ontology_id: str = '') -> dict:
     try:
-        return publisher.search(query=query, limit=limit)
+        return publisher.search(query=query, limit=limit, ontology_id=ontology_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
