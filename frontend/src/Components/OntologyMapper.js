@@ -1531,10 +1531,10 @@ export default function OntologyMapper() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [selectedMapping, setSelectedMapping] = useState('');
+  const [selectedMapping, setSelectedMapping] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('target') || '');
   const [selectedMappingType, setSelectedMappingType] = useState('');
   const [selectedOntologyApi, setSelectedOntologyApi] = useState('');
-  const [activeView, setActiveView] = useState('taxonomy');
+  const [activeView, setActiveView] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('view') === 'alignment' ? 'alignment' : 'taxonomy');
   const [filter, setFilter] = useState('');
   const [mappingOptions, setMappingOptions] = useState([]);
   const [mappingOptionsError, setMappingOptionsError] = useState(null);

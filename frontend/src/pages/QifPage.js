@@ -6,6 +6,7 @@ import KpiStrip from '../widgets/KpiStrip';
 import { CheckCircle2, Loader2, RefreshCw, Upload, Workflow, X } from '../ui/IxIcons';
 import QifDigitalThreadOverview from './qif/QifDigitalThreadOverview';
 import './QifPage.css';
+import QifAp242Mapping from './qif/QifAp242Mapping';
 
 const panelStyle = { background: 'var(--ui-surface)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)', borderRadius: 6, padding: 16 };
 const inputStyle = { width: '100%', boxSizing: 'border-box', color: 'var(--ui-text)', background: 'var(--ui-surface)', border: '1px solid var(--ui-border)', borderRadius: 4, padding: '8px 10px', font: 'inherit' };
@@ -202,6 +203,7 @@ export default function QifPage({ workflowMode = false }) {
       ]} />
 
       {!workflowMode && <QifDigitalThreadOverview task={task} />}
+      <QifAp242Mapping />
 
       {workflowMode && task && <section className="qif-outcome" aria-label="Selected QIF workflow result">
         <div>

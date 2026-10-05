@@ -230,3 +230,20 @@ def taxonomy(ontology_id: str) -> dict:
             return dictionary_taxonomy
         metadata = OntologyUploadManager.get_ontology(resolved_id).get("metadata") or {}
         return _taxonomy_from_graph(str(metadata.get("prefix") or ontology_id))
+
+
+@router.get("/{ontology_id}/retained-inventory")
+def retained_inventory(ontology_id: str) -> dict:
+    """Inspect one retained ontology identity without a shared-prefix graph fallback."""
+    try:
+        metadata = OntologyTaxonomyService._resolve_metadata(ontology_id)
+        if str(metadata.get("ontology_id") or "") != ontology_id:
+            raise ValueError("An exact registered ontology ID is required")
+        result = OntologyTaxonomyService.get_taxonomy(ontology_id)
+        if result.get("extraction_source") == "rdf_parse_error":
+            raise ValueError("The retained ontology cannot be parsed")
+        return {**result, "scope": "retained-ontology-version", "graph_fallback": False}
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, "Retained ontology inspection is unavailable") from exc

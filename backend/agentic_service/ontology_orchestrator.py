@@ -274,6 +274,8 @@ def _llm_suggestion(plan: dict[str, int], instance_metadata: dict[str, Any]) -> 
 
 def orchestrate(payload: dict[str, Any]) -> dict[str, Any]:
     workflow_id = str(payload.get("workflow_id") or "ontology_review").strip()
+    if workflow_id == "qif_ap242_review":
+        return review_qif_ap242(payload)
     if workflow_id not in {"ontology_review", "semantic_bridge_plan"}:
         raise ValueError(f"Unknown ontology agent workflow: {workflow_id}")
     ontology_path = _resolve_ontology_path(str(payload.get("ontology_path") or ""), str(payload.get("ontology_id") or "") or None)
@@ -300,3 +302,50 @@ def bridge_plan(payload: dict[str, Any]) -> dict[str, Any]:
     path = _resolve_ontology_path(str(payload.get("ontology_path") or ""), str(payload.get("ontology_id") or "") or None)
     metadata = _instance_metadata(str(payload.get("import_task_id") or "") or None, payload.get("instance_metadata"))
     return plan_bridge(metadata, path)
+
+
+def review_qif_ap242(payload: dict[str, Any]) -> dict[str, Any]:
+    """Produce bounded, read-only candidates from two retained ontology versions."""
+    qif_id = str(payload.get("qif_ontology_id") or "").strip()
+    target_id = str(payload.get("ap242_ontology_id") or "").strip()
+    if not qif_id or not target_id or qif_id == target_id:
+        raise ValueError("Two distinct registered QIF and AP242 ontology IDs are required")
+    from backend.ontology_service.domain.taxonomy import OntologyTaxonomyService
+    for identifier, expected in ((qif_id, "qif"), (target_id, "ap242")):
+        meta = OntologyTaxonomyService._resolve_metadata(identifier)
+        if meta.get("ontology_id") != identifier:
+            raise ValueError("Exact ontology IDs are required; prefix aliases are not accepted")
+        markers = " ".join(str(meta.get(key) or "") for key in ("ontology_name", "name", "prefix", "namespace", "source_namespace", "original_filename")).lower()
+        if expected not in markers:
+            raise ValueError(f"Selected ontology metadata does not identify {expected}; verify its registration")
+    source = inspect_ontology(_resolve_ontology_path("", qif_id))
+    target = inspect_ontology(_resolve_ontology_path("", target_id))
+    fields = {"Class": "entities", "DatatypeProperty": "attributes", "ObjectProperty": "relationships", "AnnotationProperty": "metadata"}
+    metadata = {field: [] for field in fields.values()}
+    for term in source.get("term_index") or []:
+        field = fields.get(term.get("kind"))
+        if field:
+            metadata[field].append(term.get("label") or term.get("iri", "").rsplit("#", 1)[-1].rsplit("/", 1)[-1])
+    if not any(metadata.values()):
+        raise ValueError("The QIF ontology contains no inspectable typed terms")
+    plan = plan_bridge(metadata, ontology_summary=target)
+    source_index = {}
+    for term in source.get("term_index") or []:
+        field = fields.get(term.get("kind"))
+        name = term.get("label") or term.get("iri", "").rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+        if field:
+            source_index.setdefault((field, name), set()).add(term.get("iri"))
+    for candidate in plan.get("alignment_candidates") or []:
+        identities = sorted(value for value in source_index.get((candidate["source_category"], candidate["source"]), set()) if value)
+        candidate["source_iris"] = identities
+        candidate["source_identity_ambiguous"] = len(identities) != 1
+        candidate["qif_ontology_id"] = qif_id
+        candidate["ap242_ontology_id"] = target_id
+    return {"workflow_id": "qif_ap242_review", "qif_ontology_id": qif_id, "ap242_ontology_id": target_id,
+        "status": "review_required", "publication": "requires_human_approval",
+        "scope": "Schema-name candidates only; no instance links, unit conversions or engineering equivalences established",
+        "source_truncated": bool(source.get("term_index_truncated")),
+        "checks_required": ["QIF/AP242 schema version", "part revision and instance identity", "PMI and characteristic meaning", "units and coordinates", "datatype and cardinality", "reference and provenance resolution"],
+        "steps": [{"agent": "qif_structure_review_agent", "result": _review_summary(source)},
+                  {"agent": "ap242_structure_review_agent", "result": _review_summary(target)},
+                  {"agent": "qif_ap242_mapping_planner", "result": plan}]}
