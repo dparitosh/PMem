@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { reportRunRecovery } from './runRecovery';
 import { config, API, buildSemanticServiceUrl } from '../config';
-import { serviceAuthHeaders, expireBrowserSession } from './serviceAuth';
+import { serviceAuthHeaders, handleSessionRejection } from './serviceAuth';
 
 const agenticClient = axios.create({
   baseURL: undefined,
@@ -22,8 +22,8 @@ export function applyAgenticAuth(requestConfig) {
 
 agenticClient.interceptors.request.use(applyAgenticAuth);
 agenticClient.interceptors.response.use(response => response, error => {
-  const authorization = error.config?.headers?.Authorization || error.config?.headers?.authorization || '';
-  if (error.response?.status === 401 && authorization.startsWith('Bearer depo_session_')) expireBrowserSession(authorization.slice(7));
+  const authorization = error.config?.headers?.get?.('Authorization') || error.config?.headers?.Authorization || error.config?.headers?.authorization || '';
+  handleSessionRejection(error.response?.status, authorization, error.response?.data?.detail);
   reportRunRecovery(error); return Promise.reject(error);
 });
 

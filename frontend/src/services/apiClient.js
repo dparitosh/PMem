@@ -10,7 +10,7 @@ import logger from '../utils/logger';
 import agenticAPI from './agenticApi';
 import { reportRunRecovery } from './runRecovery';
 import { notifyOntologyChange } from '../utils/ontologyEvents';
-import { serviceAuthHeaders, getCredentialProfile, setCredentialProfile, expireBrowserSession } from './serviceAuth';
+import { serviceAuthHeaders, getCredentialProfile, setCredentialProfile, handleSessionRejection } from './serviceAuth';
 
 /**
  * Create axios instance with base configuration
@@ -227,9 +227,9 @@ apiClient.interceptors.response.use(
     }
 
     // Handle specific status codes
+    const authorization = requestConfig.headers?.get?.('Authorization') || requestConfig.headers?.Authorization || requestConfig.headers?.authorization || '';
+    handleSessionRejection(error.response?.status, authorization, errorInfo.detail);
     if (error.response?.status === 401) {
-      const authorization = error.config?.headers?.Authorization || error.config?.headers?.authorization || '';
-      if (authorization.startsWith('Bearer depo_session_')) expireBrowserSession(authorization.slice(7));
     } else if (error.response?.status === 403) {
       logger.warn('[API] Access forbidden');
     } else if (error.response?.status === 404) {

@@ -14,7 +14,7 @@ export default function CredentialSettings() {
   const [clearVersion, setClearVersion] = useState(0);
   const [actor, setActor] = useState('');
   const [expiry, setExpiry] = useState('');
-  const [sessionAdminKey, setSessionAdminKey] = useState('');
+  const [sessionAdminKey, setSessionAdminKey] = useState(() => getCredentialProfile('ADMIN_API_KEY'));
   const [includeWrites, setIncludeWrites] = useState(false);
   const [sessionStatus, setSessionStatus] = useState('');
   useEffect(() => {
@@ -80,6 +80,10 @@ export default function CredentialSettings() {
       }));
       if (!checks.length || checks.some(check => !check.valid)) throw new Error(checks.map(check => `${check.service}: ${check.valid ? 'authorized' : check.message}`).join('; ') || 'No services configured');
       setCredentialProfile(profile, key);
+      if (profile === 'ADMIN_API_KEY') {
+        setSessionAdminKey(key);
+        setSessionStatus('Administrator key validated. Click Connect registered services above to enable service reads; enable workflow scopes for uploads and execution.');
+      }
       setResults(prev => ({ ...prev, [profile]: `Validated and applied: ${checks.map(check => check.service).join(', ')}` }));
       window.dispatchEvent(new Event('depo:credentials-changed'));
     } catch (error) {
@@ -136,7 +140,7 @@ export default function CredentialSettings() {
       <p role="status">{sessionStatus || 'Read-only by default. Enable workflow scopes only when required. No jobs run during connection.'}</p>
     </div>
     <p>All application API-key profiles are listed here, even before OpenAPI import. Database passwords, Neo4j credentials and outbound integration tokens remain in server configuration; they are never exposed to the browser.</p>
-    <p>Enter administrator-issued keys here. Read access uses GRAPH_READ_TOKEN; ontology uploads use INGESTION_WRITE_TOKEN; governed instance jobs use DATA_JOB_EXECUTION_TOKEN. Validation checks authentication without running a job. Keys remain in this tab only and are cleared by a full reload.</p>
+    <p>Use Connect registered services above to apply centrally registered scopes. Testing ADMIN_API_KEY in this table validates administrator access only; it does not sign in to graph, catalog, products or observability. Individual keys below are an alternative. Keys remain in this tab only and are cleared by a full reload.</p>
     <div className="depo-credential-controls"><label>APIM subscription key (optional)<input type="password" autoComplete="off" disabled={busy} value={subscription} onChange={e => setSubscription(e.target.value)} /></label>
     <label>Assigned actor for registration<input disabled={busy} value={actor} onChange={e => setActor(e.target.value)} /></label>
     <label>Optional expiry (UTC ISO timestamp, e.g. 2027-01-01T00:00:00Z)<input disabled={busy} value={expiry} onChange={e => setExpiry(e.target.value)} /></label>

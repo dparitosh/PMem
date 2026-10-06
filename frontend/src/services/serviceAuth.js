@@ -15,6 +15,12 @@ let serviceToken = '';
 let gatewaySubscriptionKey = '';
 let browserSession = null;
 let expiryTimer = null;
+export function handleSessionRejection(status, authorization, detail = '') {
+  const value = String(authorization || '');
+  const invalidSession = status === 401 || (status === 403 &&
+    /browser session scope is unavailable or credentials changed|invalid or revoked|expired session/i.test(String(detail)));
+  if (invalidSession && value.startsWith('Bearer depo_session_')) expireBrowserSession(value.slice(7));
+}
 function checkBrowserSessionExpiry() {
   if (browserSession && Date.now() >= browserSession.deadline) expireBrowserSession(browserSession.token);
 }

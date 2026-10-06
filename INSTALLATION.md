@@ -3092,3 +3092,34 @@ The base URL must preserve the `/ollama` API suffix. Configure APIM operations a
 
 
 Ollama timeout configuration is consistently bounded to 1–120 seconds for main chat, embeddings and unstructured chat. Unstructured Ollama inherits the main URL/key unless its own overrides are set; its model remains separately configured and must support the requested document/vision operation. Ollama health checks are read-only `/api/tags` probes and do not trigger generation. Agent Control distinguishes authentication rejection, missing route and upstream HTTP failures. The installer now verifies central browser-session authentication automatically after service startup; gateway mode also checks APIM session routing.
+
+### Browser connection after credential synchronization
+
+A successful `test-depo-browser-session.ps1` verifies the services; it does not authenticate the browser.
+
+1. Open the frontend and select **Admin → Service credentials**.
+2. In **Administrator key for connection**, enter the current `ADMIN_API_KEY` accepted by the central PostgreSQL credential store.
+3. For ontology uploads or workflow execution, select **Enable registered upload, execution and approval scopes for this session**. Leave it unchecked for read-only access.
+4. Click **Connect registered services**. Wait for the connected-scopes confirmation. Graph, catalog, data products and observability reads all use the registered read scope.
+5. Navigate to Home and refresh data. Full browser reload clears the session; reconnect after reloading. The session also expires after fifteen minutes.
+
+Testing `ADMIN_API_KEY` in the individual profile table validates administrator operations only. It does not connect other services. Blank key inputs are intentional after central connection: raw server keys are never returned to the browser. Read-only sessions leave write profiles unavailable.
+
+If connection fails, read the message beneath **Connect registered services**. A credential-change rejection clears the affected browser session and requires reconnection; policy denials do not clear a valid session. Do not rotate database credentials merely because the browser is unsigned-in. Capture the failed request's Response detail in browser Network tools without sharing Authorization headers or keys.
+
+### Deliberately synchronize application keys from the root environment file
+
+To make the application API-key values in the selected file authoritative in PostgreSQL, use `-Synchronize` (an alias for `-ReplaceExisting`). This updates every nonempty supported application profile supplied in that file, including ADMIN_API_KEY, GRAPH_READ_TOKEN, ingestion, execution and approval tokens. Actor and expiry metadata are also applied. Missing or blank profiles preserve their central values; the script lists these omissions. A failed batch rolls back all changes.
+
+From the application repository root, run each command separately and stop on failure:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\stop-depo-services.ps1 -EnvFile 'E:\App\PMem\.env.local'
+.\infra\windows\apply-depo-service-credentials.ps1 -EnvFile 'E:\App\PMem\.env.local' -Synchronize
+# Continue only after status: ok.
+.\infra\windows\start-depo-services.ps1 -EnvFile 'E:\App\PMem\.env.local'
+.\infra\windows\test-depo-browser-session.ps1 -EnvFile 'E:\App\PMem\.env.local'
+```
+
+Then reconnect in Admin using the synchronized ADMIN_API_KEY. Select workflow scopes when uploads or execution are needed. The PowerShell script cannot sign a browser in. Without `-Synchronize`, the script creates missing profiles and validates existing values, refusing conflicts. Database/Neo4j passwords and Ollama/APIM outbound keys are not application credential profiles and remain in server configuration.
