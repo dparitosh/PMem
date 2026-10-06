@@ -1,5 +1,59 @@
 # DEPO installation and release guide
 
+## After installation: synchronize application API keys
+
+The exact script is **`infra\windows\apply-depo-service-credentials.ps1`**. There is no script named `app credential`. Run these commands in Windows PowerShell on the application VM. `Set-Location` makes the paths valid even if your terminal previously opened in `infra\windows`.
+
+1. Open the existing root `.env.local`. Keep one entry for each setting. Confirm `AUTH_MODE=token`, `DEPO_CREDENTIAL_STORE=postgres`, the correct `DEPO_DATABASE_URL` and `DEPO_DATABASE_SCHEMA`, and the intended application keys. Do not regenerate keys simply to reinstall.
+2. Check that this release and its backend runtime exist:
+
+```powershell
+Set-Location 'E:\App\PMem'
+Test-Path '.\infra\windows\apply-depo-service-credentials.ps1'
+Test-Path '.\backend\.dt_venv\Scripts\python.exe'
+Test-Path '.\.env.local'
+```
+
+Checkpoint: all three results are `True`. If a script is missing, deploy the matching complete release.
+
+3. Verify connectivity and apply pending schema migrations. Synchronization requires the central credential tables created by migration 008. Existing data remains intact:
+
+```powershell
+.\infra\postgres\test-postgres-connectivity.ps1 -EnvFile 'E:\App\PMem\.env.local'
+if (-not $?) { throw 'Stop: PostgreSQL connectivity failed.' }
+.\infra\postgres\update-postgres-schema.ps1 -EnvFile 'E:\App\PMem\.env.local'
+if (-not $?) { throw 'Stop: PostgreSQL schema update failed.' }
+```
+
+4. Choose the intended operation. To check existing keys and create only missing profiles:
+
+```powershell
+.\infra\windows\apply-depo-service-credentials.ps1 -EnvFile 'E:\App\PMem\.env.local'
+```
+
+If the reviewed file intentionally contains the replacement keys, use this command instead:
+
+```powershell
+.\infra\windows\apply-depo-service-credentials.ps1 -EnvFile 'E:\App\PMem\.env.local' -Synchronize
+if (-not $?) { throw 'Stop: credential synchronization failed.' }
+```
+
+Checkpoint: JSON reports `"status": "ok"`, with each supplied profile `created`, `replaced` or `unchanged`. Synchronization changes every nonempty supported application profile supplied in the file, including `ADMIN_API_KEY` and `GRAPH_READ_TOKEN`. Blank or absent profiles preserve existing central values. The import is atomic: a failed batch applies no changes. This operation can invalidate existing browser sessions.
+
+5. Restart backend services using the same configuration, then verify their browser-session authentication:
+
+```powershell
+.\manage-depo.ps1 -Action Stop -EnvFile 'E:\App\PMem\.env.local'
+if (-not $?) { throw 'Stop: backend shutdown failed.' }
+.\manage-depo.ps1 -Action Start -EnvFile 'E:\App\PMem\.env.local' -Profile Production
+if (-not $?) { throw 'Stop: backend startup failed.' }
+.\infra\windows\test-depo-browser-session.ps1 -EnvFile 'E:\App\PMem\.env.local'
+```
+
+Checkpoint: all ten services pass central browser-session authentication. Open **Admin → Connect registered service credentials**, enter the synchronized `ADMIN_API_KEY` and select the required workflow scopes. The script updates PostgreSQL, not the browser sign-in. A frontend rebuild is unnecessary for application-key changes alone.
+
+If synchronization fails, use the structured `action` immediately above the PowerShell error. A `key mismatch` in validation mode means the file differs from the database. Missing tables require schema migration. Connectivity errors require PostgreSQL/network correction. Invalid expiry or short keys require configuration correction. Never paste secret values into an error report. Database passwords, Neo4j credentials, Ollama keys and APIM subscription keys remain server configuration and are outside this application-key import.
+
 ## Start here: run DEPO without Azure API Management
 
 This walkthrough explains each setting and gives commands you can copy into **Windows PowerShell on the application VM**. It supplements the existing installation sections; those sections and their commands are retained. Use this walkthrough for **direct service access**. Use the later Azure API Management walkthrough for **gateway access**. Do not combine the two routing examples.
@@ -3071,9 +3125,9 @@ If the reviewed file intentionally replaces the central credentials, stop runnin
 
 The installer builds the frontend unless skipped; frontend serving remains an explicit final step. Reconnect in Admin after rotating credentials.
 
-### Ollama through an APIM proxy
+### Optional Ollama proxy with subscription authentication
 
-Put these values in the root `.env.local`, never the frontend environment. Replace the subscription placeholder with the issued key:
+Put these values in the root `.env.local`, never the frontend environment. Use this example only when the route explicitly requires an APIM subscription. For the custom REST API-key deployment, use the Custom Ollama REST operation section instead. Replace the subscription placeholder with the issued key:
 
 ```dotenv
 USE_LLM=ollama
@@ -3126,7 +3180,7 @@ Then reconnect in Admin using the synchronized ADMIN_API_KEY. Select workflow sc
 
 ### Ollama API URL, key and models
 
-In the root `.env.local`, configure the API URL, key and model names. Remove OLLAMA_BASE_URL if configuring OLLAMA_API_URL for a different server. The legacy setting remains supported. No separate header setting is required: azure-api.net hosts automatically use the subscription-key header; other keyed endpoints use api-key. A blank key sends no authentication header.
+In the root `.env.local`, configure the API URL, key and model names. Remove OLLAMA_BASE_URL if configuring OLLAMA_API_URL for a different server. The legacy setting remains supported. Keyed Ollama REST APIs default to api-key regardless of hostname. Set OLLAMA_API_KEY_HEADER=Ocp-Apim-Subscription-Key only when the route requires a subscription. Set Authorization for bearer-key authentication. A blank key sends no authentication header.
 
 ```dotenv
 USE_LLM=ollama
@@ -3276,3 +3330,31 @@ Set-Location E:\App\PMem
 `-SkipDependencyInstall` preserves installed packages and still rebuilds the frontend. Use it only when the release dependency locks have not changed. If they changed, omit the switch. `-SkipFrontend` explicitly omits frontend installation and build. A missing dependency or failed build stops installation before service startup.
 
 The root installer accepts `-ReplaceExistingCredentials` for deliberate replacement of central keys from the selected file. Existing keys remain unchanged by default. Use that switch only after reviewing the intended replacements, then reconnect browser sessions in Admin. Successful read-only analytics checks confirm authorization, pagination and worker readiness. Verify one approved job through completion and inspect its retained output before customer acceptance.
+
+### Custom Ollama REST operation
+
+For a custom endpoint exposing native Ollama generation, retain the operation and select custom-key authentication:
+
+```dotenv
+USE_LLM=ollama
+OLLAMA_BASE_URL=http://azdtapimanager.azure-api.net/ollama/api/generate
+OLLAMA_API_URL=
+OLLAMA_API_KEY=<existing-custom-api-key>
+OLLAMA_API_KEY_HEADER=api-key
+LLM_MODEL_NAME=llama3:latest
+EMBED_MODEL_NAME=nomic-embed-text:latest
+ONTOLOGY_AGENT_LLM_ENABLED=true
+COMPANION_LLM_ENABLED=true
+```
+
+Use the model actually installed on the server. Companion and ontology LLM initialization select `/api/generate` for that explicit operation. A root URL defaults to `/api/chat`. Model discovery uses `/api/tags`; a 404 leaves generation unverified. Embeddings separately require a compatible embedding route. The gateway must accept the configured header. Code cannot remove an upstream subscription requirement.
+
+Deploy the updated files to the customer VM, apply these entries to its existing root `.env.local` without duplicates, then stop and start backend services using `manage-depo.ps1`. Ollama keys are outside the PostgreSQL application-key store. No frontend rebuild is required for these server settings alone.
+
+### Ollama generation and tool-chat capability
+
+Companion summaries and ontology review suggestions can use native `/api/generate`. Tool-calling chat uses a separate `ChatOllama` client and requires native `/api/chat` plus a model supporting tool calls. A generate-only endpoint does not provide that capability. If the proxy exposes chat separately, configure `OLLAMA_CHAT_API_URL` with its API root or full `/api/chat` URL. Leave it blank when chat is unavailable. Text generation remains usable while tool workflows report unavailable. Never point the chat setting to `/api/generate`.
+
+Unstructured Ollama initialization preserves an explicit generation operation, including inherited main configuration. Its model is independent. Image/vision use cases require a compatible multimodal model and request contract; text-generation configuration alone does not verify vision support. Embeddings require their own native embedding route.
+
+Authentication selection: `api-key` is the custom REST default. `Authorization` sends a bearer key. `Ocp-Apim-Subscription-Key` applies only to the optional subscription-authenticated example. Neither a hostname nor the DEPO routing switch selects the Ollama authentication contract. The gateway must accept the selected header.

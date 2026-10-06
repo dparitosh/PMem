@@ -29,8 +29,7 @@ def ollama_headers(base_url, api_key=None, *, header_name=None):
         return {}
     header = header_name or os.getenv('OLLAMA_API_KEY_HEADER', '').strip()
     if not header:
-        host = (urlsplit(base_url).hostname or '').lower()
-        header = 'Ocp-Apim-Subscription-Key' if host.endswith('.azure-api.net') else 'api-key'
+        header = 'api-key'
     if header not in {'Ocp-Apim-Subscription-Key', 'api-key', 'Authorization'}:
         raise ValueError('OLLAMA_API_KEY_HEADER must be Ocp-Apim-Subscription-Key, api-key or Authorization')
     return {header: ('Bearer ' + key) if header == 'Authorization' else key}
@@ -41,3 +40,26 @@ def ollama_timeout():
     if not 1 <= value <= 120:
         raise ValueError('LLM_REQUEST_TIMEOUT_SECONDS must be between 1 and 120')
     return value
+
+
+def ollama_generation_route(value=None):
+    """Keep an explicitly configured native generation operation."""
+    configured = value if value is not None else (os.getenv('OLLAMA_API_URL', '').strip() or os.getenv('OLLAMA_BASE_URL', '').strip())
+    base = ollama_base_url(configured) if value is not None else ollama_base_url()
+    configured = configured.strip().rstrip('/')
+    operation = 'generate' if urlsplit(configured).path.endswith('/api/generate') else 'chat'
+    return base + '/api/' + operation, operation
+
+
+def ollama_tool_chat_root():
+    """Tool calling requires a chat route, independently of text generation."""
+    explicit = os.getenv('OLLAMA_CHAT_API_URL', '').strip()
+    if explicit:
+        endpoint, operation = ollama_generation_route(explicit)
+        if operation != 'chat':
+            raise ValueError('OLLAMA_CHAT_API_URL must select an API root or /api/chat, not /api/generate')
+        return ollama_base_url(explicit)
+    endpoint, operation = ollama_generation_route()
+    if operation == 'generate':
+        raise ValueError('Tool calling requires a native /api/chat route. Configure OLLAMA_CHAT_API_URL separately for a generate-only endpoint.')
+    return ollama_base_url()

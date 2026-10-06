@@ -2,7 +2,7 @@ import os
 import logging
 from pathlib import Path
 from langchain_openai import AzureOpenAIEmbeddings
-from langchain_ollama import ChatOllama, OllamaEmbeddings
+from langchain_ollama import ChatOllama, OllamaEmbeddings, OllamaLLM
 
 
 from langchain_openai import AzureChatOpenAI
@@ -52,7 +52,7 @@ UNSTRUCTURED_AZURE_OPENAI_DEPLOYMENT = _first_env("UNSTRUCTURED_AZURE_OPENAI_DEP
 UNSTRUCTURED_AZURE_OPENAI_API_VERSION = _first_env("UNSTRUCTURED_AZURE_OPENAI_API_VERSION") or "2024-02-15-preview"
 
 # Ollama config for unstructured
-UNSTRUCTURED_OLLAMA_BASE_URL = _first_env("UNSTRUCTURED_OLLAMA_BASE_URL") or ollama_base_url()
+UNSTRUCTURED_OLLAMA_BASE_URL = _first_env("UNSTRUCTURED_OLLAMA_BASE_URL", "OLLAMA_API_URL", "OLLAMA_BASE_URL") or ollama_base_url()
 UNSTRUCTURED_OLLAMA_API_KEY = _first_env("UNSTRUCTURED_OLLAMA_API_KEY", "OLLAMA_API_KEY") or ""
 UNSTRUCTURED_LLM_MODEL_NAME = _first_env("UNSTRUCTURED_LLM_MODEL_NAME") or "llava:7b"
 
@@ -144,14 +144,16 @@ def _init_azure_embeddings() -> AzureOpenAIEmbeddings:
     )
 
 
-def _init_ollama_llm() -> ChatOllama:
+def _init_ollama_llm() -> ChatOllama | OllamaLLM:
     if not OLLAMA_BASE_URL or not LLM_MODEL_NAME:
         raise ValueError("Missing OLLAMA_BASE_URL or LLM_MODEL_NAME")
     kwargs = dict(model=LLM_MODEL_NAME, base_url=_normalize_ollama_base_url(OLLAMA_BASE_URL),
                   client_kwargs={'timeout': ollama_timeout()})
     if OLLAMA_API_KEY:
         kwargs['client_kwargs']['headers'] = ollama_headers(OLLAMA_BASE_URL, OLLAMA_API_KEY)
-    return ChatOllama(**kwargs)
+    from backend.core.ollama_auth import ollama_generation_route
+    _, operation = ollama_generation_route()
+    return OllamaLLM(**kwargs) if operation == 'generate' else ChatOllama(**kwargs)
 
 
 def _init_ollama_embeddings() -> OllamaEmbeddings:
@@ -212,14 +214,23 @@ def _init_unstructured_azure_llm() -> AzureChatOpenAI:
     )
 
 
-def _init_unstructured_ollama_llm() -> ChatOllama:
+def _init_unstructured_ollama_llm() -> ChatOllama | OllamaLLM:
     """Initialize Ollama LLM for unstructured document processing (vision-capable like llava)"""
     if not UNSTRUCTURED_OLLAMA_BASE_URL or not UNSTRUCTURED_LLM_MODEL_NAME:
         raise ValueError("Missing UNSTRUCTURED_OLLAMA_BASE_URL or UNSTRUCTURED_LLM_MODEL_NAME")
     kwargs = dict(model=UNSTRUCTURED_LLM_MODEL_NAME, base_url=_normalize_ollama_base_url(UNSTRUCTURED_OLLAMA_BASE_URL), client_kwargs={"timeout": ollama_timeout()})
     if UNSTRUCTURED_OLLAMA_API_KEY:
         kwargs["client_kwargs"]["headers"] = ollama_headers(UNSTRUCTURED_OLLAMA_BASE_URL, UNSTRUCTURED_OLLAMA_API_KEY)
-    return ChatOllama(**kwargs)
+    from backend.core.ollama_auth import ollama_generation_route
+    _, operation = ollama_generation_route(UNSTRUCTURED_OLLAMA_BASE_URL)
+    return OllamaLLM(**kwargs) if operation == 'generate' else ChatOllama(**kwargs)
+
+
+def _init_ollama_tool_llm() -> ChatOllama:
+    from backend.core.ollama_auth import ollama_tool_chat_root
+    base = ollama_tool_chat_root()
+    return ChatOllama(model=LLM_MODEL_NAME, base_url=base,
+        client_kwargs={'timeout': ollama_timeout(), 'headers': ollama_headers(base, OLLAMA_API_KEY)})
 
 
 # --- Initialize models with safe fallbacks ---
@@ -296,6 +307,17 @@ else:
     LLM_AVAILABLE = False
     llm_error = ValueError("USE_LLM must be 'azure' or 'ollama'")
     llm = UnavailableLLM(str(llm_error))
+
+# Never bind tools to the text-generation client. A generate-only deployment
+# remains usable for summaries while tool workflows report their missing route.
+tool_llm = llm
+TOOL_LLM_AVAILABLE = LLM_AVAILABLE
+if USE_LLM == 'ollama':
+    try:
+        tool_llm = _init_ollama_tool_llm()
+    except Exception as exc:
+        TOOL_LLM_AVAILABLE = False
+        tool_llm = UnavailableLLM(f'Ollama tool chat unavailable: {exc}')
 
 # Now set unstructured_llm fallback after llm is defined
 if not USE_UNSTRUCTURED_LLM and unstructured_llm is None:

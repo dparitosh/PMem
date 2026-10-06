@@ -18,7 +18,7 @@ from langchain_core.documents import Document
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
-from core.llm import llm, LLM_AVAILABLE
+from core.llm import tool_llm as llm, TOOL_LLM_AVAILABLE as LLM_AVAILABLE
 
 try:
     from Services.agent_memory_service import AgentMemoryService

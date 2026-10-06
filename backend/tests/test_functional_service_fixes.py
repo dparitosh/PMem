@@ -11,7 +11,7 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from urllib.parse import urlsplit, urlunsplit
 from typing import Any
-from backend.core.ollama_auth import ollama_headers, ollama_base_url
+from backend.core.ollama_auth import ollama_headers, ollama_base_url, ollama_generation_route
 import unittest
 from unittest.mock import patch
 
@@ -130,7 +130,7 @@ class LocalLlmTests(unittest.IsolatedAsyncioTestCase):
             async def post(self, url, **kwargs):
                 owner.request = kwargs['json']
                 return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {'message': {'content': 'Bounded summary'}})
-        self.scope = load('backend/agentic_service/local_llm.py', dict(ollama_base_url=ollama_base_url, ollama_headers=ollama_headers, os=os, json=json, asyncio=asyncio, urlsplit=urlsplit, urlunsplit=urlunsplit,
+        self.scope = load('backend/agentic_service/local_llm.py', dict(ollama_base_url=ollama_base_url, ollama_headers=ollama_headers, ollama_generation_route=ollama_generation_route, os=os, json=json, asyncio=asyncio, urlsplit=urlsplit, urlunsplit=urlunsplit,
                           httpx=SimpleNamespace(AsyncClient=Client, HTTPError=HttpError, HTTPStatusError=type('StatusError', (Exception,), {}))))
 
     async def test_health_distinguishes_ready_missing_and_unavailable(self):
