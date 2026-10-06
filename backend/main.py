@@ -21,8 +21,12 @@ import json
 import re
 from pathlib import Path as FileSystemPath
 
-# ✅ Load environment variables from .env file
-load_dotenv()
+# Compatibility development defaults must not fill managed deployment settings.
+if os.getenv('DEPO_ENV_INJECTED', '').lower() != 'true' and not any(
+    os.getenv(key, '').lower() in {'prod', 'production'}
+    for key in ('DEPO_ENV', 'ENVIRONMENT', 'APP_ENV', 'DEPLOYMENT_ENV')
+):
+    load_dotenv(override=False)
 
 # 🔒 MEDIUM PRIORITY: Enhanced logging configuration
 def setup_logging():

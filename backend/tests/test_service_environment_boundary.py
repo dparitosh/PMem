@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 class ServiceEnvironmentBoundaryTests(unittest.TestCase):
     def test_legacy_loaders_respect_deployment_boundary(self):
-        files = ('backend/core/graph.py', 'backend/Services/graph_embeddings.py',
+        files = ('backend/main.py', 'backend/core/graph.py', 'backend/Services/graph_embeddings.py',
                  'backend/Services/neo4j_schema_cleaner.py',
                  'backend/Services/owl_xmi_engine.py', 'backend/Services/owl_plmxml_engine.py')
         for filename in files:

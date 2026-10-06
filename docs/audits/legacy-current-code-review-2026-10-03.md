@@ -28,6 +28,22 @@ Scope: repository entry points, deployment manifest, Windows frontend startup, b
 
 No application files deleted. Commit and push status is recorded in Git.
 
+## Configuration cleanup follow-up — 2026-10-06
+
+Removed the unused OntologyStudioPage alias, SiemensPrimitives wrappers and
+OntologyWorkspaceHeader after checking frontend import references. The active
+OntologyJunctionPage and legacy aggregate host remain because they have callers.
+Consolidated Ollama URL normalization through core/ollama_auth.py.
+
+Managed and production launches now skip legacy dotenv loading in the LLM,
+graph, graph embeddings, schema cleaner, XMI converter, PLMXML converter and
+aggregate compatibility host. Unmanaged development retains override=False
+loading. This prevents absent injected values being silently populated from
+old files; it does not synchronize database credentials or alter customer files.
+Dependency-light regression checks execute the loader guards for managed mode,
+each supported production environment variable and development fallback. Full
+service imports and customer connectivity still require runtime validation.
+
 
 ## Follow-up fixes
 
