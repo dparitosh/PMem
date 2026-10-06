@@ -44,10 +44,14 @@ def _internal(token: str | None) -> None:
 
 
 @router.get("/products", dependencies=[Depends(graph_read_identity)])
-def products(domain: str = "") -> dict:
-    values = [value for key, value in store.all().items() if not key.endswith(":latest")]
-    values = [value for value in values if not domain or value.get("domain") == domain]
-    return {"products": sorted(values, key=lambda value: (str(value.get('updated_at') or ''), str(value.get('product_id') or ''), str(value.get('version') or '')), reverse=True), "count": len(values)}
+def products(domain: str = "", limit: int = 100, offset: int = 0) -> dict:
+    if offset < 0:
+        raise HTTPException(422, 'offset must be nonnegative')
+    bounded = max(1, min(limit, 500))
+    total, values = store.page(limit=bounded, offset=offset, exclude_latest=True,
+        field='domain' if domain else None, value=domain, order_field='updated_at')
+    return {'products': values, 'count': len(values), 'total': total, 'limit': bounded, 'offset': offset,
+        'next_offset': offset + bounded if offset + bounded < total else None}
 
 
 @router.get("/products/{product_id}", dependencies=[Depends(graph_read_identity)])

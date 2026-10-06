@@ -47,6 +47,34 @@ class PostgresRegistry:
             row = cursor.fetchone()
             return row[0] if row else None
 
+    def page(self, *, limit=100, offset=0, field=None, value=None, exclude_latest=False, order_field=None):
+        """Bounded, deterministic database pagination over JSON registry records."""
+        if offset < 0 or not 1 <= limit <= 1000:
+            raise ValueError('Invalid registry page')
+        where = 'namespace=%s'
+        args = [self.namespace]
+        if field is not None:
+            where += ' AND value->>%s=%s'
+            args.extend([field, value])
+        if exclude_latest:
+            where += " AND right(key,7) <> ':latest'"
+        with self._connect() as db, db.transaction(), db.cursor() as cursor:
+            cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            cursor.execute('SELECT count(*) FROM depo_registry WHERE '+where, args)
+            total = cursor.fetchone()[0]
+            ordering = 'updated_at DESC, key DESC' if order_field is None else "COALESCE(value->>%s,'') DESC, key DESC"
+            order_args = [] if order_field is None else [order_field]
+            cursor.execute('SELECT value FROM depo_registry WHERE '+where+' ORDER BY '+ordering+' LIMIT %s OFFSET %s', [*args,*order_args,limit,offset])
+            return total, [row[0] for row in cursor.fetchall()]
+
+    def put_with_related(self, key, value, *, related_namespace, related_key, related_value):
+        """Commit a product and its approval evidence as one database unit."""
+        ensure_execution_allowed()
+        with self._connect() as db, db.transaction(), db.cursor() as cursor:
+            cursor.executemany('INSERT INTO depo_registry(namespace,key,value) VALUES (%s,%s,%s::jsonb) ON CONFLICT(namespace,key) DO UPDATE SET value=excluded.value,updated_at=now()',
+                [(self.namespace,key,json.dumps(value)),(related_namespace,related_key,json.dumps(related_value))])
+        return value
+
     def recent(self, limit: int = 100) -> list[dict[str, Any]]:
         """Return bounded newest values without loading the registry namespace."""
         bounded = max(1, min(int(limit), 1000))
@@ -189,9 +217,18 @@ class PostgresRegistry:
 
 class InMemoryRegistry:
     """Test double only; never selected by service configuration."""
-    def __init__(self, namespace: str = "test") -> None: self.values: dict[str, dict[str, Any]] = {}
+    def __init__(self, namespace: str = "test") -> None:
+        self.namespace = namespace
+        self.values: dict[str, dict[str, Any]] = {}
     def all(self) -> dict[str, Any]: return dict(self.values)
     def get(self, key: str) -> dict[str, Any] | None: return self.values.get(key)
+    def page(self, *, limit=100, offset=0, field=None, value=None, exclude_latest=False, order_field=None):
+        if offset < 0 or not 1 <= limit <= 1000:
+            raise ValueError('Invalid registry page')
+        rows = [(key, item) for key, item in self.values.items()
+            if (not exclude_latest or not key.endswith(':latest')) and (field is None or item.get(field) == value)]
+        rows.sort(key=lambda pair: (str(pair[1].get(order_field) or '') if order_field else '', pair[0]), reverse=True)
+        return len(rows), [item for _, item in rows[offset:offset+limit]]
     def latest_job_run(self, job_id, version):
         matches = [v for v in self.values.values() if v.get('job_id') == job_id and v.get('job_version') == version]
         return max(matches, key=lambda v: v.get('started_at', ''), default=None)

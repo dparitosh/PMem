@@ -6,6 +6,7 @@ import { buildSemanticServiceUrl } from '../config';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { useOntologies } from '../contexts/OntologyContext';
 import { loadProductCollection } from '../services/productCollection';
+import SchemaProductPublisher from '../Components/SchemaProductPublisher';
 
 const columns = [
   { field: 'product_id', headerName: 'Product ID', flex: 1.2 },
@@ -95,6 +96,7 @@ export default function DataProductsPage({ mode = 'products' }) {
         {drafts.map(ontology => <option key={ontology.ontology_id} value={ontology.ontology_id}>{ontology.label}</option>)}
       </select>
       {draft && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 350, overflow: 'auto' }}>{JSON.stringify(draft.data_product_draft, null, 2)}</pre>}
+      <SchemaProductPublisher draft={draft?.data_product_draft} onPublished={load} />
       {!ontologyLoading && !ontologyError && !ontologyWarning && !drafts.length && <p>No retained schema-design draft metadata is available. Older imports may need reimporting with this release to retain their evidence references.</p>}
     </section>}
     <RegistryWidget title={`${title} (${state.rows.length})`} rows={state.rows} columns={columns} height={400} />

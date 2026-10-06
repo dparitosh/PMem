@@ -215,6 +215,7 @@ def complete(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
     if isinstance(result.get("data_product_draft"), dict):
         draft = result["data_product_draft"]
         output["data_product_draft"] = {
+            **{key: draft.get(key) for key in ('product_kind', 'analytics_readiness', 'domain')},
             "contract": draft.get("contract"), "name": draft.get("name"),
             "artifacts": list(draft.get("artifacts") or []),
             "quality_status": draft.get("quality_status"),
@@ -269,6 +270,8 @@ def get(run_id: str) -> dict[str, Any] | None:
 
 
 def list_runs(*, limit: int = 100) -> list[dict[str, Any]]:
+    if hasattr(store, 'page'):
+        return store.page(limit=max(1, min(limit, 1000)), order_field='started_at')[1]
     records = sorted(store.all().values(), key=lambda item: item.get("started_at", ""), reverse=True)
     return records[:max(1, min(limit, 1000))]
 

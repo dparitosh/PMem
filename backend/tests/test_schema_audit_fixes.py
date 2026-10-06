@@ -10,7 +10,7 @@ from backend.postgres_migrations import MIGRATIONS, MIGRATIONS_DIR, migration_ch
 
 def catalog_fixture(schema='semantic'):
     defaults = {('depo_schema_migrations','applied_at'):'now()', ('depo_registry','updated_at'):'now()', ('depo_metadata_assets','updated_at'):'now()', ('depo_metadata_events','created_at'):'now()', ('depo_metadata_outbox','created_at'):'now()', ('depo_metadata_outbox','status'):"'pending'::text", ('depo_chat_messages','message_id'):f"nextval('{schema}.depo_chat_messages_message_id_seq'::regclass)"}
-    attrs = [(table,column,'YES' if table=='depo_ontology_analytics' or column=='checksum' else 'NO',defaults.get((table,column))) for table,columns in setup.EXPECTED_COLUMNS.items() for column in columns]
+    attrs = [(table,column,'YES' if table=='depo_ontology_analytics' or column=='checksum' or (table,column)==('depo_api_credentials','expires_at') else 'NO',defaults.get((table,column))) for table,columns in setup.EXPECTED_COLUMNS.items() for column in columns]
     constraints = [(table,name,definition,True,schema if definition.startswith('FOREIGN') else None) for name,(table,definition) in CONSTRAINTS.items()]
     indexes = [(name,f'CREATE INDEX {name} {definition}',True,True) for name,definition in INDEXES.items()]
     relations = [(table,'v' if table=='depo_ontology_analytics' else 'r') for table in setup.EXPECTED_COLUMNS]

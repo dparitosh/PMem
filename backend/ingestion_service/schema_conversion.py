@@ -69,7 +69,7 @@ class EngineeringSchemaConverter:
             return "ap242-express-schema"
         return None
 
-    def convert(self, *, filename: str, content: bytes) -> dict[str, Any]:
+    def convert(self, *, filename: str, content: bytes, schema_files: dict[str, bytes] | None = None) -> dict[str, Any]:
         file_type = FileFormatDetector.detect(filename)
         if file_type not in _SOURCE_KINDS:
             raise ValueError("Supported conversion formats are .exp, .stp, .step, .stpx, .xmi, and .xsd")
@@ -116,7 +116,29 @@ class EngineeringSchemaConverter:
         structural_artifacts = {}
         if file_type == FileType.XSD:
             with tempfile.TemporaryDirectory(prefix='depo-xsd-model-') as temporary:
-                source_path = Path(temporary) / 'source.xsd'
+                source_path = Path(temporary) / Path(filename).name
+                dependencies = schema_files or {}
+                if not isinstance(dependencies, dict) or len(dependencies) > 63:
+                    raise ValueError('schema_files must contain at most 63 local XSD dependencies')
+                total_bytes = len(content)
+                for name, data in dependencies.items():
+                    if not isinstance(name, str) or not isinstance(data, bytes):
+                        raise ValueError('Schema dependencies require relative names and byte content')
+                    relative = Path(name)
+                    target = (Path(temporary) / relative).resolve()
+                    if (relative.is_absolute() or ':' in name or '\\' in name or '..' in relative.parts
+                            or not target.is_relative_to(Path(temporary).resolve()) or target == source_path.resolve()
+                            or relative.suffix.lower() != '.xsd'):
+                        raise ValueError('Schema dependency must be a distinct relative XSD path')
+                    total_bytes += len(data)
+                    if total_bytes > 25 * 1024 * 1024:
+                        raise ValueError('Schema dependency closure exceeds 25 MiB')
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(data)
+                    dependency_artifact = store.ingest_bytes(data, filename=relative.name,
+                        kind='engineering-schema-source', media_type='application/xml',
+                        provenance={'source_artifact_id': source_artifact['artifact_id'], 'schema_relative_path': name})
+                    structural_artifacts['dependency:' + name] = dependency_artifact['artifact_id']
                 source_path.write_bytes(content)
                 try:
                     structural_model = build_xsd_relational_report(source_path)
@@ -168,7 +190,7 @@ class EngineeringSchemaConverter:
                 "analytics_readiness": "requires_materialization_and_business_definition",
                 "name": f"{stem} schema analytics",
                 "domain": "semantic-engineering",
-                "artifacts": [source_artifact["artifact_id"], turtle_artifact["artifact_id"], analytics_artifact["artifact_id"], *structural_artifacts.values()],
+                "artifacts": [{"artifact_id": value} for value in [source_artifact["artifact_id"], turtle_artifact["artifact_id"], analytics_artifact["artifact_id"], shapes_artifact["artifact_id"], *structural_artifacts.values()]],
                 "quality_status": "requires_review" if file_type == FileType.XSD else ("validated" if not (schema_validation or {}).get("errors") else "requires_review"),
                 "publication_requirements": ["approved semantic release", "data-product steward approval", "explicit Data Product API publish request"],
             },

@@ -7,6 +7,8 @@ import re
 from typing import Any
 
 import httpx
+from backend.depo_platform.network import service_bearer_headers
+from urllib.parse import quote
 
 
 _ASSET_ID = re.compile(r"^[A-Za-z][A-Za-z0-9._:/#-]{0,255}$")
@@ -30,7 +32,8 @@ async def resolve_approved_release(value: Any) -> dict[str, str]:
     base_url = service_url("SEMANTIC_REGISTRY_URL", "http://127.0.0.1:8011/api/v1/metadata-registry")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"{base_url}/assets/{reference['asset_id']}")
+            response = await client.get(f"{base_url}/assets/{quote(reference['asset_id'], safe='')}",
+                headers=service_bearer_headers('GRAPH_READ_TOKEN', service_name='semantic registry release checks', endpoint=base_url))
     except httpx.HTTPError as exc:
         raise RuntimeError("Semantic registry is unavailable; publication was not attempted") from exc
     if response.status_code == 404:

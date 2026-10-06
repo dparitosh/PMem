@@ -48,7 +48,9 @@ class XSDAnalytics(unittest.TestCase):
         self.assertTrue(model['columns'][0]['required']);self.assertTrue(model['columns'][0]['nullable'])
         self.assertNotIn('TEXT NOT NULL',build_analytics_schema_plan(model)['sql'])
     def test_converter_retains_model_plan_and_v2_product_artifacts(self):
-        import ast, json, threading
+        import ast, json, threading, sys
+        from types import SimpleNamespace
+        from unittest.mock import patch
         from enum import Enum
         from typing import Any
         class FileType(Enum): XSD='xsd'; EXPRESS='exp'; STEP='step'; XMI='xmi'
@@ -65,11 +67,17 @@ class XSDAnalytics(unittest.TestCase):
             'ArtifactStore':Store,'Path':Path,'tempfile':tempfile,'json':json,'build_xsd_relational_report':build_xsd_relational_report,'build_analytics_schema_plan':build_analytics_schema_plan}
         exec(compile(ast.Module(body=[node],type_ignores=[]),'<actual converter>','exec'),namespace)
         converter=namespace['EngineeringSchemaConverter']();converter._ap242_representation=lambda **kwargs:None
-        result=converter.convert(filename='model.xsd',content=(PREFIX+'<xs:element name="Root" type="xs:string"/></xs:schema>').encode())
+        shacl = SimpleNamespace(ShaclValidationService=lambda:SimpleNamespace(create_default_shapes=lambda:'shapes'))
+        with patch.dict(sys.modules, {'backend.Services.shacl_service': shacl}):
+            result=converter.convert(filename='model.xsd',content=(PREFIX+'<xs:element name="Root" type="xs:string"/></xs:schema>').encode())
+            closure=converter.convert(filename='main.xsd', content=(PREFIX+'<xs:include schemaLocation="types.xsd"/><xs:element name="Root" type="t:T"/></xs:schema>').encode(),
+                schema_files={'types.xsd':(PREFIX+'<xs:complexType name="T"><xs:sequence><xs:element name="value" type="xs:string"/></xs:sequence></xs:complexType></xs:schema>').encode()})
+        self.assertFalse(closure['structural_model']['ddl_blockers'])
         self.assertEqual(result['data_product_draft']['contract'],'schema-analytics-data-product-v2')
         self.assertEqual(result['data_product_draft']['quality_status'],'requires_review')
-        self.assertEqual(set(result['artifacts']),{'source','serialization','analytics_profile','structural_model','analytics_schema_plan'})
-        self.assertEqual(len(result['data_product_draft']['artifacts']),5)
+        self.assertEqual(set(result['artifacts']),{'source','serialization','analytics_profile','shacl','structural_model','analytics_schema_plan'})
+        self.assertEqual(len(result['data_product_draft']['artifacts']),6)
+        self.assertTrue(all(isinstance(item,dict) and item.get('artifact_id') for item in result['data_product_draft']['artifacts']))
         profile=json.loads(next(a['content'] for a in artifacts if a['kind']=='schema-analytics-profile'))
         self.assertEqual(profile['structural_model']['roots'][0]['source_qname'],'{urn:test}Root')
         self.assertFalse(profile['analytics_schema_plan']['ready_for_automatic_execution'])

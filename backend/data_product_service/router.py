@@ -13,7 +13,7 @@ from backend.artifact_store import ArtifactStore
 from backend.mesh_store import PostgresRegistry
 from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from backend.depo_platform.semantic_registry import release_reference, resolve_approved_release
-from .packaging import build_package
+from .packaging import build_package, publication_digest
 
 router = APIRouter(prefix="/data-products", tags=["data-products"])
 root = Path(os.getenv("DATA_PRODUCT_STORAGE", Path(__file__).resolve().parents[2] / "data" / "products"))
@@ -72,12 +72,24 @@ def _semantic_release_errors(payload: dict) -> list[str]:
 def _validate(payload: dict) -> tuple[list[tuple[dict, Path]], list[str]]:
     required = ("product_id", "name", "version", "domain", "owner", "classification", "steward", "lifecycle_state")
     errors = [f"{name} is required" for name in required if not payload.get(name)]
+    for name in required:
+        if payload.get(name) and (not isinstance(payload[name], str) or not payload[name].strip()):
+            errors.append(f'{name} must be a non-empty string')
+    if payload.get('lifecycle_state') != 'published':
+        errors.append('lifecycle_state must be published at the publication boundary')
+    import re
+    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9._-]{0,127}', str(payload.get('product_id') or '')):
+        errors.append('product_id must be a safe identifier')
+    version = str(payload.get('version') or '')
+    match = re.fullmatch(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?', version)
+    if not match or any(part.isdigit() and len(part) > 1 and part.startswith('0') for part in (match.group(4) or '').split('.') if match):
+        errors.append('version must use semantic versioning')
     artifacts, artifact_errors = _artifact_records(payload)
     return artifacts, errors + artifact_errors + _semantic_release_errors(payload)
 
 
 def _catalog_payload(record: dict) -> dict:
-    fields = ("name", "domain", "owner", "version", "classification", "steward", "sla", "quality_status", "lifecycle_state", "sources", "ontologies", "semantic_releases", "manifest")
+    fields = ("name", "domain", "owner", "version", "classification", "steward", "sla", "quality_status", "lifecycle_state", "sources", "ontologies", "semantic_releases", "manifest", "product_kind", "analytics_readiness")
     return {field: record.get(field) for field in fields} | {"product_url": f"/api/v1/data-products/{record['product_id']}:{record['version']}"}
 
 
@@ -136,9 +148,11 @@ async def publish(payload: dict, request: Request) -> dict:
         existing = store.get(key)
         idempotency_key = str(payload.get("idempotency_key") or "")
         if existing and existing.get("idempotency_key") == idempotency_key and idempotency_key:
+            if existing.get('publication_digest') != publication_digest(payload, artifacts):
+                raise HTTPException(409, 'Idempotency key was already used with different or unverified content')
             return existing
-        if existing and existing.get("status") == "published":
-            raise HTTPException(409, "A published product version is immutable; publish a new version")
+        if existing:
+            raise HTTPException(409, "A product version is immutable; retry catalog delivery or publish a new version")
         try:
             semantic_releases = [await resolve_approved_release(release) for release in payload["semantic_releases"]]
         except ValueError as exc:
@@ -151,8 +165,9 @@ async def publish(payload: dict, request: Request) -> dict:
             raise HTTPException(422, str(exc)) from exc
         safe_payload = {key: value for key, value in payload.items() if key not in {"approval_token", "authorization", "api_key"}}
         record = {**safe_payload, "semantic_releases": semantic_releases, "artifacts": [metadata for metadata, _ in artifacts], "manifest": package["manifest"], "package_storage": {"zip_path": str(package["zip_path"]), "package_dir": str(package["package_dir"])}, "status": "pending_catalog_registration", "catalog_attempts": 0, "published_at": _now()}
-        store.put(key, record)
-        approval_store.put(f"{key}:{record['published_at']}", {"product": key, "approved_by": approver, "approved_at": _now()})
+        record['publication_digest'] = package['manifest']['publication_digest']
+        store.put_with_related(key, record, related_namespace=approval_store.namespace,
+            related_key=f"{key}:{record['published_at']}", related_value={"product": key, "approved_by": approver, "approved_at": _now()})
         return store.put(key, await _register_catalog(record))
 
 
@@ -194,13 +209,7 @@ def list_products(limit: int = 100, offset: int = 0) -> dict:
     safe_limit = max(1, min(int(limit), 500))
     if offset < 0:
         raise HTTPException(422, 'offset must be nonnegative')
-    records = sorted(
-        store.all().values(),
-        key=lambda record: (str(record.get("published_at") or record.get("created_at") or ""), str(record.get('product_id') or ''), str(record.get('version') or '')),
-        reverse=True,
-    )
-    total = len(records)
-    page = records[offset:offset + safe_limit]
+    total, page = store.page(limit=safe_limit, offset=offset, order_field='published_at')
     return {"products": [{key: value for key, value in record.items() if key not in {"package_storage", "approval_token", "authorization", "api_key"}} for record in page],
         "limit": safe_limit, 'offset': offset, 'total': total, 'next_offset': offset + safe_limit if offset + safe_limit < total else None}
 

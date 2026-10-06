@@ -14,6 +14,7 @@ $requiredFiles = @(
   'infra/windows/stop-depo-frontend.ps1', 'infra/windows/rotate-depo-api-key.ps1',
   'infra/windows/apply-depo-service-credentials.ps1', 'infra/windows/test-depo-browser-session.ps1', 'infra/windows/build-depo-frontend.ps1', 'backend/depo_platform/credential_import.py', 'backend/depo_platform/browser_credentials.py',
   'infra/windows/process-control.ps1', 'frontend/public/depo-runtime-config.js', 'infra/windows/test-depo-routing.ps1'
+  'infra/windows/test-depo-analytics-services.ps1', 'infra/postgres/migrations/009_analytics_registry_pagination.sql'
 )
 foreach ($relative in $requiredFiles) {
   if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) { throw "Missing release file: $relative" }

@@ -29,6 +29,9 @@ INDEXES = {
  'idx_metadata_pending': "ON depo_metadata_outbox(created_at) WHERE status='pending'",
  'idx_depo_pipeline_runnable': "ON depo_registry(updated_at,key) WHERE namespace='data_job_runs' AND (value->>'status')=ANY(ARRAY['queued','running'])",
  'idx_depo_registry_recent': 'ON depo_registry(namespace,updated_at DESC,key)',
+ 'idx_depo_product_published': "ON depo_registry(COALESCE(value->>'published_at','') DESC,key DESC) WHERE namespace='data_products'",
+ 'idx_depo_job_started': "ON depo_registry(COALESCE(value->>'started_at','') DESC,key DESC) WHERE namespace='data_job_runs'",
+ 'idx_depo_catalog_updated': "ON depo_registry(COALESCE(value->>'updated_at','') DESC,key DESC) WHERE namespace='catalog_products' AND right(key,7)<>':latest'",
 }
 
 def normalize(sql, schema):

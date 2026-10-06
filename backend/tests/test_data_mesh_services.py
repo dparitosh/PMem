@@ -1,4 +1,5 @@
 from pathlib import Path
+import pytest
 from fastapi.testclient import TestClient
 from backend.artifact_store import ArtifactStore
 from backend.mesh_store import InMemoryRegistry
@@ -8,10 +9,16 @@ from backend.data_catalog_service.artifact_retention import retention
 from backend.data_product_service import router as product_router
 from backend.data_product_service.packaging import build_package
 
+@pytest.fixture(autouse=True)
+def read_credentials(monkeypatch):
+    monkeypatch.setenv('AUTH_MODE', 'token')
+    monkeypatch.setenv('DEPO_CREDENTIAL_STORE', 'environment')
+    monkeypatch.setenv('GRAPH_READ_TOKEN', 'test-read-token')
+
 def test_catalog_retains_independent_versions(tmp_path: Path, monkeypatch):
     catalog_router.store = InMemoryRegistry()
     monkeypatch.setenv("CATALOG_SERVICE_TOKEN", "test-catalog-token")
-    client = TestClient(catalog_app)
+    client = TestClient(catalog_app, headers={'Authorization': 'Bearer test-read-token'})
     for version in ("1.0.0", "2.0.0"):
         response = client.put(f"/api/v1/catalog/products/parts/versions/{version}", headers={"X-DEPO-Service-Token": "test-catalog-token"}, json={"name": "Parts", "domain": "Engineering", "owner": "data", "classification": "internal", "steward": "data", "lifecycle_state": "published", "manifest": {"artifacts": [{"artifact_id": f"sha256:{version}", "kind": "test"}]}, "semantic_releases": [{"id": "engineering", "version": version}]})
         assert response.status_code == 200
@@ -40,7 +47,7 @@ def test_product_preview_accepts_content_addressed_artifact(tmp_path: Path):
     artifact = product_router.artifact_store.ingest(source, kind="ontology", media_type="text/turtle")
     response = TestClient(__import__("backend.data_product_service.app", fromlist=["app"]).app).post(
         "/api/v1/data-products/preview",
-        json={"product_id":"p", "name":"P", "version":"1", "domain":"D", "owner":"O", "classification":"internal", "steward":"O", "lifecycle_state":"draft", "semantic_releases":[{"asset_id":"ceim-core", "version":"0.1.0", "lifecycle_status":"approved"}], "artifacts":[{"artifact_id": artifact["artifact_id"]}]},
+        json={"product_id":"p", "name":"P", "version":"1.0.0", "domain":"D", "owner":"O", "classification":"internal", "steward":"O", "lifecycle_state":"published", "semantic_releases":[{"asset_id":"ceim-core", "version":"0.1.0", "lifecycle_status":"approved"}], "artifacts":[{"artifact_id": artifact["artifact_id"]}]},
     )
     assert response.json()["valid"] is True
 
@@ -64,7 +71,7 @@ def test_artifact_retention_records_tier_hold_and_durable_purge_evidence(tmp_pat
     source = tmp_path / "source.json"
     source.write_text('{"source":"retention-test"}', encoding="utf-8")
     artifact = retention.artifact_store.ingest(source, kind="raw-source", media_type="application/json")
-    client = TestClient(catalog_app)
+    client = TestClient(catalog_app, headers={'Authorization': 'Bearer test-read-token'})
 
     registered = client.post(
         f"/api/v1/catalog/artifacts/{artifact['artifact_id']}/retention",

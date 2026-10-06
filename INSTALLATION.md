@@ -2748,7 +2748,7 @@ The ontology analytics view remains an ontology-statistics projection. This sche
 
 ### XSD structural analytics data-product output
 
-XSD conversion now returns a `schema-analytics-data-product-v2` draft with five retained artifact references: source XSD, Turtle serialization, analytics profile, structural model and analytics schema plan. Non-XSD conversion contracts remain compatible with v1. The existing `schema-analytics-product` data job accepts both versions and computes bounded schema statistics without requiring Spark.
+XSD conversion returns a `schema-analytics-data-product-v2` draft with retained source XSD, Turtle serialization, ontology SHACL, analytics profile, structural model and analytics schema plan references. Supplied XSD dependencies also remain retained artifacts. Draft `artifacts` entries contain `artifact_id` objects compatible with the publication API. Non-XSD conversion contracts remain compatible with v1. The existing `schema-analytics-product` data job accepts both versions and computes bounded schema statistics without requiring Spark.
 
 The structural model uses namespace-qualified entity IDs, effective occurrence ranges, particle paths and resolved datatype/facet metadata. Anonymous roots and repeated primitive values have entity-table plans. Prohibited attributes are excluded; nillable elements have nullable SQL projections. The source XSD remains the authority: Turtle alone does not preserve every closed-world XML constraint.
 
@@ -3175,3 +3175,77 @@ Set-Location E:\App\PMem
 It reports settings absent from the server or frontend environment file and rejects conflicting populated VITE_/REACT_APP_ aliases. It preserves both files, hides values and does not generate or synchronize keys. Review missing settings against config/deployment.env.example and frontend/.env.example. The ordinary generator does not upgrade existing files; do not use -Force to update customer settings.
 
 Server setting changes require backend restart. Browser build settings require rebuilding the frontend. Runtime routing changes require restarting the frontend launcher. Central application-key replacements require deliberate synchronization and browser reconnection. Database migration remains an installation/startup schema step; this audit does not run it. Gateway verification uses DEPO_ROUTING_MODE=gateway. New frontend configurations leave the Agentic URL empty for centrally resolved routing and use a one-minute default request timeout. If an older generated file contains LLM_REQUEST_TIMEOUT_SECONDS twice, retain one entry with the intended value before retrying the audit.
+
+### Analytics evidence: deployment checkpoints and publication
+
+Use this sequence after updating an existing installation or completing the first installation. Schema design evidence contains an entity/column/relationship model and review-only SQL. It does not create or load customer fact/dimension tables. Business grain, KPI formulas, units and history policies require an approved definition before warehouse implementation.
+
+1. Deploy matching backend and frontend files. Run the existing schema initialization and service-start sequence earlier in this guide. Rebuild the frontend after updating React files. Existing product/catalog records remain intact.
+   For an existing installation with dependencies already installed, stop the application before replacing files, then run these commands from the repository root. Migration 009 adds the product, catalog and job pagination indexes. The schema verifier now checks their definitions and validity. Do not alter earlier migration files.
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\stop-depo-frontend.ps1
+.\infra\windows\stop-depo-services.ps1
+# Copy the reviewed release files into this repository directory now.
+.\infra\postgres\update-postgres-schema.ps1 -EnvFile .\.env.local
+.\infra\windows\build-depo-frontend.ps1 -EnvFile .\.env.local
+.\infra\windows\start-depo-services.ps1 -EnvFile .\.env.local
+.\infra\windows\start-depo-frontend.ps1 -EnvFile .\.env.local
+```
+
+   Stop if a command reports failure. A first installation must use the prerequisite and dependency installation sequence earlier in this guide before these checks.
+2. From the repository root on the application VM, run the read-only checks below. Replace the example repository directory if yours differs.
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\test-depo-analytics-services.ps1 -EnvFile .\.env.local -RequireWorker
+```
+
+For gateway routing, use the same selected environment file and add `-Gateway`:
+
+```powershell
+.\infra\windows\test-depo-analytics-services.ps1 -EnvFile .\.env.local -Gateway -RequireWorker
+```
+
+Checkpoint: PostgreSQL verification and all three protected list APIs pass. Empty lists are valid for a new installation. The worker check confirms execution readiness, not successful execution of a customer job. If the read key differs from the central credential store, follow the deliberate synchronization/rotation procedure in this guide. Do not disable authentication to hide the failure.
+
+3. In **Admin**, connect the central browser session with write access, or test and apply `INGESTION_WRITE_TOKEN` and `DATA_PRODUCT_APPROVAL_TOKEN`. Keys stay out of the frontend build and product package.
+4. Open **Data Products**. Select an imported schema under **Schema design drafts**. For a multi-file XSD, expand **Inspect an XSD with dependency files**, select the root XSD and dependency files, and enter one relative path per dependency in the displayed order. Example: root `QIFDocument.xsd`, dependency `types/Part.xsd` referenced by `schemaLocation="types/Part.xsd"`. Select **Inspect schema set**. Paths must match the XSD include/import references, remain inside the schema set and use `.xsd`. The closure has a 63-dependency/25-MiB limit. Remote downloads and parent-directory traversal are rejected.
+5. Review the resulting blockers and retained draft. A blocked structural model is evidence for review, not an executable schema. Publishing a design-evidence product does not waive those blockers.
+6. Complete product ID, name, new semantic version, owner, steward, classification and approver. Enter an existing **approved semantic asset ID and release version** from Metadata Registry. An imported ontology alone is not proof of an approved semantic release.
+7. Select **Validate publication contract**. This validates fields and retained references. The publication service checks the authoritative approved release when publishing.
+8. Select **Approve and publish evidence**. Check its delivery receipt. `published` means catalog registration completed. `pending_catalog_registration` means the retained package and approved product await the outbox worker. Use the existing retry-catalog endpoint to reconcile delivery, rather than publishing a changed payload for the same version.
+9. Refresh **Data Catalog**, inspect the same product/version, and verify the manifest retains `product_kind=schema-design-evidence` and `analytics_readiness=requires_materialization_and_business_definition`.
+
+#### API contracts and safe retries
+
+The ingestion endpoint is `POST /api/v1/schema-conversions/inspect`. Multipart fields:
+
+| Field | Meaning |
+| --- | --- |
+| `file` | Root XSD or another supported engineering source |
+| `dependencies` | Repeated dependency XSD uploads |
+| `dependency_paths` | JSON array of relative paths in upload order, e.g. `["types/Part.xsd"]` |
+
+A governed `schema-analytics-product` job accepts a retained root source and optional retained dependency map. For example, submit the following input to `POST /api/v1/pipeline/jobs/definitions/{job_id}/{version}/run` after that job version is approved and enabled. Replace the artifact IDs with IDs returned by inspection. Authorization uses `DATA_JOB_EXECUTION_TOKEN` or the corresponding delegated browser scope.
+
+```json
+{
+  "artifact_id": "sha256:<root-source-digest>",
+  "schema_dependencies": { "types/Part.xsd": "sha256:<dependency-source-digest>" },
+  "approved_by": "engineering-operator"
+}
+```
+
+The worker reconstructs the local dependency closure from retained artifacts. The resulting durable output manifest preserves product kind, analytics readiness, domain and artifact references. It never executes the review-only SQL.
+
+`POST /api/v1/data-products/preview` and `/publish` accept artifact objects such as `{"artifact_id":"sha256:..."}`. Publication requires `lifecycle_state="published"`, a safe product ID, semantic version, ownership fields, approved semantic-release references and an approver. The browser supplies the appropriate credential in the header, not in the package.
+
+Product versions are immutable even while catalog delivery is pending. Keep the same idempotency key and exact payload after an uncertain response. A changed payload with that key returns HTTP 409. Use a new version for deliberate content changes. Product state and its approval evidence commit together in PostgreSQL. Filesystem package creation precedes that transaction, so an interrupted request may leave an immutable package that the identical retry can recover.
+
+Older ZIP manifests without `publication_digest` cannot prove retry identity. Download and retain their evidence, inspect the existing product record, and publish reviewed changes under a new version. Do not delete published packages or rewrite migration history to bypass this check.
+
+List APIs now accept `limit` and `offset`, and return `total`, `limit`, `offset` and nullable `next_offset`: `/api/v1/data-products`, `/api/v1/catalog/products` and `/api/v1/pipeline/jobs/runs`. Catalog additionally accepts `domain`. Follow `next_offset` until null. Concurrent changes between pages can affect completeness; refresh before treating the results as a fixed audit snapshot.
+
+Approved-release checks call the configured `SEMANTIC_REGISTRY_URL` with the server `GRAPH_READ_TOKEN`. For APIM, the configured gateway subscription header also applies. Preserve Authorization forwarding on that route. API 401/403 indicates authorization failure, 409 indicates immutable-content/concurrency conflict, 422 indicates invalid contract or release evidence, and 503 indicates a required service/control plane is unavailable. These are different from an empty successful list.

@@ -28,10 +28,10 @@ def test_schema_contract(monkeypatch):
     monkeypatch.setenv('DEPO_DATABASE_SCHEMA', 'customer')
     result = setup.verify_schema(connection())
     assert result['schema'] == 'customer'
-    assert result['columns_checked'] == 41
-    assert result['constraints_checked'] == 17
-    assert result['indexes_checked'] == 5
-    assert result['migration_versions'] == [1, 2, 3, 4, 5, 6, 7]
+    assert result['columns_checked'] == sum(len(columns) for columns in setup.EXPECTED_COLUMNS.values())
+    assert result['constraints_checked'] == len(setup.EXPECTED_CONSTRAINTS)
+    assert result['indexes_checked'] == len(setup.EXPECTED_INDEXES)
+    assert result['migration_versions'] == [version for version, _, _ in setup.MIGRATIONS]
 
 
 @pytest.mark.parametrize('rows', [[], [('depo_registry', 'value', 'text')]])

@@ -18,7 +18,15 @@ def _checksum(path: Path) -> str:
     return digest.hexdigest()
 
 
+def publication_digest(payload: dict, artifacts: list[tuple[dict, Path]]) -> str:
+    ignored = {'approval_token', 'authorization', 'api_key', 'approved_by', 'idempotency_key'}
+    content = {key: value for key, value in payload.items() if key not in ignored and key != 'artifacts'}
+    content['artifacts'] = sorted(({'artifact_id': m['artifact_id'], 'sha256': _checksum(path)} for m, path in artifacts), key=lambda item: item['artifact_id'])
+    return hashlib.sha256(json.dumps(content, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest()
+
+
 def build_package(*, output_root: Path, payload: dict, artifacts: list[tuple[dict, Path]]) -> dict:
+    digest = publication_digest(payload, artifacts)
     product_id, version = str(payload["product_id"]), str(payload["version"])
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9._-]{0,127}", product_id):
         raise ValueError("product_id must be a safe identifier")
@@ -32,7 +40,10 @@ def build_package(*, output_root: Path, payload: dict, artifacts: list[tuple[dic
     if package_dir.exists() or zip_path.exists():
         manifest = package_dir / "manifest.json"
         if manifest.is_file() and zip_path.is_file():
-            return {"manifest": json.loads(manifest.read_text(encoding="utf-8")), "package_dir": package_dir, "zip_path": zip_path}
+            existing = json.loads(manifest.read_text(encoding="utf-8"))
+            if existing.get('publication_digest') != digest:
+                raise ValueError('Existing product package has different or unverified content; publish a new version')
+            return {"manifest": existing, "package_dir": package_dir, "zip_path": zip_path}
         raise ValueError("product version package already exists but is incomplete")
     package_dir.mkdir(parents=True, exist_ok=False)
     try:
@@ -43,10 +54,12 @@ def build_package(*, output_root: Path, payload: dict, artifacts: list[tuple[dic
             shutil.copy2(source, target)
             records.append({**metadata, "package_path": target.relative_to(package_dir).as_posix(), "sha256": _checksum(target)})
         manifest = {
+            "publication_digest": digest,
             "manifest_version": "1.0", "product_id": product_id, "name": payload["name"], "version": version,
             "domain": payload["domain"], "owner": payload["owner"], "description": payload.get("description", ""),
             "classification": payload.get("classification", "internal"), "steward": payload.get("steward", payload["owner"]),
             "sla": payload.get("sla", {}), "quality_status": payload.get("quality_status", "not_assessed"),
+            "product_kind": payload.get("product_kind"), "analytics_readiness": payload.get("analytics_readiness"),
             "sources": payload.get("sources", []), "ontologies": payload.get("ontologies", []),
             "semantic_releases": payload.get("semantic_releases", []), "artifacts": records,
             "created_at": datetime.now(timezone.utc).isoformat(),

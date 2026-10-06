@@ -191,10 +191,28 @@ def import_tasks() -> dict:
 
 
 @router.post("/schema-conversions/inspect", summary="Convert EXPRESS, STEP/STP/STPX, XMI, or XSD to a normalized Turtle contract")
-async def inspect_engineering_schema(file: UploadFile = File(...)) -> dict:
+async def inspect_engineering_schema(file: UploadFile = File(...),
+    dependencies: list[UploadFile] = File(default=[]),
+    dependency_paths: str = Form('[]', description='JSON relative XSD paths, in the same order as dependency files')) -> dict:
     content = await _read_bounded_upload(file)
     try:
-        return await run_in_threadpool(converter.convert, filename=file.filename or "source", content=content)
+        paths = json.loads(dependency_paths)
+        if not isinstance(paths, list) or len(paths) != len(dependencies) or len(paths) > 63:
+            raise ValueError('dependency_paths must match at most 63 dependency uploads')
+        if any(not isinstance(path, str) or not path.strip() for path in paths) or len(set(paths)) != len(paths):
+            raise ValueError('Dependency paths must be distinct non-empty relative XSD paths')
+        if dependencies and Path(file.filename or '').suffix.lower() != '.xsd':
+            raise ValueError('Dependency files are supported only for XSD conversion')
+        schema_files = {}
+        total = len(content)
+        for path, dependency in zip(paths, dependencies):
+            data = await dependency.read(max(0, 25 * 1024 * 1024 - total) + 1)
+            total += len(data)
+            if total > 25 * 1024 * 1024:
+                raise HTTPException(413, 'Schema dependency closure exceeds 25 MiB')
+            schema_files[path] = data
+        return await run_in_threadpool(converter.convert, filename=file.filename or "source", content=content,
+            **({'schema_files': schema_files} if schema_files else {}))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

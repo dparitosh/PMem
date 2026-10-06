@@ -388,6 +388,7 @@ class SparkJobRunner:
         analytics profile. Bounded schema statistics use the local Python runtime while
         publication remains an explicit Data Product API approval action.
         """
+        started = time.perf_counter()
         artifact_id = str(payload.get("artifact_id") or "").strip()
         if not artifact_id:
             raise ValueError("artifact_id is required")
@@ -399,11 +400,25 @@ class SparkJobRunner:
             raise ValueError("schema analytics supports retained .xsd, .exp, or .xmi schema artifacts")
         content = source.read_bytes()
         from backend.ingestion_service.schema_conversion import converter
-        converted = converter.convert(filename=filename, content=content)
+        dependency_refs = payload.get('schema_dependencies') or {}
+        if not isinstance(dependency_refs, dict):
+            raise ValueError('schema_dependencies must map relative XSD paths to retained artifact IDs')
+        if len(dependency_refs) > 63:
+            raise ValueError('Schema dependency closure exceeds 63 files')
+        schema_files = {}
+        total_bytes = len(content)
+        for relative, dependency_id in dependency_refs.items():
+            dependency_metadata, dependency_path = ArtifactStore().resolve(str(dependency_id))
+            if dependency_metadata.get('kind') != 'engineering-schema-source':
+                raise ValueError('Schema dependencies must reference engineering-schema-source artifacts')
+            total_bytes += dependency_path.stat().st_size
+            if total_bytes > 25 * 1024 * 1024:
+                raise ValueError('Schema dependency closure exceeds 25 MiB')
+            schema_files[relative] = dependency_path.read_bytes()
+        converted = converter.convert(filename=filename, content=content, **({'schema_files': schema_files} if schema_files else {}))
         draft = dict(converted.get("data_product_draft") or {})
         if draft.get("contract") not in {"schema-analytics-data-product-v1", "schema-analytics-data-product-v2"}:
             raise ValueError("Schema conversion did not return an analytics data-product draft")
-        started = time.perf_counter()
         stats = dict(converted.get("statistics") or {})
         rows = [{"metric": str(key), "value": value if isinstance(value, (int, float, str, bool)) else json.dumps(value, sort_keys=True, default=str)} for key, value in stats.items()]
         if not rows:

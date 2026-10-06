@@ -12,7 +12,10 @@ class ProductListPaginationTests(unittest.TestCase):
         self.records = {str(i): {'product_id': str(i), 'version': '1', 'published_at': '2026-01-01', 'api_key': 'never-expose'} for i in range(110)}
         class Rejected(Exception):
             def __init__(self, code, detail): self.status_code = code
-        scope = {'store': SimpleNamespace(all=lambda: self.records), 'HTTPException': Rejected}
+        def page(*, limit, offset, order_field):
+            rows = sorted(self.records.values(), key=lambda row: (row.get(order_field, ''), row['product_id']), reverse=True)
+            return len(rows), rows[offset:offset+limit]
+        scope = {'store': SimpleNamespace(page=page), 'HTTPException': Rejected}
         exec(compile(ast.Module(body=[function], type_ignores=[]), 'products', 'exec'), scope)
         self.list_products = scope['list_products']
 

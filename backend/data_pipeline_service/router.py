@@ -335,8 +335,15 @@ def run_configured_job(job_id: str, version: str, payload: dict[str, Any], reque
 
 
 @router.get("/jobs/runs", dependencies=[Depends(graph_read_identity)], summary="List durable data-job run manifests")
-def list_job_runs(limit: int = 100) -> dict[str, Any]:
+def list_job_runs(limit: int = 100, offset: int = 0) -> dict[str, Any]:
     try:
+        if offset < 0:
+            raise HTTPException(422, 'offset must be nonnegative')
+        if hasattr(run_records.store, 'page'):
+            bounded = max(1, min(limit, 1000))
+            total, runs = run_records.store.page(limit=bounded, offset=offset, order_field='started_at')
+            return {'runs': runs, 'total': total, 'limit': bounded, 'offset': offset,
+                    'next_offset': offset + bounded if offset + bounded < total else None}
         return {"runs": run_records.list_runs(limit=limit)}
     except RuntimeError as exc:
         raise _registry_error(exc) from exc
