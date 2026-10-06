@@ -398,7 +398,8 @@ class SparkJobRunner:
             raise ValueError("artifact_id must reference an engineering-schema-source artifact")
         if Path(filename).suffix.lower() not in {".xsd", ".exp", ".xmi"}:
             raise ValueError("schema analytics supports retained .xsd, .exp, or .xmi schema artifacts")
-        content = source.read_bytes()
+        from backend.data_pipeline_service.schema_limits import read_schema_bytes
+        content = read_schema_bytes(source)
         from backend.ingestion_service.schema_conversion import converter
         dependency_refs = payload.get('schema_dependencies') or {}
         if not isinstance(dependency_refs, dict):
@@ -411,10 +412,8 @@ class SparkJobRunner:
             dependency_metadata, dependency_path = ArtifactStore().resolve(str(dependency_id))
             if dependency_metadata.get('kind') != 'engineering-schema-source':
                 raise ValueError('Schema dependencies must reference engineering-schema-source artifacts')
-            total_bytes += dependency_path.stat().st_size
-            if total_bytes > 25 * 1024 * 1024:
-                raise ValueError('Schema dependency closure exceeds 25 MiB')
-            schema_files[relative] = dependency_path.read_bytes()
+            schema_files[relative] = read_schema_bytes(dependency_path, remaining_bytes=25 * 1024 * 1024 - total_bytes)
+            total_bytes += len(schema_files[relative])
         converted = converter.convert(filename=filename, content=content, **({'schema_files': schema_files} if schema_files else {}))
         draft = dict(converted.get("data_product_draft") or {})
         if draft.get("contract") not in {"schema-analytics-data-product-v1", "schema-analytics-data-product-v2"}:
@@ -809,13 +808,15 @@ class SparkJobRunner:
             parsed = lines.map(lambda line: (bool(pattern.match(line)), pattern.match(line).group(1) if pattern.match(line) else ""))
             valid = parsed.filter(lambda row: row[0])
             valid_count = valid.count()
-            predicate_counts = valid.map(lambda row: (row[1], 1)).reduceByKey(lambda left, right: left + right).takeOrdered(50, key=lambda row: (-row[1], row[0]))
+            predicates = valid.map(lambda row: (row[1], 1)).reduceByKey(lambda left, right: left + right)
+            distinct_predicates = predicates.count()
+            predicate_counts = predicates.takeOrdered(50, key=lambda row: (-row[1], row[0]))
         malformed = total - valid_count
         result = {
             "job_id": str(uuid.uuid4()), "job_type": "rdf-quality-statistics", "status": "completed" if malformed == 0 else "quality_warning",
             "correlation_id": correlation_id, "completed_at": self._now(), "duration_ms": round((time.perf_counter() - started) * 1000, 2),
             "output_contract": "rdf-quality-report-v1", "artifact_id": artifact_id,
-            "counts": {"triples_examined": total, "valid_ntriples": valid_count, "malformed_lines": malformed, "distinct_predicates": len(predicate_counts)},
+            "counts": {"triples_examined": total, "valid_ntriples": valid_count, "malformed_lines": malformed, "distinct_predicates": distinct_predicates},
             "quality": {"syntax_conformance": "passed" if malformed == 0 else "warning", "scope": "N-Triples lexical integrity and predicate distribution", "publication": "not_attempted; statistics jobs are read-only"},
             "predicate_statistics": [{"predicate": predicate, "triple_count": count} for predicate, count in predicate_counts],
         }

@@ -2741,7 +2741,7 @@ Set-Location E:\App\PMem
 
 After successful adoption, change `DEPO_ACCEPT_LEGACY_MIGRATION_CHECKSUMS=false`. Retain the two timeout values as appropriate. Migration statements allow 1–3600 seconds with lock waits capped at 60 seconds; registry and compatibility runtime statements allow 1–300 seconds with lock waits capped at 10 seconds. Connection timeout remains independently configured.
 
-Verification checks 41 columns, 17 constraints, five named indexes, relation kinds, required nullability/defaults, the chat message sequence, analytics view definition and versions 1–7 with checksums. A drift failure does not grant permission to delete or recreate a customer table. Restore the matching immutable release SQL for checksum differences; use a reviewed corrective migration for schema/data changes. Read-only verification never adopts missing checksums.
+Verification checks the released relations, columns, constraints, index definitions, required nullability/defaults, chat message sequence, analytics view and all numbered migrations with checksums. Use the current JSON verifier output for exact counts and migration versions. A drift failure does not grant permission to delete or recreate a customer table. Restore the matching immutable release SQL for checksum differences; use a reviewed corrective migration for schema/data changes. Read-only verification never adopts missing checksums.
 
 The ontology analytics view remains an ontology-statistics projection. This schema update does not create a dimensional warehouse or populate fact/dimension tables.
 
@@ -3257,3 +3257,22 @@ Upload a root XSD using a plain filename (for example `QIFDocument.xsd`). Supply
 If publication returns a validation or authorization rejection, correct the fields or reconnect in Admin, then validate the contract again. For a timeout or server failure, use **Retry same publication**: the request identity and payload remain unchanged until the outcome is known.
 
 Recovery verifies the existing ZIP, its manifest, member list and artifact checksums. A corrupt package is rejected; restore the original package from backup before retrying. Do not delete an existing customer product version to bypass this check.
+
+### Data-job recovery and update checkpoints
+
+`retry_policy.max_attempts` bounds both normal retries and execution after a worker crash. An expired lease increments the attempt when reclaimed. When the limit has already been consumed, the worker records failure without running the handler again. Inspect retained results and external effects before requesting explicit replay. Telemetry write failures do not discard a claimed run.
+
+Schema analytics jobs accept a maximum of 25 MiB for the root schema and its dependency closure. The worker checks sizes before reading, then uses a bounded read. Larger schemas require a separately reviewed processing path. RDF reports return the full distinct-predicate count while charts list only the top 50 predicates.
+
+For an existing installation, retain the existing environment file and central keys. Stop the frontend and backend before replacing application files. From the repository root, after copying the matching release files, run:
+
+```powershell
+Set-Location E:\App\PMem
+.\install-depo.ps1 -EnvFile .\.env.local -Profile Production -SkipDependencyInstall
+.\infra\windows\start-depo-frontend.ps1 -EnvFile .\.env.local
+.\infra\windows\test-depo-analytics-services.ps1 -EnvFile .\.env.local -RequireWorker
+```
+
+`-SkipDependencyInstall` preserves installed packages and still rebuilds the frontend. Use it only when the release dependency locks have not changed. If they changed, omit the switch. `-SkipFrontend` explicitly omits frontend installation and build. A missing dependency or failed build stops installation before service startup.
+
+The root installer accepts `-ReplaceExistingCredentials` for deliberate replacement of central keys from the selected file. Existing keys remain unchanged by default. Use that switch only after reviewing the intended replacements, then reconnect browser sessions in Admin. Successful read-only analytics checks confirm authorization, pagination and worker readiness. Verify one approved job through completion and inspect its retained output before customer acceptance.

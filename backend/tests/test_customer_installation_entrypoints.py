@@ -118,3 +118,17 @@ def test_linux_spark_runbook_has_executable_lifecycle_and_safe_configuration():
     assert "bash infra/linux/configure-depo-linux.sh" in guide
     assert "bash infra/linux/install-spark-linux.sh" in guide
     assert "bash infra/linux/start-depo-services.sh" in guide
+
+
+def test_customer_installer_forwards_rotation_and_rebuilds_without_installing():
+    root = (ROOT / 'install-depo.ps1').read_text(encoding='utf-8')
+    assert '[switch]$ReplaceExistingCredentials' in root
+    assert '@PSBoundParameters' in root
+    installer = (ROOT / 'infra/windows/install-depo-windows.ps1').read_text(encoding='utf-8')
+    rebuild = installer.index('if ($SkipDependencyInstall -and -not $SkipFrontend)')
+    start = installer.index("Invoke-DepoStage 'Service startup and endpoint validation'")
+    assert rebuild < start
+    section = installer[rebuild:start]
+    assert 'build-depo-frontend.ps1' in section
+    assert 'frontend/dist/index.html' in section
+    assert 'npm.cmd ci' not in section

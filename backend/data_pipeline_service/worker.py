@@ -25,12 +25,15 @@ def run() -> None:
     while not stop.is_set():
         try:
             record = run_records.claim_next(worker_id=worker_id, lease_seconds=lease_seconds)
-            worker_status.put(worker_id, status="busy" if record else "idle",
-                              run_id=record["run_id"] if record else None, spark=runner.health())
         except Exception as exc:
             logging.getLogger(__name__).warning("Pipeline control plane unavailable: %s", type(exc).__name__)
             stop.wait(poll_seconds)
             continue
+        try:
+            worker_status.put(worker_id, status="busy" if record else "idle",
+                              run_id=record["run_id"] if record else None, spark=runner.health())
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Worker telemetry deferred: %s", type(exc).__name__)
         if not record:
             stop.wait(poll_seconds)
             continue
@@ -57,6 +60,10 @@ def run() -> None:
             definition = job_definitions.get(record["job_id"], record["job_version"])
             if not definition or definition.get("lifecycle_state") != "approved" or not definition.get("enabled"):
                 run_records.failed(record, "Job definition is missing, disabled, or no longer approved")
+                continue
+            retry = definition.get("retry_policy") or {"max_attempts": 1}
+            if int(record.get("attempt") or 1) > int(retry.get("max_attempts") or 1):
+                run_records.failed(record, "Retry limit exhausted after abandoned execution; inspect retained evidence before explicit replay")
                 continue
             payload = run_records.replay_payload(record)
             execute_claimed_job(definition, payload, record, lease_lost=lease_lost)

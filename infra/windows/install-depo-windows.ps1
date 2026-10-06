@@ -84,6 +84,15 @@ if (-not $SkipDependencyInstall) {
   }
 }
 
+if ($SkipDependencyInstall -and -not $SkipFrontend) {
+  Invoke-DepoStage 'Frontend rebuild using installed dependencies' {
+    & (Join-Path $PSScriptRoot 'build-depo-frontend.ps1') -EnvFile $envPath
+  }
+}
+if (-not $SkipFrontend -and -not (Test-Path -LiteralPath (Join-Path $root 'frontend/dist/index.html') -PathType Leaf)) {
+  throw 'Frontend build output is missing. No services were started.'
+}
+
 Invoke-DepoStage 'Deployment configuration validation' {
   & (Join-Path $root 'infra\deployment\test-depo-deployment.ps1') -EnvFile $envPath -Profile $Profile -SkipEndpointChecks
 }

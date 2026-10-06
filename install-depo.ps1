@@ -11,6 +11,7 @@ param(
   [switch]$SkipFrontend,
   [switch]$SkipBaselineProvisioning,
   [switch]$SkipDependencyInstall,
+  [switch]$ReplaceExistingCredentials,
   [switch]$SkipReleasePreflight
 )
 $ErrorActionPreference = 'Stop'
