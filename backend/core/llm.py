@@ -1,8 +1,6 @@
 import os
 import logging
-from urllib.parse import urlparse, urlunparse
 from pathlib import Path
-# from langchain_openai import AzureOpenAI
 from langchain_openai import AzureOpenAIEmbeddings
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 
@@ -22,9 +20,13 @@ def _first_env(*keys: str) -> str | None:
 
 
 env_path = Path(__file__).resolve().parents[1] / ".env"
-load_dotenv(env_path)
+managed_environment = os.getenv('DEPO_ENV_INJECTED', '').lower() == 'true'
+production_environment = any(os.getenv(key, '').lower() in {'prod', 'production'}
+                             for key in ('DEPO_ENV', 'ENVIRONMENT', 'APP_ENV', 'DEPLOYMENT_ENV'))
+if not managed_environment and not production_environment:
+    load_dotenv(env_path, override=False)
 
-# --- Configuration ---
+# Deployment-injected configuration takes precedence over developer defaults.
 AZURE_OPENAI_ENDPOINT = _first_env("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_API_KEY = _first_env("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_DEPLOYMENT = _first_env("AZURE_OPENAI_DEPLOYMENT")
@@ -67,13 +69,7 @@ EMBED_MODEL_NAME = _first_env("EMBED_MODEL_NAME") or "nomic-embed-text:latest"
 
 
 def _normalize_ollama_base_url(base_url: str) -> str:
-    parsed = urlparse(base_url.rstrip("/"))
-    path = parsed.path.rstrip("/")
-    for suffix in ("/api/generate", "/api/chat", "/chat"):
-        if path.endswith(suffix):
-            path = path[: -len(suffix)]
-            break
-    return urlunparse((parsed.scheme, parsed.netloc, path, "", "", "")).rstrip("/")
+    return ollama_base_url(base_url)
 
 
 class UnavailableLLM:

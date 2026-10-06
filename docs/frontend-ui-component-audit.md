@@ -2,6 +2,8 @@
 
 Date: 2026-07-05
 
+Historical audit. Findings below describe the July snapshot unless explicitly updated. The active route registry is frontend/src/app/pageRegistry.js; consult it for the current page inventory.
+
 ## Scope
 
 Audited React frontend component structure, navigation, API coupling, component size, known legacy UI code, and automated validation behavior.
@@ -24,7 +26,7 @@ Status: Mostly aligned.
 - Side navigation labels are: Home, Import, Ontology Junction, Graph Explorer, Where Used, Recommendations, Reports, Admin.
 - Page wrappers are thin and acceptable:
   - `ImportPage.js` wraps `DataImportPipeline`.
-  - `OntologyStudioPage.js` wraps `OntologyMapper` but should eventually be renamed to `OntologyJunctionPage.js` for naming consistency.
+  - Updated 2026-10-06: `OntologyJunctionPage.js` is the routed ontology page. Its unused former-name compatibility export has been removed.
   - `GraphExplorerPage.js` wraps `GraphHEB` in `GraphWidget`.
   - Recommendations and Reports wrappers are simple panel shells.
 
@@ -92,7 +94,7 @@ Remaining issue:
 
 ### UI-05 Ontology Junction Naming Is Partially Updated
 
-Navigation says `Ontology Junction`, but page file/component names still use `OntologyStudioPage` and `OntologyMapper`.
+Updated 2026-10-06: navigation and the routed page use `Ontology Junction` / `OntologyJunctionPage`. The older internal OntologyMapper component remains in use; the unused page alias was removed.
 
 Recommended closure:
 - Rename page/component labels gradually without breaking imports.

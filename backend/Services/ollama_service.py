@@ -8,7 +8,6 @@ import requests
 import os
 from typing import Optional, Dict, Any
 from datetime import datetime
-from urllib.parse import urlparse, urlunparse
 from backend.core.ollama_auth import ollama_base_url
 
 logger = logging.getLogger(__name__)
@@ -33,20 +32,8 @@ class OllamaService:
         return ollama_headers(self.base_url, self.api_key)
 
     def _native_base_url(self) -> str:
-        """Normalize configured endpoint to Ollama-native base URL.
-
-        If the configured base URL points to a chat path (e.g. /api/chat),
-        trim it so native /api/tags and /api/generate can be appended.
-        """
-        parsed = urlparse(self.base_url)
-        path = parsed.path.rstrip("/")
-        for suffix in ("/api/chat", "/chat", "/api/generate"):
-            if path.endswith(suffix):
-                path = path[: -len(suffix)]
-                break
-        if not path:
-            path = ""
-        return urlunparse((parsed.scheme, parsed.netloc, path, "", "", "")).rstrip("/")
+        """Use the shared, validated native API-root resolver."""
+        return ollama_base_url(self.base_url)
 
     def _chat_style_query(self, full_prompt: str, temperature: float) -> Optional[str]:
         """Fallback for APIM/chat-style Ollama gateways."""

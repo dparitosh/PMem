@@ -1,7 +1,6 @@
 """Bounded Ollama checks and review-only summaries; no model downloads."""
 import os
 import asyncio
-from urllib.parse import urlsplit, urlunsplit
 import httpx
 
 
@@ -9,15 +8,7 @@ def settings():
     provider = os.getenv('USE_LLM', 'ollama').strip().lower()
     model = (os.getenv('LLM_MODEL_NAME') or os.getenv('OLLAMA_MODEL') or 'llama3:latest').strip()
     from backend.core.ollama_auth import ollama_base_url
-    url = urlsplit(ollama_base_url())
-    if url.scheme not in {'http', 'https'} or not url.hostname or url.username or url.password or url.query or url.fragment:
-        raise ValueError('OLLAMA_BASE_URL must be an HTTP(S) server URL without embedded credentials')
-    path = url.path.rstrip('/')
-    for suffix in ('/api/chat', '/api/generate', '/chat'):
-        if path.endswith(suffix):
-            path = path[:-len(suffix)]
-            break
-    base = urlunsplit((url.scheme, url.netloc, path, '', '')).rstrip('/')
+    base = ollama_base_url()
     timeout = float(os.getenv('LLM_REQUEST_TIMEOUT_SECONDS', '30'))
     if not 1 <= timeout <= 120:
         raise ValueError('LLM_REQUEST_TIMEOUT_SECONDS must be between 1 and 120')
