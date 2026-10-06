@@ -7,8 +7,8 @@ identity).  The resulting "GraphChunk" nodes preserve structural context and
 work well with hybrid vector + keyword retrieval in a RAG pipeline.
 
 Usage:
-    python -m Services.graph_embeddings          # run from backend/
-    python Services/graph_embeddings.py          # or directly
+    python -m backend.Services.graph_embeddings  # run from repository root
+    python Services/graph_embeddings.py          # run from backend/
 """
 
 import os
@@ -26,12 +26,14 @@ import tiktoken
 # ---------------------------------------------------------------------------
 # Ensure project root is importable
 # ---------------------------------------------------------------------------
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from core.llm import embeddings, EMBEDDER_AVAILABLE
+project_root = str(Path(__file__).resolve().parents[2])
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from backend.core.llm import embeddings, EMBEDDER_AVAILABLE
 
 # ✅ Import centralized database configuration
 try:
-    from core.db_config import get_config, get_driver
+    from backend.core.db_config import get_config, get_driver
     CENTRALIZED_CONFIG_AVAILABLE = True
 except ImportError:
     CENTRALIZED_CONFIG_AVAILABLE = False
