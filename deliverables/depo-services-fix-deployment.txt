@@ -1,0 +1,37 @@
+DEPO service/session/network/persistence update
+
+Extract depo-services-audit-fix.zip into a temporary directory on the application
+VM. Its paths are relative to the DEPO project root.
+
+1. Back up the current frontend folder and the backend/tool files in this ZIP.
+   Stop frontend and backend services using the project's normal lifecycle scripts.
+2. Replace the frontend folder with the packaged frontend folder, which contains
+   the production dist build and all matching build-receipt input files. Copy the
+   packaged backend and tools files over their corresponding project files.
+   Retain the existing backend Python environment and project-root .env.local.
+3. If you retain an additional frontend .env file or customize frontend sources,
+   rebuild frontend on the VM before starting it. The startup script intentionally
+   checks every build input against dist/depo-build-receipt.json. Root .env.local
+   runtime routing can continue to be used without editing frontend build inputs.
+4. Restart backend services and frontend through the existing project scripts.
+   No schema migration or credential rotation is required by this update.
+5. Reload the browser. In Admin, connect registered services and verify the current
+   read session. Check offline Ollama. The UI now shows the exact checked endpoint
+   and whether the failure is a connection failure, timeout, invalid response,
+   rejected authentication, missing route, or missing model.
+
+Run on the application VM to check the configured local Ollama listener:
+  Invoke-RestMethod 'http://127.0.0.1:11434/api/tags' -TimeoutSec 5
+
+127.0.0.1 here means the application VM. If Ollama runs on another host, configure
+OLLAMA_BASE_URL / OLLAMA_API_URL and OLLAMA_CHAT_API_URL to the intended host in
+the server environment, then restart the affected services. Configuration does
+not install Ollama or download a model. Use the exact installed model name.
+
+Read service-session-network-persistence-audit.txt for the fifteen fixed defects,
+test results and verification limits.
+
+The package also includes the orchestration update. Read orchestration-completion.txt
+for recovery/reconciliation controls, live OpenAPI preflight requirements, stdio MCP
+configuration, agent tool proposals, mapping checks and incremental chat streaming.
+Preserve existing PostgreSQL records; the new execution fields are stored as JSON.

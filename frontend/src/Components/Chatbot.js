@@ -244,12 +244,15 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                             m.id === assistantId ? { ...m, text: accumulated } : m
                         ));
                     } else if (Array.isArray(parsed.evidence)) {
+                        if (typeof parsed.response === 'string') {
+                            accumulated = parsed.response;
+                        }
                         evidenceReceived = true;
                         responseEvidence = parsed.evidence;
                         responseSources = Array.isArray(parsed.sources) ? parsed.sources : [];
                         responseAnswerable = parsed.answerable;
                         setChatMessages(prev => prev.map(m =>
-                            m.id === assistantId ? { ...m, evidence: responseEvidence, sources: responseSources, answerable: responseAnswerable } : m
+                            m.id === assistantId ? { ...m, text: accumulated, evidence: responseEvidence, sources: responseSources, answerable: responseAnswerable } : m
                         ));
                     } else if (parsed.status) {
                         setStatusLabel(parsed.status);

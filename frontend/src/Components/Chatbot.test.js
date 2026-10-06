@@ -144,3 +144,23 @@ test('keeps chat input locked until the SSE stream completes and clears the serv
   expect(window.sessionStorage.getItem('depo.sessionId.v1')).toBeNull();
   expect(setChatResults).toHaveBeenLastCalledWith([]);
 });
+
+
+test('the final evidence response replaces provisional streamed model text', async () => {
+  window.sessionStorage.clear();
+  let sent = false;
+  global.fetch = jest.fn((_url, options = {}) => Promise.resolve(options.method !== 'POST'
+    ? { ok: true, headers: { get: () => null }, json: async () => ({ queries: [] }) }
+    : { ok: true, status: 200, headers: { get: () => null }, body: { getReader: () => ({ read: async () => {
+      if (sent) return { done: true };
+      sent = true;
+      return { done: false, value: bytes('data: {"token":"Unfinished model suggestion"}\n\ndata: {"response":"Verified graph evidence remains available","evidence":[],"sources":[],"answerable":true}\n\ndata: {"done":true}\n\n') };
+    } }) } }));
+  const results = jest.fn();
+  render(<Chatbot setChatResults={results} graphData={{ nodes: [], links: [] }} searchResults={[]} />);
+  setCredentialProfile('GRAPH_READ_TOKEN', 'read-test');
+  fireEvent.change(screen.getByLabelText('Chat question'), { target: { value: 'Show product' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send chat question' }));
+  await waitFor(() => expect(results).toHaveBeenCalledWith([expect.objectContaining({ response: 'Verified graph evidence remains available' })]));
+  expect(screen.queryByText('Unfinished model suggestion')).not.toBeInTheDocument();
+});

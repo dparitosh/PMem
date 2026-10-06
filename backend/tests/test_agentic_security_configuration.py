@@ -6,7 +6,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.agentic_service.app import app
+from backend.depo_platform.service_runtime import create_service_app
 from backend.agentic_service import router
 from backend.agentic_service.configuration import SERVICE_KEYS, configuration_status
 from backend.mesh_store import InMemoryRegistry
@@ -20,7 +20,11 @@ def isolated_environment():
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    monkeypatch.setenv('ALLOWED_ORIGINS', 'http://localhost:3000')
+    app = create_service_app(title='Agentic security fixture', version='test', readiness_check=configuration_status)
+    monkeypatch.setattr(router, 'workflow_controls', InMemoryRegistry('security-controls'))
+    app.include_router(router.router)
     return TestClient(app)
 
 
@@ -41,14 +45,23 @@ def test_sse_frames_and_session_header(client, monkeypatch):
     response = client.post('/api/v1/chat-stream', json={'message': 'hello'}, headers=READ)
     assert response.status_code == 200
     frames = [json.loads(frame.removeprefix('data: ')) for frame in response.text.strip().split('\n\n')]
-    assert frames[0] == {'token': 'hello'} and frames[-1] == {'done': True}
+    assert frames[0] == {'status': 'Retrieving graph evidence'} and frames[-1] == {'done': True}
+    assert frames[-2]['response'] == 'hello' and frames[-2]['evidence'] == []
     assert response.headers['x-session-id']
     assert ask.call_args.kwargs['headers'] == READ
 
 
 def mock_transport(monkeypatch, handler):
     original = httpx.AsyncClient
-    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
+    def contract_or_tool(request):
+        if request.url.path.endswith('/openapi.json'):
+            paths = {}
+            for tool in router.catalog.read()['tools']:
+                if tool.get('transport') == 'openapi':
+                    paths.setdefault('/api/v1' + tool['path'], {})[tool['method'].lower()] = {'responses': {'200': {'description': 'fixture'}}}
+            return httpx.Response(200, json={'openapi': '3.0.3', 'paths': paths})
+        return handler(request)
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: original(transport=httpx.MockTransport(contract_or_tool), **kwargs))
 
 
 def test_graph_dispatch_authenticates_both_hops(client, monkeypatch):

@@ -2,7 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { vi } from 'vitest';
 import CredentialSettings from './CredentialSettings';
-import { clearServiceAuthToken, getCredentialProfile, setCredentialProfile } from '../services/serviceAuth';
+import { clearServiceAuthToken, getCredentialProfile, setCredentialProfile, setBrowserSessionExpiry } from '../services/serviceAuth';
 
 vi.mock('../config', () => ({
   config: { gatewayUrl: '', semanticServiceUrls: { graph: 'http://graph', agentic: 'http://agentic' } },
@@ -20,8 +20,29 @@ const enter = (profile, value) => {
 };
 const response = (status, body) => ({ ok: status === 200, status, json: async () => body });
 
+test('restored central session is checked without displaying individual keys', async () => {
+  setCredentialProfile('GRAPH_READ_TOKEN', 'depo_session_restored');
+  setBrowserSessionExpiry('depo_session_restored', new Date(Date.now() + 600000).toISOString());
+  fetch.mockResolvedValue(response(200, { status: 'authorized' }));
+  render(<CredentialSettings />);
+  await waitFor(() => expect(screen.getAllByText(/Read session verified: graph, agentic/).length).toBeGreaterThan(0));
+  expect(screen.getByLabelText('GRAPH_READ_TOKEN')).toHaveValue('');
+  expect(screen.getByLabelText('GRAPH_READ_TOKEN')).toHaveAttribute('placeholder', 'Using central session — key not displayed');
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer depo_session_restored');
+});
+
+test('restored session rejection reports the actual service detail and clears invalid access', async () => {
+  setCredentialProfile('GRAPH_READ_TOKEN', 'depo_session_restored');
+  setBrowserSessionExpiry('depo_session_restored', new Date(Date.now() + 600000).toISOString());
+  fetch.mockResolvedValue(response(403, { detail: 'Browser session scope is unavailable or credentials changed; reconnect in Admin' }));
+  render(<CredentialSettings />);
+  await waitFor(() => expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe(''));
+  await waitFor(() => expect(screen.getAllByText(/graph: HTTP 403; Browser session scope/).length).toBeGreaterThan(0));
+});
+
 test('one admin connection applies registered scopes without exposing their keys', async () => {
-  fetch.mockResolvedValueOnce(response(200, { token: 'depo_session_opaque', expires_at: '2099-01-01T00:00:00Z', profiles: ['GRAPH_READ_TOKEN', 'INGESTION_WRITE_TOKEN'] }))
+  fetch.mockResolvedValueOnce(response(200, { token: 'depo_session_opaque', expires_at: new Date(Date.now() + 600000).toISOString(), profiles: ['GRAPH_READ_TOKEN', 'INGESTION_WRITE_TOKEN'] }))
     .mockResolvedValue(response(200, { status: 'authorized' }));
   render(<CredentialSettings />);
   fireEvent.change(screen.getByLabelText('Administrator key for connection'), { target: { value: 'admin-fixture' } });

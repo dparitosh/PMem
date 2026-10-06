@@ -66,7 +66,9 @@
       {"agent_id": "context-analyst", "tool_id": "context.where_used"}
     ]},
     {"id": "ontology-review-and-bridge-plan", "name": "Ontology intake, structure review and Semantic Bridge planning", "steps": [
-      {"agent_id": "ontology-orchestrator", "tool_id": "ontology.agent.orchestrate"}
+      {"agent_id": "ontology-intake", "tool_id": "ontology.agent.intake"},
+      {"agent_id": "ontology-structure-review", "tool_id": "ontology.agent.review", "input_bindings": {"artifact_digest": "$steps.1.result.artifact_digest"}},
+      {"agent_id": "semantic-bridge-planner", "tool_id": "ontology.agent.bridge-plan", "input_bindings": {"artifact_digest": "$steps.1.result.artifact_digest"}}
     ]}
   ]
 }

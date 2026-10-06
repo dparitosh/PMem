@@ -52,7 +52,7 @@ UNSTRUCTURED_AZURE_OPENAI_DEPLOYMENT = _first_env("UNSTRUCTURED_AZURE_OPENAI_DEP
 UNSTRUCTURED_AZURE_OPENAI_API_VERSION = _first_env("UNSTRUCTURED_AZURE_OPENAI_API_VERSION") or "2024-02-15-preview"
 
 # Ollama config for unstructured
-UNSTRUCTURED_OLLAMA_BASE_URL = _first_env("UNSTRUCTURED_OLLAMA_BASE_URL", "OLLAMA_API_URL", "OLLAMA_BASE_URL") or ollama_base_url()
+UNSTRUCTURED_OLLAMA_BASE_URL = _first_env("UNSTRUCTURED_OLLAMA_BASE_URL", "OLLAMA_API_URL", "OLLAMA_BASE_URL") or "http://127.0.0.1:11434"
 UNSTRUCTURED_OLLAMA_API_KEY = _first_env("UNSTRUCTURED_OLLAMA_API_KEY", "OLLAMA_API_KEY") or ""
 UNSTRUCTURED_LLM_MODEL_NAME = _first_env("UNSTRUCTURED_LLM_MODEL_NAME") or "llava:7b"
 
@@ -62,7 +62,7 @@ UNSTRUCTURED_LLM_MODEL_NAME = _first_env("UNSTRUCTURED_LLM_MODEL_NAME") or "llav
 USE_LLM = (_first_env("USE_LLM") or "ollama").lower()
 USE_EMBEDDER = (_first_env("USE_EMBEDDER") or USE_LLM).lower()
 
-OLLAMA_BASE_URL = ollama_base_url()
+OLLAMA_BASE_URL = _first_env("OLLAMA_API_URL", "OLLAMA_BASE_URL") or "http://127.0.0.1:11434"
 OLLAMA_API_KEY = _first_env("OLLAMA_API_KEY") or ""
 LLM_MODEL_NAME = _first_env("LLM_MODEL_NAME", "OLLAMA_MODEL") or "llama3:latest"
 EMBED_MODEL_NAME = _first_env("EMBED_MODEL_NAME") or "nomic-embed-text:latest"
@@ -147,8 +147,9 @@ def _init_azure_embeddings() -> AzureOpenAIEmbeddings:
 def _init_ollama_llm() -> ChatOllama | OllamaLLM:
     if not OLLAMA_BASE_URL or not LLM_MODEL_NAME:
         raise ValueError("Missing OLLAMA_BASE_URL or LLM_MODEL_NAME")
+    ollama_base_url()  # Validate inside the guarded factory.
     kwargs = dict(model=LLM_MODEL_NAME, base_url=_normalize_ollama_base_url(OLLAMA_BASE_URL),
-                  client_kwargs={'timeout': ollama_timeout()})
+                  client_kwargs={'timeout': ollama_timeout(), 'trust_env': False})
     if OLLAMA_API_KEY:
         kwargs['client_kwargs']['headers'] = ollama_headers(OLLAMA_BASE_URL, OLLAMA_API_KEY)
     from backend.core.ollama_auth import ollama_generation_route
@@ -159,7 +160,7 @@ def _init_ollama_llm() -> ChatOllama | OllamaLLM:
 def _init_ollama_embeddings() -> OllamaEmbeddings:
     if not OLLAMA_BASE_URL or not EMBED_MODEL_NAME:
         raise ValueError("Missing OLLAMA_BASE_URL or EMBED_MODEL_NAME")
-    kwargs = dict(model=EMBED_MODEL_NAME, base_url=_normalize_ollama_base_url(OLLAMA_BASE_URL), client_kwargs={"timeout": ollama_timeout()})
+    kwargs = dict(model=EMBED_MODEL_NAME, base_url=_normalize_ollama_base_url(OLLAMA_BASE_URL), client_kwargs={"timeout": ollama_timeout(), "trust_env": False})
     if OLLAMA_API_KEY:
         kwargs["client_kwargs"]["headers"] = ollama_headers(OLLAMA_BASE_URL, OLLAMA_API_KEY)
     return OllamaEmbeddings(**kwargs)
@@ -218,7 +219,7 @@ def _init_unstructured_ollama_llm() -> ChatOllama | OllamaLLM:
     """Initialize Ollama LLM for unstructured document processing (vision-capable like llava)"""
     if not UNSTRUCTURED_OLLAMA_BASE_URL or not UNSTRUCTURED_LLM_MODEL_NAME:
         raise ValueError("Missing UNSTRUCTURED_OLLAMA_BASE_URL or UNSTRUCTURED_LLM_MODEL_NAME")
-    kwargs = dict(model=UNSTRUCTURED_LLM_MODEL_NAME, base_url=_normalize_ollama_base_url(UNSTRUCTURED_OLLAMA_BASE_URL), client_kwargs={"timeout": ollama_timeout()})
+    kwargs = dict(model=UNSTRUCTURED_LLM_MODEL_NAME, base_url=_normalize_ollama_base_url(UNSTRUCTURED_OLLAMA_BASE_URL), client_kwargs={"timeout": ollama_timeout(), "trust_env": False})
     if UNSTRUCTURED_OLLAMA_API_KEY:
         kwargs["client_kwargs"]["headers"] = ollama_headers(UNSTRUCTURED_OLLAMA_BASE_URL, UNSTRUCTURED_OLLAMA_API_KEY)
     from backend.core.ollama_auth import ollama_generation_route
@@ -230,7 +231,7 @@ def _init_ollama_tool_llm() -> ChatOllama:
     from backend.core.ollama_auth import ollama_tool_chat_root
     base = ollama_tool_chat_root()
     return ChatOllama(model=LLM_MODEL_NAME, base_url=base,
-        client_kwargs={'timeout': ollama_timeout(), 'headers': ollama_headers(base, OLLAMA_API_KEY)})
+        client_kwargs={'timeout': ollama_timeout(), 'trust_env': False, 'headers': ollama_headers(base, OLLAMA_API_KEY)})
 
 
 # --- Initialize models with safe fallbacks ---

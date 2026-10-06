@@ -5099,8 +5099,10 @@ def ollama_query(payload: OllamaQueryRequest):
         if not service.health_check():
             raise HTTPException(status_code=503, detail="Ollama is not available")
 
-        response = service.answer_question(question)
-        return response
+        try:
+            return service.answer_question(question)
+        except RuntimeError:
+            raise HTTPException(status_code=502, detail='Ollama generation failed; check the server and configured model') from None
     except HTTPException:
         raise
     except Exception as e:

@@ -1,9 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
 import App from './App';
+import { useState } from 'react';
 
 vi.mock('./SchemaContext', () => ({
-  SchemaProvider: ({ children }) => children,
+  SchemaProvider: ({ children }) => {
+    const [identity] = useState(() => Math.random().toString());
+    return <div data-testid="schema-instance" data-instance={identity}>{children}</div>;
+  },
 }));
 
 vi.mock('./contexts/OntologyContext', () => ({
@@ -11,7 +15,7 @@ vi.mock('./contexts/OntologyContext', () => ({
 }));
 
 vi.mock('./app/AppShell', () => ({
-  default: ({ activePage, children, onPageChange }) => (
+  default: ({ activePage, children, onPageChange, onServiceAuthChange }) => (
     <div>
       <nav aria-label="Application navigation">
         {[
@@ -27,6 +31,7 @@ vi.mock('./app/AppShell', () => ({
           >{label}</button>
         ))}
       </nav>
+      <button onClick={onServiceAuthChange}>Simulate access change</button>
       {children}
     </div>
   ),
@@ -36,7 +41,7 @@ vi.mock('./Components/LandingPage', () => ({ default: () => <div>Landing Mock</d
 vi.mock('./pages/ImportPage', () => ({ default: () => <div data-testid="page-import">Import page</div> }));
 vi.mock('./pages/OntologyJunctionPage', () => ({ default: () => <div data-testid="page-ontology">Ontology Junction page</div> }));
 vi.mock('./pages/MetadataRegistryPage', () => ({ default: () => <div data-testid="page-registry">Metadata Registry page</div> }));
-vi.mock('./pages/GraphExplorerPage', () => ({ default: () => <div data-testid="page-graph">Graph Explorer page</div> }));
+vi.mock('./pages/GraphExplorerPage', () => ({ default: ({ setData, graphData }) => <div data-testid="page-graph">Graph Explorer page<button onClick={() => setData({ nodes: [{ id: 'old-session-node' }] })}>Load graph fixture</button><span data-testid="graph-data">{JSON.stringify(graphData)}</span></div> }));
 vi.mock('./pages/CodeAuditPage', () => ({ default: () => <div data-testid="page-code-audit">Code Network page</div> }));
 vi.mock('./pages/ModelWorkbenchPage', () => ({ default: () => <div data-testid="page-modeling">Modeling page</div> }));
 vi.mock('./pages/RecommendationsPage', () => ({ default: () => <div data-testid="page-quality">Recommendations page</div> }));
@@ -99,4 +104,23 @@ test('routes every application navigation item to its page boundary', async () =
     fireEvent.click(screen.getByRole('button', { name: label }));
     expect(await screen.findByTestId(testId)).toBeInTheDocument();
   }
+});
+
+test('navigation preserves same-session data, while an access change clears data and refreshes the schema provider', async () => {
+  window.history.replaceState({}, '', '/#/graph');
+  render(<App />);
+  await screen.findByTestId('page-graph');
+  fireEvent.click(screen.getByText('Load graph fixture'));
+  expect(screen.getByTestId('graph-data')).toHaveTextContent('old-session-node');
+  const schemaInstance = screen.getByTestId('schema-instance').dataset.instance;
+  fireEvent.click(screen.getByRole('button', { name: 'Admin', exact: true }));
+  await screen.findByTestId('page-admin');
+  fireEvent.click(screen.getByRole('button', { name: 'Graph Explorer', exact: true }));
+  await screen.findByTestId('page-graph');
+  expect(screen.getByTestId('graph-data')).toHaveTextContent('old-session-node');
+  expect(screen.getByTestId('schema-instance').dataset.instance).toBe(schemaInstance);
+  fireEvent.click(screen.getByText('Simulate access change'));
+  await screen.findByTestId('page-graph');
+  expect(screen.getByTestId('graph-data')).not.toHaveTextContent('old-session-node');
+  expect(screen.getByTestId('schema-instance').dataset.instance).not.toBe(schemaInstance);
 });

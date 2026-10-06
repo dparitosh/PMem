@@ -1,7 +1,7 @@
 import { credentialServices } from '../services/credentialProfiles';
 import React, { useState, useEffect } from 'react';
 import { buildSemanticServiceUrl, config } from '../config';
-import { getCredentialProfile, setCredentialProfile, clearServiceAuthToken, getGatewaySubscriptionKey, setGatewaySubscriptionKey, serviceAuthHeaders, setBrowserSessionExpiry, getBrowserSessionStatus } from '../services/serviceAuth';
+import { getCredentialProfile, setCredentialProfile, clearServiceAuthToken, getGatewaySubscriptionKey, setGatewaySubscriptionKey, serviceAuthHeaders, setBrowserSessionExpiry, getBrowserSessionStatus, handleSessionRejection } from '../services/serviceAuth';
 import ServiceAccessDiscovery from '../app/ServiceAccessDiscovery';
 import './CredentialSettings.css';
 
@@ -12,6 +12,8 @@ export default function CredentialSettings() {
   const [results, setResults] = useState({});
   const [busy, setBusy] = useState(false);
   const [clearVersion, setClearVersion] = useState(0);
+  const [verificationVersion, setVerificationVersion] = useState(0);
+  const [checkingSession, setCheckingSession] = useState(false);
   const [actor, setActor] = useState('');
   const [expiry, setExpiry] = useState('');
   const [sessionAdminKey, setSessionAdminKey] = useState(() => getCredentialProfile('ADMIN_API_KEY'));
@@ -25,6 +27,40 @@ export default function CredentialSettings() {
     window.addEventListener('depo:session-expired', expired);
     return () => window.removeEventListener('depo:session-expired', expired);
   }, []);
+  useEffect(() => {
+    const token = getCredentialProfile('GRAPH_READ_TOKEN');
+    if (!token.startsWith('depo_session_')) return undefined;
+    const controller = new AbortController();
+    let active = true;
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    setCheckingSession(true);
+    setSessionStatus('Checking stored session against registered services…');
+    const services = Object.entries(config.semanticServiceUrls).filter(([, base]) => base);
+    Promise.all(services.map(async ([service]) => {
+      try {
+        const endpoint = buildSemanticServiceUrl(service, '/auth/access');
+        const response = await fetch(endpoint, { headers: { ...serviceAuthHeaders(endpoint), Authorization: `Bearer ${token}` }, signal: controller.signal, credentials: 'omit', redirect: 'error' });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || body.status !== 'authorized') {
+          const detail = typeof body.detail === 'string' ? body.detail : 'Read access was not authorized';
+          if (active && getCredentialProfile('GRAPH_READ_TOKEN') === token) handleSessionRejection(response.status, `Bearer ${token}`, detail);
+          return `${service}: HTTP ${response.status}; ${detail}`;
+        }
+        return null;
+      } catch (error) { return `${service}: ${error.name === 'AbortError' ? 'Verification timed out' : 'Service could not be reached'}`; }
+    })).then(checks => {
+      if (!active) return;
+      const current = getCredentialProfile('GRAPH_READ_TOKEN');
+      if (current && current !== token) return;
+      const failures = checks.filter(Boolean);
+      const message = failures.length || !services.length || !current
+        ? failures.join('; ') || 'Session expired or no services are configured. Reconnect registered services.'
+        : `Read session verified: ${services.map(([service]) => service).join(', ')}. Individual API keys are not displayed.`;
+      setSessionStatus(message);
+      setResults({ GRAPH_READ_TOKEN: message });
+    }).finally(() => { clearTimeout(timeout); if (active) setCheckingSession(false); });
+    return () => { active = false; clearTimeout(timeout); controller.abort(); };
+  }, [verificationVersion]);
   async function connectCentralSession() {
     setBusy(true);
     const controller = new AbortController();
@@ -42,13 +78,14 @@ export default function CredentialSettings() {
       if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `Connection failed (${response.status})`);
       if (!body.token?.startsWith('depo_session_') || !Array.isArray(body.profiles) || !body.profiles.includes('GRAPH_READ_TOKEN') || !body.expires_at) throw new Error('Invalid central session response');
       pendingSession = body.token;
-      if (!Number.isFinite(Date.parse(body.expires_at)) || Date.parse(body.expires_at) <= Date.now()) throw new Error('Central session is already expired; check application and database VM clocks.');
+      const sessionDeadline = Date.parse(body.expires_at);
+      if (!Number.isFinite(sessionDeadline) || sessionDeadline <= Date.now() || sessionDeadline > Date.now() + 15 * 60 * 1000) throw new Error('Central session expiry is invalid; it must be within fifteen minutes. Check application and database VM clocks.');
       const services = Object.keys(config.semanticServiceUrls).filter(service => config.semanticServiceUrls[service]);
       const checks = await Promise.allSettled(services.map(async service => {
         const endpoint = buildSemanticServiceUrl(service, '/auth/access');
         const probe = await fetch(endpoint, { headers: { ...serviceAuthHeaders(endpoint, 'get', subscription), Authorization: `Bearer ${body.token}` }, signal: controller.signal, credentials: 'omit', redirect: 'error' });
         const result = await probe.json().catch(() => ({}));
-        if (!probe.ok || result.status !== 'authorized') throw new Error(`${service}: HTTP ${probe.status}; central session was not accepted`);
+        if (!probe.ok || result.status !== 'authorized') throw new Error(`${service}: HTTP ${probe.status}; ${typeof result.detail === 'string' ? result.detail : 'central session was not accepted'}`);
       }));
       if (!checks.length) throw new Error('No service endpoints are configured');
       const failures = checks.flatMap((check, index) => check.status === 'rejected' ? [`${services[index]}: ${check.reason?.name === 'AbortError' ? 'timed out' : check.reason?.message || 'transport failure'}`] : []);
@@ -154,10 +191,11 @@ export default function CredentialSettings() {
       <p>After the PowerShell import succeeds, enter ADMIN_API_KEY once here. A fifteen-minute delegated session authorizes registered scopes without copying their keys into this browser. The session survives refresh in this tab when browser session storage is available. Clear, rotation, revocation or expiry invalidates access. Raw API keys remain memory-only.</p>
       <label>Administrator key for connection<input aria-label="Administrator key for connection" type="password" autoComplete="off" disabled={busy} value={sessionAdminKey} onChange={event => setSessionAdminKey(event.target.value)} /></label>
       <label><input type="checkbox" disabled={busy} checked={includeWrites} onChange={event => setIncludeWrites(event.target.checked)} /> Enable registered upload, execution and approval scopes for this session</label>
-      <button type="button" disabled={busy || !sessionAdminKey.trim()} onClick={connectCentralSession}>Connect registered services</button>
+      <button type="button" disabled={busy || checkingSession || !sessionAdminKey.trim()} onClick={connectCentralSession}>Connect registered services</button>
+      <button type="button" disabled={busy || checkingSession || !getBrowserSessionStatus()} onClick={() => { setResults({}); setVerificationVersion(value => value + 1); }}>Verify current read session</button>
       <p role="status">{sessionStatus || 'Read-only by default. Enable workflow scopes only when required. No jobs run during connection.'}</p>
     </div>
-    <p>All application API-key profiles are listed here, even before OpenAPI import. Database passwords, Neo4j credentials and outbound integration tokens remain in server configuration; they are never exposed to the browser.</p>
+    <p>Blank API-key fields are expected with a central session: PostgreSQL holds the registered credentials and the browser uses a delegated session. Use Verify current read session to check access. Individual keys are not displayed.</p>
     <p>Use Connect registered services above to apply centrally registered scopes. Testing ADMIN_API_KEY in this table validates administrator access only; it does not sign in to graph, catalog, products or observability. Individual keys below are an alternative. Keys remain in this tab only and are cleared by a full reload.</p>
     <div className="depo-credential-controls"><label>APIM subscription key (optional)<input type="password" autoComplete="off" disabled={busy} value={subscription} onChange={e => setSubscription(e.target.value)} /></label>
     <label>Assigned actor for registration<input disabled={busy} value={actor} onChange={e => setActor(e.target.value)} /></label>
@@ -168,12 +206,12 @@ export default function CredentialSettings() {
       <thead><tr><th scope="col">Credential profile</th><th scope="col">Service</th><th scope="col">API key</th><th scope="col">Actions</th><th scope="col">Status</th></tr></thead>
       <tbody>{profiles.map(profile => <tr key={profile}>
       <th scope="row">{profile}</th><td>{credentialServices[profile]}</td><td>
-      <input aria-label={profile} type="password" autoComplete="off" disabled={busy} value={values[profile]} onChange={e => { setValues(prev => ({ ...prev, [profile]: e.target.value })); setResults(prev => ({ ...prev, [profile]: '' })); }} /></td>
+      <input aria-label={profile} type="password" autoComplete="off" placeholder={getCredentialProfile(profile).startsWith('depo_session_') ? 'Using central session — key not displayed' : 'Enter individual key (optional)'} disabled={busy} value={values[profile]} onChange={e => { setValues(prev => ({ ...prev, [profile]: e.target.value })); setResults(prev => ({ ...prev, [profile]: '' })); }} /></td>
       <td><div className="depo-credential-actions">
       <button type="button" disabled={busy || !values[profile].trim()} onClick={() => validate(profile)}>Test and apply</button>
       <button type="button" disabled={busy || values[profile].trim().length < 32 || !actor.trim() || !getCredentialProfile('ADMIN_API_KEY')} onClick={() => register(profile)}>Register / rotate in database</button>
       {profile !== 'ADMIN_API_KEY' && <button type="button" disabled={busy || !getCredentialProfile('ADMIN_API_KEY')} onClick={() => revoke(profile)}>Revoke in database</button>}
-      </div></td><td><span role="status">{results[profile] || (getCredentialProfile(profile)?.startsWith('depo_session_') ? 'Central session stored; reconnect if expired' : getCredentialProfile(profile) ? 'Key stored; test to verify' : 'Not entered in this browser')}</span></td>
+      </div></td><td><span role="status">{results[profile] || (getCredentialProfile(profile)?.startsWith('depo_session_') ? 'Delegated scope stored; server validates each operation' : getCredentialProfile(profile) ? 'Key stored; test to verify' : 'Not connected')}</span></td>
     </tr>)}</tbody></table></div>
     <button type="button" disabled={busy} onClick={async () => {
       const token = getCredentialProfile('GRAPH_READ_TOKEN');

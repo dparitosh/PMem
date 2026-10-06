@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import re
 import json
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,7 @@ def _load(path: Path) -> Graph:
         rdf_format = OntologyCatalog._parse_ontology(content, path.name)["rdf_format"]
         validate_rdf_input(content, rdf_format)
     graph = Graph().parse(data=content, format=rdf_format)
+    graph._depo_source_digest = hashlib.sha256(content).hexdigest()
     if not graph:
         raise ValueError("Ontology contains no RDF triples")
     return graph
@@ -79,11 +81,14 @@ def inspect_ontology(ontology_path: str) -> dict[str, Any]:
         indexed_counts[kind] = indexed_counts.get(kind, 0) + 1
         label = next((str(value) for predicate in (SKOS.prefLabel, RDFS.label)
                       for value in graph.objects(term, predicate) if str(value).strip()), "")
-        term_index.append({"kind": kind, "iri": str(term), "label": label})
+        term_index.append({"kind": kind, "iri": str(term), "label": label,
+                           "domains": sorted(str(value) for value in graph.objects(term, RDFS.domain)),
+                           "ranges": sorted(str(value) for value in graph.objects(term, RDFS.range))})
     return {
         "path": str(path.relative_to(ROOT)).replace("\\", "/") if ROOT in path.parents else path.name,
         "format": path.suffix.lower().lstrip("."),
         "engine": "rdflib",
+        "artifact_digest": graph._depo_source_digest,
         "triples": len(graph),
         "classes": len(classes),
         "object_properties": len(object_properties),
@@ -209,11 +214,14 @@ def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = N
             key = normalize(value) if value else ""
             if key:
                 index.setdefault((term.get("kind"), key), {}).setdefault(term["iri"], (term, evidence))
+    from .mapping_validation import check_mapping, source_duplicates
+    duplicates = source_duplicates(instance_metadata)
     candidates = []
     items = []
     validations = ["datatype_compatibility", "domain_range_compatibility", "duplicate_check", "scope_check", "human_approval"]
     for field, kind in kind_for_field.items():
         for source in instance_metadata.get(field) or []:
+            source_details = source
             if isinstance(source, dict):
                 source = source.get("name") or source.get("label") or source.get("source")
             if not isinstance(source, str) or not source.strip():
@@ -222,15 +230,19 @@ def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = N
             key = normalize(source_name)
             matches = []
             for term, evidence in index.get((kind, key), {}).values():
+                checks = check_mapping(source_details, term, summary, duplicates[field][source_name.casefold()] > 1)
+                unresolved = [name for name, status in checks.items() if status in {'not_supplied', 'required', 'reasoning_required'}]
                 matches.append({"source": source_name, "source_category": field,
                                 "target_iri": term["iri"], "target_type": kind,
                                 "evidence": f"exact_normalized_{evidence}",
-                                "status": "review_required", "unresolved_checks": validations[:]})
+                                "status": "invalid" if "failed" in checks.values() else "review_required",
+                                "validation_checks": checks, "unresolved_checks": unresolved})
             items.append({"source": source_name, "source_category": field,
-                          "status": "ambiguous" if len(matches) > 1 else "candidate" if matches else "unmatched",
+                          "status": "ambiguous" if len(matches) > 1 else "invalid" if len(matches) == 1 and matches[0]["status"] == "invalid" else "candidate" if matches else "unmatched",
                           "candidate_iris": [row["target_iri"] for row in matches[:3]],
                           "candidate_count": len(matches), "candidates_truncated": len(matches) > 3,
-                          "unresolved_checks": validations[:],
+                          "validation_checks": matches[0]["validation_checks"] if len(matches) == 1 else {},
+                          "unresolved_checks": matches[0]["unresolved_checks"] if len(matches) == 1 else validations[:],
                           "rationale": "Exact names require semantic and human validation" if matches else
                                        "No exact name found in the inspected term index; further review is required"})
             if len(candidates) < 200:
@@ -242,9 +254,11 @@ def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = N
         "alignment_items": items,
         "unmatched_count": sum(item["status"] == "unmatched" for item in items),
         "ambiguous_count": sum(item["status"] == "ambiguous" for item in items),
+        "invalid_count": sum(item["status"] == "invalid" for item in items),
         "candidate_limit_reached": sum(item["candidate_count"] for item in items) > len(candidates) or bool(summary.get("term_index_truncated")),
         "required_validations": ["class_existence_check", "property_type_check", "domain_range_check", "approval_required"],
-        "status": "ready_for_mapping",
+        "status": "review_required" if any(item["status"] != "candidate" for item in items) or summary.get("term_index_truncated") else "ready_for_mapping",
+        "publication": "requires_human_approval",
         "llm": _llm_suggestion(plan, instance_metadata),
     }
     return result
@@ -295,13 +309,19 @@ def intake(payload: dict[str, Any]) -> dict[str, Any]:
 
 def structure_review(payload: dict[str, Any]) -> dict[str, Any]:
     path = _resolve_ontology_path(str(payload.get("ontology_path") or ""), str(payload.get("ontology_id") or "") or None)
-    return review_ontology(path)
+    summary = inspect_ontology(path)
+    if payload.get('artifact_digest') and payload['artifact_digest'] != summary['artifact_digest']:
+        raise ValueError('Ontology artifact changed after intake')
+    return _review_summary(summary)
 
 
 def bridge_plan(payload: dict[str, Any]) -> dict[str, Any]:
     path = _resolve_ontology_path(str(payload.get("ontology_path") or ""), str(payload.get("ontology_id") or "") or None)
     metadata = _instance_metadata(str(payload.get("import_task_id") or "") or None, payload.get("instance_metadata"))
-    return plan_bridge(metadata, path)
+    summary = inspect_ontology(path)
+    if payload.get('artifact_digest') and payload['artifact_digest'] != summary['artifact_digest']:
+        raise ValueError('Ontology artifact changed after intake')
+    return plan_bridge(metadata, ontology_summary=summary)
 
 
 def review_qif_ap242(payload: dict[str, Any]) -> dict[str, Any]:

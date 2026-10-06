@@ -93,12 +93,16 @@ html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(
   display: block;
   width: 100%;
   min-width: 0;
-  height: 100%;
-  overflow: hidden;
+  height: auto;
+  padding: 16px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
   color: var(--ui-text);
 }
 
-.depo-service-card ix-card-content {
+.depo-service-card h3 { margin: 0 0 12px; }
+
+.depo-service-card__body {
   display: grid;
   align-content: start;
   gap: 2px;
@@ -463,6 +467,11 @@ html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(
 .depo-panel__body {
   padding: 12px;
 }
+
+.depo-workflow-reconciliation { display: grid; gap: 12px; margin-top: 16px; }
+.depo-workflow-reconciliation label { display: grid; gap: 6px; }
+.depo-workflow-reconciliation textarea { width: 100%; min-height: 72px; box-sizing: border-box; color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--ui-border); }
+.depo-workflow-reconciliation ix-button { max-width: 100%; }
 
 .depo-status--checking {
   border-color: rgba(82, 96, 109, 0.18);

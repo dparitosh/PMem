@@ -95,7 +95,8 @@ class PostgresRegistry:
         """Page identifiers without loading every manifest into process memory."""
         if offset < 0 or not 1 <= limit <= 200:
             raise ValueError("Invalid registry page")
-        with self._connect() as connection, connection.cursor() as cursor:
+        with self._connect() as connection, connection.transaction(), connection.cursor() as cursor:
+            cursor.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
             cursor.execute("SELECT count(*) FROM depo_registry WHERE namespace = %s AND right(key, 7) <> ':latest'", (self.namespace,))
             total = cursor.fetchone()[0]
             cursor.execute("SELECT key FROM depo_registry WHERE namespace = %s AND right(key, 7) <> ':latest' ORDER BY key LIMIT %s OFFSET %s", (self.namespace, limit, offset))
@@ -154,8 +155,8 @@ class PostgresRegistry:
                   SELECT key FROM depo_registry
                   WHERE namespace = CAST(%s AS text) AND (
                     value->>'status' = 'queued' OR
-                    (value->>'status' = 'running' AND COALESCE(value->'lease'->>'expires_at','') < CAST(%s AS text))
-                  ) AND COALESCE(value->>'available_at','') <= CAST(%s AS text)
+                    (value->>'status' = 'running' AND (NULLIF(value->'lease'->>'expires_at','') IS NULL OR NULLIF(value->'lease'->>'expires_at','')::timestamptz <= CAST(%s AS timestamptz)))
+                  ) AND (NULLIF(value->>'available_at','') IS NULL OR NULLIF(value->>'available_at','')::timestamptz <= CAST(%s AS timestamptz))
                   ORDER BY updated_at, key FOR UPDATE SKIP LOCKED LIMIT 1
                 )
                 UPDATE depo_registry AS r SET

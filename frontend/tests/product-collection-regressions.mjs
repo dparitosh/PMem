@@ -26,3 +26,6 @@ await assert.rejects(scope.loadProductCollection(async () => ({ data: {} })), /i
 await assert.rejects(scope.loadProductCollection(async () => { throw new Error('403 denied'); }), /403 denied/);
 await assert.rejects(scope.loadProductCollection(async () => ({ data: { products: [] } }), { aborted: true }), /Aborted/);
 console.log('PASS: complete pagination, legacy cap warnings, valid empty list, invalid responses and cancellation');
+result = await scope.loadProductCollection(async params => ({ data: { products: [{ product_id: 'same', version: '1.0.0' }], total: 2, next_offset: params.offset === 0 ? 500 : null } }));
+assert.match(result.warning, /Duplicate product versions/);
+await assert.rejects(scope.loadProductCollection(async () => ({ data: { products: [null] } })), /invalid product entry/);

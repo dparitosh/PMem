@@ -9,6 +9,9 @@ def ollama_base_url(value=None):
         url = urlsplit(raw.strip())
         if url.scheme not in {'http', 'https'} or not url.hostname or url.username or url.password or url.query or url.fragment:
             raise ValueError('Ollama API URL must be HTTP(S) without credentials, query or fragment')
+        port = url.port  # Validate malformed and out-of-range ports before transport.
+        if port == 0:
+            raise ValueError('Ollama API URL port must be between 1 and 65535')
         path = url.path.rstrip('/')
         for suffix in ('/api/chat', '/api/generate', '/api/tags', '/api/embed', '/api/embeddings', '/chat'):
             if path.endswith(suffix):

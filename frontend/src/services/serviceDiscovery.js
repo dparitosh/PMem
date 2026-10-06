@@ -47,7 +47,7 @@ export async function discoverServices(roots, request = fetch, proposedSubscript
       const text = await readContractText(response);
       return { ...registerServiceContract(service, base, JSON.parse(text)), status: 'imported' };
     } catch (error) {
-      const message = error.name === 'AbortError' ? 'Timed out' : error.message === 'Contract exceeds size limit' ? 'Contract exceeds size limit' : 'Check service connectivity, CORS and contract validity.';
+      const message = error.name === 'AbortError' ? 'Timed out' : error.message === 'Contract exceeds size limit' ? 'Contract exceeds size limit' : /^HTTP \d{3}$/.test(error.message) ? `${error.message}; check service authorization and routing.` : 'Check service connectivity, CORS and contract validity.';
       return { ...(retained ? serviceContractSummary(service) : { service }), status: 'failed', retainedContract: retained, message: `${message}${retained ? ' Previous contract retained.' : ''}` };
     } finally { clearTimeout(timer); }
   }));

@@ -22,7 +22,7 @@ class KnowledgeCompanion:
         configured = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1")
         return configured if configured.endswith("/api/v1") else f"{configured}/api/v1"
 
-    async def ask(self, message: str, *, headers: dict | None = None, ontology_id: str = '') -> dict[str, Any]:
+    async def ask(self, message: str, *, headers: dict | None = None, ontology_id: str = '', on_token=None) -> dict[str, Any]:
         query = " ".join(str(message or "").split())
         if not query:
             raise ValueError("message is required")
@@ -77,11 +77,15 @@ class KnowledgeCompanion:
         response_text = f"Grounded graph matches: {', '.join(labels[:6])}."
         if relation_types:
             response_text += f" Connected relationship types: {', '.join(relation_types[:6])}."
+        if on_token:
+            await on_token(response_text)
         generation = {'enabled': False, 'status': 'disabled'}
         if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true':
             try:
                 from .local_llm import summarize
-                summary = await summarize(query, evidence)
+                if on_token:
+                    await on_token('\n\nModel-assisted summary (review against the evidence): ')
+                summary = await summarize(query, evidence, on_token=on_token) if on_token else await summarize(query, evidence)
                 response_text += '\n\nModel-assisted summary (review against the evidence): ' + summary
                 generation = {'enabled': True, 'status': 'completed', 'provider': 'ollama'}
             except Exception:

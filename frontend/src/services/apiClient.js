@@ -10,7 +10,7 @@ import logger from '../utils/logger';
 import agenticAPI from './agenticApi';
 import { reportRunRecovery } from './runRecovery';
 import { notifyOntologyChange } from '../utils/ontologyEvents';
-import { serviceAuthHeaders, getCredentialProfile, setCredentialProfile, handleSessionRejection } from './serviceAuth';
+import { serviceAuthHeaders, getCredentialProfile, setCredentialProfile, handleSessionRejection, requireServiceReadAccess } from './serviceAuth';
 
 /**
  * Create axios instance with base configuration
@@ -144,6 +144,7 @@ apiClient.interceptors.request.use(
       const credentials = serviceAuthHeaders(requestConfig.url, requestConfig.method);
       if (explicit || requestConfig.headers.get?.('X-API-Key') || requestConfig.headers['X-API-Key']) { delete credentials.Authorization; delete credentials['X-API-Key']; }
       Object.assign(requestConfig.headers, credentials);
+      requireServiceReadAccess(requestConfig);
     }
     if (getCredentialProfile('ADMIN_API_KEY') && isStandaloneServiceRequest(requestConfig.url) && String(requestConfig.url || '').includes('/api/v1/admin/')) {
       requestConfig.headers = requestConfig.headers || {};

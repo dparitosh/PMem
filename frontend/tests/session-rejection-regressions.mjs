@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
 const events = [];
-const scope = { Map, Date, Event, setTimeout: () => 1, clearTimeout: () => {},
+const scope = { Map, Date, Event, URL, setTimeout: () => 1, clearTimeout: () => {},
   window: { dispatchEvent: event => events.push(event.type) },
-  config: {}, operationForUrl: () => null };
+  config: { semanticServiceUrls: { graph: 'http://service' } }, operationForUrl: () => null };
 vm.createContext(scope);
 const source = readFileSync(new URL('../src/services/serviceAuth.js', import.meta.url), 'utf8')
   .replace(/^import .*;\r?\n/gm, '').replace(/export /g, '');
@@ -13,7 +13,7 @@ const token = 'depo_session_fixture';
 const connect = () => {
   scope.setCredentialProfile('GRAPH_READ_TOKEN', token);
   scope.setCredentialProfile('INGESTION_WRITE_TOKEN', token);
-  scope.setBrowserSessionExpiry(token, '2099-01-01T00:00:00Z');
+  scope.setBrowserSessionExpiry(token, new Date(Date.now() + 600000).toISOString());
 };
 connect();
 assert.equal(scope.serviceAuthHeaders('http://service/read').Authorization, `Bearer ${token}`);

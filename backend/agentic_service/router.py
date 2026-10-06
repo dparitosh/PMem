@@ -273,6 +273,10 @@ def companion_validate(payload: ChatRequest) -> dict:
 
 @router.post("/chat", dependencies=[Depends(graph_read_identity)])
 async def companion_chat(payload: ChatRequest, request: Request) -> dict:
+    return await _companion_chat(payload, request)
+
+
+async def _companion_chat(payload: ChatRequest, request: Request, on_token=None) -> dict:
     payload = payload.model_dump()
     message = " ".join(str(payload.get("message") or "").split())
     if not message:
@@ -300,7 +304,10 @@ async def companion_chat(payload: ChatRequest, request: Request) -> dict:
             from .local_llm import settings
             generation_budget = settings()[3]
         async with asyncio.timeout(float(os.getenv('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', '15')) + generation_budget + 5):
-            result = await companion.ask(query, headers=headers, ontology_id=(payload.get('graph_context') or {}).get('ontology', ''))
+            kwargs = {'headers': headers, 'ontology_id': (payload.get('graph_context') or {}).get('ontology', '')}
+            if on_token:
+                kwargs['on_token'] = on_token
+            result = await companion.ask(query, **kwargs)
         if (not isinstance(result, dict) or not isinstance(result.get('response'), str)
                 or not isinstance(result.get('evidence'), list) or not isinstance(result.get('sources'), list)
                 or not isinstance(result.get('answerable'), bool)):
@@ -344,7 +351,7 @@ def companion_job_status(job_id: str, request: Request) -> dict:
     if record.get('owner') != sessions.owner(request, graph_read_identity(request)):
         raise HTTPException(403, 'Chat job belongs to another identity')
     sessions.open_session(request, graph_read_identity(request), record['session_id'])
-    return {key: value for key, value in record.items() if key != 'owner'}
+    return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}
 
 
 @router.get("/chat/health")
@@ -366,14 +373,59 @@ def companion_capabilities() -> dict:
 
 @router.post("/chat-stream", dependencies=[Depends(graph_read_identity)])
 async def companion_stream(payload: ChatRequest, request: Request) -> StreamingResponse:
-    response = await companion_chat(payload, request)
+    actor = graph_read_identity(request)
+    session = await _agent_io(sessions.open_session, request, actor, payload.session_id)
+    payload = payload.model_copy(update={'session_id': session['session_id']})
 
     async def events():
-        yield f"data: {json.dumps({'token': response['response']})}\n\n"
-        yield f"data: {json.dumps({'evidence': response['evidence'], 'sources': response['sources'], 'answerable': response['answerable']})}\n\n"
-        yield "data: {\"done\": true}\n\n"
+        queue = asyncio.Queue(maxsize=32)
+        async def token(text):
+            await queue.put({'token': text})
+        async def produce():
+            try:
+                result = await _companion_chat(payload, request, on_token=token)
+                await queue.put({'response': result['response'], 'evidence': result['evidence'],
+                    'sources': result['sources'], 'answerable': result['answerable'], 'run_id': result['run_id']})
+                await queue.put({'done': True})
+            except Exception:
+                await queue.put({'error': 'Knowledge companion stream failed; no complete answer was retained'})
+        task = asyncio.create_task(produce())
+        try:
+            yield 'data: {"status": "Retrieving graph evidence"}\n\n'
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield f'data: {json.dumps(event)}\n\n'
+                if event.get('done') or event.get('error'):
+                    break
+        finally:
+            task.cancel()
+            from contextlib import suppress
+            with suppress(asyncio.CancelledError):
+                await task
 
-    return StreamingResponse(events(), media_type="text/event-stream", headers={'X-Session-ID': response['session_id'], 'X-Session-Expires-At': response['session_expires_at']})
+    return StreamingResponse(events(), media_type='text/event-stream', headers={
+        'X-Session-ID': session['session_id'], 'X-Session-Expires-At': session['expires_at'],
+        'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+@router.post('/agents/{agent_id}/suggest', dependencies=[Depends(graph_read_identity)])
+async def suggest_agent_tool(agent_id: str, payload: dict[str, Any], request: Request) -> dict:
+    """Use an agent's configured prompt to propose one allowlisted tool; never execute it."""
+    from .local_llm import suggest_tool
+    try:
+        agent = catalog.item('agents', agent_id)
+        selected = [catalog.item('tools', identifier) for identifier in agent.get('tools', [])]
+        suggestion = await suggest_tool(agent, selected, payload.get('task'))
+        command = {'agent_id': agent_id, 'tool_id': suggestion['tool_id'], 'inputs': suggestion.get('inputs', {})}
+        planned = plan(command)
+        await _preflight_tools([command], request)
+        return {**planned, 'command': command, 'status': 'proposal', 'execution': 'requires_explicit_run_request'}
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(422, 'Agent returned an invalid or incomplete tool proposal') from exc
+    except (httpx.HTTPError, TimeoutError) as exc:
+        raise HTTPException(503, 'Agent model or tool contract is unavailable') from exc
+
 
 @router.post("/plans")
 def plan(payload: dict[str, Any]) -> dict:
@@ -457,6 +509,56 @@ async def _bounded_tool_request(client, method, endpoint, **kwargs):
         return httpx.Response(response.status_code, headers=response.headers, content=content, request=response.request)
 
 
+async def _preflight_tools(commands, request, *, deferred=False):
+    from .input_contracts import validate_operation, validate_bindings
+    documents = {}
+    async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
+        for index, command in enumerate(commands):
+            if deferred:
+                validate_bindings(command.get('inputs', {}), index)
+            tool = plan(command)['tool']
+            inputs = command.get('inputs', {})
+            if tool.get('transport') == 'mcp':
+                catalog.item('mcp_servers', tool['server_id'])
+                if not tool.get('name'):
+                    raise ValueError('MCP tool requires a configured native name')
+                from .mcp_transport import invoke
+                from .input_contracts import validate
+                listed = await invoke(catalog.item('mcp_servers', tool['server_id']), 'tools/list')
+                if not isinstance(listed.get('tools'), list) or any(not isinstance(row, dict) for row in listed['tools']):
+                    raise ValueError('Invalid MCP tool list')
+                native = next((row for row in listed['tools'] if row.get('name') == tool['name']), None)
+                if native is None:
+                    raise ValueError('Configured MCP tool is absent from its server')
+                if (native.get('annotations') or {}).get('readOnlyHint') is False and not tool.get('mutates'):
+                    raise ValueError('MCP tool mutation classification conflicts with its catalog')
+                schema = native.get('inputSchema', {})
+                validate(inputs, schema, schema, deferred=deferred)
+                continue
+            if tool.get('transport') != 'openapi':
+                raise ValueError('Unsupported tool transport')
+            if tool.get('input_kind') == 'multipart' and not (deferred and isinstance(inputs.get('file'), str) and inputs['file'].startswith('$steps.')):
+                _multipart(inputs, 'artifact' if tool['id'] == 'ontology.register' else 'file')
+            service = tool['service']
+            if service not in documents:
+                url = _base(service).removesuffix('/api/v1') + '/openapi.json'
+                response = await _bounded_tool_request(client, 'GET', url, headers=downstream_headers(request, url, tool=tool))
+                documents[service] = response.json()
+            validate_operation(documents[service], tool, inputs, deferred=deferred)
+    return documents
+
+
+@router.get('/mcp-servers/{server_id}/tools', dependencies=[Depends(graph_read_identity)])
+async def discover_mcp_tools(server_id: str, cursor: str | None = None):
+    from .mcp_transport import invoke
+    try:
+        if cursor is not None and len(cursor) > 1024:
+            raise ValueError('MCP discovery cursor exceeds 1024 characters')
+        return await invoke(catalog.item('mcp_servers', server_id), 'tools/list', {'cursor': cursor} if cursor else {})
+    except (ValueError, OSError, TimeoutError) as exc:
+        raise HTTPException(503, 'MCP discovery failed; check the configured server installation') from exc
+
+
 async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
     plan_result = plan(payload)
     approved_by = None
@@ -467,14 +569,26 @@ async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
     if not isinstance(payload.get('inputs', {}), dict):
         raise HTTPException(422, 'inputs must be an object')
     tool, inputs = plan_result["tool"], dict(payload.get("inputs") or {})
-    if tool.get("transport") != "openapi":
-        raise HTTPException(status_code=501, detail="This transport is catalogued but not HTTP-executable")
+    if tool.get('transport') == 'mcp':
+        from .mcp_transport import invoke
+        # Mutating MCP tools need an explicit downstream approval contract too.
+        arguments = downstream_inputs(tool, inputs, approved_by)
+        try:
+            await _preflight_tools([payload], request)
+            result = await invoke(catalog.item('mcp_servers', tool['server_id']), 'tools/call',
+                                  {'name': tool['name'], 'arguments': arguments})
+            return {'agent_id': plan_result['agent'], 'tool_id': tool['id'], 'result': result}
+        except (ValueError, OSError, TimeoutError) as exc:
+            raise HTTPException(503, 'MCP tool failed; inspect server status before retrying') from exc
+    if tool.get('transport') != 'openapi':
+        raise HTTPException(422, 'Unsupported tool transport')
     try:
+        await _preflight_tools([payload], request)
         path = _render(str(tool["path"]), inputs)
         endpoint = _base(tool["service"]) + path
         headers = downstream_headers(request, endpoint, tool=tool)
         inputs = downstream_inputs(tool, inputs, approved_by)
-        async with httpx.AsyncClient(timeout=float(os.getenv("AGENTIC_TOOL_TIMEOUT_SECONDS", "30"))) as client:
+        async with httpx.AsyncClient(timeout=float(os.getenv("AGENTIC_TOOL_TIMEOUT_SECONDS", "30")), trust_env=False) as client:
             if tool.get("input_kind") == "multipart":
                 form, files = _multipart(inputs, 'artifact' if tool['id'] == 'ontology.register' else 'file')
                 response = await _bounded_tool_request(client, tool["method"], endpoint, headers=headers, data=form, files=files)
@@ -538,6 +652,18 @@ def tool_run(run_id: str) -> dict:
 
 @router.post('/workflow-runs')
 async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
+    return await _execute_workflow(payload, request)
+
+
+async def _persist_workflow(record):
+    current = await _agent_io(workflow_store.get, record['run_id'])
+    if not current or current.get('execution_id') != record['execution_id']:
+        raise HTTPException(409, 'Workflow execution ownership changed')
+    if not await _agent_io(workflow_store.compare_and_put, record['run_id'], current, record):
+        raise HTTPException(409, 'Workflow state changed concurrently')
+
+
+async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=None) -> dict:
     """Execute a bounded workflow; uncertain writes require reconciliation."""
     record = observation = None
     dispatched_mutation = False
@@ -556,6 +682,8 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
             raise ValueError('step_inputs must contain one object for each workflow step')
         if not isinstance(payload.get('inputs', {}), dict):
             raise ValueError('inputs must be an object')
+        commands = [{**step, 'inputs': {**(requested[index] if requested is not None else payload.get('inputs', {})), **step.get('input_bindings', {})}} for index, step in enumerate(workflow['steps'])]
+        await _preflight_tools(commands, request, deferred=True)
         retries_by_step = []
         for step in workflow['steps']:
             retries = int(step.get('retries', 0))
@@ -563,17 +691,33 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
                 raise ValueError('Workflow retries must be between zero and five')
             retries_by_step.append(retries)
         timeout = float(os.getenv('AGENTIC_RUN_TIMEOUT_SECONDS', '300'))
-        run_id = f'run-{uuid4()}'
+        run_id = recovery['run_id'] if recovery else f'run-{uuid4()}'
         request_id = getattr(request.state, 'request_id', '')
         observation, observed_at = await _agent_io(telemetry.start, operation='workflow', request_id=request_id, workflow_id=workflow['id'], workflow_run_id=run_id)
         record = {'owner': sessions.owner(request, actor), 'run_id': run_id, 'telemetry_run_id': observation['run_id'], 'workflow_id': workflow['id'], 'request_id': request_id,
                   'status': 'running', 'started_at': _now(), 'updated_at': _now(),
                   'deadline_at': (datetime.now(timezone.utc) + timedelta(seconds=timeout)).isoformat(), 'traces': []}
-        await _agent_io(workflow_store.put, run_id, record)
+        from .recovery import execution_payload, fingerprint
+        definition = {'workflow': workflow, 'steps': planned['steps']}
+        record.update(execution_id=uuid4().hex, execution_payload=execution_payload(payload),
+                      workflow_definition=definition, workflow_digest=fingerprint(definition))
+        if recovery:
+            record.update(owner=recovery.get('owner', record['owner']), traces=recovery['traces'], deadline_at=recovery['deadline_at'], started_at=recovery['started_at'],
+                          reconciliations=recovery.get('reconciliations', []),
+                          recovery_history=[*recovery.get('recovery_history', []), {'actor': actor, 'request_id': request_id, 'recovered_at': _now(), 'previous_telemetry_run_id': recovery.get('telemetry_run_id')}])
+            timeout = (datetime.fromisoformat(record['deadline_at']) - datetime.now(timezone.utc)).total_seconds()
+            if timeout <= 0:
+                raise HTTPException(409, 'The original workflow deadline has expired')
+            if not await _agent_io(workflow_store.compare_and_put, run_id, recovery.get('_expected_record', recovery), record):
+                raise HTTPException(409, 'Recovery was claimed by another execution')
+        else:
+            await _agent_io(workflow_store.create, run_id, record)
         async with asyncio.timeout(timeout):
             for index, step in enumerate(workflow['steps']):
+                if index < len(record['traces']):
+                    continue
                 active_step, attempt = step, 0
-                inputs = _resolve_inputs(requested[index] if requested is not None else payload.get('inputs', {}), record['traces'])
+                inputs = _resolve_inputs({**(requested[index] if requested is not None else payload.get('inputs', {})), **step.get('input_bindings', {})}, record['traces'])
                 command = {**step, 'approval_required': approved_workflow or step.get('approval_required', False),
                            'inputs': inputs, 'approved_by': payload.get('approved_by'), 'approval_token': payload.get('approval_token')}
                 tool = planned['steps'][index]['tool']
@@ -583,12 +727,14 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
                     tool_started = time.perf_counter()
                     try:
                         dispatched_mutation = bool(tool.get('mutates'))
+                        record.update(pending_step={'sequence': index+1, 'tool_id': step['tool_id'], 'attempt': attempt, 'mutates': dispatched_mutation}, updated_at=_now())
+                        await _persist_workflow(record)
                         result = await _dispatch(command, request)
                         duration = (time.perf_counter() - tool_started)*1000
                         record['traces'].append({'sequence': index+1, 'tool_id': step['tool_id'], 'attempt': attempt, 'status': 'completed', 'duration_ms': round(duration, 2), 'result': result.get('result', {})})
                         await _agent_io(_tool_span, observation, tool_id=step['tool_id'], attempt=attempt, status='completed', duration_ms=duration)
-                        record['updated_at'] = _now()
-                        await _agent_io(workflow_store.put, run_id, record)
+                        record.update(updated_at=_now(), pending_step=None)
+                        await _persist_workflow(record)
                         dispatched_mutation = False
                         active_step = None
                         break
@@ -600,12 +746,21 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
                         raise
             await workflow_checkpoint(workflow_controls, run_id)
         record.update(status='completed', finished_at=_now(), updated_at=_now())
-        await _agent_io(workflow_store.put, run_id, record)
+        await _persist_workflow(record)
         await _agent_io(_finish_observation, observation, observed_at, status='completed')
-        return {key: value for key, value in record.items() if key != 'owner'}
+        return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}
     except BaseException as exc:
         status = 'cancelled' if isinstance(exc, WorkflowCancelled) else 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
         if record is not None:
+            if dispatched_mutation:
+                try:
+                    retained = await _agent_io(workflow_store.get, record['run_id'])
+                except Exception:
+                    retained = None
+                    logger.exception('Unable to read retained write intent')
+                if retained and retained.get('execution_id') == record['execution_id'] and retained.get('pending_step'):
+                    record['pending_step'] = retained['pending_step']
+                    record['traces'] = retained['traces']
             record.update(status=status, finished_at=_now(), updated_at=_now(), error_type=type(exc).__name__, reconciliation_required=dispatched_mutation)
             if active_step:
                 record['traces'].append({'sequence': len(record['traces'])+1, 'tool_id': active_step['tool_id'], 'attempt': attempt, 'status': status, 'error_type': type(exc).__name__})
@@ -613,7 +768,7 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
             # replace the original exception; deadline-based reads expose an
             # interrupted process even if final persistence could not succeed.
             try:
-                await _agent_io(workflow_store.put, record['run_id'], record)
+                await _persist_workflow(record)
             except Exception:
                 logger.exception('Unable to persist terminal workflow state')
         if observation is not None:
@@ -625,7 +780,7 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
             except Exception:
                 logger.exception('Unable to persist terminal workflow telemetry')
         if isinstance(exc, WorkflowCancelled) and record:
-            return {key: value for key, value in record.items() if key != 'owner'}
+            return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}
         if isinstance(exc, (KeyError, ValueError, TypeError)):
             raise HTTPException(422, str(exc), headers={'X-DEPO-Run-ID': record['run_id']} if record else None) from exc
         if isinstance(exc, TimeoutError):
@@ -635,6 +790,43 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
         if isinstance(exc, (HTTPException, asyncio.CancelledError)) or not isinstance(exc, Exception):
             raise
         raise HTTPException(503, 'Workflow execution failed; inspect run state before retrying', headers={'X-DEPO-Run-ID': record['run_id']} if record else None) from exc
+
+
+@router.post('/workflow-runs/{run_id}/reconcile')
+async def reconcile_workflow(run_id: str, payload: dict[str, Any], request: Request) -> dict:
+    from .recovery import reconcile
+    actor = approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
+    record = await _agent_io(workflow_store.get, run_id)
+    if not record:
+        raise HTTPException(404, 'Workflow run not found')
+    try:
+        updated = reconcile(record, payload.get('outcome'), payload.get('evidence'), actor, payload.get('result'), payload.get('executor_stopped', False))
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if not await _agent_io(workflow_store.compare_and_put, run_id, record, updated):
+        raise HTTPException(409, 'Workflow changed during reconciliation')
+    return {'run_id': run_id, 'status': updated['status'], 'reconciliation_required': False}
+
+
+@router.post('/workflow-runs/{run_id}/recover')
+async def recover_workflow(run_id: str, payload: dict[str, Any], request: Request) -> dict:
+    from .recovery import prepare_recovery
+    approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
+    record = await _agent_io(workflow_store.get, run_id)
+    if not record:
+        raise HTTPException(404, 'Workflow run not found')
+    try:
+        workflow = catalog.item('workflows', record['workflow_id'])
+        definition = {'workflow': workflow, 'steps': workflow_plan({'workflow_id': record['workflow_id']})['steps']}
+        recovery = prepare_recovery(record, definition)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    command = {**recovery['execution_payload'], 'approved_by': payload.get('approved_by'), 'approval_token': payload.get('approval_token')}
+    # Reauthorize before claiming so a rejected caller cannot strand the run.
+    if any(step['requires_approval'] for step in workflow_plan(command)['steps']):
+        approval_identity(request, command, token_env='AGENTIC_APPROVAL_TOKEN')
+    recovery['_expected_record'] = record
+    return await _execute_workflow(command, request, recovery=recovery)
 
 
 @router.post("/workflow-runs/{run_id}/control", summary="Pause, resume or cancel at the next tool boundary")
@@ -662,22 +854,26 @@ def control_workflow(run_id: str, payload: dict[str, Any], request: Request) -> 
 
 @router.get("/workflow-runs/{run_id}")
 def workflow_run(run_id: str, request: Request) -> dict:
-    record = workflow_store.get(run_id)
-    if not record: raise HTTPException(404, "Workflow run not found")
     from backend.depo_platform.authorization import service_write_identity
+    actor = None
     try:
         service_write_identity(request, token_env='AGENTIC_APPROVAL_TOKEN', default_actor='agent-supervisor')
     except HTTPException:
         actor = graph_read_identity(request)
-        if not record.get('owner') or record['owner'] != sessions.owner(request, actor):
-            raise HTTPException(403, 'Workflow belongs to another identity or requires supervisory access')
+    record = workflow_store.get(run_id)
+    if not record:
+        raise HTTPException(404, 'Workflow run not found')
+    if actor is not None and (not record.get('owner') or record['owner'] != sessions.owner(request, actor)):
+        raise HTTPException(403, 'Workflow belongs to another identity or requires supervisory access')
     if record.get('status') == 'running' and record.get('deadline_at') and datetime.now(timezone.utc) >= datetime.fromisoformat(record['deadline_at']):
         # A process may die before writing its terminal state. This projection
         # does not overwrite a concurrently completing run or repeat its writes.
-        return {**{key: value for key, value in record.items() if key != 'owner'}, 'status': 'interrupted', 'reconciliation_required': True,
+        return {**{key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}, 'status': 'interrupted', 'reconciliation_required': True,
                 'error_type': 'ExecutionDeadlineElapsed', 'state_source': 'deadline_projection'}
+    if record.get('status') == 'running' and (datetime.now(timezone.utc) - datetime.fromisoformat(record['updated_at'])).total_seconds() >= 60 and not (record.get('pending_step') or {}).get('mutates'):
+        return {**{key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}, 'status': 'interrupted', 'state_source': 'inactivity_projection'}
     control = workflow_controls.get(run_id) or {}
-    return {**{key: value for key, value in record.items() if key != 'owner'}, 'control': control}
+    return {**{key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}, 'control': control}
 
 
 @router.get("/observability/summary", dependencies=[Depends(graph_read_identity)])

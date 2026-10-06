@@ -6,7 +6,10 @@ const profileTokens = new Map();
 export function setCredentialProfile(profile, value) {
   if (!/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile)) throw new Error('Invalid credential profile');
   const token = String(value || '').trim();
-  if (profile === 'GRAPH_READ_TOKEN') { serviceToken = token; persistBrowserSession(); return; }
+  if (profile === 'GRAPH_READ_TOKEN') {
+    if (browserSession && token !== browserSession.token) expireBrowserSession(browserSession.token);
+    serviceToken = token; persistBrowserSession(); return;
+  }
   if (token) profileTokens.set(profile, token); else profileTokens.delete(profile);
   persistBrowserSession();
 }
@@ -71,7 +74,7 @@ export function expireBrowserSession(token) {
 
 export function setBrowserSessionExpiry(token, expiresAt) {
   const deadline = Date.parse(expiresAt);
-  if (!token?.startsWith('depo_session_') || !Number.isFinite(deadline) || deadline <= Date.now()) throw new Error('Central session expiry is invalid or already elapsed.');
+  if (!token?.startsWith('depo_session_') || !Number.isFinite(deadline) || deadline <= Date.now() || deadline > Date.now() + 15 * 60 * 1000) throw new Error('Central session expiry must be within the next fifteen minutes.');
   clearTimeout(expiryTimer);
   browserSession = { token, deadline };
   expiryTimer = setTimeout(() => expireBrowserSession(token), Math.min(deadline - Date.now(), 2147483647));
@@ -87,8 +90,7 @@ export function getGatewaySubscriptionKey() {
 }
 
 export function setServiceAuthToken(value) {
-  serviceToken = String(value || '').trim();
-  persistBrowserSession();
+  setCredentialProfile('GRAPH_READ_TOKEN', value);
 }
 
 export function clearServiceAuthToken() {
@@ -114,10 +116,39 @@ export function getBrowserSessionStatus() {
   return { expiresAt: new Date(browserSession.deadline).toISOString(), profiles };
 }
 
+// These reads have the same server-owned authorization contract even before
+// OpenAPI discovery finishes. Never let contract import remove their read key.
+function isServiceRead(endpoint, method) {
+  if (String(method).toLowerCase() !== 'get') return false;
+  try {
+    const target = new URL(endpoint);
+    return Object.entries(config.semanticServiceUrls || {}).some(([service, base]) => {
+      if (!base) return false;
+      const root = new URL(base);
+      if (target.origin !== root.origin || target.username || target.password) return false;
+      const path = target.pathname.slice(root.pathname.replace(/\/$/, '').length);
+      if (!target.pathname.startsWith(`${root.pathname.replace(/\/$/, '')}/`)) return false;
+      return ({ graph: /^\/api\/v1\/graph\/metrics\/?$/, agentic: /^\/api\/v1\/observability\/summary\/?$/, catalog: /^\/api\/v1\/catalog\/products\/?$/, dataProducts: /^\/api\/v1\/data-products\/?$/ })[service]?.test(path) || false;
+    });
+  } catch { return false; }
+}
+
+export function requireServiceReadAccess(request) {
+  if (!isServiceRead(request.url, request.method || 'get')) return;
+  const authorization = request.headers?.get?.('Authorization') || request.headers?.Authorization || request.headers?.authorization;
+  const apiKey = request.headers?.get?.('X-API-Key') || request.headers?.['X-API-Key'];
+  if (authorization || apiKey) return;
+  const error = new Error('Service read access is not connected or has expired. Open Admin → Connect registered services. PostgreSQL keys do not need to be re-entered individually.');
+  error.code = 'DEPO_READ_ACCESS_REQUIRED';
+  error.config = request;
+  throw error;
+}
+
 export function serviceAuthHeaders(endpoint = '', method = 'get', subscription = gatewaySubscriptionKey) {
   checkBrowserSessionExpiry();
+  if (!isConfiguredServiceEndpoint(endpoint)) return {};
   const operation = operationForUrl(endpoint, method);
-  const profile = operation?.profiles.length === 1 ? operation.profiles[0] : null;
+  const profile = isServiceRead(endpoint, method) ? 'GRAPH_READ_TOKEN' : operation?.profiles.length === 1 ? operation.profiles[0] : null;
   const token = profile ? getCredentialProfile(profile) : (operation && (operation.profiles.length || operation.secured) ? '' : serviceToken);
   let subscriptionAllowed = false;
   if (subscription && config.gatewayUrl) {
@@ -134,4 +165,18 @@ export function serviceAuthHeaders(endpoint = '', method = 'get', subscription =
     ...(token ? (profile === 'ADMIN_API_KEY' ? { 'X-API-Key': token } : { Authorization: `Bearer ${token}` }) : {}),
     ...(subscriptionAllowed ? { 'Ocp-Apim-Subscription-Key': subscription } : {}),
   };
+}
+
+function isConfiguredServiceEndpoint(endpoint) {
+  try {
+    const target = new URL(endpoint);
+    const decoded = decodeURIComponent(target.pathname);
+    if (target.username || target.password || decoded.includes('\\') || decoded.split('/').some(part => part === '.' || part === '..')) return false;
+    return Object.values(config.semanticServiceUrls || {}).some(base => {
+      if (!base) return false;
+      const root = new URL(base);
+      const path = root.pathname.replace(/\/$/, '');
+      return target.origin === root.origin && (decoded === path || decoded.startsWith(`${path}/`));
+    });
+  } catch { return false; }
 }

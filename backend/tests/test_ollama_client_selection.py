@@ -17,7 +17,7 @@ class ClientSelection(unittest.TestCase):
         ns={'ChatOllama':Chat,'OllamaLLM':Generate,'OLLAMA_BASE_URL':'http://custom', 'LLM_MODEL_NAME':'test',
             'OLLAMA_API_KEY':'fixture','UNSTRUCTURED_OLLAMA_BASE_URL':'http://custom/api/generate',
             'UNSTRUCTURED_LLM_MODEL_NAME':'documents','UNSTRUCTURED_OLLAMA_API_KEY':'fixture',
-            '_normalize_ollama_base_url':ollama_base_url,'ollama_timeout':lambda:30,'ollama_headers':ollama_headers}
+            'ollama_base_url':ollama_base_url,'_normalize_ollama_base_url':ollama_base_url,'ollama_timeout':lambda:30,'ollama_headers':ollama_headers}
         exec(compile(ast.Module(body=nodes,type_ignores=[]),'<actual factories>','exec'),ns)
         return ns,Chat,Generate
 
@@ -29,6 +29,7 @@ class ClientSelection(unittest.TestCase):
             tools=ns['_init_ollama_tool_llm']()
             self.assertIsInstance(tools,Chat)
             self.assertEqual(tools.settings['base_url'],'http://tools')
+            self.assertFalse(tools.settings['client_kwargs']['trust_env'])
             self.assertEqual(tools.settings['client_kwargs']['headers'],{'api-key':'fixture'})
             self.assertIs(tools.bind_tools([]),tools)
 

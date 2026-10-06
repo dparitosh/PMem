@@ -191,6 +191,13 @@ function App() {
   }, []);
 
   const [serviceAuthRevision, setServiceAuthRevision] = useState(0);
+  const handleServiceAuthChange = useCallback(() => {
+    setData(undefined);
+    setSearchResults(null);
+    setChatResults(null);
+    setVisibleRelationships(null);
+    setServiceAuthRevision(revision => revision + 1);
+  }, []);
   const graphProps = useMemo(() => ({
     graphData: data,
     setData,
@@ -208,7 +215,7 @@ function App() {
   return (
     <ErrorBoundary>
       <OntologyProvider>
-        <SchemaProvider>
+        <SchemaProvider key={`schema-${serviceAuthRevision}`}>
           <div style={{ minHeight: '100dvh' }}>
             <AppShell
             activePage={page === 'home' ? 'home' : activePage}
@@ -220,7 +227,7 @@ function App() {
             showChat={showChat}
             onToggleChat={toggleChat}
             serviceStatus={serviceStatus}
-            onServiceAuthChange={() => setServiceAuthRevision((revision) => revision + 1)}
+            onServiceAuthChange={handleServiceAuthChange}
             rightDrawer={(
               <ErrorBoundary>
                 <Suspense fallback={<PageFallback />}>

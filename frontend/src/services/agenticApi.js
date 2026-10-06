@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { reportRunRecovery } from './runRecovery';
 import { config, API, buildSemanticServiceUrl } from '../config';
-import { serviceAuthHeaders, handleSessionRejection } from './serviceAuth';
+import { serviceAuthHeaders, handleSessionRejection, requireServiceReadAccess } from './serviceAuth';
 
 const agenticClient = axios.create({
   baseURL: undefined,
@@ -17,6 +17,7 @@ export function applyAgenticAuth(requestConfig) {
   const credentials = serviceAuthHeaders(requestConfig.url, requestConfig.method);
   if (explicit || requestConfig.headers.get?.('X-API-Key') || requestConfig.headers['X-API-Key']) { delete credentials.Authorization; delete credentials['X-API-Key']; }
   Object.assign(requestConfig.headers, credentials);
+  requireServiceReadAccess(requestConfig);
   return requestConfig;
 }
 

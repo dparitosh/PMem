@@ -2963,9 +2963,6 @@ const boundaryForce = (width, height) => {
             (graphData.nodes && graphData.nodes.length > 0) ? graphData :
             { nodes: [], links: [] }));
     const renderData = { ...sourceRenderData, nodes: reconcileSimulationNodes(sourceRenderData.nodes, simulationRef.current?.nodes() || []) };
-    const layoutKey = JSON.stringify([width, height, graphViewMode, showNodeLabels]);
-    layoutChanged = simulationLayoutRef.current !== layoutKey;
-    simulationLayoutRef.current = layoutKey;
     const nodeCount = renderData.nodes.length;
 
     if (!hasData) {
@@ -3045,6 +3042,9 @@ const boundaryForce = (width, height) => {
     const processedLinks = processLinksForOffset([...safeRenderLinks]);
     const linkCount = processedLinks.length;
     const showNodeLabels = shouldRenderNodeLabels(nodeCount, linkCount, graphSearchActive, graphViewMode);
+    const layoutKey = JSON.stringify([width, height, graphViewMode, showNodeLabels]);
+    layoutChanged = simulationLayoutRef.current !== layoutKey;
+    simulationLayoutRef.current = layoutKey;
     const nodeLabelStyle = getNodeLabelStyle(nodeCount, graphViewMode);
     const shouldClusterDenseGraph = graphViewMode === 'ontology' && !graphSearchActive && nodeCount > 140;
     const clusterStrength = shouldClusterDenseGraph ? 0.045 : 0.028;

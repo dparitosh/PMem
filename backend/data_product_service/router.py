@@ -97,19 +97,24 @@ async def _register_catalog(record: dict) -> dict:
     catalog_url = os.getenv("DATA_CATALOG_URL", "").rstrip("/")
     catalog_token = os.getenv("CATALOG_SERVICE_TOKEN", "")
     attempts = int(record.get("catalog_attempts", 0)) + 1
+    delay = min(3600, 2 ** min(attempts, 10))
+    retry_metadata = {"catalog_attempts": attempts, "last_catalog_attempt_at": _now(),
+                      "next_catalog_attempt_at": (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()}
     if not catalog_url:
-        return {**record, "status": "pending_catalog_registration", "catalog_attempts": attempts, "catalog_error": "DATA_CATALOG_URL is not configured"}
+        return {**record, **retry_metadata, "status": "pending_catalog_registration", "catalog_error": "DATA_CATALOG_URL is not configured"}
+    # Accept both service origins and roots that already include /api/v1.
+    if not catalog_url.endswith('/api/v1'):
+        catalog_url += '/api/v1'
     try:
         if not catalog_token:
-            return {**record, "status": "pending_catalog_registration", "catalog_attempts": attempts, "catalog_error": "CATALOG_SERVICE_TOKEN is not configured"}
-        async with httpx.AsyncClient(timeout=10) as client:
+            return {**record, **retry_metadata, "status": "pending_catalog_registration", "catalog_error": "CATALOG_SERVICE_TOKEN is not configured"}
+        async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
             from backend.depo_platform.network import gateway_subscription_headers
             response = await client.put(f"{catalog_url}/catalog/products/{record['product_id']}/versions/{record['version']}", json=_catalog_payload(record), headers={**gateway_subscription_headers(catalog_url), "X-DEPO-Service-Token": catalog_token})
             response.raise_for_status()
     except httpx.HTTPError as exc:
-        delay = min(3600, 2 ** min(attempts, 10))
-        return {**record, "status": "pending_catalog_registration", "catalog_attempts": attempts, "catalog_error": str(exc), "last_catalog_attempt_at": _now(), "next_catalog_attempt_at": (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()}
-    return {**record, "status": "revoked" if record.get("lifecycle_state") == "revoked" else "published", "catalog_attempts": attempts, "catalog_error": None, "catalog_registered_at": _now()}
+        return {**record, **retry_metadata, "status": "pending_catalog_registration", "catalog_error": str(exc)}
+    return {**record, "status": "revoked" if record.get("lifecycle_state") == "revoked" else "published", "catalog_attempts": attempts, "catalog_error": None, "next_catalog_attempt_at": None, "catalog_registered_at": _now()}
 
 
 async def reconcile_pending(limit: int = 100) -> dict:
@@ -201,6 +206,10 @@ async def revoke(product_version: str, payload: dict, request: Request) -> dict:
             raise HTTPException(404, "Data product not found")
         approver = approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
         revoked = {**record, "status": "revoked", "lifecycle_state": "revoked", "revoked_by": approver, "revoked_at": _now()}
+        # Commit the local revocation before a remote request can block, fail,
+        # or be interrupted by process shutdown. Reconciliation delivers it.
+        revoked = {**revoked, "status": "pending_catalog_registration", "next_catalog_attempt_at": None}
+        store.put(product_version, revoked)
         return store.put(product_version, await _register_catalog(revoked))
 
 

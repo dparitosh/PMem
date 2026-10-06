@@ -171,7 +171,11 @@ export default function AdminPanel({ onSchemaCleaned }) {
 
   useEffect(() => {
     loadAdminState();
+    window.addEventListener('depo:credentials-changed', loadAdminState);
+    window.addEventListener('depo:credentials-cleared', loadAdminState);
     return () => {
+      window.removeEventListener('depo:credentials-changed', loadAdminState);
+      window.removeEventListener('depo:credentials-cleared', loadAdminState);
       adminLoadControllerRef.current?.abort();
       confirmationResolverRef.current?.(false);
     };
