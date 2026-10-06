@@ -3162,3 +3162,16 @@ An unavailable service or rejected credential displays an error, not zero totals
 The landing-page ontology registry merges the native ontology catalog and the ingestion registry by immutable identity. If only one source responds, its rows remain usable and a Partial ontology list warning identifies the unavailable source. Retry registries to verify completeness. If both fail, the UI reports a load error instead of claiming the registry is empty. Schema-design drafts on Data Products show the same ontology-source warning.
 
 Data Products follows explicit service pagination rather than assuming the first 100 records are the complete list. Deploy matching backend and frontend files to enable this behavior. An older capped endpoint without pagination metadata shows a completeness warning. Catalog and product detail requests have explicit timeouts; malformed payloads, authorization errors and transport failures are shown as errors, not as successful empty lists. Catalog ordering tolerates historical records without updated_at.
+
+### Check existing configuration after upgrading
+
+For an already installed application, run this read-only audit from the repository root before installation or restart:
+
+```powershell
+Set-Location E:\App\PMem
+.\configure-depo.ps1 -CheckExisting
+```
+
+It reports settings absent from the server or frontend environment file and rejects conflicting populated VITE_/REACT_APP_ aliases. It preserves both files, hides values and does not generate or synchronize keys. Review missing settings against config/deployment.env.example and frontend/.env.example. The ordinary generator does not upgrade existing files; do not use -Force to update customer settings.
+
+Server setting changes require backend restart. Browser build settings require rebuilding the frontend. Runtime routing changes require restarting the frontend launcher. Central application-key replacements require deliberate synchronization and browser reconnection. Database migration remains an installation/startup schema step; this audit does not run it. Gateway verification uses DEPO_ROUTING_MODE=gateway. New frontend configurations leave the Agentic URL empty for centrally resolved routing and use a one-minute default request timeout. If an older generated file contains LLM_REQUEST_TIMEOUT_SECONDS twice, retain one entry with the intended value before retrying the audit.

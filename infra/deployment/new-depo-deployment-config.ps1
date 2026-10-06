@@ -26,7 +26,7 @@ function New-DeploymentSecret {
 }
 $content = Get-Content -LiteralPath $target -Raw
 $content = $content -replace '(?m)^AUTH_MODE=.*$', "AUTH_MODE=$AuthMode"
-$content = [regex]::Replace($content, '(?m)^(?<key>[A-Z0-9_]*TOKEN)=<[^>\r\n]+>$', {
+$content = [regex]::Replace($content, '(?m)^(?<key>[A-Z0-9_]*TOKEN)=<[^>\r\n]+>\r?$', {
   param($match)
   "$($match.Groups['key'].Value)=$(New-DeploymentSecret)"
 })

@@ -138,7 +138,7 @@ Invoke-DepoStage 'Service startup and endpoint validation' {
 if ($settings['AUTH_MODE'] -eq 'token' -and $settings['DEPO_CREDENTIAL_STORE'] -eq 'postgres') {
   Invoke-DepoStage 'Central browser-session authentication verification' {
     & (Join-Path $PSScriptRoot 'test-depo-browser-session.ps1') -EnvFile $envPath
-    if ($settings['DEPO_API_ROUTING_MODE'] -eq 'gateway') {
+    if ($settings['DEPO_ROUTING_MODE'] -eq 'gateway') {
       & (Join-Path $PSScriptRoot 'test-depo-browser-session.ps1') -EnvFile $envPath -Gateway
     }
   }

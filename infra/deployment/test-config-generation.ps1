@@ -17,6 +17,9 @@ try {
   $config = Join-Path $testRoot '.env.local'
   if (-not (Test-Path -LiteralPath $config)) { throw 'Default .env.local was not generated.' }
   $content = [IO.File]::ReadAllText($config)
+  . (Join-Path $root 'infra/windows/runtime-config.ps1')
+  $parsedConfiguration = Read-DepoEnvironment -Root $testRoot -EnvFile '.env.local'
+  if ($parsedConfiguration['AUTH_MODE'] -ne 'token') { throw 'Generated configuration did not pass runtime parsing.' }
   $secrets = @([regex]::Matches($content, '(?m)^(?:[A-Z0-9_]*TOKEN|ADMIN_API_KEY)=(.+)$') | ForEach-Object { $_.Groups[1].Value.Trim() } | Where-Object { $_ })
   if ($secrets.Count -lt 17 -or @($secrets | Select-Object -Unique).Count -ne $secrets.Count -or @($secrets | Where-Object { $_ -notmatch '^[A-Za-z0-9_-]{64}$' }).Count) {
     throw 'Expected distinct 384-bit bootstrap tokens and admin key.'
