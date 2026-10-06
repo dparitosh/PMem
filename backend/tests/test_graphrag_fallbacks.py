@@ -95,7 +95,8 @@ def test_deep_vector_search_uses_chunk_node_id_property(monkeypatch):
     result = vector.deep_vector_search("REQ-0001")
 
     assert captured["params"] == {"node_ids": ["chunk-1"]}
-    assert "toString(a.node_id) = node_id" in captured["query"]
+    assert "toString(chunk.node_id) IN $node_ids" in captured["query"]
+    assert "[:EMBEDDED_FROM]->(a)-[r]-(b)" in captured["query"]
     assert result["answer"] == "Grounded graph answer"
     assert result["context"]
 

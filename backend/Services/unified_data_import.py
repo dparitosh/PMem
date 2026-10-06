@@ -3652,6 +3652,7 @@ class UnifiedDataImportService:
                         shacl_report = OWLGenerationService.validate_with_shacl(owl_ttl)
                     task['shacl_report'] = shacl_report
                     task.setdefault('result', {})['shacl_conforms'] = shacl_report.get('conforms')
+                    task['result']['shacl_validation_scope'] = 'ontology'
                     if shacl_report.get('ontology_context'):
                         task['result']['shacl_ontology_context'] = shacl_report.get('ontology_context')
                     cls._write_artifact(
@@ -3665,6 +3666,10 @@ class UnifiedDataImportService:
                     )
                     logger.info(f"Task {task_id}: SHACL validation conforms={shacl_report.get('conforms')}")
                 except Exception as sh_err:
+                    task.setdefault('result', {})['shacl_conforms'] = False
+                    task['result']['shacl_validation_scope'] = 'ontology'
+                    task['shacl_report'] = {'conforms': False, 'validation_scope': 'ontology',
+                                            'error': 'Ontology validation is unavailable'}
                     logger.warning(f"Task {task_id}: SHACL validation failed: {sh_err}")
                 logger.info(
                     f"Task {task_id}: OWL background done — "

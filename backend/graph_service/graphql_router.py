@@ -20,7 +20,7 @@ MAX_VARIABLE_BYTES = 128_000
 MAX_VARIABLE_ITEMS = 500
 
 
-def _validate_complexity(document: str) -> None:
+def _validate_complexity(document: str, variables: dict[str, Any] | None = None) -> None:
     """Reject alias fan-out before any resolver can reach Neo4j."""
     try:
         parsed = parse(document)
@@ -33,6 +33,21 @@ def _validate_complexity(document: str) -> None:
         for definition in parsed.definitions
         if definition.__class__.__name__ == "FragmentDefinitionNode"
     }
+    variable_defaults = {}
+    for definition in parsed.definitions:
+        for declaration in getattr(definition, 'variable_definitions', ()) or ():
+            value = declaration.default_value
+            if value is not None:
+                variable_defaults[declaration.variable.name.value] = getattr(value, 'value', None)
+
+    def argument(selection, name, default):
+        value = next((item.value for item in selection.arguments if item.name.value == name), None)
+        if value is None:
+            return default
+        if value.__class__.__name__ == 'VariableNode':
+            return (variables or {}).get(value.name.value, variable_defaults.get(value.name.value, default))
+        raw = getattr(value, 'value', default)
+        return raw
 
     def visit(selection_set, depth: int, fragment_stack: set[str] | None = None) -> None:
         nonlocal fields, cost
@@ -43,6 +58,22 @@ def _validate_complexity(document: str) -> None:
             if selection.__class__.__name__ == "FieldNode":
                 fields += 1
                 cost += FIELD_COSTS.get(getattr(getattr(selection, "name", None), "value", ""), 1)
+                # Bound expensive result sizes and neighborhood work in addition
+                # to aliases. The resolver still validates argument types.
+                if selection.name.value in FIELD_COSTS:
+                    requested_limit = argument(selection, 'limit', 200)
+                    if isinstance(requested_limit, (int, str)) and not isinstance(requested_limit, bool):
+                        try:
+                            cost += max(0, min(int(requested_limit), 1000) - 500) // 20
+                        except ValueError:
+                            pass
+                    if selection.name.value in {'contextualSubgraph', 'contextualResult'} and argument(selection, 'expandNeighbors', False) in (True, 'true'):
+                        cost += 25
+                    if selection.name.value == 'traversal':
+                        try:
+                            cost += max(0, min(int(argument(selection, 'depth', 1)), 5) - 1) * 10
+                        except (ValueError, TypeError):
+                            pass
                 if fields > MAX_FIELDS:
                     raise HTTPException(422, f"GraphQL query must not select more than {MAX_FIELDS} fields")
                 if cost > MAX_COST:
@@ -53,9 +84,9 @@ def _validate_complexity(document: str) -> None:
                     raise HTTPException(422, "GraphQL fragment cycle is not allowed")
                 fragment = fragments.get(name)
                 if fragment is not None:
-                    visit(fragment.selection_set, depth + 1, fragment_stack | {name})
+                    visit(fragment.selection_set, depth, fragment_stack | {name})
             elif getattr(selection, "selection_set", None):
-                visit(selection.selection_set, depth + 1, fragment_stack)
+                visit(selection.selection_set, depth + (selection.__class__.__name__ == 'FieldNode'), fragment_stack)
     for definition in parsed.definitions:
         if definition.__class__.__name__ == "OperationDefinitionNode" and getattr(definition, "selection_set", None):
             visit(definition.selection_set, 1)
@@ -93,8 +124,8 @@ def query(payload: dict[str, Any], request: Request) -> dict[str, Any]:
     document = str(payload.get("query") or "")
     if not document.strip() or len(document) > 10_000:
         raise HTTPException(422, "query is required and must be at most 10000 characters")
-    _validate_complexity(document)
     variables = _validate_variables(payload.get("variables"))
+    _validate_complexity(document, variables)
     operation_name = payload.get("operationName")
     if operation_name is not None and (not isinstance(operation_name, str) or len(operation_name) > 256):
         raise HTTPException(422, "operationName must be a string of at most 256 characters")

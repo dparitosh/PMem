@@ -72,12 +72,17 @@ def create_odata_catalog_router(
     def error(code, message, status=400):
         return JSONResponse({'error': {'code': code, 'message': message}}, status_code=status, headers=headers)
     router = APIRouter(prefix="/odata", tags=["odata"])
+    def context_url(request: Request, fragment: str = '') -> str:
+        # An absolute context URL works both at /odata and /odata/, and retains
+        # the deployment prefix supplied by ASGI behind a reverse proxy.
+        path = request.url.path.rsplit('/odata', 1)[0] + '/odata/$metadata'
+        return str(request.url.replace(path=path, query='', fragment=fragment))
 
     @router.get("", summary="OData v4 service document", include_in_schema=False)
     @router.get("/", summary="OData v4 service document", include_in_schema=False)
-    def service_document() -> dict:
+    def service_document(request: Request) -> dict:
         return JSONResponse({
-            "@odata.context": "$metadata",
+            "@odata.context": context_url(request),
             "value": [{"name": "ServiceCapabilities", "kind": "EntitySet", "url": "ServiceCapabilities"}],
         }, headers=headers)
 
@@ -108,7 +113,7 @@ def create_odata_catalog_router(
         except ValueError:
             return error('InvalidQueryOption', 'Use non-negative $top (up to 1000), non-negative $skip, and $count=true or false')
         selected = entries[skip : skip + top if top is not None else None]
-        response: dict = {"@odata.context": "$metadata#ServiceCapabilities", "value": selected}
+        response: dict = {"@odata.context": context_url(request, 'ServiceCapabilities'), "value": selected}
         if include_count:
             response["@odata.count"] = len(entries)
         return JSONResponse(response, headers=headers)
@@ -120,6 +125,6 @@ def create_odata_catalog_router(
         entry = next((entry for entry in entries if entry['Id'] == capability_id), None)
         if entry is None:
             return error('NotFound', 'Capability does not exist', 404)
-        return JSONResponse({'@odata.context': '$metadata#ServiceCapabilities/$entity', **entry}, headers=headers)
+        return JSONResponse({'@odata.context': context_url(request, 'ServiceCapabilities/$entity'), **entry}, headers=headers)
 
     return router

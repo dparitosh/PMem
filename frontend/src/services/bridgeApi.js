@@ -20,7 +20,8 @@ export const bridgeApi = {
     { ontology_id: ontologyId, import_task_id: importId }, auth(token)),
   status: (id, token) => client.get(buildUrl(`${root}/jobs/${encodeURIComponent(id)}`), auth(token)),
   publish: (id, approvedIds, identity) => client.post(buildUrl(`${root}/previews/${encodeURIComponent(id)}/publish`),
-    { approved_candidate_ids: approvedIds, ...(identity.approval_token ? identity : {}) }),
+    { approved_candidate_ids: approvedIds, approved_by: identity.approved_by,
+      ...(identity.approval_token ? { approval_token: identity.approval_token } : {}) }),
   artifact: (id, token) => client.get(buildUrl(`${root}/jobs/${encodeURIComponent(id)}/artifact`),
     { ...auth(token), responseType: 'blob' }),
 };

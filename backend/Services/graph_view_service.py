@@ -2018,7 +2018,7 @@ RETURN count(res) AS count
             "scope_applied": bool(ontology_prefix or import_id),
         }
         graph["root"] = root_node
-        if not graph.get("nodes") and ontology_prefix and not expand_neighbors:
+        if not graph.get("nodes") and ontology_prefix and not import_id and not expand_neighbors:
             schema_graph = cls._schema_contextual_search_fallback(
                 search=normalized_search,
                 ontology_prefix=ontology_prefix,

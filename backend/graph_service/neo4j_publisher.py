@@ -346,7 +346,7 @@ class Neo4jPublisher:
     def traversal(self, *, iri: str, depth: int = 1, limit: int = 200) -> dict[str, Any]:
         hops, safe_limit = max(1, min(int(depth), 5)), max(1, min(int(limit), 1_000))
         nodes = self._session_rows(
-            cypher.ONTOLOGY_TRAVERSAL_NODES,
+            cypher.ONTOLOGY_TRAVERSAL_NODES.replace('*0..5', f'*0..{hops}'),
             iri=iri, hops=hops, limit=safe_limit,
         )
         if not nodes:
@@ -363,12 +363,15 @@ class Neo4jPublisher:
         )
 
     def _legacy_traversal(self, *, node_id: str, depth: int, limit: int) -> dict[str, Any]:
+        depth = max(1, min(int(depth), 5))
+        limit = max(1, min(int(limit), 1_000))
         nodes = self._session_rows(
             "MATCH (root) WHERE elementId(root) = $node_id "
-            "OPTIONAL MATCH path=(root)-[*0..5]-(neighbor) "
+            f"OPTIONAL MATCH path=(root)-[*0..{depth}]-(neighbor) "
             "WHERE length(path) <= $depth "
-            "WITH root, collect(DISTINCT neighbor)[..$limit] AS neighbors "
-            "UNWIND CASE WHEN size(neighbors) = 0 THEN [root] ELSE neighbors END AS node "
+            "WITH root, neighbor ORDER BY elementId(neighbor) "
+            "WITH root, collect(DISTINCT neighbor) AS neighbors "
+            "UNWIND [root] + [n IN neighbors WHERE n <> root][..($limit - 1)] AS node "
             "RETURN DISTINCT elementId(node) AS id, coalesce(node.name, node.label, node.uri) AS label, "
             "coalesce(node.concept_type, head(labels(node)), 'resource') AS type, node.source_ontology AS ontology_id",
             node_id=node_id, depth=depth, limit=limit,

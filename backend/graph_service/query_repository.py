@@ -13,9 +13,10 @@ ONTOLOGY_PROJECTION_EDGES = (
 ONTOLOGY_TRAVERSAL_NODES = (
     "MATCH (root:OntologyResource {iri: $iri}) "
     "OPTIONAL MATCH path=(root)-[*0..5]-(neighbor:OntologyResource) "
-    "WHERE length(path) <= $hops AND neighbor.ontology_id = root.ontology_id "
-    "WITH root, collect(DISTINCT neighbor)[..$limit] AS neighbors "
-    "UNWIND CASE WHEN size(neighbors) = 0 THEN [root] ELSE neighbors END AS node "
+    "WHERE length(path) <= $hops AND all(n IN nodes(path) WHERE n:OntologyResource AND n.ontology_id = root.ontology_id) "
+    "WITH root, neighbor ORDER BY neighbor.iri "
+    "WITH root, collect(DISTINCT neighbor) AS neighbors "
+    "UNWIND [root] + [n IN neighbors WHERE n <> root][..($limit - 1)] AS node "
     "RETURN DISTINCT node.iri AS id, node.label AS label, node.kind AS type, node.ontology_id AS ontology_id"
 )
 ONTOLOGY_TRAVERSAL_EDGES = (

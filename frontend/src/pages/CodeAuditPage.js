@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as d3 from 'd3';
+import { oneHopCodeTrace, reconcileSimulationNodes, graphTopologyKey, seedSimulationNodes } from '../utils/graphInteractionState';
 import { AlertTriangle, FolderTree, Network, RefreshCw, Search } from 'lucide-react';
 import { IxBadge, IxButton, IxCheckbox, IxInput, IxSelect, IxSelectItem } from '@siemens/ix-react';
 import { apiClient } from '../services/apiClient';
@@ -44,6 +45,9 @@ const reviewHeadline = (report) => {
 
 export default function CodeAuditPage() {
   const svgRef = useRef(null);
+  const forceNodesRef = useRef([]);
+  const forceTopologyRef = useRef('');
+  const forceZoomRef = useRef(null);
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -139,19 +143,7 @@ export default function CodeAuditPage() {
       nodes = nodes.filter((node) => included.has(node.id));
       edges = edges.filter((edge) => included.has(edge.source) && included.has(edge.target));
     }
-    if (!query.trim()) return { nodes, edges };
-    const term = query.trim().toLowerCase();
-    const matching = new Set(nodes.filter((node) => node.id.toLowerCase().includes(term)).map((node) => node.id));
-    edges.forEach((edge) => {
-      if (matching.has(edge.source) || matching.has(edge.target)) {
-        matching.add(edge.source);
-        matching.add(edge.target);
-      }
-    });
-    return {
-      nodes: nodes.filter((node) => matching.has(node.id)),
-      edges: edges.filter((edge) => matching.has(edge.source) && matching.has(edge.target)),
-    };
+    return oneHopCodeTrace(nodes, edges, query);
   }, [report, query, viewMode, expandedNodes, showSemanticLinks]);
 
   const graph = useMemo(() => {
@@ -202,15 +194,21 @@ export default function CodeAuditPage() {
   }, [report, selected, viewMode]);
 
   useEffect(() => {
-    if (!svgRef.current || !graph.nodes.length) return undefined;
+    if (!svgRef.current) return undefined;
+    if (!graph.nodes.length) { d3.select(svgRef.current).selectAll('*').remove(); return undefined; }
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
     const width = svgRef.current.clientWidth || 1100;
     const height = svgRef.current.clientHeight || 620;
-    const nodes = graph.nodes.map((item) => ({ ...item }));
-    const links = graph.edges.map((item) => ({ ...item }));
+    const nodes = viewMode === 'hierarchy' ? graph.nodes.map(item => ({ ...item }))
+      : reconcileSimulationNodes(graph.nodes, forceNodesRef.current, 'id');
+    const ids = new Set(nodes.map(item => item.id));
+    const links = graph.edges.filter(item => ids.has(item.source) && ids.has(item.target)).map(item => ({ ...item }));
     const root = svg.append('g');
-    const zoom = d3.zoom().scaleExtent([0.2, 5]).on('zoom', (event) => root.attr('transform', event.transform));
+    const zoom = d3.zoom().scaleExtent([0.2, 5]).on('zoom', (event) => {
+      root.attr('transform', event.transform);
+      if (viewMode !== 'hierarchy') forceZoomRef.current = event.transform;
+    });
     svg.call(zoom);
     if (viewMode === 'hierarchy') {
       const nodeById = new Map(nodes.map((item) => [item.id, item]));
@@ -293,6 +291,11 @@ export default function CodeAuditPage() {
       }
       return undefined;
     }
+    seedSimulationNodes(nodes, width, height, 'id');
+    if (forceZoomRef.current) svg.call(zoom.transform, forceZoomRef.current);
+    const topology = JSON.stringify([viewMode, width, height, graphTopologyKey(nodes, links, 'id')]);
+    const changed = forceTopologyRef.current !== topology;
+    forceTopologyRef.current = topology;
     const link = root.append('g').attr('class', 'code-network__links').selectAll('line').data(links).join('line')
       .attr('class', (item) => item.kind === 'api_call' ? 'is-api-call' : item.kind === 'lazy_import' ? 'is-lazy-import' : 'is-import')
       .style('stroke-width', (item) => Math.min(4, 0.7 + Math.sqrt(item.weight || 1) * 0.45));
@@ -315,7 +318,7 @@ export default function CodeAuditPage() {
       .on('mouseleave', () => setTooltip(null));
     const labels = root.append('g').attr('class', 'code-network__labels').selectAll('text').data(nodes).join('text')
       .text((item) => item.files ? item.id : shortFileName(item.id));
-    const simulation = d3.forceSimulation(nodes)
+    const simulation = d3.forceSimulation(nodes).alpha(changed ? 0.3 : 0)
       .force('link', d3.forceLink(links).id((item) => item.id).distance(viewMode === 'modules' ? 130 : viewMode === 'ranked' ? 80 : 45).strength(0.35))
       .force('charge', d3.forceManyBody().strength(viewMode === 'modules' ? -420 : viewMode === 'ranked' ? -150 : -55))
       .force('center', d3.forceCenter(width / 2, height / 2))
@@ -330,7 +333,7 @@ export default function CodeAuditPage() {
       .on('start', (event, item) => { if (!event.active) simulation.alphaTarget(0.3).restart(); item.fx = item.x; item.fy = item.y; })
       .on('drag', (event, item) => { item.fx = event.x; item.fy = event.y; })
       .on('end', (event, item) => { if (!event.active) simulation.alphaTarget(0); item.fx = null; item.fy = null; }));
-    return () => simulation.stop();
+    return () => { simulation.stop(); forceNodesRef.current = nodes; };
   }, [graph, viewMode, report, expandedNodes, selected]);
 
   return (

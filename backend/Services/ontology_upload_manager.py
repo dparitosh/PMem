@@ -198,6 +198,28 @@ class OntologyUploadManager:
 
             shacl_service = ShaclValidationService()
             shacl_ttl = shacl_service.create_default_shapes()
+            # Preserve generated domain constraints separately from ontology
+            # metadata checks; validating the schema is not instance validation.
+            from rdflib import Graph, BNode
+            from rdflib.namespace import RDF, SH
+            generated = Graph().parse(data=ttl_text, format='turtle')
+            instance_shapes = Graph()
+            pending = list(set(generated.subjects(RDF.type, SH.NodeShape)) |
+                           set(generated.subjects(RDF.type, SH.PropertyShape)))
+            seen = set()
+            while pending:
+                subject = pending.pop()
+                if subject in seen:
+                    continue
+                seen.add(subject)
+                for triple in generated.triples((subject, None, None)):
+                    instance_shapes.add(triple)
+                    if isinstance(triple[2], BNode):
+                        pending.append(triple[2])
+            instance_path = ''
+            if len(instance_shapes):
+                instance_path = str(ontology_dir / f'{Path(filename).stem}.instance.shacl.ttl')
+                Path(instance_path).write_text(instance_shapes.serialize(format='turtle'), encoding='utf-8')
             shacl_path = ontology_dir / f"{Path(filename).stem}.shacl.ttl"
             shacl_path.write_text(shacl_ttl, encoding="utf-8")
 
@@ -207,6 +229,7 @@ class OntologyUploadManager:
                 ontology_context=owl_metadata.get("owlready2"),
             )
             shacl_report_path = ontology_dir / f"{Path(filename).stem}.shacl_report.json"
+            shacl_report['validation_scope'] = 'ontology'
             shacl_report_path.write_text(json.dumps(shacl_report, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
 
             result.update({
@@ -215,6 +238,8 @@ class OntologyUploadManager:
                 "jsonld_file_path": next((a["path"] for a in export_artifacts if a["format"] == "jsonld"), ""),
                 "ontology_export_artifacts": export_artifacts,
                 "shacl_file_path": str(shacl_path),
+                "instance_shacl_file_path": instance_path,
+                "shacl_validation_scope": "ontology",
                 "shacl_report_path": str(shacl_report_path),
                 "owl_generation_metadata": owl_metadata,
                 "shacl_report": shacl_report,

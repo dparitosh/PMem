@@ -3169,7 +3169,7 @@ export default function DataImportPipeline() {
                         )}
                         {typeof status.shaclConforms !== 'undefined' && status.shaclConforms !== null && (
                           <span style={{ fontSize: '10px', fontWeight: '700', marginLeft: '8px', color: status.shaclConforms ? C.green : C.orange }}>
-                            {status.shaclConforms ? 'SHACL OK' : 'SHACL Failed'}
+                            {status.shaclConforms ? 'Ontology SHACL OK' : 'Ontology SHACL Failed'}
                           </span>
                         )}
                       </div>

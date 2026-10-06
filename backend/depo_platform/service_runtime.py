@@ -122,7 +122,7 @@ def create_service_app(
         from .credentials import PROFILES
         check = app.openapi_schema.get('paths', {}).get('/auth/credential-check', {}).get('get')
         if check is not None:
-            check['x-depo-credential-check'] = {'profile_parameter': 'profile', 'supported_profiles': sorted(PROFILES - {'GRAPH_READ_TOKEN', 'ADMIN_API_KEY'}), 'mutates': False}
+            check['x-depo-credential-check'] = {'profile_parameter': 'profile', 'supported_profiles': sorted(PROFILES - {'GRAPH_READ_TOKEN'}), 'mutates': False}
             check['security'] = [{'BearerKey': []}, {'ApiKey': []}]
         for path, method in [('/auth/browser-session', 'post'), ('/auth/credentials', 'get'), ('/auth/admin-access', 'get'), ('/auth/credentials/{profile}', 'post'), ('/auth/credentials/{profile}', 'delete')]:
             operation = app.openapi_schema.get('paths', {}).get(path, {}).get(method)

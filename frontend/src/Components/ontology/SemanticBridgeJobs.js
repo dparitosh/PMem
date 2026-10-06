@@ -27,8 +27,10 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
   const [confirmed, setConfirmed] = useState(false);
   const [agentReport, setAgentReport] = useState(null);
   const generation = useRef(0);
+  const activeOperation = useRef(null);
   useEffect(() => {
     generation.current += 1;
+    activeOperation.current = null;
     setPreview(null); setJob(null); setSelected([]); setMessage(''); setBusy(false); setAgentReport(null);
     setConfirmed(false);
     try { setResumeId(sessionStorage.getItem(`bridge-preview:${ontologyId}:${importTaskId}`) || ''); } catch { setResumeId(''); }
@@ -36,11 +38,17 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
   }, [ontologyId, importTaskId]);
 
   const invoke = async (operation) => {
+    if (activeOperation.current !== null) return;
     const current = generation.current;
+    const operationId = Symbol('bridge-operation');
+    activeOperation.current = operationId;
     setBusy(true); setMessage('');
     try { await operation(() => current === generation.current); }
     catch (error) { if (current === generation.current) setMessage(errorMessage(error)); }
-    finally { if (current === generation.current) setBusy(false); }
+    finally {
+      if (activeOperation.current === operationId) activeOperation.current = null;
+      if (current === generation.current) setBusy(false);
+    }
   };
   const adoptPreview = (value) => {
     if (value.kind !== 'preview' || value.ontology_id !== ontologyId || value.import_task_id !== importTaskId) {
@@ -65,7 +73,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
     if (response.data.status === 'published') setConfirmed(false);
   };
   const fixedSelection = !!job;
-  const canPublish = preview && selected.length > 0 && confirmed && !busy && !['published', 'stale'].includes(job?.status);
+  const canPublish = preview && selected.length > 0 && confirmed && !busy && (!job || ['approved', 'retryable'].includes(job.status));
   const buttonStyle = { padding: '8px 12px', marginRight: 8, marginTop: 8 };
   return <section aria-label="Governed Semantic Bridge jobs" style={{ background: 'var(--ui-surface, #fff)', color: 'var(--ui-text, #1f2933)', padding: 16, border: '1px solid var(--ui-border, #ccd5df)', borderRadius: 8, marginTop: 16 }}>
     <h3>Preview → review → publish</h3>

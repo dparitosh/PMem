@@ -67,6 +67,18 @@ def test_graphql_rejects_unbounded_or_invalid_variables():
     assert oversized.status_code == 422
 
 
+def test_graphql_contextual_identifiers_are_not_truncated(monkeypatch):
+    calls = []
+    monkeypatch.setattr('backend.Services.graph_view_service.GraphViewService.get_contextual_subgraph',
+                        lambda **kwargs: calls.append(kwargs))
+    response = TestClient(app).post('/api/v1/graphql', json={
+        'query': 'query($id:String!){ contextualResult(search:"part", importId:$id){ counts } }',
+        'variables': {'id': 'x' * 257},
+    })
+    assert response.status_code == 400
+    assert not calls
+
+
 def test_graphql_counts_fragment_expansion_toward_cost_limit(monkeypatch):
     calls = []
     monkeypatch.setattr("backend.graph_service.graphql_schema.publisher.traversal", lambda **_: calls.append(1))

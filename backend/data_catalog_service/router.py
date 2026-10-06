@@ -57,7 +57,7 @@ def product(product_id: str) -> dict:
     if not versions:
         raise HTTPException(404, "Data product not found")
     latest = values.get(f"{product_id}:latest", {}).get("latest_version")
-    return {"product_id": product_id, "latest_version": latest, "versions": sorted(versions, key=lambda value: value["updated_at"], reverse=True)}
+    return {"product_id": product_id, "latest_version": latest, "versions": sorted(versions, key=lambda value: (str(value.get('updated_at') or ''), str(value.get('version') or '')), reverse=True)}
 
 
 @router.put("/products/{product_id}/versions/{version}")

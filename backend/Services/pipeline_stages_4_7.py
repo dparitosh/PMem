@@ -66,42 +66,23 @@ class OntologyValidationService:
         Based on import_master/src/services/ontology_validator.py
         """
         try:
-            # Simulated validation based on actual OWL metrics
-            entity_count = schema_metadata.get('entity_count', 0)
-            
-            errors = 0
-            warnings = 0
-            
-            # Check for required ontology elements
-            if entity_count == 0:
-                errors += 1
-            
-            # Check for orphaned classes (would be 0-10% in real validation)
-            orphaned = max(0, int(entity_count * 0.02))
-            if orphaned > 0:
-                warnings += 1
-            
-            # Check for missing labels (would be 0-5% in real validation)
-            missing_labels = max(0, int(entity_count * 0.01))
-            if missing_labels > 0:
-                warnings += 1
-            
-            issues = []
-            if orphaned > 0:
-                issues.append(f"Found {orphaned} classes without parent/child relationships")
-            if missing_labels > 0:
-                issues.append(f"Found {missing_labels} entities missing rdfs:label")
-            
+            from .owl_generation_service import OWLGenerationService
+            from rdflib import Graph
+            from rdflib.namespace import RDF, OWL
+            graph = Graph().parse(data=owl_ttl, format='turtle')
+            report = OWLGenerationService.validate_with_shacl(owl_ttl)
+            valid = report.get('conforms') is True and not report.get('error')
             return ValidationMetrics(
-                valid=errors == 0,
-                errors=errors,
-                warnings=warnings,
-                schema_triples=schema_metadata.get('owl_triple_count', 0),
-                class_count=schema_metadata.get('entity_count', 0),
-                property_count=schema_metadata.get('properties_count', int(entity_count * 0.3)),
-                issues=issues
+                valid=valid,
+                errors=int(report.get('violation_count') or (0 if valid else 1)),
+                warnings=int(report.get('warning_count') or 0),
+                schema_triples=len(graph),
+                class_count=len(set(graph.subjects(RDF.type, OWL.Class))),
+                property_count=len(set(graph.subjects(RDF.type, OWL.ObjectProperty)) |
+                                   set(graph.subjects(RDF.type, OWL.DatatypeProperty))),
+                issues=[] if valid else ['Ontology SHACL validation failed or is unavailable; review the validation report.']
             )
-            
+
         except Exception as e:
             logger.error(f"Validation error: {e}")
             return ValidationMetrics(

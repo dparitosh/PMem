@@ -94,6 +94,7 @@ export default function MetadataRegistryPage() {
     setRegistryLoading(true);
     try {
       const response = await API_METHODS.metadataRegistry.list({ limit: 1000 }, { signal: controller.signal });
+      if (controller.signal.aborted || registryControllerRef.current !== controller) return;
       setRegistryAssets(response?.data?.assets || []);
       setRegistryLoaded(true);
       setRegistryMessage(null);
@@ -128,6 +129,7 @@ export default function MetadataRegistryPage() {
     setCreateLoading(true);
     try {
       const response = await API_METHODS.metadataRegistry.create(newAsset, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       setRegistryAssets((current) => [response.data, ...current]);
       setRegistryLoaded(true);
       setRegistryMessage({ kind: 'success', text: 'Metadata asset registered in the governed registry.' });
@@ -188,6 +190,7 @@ export default function MetadataRegistryPage() {
     setDictionaryLoading(true);
     try {
       const response = await API_METHODS.ontology.getDataDictionary(ontologyId, { signal: controller.signal });
+      if (controller.signal.aborted || dictionaryControllerRef.current !== controller) return;
       const payload = response?.data?.data || {};
       const source = ontologies.find((entry) => (entry.ontology_id || entry.value || entry.prefix) === ontologyId);
       const prefix = response?.data?.prefix || source?.prefix || ontologyId;
@@ -216,6 +219,7 @@ export default function MetadataRegistryPage() {
     setTransitioningAssetIds((current) => new Set(current).add(asset.asset_id));
     try {
       const response = await API_METHODS.metadataRegistry.transition(asset.asset_id, { status: action.status, actor: asset.owner || 'registry-user' }, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       setRegistryAssets((current) => current.map((item) => item.asset_id === asset.asset_id ? response.data : item));
       setRegistryMessage({ kind: 'success', text: `Lifecycle changed to ${statusLabel(action.status)}.` });
     } catch (err) {

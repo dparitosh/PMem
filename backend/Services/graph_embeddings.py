@@ -16,6 +16,8 @@ import sys
 import time
 import random
 import logging
+import math
+import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -154,7 +156,7 @@ def build_node_chunk_text(
     labels: List[str],
     props: Dict,
     relationships: List[Dict],
-    _node_element_id: str,
+    node_element_id: str,
 ) -> str:
     """
     Construct a natural-language chunk that captures:
@@ -228,6 +230,9 @@ def build_node_chunk_text(
         section_rels = " ".join(rel_lines)
         full_text = section_node + (" Relationships: " + section_rels if section_rels else "")
 
+    if _token_count(full_text) > MAX_TOKENS_PER_CHUNK:
+        full_text = _encoding.decode(_encoding.encode(full_text)[:MAX_TOKENS_PER_CHUNK])
+
     return full_text.strip()
 
 
@@ -241,7 +246,7 @@ WHERE NOT n:GraphChunk AND NOT n:DatasheetChunk
 OPTIONAL MATCH (n)-[r]-(m)
 WHERE NOT m:GraphChunk AND NOT m:DatasheetChunk
 WITH n,
-     collect(DISTINCT {
+     collect(DISTINCT CASE WHEN r IS NULL THEN null ELSE {
          rel_type:  type(r),
          dir:       CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END,
          neighbor_label: CASE WHEN labels(m) IS NOT NULL AND size(labels(m)) > 0
@@ -249,7 +254,7 @@ WITH n,
          neighbor_name:  coalesce(m.name, m.title, m.code, m.key,
                                   m.abbreviation, ''),
          rel_props: properties(r)
-     }) AS rels
+     } END) AS rels
 RETURN elementId(n) AS eid,
        labels(n)     AS labels,
        properties(n)  AS props,
@@ -283,33 +288,66 @@ def _embed_batch(texts: List[str], attempt: int = 0) -> Optional[List[List[float
         return _embed_batch(texts, attempt + 1)
 
 
+def _validate_vectors(vectors, count):
+    """Reject incomplete or invalid provider output before any batch writes."""
+    if not isinstance(vectors, (list, tuple)) or len(vectors) != count:
+        raise RuntimeError('Embedding provider returned an incomplete batch')
+    for vector in vectors:
+        if not isinstance(vector, (list, tuple)) or len(vector) != EMBEDDING_VECTOR_DIMENSIONS:
+            raise RuntimeError('Embedding dimensions do not match EMBEDDING_VECTOR_DIMENSIONS')
+        if any(isinstance(value, bool) or not isinstance(value, (int, float))
+               or not math.isfinite(value) for value in vector):
+            raise RuntimeError('Embedding provider returned invalid numeric values')
+        if not any(value != 0 for value in vector):
+            raise RuntimeError('Embedding provider returned a zero vector unsuitable for cosine search')
+
+
+def _standalone_auth():
+    if not NEO4J_URI:
+        raise ValueError('Missing NEO4J_URI in deployment configuration')
+    if os.getenv('NEO4J_AUTH_MODE', 'token').strip().lower() == 'none':
+        return None
+    if not NEO4J_USER or not NEO4J_PASS:
+        raise ValueError('Missing Neo4j username/password in deployment configuration')
+    return (NEO4J_USER, NEO4J_PASS)
+
+
 # ---------------------------------------------------------------------------
 # Write GraphChunk nodes back to Neo4j
 # ---------------------------------------------------------------------------
 
 UPSERT_CHUNK = f"""
 UNWIND $rows AS row
+MATCH (src) WHERE elementId(src) = row.node_id
 MERGE (c:{CHUNK_LABEL} {{node_id: row.node_id}})
 SET c.{TEXT_PROPERTY}       = row.content,
     c.{EMBEDDING_PROPERTY}  = row.embedding,
     c.labels_source         = row.labels_source,
     c.updated_at            = datetime()
-WITH c, row
-MATCH (src) WHERE elementId(src) = row.node_id
 MERGE (c)-[:EMBEDDED_FROM]->(src)
+RETURN count(c) AS written
 """
 
 
 def upsert_chunks(driver, rows: List[Dict]):
+    def write_batch(tx):
+        record = tx.run(UPSERT_CHUNK, rows=rows).single(strict=True)
+        if record['written'] != len(rows):
+            raise RuntimeError('Embedding batch sources changed or chunks are duplicated; batch rolled back')
+        return record['written']
     with driver.session(database=NEO4J_DATABASE) as session:
-        session.run(UPSERT_CHUNK, rows=rows)
+        return session.execute_write(write_batch)
 
 
 # ---------------------------------------------------------------------------
 # Ensure vector + keyword indexes exist
 # ---------------------------------------------------------------------------
 
-def ensure_indexes(driver):
+def ensure_indexes(driver, *, strict=False):
+    for name in (VECTOR_INDEX_NAME, KEYWORD_INDEX_NAME, DATASHEET_VECTOR_INDEX, DATASHEET_KEYWORD_INDEX):
+        if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', name):
+            raise ValueError('Embedding index names must contain only letters, digits and underscores')
+    failures = []
     with driver.session(database=NEO4J_DATABASE) as session:
         # --- Operational ontology / import indexes ---
         for statement, label in [
@@ -322,7 +360,7 @@ def ensure_indexes(driver):
             ("CREATE INDEX `idx_ontologyproperty_prefix` IF NOT EXISTS FOR (n:OntologyProperty) ON (n.prefix)", "OntologyProperty.prefix"),
         ]:
             try:
-                session.run(statement)
+                session.run(statement).consume()
                 logger.info("Operational index ensured for %s", label)
             except Exception as exc:
                 logger.warning("Operational index creation note for %s: %s", label, exc)
@@ -338,10 +376,12 @@ def ensure_indexes(driver):
             ("CREATE CONSTRAINT `uniq_datatypeproperty_uri` IF NOT EXISTS FOR (n:DatatypeProperty) REQUIRE n.uri IS UNIQUE", "DatatypeProperty.uri"),
         ]:
             try:
-                session.run(statement)
+                session.run(statement).consume()
                 logger.info("Operational constraint ensured for %s", label)
             except Exception as exc:
                 logger.warning("Operational constraint creation skipped for %s: %s", label, exc)
+                if label == 'GraphChunk.node_id':
+                    failures.append('GraphChunk.node_id uniqueness constraint')
 
         # --- GraphChunk vector index ---
         try:
@@ -355,10 +395,11 @@ def ensure_indexes(driver):
                         `vector.similarity_function`: 'cosine'
                     }}
                 }}
-            """)
+            """).consume()
             logger.info("Vector index '%s' ensured", VECTOR_INDEX_NAME)
         except Exception as exc:
             logger.warning("Vector index creation note: %s", exc)
+            failures.append('GraphChunk vector index')
 
         # --- GraphChunk fulltext keyword index ---
         try:
@@ -366,10 +407,11 @@ def ensure_indexes(driver):
                 CREATE FULLTEXT INDEX `{KEYWORD_INDEX_NAME}` IF NOT EXISTS
                 FOR (c:{CHUNK_LABEL})
                 ON EACH [c.{TEXT_PROPERTY}]
-            """)
+            """).consume()
             logger.info("Keyword index '%s' ensured", KEYWORD_INDEX_NAME)
         except Exception as exc:
             logger.warning("Keyword index creation note: %s", exc)
+            failures.append('GraphChunk keyword index')
 
         # --- DatasheetChunk vector index ---
         try:
@@ -383,7 +425,7 @@ def ensure_indexes(driver):
                         `vector.similarity_function`: 'cosine'
                     }}
                 }}
-            """)
+            """).consume()
             logger.info("Vector index '%s' ensured", DATASHEET_VECTOR_INDEX)
         except Exception as exc:
             logger.warning("Datasheet vector index creation note: %s", exc)
@@ -394,10 +436,30 @@ def ensure_indexes(driver):
                 CREATE FULLTEXT INDEX `{DATASHEET_KEYWORD_INDEX}` IF NOT EXISTS
                 FOR (c:{DATASHEET_CHUNK_LABEL})
                 ON EACH [c.{TEXT_PROPERTY}]
-            """)
+            """).consume()
             logger.info("Keyword index '%s' ensured", DATASHEET_KEYWORD_INDEX)
         except Exception as exc:
             logger.warning("Datasheet keyword index creation note: %s", exc)
+        if strict and not failures:
+            indexes = session.run(
+                'SHOW INDEXES YIELD name, type, labelsOrTypes, properties, options '
+                'WHERE name IN $names RETURN name, type, labelsOrTypes, properties, options',
+                names=[VECTOR_INDEX_NAME, KEYWORD_INDEX_NAME],
+            ).data()
+            by_name = {index['name']: index for index in indexes}
+            vector = by_name.get(VECTOR_INDEX_NAME, {})
+            keyword = by_name.get(KEYWORD_INDEX_NAME, {})
+            dimensions = (vector.get('options') or {}).get('indexConfig', {}).get('vector.dimensions')
+            similarity = (vector.get('options') or {}).get('indexConfig', {}).get('vector.similarity_function')
+            if (vector.get('type') != 'VECTOR' or vector.get('labelsOrTypes') != [CHUNK_LABEL]
+                    or vector.get('properties') != [EMBEDDING_PROPERTY]
+                    or dimensions != EMBEDDING_VECTOR_DIMENSIONS or similarity != 'cosine'):
+                failures.append('GraphChunk vector index configuration mismatch')
+            if (keyword.get('type') != 'FULLTEXT' or keyword.get('labelsOrTypes') != [CHUNK_LABEL]
+                    or keyword.get('properties') != [TEXT_PROPERTY]):
+                failures.append('GraphChunk keyword index configuration mismatch')
+    if strict and failures:
+        raise RuntimeError('Required embedding schema could not be ensured: ' + ', '.join(failures))
 
 
 def ensure_indexes_standalone():
@@ -407,18 +469,13 @@ def ensure_indexes_standalone():
     
     ✅ Uses centralized driver connection when available.
     """
-    for key, val in {"NEO4J_URI": NEO4J_URI, "NEO4J_USER": NEO4J_USER, "NEO4J_PASS": NEO4J_PASS}.items():
-        if not val:
-            logger.warning("Cannot ensure indexes – missing %s in .env", key)
-            return
-    
     try:
         if CENTRALIZED_CONFIG_AVAILABLE:
             driver = get_driver()
             logger.info("Using centralized driver for index creation")
             ensure_indexes(driver)
         else:
-            driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASS))
+            driver = GraphDatabase.driver(NEO4J_URI, auth=_standalone_auth())
             logger.info("Using standalone driver for index creation")
             try:
                 ensure_indexes(driver)
@@ -450,32 +507,30 @@ def run_graph_embeddings(
 
     If *force_rebuild* is False (default), only nodes without an existing
     GraphChunk are processed.
+
+    Provider failures raise rather than reporting completion. Earlier successful
+    batches remain persisted; rerunning without force resumes missing chunks.
     
     ✅ Uses centralized driver connection when available.
     """
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
+        raise ValueError('batch_size must be a positive integer')
     if not EMBEDDER_AVAILABLE:
-        logger.error(
-            "EMBEDDER MODEL NOT AVAILABLE – cannot create embeddings. "
-            "Ensure Ollama / Azure is reachable."
-        )
-        return
-
-    for key, val in {"NEO4J_URI": NEO4J_URI, "NEO4J_USER": NEO4J_USER, "NEO4J_PASS": NEO4J_PASS}.items():
-        if not val:
-            raise ValueError(f"Missing {key} in .env")
+        raise RuntimeError('Embedding model is unavailable; check Ollama/Azure configuration')
 
     try:
         if CENTRALIZED_CONFIG_AVAILABLE:
             driver = get_driver()
             logger.info("Using centralized driver for embedding pipeline")
         else:
-            driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASS))
+            driver = GraphDatabase.driver(NEO4J_URI, auth=_standalone_auth())
             logger.info("Using standalone driver for embedding pipeline")
     except Exception as exc:
         logger.error(f"Failed to get driver: {exc}")
         raise
 
     try:
+        ensure_indexes(driver, strict=True)
         # 1. Fetch
         records = fetch_graph_nodes(driver)
         if not records:
@@ -499,7 +554,6 @@ def run_graph_embeddings(
             )
             if not records:
                 logger.info("All nodes already have embeddings")
-                ensure_indexes(driver)
                 return
 
         # 2. Build text chunks
@@ -532,9 +586,7 @@ def run_graph_embeddings(
 
             logger.info("Embedding batch %d/%d (%d chunks)", batch_num, total_batches, len(batch))
             vectors = _embed_batch(texts)
-            if not vectors:
-                logger.error("Skipping batch %d – embedding failed", batch_num)
-                continue
+            _validate_vectors(vectors, len(batch))
 
             for doc, vec in zip(batch, vectors):
                 doc["embedding"] = vec
@@ -545,8 +597,6 @@ def run_graph_embeddings(
             if i + batch_size < len(documents):
                 time.sleep(0.5)
 
-        # 5. Ensure indexes
-        ensure_indexes(driver)
         logger.info("Graph embedding pipeline complete – %d chunks created", len(documents))
 
     finally:

@@ -7,13 +7,11 @@ import { safeGet, safeString } from '../utils/safeAccess';
 import {
   deduplicateNodesAndLinks,
   getOneHopNeighborhood,
-  mergeGraphData,
   isMetadataWrapperNode,
   isRelationshipCarrierNode,
   normalizeGraphDataset as normalizeGraphDatasetShared,
   normalizeRelationshipType,
   normalizeSearchTerm,
-  removeExpandedSubgraph,
   validateConnectivity,
   buildLinkSignature,
   getLinkEndpointId,
@@ -33,6 +31,7 @@ import {
   truncateGraphLabel,
 } from '../utils/graphDisplayPolicy';
 import { UI_COLORS } from '../styles/uiTokens';
+import { rebuildExpandedGraph, boundExpansionSlice, reconcileSimulationNodes, graphTopologyKey, seedSimulationNodes } from '../utils/graphInteractionState';
 
 function consumePendingEvents(key) {
   if (typeof window === 'undefined' || !window[key]) return [];
@@ -536,20 +535,6 @@ const hasNodeLabel = (node, expected) => {
   return labels.some((label) => String(label || '').toLowerCase() === String(expected || '').toLowerCase());
 };
 
-const isRequirementContextNode = (node) => {
-  const props = node?.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)
-    ? node.properties
-    : node || {};
-  return (
-    hasNodeLabel(node, 'Requirement')
-    || hasNodeLabel(node, 'RequirementRevision')
-    || hasNodeLabel(node, 'GeneralRelation')
-    || Boolean(props.catalogue_id)
-    || Boolean(props.requirement_id)
-    || Boolean(props.requirement_ref)
-  );
-};
-
 const getRelationshipVisual = (relationshipType) => {
   const key = normalizeRelationshipType(relationshipType);
   return RELATIONSHIP_THEME[key] || RELATIONSHIP_THEME.generic;
@@ -926,12 +911,16 @@ const GraphHEB = ({
   // Fetches all named result nodes from the backend and replaces the current graph.
   React.useEffect(() => {
     const abortController = new AbortController();
+    let resultRequestId = 0;
     const loadResultNodes = async (names) => {
       if (!names || names.length === 0) return;
+      const requestId = ++resultRequestId;
+      clearExpansionState();
+      const epoch = expansionEpochRef.current;
       setSearchLoading(true);
       try {
         const response = await graphApi.getOverview(DEFAULT_GRAPH_OVERVIEW_LIMIT, abortController.signal);
-        if (!isComponentMountedRef.current) return;
+        if (!isComponentMountedRef.current || requestId !== resultRequestId || epoch !== expansionEpochRef.current) return;
         const overview = normalizeGraphDataset(response.data);
         const requestedNames = new Set(names.map((name) => normalizeSearchTerm(name)).filter(Boolean));
         const nodes = overview.nodes.filter((node) => requestedNames.has(normalizeSearchTerm(
@@ -944,22 +933,16 @@ const GraphHEB = ({
           return nodeIds.has(sourceId) && nodeIds.has(targetId);
         });
 
-        const labelSet = new Set();
-        nodes.forEach(n => (n.labels || []).forEach(l => labelSet.add(l)));
-
-        startTransition(() => {
-          if (!isComponentMountedRef.current) return;
-          setSearchResultData({ nodes, links });
-          if (!graphSearchActiveRef.current) {
-            setFilteredData({ nodes, links });
-          }
-          syncSharedSearchResults(nodes);
+        commitGraphSlice({ nodes, links }, {
+          updateFilteredData: !graphSearchActiveRef.current,
+          updateSearchResultData: true, preserveIsolatedNodes: true,
+          syncResults: true, forceSearchResults: true,
         });
       } catch (err) {
         if (abortController.signal.aborted || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.name === 'AbortError') return;
         logger.error('[dt-load-result-nodes] Error:', err.message);
       } finally {
-        if (isComponentMountedRef.current) {
+        if (isComponentMountedRef.current && requestId === resultRequestId && epoch === expansionEpochRef.current) {
           setSearchLoading(false);
         }
       }
@@ -1113,6 +1096,12 @@ const GraphHEB = ({
       setActiveSearchResultId(null);
     }
     if (resetExpansion) {
+      expansionEpochRef.current += 1;
+      expansionRequestsRef.current.forEach(controller => controller.abort());
+      expansionRequestsRef.current.clear();
+      rootLoadRef.current?.abort();
+      rootLoadRef.current = null;
+      expansionBaseRef.current = null;
       const clearedExpanded = new Set();
       const clearedExpansions = new Map();
       const clearedLoading = new Set();
@@ -1169,6 +1158,11 @@ const GraphHEB = ({
   const searchModeRef = useRef(false);
   const expandedNodesRef = useRef(new Set());
   const nodeExpansionsRef = useRef(new Map());
+  const expansionBaseRef = useRef(null);
+  const expansionRequestsRef = useRef(new Map());
+  const expansionEpochRef = useRef(0);
+  const rootLoadRef = useRef(null);
+  const simulationLayoutRef = useRef('');
   const contextualSearchRequestIdRef = useRef(0);
   const graphScopeRequestIdRef = useRef(0);
   const stepPartsRequestIdRef = useRef(0);
@@ -1417,6 +1411,12 @@ const GraphHEB = ({
   }, [setSearchResults, graphSearchActive]);
 
   const clearExpansionState = useCallback(() => {
+    expansionEpochRef.current += 1;
+    expansionRequestsRef.current.forEach(controller => controller.abort());
+    expansionRequestsRef.current.clear();
+    rootLoadRef.current?.abort();
+    rootLoadRef.current = null;
+    expansionBaseRef.current = null;
     const clearedExpanded = new Set();
     const clearedExpansions = new Map();
     const clearedLoading = new Set();
@@ -1427,6 +1427,10 @@ const GraphHEB = ({
     nodeExpansionsRef.current = clearedExpansions;
     loadingNodesRef.current = clearedLoading;
   }, []);
+
+  useEffect(() => {
+    clearExpansionState();
+  }, [debouncedSearchQuery, graphViewMode, selectedOntology, selectedStepPart, searchResultMode, clearExpansionState]);
 
   const syncContextualHighlights = useCallback((query, nodesOverride = null) => {
     const sourceNodes = Array.isArray(nodesOverride)
@@ -1504,11 +1508,11 @@ const GraphHEB = ({
       if (validatedSlice.orphanNodeIds.length > 0 && isDevelopment) {
         performanceWarn('[GRAPH] commitGraphSlice preserving isolated nodes:', validatedSlice.orphanNodeIds);
       }
-      if (updateFilteredData) setFilteredData(normalizedSlice);
+      if (updateFilteredData) { filteredDataRef.current = normalizedSlice; setFilteredData(normalizedSlice); }
       setData(normalizedSlice);
       if (updateGraphData) setGraphData(normalizedSlice);
       if (updateFullDataset) setFullDataset(normalizedSlice);
-      if (updateSearchResultData) setSearchResultData(normalizedSlice);
+      if (updateSearchResultData) { searchResultDataRef.current = normalizedSlice; setSearchResultData(normalizedSlice); }
 
       if (clearActiveSearchId) {
         setActiveSearchResultId(null);
@@ -1571,11 +1575,11 @@ const GraphHEB = ({
       performanceWarn('[GRAPH] commitGraphSlice orphan nodes detected:', validatedSlice.orphanNodeIds);
     }
 
-    if (updateFilteredData) setFilteredData(prunedSlice);
+    if (updateFilteredData) { filteredDataRef.current = prunedSlice; setFilteredData(prunedSlice); }
     setData(prunedSlice);
     if (updateGraphData) setGraphData(prunedSlice);
     if (updateFullDataset) setFullDataset(prunedSlice);
-    if (updateSearchResultData) setSearchResultData(prunedSlice);
+    if (updateSearchResultData) { searchResultDataRef.current = prunedSlice; setSearchResultData(prunedSlice); }
 
     if (clearActiveSearchId) {
       setActiveSearchResultId(null);
@@ -1597,22 +1601,18 @@ const GraphHEB = ({
   const loadContextualRootGraph = useCallback(async (nodeId, { preserveSearch = true } = {}) => {
     if (!nodeId) return;
 
+    clearExpansionState();
+    const controller = new AbortController();
+    rootLoadRef.current = controller;
     setSearchLoading(true);
     try {
-      const candidateNodes = [
-        ...(searchResultDataRef.current?.nodes || []),
-        ...(filteredDataRef.current?.nodes || []),
-      ];
-      const selectedNode = candidateNodes.find((node) => node?.elementId === nodeId) || null;
-      const semanticRequirementRoot = isRequirementContextNode(selectedNode);
       const traversalDepth = 1;
-      const response = await graphApi.getTraversal(nodeId, traversalDepth);
+      const response = await graphApi.getTraversal(nodeId, traversalDepth, controller.signal);
+      if (controller.signal.aborted || rootLoadRef.current !== controller || !isComponentMountedRef.current) return;
       const traversalData = normalizeGraphDataset(response.data, { collapseHiddenBridges: true });
-      const rootedData = semanticRequirementRoot
-        ? sanitizeContextualGraph(traversalData, nodeId)
-        : sanitizeContextualGraph(traversalData, nodeId);
+      const rootedData = sanitizeContextualGraph(traversalData, nodeId);
 
-      clearExpansionState();
+      contextualRootNodeIdRef.current = nodeId;
       setContextualRootNodeId(nodeId);
       setContextualSearchResults([]);
       commitGraphSlice(rootedData, {
@@ -1636,10 +1636,14 @@ const GraphHEB = ({
         setHighlightedNodeIds(new Set());
       }
     } catch (loadError) {
+      if (controller.signal.aborted || !isComponentMountedRef.current) return;
       logger.error('[CONTEXTUAL SEARCH] Failed to load selected root graph:', loadError);
       setError('Unable to load the selected context. The graph shown is the previous snapshot; retry the selected root.');
     } finally {
-      setSearchLoading(false);
+      if (rootLoadRef.current === controller) {
+        rootLoadRef.current = null;
+        if (isComponentMountedRef.current) setSearchLoading(false);
+      }
     }
   }, [clearExpansionState, commitGraphSlice, syncContextualHighlights, syncSharedSearchResults]);
 
@@ -2779,242 +2783,84 @@ const getPrimaryNodeLabel = useCallback((d) => {
 
   // Function to expand a node using graphtraverse API - 1-2 hop expansion
   const expandNode = async (nodeId) => {
-    if (expandedNodesRef.current.has(nodeId) || loadingNodesRef.current.has(nodeId)) {
-      return;
-    }
-
-    const currentData = getCurrentGraphSlice();
-    const currentSearchQuery = debouncedSearchQueryRef.current;
-    const isContextualMode = graphViewModeRef.current === 'individual';
-    const hasVisibleContext = Array.isArray(currentData?.links) && currentData.links.length > 0;
-
-    if (isContextualMode && !hasVisibleContext) {
-      await loadContextualRootGraph(nodeId, { preserveSearch: true });
-      return;
-    }
-
-    const nextLoadingNodes = new Set(loadingNodesRef.current);
-    nextLoadingNodes.add(nodeId);
-    loadingNodesRef.current = nextLoadingNodes;
-    setLoadingNodes(nextLoadingNodes);
-
-    // Track nodes that will be added by this expansion
-    const addedNodeIds = new Set();
-    const addedLinkRefs = new Set();
-
+    if (!nodeId || expandedNodesRef.current.has(nodeId) || expansionRequestsRef.current.has(nodeId)) return;
+    const initialSlice = getCurrentGraphSlice();
+    if (!initialSlice.nodes.some(node => node.elementId === nodeId)) return;
+    if (!expansionBaseRef.current) expansionBaseRef.current = initialSlice;
+    const epoch = expansionEpochRef.current;
+    const scope = JSON.stringify([graphViewModeRef.current, selectedOntologyRef.current, debouncedSearchQueryRef.current]);
+    const controller = new AbortController();
+    expansionRequestsRef.current.set(nodeId, controller);
+    const loading = new Set(expansionRequestsRef.current.keys());
+    loadingNodesRef.current = loading;
+    setLoadingNodes(loading);
     try {
-      const response = await graphApi.getTraversal(nodeId, 1);
-      const traversalData = normalizeGraphDataset(response.data, {
-        collapseHiddenBridges: true,
+      const response = await graphApi.getTraversal(nodeId, 1, controller.signal);
+      if (controller.signal.aborted || !isComponentMountedRef.current || epoch !== expansionEpochRef.current
+          || scope !== JSON.stringify([graphViewModeRef.current, selectedOntologyRef.current, debouncedSearchQueryRef.current])) return;
+      const latest = getCurrentGraphSlice();
+      if (!latest.nodes.some(node => node.elementId === nodeId)) return;
+      const normalized = normalizeGraphDataset(response.data, { collapseHiddenBridges: true });
+      const context = graphViewModeRef.current === 'individual' ? sanitizeContextualGraph(normalized, nodeId) : normalized;
+      const slice = boundExpansionSlice(latest, context, DEFAULT_GRAPH_OVERVIEW_LIMIT);
+      if (!slice.nodes.some(node => node.elementId === nodeId)) {
+        setError('No traversal data was returned for this node. The displayed graph is unchanged.');
+        return;
+      }
+      const expansions = new Map(nodeExpansionsRef.current);
+      expansions.set(nodeId, slice);
+      const rebuilt = rebuildExpandedGraph(expansionBaseRef.current, expansions);
+      nodeExpansionsRef.current = rebuilt.expansions;
+      expandedNodesRef.current = new Set(rebuilt.expansions.keys());
+      setNodeExpansions(rebuilt.expansions);
+      setExpandedNodes(expandedNodesRef.current);
+      commitGraphSlice(rebuilt.graph, {
+        updateSearchResultData: true, updateGraphData: !graphSearchActiveRef.current && graphViewModeRef.current !== 'individual',
+        updateFullDataset: !graphSearchActiveRef.current && graphViewModeRef.current !== 'individual',
+        preserveIsolatedNodes: true, syncResults: true, forceSearchResults: true,
       });
-
-      if (traversalData.nodes.length > 0) {
-        const expansionSlice = graphViewModeRef.current === 'individual' ? sanitizeContextualGraph(traversalData, nodeId) : traversalData;
-        const mergedData = mergeGraphData(currentData, expansionSlice);
-
-        expansionSlice.nodes.forEach((node) => {
-          if (!currentData.nodes.some((existing) => existing.elementId === node.elementId)) {
-            addedNodeIds.add(node.elementId);
-          }
-        });
-
-        const existingLinkSignatures = new Set((currentData.links || []).map((existing) => buildLinkSignature(existing)).filter(Boolean));
-        expansionSlice.links.forEach((link) => {
-          const signature = buildLinkSignature(link);
-          if (signature && !existingLinkSignatures.has(signature)) {
-            addedLinkRefs.add(signature);
-          } else if (link?.elementId && !currentData.links.some((existing) => existing.elementId === link.elementId)) {
-            addedLinkRefs.add(link.elementId);
-          }
-        });
-
-        const finalNodes = mergedData.nodes;
-        const finalLinks = mergedData.links;
-
-        performanceLog('Two-hop expansion:', addedNodeIds.size, 'new nodes,', addedLinkRefs.size, 'new links');
-
-        const validated = deduplicateNodesAndLinks(finalNodes, finalLinks);
-        const existingNodeIds = new Set(validated.nodes.map(node => node.elementId));
-        const validatedLinks = validated.links.filter((link) => existingNodeIds.has(getLinkEndpointId(link.source)) && existingNodeIds.has(getLinkEndpointId(link.target)));
-        const newData = { nodes: validated.nodes, links: validatedLinks };
-
-        // Batch all state updates for better performance
-        startTransition(() => {
-          // Update the current filtered data (what's currently displayed)
-          setFilteredData(newData);
-          setData(newData);
-          if (currentSearchQuery) {
-            setSearchResultData(newData);
-          }
-
-          // ONLY update fullDataset if we're NOT in a search state
-          // This prevents reverting to default nodes when expanding during search
-          if (!currentSearchQuery) {
-            setFullDataset(newData);
-            setGraphData(newData);
-          }
-
-          // Update search results if search is active
-          if (currentSearchQuery) syncSharedSearchResults(newData.nodes);
-
-          if (setVisibleRelationships) {
-            setVisibleRelationships(newData.links);
-          }
-
-          // Store which nodes and links were added by this expansion
-          setNodeExpansions(prev => {
-            const newMap = new Map([...prev, [nodeId, { addedNodeIds, addedLinkRefs, level: 1 }]]);
-            nodeExpansionsRef.current = newMap;
-            return newMap;
-          });
-
-          setExpandedNodes(prev => {
-            const newSet = new Set([...prev, nodeId]);
-            expandedNodesRef.current = newSet;
-            return newSet;
-          });
-
-        });
-      } // End of if (response.data && response.data.results)
-    } catch (error) {
-      logger.error('Error expanding node:', nodeId, error);
+      setError(slice.truncated ? `Graph display limit (${DEFAULT_GRAPH_OVERVIEW_LIMIT} nodes) reached. Collapse a branch or narrow the search to explore further.` : null);
+    } catch (loadError) {
+      if (!controller.signal.aborted && epoch === expansionEpochRef.current && isComponentMountedRef.current) {
+        logger.error('Error expanding node:', nodeId, loadError);
+        setError('Unable to expand this node. Check graph service access and retry; the graph is unchanged.');
+      }
     } finally {
-      setLoadingNodes(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(nodeId);
-        loadingNodesRef.current = newSet;
-        return newSet;
-      });
+      if (expansionRequestsRef.current.get(nodeId) === controller) {
+        expansionRequestsRef.current.delete(nodeId);
+        const remaining = new Set(expansionRequestsRef.current.keys());
+        loadingNodesRef.current = remaining;
+        if (isComponentMountedRef.current) setLoadingNodes(remaining);
+      }
     }
   };
 
-  // Function to collapse a node - removes only the nodes/links added by that expansion
   const collapseNode = (nodeId) => {
-    logger.render('=== COLLAPSE FUNCTION START ===');
-    logger.render('Collapsing node:', nodeId);
-    logger.render('Current nodeExpansions:', Array.from(nodeExpansionsRef.current.entries()));
-    logger.render('Current expandedNodes:', Array.from(expandedNodesRef.current));
-    const currentData = getCurrentGraphSlice();
-    logger.render('Current filteredData nodes:', currentData.nodes.map(n => n.elementId));
-
-    // Get the expansion info for this node
-    const expansionInfo = nodeExpansionsRef.current.get(nodeId);
-    if (!expansionInfo) {
-      logger.render('ERROR: No expansion info found for node:', nodeId);
-      logger.render('Available expansions:', Array.from(nodeExpansionsRef.current.keys()));
-      return;
-    }
-
-    const expansionEntries = Array.from(nodeExpansionsRef.current.entries());
-    const descendantExpansionIds = new Set([nodeId]);
-    const nodesToRemove = new Set(expansionInfo.addedNodeIds || []);
-    const linksToRemove = new Set(expansionInfo.addedLinkRefs || expansionInfo.addedLinkIds || []);
-
-    let foundDescendant = true;
-    while (foundDescendant) {
-      foundDescendant = false;
-      for (const [expandedId, info] of expansionEntries) {
-        if (descendantExpansionIds.has(expandedId)) continue;
-        if (!nodesToRemove.has(expandedId)) continue;
-        descendantExpansionIds.add(expandedId);
-        (info.addedNodeIds || []).forEach((addedId) => nodesToRemove.add(addedId));
-        (info.addedLinkRefs || info.addedLinkIds || []).forEach((addedId) => linksToRemove.add(addedId));
-        foundDescendant = true;
+    if (!nodeExpansionsRef.current.has(nodeId) || !expansionBaseRef.current) return;
+    const rebuilt = rebuildExpandedGraph(expansionBaseRef.current, nodeExpansionsRef.current, nodeId);
+    const visible = new Set(rebuilt.graph.nodes.map(node => node.elementId));
+    expansionRequestsRef.current.forEach((controller, root) => {
+      if (root === nodeId || !visible.has(root)) {
+        controller.abort();
+        expansionRequestsRef.current.delete(root);
       }
-    }
-
-    logger.render('Nodes to remove:', Array.from(nodesToRemove));
-    logger.render('Links to remove:', Array.from(linksToRemove));
-    logger.render('Expanded branches to remove:', Array.from(descendantExpansionIds));
-
-    // Debug: Check if the nodes to be removed are actually in the current data
-    const currentNodeIds = new Set(currentData.nodes.map(n => n.elementId));
-    const presentNodeIdsToRemove = Array.from(nodesToRemove).filter(id => currentNodeIds.has(id));
-    logger.render('Nodes that will actually be removed (present in current data):', presentNodeIdsToRemove);
-
-    // Remove the nodes and links that were added by this expansion using the
-    // shared graph utility so pruning stays consistent across search / expand / collapse.
-    const prunedData = removeExpandedSubgraph(
-      currentData,
-      Array.from(nodesToRemove),
-      Array.from(linksToRemove)
-    );
-
-    const filteredNodes = prunedData.nodes;
-    const filteredLinks = prunedData.links;
-
-    logger.render('Nodes before collapse:', currentData.nodes.length, 'after:', filteredNodes.length);
-    logger.render('Links before collapse:', currentData.links.length, 'after:', filteredLinks.length);
-    logger.render('Remaining node IDs:', filteredNodes.map(n => n.elementId));
-
-    // Validate that we're actually removing nodes
-    if (filteredNodes.length === currentData.nodes.length && nodesToRemove.size > 0) {
-      logger.warn('No visible nodes were removed during collapse. The removed slice may already be absent from the current graph state.');
-      logger.warn('nodesToRemove:', Array.from(nodesToRemove));
-      logger.warn('current node elementIds:', currentData.nodes.map(n => n.elementId));
-    }
-
-    // Update datasets
-    const newData = deduplicateNodesAndLinks(filteredNodes, filteredLinks);
-    logger.render('Setting new data:', {
-      nodeCount: newData.nodes.length,
-      linkCount: newData.links.length
     });
-
-    const currentSearchQuery = debouncedSearchQueryRef.current;
-    const nextActiveId = findBestSearchMatchId(newData.nodes, currentSearchQuery);
-    commitGraphSlice(newData, {
-      updateSearchResultData: true,
-      nextActiveSearchId: nextActiveId,
-      resetCenteredSearch: true,
-      syncResults: true,
-      forceSearchResults: !!currentSearchQuery,
-      preserveIsolatedNodes: graphViewModeRef.current === 'individual',
+    const loading = new Set(expansionRequestsRef.current.keys());
+    loadingNodesRef.current = loading;
+    setLoadingNodes(loading);
+    nodeExpansionsRef.current = rebuilt.expansions;
+    expandedNodesRef.current = new Set(rebuilt.expansions.keys());
+    setNodeExpansions(rebuilt.expansions);
+    setExpandedNodes(expandedNodesRef.current);
+    commitGraphSlice(rebuilt.graph, {
+      updateSearchResultData: true, updateGraphData: !graphSearchActiveRef.current && graphViewModeRef.current !== 'individual',
+      updateFullDataset: !graphSearchActiveRef.current && graphViewModeRef.current !== 'individual',
+      preserveIsolatedNodes: true, syncResults: true, forceSearchResults: true,
     });
-
-    // Mirror expand behavior: only replace the backing dataset when we are not
-    // currently viewing a search-derived slice of the graph.
-    if (!currentSearchQuery) {
-      setFullDataset(newData);
-      setGraphData(newData);
-    }
-
-    // Remove this node from expanded set and expansion tracking
-    setExpandedNodes(prev => {
-      const newSet = new Set(prev);
-      descendantExpansionIds.forEach((expandedId) => newSet.delete(expandedId));
-      expandedNodesRef.current = newSet;
-      logger.render('Updated expandedNodes:', Array.from(newSet));
-      return newSet;
-    });
-
-    setNodeExpansions(prev => {
-      const newMap = new Map(prev);
-      descendantExpansionIds.forEach((expandedId) => newMap.delete(expandedId));
-      nodeExpansionsRef.current = newMap;
-      logger.render('Updated nodeExpansions:', Array.from(newMap.entries()));
-      return newMap;
-    });
-
-    logger.render('=== COLLAPSE FUNCTION END ===');
   };
 
   // Function to initialize node positions around center
-  const initializeNodePositions = (nodes, width, height) => {
-    const centerX = width / 2;
-    const centerY = height / 2;
-
-    nodes.forEach((node, index) => {
-      if (!node.x && !node.y) {
-        // Deterministic disk seed avoids the donut/ring effect caused by circular seeding.
-        const angle = index * Math.PI * (3 - Math.sqrt(5));
-        const radius = Math.sqrt((index + 1) / Math.max(1, nodes.length)) * Math.min(width, height) * 0.36;
-        node.x = centerX + Math.cos(angle) * radius;
-        node.y = centerY + Math.sin(angle) * radius;
-      }
-    });
-  };
-
+  const initializeNodePositions = (nodes, width, height) => seedSimulationNodes(nodes, width, height);
 
 // Add boundary force to keep nodes within viewport
 const boundaryForce = (width, height) => {
@@ -3055,7 +2901,7 @@ const boundaryForce = (width, height) => {
       return undefined;
     }
 
-    const layoutChanged = false;
+    let layoutChanged = false;
 
     const svg = d3.select(svgElement);
     const width = svgElement.clientWidth || 800;
@@ -3109,13 +2955,17 @@ const boundaryForce = (width, height) => {
       : (graphViewMode === 'individual'
         ? activeDisplayData.nodes.length > 0
         : (activeDisplayData.nodes.length > 0 || (graphData.nodes && graphData.nodes.length > 0)));
-    const renderData = graphSearchActive
+    const sourceRenderData = graphSearchActive
       ? (activeDisplayData.nodes.length > 0 ? activeDisplayData : { nodes: [], links: [] })
       : (graphViewMode === 'individual'
         ? (activeDisplayData.nodes.length > 0 ? activeDisplayData : { nodes: [], links: [] })
         : (activeDisplayData.nodes.length > 0 ? activeDisplayData :
             (graphData.nodes && graphData.nodes.length > 0) ? graphData :
             { nodes: [], links: [] }));
+    const renderData = { ...sourceRenderData, nodes: reconcileSimulationNodes(sourceRenderData.nodes, simulationRef.current?.nodes() || []) };
+    const layoutKey = JSON.stringify([width, height, graphViewMode, showNodeLabels]);
+    layoutChanged = simulationLayoutRef.current !== layoutKey;
+    simulationLayoutRef.current = layoutKey;
     const nodeCount = renderData.nodes.length;
 
     if (!hasData) {
@@ -3124,6 +2974,7 @@ const boundaryForce = (width, height) => {
       }
       if (simulationRef.current) {
         simulationRef.current.stop();
+        simulationRef.current = null;
       }
       logger.render('No nodes to display after filtering. Graph cleared.');
       return;
@@ -3242,21 +3093,11 @@ const boundaryForce = (width, height) => {
     } else {
       // Performance optimization: only update if data actually changed
       const currentNodes = simulationRef.current.nodes();
-      const currentNodeIds = currentNodes.map(n => n.elementId).sort().join(',');
-      const newNodeIds = renderData.nodes.map(n => n.elementId).sort().join(',');
-      const nodesChanged = currentNodeIds !== newNodeIds;
       const currentSimulationLinks = simulationRef.current.force('link')?.links?.() || [];
-      const currentLinkIds = currentSimulationLinks
-        .map((link) => link?.elementId || buildLinkSignature(link))
-        .filter(Boolean)
-        .sort()
-        .join(',');
-      const newLinkIds = processedLinks
-        .map((link) => link?.elementId || buildLinkSignature(link))
-        .filter(Boolean)
-        .sort()
-        .join(',');
-      const linksChanged = currentLinkIds !== newLinkIds;
+      const nodesChanged = JSON.stringify(currentNodes.map(node => node.elementId).sort())
+        !== JSON.stringify(renderData.nodes.map(node => node.elementId).sort());
+      const linksChanged = graphTopologyKey(currentNodes, currentSimulationLinks)
+        !== graphTopologyKey(renderData.nodes, processedLinks);
 
       if (nodesChanged || linksChanged || layoutChanged) {
         // Update simulation data
@@ -3278,6 +3119,7 @@ const boundaryForce = (width, height) => {
         simulationRef.current.alpha(alpha).restart();
         logger.render(`D3 Simulation updated with alpha ${alpha} (nodes changed: ${nodesChanged}, links changed: ${linksChanged}, layout changed: ${layoutChanged})`);
       } else {
+        simulationRef.current.force('link').links(processedLinks);
         logger.render('Skipping simulation update - no data changes detected');
       }
     }
@@ -3971,7 +3813,7 @@ const boundaryForce = (width, height) => {
 
     // Center the view on search results, prioritizing the active exact match
     if (graphSearchActive && activeDisplayData.nodes.length > 0 && lastCenteredSearchRef.current !== debouncedSearchQuery) {
-      const focusNode = activeDisplayData.nodes.find((d) => d.elementId === activeSearchResultId) || activeDisplayData.nodes[0];
+      const focusNode = renderData.nodes.find((d) => d.elementId === activeSearchResultId) || renderData.nodes[0];
       const hasFocusCoords = Number.isFinite(focusNode?.x) && Number.isFinite(focusNode?.y);
 
       let centerX = width / 2;
@@ -4141,23 +3983,23 @@ const boundaryForce = (width, height) => {
   // Keyboard shortcuts for expand/collapse
   useEffect(() => {
     const handleKeyPress = (event) => {
-      if (event.key === 'Escape') {
-        // Collapse all nodes and reset to original search results
+      if (event.key === 'Escape' && !event.defaultPrevented
+          && !event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) {
+        const originalSlice = expansionBaseRef.current || getCurrentGraphSlice();
         resetGraphSelectionState({ resetOntology: false, resetStepPart: false, resetSearch: false });
-        setFilteredData(graphData);
-        setFullDataset(graphData);
-        setData(graphData);
-        if (!searchModeRef.current) syncSharedSearchResults(graphData.nodes);
+        commitGraphSlice(originalSlice, {
+          updateSearchResultData: true, preserveIsolatedNodes: true,
+          syncResults: true, forceSearchResults: true,
+        });
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphData, resetGraphSelectionState]);
+  }, [commitGraphSlice, getCurrentGraphSlice, resetGraphSelectionState]);
 
-  // Preserve expand/collapse state while search text changes; only reset when
-  // the search is explicitly cleared so the canvas does not jump on small edits.
+  // Clearing the search also clears branch ownership for the previous result.
   useEffect(() => {
     const previousSearchQuery = previousSearchQueryRef.current;
     if (previousSearchQuery && !searchQuery) {
@@ -4175,6 +4017,10 @@ const boundaryForce = (width, height) => {
         timeouts.forEach(id => clearTimeout(id));
         timeouts.clear();
       }
+      expansionEpochRef.current += 1;
+      expansionRequestsRef.current.forEach(controller => controller.abort());
+      expansionRequestsRef.current.clear();
+      rootLoadRef.current?.abort();
       // Stop D3 simulation if running
       if (simulationRef.current) {
         simulationRef.current.stop();

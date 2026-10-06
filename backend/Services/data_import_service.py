@@ -364,7 +364,6 @@ class DataImportService:
         return result
 
     @classmethod
-    @classmethod
     async def _parse_stage(cls, task_id: str, file_type: str, file_path: str) -> Dict[str, Any]:
         """Convert: Parse file and convert to ontology structure."""
         progress = import_tasks[task_id]
@@ -508,18 +507,25 @@ class DataImportService:
         progress['progress'] = 50
         progress['message'] = 'Running SHACL validation & quality check...'
 
-        # Simulate validation
-        validation_results = {
-            'is_valid': True,
-            'errors': [],
-            'warnings': [],
-        }
-
-        if parsed_data.get('entities'):
-            validation_results['entities_validated'] = len(parsed_data['entities'])
-
-        progress['stats']['validation_status'] = 'passed'
-        return validation_results
+        from .owl_generation_service import OWLGenerationService
+        import asyncio
+        if parsed_data.get('error'):
+            progress['stats']['validation_status'] = 'failed'
+            raise ValueError('Source parsing failed; ingestion is blocked')
+        ttl = parsed_data.get('rdf_ttl') or progress.get('owl_ttl')
+        if not ttl:
+            progress['stats']['validation_status'] = 'unavailable'
+            raise ValueError('No RDF validation artifact is available; ingestion is blocked. Use the governed import workflow.')
+        shapes = parsed_data.get('shacl_shapes')
+        report = await asyncio.to_thread(OWLGenerationService.validate_with_shacl, ttl, shacl_shapes=shapes)
+        report['validation_scope'] = 'instance' if parsed_data.get('rdf_ttl') and shapes else 'ontology'
+        progress['shacl_report'] = report
+        progress['stats']['validation_scope'] = report['validation_scope']
+        progress['stats']['validation_status'] = 'passed' if report.get('conforms') is True and not report.get('error') else 'failed'
+        if progress['stats']['validation_status'] != 'passed':
+            raise ValueError('SHACL validation failed or is unavailable; ingestion is blocked. Review the retained validation report.')
+        return {'is_valid': True, 'errors': [], 'warnings': [], 'shacl': report,
+                'validation_scope': report['validation_scope']}
 
     @classmethod
     async def _transform_stage(cls, task_id: str, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -1766,6 +1772,7 @@ class DataImportService:
                 'relationships': relationships[:5000],
                 'format': 'ontology',
                 'triple_count': len(graph),
+                'rdf_ttl': graph.serialize(format='turtle'),
             }
         except Exception as e:
             logger.exception("RDF ontology parsing failed")

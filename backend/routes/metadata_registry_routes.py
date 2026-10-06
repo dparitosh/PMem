@@ -297,7 +297,10 @@ def create_metadata_asset(request: MetadataAssetRequest):
     payload = request.model_dump()
     asset_id = request.asset_id or str(uuid4())
     payload.update({"asset_id": asset_id, "persistent_id": request.persistent_id or asset_id, "created_at": now, "updated_at": now, "event_id": str(uuid4()), "actor": request.owner, "comment": ""})
-    _ensure_metadata_constraints()
+    try:
+        _ensure_metadata_constraints()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Metadata registry schema is unavailable. Ask an administrator to verify its constraints.") from exc
     create_query = _asset_mutation_query("created").replace(
         "MERGE (a:MetadataAsset {asset_id: $asset_id})\n        ON CREATE SET a.created_at = $created_at",
         "CREATE (a:MetadataAsset {asset_id: $asset_id})\n        SET a.created_at = $created_at",

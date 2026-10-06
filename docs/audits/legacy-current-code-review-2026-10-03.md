@@ -44,6 +44,69 @@ Dependency-light regression checks execute the loader guards for managed mode,
 each supported production environment variable and development fallback. Full
 service imports and customer connectivity still require runtime validation.
 
+## Embedding and source-context review — 2026-10-06
+
+Fixed the chunk builder keyword mismatch, missing-model success return, skipped
+failed batches, invalid batch sizes, incomplete/non-finite/zero vectors and
+mandatory username/password checks in no-auth Neo4j mode. Chunk text now obeys
+the configured token ceiling even when node properties alone exceed it.
+
+GraphChunk writes match source nodes before creating chunks and run in a managed
+transaction; an unexpected written count raises inside the transaction callback.
+Explicit embedding runs require the graph chunk constraint and vector/keyword
+indexes, consume schema results, and check existing graph index configuration
+against the selected dimensions, labels, properties and cosine similarity.
+Startup's optional index setup remains best effort. No indexes are dropped or
+customer data deleted; incompatible existing indexes require operator review.
+
+Retrieval now follows EMBEDDED_FROM to source relationships and preserves actual
+relationship direction. Source labels are returned as retrieval metadata;
+requested label filtering fails clearly on lookup errors instead of returning
+unfiltered documents. Unlabelled nodes format safely. Both embedding and vector
+retrieval use canonical backend.core imports.
+
+Each successful batch remains committed if a later batch fails. Reruns without
+force resume missing chunks; force is needed to rebuild existing content. Neo4j
+Cypher execution, index population and actual provider responses still require
+live testing. Dependency-light tests cover the real chunk builder and managed
+write callback with fake providers/transactions; they do not certify a running
+database or full LangChain integration. Commit/push is intentionally deferred
+until the user requests it after review.
+
+## Search traversal, graph stability and code trace — 2026-10-06
+
+Expansion now records complete branch slices and rebuilds their union from the
+original search/context slice. Collapsing a branch preserves nodes supported by
+another branch; unsupported descendant expansions are removed. Concurrent replies
+merge into the current branch registry rather than an old request-time snapshot.
+Controllers and an epoch guard reject delayed expansions after scope changes or
+unmount. Competing selected-root requests are cancelled, and Escape restores the
+original visible result rather than the full ontology graph. Display limits are
+applied to expansions with an explicit truncation message.
+
+SVG and D3 now share node objects on metadata-only refresh, retain finite positions
+and pinned coordinates including zero, seed new positions by stable identity, and
+compare edge endpoints/types as well as IDs before restarting layout. Code Network
+preserves force positions/zoom and filters one hop from the original matching files
+instead of spreading through edges in response order. Empty code graphs clear the
+old canvas. Selection alone does not reheat an unchanged force graph.
+
+Backend traversal retains the selected root even at a limit of one, uses stable
+neighbor ordering, bounds the actual variable-length path to the requested depth,
+and keeps every canonical path node in the root ontology. These checks do not
+certify Cypher execution against a live Neo4j server or visual interaction in a
+full browser build. Node regression tests execute the real expand/collapse/root
+callbacks, shared graph utilities and simulation reconciliation with mocked HTTP.
+Run `node tests/graph-interaction-regressions.mjs` from frontend after installing its
+locked dependencies; it uses the existing Babel parser dependency. No packages
+were installed for this review, and push remains deferred at the user's request.
+
+Validation: 71 dependency-light Python tests, five Node regression suites, JSX
+syntax parsing and installation-package checks passed. The Code Network resolver
+resolved both new frontend helper callers and the canonical backend core imports.
+The full repository NetworkX audit could not run because networkx is absent in
+the local test interpreter; no dependency installation was attempted.
+
 
 ## Follow-up fixes
 

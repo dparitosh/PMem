@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from typing import Any
+import logging
+from uuid import uuid4
 
 from graphql import GraphQLArgument, GraphQLBoolean, GraphQLError, GraphQLField, GraphQLInt, GraphQLList, GraphQLNonNull, GraphQLObjectType, GraphQLScalarType, GraphQLSchema, GraphQLString, graphql_sync
 
@@ -78,8 +80,8 @@ def _contextual_graph(*, search: str, ontology_prefix: str = "", import_id: str 
         raise GraphQLError("searchMode must be 'best' or 'broader'")
     return GraphViewService.get_contextual_subgraph(
         search=_bounded_text(search, "search"),
-        ontology_prefix=str(ontology_prefix or "")[:256],
-        import_id=str(import_id or "")[:256],
+        ontology_prefix=_bounded_text(ontology_prefix, "ontologyPrefix", 256) if ontology_prefix else "",
+        import_id=_bounded_text(import_id, "importId", 256) if import_id else "",
         limit=_bounded(limit, 200),
         search_mode=mode,
         expand_neighbors=bool(expand_neighbors),
@@ -112,5 +114,15 @@ def execute(query: str, variables: dict[str, Any] | None = None, operation_name:
     result = graphql_sync(schema, query, variable_values=variables, operation_name=operation_name)
     payload: dict[str, Any] = {"data": result.data}
     if result.errors:
-        payload["errors"] = [{"message": error.message, "extensions": error.extensions or {}} for error in result.errors]
+        errors = []
+        for error in result.errors:
+            if error.original_error and not isinstance(error.original_error, GraphQLError):
+                request_id = uuid4().hex
+                logging.getLogger(__name__).error("GraphQL resolver failed [%s]", request_id,
+                    exc_info=(type(error.original_error), error.original_error, error.original_error.__traceback__))
+                errors.append({"message": "Graph dependency is unavailable", "extensions": {
+                    "code": "SERVICE_UNAVAILABLE", "requestId": request_id}})
+            else:
+                errors.append({"message": error.message, "extensions": error.extensions or {}})
+        payload["errors"] = errors
     return payload

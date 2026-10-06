@@ -103,7 +103,7 @@ class ShaclValidationService:
             if shacl_graph is None and shacl_graph_str:
                 shacl_graph = rdflib.Graph().parse(data=shacl_graph_str, format="turtle")
             
-            if not shacl_graph:
+            if shacl_graph is None:
                 shacl_graph = rdflib.Graph().parse(data=self.create_default_shapes(), format="turtle")
             if len(shacl_graph) == 0:
                 return {"conforms": False, "error": "SHACL shapes graph is empty", "validation_engine": "pyshacl"}

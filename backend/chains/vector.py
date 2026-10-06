@@ -1,9 +1,12 @@
 import os
 import sys
 import logging
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from core.llm import llm, embeddings, LLM_AVAILABLE, EMBEDDER_AVAILABLE
-from core.graph import graph
+from pathlib import Path
+project_root = str(Path(__file__).resolve().parents[2])
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from backend.core.llm import llm, embeddings, LLM_AVAILABLE, EMBEDDER_AVAILABLE
+from backend.core.graph import graph
 from langchain_neo4j import Neo4jVector
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
@@ -81,7 +84,8 @@ RETURN
     display_content AS text,
     score,
     {
-        node_id: node.node_id
+        node_id: node.node_id,
+        source_labels: node.labels_source
     } AS metadata
 """
         )
@@ -107,6 +111,8 @@ RETURN
     display_content AS text,
     score,
     {
+        node_id: elementId(node),
+        source_labels: labels(node),
         filename: node.filename,
         document_id: node.document_id,
         chunkID: node.chunk_id
@@ -136,8 +142,8 @@ def format_graph_context(node_chunks, relationship_data):
     rel_texts = [] 
     for r in relationship_data:
         rel = r["rel"]
-        src_label = rel["source"]["labels"][0]
-        tgt_label = rel["target"]["labels"][0]
+        src_label = (rel["source"].get("labels") or ["Node"])[0]
+        tgt_label = (rel["target"].get("labels") or ["Node"])[0]
         rel_props = rel["properties"]
         rel_text = f"{src_label} →[:{rel['type']} {rel_props}]→ {tgt_label}"
         rel_texts.append(rel_text) 
@@ -163,27 +169,32 @@ def _match_docs_by_labels(docs: List[Document], labels: Optional[List[str]]) -> 
     if not wanted or not docs:
         return docs
 
+    if all(getattr(doc, 'metadata', None) and doc.metadata.get('source_labels') is not None for doc in docs):
+        return [doc for doc in docs if
+                {str(label).lower() for label in doc.metadata['source_labels']} & wanted]
+
     node_ids = [
         str(doc.metadata.get("node_id")).strip()
         for doc in docs
         if getattr(doc, "metadata", None) and doc.metadata.get("node_id") not in (None, "")
     ]
     if not node_ids:
-        return docs
+        return []
 
     try:
         rows = graph.query(
             """
             UNWIND $node_ids AS node_id
             MATCH (n)
-            WHERE toString(n.node_id) = node_id
-            RETURN toString(n.node_id) AS node_id, labels(n) AS labels
+            WHERE toString(n.node_id) = node_id OR elementId(n) = node_id
+            OPTIONAL MATCH (n:GraphChunk)-[:EMBEDDED_FROM]->(source)
+            RETURN node_id, coalesce(n.labels_source, labels(source), labels(n)) AS labels
             """,
             params={"node_ids": node_ids},
         )
     except Exception as exc:
         logger.warning("Label lookup for GraphRAG docs failed: %s", exc)
-        return docs
+        raise RuntimeError('Graph label filtering is unavailable; retry after checking graph connectivity') from exc
 
     labels_by_node_id = {
         str(row.get("node_id")): {str(label).lower() for label in (row.get("labels") or [])}
@@ -217,21 +228,21 @@ def deep_vector_search(input: str):
         return node_results
 
     rel_query = """
-    UNWIND $node_ids AS node_id
-    MATCH (a:GraphChunk)-[r]-(b:GraphChunk)
-    WHERE toString(a.node_id) = node_id OR toString(b.node_id) = node_id
-    RETURN {
+    MATCH (chunk:GraphChunk)-[:EMBEDDED_FROM]->(a)-[r]-(b)
+    WHERE toString(chunk.node_id) IN $node_ids
+      AND NOT b:GraphChunk AND NOT b:DatasheetChunk
+    RETURN DISTINCT {
       type: type(r),
       properties: properties(r),
       source: {
-        node_id: toString(a.node_id),
-        labels: labels(a),
-        properties: properties(a)
+        node_id: elementId(startNode(r)),
+        labels: labels(startNode(r)),
+        properties: properties(startNode(r))
       },
       target: {
-        node_id: toString(b.node_id),
-        labels: labels(b),
-        properties: properties(b)
+        node_id: elementId(endNode(r)),
+        labels: labels(endNode(r)),
+        properties: properties(endNode(r))
       }
     } AS rel
     """
