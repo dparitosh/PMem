@@ -3249,3 +3249,11 @@ Older ZIP manifests without `publication_digest` cannot prove retry identity. Do
 List APIs now accept `limit` and `offset`, and return `total`, `limit`, `offset` and nullable `next_offset`: `/api/v1/data-products`, `/api/v1/catalog/products` and `/api/v1/pipeline/jobs/runs`. Catalog additionally accepts `domain`. Follow `next_offset` until null. Concurrent changes between pages can affect completeness; refresh before treating the results as a fixed audit snapshot.
 
 Approved-release checks call the configured `SEMANTIC_REGISTRY_URL` with the server `GRAPH_READ_TOKEN`. For APIM, the configured gateway subscription header also applies. Preserve Authorization forwarding on that route. API 401/403 indicates authorization failure, 409 indicates immutable-content/concurrency conflict, 422 indicates invalid contract or release evidence, and 503 indicates a required service/control plane is unavailable. These are different from an empty successful list.
+
+### Schema evidence publication recovery checkpoints
+
+Upload a root XSD using a plain filename (for example `QIFDocument.xsd`). Supply included/imported XSD files using their relative schema locations, such as `types/Part.xsd`. Both OWL conversion and the analytics structural report use this schema set. Paths outside the uploaded set are rejected.
+
+If publication returns a validation or authorization rejection, correct the fields or reconnect in Admin, then validate the contract again. For a timeout or server failure, use **Retry same publication**: the request identity and payload remain unchanged until the outcome is known.
+
+Recovery verifies the existing ZIP, its manifest, member list and artifact checksums. A corrupt package is rejected; restore the original package from backup before retrying. Do not delete an existing customer product version to bypass this check.

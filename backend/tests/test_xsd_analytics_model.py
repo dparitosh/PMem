@@ -63,7 +63,7 @@ class XSDAnalytics(unittest.TestCase):
         node=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='EngineeringSchemaConverter')
         namespace={'Any':Any,'FileType':FileType,'FileFormatDetector':type('Detector',(),{'detect':staticmethod(lambda f:FileType.XSD)}),
             '_SOURCE_KINDS':{FileType.XSD:'schema'},'inspect_xsd_structure':lambda content:{'status':'structurally_valid'},
-            '_XSD_CONVERSION_LOCK':threading.Lock(),'OWLGenerationService':type('OWL',(),{'generate_owl':staticmethod(lambda *a:('@prefix x: <urn:test:> .',{'classes':1}))}),
+            '_XSD_CONVERSION_LOCK':threading.Lock(),'OWLGenerationService':type('OWL',(),{'generate_owl':staticmethod(lambda *a, **kw:('@prefix x: <urn:test:> .',{'classes':1}))}),
             'ArtifactStore':Store,'Path':Path,'tempfile':tempfile,'json':json,'build_xsd_relational_report':build_xsd_relational_report,'build_analytics_schema_plan':build_analytics_schema_plan}
         exec(compile(ast.Module(body=[node],type_ignores=[]),'<actual converter>','exec'),namespace)
         converter=namespace['EngineeringSchemaConverter']();converter._ap242_representation=lambda **kwargs:None

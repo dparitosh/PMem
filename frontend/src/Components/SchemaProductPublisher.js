@@ -4,7 +4,7 @@ import { apiClient } from '../services/apiClient';
 import { buildSemanticServiceUrl } from '../config';
 import { getCredentialProfile } from '../services/serviceAuth';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
-import { publicationFromDraft } from '../services/analyticsProductDraft';
+import { publicationFromDraft, isDefinitivePublicationRejection } from '../services/analyticsProductDraft';
 
 const labels = { product_id: 'Product ID', name: 'Product name', version: 'New product version (e.g. 1.0.0)', owner: 'Owner',
   steward: 'Steward', classification: 'Classification', approved_by: 'Approver', asset_id: 'Approved semantic asset ID', release_version: 'Approved semantic release version' };
@@ -61,6 +61,9 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
         else setPreview(response.data);
       }
     } catch (failure) {
+      if (!controller.signal.aborted && action === 'publish' && isDefinitivePublicationRejection(failure)) {
+        pending.current = null; setPreview(null);
+      }
       if (!controller.signal.aborted) setError(apiErrorMessage(failure, failure.message || 'Request failed.'));
     } finally { if (request.current === controller) { request.current = null; if (!controller.signal.aborted) setBusy(false); } }
   }

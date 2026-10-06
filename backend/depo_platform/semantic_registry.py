@@ -40,7 +40,12 @@ async def resolve_approved_release(value: Any) -> dict[str, str]:
         raise ValueError("Referenced semantic release does not exist in the registry")
     if response.is_error:
         raise RuntimeError("Semantic registry could not resolve the referenced release")
-    asset = dict(response.json())
+    try:
+        asset = response.json()
+    except (ValueError, TypeError) as exc:
+        raise RuntimeError("Semantic registry returned invalid JSON; publication was not attempted") from exc
+    if not isinstance(asset, dict) or not all(isinstance(asset.get(key), str) and asset[key].strip() for key in ("version", "lifecycle_status")):
+        raise RuntimeError("Semantic registry returned an invalid release object; publication was not attempted")
     if str(asset.get("version") or "") != reference["version"] or str(asset.get("lifecycle_status") or "").lower() != "approved":
         raise ValueError("Referenced semantic release is not the requested approved registry version")
     return reference

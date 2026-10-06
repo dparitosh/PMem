@@ -26,6 +26,28 @@ class PackageBoundaries(unittest.TestCase):
                     build_package(output_root=root,payload={'product_id':product,'version':version},artifacts=[])
             self.assertEqual(list(root.iterdir()),[])
 
+    def test_corrupt_archive_cannot_be_recovered(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'source.txt'; source.write_text('evidence')
+            payload = {'product_id':'quality','version':'1.0.0','name':'Quality','domain':'engineering','owner':'steward'}
+            artifacts = [({'artifact_id':'sha256:abc'}, source)]
+            result = build_package(output_root=root, payload=payload, artifacts=artifacts)
+            result['zip_path'].write_bytes(b'truncated')
+            with self.assertRaisesRegex(ValueError, 'integrity'):
+                build_package(output_root=root, payload=payload, artifacts=artifacts)
+
+    def test_modified_packaged_artifact_cannot_be_recovered(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'source.txt'; source.write_text('evidence')
+            payload = {'product_id':'quality','version':'1.0.0','name':'Quality','domain':'engineering','owner':'steward'}
+            artifacts = [({'artifact_id':'sha256:abc'}, source)]
+            result = build_package(output_root=root, payload=payload, artifacts=artifacts)
+            (result['package_dir'] / 'artifacts/abc').write_text('corrupt')
+            with self.assertRaisesRegex(ValueError, 'integrity'):
+                build_package(output_root=root, payload=payload, artifacts=artifacts)
+
     def test_valid_package_contains_manifest(self):
         with tempfile.TemporaryDirectory() as directory:
             result = build_package(output_root=Path(directory),payload={'product_id':'quality-product','version':'1.0.0','name':'Quality','domain':'engineering','owner':'steward'},artifacts=[])

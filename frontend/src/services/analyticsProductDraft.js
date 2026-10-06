@@ -13,3 +13,9 @@ export function publicationFromDraft(draft, fields, idempotencyKey) {
     semantic_releases: [{ asset_id: fields.asset_id.trim(), version: fields.release_version.trim(), lifecycle_status: 'approved' }],
     idempotency_key: idempotencyKey };
 }
+
+// These responses reject the request before publication; transport/server errors
+// retain the original identity because a write may have completed.
+export function isDefinitivePublicationRejection(error) {
+  return [400, 401, 403, 404, 405, 422].includes(error?.response?.status);
+}

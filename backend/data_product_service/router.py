@@ -89,8 +89,8 @@ def _validate(payload: dict) -> tuple[list[tuple[dict, Path]], list[str]]:
 
 
 def _catalog_payload(record: dict) -> dict:
-    fields = ("name", "domain", "owner", "version", "classification", "steward", "sla", "quality_status", "lifecycle_state", "sources", "ontologies", "semantic_releases", "manifest", "product_kind", "analytics_readiness")
-    return {field: record.get(field) for field in fields} | {"product_url": f"/api/v1/data-products/{record['product_id']}:{record['version']}"}
+    fields = ("name", "domain", "owner", "version", "classification", "steward", "sla", "quality_status", "lifecycle_state", "sources", "ontologies", "semantic_releases", "manifest")
+    return {field: record.get(field) for field in fields} | {field: record[field] for field in ("product_kind", "analytics_readiness") if record.get(field) is not None} | {"product_url": f"/api/v1/data-products/{record['product_id']}:{record['version']}"}
 
 
 async def _register_catalog(record: dict) -> dict:

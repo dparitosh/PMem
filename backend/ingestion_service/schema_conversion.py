@@ -70,6 +70,8 @@ class EngineeringSchemaConverter:
         return None
 
     def convert(self, *, filename: str, content: bytes, schema_files: dict[str, bytes] | None = None) -> dict[str, Any]:
+        from backend.Services.schema_upload_paths import validate_schema_upload
+        schema_files = validate_schema_upload(filename, content, schema_files)
         file_type = FileFormatDetector.detect(filename)
         if file_type not in _SOURCE_KINDS:
             raise ValueError("Supported conversion formats are .exp, .stp, .step, .stpx, .xmi, and .xsd")
@@ -78,7 +80,7 @@ class EngineeringSchemaConverter:
             if not _XSD_CONVERSION_LOCK.acquire(blocking=False):
                 raise ValueError("Another XSD-to-ontology conversion is running; retry after it completes")
             try:
-                turtle, generated = OWLGenerationService.generate_owl(content, filename)
+                turtle, generated = OWLGenerationService.generate_owl(content, filename, schema_files=schema_files)
             finally:
                 _XSD_CONVERSION_LOCK.release()
         else:

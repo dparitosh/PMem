@@ -43,6 +43,24 @@ def build_package(*, output_root: Path, payload: dict, artifacts: list[tuple[dic
             existing = json.loads(manifest.read_text(encoding="utf-8"))
             if existing.get('publication_digest') != digest:
                 raise ValueError('Existing product package has different or unverified content; publish a new version')
+            try:
+                expected = {'manifest.json'}
+                with zipfile.ZipFile(zip_path) as archive:
+                    if archive.testzip() is not None or json.loads(archive.read('manifest.json')) != existing:
+                        raise ValueError('Package archive is corrupt or has a different manifest')
+                    for item in existing['artifacts']:
+                        name = item['package_path']
+                        path = (package_dir / name).resolve()
+                        if not path.is_relative_to(package_dir.resolve()) or not path.is_file():
+                            raise ValueError('Package artifact is missing or unsafe')
+                        if _checksum(path) != item['sha256'] or hashlib.sha256(archive.read(name)).hexdigest() != item['sha256']:
+                            raise ValueError('Package artifact checksum does not match')
+                        expected.add(name)
+                    names = archive.namelist()
+                    if len(names) != len(expected) or set(names) != expected:
+                        raise ValueError('Package archive contains unexpected or duplicate members')
+            except (OSError, zipfile.BadZipFile, KeyError, TypeError, ValueError) as exc:
+                raise ValueError('Existing product package failed integrity verification; restore it before retrying') from exc
             return {"manifest": existing, "package_dir": package_dir, "zip_path": zip_path}
         raise ValueError("product version package already exists but is incomplete")
     package_dir.mkdir(parents=True, exist_ok=False)

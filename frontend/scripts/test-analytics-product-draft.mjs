@@ -13,3 +13,8 @@ assert.throws(()=>publicationFromDraft(draft,{...fields,owner:''},'same-request'
 assert.throws(()=>publicationFromDraft(draft,{...fields,product_id:'..\/escape'},'same-request'),/Product ID/);
 assert.throws(()=>publicationFromDraft({...draft,artifacts:[]},fields,'same-request'),/artifact/);
 console.log('PASS: analytics draft publication adapter');
+
+const { isDefinitivePublicationRejection } = await import('../src/services/analyticsProductDraft.js');
+for (const status of [400, 401, 403, 404, 405, 422]) assert.equal(isDefinitivePublicationRejection({response:{status}}), true);
+for (const status of [409, 500, 502, 503]) assert.equal(isDefinitivePublicationRejection({response:{status}}), false);
+assert.equal(isDefinitivePublicationRejection(new Error('timeout')), false);

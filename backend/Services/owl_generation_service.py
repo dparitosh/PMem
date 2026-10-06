@@ -155,8 +155,10 @@ class OWLGenerationService:
     """Dispatch uploaded file bytes to the right rdflib OWL generation engine."""
 
     @staticmethod
-    def generate_owl(file_content: bytes, filename: str) -> Tuple[str, Dict[str, Any]]:
+    def generate_owl(file_content: bytes, filename: str, *, schema_files: dict[str, bytes] | None = None) -> Tuple[str, Dict[str, Any]]:
         """Route to the format-specific engine based on filename extension."""
+        from backend.Services.schema_upload_paths import validate_schema_upload
+        validate_schema_upload(filename, file_content, schema_files)
         ext = Path(filename).suffix.lower().lstrip(".")
         dispatch = {
             "exp":     OWLGenerationService.generate_owl_from_express,
@@ -173,7 +175,7 @@ class OWLGenerationService:
         handler = dispatch.get(ext)
         if handler is None:
             raise ValueError(f"No OWL engine for file extension '.{ext}' (filename: {filename})")
-        return handler(file_content, filename)
+        return handler(file_content, filename, schema_files=schema_files) if ext == "xsd" else handler(file_content, filename)
 
     @staticmethod
     def generate_owl_from_express(file_content: bytes, filename: str) -> Tuple[str, Dict[str, Any]]:
@@ -280,11 +282,17 @@ class OWLGenerationService:
                     p.unlink(missing_ok=True)
 
     @staticmethod
-    def generate_owl_from_xsd(file_content: bytes, filename: str) -> Tuple[str, Dict[str, Any]]:
+    def generate_owl_from_xsd(file_content: bytes, filename: str, *, schema_files: dict[str, bytes] | None = None) -> Tuple[str, Dict[str, Any]]:
         """XSD schema -> OWL2/Turtle with full SKOS/SHACL/OSLC via owl_xsd_engine."""
         tmp_dir: Optional[Path] = None
         try:
+            from backend.Services.schema_upload_paths import validate_schema_upload
+            dependencies = validate_schema_upload(filename, file_content, schema_files)
             tmp_dir = Path(tempfile.mkdtemp())
+            for name, data in dependencies.items():
+                dependency = tmp_dir / name
+                dependency.parent.mkdir(parents=True, exist_ok=True)
+                dependency.write_bytes(data)
             xsd_path = tmp_dir / filename
             xsd_path.write_bytes(file_content)
             tmp_out = tmp_dir / (Path(filename).stem + ".ttl")
@@ -303,6 +311,7 @@ class OWLGenerationService:
                 schema_dir=str(tmp_dir),
                 output_ttl=str(tmp_out),
             )
+            cfg.target_files = [Path(filename).stem]
             cfg.source_ns = target_namespace
             cfg.source_standard = target_namespace or "XML Schema"
             result_path = convert_xsd_to_owl(cfg)
