@@ -47,7 +47,7 @@ def _internal(token: str | None) -> None:
 def products(domain: str = "") -> dict:
     values = [value for key, value in store.all().items() if not key.endswith(":latest")]
     values = [value for value in values if not domain or value.get("domain") == domain]
-    return {"products": sorted(values, key=lambda value: value["updated_at"], reverse=True), "count": len(values)}
+    return {"products": sorted(values, key=lambda value: (str(value.get('updated_at') or ''), str(value.get('product_id') or ''), str(value.get('version') or '')), reverse=True), "count": len(values)}
 
 
 @router.get("/products/{product_id}", dependencies=[Depends(graph_read_identity)])

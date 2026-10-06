@@ -9,7 +9,7 @@ from langchain_ollama import ChatOllama, OllamaEmbeddings
 
 from langchain_openai import AzureChatOpenAI
 from dotenv import load_dotenv
-from backend.core.ollama_auth import ollama_headers, ollama_timeout
+from backend.core.ollama_auth import ollama_headers, ollama_timeout, ollama_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ UNSTRUCTURED_AZURE_OPENAI_DEPLOYMENT = _first_env("UNSTRUCTURED_AZURE_OPENAI_DEP
 UNSTRUCTURED_AZURE_OPENAI_API_VERSION = _first_env("UNSTRUCTURED_AZURE_OPENAI_API_VERSION") or "2024-02-15-preview"
 
 # Ollama config for unstructured
-UNSTRUCTURED_OLLAMA_BASE_URL = _first_env("UNSTRUCTURED_OLLAMA_BASE_URL", "OLLAMA_BASE_URL") or "http://localhost:11434"
+UNSTRUCTURED_OLLAMA_BASE_URL = _first_env("UNSTRUCTURED_OLLAMA_BASE_URL") or ollama_base_url()
 UNSTRUCTURED_OLLAMA_API_KEY = _first_env("UNSTRUCTURED_OLLAMA_API_KEY", "OLLAMA_API_KEY") or ""
 UNSTRUCTURED_LLM_MODEL_NAME = _first_env("UNSTRUCTURED_LLM_MODEL_NAME") or "llava:7b"
 
@@ -60,7 +60,7 @@ UNSTRUCTURED_LLM_MODEL_NAME = _first_env("UNSTRUCTURED_LLM_MODEL_NAME") or "llav
 USE_LLM = (_first_env("USE_LLM") or "ollama").lower()
 USE_EMBEDDER = (_first_env("USE_EMBEDDER") or USE_LLM).lower()
 
-OLLAMA_BASE_URL = _first_env("OLLAMA_BASE_URL") or "http://localhost:11434"
+OLLAMA_BASE_URL = ollama_base_url()
 OLLAMA_API_KEY = _first_env("OLLAMA_API_KEY") or ""
 LLM_MODEL_NAME = _first_env("LLM_MODEL_NAME", "OLLAMA_MODEL") or "llama3:latest"
 EMBED_MODEL_NAME = _first_env("EMBED_MODEL_NAME") or "nomic-embed-text:latest"

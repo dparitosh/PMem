@@ -7,7 +7,7 @@ import { validateChatInput, ValidationError } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { formatChatMarkdown } from '../utils/chatMarkdown';
 import { clearClientSessionId, getClientSessionId, setClientSessionId } from '../services/apiClient';
-import { serviceAuthHeaders, getCredentialProfile, expireBrowserSession } from '../services/serviceAuth';
+import { serviceAuthHeaders, getCredentialProfile, handleSessionRejection } from '../services/serviceAuth';
 
 const CHAT_COLORS = {
     primary: '#005a9c',
@@ -179,16 +179,21 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             let activeSessionId = getClientSessionId() || sessionIdRef.current;
             sessionIdRef.current = activeSessionId;
             const graphContext = buildGraphContextSnapshot();
-            const sendRequest = (sessionId) => fetch(buildUrl(API.chat.chatStream), {
+            let requestAuthorization = '';
+            const sendRequest = (sessionId) => {
+                const authHeaders = serviceAuthHeaders(buildUrl(API.chat.chatStream), 'post');
+                requestAuthorization = authHeaders.Authorization || '';
+                return fetch(buildUrl(API.chat.chatStream), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    ...serviceAuthHeaders(buildUrl(API.chat.chatStream), 'post'),
+                    ...authHeaders,
                     ...(sessionId ? { 'X-Session-ID': sessionId } : {}),
                 },
                 body: JSON.stringify({ session_id: sessionId, message: validated, graph_context: graphContext }),
                 signal: controller.signal,
-            });
+                });
+            };
 
             let response = await sendRequest(activeSessionId);
             if (activeSessionId && [404, 410].includes(response.status)) {
@@ -214,9 +219,9 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                     setClientSessionId(returnedSessionId);
                 }
             }
-            if (response.status === 401) expireBrowserSession(getCredentialProfile('GRAPH_READ_TOKEN'));
             if (!response.ok) {
                 const payload = await response.json().catch(() => ({}));
+                handleSessionRejection(response.status, requestAuthorization, payload?.detail);
                 throw new Error(payload?.detail || `Server error ${response.status}`);
             }
 

@@ -218,7 +218,7 @@ Set-Location E:\App\PMem
 4. Open the frontend URL printed by its launcher. Choose **Admin → Service credentials → Connect registered service credentials**. Enter only `ADMIN_API_KEY` from root `.env.local` in **Administrator key for connection**. Leave APIM subscription blank for direct/local access; enter the separate APIM subscription key for gateway access.
 5. Leave workflow scopes unchecked for browsing, graph reads and Knowledge Companion. For uploads, ontology registration, job execution or approved publication, explicitly enable **Enable registered upload, execution and approval scopes for this session**. Click **Connect registered services**. Connection checks each configured service before applying browser access; no individual service-key entry or repeated database registration is required.
 6. Open Ontology Registry and refresh. An empty successful response means no ontology records, rather than authentication failure. Continue the selected import/workflow with its review/approval requirements. A session is not a job approval.
-7. Reconnect after fifteen minutes or a full reload. **Clear credentials** disconnects the session when reachable and clears browser memory. The ordinary per-profile table remains available for limited user-issued keys and credential administration. Session credentials cannot administer keys; use the separate `ADMIN_API_KEY` profile for rotation/revocation actions.
+7. Reconnect after fifteen minutes. The delegated central session survives same-tab refresh when session storage is available. **Clear credentials** disconnects the session when reachable and clears browser memory. The ordinary per-profile table remains available for limited user-issued keys and credential administration. Session credentials cannot administer keys; use the separate `ADMIN_API_KEY` profile for rotation/revocation actions.
 
 For `DEPO_CREDENTIAL_STORE=environment`, central sessions are unavailable. Use **Admin → Service credentials**, enter only the role-authorized profile keys and click **Test and apply**. Entra deployments continue their separate identity/gateway flow. Do not provide the root environment file or an administrator key to ordinary users; an administrator should establish the managed session or issue only the required scoped keys.
 
@@ -2193,7 +2193,7 @@ For `AUTH_MODE=token` and `DEPO_CREDENTIAL_STORE=postgres`, the PowerShell crede
 3. Copy only `ADMIN_API_KEY` from the selected root `.env.local` into **Administrator key for connection**. If APIM is enabled, enter the APIM subscription key in its separate field first.
 4. Leave workflow scopes unchecked for read-only browsing. To upload/register ontologies or execute approved workflows, explicitly check **Enable registered upload, execution and approval scopes for this session**.
 5. Click **Connect registered services**. The app checks read access on every configured service before applying the session. Rows report connected scopes; the administrator input is cleared. You do not need to copy the individual keys or register them again.
-6. Use the application. Reconnect after fifteen minutes or a full browser reload. **Clear credentials** disconnects the session when reachable and clears browser memory; a session that cannot be disconnected still expires server-side. Rotation/revocation invalidates the affected scope; rotating/revoking the issuing Admin key invalidates all its sessions.
+6. Use the application. Reconnect after fifteen minutes. The delegated central session survives same-tab refresh when session storage is available. **Clear credentials** disconnects the session when reachable and clears browser memory; a session that cannot be disconnected still expires server-side. Rotation/revocation invalidates the affected scope; rotating/revoking the issuing Admin key invalidates all its sessions.
 
 Deploy matching backend files to all services and rebuild the frontend before using this feature. No new database migration is needed beyond the existing registry and credential tables (migrations 001 and 008). Sessions store token digests and credential fingerprints in `depo_registry`; plaintext service keys are never returned. Sessions are held only in browser memory and cannot rotate or revoke credentials. Credential administration still requires the separate Admin key; workflow review/approval requirements remain in force. For APIM, import the updated OpenAPI and permit the ontology service's `POST /auth/browser-session` and `DELETE /auth/browser-session`, forwarding `X-API-Key` on connection and `Authorization` on disconnection.
 
@@ -2934,7 +2934,7 @@ If a tracked backend listener has a different bind address, stop it before chang
 
 Open the frontend, select **API access** in the header, and use **Admin → Service credentials**. Enter the administrator-issued `GRAPH_READ_TOKEN`, select **Test and apply**, and require **Validated and applied** before opening graph pages. Repeat for `INGESTION_WRITE_TOKEN` before creating an ontology, and `DATA_JOB_EXECUTION_TOKEN` before submitting governed instance jobs. Each test checks authorization without uploading data or executing a job. Enter the APIM subscription key only for gateway routing. A rejection means the running service does not accept the supplied key; check the root environment file selected at backend startup and restart after changing server keys.
 
-The Import page uses these shared credentials and no longer has separate upload/execution key fields. A full browser reload clears all keys; enter them again in Admin. OpenAPI contract import discovers operations and additional profiles but does not validate those additional credentials. With DEPO_CREDENTIAL_STORE=postgres, use the explicit database registration and rotation controls described below; Test and apply alone changes only browser credentials. For restored failed uploads, remove the row and attach the original file again before starting.
+The Import page uses these shared credentials and no longer has separate upload/execution key fields. A full browser reload clears manually entered keys. Delegated central sessions survive same-tab refresh until expiry. OpenAPI contract import discovers operations and additional profiles but does not validate those additional credentials. With DEPO_CREDENTIAL_STORE=postgres, use the explicit database registration and rotation controls described below; Test and apply alone changes only browser credentials. For restored failed uploads, remove the row and attach the original file again before starting.
 
 
 All 17 application credential profiles, including `ADMIN_API_KEY`, approval, publication, vocabulary, federation, retention and speed-path keys, are entered and tested in **Admin → Service credentials**. Workflow pages consume the shared profile at the time of the action; users still enter approver names and confirm writes on those pages. A successful key test validates credentials on the selected service only; it does not approve a write or guarantee downstream dependencies. Backend `NEO4J_PASS`, database passwords, `DT_AGENT_GATEWAY_TOKEN`, `OSLC_REMOTE_TOKEN` and other outbound secrets remain server-side in the root configuration. Database registration stores salted key digests only when DEPO_CREDENTIAL_STORE=postgres; browser key values remain in tab memory.
@@ -3010,7 +3010,7 @@ Migration 008 creates `depo_api_credentials` (salted key digests, actor, expiry 
 
 In Admin → Service credentials, test and apply the current `ADMIN_API_KEY`. Enter a new random profile key and an assigned actor, then use **Register / rotate in database** and confirm. This invalidates the prior key for that profile. Lost registration responses are ambiguous: test the proposed new key before retrying. Rotating the administrator key requires retaining the new key securely; there is no anonymous password recovery. The **Test and apply** button does not register a key. Graph-read testing checks all configured services, with individual results.
 
-Backend agent dispatch still needs plaintext outbound keys to authenticate to peer APIs. After rotating a profile used by backend calls, update that corresponding root environment value and restart the calling services. Incoming API validation immediately uses PostgreSQL and does not require a restart. This implementation does not distribute plaintext secrets from PostgreSQL. Keep the profile expiry and revocation managed in the authority; expiry changes in legacy environment mode still require restart. Browser keys remain memory-only and must be re-entered after a full reload.
+Backend agent dispatch still needs plaintext outbound keys to authenticate to peer APIs. After rotating a profile used by backend calls, update that corresponding root environment value and restart the calling services. Incoming API validation immediately uses PostgreSQL and does not require a restart. This implementation does not distribute plaintext secrets from PostgreSQL. Keep the profile expiry and revocation managed in the authority; expiry changes in legacy environment mode still require restart. Raw browser API keys remain memory-only and must be re-entered after a full reload. Delegated central sessions survive same-tab refresh until expiry.
 
 For Azure APIM, import the updated OpenAPI contracts and preserve the service-relative `/auth/access`, `/auth/credential-check`, `/auth/admin-access` and `/auth/credentials` routes under each service gateway prefix. Forward `Authorization` and `X-API-Key` without substituting the APIM subscription key. Add these routes to the same origin/CORS policy as the existing APIs. Credential management routes require ADMIN_API_KEY and return no plaintext keys or digests. The protected GET `/auth/credentials` returns profile, actor, expiry, revocation and update metadata only.
 
@@ -3101,7 +3101,7 @@ A successful `test-depo-browser-session.ps1` verifies the services; it does not 
 2. In **Administrator key for connection**, enter the current `ADMIN_API_KEY` accepted by the central PostgreSQL credential store.
 3. For ontology uploads or workflow execution, select **Enable registered upload, execution and approval scopes for this session**. Leave it unchecked for read-only access.
 4. Click **Connect registered services**. Wait for the connected-scopes confirmation. Graph, catalog, data products and observability reads all use the registered read scope.
-5. Navigate to Home and refresh data. Full browser reload clears the session; reconnect after reloading. The session also expires after fifteen minutes.
+5. Navigate to Home and refresh data. The delegated session survives refresh in the same tab when session storage is available and expires after fifteen minutes. Raw keys remain memory-only.
 
 Testing `ADMIN_API_KEY` in the individual profile table validates administrator operations only. It does not connect other services. Blank key inputs are intentional after central connection: raw server keys are never returned to the browser. Read-only sessions leave write profiles unavailable.
 
@@ -3123,3 +3123,42 @@ Set-Location E:\App\PMem
 ```
 
 Then reconnect in Admin using the synchronized ADMIN_API_KEY. Select workflow scopes when uploads or execution are needed. The PowerShell script cannot sign a browser in. Without `-Synchronize`, the script creates missing profiles and validates existing values, refusing conflicts. Database/Neo4j passwords and Ollama/APIM outbound keys are not application credential profiles and remain in server configuration.
+
+### Ollama API URL, key and models
+
+In the root `.env.local`, configure the API URL, key and model names. Remove OLLAMA_BASE_URL if configuring OLLAMA_API_URL for a different server. The legacy setting remains supported. No separate header setting is required: azure-api.net hosts automatically use the subscription-key header; other keyed endpoints use api-key. A blank key sends no authentication header.
+
+```dotenv
+USE_LLM=ollama
+USE_EMBEDDER=ollama
+OLLAMA_API_URL=http://azdtapimanager.azure-api.net/ollama
+OLLAMA_API_KEY=<your-current-api-key>
+LLM_MODEL_NAME=llama3.1:8b
+EMBED_MODEL_NAME=nomic-embed-text:latest
+ONTOLOGY_AGENT_LLM_ENABLED=true
+COMPANION_LLM_ENABLED=true
+```
+
+Replace the key placeholder and restart services. The remote server must have the named models installed. OLLAMA_API_URL accepts the API root or full native /api/chat URL. DEPO uses /api/chat for generation, /api/tags for model discovery, and native embedding operations for SDK embeddings. A model-discovery 404 does not verify generation availability; check proxy routing separately. OpenAI-compatible chat-completions APIs use a different protocol and cannot be configured as native Ollama endpoints.
+
+### Refresh and delegated browser authentication
+
+Central API-key records persist in PostgreSQL. A browser uses a separate fifteen-minute delegated session. The frontend restores that opaque session from sessionStorage before initial requests, so same-tab refresh keeps graph, catalog, data-product and observability reads authenticated. Workflow scopes are restored only if granted when connecting. Service URL changes discard the stored session to prevent reuse against a different configured deployment.
+
+Raw ADMIN_API_KEY, individual service API keys and APIM subscription keys are never persisted in browser storage. Restricted browser storage falls back to memory-only operation. A gateway requiring an APIM subscription key therefore requires that key again after refresh. Clear credentials removes the stored delegated session. Expiry, central revocation and credential rotation still require reconnection; no failed write is automatically repeated.
+
+Deploy the updated frontend source and rebuild with npm run build, then restart the frontend using the documented launcher. Connect in Admin once after deployment; refresh the page within fifteen minutes to verify continued access. Do not use the diagnostic's temporary session in the browser: the diagnostic disconnects it when finished.
+
+### Landing-page ontology and graph metrics
+
+Home → Graph profile provides an ontology scope selector and declared counts for classes, object properties, data properties, annotation properties and explicit named individuals. Graph resource and relationship counts are separate: referenced vocabulary and blank nodes are resources, and literal values are retained as node properties. These are complete aggregates for the published RDF projection, not the limited explorer sample. They do not represent reasoner-inferred axioms or unpublished registry artifacts. The per-ontology breakdown displays up to 200 rows; totals still include the complete selected scope.
+
+Deploy matching frontend and graph-service files, rebuild the frontend and restart the graph service. When using a gateway, import the graph service's updated OpenAPI contract so GET /api/v1/graph/metrics is exposed and Authorization is forwarded. Connect through Admin before checking Home. The metrics endpoint accepts ontology_id as an exact registered publication identity and requires GRAPH_READ_TOKEN or its delegated scope.
+
+An unavailable service or rejected credential displays an error, not zero totals. A registered ontology with no published projection legitimately has no published counts; inspect its publication workflow before treating this as missing registry data. Protégé-style inferred axiom counts are not implemented by this projection endpoint.
+
+### Registry, catalog and product-list completeness
+
+The landing-page ontology registry merges the native ontology catalog and the ingestion registry by immutable identity. If only one source responds, its rows remain usable and a Partial ontology list warning identifies the unavailable source. Retry registries to verify completeness. If both fail, the UI reports a load error instead of claiming the registry is empty. Schema-design drafts on Data Products show the same ontology-source warning.
+
+Data Products follows explicit service pagination rather than assuming the first 100 records are the complete list. Deploy matching backend and frontend files to enable this behavior. An older capped endpoint without pagination metadata shows a completeness warning. Catalog and product detail requests have explicit timeouts; malformed payloads, authorization errors and transport failures are shown as errors, not as successful empty lists. Catalog ordering tolerates historical records without updated_at.

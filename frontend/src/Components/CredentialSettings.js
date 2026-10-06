@@ -1,7 +1,7 @@
 import { credentialServices } from '../services/credentialProfiles';
 import React, { useState, useEffect } from 'react';
 import { buildSemanticServiceUrl, config } from '../config';
-import { getCredentialProfile, setCredentialProfile, clearServiceAuthToken, getGatewaySubscriptionKey, setGatewaySubscriptionKey, serviceAuthHeaders, setBrowserSessionExpiry } from '../services/serviceAuth';
+import { getCredentialProfile, setCredentialProfile, clearServiceAuthToken, getGatewaySubscriptionKey, setGatewaySubscriptionKey, serviceAuthHeaders, setBrowserSessionExpiry, getBrowserSessionStatus } from '../services/serviceAuth';
 import ServiceAccessDiscovery from '../app/ServiceAccessDiscovery';
 import './CredentialSettings.css';
 
@@ -15,8 +15,11 @@ export default function CredentialSettings() {
   const [actor, setActor] = useState('');
   const [expiry, setExpiry] = useState('');
   const [sessionAdminKey, setSessionAdminKey] = useState(() => getCredentialProfile('ADMIN_API_KEY'));
-  const [includeWrites, setIncludeWrites] = useState(false);
-  const [sessionStatus, setSessionStatus] = useState('');
+  const [includeWrites, setIncludeWrites] = useState(() => (getBrowserSessionStatus()?.profiles.length || 0) > 1);
+  const [sessionStatus, setSessionStatus] = useState(() => {
+    const session = getBrowserSessionStatus();
+    return session ? `Session restored: ${session.profiles.length} delegated scopes. Expires ${new Date(session.expiresAt).toLocaleTimeString()}. Services verify access on each request.` : '';
+  });
   useEffect(() => {
     const expired = () => { setSessionStatus('Central session expired or was rejected. Reconnect here; no operation was automatically retried.'); setResults({}); };
     window.addEventListener('depo:session-expired', expired);
@@ -27,32 +30,47 @@ export default function CredentialSettings() {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     const previousSubscription = getGatewaySubscriptionKey();
+    let pendingSession = null;
+    let sessionUrl = '';
     try {
       const url = buildSemanticServiceUrl('ontology', '/auth/browser-session');
+      sessionUrl = url;
       const headers = { ...serviceAuthHeaders(url, 'post', subscription), 'Content-Type': 'application/json', 'X-API-Key': sessionAdminKey.trim() };
       delete headers.Authorization;
       const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ include_writes: includeWrites }), signal: controller.signal, credentials: 'omit', redirect: 'error' });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `Connection failed (${response.status})`);
       if (!body.token?.startsWith('depo_session_') || !Array.isArray(body.profiles) || !body.profiles.includes('GRAPH_READ_TOKEN') || !body.expires_at) throw new Error('Invalid central session response');
+      pendingSession = body.token;
       if (!Number.isFinite(Date.parse(body.expires_at)) || Date.parse(body.expires_at) <= Date.now()) throw new Error('Central session is already expired; check application and database VM clocks.');
-      const checks = await Promise.all(Object.keys(config.semanticServiceUrls).map(async service => {
+      const services = Object.keys(config.semanticServiceUrls).filter(service => config.semanticServiceUrls[service]);
+      const checks = await Promise.allSettled(services.map(async service => {
         const endpoint = buildSemanticServiceUrl(service, '/auth/access');
         const probe = await fetch(endpoint, { headers: { ...serviceAuthHeaders(endpoint, 'get', subscription), Authorization: `Bearer ${body.token}` }, signal: controller.signal, credentials: 'omit', redirect: 'error' });
         const result = await probe.json().catch(() => ({}));
-        if (!probe.ok || result.status !== 'authorized') throw new Error(`${service} did not accept the central session. Deploy matching backend modules and check its credential-store configuration.`);
+        if (!probe.ok || result.status !== 'authorized') throw new Error(`${service}: HTTP ${probe.status}; central session was not accepted`);
       }));
       if (!checks.length) throw new Error('No service endpoints are configured');
+      const failures = checks.flatMap((check, index) => check.status === 'rejected' ? [`${services[index]}: ${check.reason?.name === 'AbortError' ? 'timed out' : check.reason?.message || 'transport failure'}`] : []);
+      if (failures.length) throw new Error(`Connection checks failed: ${failures.join('; ')}. Previous browser access was preserved. Check service listeners, routing and credential-store configuration.`);
       clearServiceAuthToken();
       setGatewaySubscriptionKey(subscription);
       body.profiles.filter(profile => profiles.includes(profile) && profile !== 'ADMIN_API_KEY').forEach(profile => setCredentialProfile(profile, body.token));
       setBrowserSessionExpiry(body.token, body.expires_at);
+      pendingSession = null;
       setValues(Object.fromEntries(profiles.map(profile => [profile, ''])));
       setResults(Object.fromEntries(body.profiles.map(profile => [profile, `Connected via central session until ${new Date(body.expires_at).toLocaleTimeString()}`])));
       setSessionAdminKey('');
       setSessionStatus(`Connected ${body.profiles.length} registered scopes. Session expires ${new Date(body.expires_at).toLocaleTimeString()}. Credential administration still requires the separate admin key.`);
       window.dispatchEvent(new Event('depo:credentials-changed'));
     } catch (error) {
+      if (pendingSession && sessionUrl) {
+        const cleanup = new AbortController();
+        const cleanupTimeout = setTimeout(() => cleanup.abort(), 5000);
+        try { await fetch(sessionUrl, { method: 'DELETE', headers: { ...serviceAuthHeaders(sessionUrl, 'delete', subscription), Authorization: `Bearer ${pendingSession}` }, signal: cleanup.signal, credentials: 'omit', redirect: 'error' }); }
+        catch { /* An unreachable abandoned session expires server-side. */ }
+        finally { clearTimeout(cleanupTimeout); }
+      }
       setGatewaySubscriptionKey(previousSubscription);
       setSessionStatus(error.name === 'AbortError' ? 'Connection timed out; check service connectivity.' : error.message);
     } finally { clearTimeout(timeout); setBusy(false); }
@@ -133,7 +151,7 @@ export default function CredentialSettings() {
     <h2>Service credentials</h2>
     <div className="depo-panel depo-central-session">
       <h3>Connect registered service credentials</h3>
-      <p>After the PowerShell import succeeds, enter ADMIN_API_KEY once here. A fifteen-minute session authorizes registered scopes without copying their keys into this browser. Reloading clears access; rotation, revocation or expiry invalidates affected scopes.</p>
+      <p>After the PowerShell import succeeds, enter ADMIN_API_KEY once here. A fifteen-minute delegated session authorizes registered scopes without copying their keys into this browser. The session survives refresh in this tab when browser session storage is available. Clear, rotation, revocation or expiry invalidates access. Raw API keys remain memory-only.</p>
       <label>Administrator key for connection<input aria-label="Administrator key for connection" type="password" autoComplete="off" disabled={busy} value={sessionAdminKey} onChange={event => setSessionAdminKey(event.target.value)} /></label>
       <label><input type="checkbox" disabled={busy} checked={includeWrites} onChange={event => setIncludeWrites(event.target.checked)} /> Enable registered upload, execution and approval scopes for this session</label>
       <button type="button" disabled={busy || !sessionAdminKey.trim()} onClick={connectCentralSession}>Connect registered services</button>

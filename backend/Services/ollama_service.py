@@ -9,6 +9,7 @@ import os
 from typing import Optional, Dict, Any
 from datetime import datetime
 from urllib.parse import urlparse, urlunparse
+from backend.core.ollama_auth import ollama_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 class OllamaService:
     """Service for Ollama local LLM"""
     
-    DEFAULT_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    DEFAULT_BASE_URL = ollama_base_url()
     DEFAULT_MODEL = os.getenv("LLM_MODEL_NAME") or os.getenv('OLLAMA_MODEL') or 'llama3:latest'
     DEFAULT_API_KEY = os.getenv("OLLAMA_API_KEY", "")
     
@@ -270,7 +271,7 @@ def get_ollama_service(base_url: str = OllamaService.DEFAULT_BASE_URL,
     # Read model from environment at call time to respect runtime .env changes
     env_model = os.getenv('LLM_MODEL_NAME') or os.getenv('OLLAMA_MODEL') or model
     env_api_key = os.getenv('OLLAMA_API_KEY', api_key)
-    env_base = os.getenv('OLLAMA_BASE_URL', base_url)
+    env_base = ollama_base_url() if os.getenv('OLLAMA_API_URL') or os.getenv('OLLAMA_BASE_URL') else base_url
 
     if _ollama_service is None or _ollama_service.model != env_model or _ollama_service.base_url != env_base or _ollama_service.api_key != env_api_key:
         _ollama_service = OllamaService(env_base, env_model, env_api_key)

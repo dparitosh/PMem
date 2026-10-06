@@ -221,6 +221,56 @@ class Neo4jPublisher:
             "view": view,
         }
 
+    def metrics(self, *, ontology_id: str = '') -> dict[str, Any]:
+        """Aggregate the published RDF projection, never an explorer sample."""
+        ontology_id = ontology_id.strip()
+        if len(ontology_id) > 128:
+            raise ValueError('ontology_id must contain at most 128 characters')
+        query = """
+        CALL {
+          MATCH (n:OntologyResource)
+          WHERE $ontology_id = '' OR n.ontology_id = $ontology_id
+          RETURN count(n) AS resources,
+            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
+              WHERE r.predicate = $rdf_type AND t.iri IN $class_types } THEN 1 ELSE 0 END) AS classes,
+            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
+              WHERE r.predicate = $rdf_type AND t.iri = $object_property } THEN 1 ELSE 0 END) AS object_properties,
+            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
+              WHERE r.predicate = $rdf_type AND t.iri = $data_property } THEN 1 ELSE 0 END) AS data_properties,
+            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
+              WHERE r.predicate = $rdf_type AND t.iri = $annotation_property } THEN 1 ELSE 0 END) AS annotation_properties,
+            sum(CASE WHEN EXISTS { MATCH (n)-[r]->(t:OntologyResource)
+              WHERE r.predicate = $rdf_type AND t.iri = $individual } THEN 1 ELSE 0 END) AS named_individuals
+        }
+        CALL {
+          MATCH (a:OntologyResource)-[r]->(b:OntologyResource)
+          WHERE ($ontology_id = '' OR a.ontology_id = $ontology_id)
+            AND a.ontology_id = b.ontology_id
+          RETURN count(r) AS relationships
+        }
+        CALL {
+          MATCH (n:OntologyResource)
+          WHERE $ontology_id = '' OR n.ontology_id = $ontology_id
+          WITH n.ontology_id AS ontology, count(n) AS node_count
+          ORDER BY node_count DESC, ontology LIMIT 201
+          RETURN collect({ontology: ontology, node_count: node_count}) AS ontology_breakdown
+        }
+        RETURN resources, relationships, classes, object_properties, data_properties,
+               annotation_properties, named_individuals, ontology_breakdown
+        """
+        rows = self._session_rows(query, ontology_id=ontology_id, rdf_type=str(RDF.type),
+            class_types=[str(OWL.Class), str(RDFS.Class)], object_property=str(OWL.ObjectProperty),
+            data_property=str(OWL.DatatypeProperty), annotation_property=str(OWL.AnnotationProperty), individual=str(OWL.NamedIndividual))
+        if not rows:
+            raise RuntimeError('Graph metrics query returned no aggregate result')
+        result = dict(rows[0])
+        breakdown = result.get('ontology_breakdown') or []
+        result['ontology_breakdown'] = breakdown[:200]
+        result['breakdown_truncated'] = len(breakdown) > 200
+        return {**result, 'scope': {'type': 'published_rdf_projection', 'ontology_id': ontology_id or None,
+            'sampled': False, 'inferred': False},
+            'definition': 'Declared RDF/OWL types in the published projection. Named individuals count explicit owl:NamedIndividual declarations. Resources include referenced vocabulary and blank nodes; literal values are stored as properties, not relationship edges.'}
+
     def overview(self, *, limit: int = 900) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 10_000))
         nodes = self._session_rows(

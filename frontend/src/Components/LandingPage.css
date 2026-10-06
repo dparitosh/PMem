@@ -34,3 +34,6 @@
 .ix-landing-page__chat-body { flex: 1 1 0; min-height: 0; min-width: 0; overflow: hidden; }
 .ix-landing-page__chat-body > * { height: 100%; min-height: 0; }
 .ix-landing-page__chat .chat-messages { scrollbar-gutter: stable; overflow-wrap: anywhere; }
+.ix-landing-page__scope { display: grid; gap: 6px; margin-bottom: 12px; color: var(--theme-color-std-text); }
+.ix-landing-page__scope select { width: 100%; min-width: 0; padding: 8px; color: var(--theme-color-std-text); background: var(--theme-color-component-1); border: 1px solid var(--theme-color-weak-bdr); }
+.ix-landing-page__profile .ix-landing-page__projection-note { margin: 8px 0; line-height: 1.5; }

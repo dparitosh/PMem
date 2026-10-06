@@ -190,14 +190,19 @@ async def revoke(product_version: str, payload: dict, request: Request) -> dict:
 
 
 @router.get("", dependencies=[Depends(graph_read_identity)])
-def list_products(limit: int = 100) -> dict:
+def list_products(limit: int = 100, offset: int = 0) -> dict:
     safe_limit = max(1, min(int(limit), 500))
+    if offset < 0:
+        raise HTTPException(422, 'offset must be nonnegative')
     records = sorted(
         store.all().values(),
-        key=lambda record: str(record.get("published_at") or record.get("created_at") or ""),
+        key=lambda record: (str(record.get("published_at") or record.get("created_at") or ""), str(record.get('product_id') or ''), str(record.get('version') or '')),
         reverse=True,
-    )[:safe_limit]
-    return {"products": [{key: value for key, value in record.items() if key not in {"package_storage", "approval_token", "authorization", "api_key"}} for record in records], "limit": safe_limit}
+    )
+    total = len(records)
+    page = records[offset:offset + safe_limit]
+    return {"products": [{key: value for key, value in record.items() if key not in {"package_storage", "approval_token", "authorization", "api_key"}} for record in page],
+        "limit": safe_limit, 'offset': offset, 'total': total, 'next_offset': offset + safe_limit if offset + safe_limit < total else None}
 
 
 @router.get("/{product_version}/manifest", dependencies=[Depends(graph_read_identity)])

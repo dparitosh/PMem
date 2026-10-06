@@ -1,0 +1,28 @@
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+const scope = { DOMException, Number, Object };
+vm.createContext(scope);
+vm.runInContext(readFileSync(new URL('../src/services/productCollection.js', import.meta.url), 'utf8').replace('export ', ''), scope);
+const calls = [];
+let result = await scope.loadProductCollection(async params => {
+  calls.push(params.offset);
+  return { data: { products: [{ product_id: String(params.offset) }], next_offset: params.offset === 0 ? 500 : null } };
+});
+assert.deepEqual(calls, [0, 500]);
+assert.equal(result.rows.length, 2);
+assert.equal(result.warning, '');
+result = await scope.loadProductCollection(async params => ({ data: { products: [{}], total: params.offset === 0 ? 3 : 2, next_offset: params.offset === 0 ? 500 : null } }));
+assert.match(result.warning, /changed while pages/);
+result = await scope.loadProductCollection(async () => ({ data: { products: [], total: 5, next_offset: null } }));
+assert.match(result.warning, /declared total/);
+result = await scope.loadProductCollection(async () => ({ data: { products: [{ product_id: 'legacy' }], limit: 1 } }));
+assert.match(result.warning, /capped list/);
+result = await scope.loadProductCollection(async () => ({ data: { products: [], count: 0 } }));
+assert.equal(result.rows.length, 0);
+assert.equal(result.warning, '');
+await assert.rejects(scope.loadProductCollection(async () => ({ data: { products: [{}], next_offset: 0 } })), /invalid product pagination/);
+await assert.rejects(scope.loadProductCollection(async () => ({ data: {} })), /invalid product list/);
+await assert.rejects(scope.loadProductCollection(async () => { throw new Error('403 denied'); }), /403 denied/);
+await assert.rejects(scope.loadProductCollection(async () => ({ data: { products: [] } }), { aborted: true }), /Aborted/);
+console.log('PASS: complete pagination, legacy cap warnings, valid empty list, invalid responses and cancellation');

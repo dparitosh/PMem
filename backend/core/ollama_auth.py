@@ -1,6 +1,27 @@
 """Server-only Ollama proxy authentication; never exposes subscription keys."""
 import os
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
+
+
+def ollama_base_url(value=None):
+    """Accept an API root or native operation URL; retain legacy configuration."""
+    def normalize(raw):
+        url = urlsplit(raw.strip())
+        if url.scheme not in {'http', 'https'} or not url.hostname or url.username or url.password or url.query or url.fragment:
+            raise ValueError('Ollama API URL must be HTTP(S) without credentials, query or fragment')
+        path = url.path.rstrip('/')
+        for suffix in ('/api/chat', '/api/generate', '/api/tags', '/api/embed', '/api/embeddings', '/chat'):
+            if path.endswith(suffix):
+                path = path[:-len(suffix)]
+                break
+        return urlunsplit((url.scheme, url.netloc, path, '', '')).rstrip('/')
+    if value is not None:
+        return normalize(value)
+    api = os.getenv('OLLAMA_API_URL', '').strip()
+    legacy = os.getenv('OLLAMA_BASE_URL', '').strip()
+    if api and legacy and normalize(api) != normalize(legacy):
+        raise ValueError('Conflicting OLLAMA_API_URL and OLLAMA_BASE_URL; keep one or use the same API root')
+    return normalize(api or legacy or 'http://127.0.0.1:11434')
 
 def ollama_headers(base_url, api_key=None, *, header_name=None):
     key = (api_key if api_key is not None else os.getenv('OLLAMA_API_KEY', '')).strip()

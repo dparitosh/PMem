@@ -62,6 +62,16 @@ def overview(limit: int = 900) -> dict:
         raise HTTPException(status_code=503, detail=f"Graph overview failed: {type(exc).__name__}: {exc}") from exc
 
 
+@router.get('/metrics', dependencies=[Depends(graph_read_identity)], summary='Complete declared-entity counts for published RDF projections')
+def metrics(ontology_id: str = '') -> dict:
+    try:
+        return publisher.metrics(ontology_id=ontology_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(503, 'Graph metrics unavailable; check graph connectivity and service logs') from exc
+
+
 @router.get("/search", dependencies=[Depends(graph_read_identity)], summary="Search graph resources with bounded parameterized ranking")
 def search(query: str, limit: int = 50, ontology_id: str = '') -> dict:
     try:

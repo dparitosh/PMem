@@ -10,6 +10,11 @@ const readHeaders = () => {
 const graphUrl = (path) => buildSemanticServiceUrl('graph', path);
 
 export const graphApi = {
+  getMetrics(ontologyId = '', signal) {
+    return apiClient.get(graphUrl('/api/v1/graph/metrics'), {
+      params: { ontology_id: ontologyId }, signal, timeout: 20000, headers: readHeaders(),
+    });
+  },
   verifyAccess(token) {
     // Verification must not depend on stale or unresolved imported metadata.
     return apiClient.get(graphUrl('/api/v1/graph/access'), {

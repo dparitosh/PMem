@@ -5,6 +5,7 @@ import { apiClient } from '../services/apiClient';
 import { buildSemanticServiceUrl } from '../config';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { useOntologies } from '../contexts/OntologyContext';
+import { loadProductCollection } from '../services/productCollection';
 
 const columns = [
   { field: 'product_id', headerName: 'Product ID', flex: 1.2 },
@@ -17,11 +18,11 @@ const columns = [
 export default function DataProductsPage({ mode = 'products' }) {
   const catalog = mode === 'catalog';
   const title = catalog ? 'Data Catalog' : 'Data Products';
-  const { ontologies } = useOntologies();
+  const { ontologies, error: ontologyError, warning: ontologyWarning, loading: ontologyLoading } = useOntologies();
   const drafts = (ontologies || []).filter(ontology => ontology.data_product_draft?.contract);
   const [selectedDraft, setSelectedDraft] = useState('');
   const draft = drafts.find(ontology => ontology.ontology_id === selectedDraft);
-  const [state, setState] = useState({ loading: true, rows: [], error: '' });
+  const [state, setState] = useState({ loading: true, rows: [], error: '', warning: '' });
   const [selected, setSelected] = useState('');
   const [detail, setDetail] = useState(null);
   const [detailError, setDetailError] = useState('');
@@ -36,15 +37,18 @@ export default function DataProductsPage({ mode = 'products' }) {
     detailRequest.current?.abort();
     setDetail(null); setDetailError(''); setDetailLoading(false); setSelected('');
     const controller = new AbortController(); listRequest.current = controller;
+    let timedOut = false;
+    const deadline = setTimeout(() => { timedOut = true; controller.abort(); }, 60000);
     setState({ loading: true, rows: [], error: '' });
     try {
-      const response = await apiClient.get(buildSemanticServiceUrl(service, path), { signal: controller.signal });
+      const collection = await loadProductCollection(params => apiClient.get(buildSemanticServiceUrl(service, path), { signal: controller.signal, params, timeout: 15000 }), controller.signal);
       if (controller.signal.aborted) return;
-      if (!Array.isArray(response.data?.products)) throw new Error('Service returned an invalid product list.');
-      setState({ loading: false, rows: response.data.products, error: '' });
+      setState({ loading: false, rows: collection.rows, error: '', warning: collection.warning });
     } catch (error) {
-      if (controller.signal.aborted) return;
-      setState({ loading: false, rows: [], error: apiErrorMessage(error, 'Product service request failed.') });
+      if (listRequest.current !== controller || (controller.signal.aborted && !timedOut)) return;
+      setState({ loading: false, rows: [], error: timedOut ? 'Product-list retrieval exceeded one minute. Retry or check service response times.' : apiErrorMessage(error, 'Product service request failed.'), warning: '' });
+    } finally {
+      clearTimeout(deadline);
     }
   }, [service, path]);
 
@@ -64,10 +68,10 @@ export default function DataProductsPage({ mode = 'products' }) {
     if (!key) { setDetailLoading(false); return; }
     const controller = new AbortController(); detailRequest.current = controller; setDetailLoading(true);
     try {
-      const response = await apiClient.get(buildSemanticServiceUrl(service, `${path}/${encodeURIComponent(key)}`), { signal: controller.signal });
+      const response = await apiClient.get(buildSemanticServiceUrl(service, `${path}/${encodeURIComponent(key)}`), { signal: controller.signal, timeout: 15000 });
       if (!controller.signal.aborted) setDetail(response.data);
     } catch (error) {
-      if (!controller.signal.aborted) setDetailError(typeof error.response?.data?.detail === 'string' ? error.response.data.detail : error.message);
+      if (!controller.signal.aborted) setDetailError(apiErrorMessage(error, 'Product details are unavailable.'));
     } finally {
       if (!controller.signal.aborted) setDetailLoading(false);
     }
@@ -79,16 +83,19 @@ export default function DataProductsPage({ mode = 'products' }) {
     <p>{catalog ? 'Browse governed product versions, ownership and lifecycle.' : 'Browse retained product packages and their catalog delivery status.'}</p>
     {state.loading && <p role="status">Loading products…</p>}
     {state.error && <div role="alert" className="depo-alert depo-alert--warning">{state.error}</div>}
+    {state.warning && <div role="alert" className="depo-alert depo-alert--warning">{state.warning}</div>}
     {!state.loading && !state.error && state.rows.length === 0 && <p>No products are registered yet. Creating an ontology does not publish a data product.</p>}
     {!catalog && <section aria-label="Schema design drafts">
       <h3>Schema design drafts ({drafts.length})</h3>
+      {ontologyLoading && <p role="status">Loading ontology draft metadata…</p>}
+      {(ontologyError || ontologyWarning) && <div role="alert">{ontologyError || ontologyWarning}</div>}
       <p>Retained conversion evidence is a draft, not a published warehouse. Publication requires an approved semantic release and data-product steward approval.</p>
       <select aria-label="Schema design draft" value={draft ? selectedDraft : ''} onChange={event => setSelectedDraft(event.target.value)}>
         <option value="">Select imported schema draft</option>
         {drafts.map(ontology => <option key={ontology.ontology_id} value={ontology.ontology_id}>{ontology.label}</option>)}
       </select>
       {draft && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 350, overflow: 'auto' }}>{JSON.stringify(draft.data_product_draft, null, 2)}</pre>}
-      {!drafts.length && <p>No retained schema-design draft metadata is available. Older imports may need reimporting with this release to retain their evidence references.</p>}
+      {!ontologyLoading && !ontologyError && !ontologyWarning && !drafts.length && <p>No retained schema-design draft metadata is available. Older imports may need reimporting with this release to retain their evidence references.</p>}
     </section>}
     <RegistryWidget title={`${title} (${state.rows.length})`} rows={state.rows} columns={columns} height={400} />
     <label htmlFor="product-detail">Product details and versions</label>

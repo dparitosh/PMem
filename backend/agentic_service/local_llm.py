@@ -8,7 +8,8 @@ import httpx
 def settings():
     provider = os.getenv('USE_LLM', 'ollama').strip().lower()
     model = (os.getenv('LLM_MODEL_NAME') or os.getenv('OLLAMA_MODEL') or 'llama3:latest').strip()
-    url = urlsplit(os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434').strip())
+    from backend.core.ollama_auth import ollama_base_url
+    url = urlsplit(ollama_base_url())
     if url.scheme not in {'http', 'https'} or not url.hostname or url.username or url.password or url.query or url.fragment:
         raise ValueError('OLLAMA_BASE_URL must be an HTTP(S) server URL without embedded credentials')
     path = url.path.rstrip('/')
@@ -47,7 +48,7 @@ async def health():
         return {'status': 'authentication_rejected' if code in (401, 403) else 'route_missing' if code == 404 else 'upstream_error',
                 'http_status': code, 'provider': provider, 'model': model,
                 'action': 'Check the APIM subscription key and header.' if code in (401, 403) else
-                          'Expose GET /api/tags at the Ollama proxy API suffix.' if code == 404 else 'Check the Ollama proxy backend and its logs.'}
+                          'Model-list route GET /api/tags returned 404. Generation is unverified; check the configured API URL and POST /api/chat routing separately.' if code == 404 else 'Check the Ollama proxy backend and its logs.'}
     except (httpx.HTTPError, TimeoutError, ValueError, TypeError, AttributeError):
         return {'status': 'unavailable', 'provider': provider, 'model': model,
                 'action': 'Check Ollama is running and its /api/tags endpoint is reachable from the application VM.'}

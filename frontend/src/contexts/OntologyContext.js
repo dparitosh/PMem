@@ -16,10 +16,12 @@ export const OntologyProvider = ({ children }) => {
   const [ontologies, setOntologies] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [warning, setWarning] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
   const mountedRef = useRef(false);
   const requestRef = useRef(null);
   const abortRef = useRef(null);
+  const registryFailureRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -45,6 +47,7 @@ export const OntologyProvider = ({ children }) => {
       try {
         if (mountedRef.current) setLoading(true);
         if (mountedRef.current) setError(null);
+        if (mountedRef.current) setWarning('');
         // Prefer the native ontology catalog, then retain the ingestion-owned
         // registry as a read-only bridge for already-published ontologies.
         // This prevents existing QIF/AP242 artifacts from disappearing while
@@ -55,12 +58,13 @@ export const OntologyProvider = ({ children }) => {
         const merged = new Map();
         let successes = 0;
         let lastError = null;
-        for (const result of results) {
+        const failedSources = [];
+        for (const [index, result] of results.entries()) {
           if (controller.signal.aborted) return [];
-          if (result.status === 'rejected') { lastError = result.reason; continue; }
+          if (result.status === 'rejected') { lastError = result.reason; failedSources.push(`${index === 0 ? 'Ontology catalog' : 'Ingestion registry'} (${apiErrorMessage(result.reason, 'request failed')})`); continue; }
           const payload = result.value?.data || {};
           const rows = payload.ontologies || payload.items || payload.results || payload.data?.ontologies || payload.data?.items;
-          if (!Array.isArray(rows)) { lastError = new Error('Registry returned an invalid ontology list.'); continue; }
+          if (!Array.isArray(rows)) { lastError = new Error('Registry returned an invalid ontology list.'); failedSources.push(index === 0 ? 'Ontology catalog' : 'Ingestion registry'); continue; }
           successes += 1;
           for (const row of normalizeOntologyRows(rows)) {
             if (row.value && !merged.has(row.value)) merged.set(row.value, row);
@@ -70,7 +74,9 @@ export const OntologyProvider = ({ children }) => {
         if (controller.signal.aborted) return [];
         const ontologyList = [...merged.values()];
         if (mountedRef.current) {
+          registryFailureRef.current = failedSources.length > 0;
           setOntologies(ontologyList);
+          setWarning(failedSources.length ? `Partial ontology list: ${failedSources.join(', ')} could not be loaded. Other registry results are shown; retry to verify completeness.` : '');
           setLastUpdated(new Date());
         }
         return ontologyList;
@@ -79,6 +85,7 @@ export const OntologyProvider = ({ children }) => {
           return [];
         }
         const errorMsg = apiErrorMessage(err, 'Failed to load ontology registries.');
+        registryFailureRef.current = true;
         if (mountedRef.current) setError(errorMsg);
         logger.error('[OntologyContext] Failed to fetch ontologies:', err);
         return [];
@@ -127,7 +134,7 @@ export const OntologyProvider = ({ children }) => {
         }
         try {
           await fetchOntologies();
-          retryDelayMs = 30000;
+          retryDelayMs = registryFailureRef.current ? Math.min(retryDelayMs * 2, 300000) : 30000;
         } catch (_error) {
           retryDelayMs = Math.min(retryDelayMs * 2, 300000);
         } finally {
@@ -154,11 +161,12 @@ export const OntologyProvider = ({ children }) => {
     ontologies,
     loading,
     error,
+    warning,
     lastUpdated,
     fetchOntologies,
     getOntologyByPrefix,
     getOntologyById,
-  }), [ontologies, loading, error, lastUpdated, fetchOntologies, getOntologyByPrefix, getOntologyById]);
+  }), [ontologies, loading, error, warning, lastUpdated, fetchOntologies, getOntologyByPrefix, getOntologyById]);
 
   return (
     <OntologyContext.Provider value={value}>
