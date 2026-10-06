@@ -26,7 +26,12 @@ except ImportError:
         CENTRALIZED_CONFIG_AVAILABLE = False
 
 # Load environment variables
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+# Managed deployments use only the injected root configuration.
+if os.getenv('DEPO_ENV_INJECTED', '').lower() != 'true' and not any(
+    os.getenv(key, '').lower() in {'prod', 'production'}
+    for key in ('DEPO_ENV', 'ENVIRONMENT', 'APP_ENV', 'DEPLOYMENT_ENV')
+):
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
 
 logger = logging.getLogger(__name__)
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")

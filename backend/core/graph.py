@@ -30,7 +30,12 @@ except ImportError:
         return None
     
     env_path = Path(__file__).resolve().parents[1] / ".env"
-    load_dotenv(env_path)
+    # Managed deployments use only the injected root configuration.
+    if os.getenv('DEPO_ENV_INJECTED', '').lower() != 'true' and not any(
+        os.getenv(key, '').lower() in {'prod', 'production'}
+        for key in ('DEPO_ENV', 'ENVIRONMENT', 'APP_ENV', 'DEPLOYMENT_ENV')
+    ):
+        load_dotenv(env_path, override=False)
     
     uri = _first_env("NEO4J_URI", "NEO4J_URL", "Neo4j_url")
     username = _first_env("NEO4J_USER", "NEO4J_USERNAME", "Neo4j_user")

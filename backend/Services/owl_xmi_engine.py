@@ -36,7 +36,12 @@ try:
 except ImportError:
     from xmi_parser import XMIParser  # type: ignore
 
-load_dotenv()
+# Managed deployments use only the injected root configuration.
+if os.getenv('DEPO_ENV_INJECTED', '').lower() != 'true' and not any(
+    os.getenv(key, '').lower() in {'prod', 'production'}
+    for key in ('DEPO_ENV', 'ENVIRONMENT', 'APP_ENV', 'DEPLOYMENT_ENV')
+):
+    load_dotenv(override=False)
 
 # Default namespaces for XMI models
 _DEFAULT_XMI_NAMESPACES = {

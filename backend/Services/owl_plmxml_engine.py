@@ -29,7 +29,12 @@ try:
 except ImportError:
     from plmxml_parser import parse_plmxml_file, _rflp_layer  # type: ignore
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+# Managed deployments use only the injected root configuration.
+if os.getenv('DEPO_ENV_INJECTED', '').lower() != 'true' and not any(
+    os.getenv(key, '').lower() in {'prod', 'production'}
+    for key in ('DEPO_ENV', 'ENVIRONMENT', 'APP_ENV', 'DEPLOYMENT_ENV')
+):
+    load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
 _PLMXML_BASE = os.getenv("IAE_BASE_URI", "http://IAE-depo.com/plmxml-ontology#")
 _PLMXML_NS = Namespace(_PLMXML_BASE)
