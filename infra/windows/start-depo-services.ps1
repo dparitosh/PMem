@@ -4,7 +4,7 @@ param(
   [string]$PostgresDataDir = "",
   [string]$BindHost = "",
   [ValidateRange(1, 3600)]
-  [int]$ServiceStartupTimeoutSeconds = 300,
+  [int]$ServiceStartupTimeoutSeconds = 600,
   [switch]$SkipPostgres,
   [switch]$EnableSpark,
   [switch]$EnablePipelineScheduler,
@@ -131,7 +131,7 @@ foreach ($service in $services) {
   # listening; otherwise an old PID can silently prevent recovery.
   $portListening = $false
   if ($service.Port) {
-    $portListening = [bool](Get-NetTCPConnection -LocalPort $service.Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $portListening = [bool](Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object { $_.LocalPort -eq $service.Port } | Select-Object -First 1)
   }
   if (Test-Path $pidFile) {
     $recordedPid = [int](Get-Content $pidFile)
@@ -175,8 +175,19 @@ foreach ($service in $services | Where-Object { $_.Port }) {
     try {
       # Liveness means a Python process exists; readiness also verifies every
       # configured shared dependency before a service is announced usable.
-      $response = Invoke-WebRequest -UseBasicParsing "http://${peerHost}:$($service.Port)/readyz" -Headers @{ Origin = $corsProbeOrigin } -TimeoutSec 5
-      $ready = $response.StatusCode -eq 200 -and (Test-DepoListener ([int](Get-Content -LiteralPath (Join-Path $stateDir "$($service.Name).pid"))) $python $service.Module $service.Port $BindHost)
+      # Dependency checks are sequential; five seconds can expire before
+      # PostgreSQL and Neo4j finish. Keep each request within the outer budget.
+      $probeSeconds = [Math]::Max(1, [Math]::Min(20, [int][Math]::Ceiling(($deadline - (Get-Date)).TotalSeconds)))
+      $response = Invoke-WebRequest -UseBasicParsing "http://${peerHost}:$($service.Port)/readyz" -Headers @{ Origin = $corsProbeOrigin } -TimeoutSec $probeSeconds -MaximumRedirection 0
+      $lastProbeFailure = "Readiness responded HTTP $($response.StatusCode)."
+      $listenerVerified = $false
+      if ($response.StatusCode -eq 200) {
+        $listenerVerified = Test-DepoListener $servicePid $python $service.Module $service.Port $BindHost
+        if (-not $listenerVerified) {
+          $lastProbeFailure = "HTTP 200 readiness response received, but Windows listener ownership/binding could not be verified for tracked PID $servicePid on ${BindHost}:$($service.Port). Check Get-NetTCPConnection output, the process tree and the configured bind address; this is not an initialization timeout."
+        }
+      }
+      $ready = $response.StatusCode -eq 200 -and $listenerVerified
       if ($ready) {
         $actualCorsOrigin = [string]$response.Headers['Access-Control-Allow-Origin']
         if ($actualCorsOrigin -ne $corsProbeOrigin) {
@@ -187,8 +198,8 @@ foreach ($service in $services | Where-Object { $_.Port }) {
       }
     } catch {
       $lastProbeFailure = $_.Exception.Message
-      Start-Sleep -Milliseconds 500
     }
+    if (-not $ready) { Start-Sleep -Milliseconds 500 }
   } while (-not $ready -and (Get-Date) -lt $deadline)
   if ($corsMismatch) { throw $corsMismatch }
   if (-not $ready) { throw "DEPO service '$($service.Name)' did not become ready within $ServiceStartupTimeoutSeconds seconds. Last probe: $lastProbeFailure Check $stateDir\$($service.Name).err.log and $stateDir\$($service.Name).out.log. Increase the timeout only if the process is still initializing." }
@@ -233,11 +244,13 @@ if ($env:DEPO_PIPELINE_EXECUTION_MODE -eq 'worker') {
     try {
       $execution = Invoke-RestMethod -Uri "http://${peerHost}:8019/api/v1/pipeline/execution-ready" -TimeoutSec 5
       $executionReady = $execution.status -eq 'ready'
-    } catch { Start-Sleep -Milliseconds 500 }
+    } catch { $executionReady = $false }
+    if (-not $executionReady) { Start-Sleep -Milliseconds 500 }
   } while (-not $executionReady -and (Get-Date) -lt $executionDeadline)
   if (-not $executionReady) { throw 'Pipeline API is alive but no current worker heartbeat is available. Check data-pipeline-worker logs and PostgreSQL connectivity.' }
 }
 } catch {
+  Write-Warning 'Startup failed. Stopping services launched by this attempt and removing their PID files; startup logs are retained. Missing listeners after this cleanup do not identify the original readiness failure.'
   foreach ($startedService in @($startedServices | Sort-Object { [int]$_.ProcessId } -Descending)) {
     try { Stop-DepoProcessTree $startedService.ProcessId $python $startedService.Module }
     catch { Write-Warning "Cleanup failed for $($startedService.Module): $($_.Exception.Message)"; continue }

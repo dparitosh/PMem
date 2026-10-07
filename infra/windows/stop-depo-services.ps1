@@ -10,62 +10,31 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $expectedPython = (Join-Path $root "backend\.dt_venv\Scripts\python.exe").ToLowerInvariant()
 $stateDir = Join-Path $root "logs\windows-services"
 $manifestPath = Join-Path $root "infra\deployment\services.json"
-$modules = @()
-if (Test-Path $manifestPath) {
-  $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-  $modules = @($manifest.services | ForEach-Object { [string]$_.module }) + @($manifest.workers | ForEach-Object { [string]$_.module })
-}
-
-# PID files alone are not sufficient after a crash or a shell restart: a
-# Uvicorn listener can outlive its recorded launcher PID. Discover only this
-# repository's Python processes and only the modules declared in the manifest.
-$serviceProcesses = @()
-if ($modules.Count -gt 0) {
-  foreach ($candidate in Get-CimInstance Win32_Process -ErrorAction SilentlyContinue) {
-    if (-not $candidate.ExecutablePath -or $candidate.ExecutablePath.ToLowerInvariant() -ne $expectedPython -or -not $candidate.CommandLine) { continue }
-    foreach ($module in $modules) {
-      if ($module -and $candidate.CommandLine -match [regex]::Escape($module)) {
-        $serviceProcesses += $candidate
-        break
-      }
-    }
+. (Join-Path $PSScriptRoot 'process-control.ps1')
+if (-not (Test-Path -LiteralPath $manifestPath)) { throw 'Service manifest is required for safe shutdown.' }
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$entries = @($manifest.services) + @($manifest.workers)
+# Discover verified launchers even if tracking was lost. Shared tree control
+# checks creation times, stops children first, and verifies listener cleanup.
+$snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+foreach ($entry in $entries) {
+  $module = [string]$entry.module
+  $pattern = '(?<![A-Za-z0-9_.])' + [regex]::Escape($module) + '(?![A-Za-z0-9_.])'
+  $roots = @($snapshot | Where-Object {
+    $_.ExecutablePath -ieq $expectedPython -and $_.CommandLine -match $pattern
+  })
+  foreach ($candidate in $roots) {
+    Stop-DepoProcessTree ([int]$candidate.ProcessId) $expectedPython $module
   }
-}
-# Windows virtual-environment launchers can remain as a parent process while
-# the actual listener runs under the base Python executable. Include only
-# descendants of the already verified PMem launcher; never select arbitrary
-# system-Python processes by their module name alone.
-$knownProcessIds = [System.Collections.Generic.HashSet[int]]::new()
-foreach ($service in $serviceProcesses) { [void]$knownProcessIds.Add([int]$service.ProcessId) }
-$processSnapshot = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
-$foundDescendant = $true
-while ($foundDescendant) {
-  $foundDescendant = $false
-  foreach ($candidate in $processSnapshot) {
-    if ($candidate.ParentProcessId -and $knownProcessIds.Contains([int]$candidate.ParentProcessId) -and $knownProcessIds.Add([int]$candidate.ProcessId)) {
-      $serviceProcesses += $candidate
-      $foundDescendant = $true
+  $pidPath = Join-Path $stateDir ($entry.id + '.pid')
+  if (Test-Path -LiteralPath $pidPath) {
+    $trackedPid = [int](Get-Content -LiteralPath $pidPath)
+    $current = Get-CimInstance Win32_Process -Filter "ProcessId = $trackedPid" -ErrorAction Stop
+    if ($current) {
+      # An unrelated reused PID must not be killed or silently untracked.
+      Stop-DepoProcessTree $trackedPid $expectedPython $module
     }
-  }
-}
-# Stop children before their launcher so active port listeners cannot survive
-# a graceful-looking stop after a virtual-environment process exits.
-foreach ($service in ($serviceProcesses | Sort-Object { $_.ProcessId } -Descending)) {
-  Stop-Process -Id $service.ProcessId -Force -ErrorAction SilentlyContinue
-}
-if (Test-Path $stateDir) {
-  Get-ChildItem $stateDir -Filter '*.pid' | Where-Object BaseName -ne 'frontend' | ForEach-Object {
-    $serviceId = $_.BaseName
-    $process = Get-Process -Id (Get-Content $_.FullName) -ErrorAction SilentlyContinue
-    # A stale PID can refer to another process in the same venv. Require the
-    # expected manifest module in the command line before stopping it.
-    $details = if ($process) { Get-CimInstance Win32_Process -Filter "ProcessId = $($process.Id)" -ErrorAction SilentlyContinue } else { $null }
-    $expectedModule = @($manifest.services + $manifest.workers | Where-Object { $_.id -eq $serviceId } | Select-Object -First 1).module
-    if ($details -and $details.ExecutablePath -and $details.ExecutablePath.ToLowerInvariant() -eq $expectedPython -and
-        $expectedModule -and $details.CommandLine -match [regex]::Escape([string]$expectedModule)) {
-      Stop-Process -Id $process.Id -Force
-    }
-    Remove-Item $_.FullName -Force
+    Remove-Item -LiteralPath $pidPath -Force
   }
 }
 if ($StopPostgres) {

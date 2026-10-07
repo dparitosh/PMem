@@ -28,8 +28,12 @@ function Test-DepoListener([int]$ProcessId, [string]$ExpectedPython, [string]$Mo
   $addresses = if ($BindHost -in @('0.0.0.0','::')) { @($BindHost) } else {
     @([Net.Dns]::GetHostAddresses($BindHost) | ForEach-Object { $_.ToString() })
   }
-  return [bool](@(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
-    Where-Object { $_.OwningProcess -in $owners -and $_.LocalAddress -in $addresses }).Count)
+  # Query all listeners: a port-filtered query raises ObjectNotFound during
+  # normal startup. Do not hide genuine CIM/access failures as a closed port.
+  try { $listeners = @(Get-NetTCPConnection -State Listen -ErrorAction Stop) }
+  catch { throw "Windows listener inspection failed for port ${Port}: $($_.Exception.Message)" }
+  return [bool](@($listeners |
+    Where-Object { $_.LocalPort -eq $Port -and $_.OwningProcess -in $owners -and $_.LocalAddress -in $addresses }).Count)
 }
 
 function Stop-DepoProcessTree([int]$ProcessId, [string]$ExpectedPython, [string]$Module) {
@@ -49,7 +53,7 @@ function Stop-DepoProcessTree([int]$ProcessId, [string]$ExpectedPython, [string]
   $owners = @($tree | ForEach-Object { [int]$_.Process.ProcessId })
   $deadline = (Get-Date).AddSeconds(5)
   do {
-    $remaining = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.OwningProcess -in $owners })
+    $remaining = @(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object { $_.OwningProcess -in $owners })
     if (-not $remaining.Count) { return }
     Start-Sleep -Milliseconds 100
   } while ((Get-Date) -lt $deadline)
