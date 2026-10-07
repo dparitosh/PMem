@@ -25,6 +25,30 @@ export function ExistingOntologyMetrics({ metrics }) {
   </section>;
 }
 
+export function GraphProfileMetrics({ metrics }) {
+  if (metrics?.resources === 0) {
+    return <>
+      {metrics.existing_ontology?.resources > 0 && <ExistingOntologyMetrics metrics={metrics.existing_ontology} />}
+      <p role="status" className="ix-landing-page__projection-note">RDF projection not published for this scope.</p>
+      {!(metrics.existing_ontology?.resources > 0) && <p className="ix-landing-page__projection-note">No ontology graph records are available for this scope.</p>}
+    </>;
+  }
+  return <>
+                <div className="ix-landing-page__metric-row" aria-label="Published ontology metrics">
+                  {[['classes', 'Declared classes'], ['object_properties', 'Object properties'], ['data_properties', 'Data properties'], ['annotation_properties', 'Annotation properties'], ['named_individuals', 'Declared named individuals'], ['resources', 'Graph resources'], ['relationships', 'Resource relationships']].map(([key, label]) =>
+                    <div key={key}><strong>{fmt(metrics?.[key])}</strong><span>{label}</span></div>)}
+                </div>
+                <p className="ix-landing-page__projection-note">{metrics?.definition}</p>
+                <p className="ix-landing-page__projection-note">Complete counts for the published projection; inferred axioms and unpublished registry artifacts are excluded.</p>
+
+
+                <BreakdownTable title="Graph resources by ontology" rows={metrics?.ontology_breakdown || []} colKey="ontology" colLabel="Resources" />
+                {metrics?.breakdown_truncated && <p className="ix-landing-page__projection-note">Showing the largest 200 ontologies; aggregate totals include all ontologies.</p>}
+
+    {metrics?.existing_ontology?.resources > 0 && <ExistingOntologyMetrics metrics={metrics.existing_ontology} />}
+  </>;
+}
+
 export function ontologyTypeLabel(ontology) {
   const type = [ontology.ontology_type, ontology.schema_format, ontology.file_type, ontology.type]
     .find(value => value && !['neo4j', 'neo4j_live', 'neo4j_projection'].includes(String(value).toLowerCase()));
@@ -216,21 +240,12 @@ export default function LandingPage({ setChatResults, onNavigate }) {
             <IxCardContent>
               <label className="ix-landing-page__scope">Ontology scope
                 <select value={selectedOntology} onChange={event => setSelectedOntology(event.target.value)}>
-                  <option value="">All published ontologies</option>
+                  <option value="">All ontologies</option>
                   {ontologies.map(o => { const id = o.ontology_id || o.id; return id ? <option key={id} value={id}>{o.label || o.ontology_name || o.name || id}</option> : null; })}
                 </select>
               </label>
               {metricsError ? <div role="alert" className="ix-landing-page__alert">{metricsError}<IxButton type="button" variant="tertiary" onClick={loadMetrics}>Retry</IxButton></div> : metricsLoading ? <div className="ix-landing-page__empty">Loading graph metrics…</div> : <>
-                <div className="ix-landing-page__metric-row" aria-label="Published ontology metrics">
-                  {[['classes', 'Declared classes'], ['object_properties', 'Object properties'], ['data_properties', 'Data properties'], ['annotation_properties', 'Annotation properties'], ['named_individuals', 'Declared named individuals'], ['resources', 'Graph resources'], ['relationships', 'Resource relationships']].map(([key, label]) =>
-                    <div key={key}><strong>{fmt(metrics?.[key])}</strong><span>{label}</span></div>)}
-                </div>
-                <p className="ix-landing-page__projection-note">{metrics?.definition}</p>
-                <p className="ix-landing-page__projection-note">Complete counts for the published projection; inferred axioms and unpublished registry artifacts are excluded.</p>
-                {metrics?.resources === 0 && <p role="status" className="ix-landing-page__projection-note">No RDF projection is published for this scope. Registration alone does not create a published projection.</p>}
-                {metrics?.existing_ontology?.resources > 0 && <ExistingOntologyMetrics metrics={metrics.existing_ontology} />}
-                <BreakdownTable title="Graph resources by ontology" rows={metrics?.ontology_breakdown || []} colKey="ontology" colLabel="Resources" />
-                {metrics?.breakdown_truncated && <p className="ix-landing-page__projection-note">Showing the largest 200 ontologies; aggregate totals include all ontologies.</p>}
+                <GraphProfileMetrics metrics={metrics} />
               </>}
             </IxCardContent>
           </IxCard>

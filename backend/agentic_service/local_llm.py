@@ -24,6 +24,17 @@ async def _health():
         return {'status': 'invalid_configuration', 'action': 'Check Ollama URL and timeout in root .env.local.'}
     if provider != 'ollama':
         return {'status': 'not_selected', 'provider': provider, 'action': 'Set USE_LLM=ollama to select offline Ollama.'}
+    from backend.core.ollama_auth import ollama_discovery_enabled
+    try:
+        discovery = ollama_discovery_enabled()
+    except ValueError:
+        return {'status': 'invalid_configuration', 'action': 'OLLAMA_DISCOVERY_ENABLED must be true or false.'}
+    if not discovery:
+        from backend.core.ollama_auth import ollama_generation_route
+        endpoint, operation = ollama_generation_route()
+        return {'status': 'generation_unverified', 'provider': provider, 'model': model,
+                'endpoint': endpoint, 'discovery_enabled': False, 'generation_operation': operation,
+                'action': 'Model discovery is disabled because this REST contract does not expose GET /api/tags. Test generation separately with test-depo-ollama.ps1 -ProbeGeneration; chat/tool capability is separate.'}
     endpoint = base + '/api/tags'
     probe_timeout = min(timeout, 5)
     diagnostic = {'provider': provider, 'model': model, 'endpoint': endpoint,
@@ -153,6 +164,8 @@ async def summarize(question, evidence, on_token=None):
                 raise ValueError('Ollama stream ended without a complete answer')
             return ''.join(chunks).strip()
         result = await _post_json(client, endpoint, headers, body)
+        if not isinstance(result, dict) or result.get('done') is not True:
+            raise ValueError('Ollama returned an incomplete summary')
         content = _content(result, operation)
         if not isinstance(content, str) or not content.strip():
             raise ValueError('Ollama returned no summary')
@@ -177,6 +190,8 @@ async def suggest_tool(agent, tools, task):
             'messages': [{'role': 'system', 'content': instructions},
                          {'role': 'user', 'content': json.dumps({'task': task, 'allowed_tools': tools})}]})
         content = _content(result, 'chat')
+        if result.get('done') is not True:
+            raise ValueError('Ollama returned an incomplete agent proposal')
         if not isinstance(content, str) or len(content) > 65536:
             raise ValueError('Invalid agent proposal response')
         proposal = json.loads(content)

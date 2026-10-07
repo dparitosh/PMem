@@ -110,6 +110,31 @@ OpenAPI specification URL and backend service URL. [Microsoft Learn](https://lea
 
 ## Apply gateway security policies
 
+For the supplied customer Ollama export, GET `/api/tags` is absent. Configure
+the application REST client as follows (HTTPS support must be verified on the
+gateway; the exported server advertises HTTP):
+
+```dotenv
+OLLAMA_BASE_URL=https://azdtapimanager.azure-api.net/ollama
+OLLAMA_API_URL=https://azdtapimanager.azure-api.net/ollama/api/generate
+OLLAMA_CHAT_API_URL=https://azdtapimanager.azure-api.net/ollama/api/chat
+OLLAMA_API_KEY_HEADER=api-key
+OLLAMA_DISCOVERY_ENABLED=false
+```
+
+With discovery disabled, Admin reports `generation_unverified`, not a failed
+model-list operation or verified availability. Test the native POST operations
+from the application VM with `test-depo-ollama.ps1 -ProbeGeneration -ProbeChat`.
+Generation, chat and embedding routes must be verified independently; the
+Use `-ProbeEmbeddings -ProbeProposal -ProbeStreaming` to test the embedding
+vector, structured JSON proposal, and completed NDJSON response separately.
+Proposals do not execute tools; this does not validate native tool calling.
+The streaming diagnostic buffers its response and does not establish chunk
+delivery latency. No credentials or generated content are printed.
+The export lists operations but does not include their backend policies or payload
+schemas. The OpenAI-compatible `/v1/chat/completions` route is a separate
+contract and is not substituted for native Ollama `/api/chat`.
+
 After API registration, apply a single, consistent policy to every OpenAPI and
 OData API. It validates Microsoft Entra ID bearer tokens against the supplied
 OpenID Connect document and applies a per-subscription/IP rate limit.

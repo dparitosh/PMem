@@ -45,6 +45,13 @@ def ollama_timeout():
     return value
 
 
+def ollama_discovery_enabled():
+    value = os.getenv('OLLAMA_DISCOVERY_ENABLED', 'true').strip().lower()
+    if value not in {'true', 'false'}:
+        raise ValueError('OLLAMA_DISCOVERY_ENABLED must be true or false')
+    return value == 'true'
+
+
 def ollama_generation_route(value=None):
     """Keep an explicitly configured native generation operation."""
     configured = value if value is not None else (os.getenv('OLLAMA_API_URL', '').strip() or os.getenv('OLLAMA_BASE_URL', '').strip())

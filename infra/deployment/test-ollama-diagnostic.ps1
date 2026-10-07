@@ -20,6 +20,13 @@ function Invoke-WebRequest {
     return [pscustomobject]@{ StatusCode=200; Content=$content }
   }
   $content = '{"response":"OK","done":true}'
+  if ($Uri.EndsWith('/api/embed')) { $content = '{"embeddings":[[0.1,0.2]]}' }
+  elseif ($Uri.EndsWith('/api/chat')) {
+    $request = [Text.Encoding]::UTF8.GetString($Body) | ConvertFrom-Json
+    if ($request.stream) { $content = "{`"message`":{`"content`":`"OK`"},`"done`":false}`n{`"message`":{`"content`":`"`"},`"done`":true}" }
+    elseif ($request.format) { $content = '{"message":{"content":"{\"tool_id\":\"diagnostic-noop\",\"inputs\":{}}"},"done":true}' }
+    else { $content = '{"message":{"content":"OK"},"done":true}' }
+  }
   if ($fixtureState.arrayGeneration) { $content = '[' + $content + ']' }
   return [pscustomobject]@{ StatusCode=200; Content=$content }
 }
@@ -78,7 +85,14 @@ LLM_MODEL_NAME=llama3:latest
   $fixtureState.calls.Clear(); $failed = $false
   try { & $diagnostic -EnvFile $fixture.FullName 6>&1 | Out-Null } catch { $failed = $true }
   if (-not $failed -or $fixtureState.calls.Count) { throw 'Remote plaintext credentials must be rejected before transport' }
-  Write-Host 'PASS: native routes, separate discovery/generation failures, secret redaction, invalid JSON roots, blank models, malformed model entries, case-sensitive paths and HTTPS credential protection.'
+  Set-Content -LiteralPath $fixture.FullName -Value 'OLLAMA_BASE_URL=http://127.0.0.1:11434', 'OLLAMA_API_URL=http://127.0.0.1:11434/api/generate', 'OLLAMA_API_KEY=fixture-secret-never-print', 'OLLAMA_DISCOVERY_ENABLED=false'
+  $fixtureState.calls.Clear()
+  & $diagnostic -EnvFile $fixture.FullName -ProbeGeneration 6>&1 | Out-Null
+  if ($fixtureState.calls.Count -ne 1 -or $fixtureState.calls[0].method -ne 'POST') { throw 'Discovery-disabled contract must test generation without GET tags' }
+  $fixtureState.calls.Clear()
+  & $diagnostic -EnvFile $fixture.FullName -ProbeEmbeddings -ProbeProposal -ProbeStreaming 6>&1 | Out-Null
+  if ($fixtureState.calls.Count -ne 3) { throw 'Expected three separate capability probes' }
+  Write-Host 'PASS: native routes, separate discovery/generation failures, disabled discovery, secret redaction, invalid JSON roots, blank models, malformed model entries, case-sensitive paths and HTTPS credential protection.'
 } finally {
   Remove-Item -LiteralPath $fixture.FullName -Force
 }

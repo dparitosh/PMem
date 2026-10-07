@@ -73,6 +73,8 @@ def configuration_status():
     for flag in ('DT_AGENT_ENABLED', 'OSLC_REMOTE_ENABLED'):
         if os.getenv(flag, 'false').lower() not in {'true', 'false'}:
             errors.append(flag)
+    if os.getenv('OLLAMA_DISCOVERY_ENABLED', 'true').strip().lower() not in {'true', 'false'}:
+        errors.append('OLLAMA_DISCOVERY_ENABLED')
     if os.getenv('ONTOLOGY_AGENT_LLM_ENABLED', 'false').lower() not in {'true', 'false'}:
         errors.append('ONTOLOGY_AGENT_LLM_ENABLED')
     try:

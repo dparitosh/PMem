@@ -7,6 +7,22 @@ from unittest.mock import Mock, patch
 from backend.core.ollama_auth import ollama_base_url, ollama_generation_route, ollama_timeout
 
 class OllamaServiceRegressions(unittest.TestCase):
+    def test_legacy_query_without_discovery_calls_generation(self):
+        tree = ast.parse(Path('backend/main.py').read_text(encoding='utf-8'))
+        node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'ollama_query')
+        node.decorator_list = []
+        service = Mock()
+        service.answer_question.return_value = {'answer': 'fixture'}
+        class HttpError(Exception):
+            def __init__(self, **kwargs): pass
+        ns = {'OllamaQueryRequest': object, 'HTTPException': HttpError, 'get_ollama_service':lambda: service}
+        exec(compile(ast.Module(body=[node], type_ignores=[]), '<actual legacy route>', 'exec'), ns)
+        with patch.dict(os.environ, {'OLLAMA_DISCOVERY_ENABLED':'false'}, clear=True):
+            result = ns['ollama_query'](types.SimpleNamespace(query='question'))
+        self.assertEqual(result, {'answer':'fixture'})
+        service.health_check.assert_not_called()
+        service.answer_question.assert_called_once_with('question')
+
     def service(self, url='http://fixture/api/chat'):
         # Execute the actual service class with a controlled HTTP transport.
         tree = ast.parse(Path('backend/Services/ollama_service.py').read_text(encoding='utf-8'))

@@ -5075,6 +5075,10 @@ def ollama_health():
     """Check local Ollama availability for conversational endpoints."""
     try:
         service = get_ollama_service()
+        from backend.core.ollama_auth import ollama_discovery_enabled
+        if not ollama_discovery_enabled():
+            return {'healthy': None, 'status': 'generation_unverified', 'discovery_enabled': False,
+                    'base_url': service.base_url, 'model': service.model, 'available_models': []}
         healthy = service.health_check()
         models = service.list_models() if healthy else []
         return {
@@ -5096,7 +5100,8 @@ def ollama_query(payload: OllamaQueryRequest):
             raise HTTPException(status_code=400, detail="Query is required")
 
         service = get_ollama_service()
-        if not service.health_check():
+        from backend.core.ollama_auth import ollama_discovery_enabled
+        if ollama_discovery_enabled() and not service.health_check():
             raise HTTPException(status_code=503, detail="Ollama is not available")
 
         try:

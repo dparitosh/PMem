@@ -3,7 +3,7 @@
 Complete installation variable reference
 7 October 2026
 
-This corrected reference covers 209 distinct configuration variables from the supplied installation configuration, the workspace .env.local, deployment, Spark, frontend and standalone examples, plus supported per-profile and service-routing variables. Every inventoried variable has an individual entry. Credential values from the supplied files are never reproduced.
+This corrected reference covers 210 distinct configuration variables from the supplied installation configuration, the workspace .env.local, deployment, Spark, frontend and standalone examples, plus supported per-profile and service-routing variables. Every inventoried variable has an individual entry. Credential values from the supplied files are never reproduced.
 
 ## Coverage and configuration precedence
 
@@ -15,11 +15,11 @@ Examples are template examples, not proof of an applied value or a code default.
 
 ## Coverage inventory
 
-- .env.local: 16 distinct variable names covered.
+- .env.local: 18 distinct variable names covered.
 
 - pasted installation configuration: 107 distinct variable names covered.
 
-- config\deployment.env.example: 106 distinct variable names covered.
+- config\deployment.env.example: 107 distinct variable names covered.
 
 - config\spark.env.example: 15 distinct variable names covered.
 
@@ -178,12 +178,45 @@ Example: OLLAMA_BASE_URL=http://127.0.0.1:11434
 Source: .env.local; pasted installation configuration; config\deployment.env.example
 
 ### OLLAMA_CHAT_API_URL
+OLLAMA_DISCOVERY_ENABLED
 
 Optional separate native Ollama chat root or /api/chat endpoint for tool-calling workflows. A generate-only route may support summaries while lacking chat capability.
 
 Example: OLLAMA_CHAT_API_URL=
 
 Source: pasted installation configuration; config\deployment.env.example
+
+### OLLAMA_DISCOVERY_ENABLED
+
+Controls native GET /api/tags discovery. Defaults to true for a native Ollama server. Set false for the supplied APIM REST contract, which exposes POST generate, chat and embed operations but no model-list route. Disabling discovery reports generation_unverified; it does not establish generation, embedding or tool readiness.
+
+Example: OLLAMA_DISCOVERY_ENABLED=false
+
+Source: .env.local; config\deployment.env.example; backend/core/ollama_auth.py
+
+## Ollama configuration for the supplied APIM contract
+
+```dotenv
+USE_LLM=ollama
+OLLAMA_BASE_URL=https://azdtapimanager.azure-api.net/ollama
+OLLAMA_API_URL=https://azdtapimanager.azure-api.net/ollama/api/generate
+OLLAMA_CHAT_API_URL=https://azdtapimanager.azure-api.net/ollama/api/chat
+OLLAMA_API_KEY=<your-server-side-secret>
+OLLAMA_API_KEY_HEADER=api-key
+OLLAMA_DISCOVERY_ENABLED=false
+LLM_MODEL_NAME=llama3:latest
+EMBED_MODEL_NAME=nomic-embed-text:latest
+```
+
+These settings were applied to the workspace .env.local, not the separate E:\App\PMem VM. Its existing API key was preserved. The exported OpenAPI server advertises HTTP; HTTPS reachability and backend policies remain to be verified. Restart affected services after changing the VM settings.
+
+From E:\App\PMem\infra\windows, test the independently exposed capabilities:
+
+```powershell
+.\test-depo-ollama.ps1 -EnvFile 'E:\App\PMem\.env.local' -ProbeGeneration -ProbeChat -ProbeEmbeddings -ProbeProposal -ProbeStreaming -TimeoutSeconds 120
+```
+
+The structured proposal probe executes no tools. The streaming probe checks completed NDJSON, not incremental delivery latency. A 404 on POST chat or generate remains a gateway/backend route failure; skipping discovery does not repair it.
 
 ### USE_EMBEDDER
 
@@ -1902,6 +1935,7 @@ OLLAMA_API_KEY_HEADER
 OLLAMA_API_URL
 OLLAMA_BASE_URL
 OLLAMA_CHAT_API_URL
+OLLAMA_DISCOVERY_ENABLED
 ONTOLOGY_AGENT_ALLOWED_ROOTS
 ONTOLOGY_AGENT_LLM_ENABLED
 ONTOLOGY_AGENT_MAX_BYTES
