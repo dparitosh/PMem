@@ -3012,73 +3012,26 @@ class UnifiedDataImportService:
 
     @classmethod
     def _load_ontology_class_lookup(cls, ontology_prefix: str) -> Dict[str, List[Dict[str, Any]]]:
-        """Return normalized AP242/selected ontology class names keyed for STEP linking."""
-        raw_prefix = str(ontology_prefix or '').strip()
-        prefix = raw_prefix.lower()
-        preferred_prefixes = [p for p in {raw_prefix, prefix} if p]
-        if prefix in ('step', 'step_ap242_mbd3d', 'ap242_mbd3d') or 'ap242' in prefix:
-            preferred_prefixes.extend(['ap242', 'step_ap242_mbd3d', 'AP242', 'STEP_AP242_MBD3D'])
-        preferred_prefixes = sorted({p for p in preferred_prefixes if p})
-        lower_prefixes = sorted({p.lower() for p in preferred_prefixes if p})
-
-        query = """
-        MATCH (c:OntologyClass)
-        WHERE c.prefix IN $prefixes
-           OR c.ontology_prefix IN $prefixes
-           OR c.ontology_id IN $prefixes
-           OR c.prefix IN $lower_prefixes
-           OR c.ontology_prefix IN $lower_prefixes
-           OR c.ontology_id IN $lower_prefixes
-           OR ($ap242 = true AND (
-                c.prefix IN ['ap242', 'step_ap242_mbd3d', 'AP242', 'STEP_AP242_MBD3D']
-                OR c.ontology_prefix IN ['ap242', 'step_ap242_mbd3d', 'AP242', 'STEP_AP242_MBD3D']
-                OR c.ontology_id IN ['ap242', 'step_ap242_mbd3d', 'AP242', 'STEP_AP242_MBD3D']
-                OR c.namespace CONTAINS '10303'
-           ))
-        RETURN elementId(c) AS element_id,
-               coalesce(c.name, c.label, c.id, c.uri) AS name,
-               coalesce(c.uri, '') AS uri,
-               coalesce(c.prefix, c.ontology_prefix, c.ontology_id, '') AS prefix
-        """
-        try:
-            try:
-                from core.graph import query_with_timeout as _query_with_timeout
-            except ModuleNotFoundError:
-                from ..core.graph import query_with_timeout as _query_with_timeout
-            records = _query_with_timeout(
-                query,
-                {
-                    'prefixes': preferred_prefixes,
-                    'lower_prefixes': lower_prefixes,
-                    'ap242': any('ap242' in p.lower() for p in preferred_prefixes),
-                },
-            ) or []
-        except Exception as exc:
-            logger.warning(f"Ontology class lookup skipped for prefix '{ontology_prefix}': {exc}")
-            return {}
-
-        lookup: Dict[str, List[Dict[str, Any]]] = {}
+        """Read class targets through the Graph data service; never query its DB."""
+        from backend.depo_platform.graph_data_client import graph_data_client
+        records = graph_data_client.mapping_terms(ontology_prefix)
+        lookup = {}
         for record in records:
-            name = record.get('name')
-            element_id = record.get('element_id')
-            if not name or not element_id:
+            if record.get('kind') != 'Class' or not record.get('element_id') or not record.get('name'):
                 continue
-            uri = str(record.get('uri') or '')
-            aliases = [str(name)]
-            if uri:
-                aliases.append(uri.rsplit('#', 1)[-1].rsplit('/', 1)[-1])
-            for alias in aliases:
+            name = str(record['name'])
+            uri = str(record.get('iri') or '')
+            for alias in {name, uri.rsplit('#', 1)[-1].rsplit('/', 1)[-1]}:
                 key = cls._ontology_match_key(alias)
-                if not key:
-                    continue
-                lookup.setdefault(key, []).append({
-                    'element_id': element_id,
-                    'class_name': str(name),
-                    'prefix': record.get('prefix') or ontology_prefix,
-                    'normalized': key,
-                    'tokens': [token for token in re.split(r'[^a-zA-Z0-9]+', str(name).lower()) if len(token) > 1],
-                    'is_generic': str(name).strip().lower() in {'part', 'class', 'entity', 'item', 'object', 'resource', 'thing', 'type', 'value'},
-                })
+                if key:
+                    lookup.setdefault(key, []).append({
+                        'element_id': record['element_id'], 'graph_element_id': record['element_id'],
+                        'graph_linkable': True, 'class_name': name, 'prefix': ontology_prefix,
+                        'target_ontology_type': 'Class', 'iri': uri, 'target_ontology_iri': uri,
+                        'normalized': key,
+                        'tokens': [token for token in re.split(r'[^a-zA-Z0-9]+', name.lower()) if len(token) > 1],
+                        'is_generic': name.strip().lower() in {'part', 'class', 'entity', 'item', 'object', 'resource', 'thing', 'type', 'value'},
+                    })
         return lookup
 
     @classmethod

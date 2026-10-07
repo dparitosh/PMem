@@ -509,7 +509,7 @@ export const importAPI = {
     apiClient.get(buildUrl(API.import.tasks)),
   commit: (taskId, options = {}) => 
     apiClient.post(buildUrl(replaceParams(API.import.commit, { task_id: taskId })), options, {
-      timeout: 300000, // 5 minutes — Neo4j batch commit to AuraDB can take 2-3 min
+      timeout: 300000, // 5 minutes â€” Neo4j batch commit to AuraDB can take 2-3 min
     }),
   preCommitCheck: (taskId) =>
     apiClient.get(buildUrl(replaceParams(API.import.preCommit, { task_id: taskId })), { timeout: 300000 }),
@@ -520,9 +520,7 @@ export const importAPI = {
   exportOWL: (taskId, format = 'ttl') =>
     apiClient.get(buildUrl(replaceParams(API.import.owlExport, { task_id: taskId })), { params: { format }, responseType: 'blob' }),
   getFormats: () => apiClient.get(buildUrl(API.import.formats)),
-  queryOllama: (query) => 
-    apiClient.post(buildUrl(API.import.ollamaQuery), { query }),
-  checkOllamaHealth: () => apiClient.get(buildUrl(API.import.ollamaHealth)),
+
 };
 
 // ========== WORKFLOW ENDPOINTS ==========

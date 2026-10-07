@@ -3,6 +3,7 @@ import { IxButton } from '@siemens/ix-react';
 import { agenticClient } from '../services/agenticApi';
 import { buildSemanticServiceUrl } from '../config';
 import { getCredentialProfile } from '../services/serviceAuth';
+import AgentProposalPanel from './AgentProposalPanel';
 
 export default function AgentControlPanel() {
   const [runId, setRunId] = useState('');
@@ -70,6 +71,7 @@ export default function AgentControlPanel() {
   return <section className="depo-panel" aria-label="Agent workflow controls">
     <div className="depo-panel__header"><h3>Agent workflow controls</h3></div>
     <div className="depo-panel__body">
+    <AgentProposalPanel />
     <IxButton disabled={llmBusy} onClick={async () => {
       llmRequest.current?.abort(); const controller = new AbortController(); llmRequest.current = controller;
       setLlmBusy(true); setLlmHealth(null); setLlmError('');
@@ -78,7 +80,7 @@ export default function AgentControlPanel() {
         if (!controller.signal.aborted) setLlmHealth(response.data);
       } catch (failure) { if (!controller.signal.aborted) setLlmError(failure.response?.data?.detail || 'Cannot reach agentic diagnostics. Check service connectivity and read credentials.'); }
       finally { if (!controller.signal.aborted) setLlmBusy(false); }
-    }}>Check offline Ollama</IxButton>
+    }}>Check Ollama configuration</IxButton>
     {llmHealth && <div role="status"><p>Ollama: <strong>{llmHealth.status}</strong>. Model: {llmHealth.model || 'not selected'}.</p><p>{llmHealth.action}</p>{llmHealth.endpoint && <p>{llmHealth.discovery_enabled === false ? 'Configured generation endpoint' : 'Checked endpoint'}: {llmHealth.endpoint}.{llmHealth.probe_timeout_seconds != null && <> Probe deadline: {llmHealth.probe_timeout_seconds} seconds.</>}</p>}<p>Ontology agents: {llmHealth.ontology_agent_enabled ? 'enabled' : 'disabled'}. Companion generation: {llmHealth.companion_enabled ? 'enabled' : 'disabled'}.</p></div>}
     {llmError && <p role="alert">{typeof llmError === 'string' ? llmError : 'LLM diagnostic failed.'}</p>}
     <p>Inspect a workflow run ID from agent telemetry. Pause and cancel take effect between tools; they do not interrupt an active tool or undo completed writes. The original execution deadline still applies.</p>

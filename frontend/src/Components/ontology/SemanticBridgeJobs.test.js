@@ -10,17 +10,56 @@ const preview = { job_id: 'preview-1', publication_job_id: 'publish-1', kind: 'p
 let api;
 beforeEach(() => {
   sessionStorage.clear();
+  setCredentialProfile('AGENTIC_APPROVAL_TOKEN', 'supervisor');
   api = { preview: vi.fn().mockResolvedValue({ data: preview }), status: vi.fn(), publish: vi.fn().mockResolvedValue({ data: { job_id: 'publish-1', status: 'published', receipt: { applied_links: 1, approved_by: 'reviewer' } } }) };
 });
 afterEach(cleanup);
-const mount = () => render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+const mount = () => {
+  const view = render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.change(screen.getByLabelText('Approver'), {target: {value: 'reviewer'}});
+  return view;
+};
 async function create() { fireEvent.click(screen.getByText('Create preview')); await screen.findByLabelText('Approve part to Part'); }
+
+test('saves manual drafts as visible recommendations without selecting publication', async () => {
+  const manual = [{ source_term: 'part', source_type: 'Entity', target_term: 'Part', target_ontology_type: 'Class' }];
+  api.preview.mockResolvedValue({ data: { ...preview, agent_run_id: 'agent-run-1',
+    recommendation_summary: { total: 2, eligible: 1 }, candidates: [
+      { ...preview.candidates[0], evidence: ['server-resolved source and target'] }, preview.candidates[1],
+    ] } });
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" manualMappings={manual} api={api} />);
+  fireEvent.change(screen.getByLabelText('Approver'), { target: { value: 'reviewer' } });
+  await create();
+  expect(api.preview).toHaveBeenCalledWith('ontology', 'import', { approved_by: 'reviewer', approval_token: 'supervisor' }, manual);
+  expect(screen.getByText(/2 mapping recommendations; 1 eligible/)).toBeInTheDocument();
+  expect(screen.getByText('server-resolved source and target')).toBeInTheDocument();
+  expect(screen.getByText('Preview agent run: agent-run-1')).toBeInTheDocument();
+  expect(screen.getByLabelText('Approve part to Part')).not.toBeChecked();
+  expect(api.publish).not.toHaveBeenCalled();
+});
 
 test('structured validation errors do not crash or echo submitted credentials', async () => {
   api.preview.mockRejectedValue({ response: { status: 422, data: { detail: [{ msg: 'invalid', input: 'private-credential' }] } } });
   mount(); fireEvent.click(screen.getByText('Create preview'));
   expect(await screen.findByRole('alert')).toHaveTextContent('Invalid request');
   expect(document.body.textContent).not.toContain('private-credential');
+});
+
+test('malformed saved preview is rejected without rendering a broken table', async () => {
+  api.preview.mockResolvedValue({ data: { ...preview, candidates: null } });
+  mount(); fireEvent.click(screen.getByText('Create preview'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Saved preview is incomplete');
+  expect(screen.queryByText('Publish approved mappings')).toBeNull();
+});
+
+test('credential changes discard recommendations and late responses', async () => {
+  let resolve;
+  api.preview.mockReturnValue(new Promise(done => { resolve = done; }));
+  mount(); fireEvent.click(screen.getByText('Create preview'));
+  fireEvent(window, new Event('depo:credentials-cleared'));
+  resolve({ data: preview });
+  await waitFor(() => expect(screen.getByText('Create preview')).not.toBeDisabled());
+  expect(screen.queryByLabelText('Approve part to Part')).toBeNull();
 });
 
 test('failed publication recovery keeps selection locked until status is recovered', async () => {
@@ -69,17 +108,21 @@ test('requires explicit eligible selection and review confirmation', async () =>
   fireEvent.click(screen.getByLabelText('Confirm reviewed mappings'));
   fireEvent.click(screen.getByText('Publish approved mappings'));
   await screen.findByText('Publication: published');
-  expect(api.publish).toHaveBeenCalledWith('preview-1', ['valid'], { approved_by: '', approval_token: '' });
+  expect(api.publish).toHaveBeenCalledWith('preview-1', ['valid'], { approved_by: 'reviewer', approval_token: 'supervisor' });
 });
 
 test('response loss freezes selection and preserves same publication retry', async () => {
   api.publish.mockRejectedValueOnce(new Error('network'));
+  api.status.mockResolvedValueOnce({data: {job_id: 'publish-1', status: 'retryable', approved_ids: ['valid']}});
   mount(); await create();
   fireEvent.click(screen.getByLabelText('Approve part to Part'));
   fireEvent.click(screen.getByLabelText('Confirm reviewed mappings'));
   fireEvent.click(screen.getByText('Publish approved mappings'));
   await screen.findByRole('alert');
   expect(screen.getByLabelText('Approve part to Part')).toBeDisabled();
+  expect(screen.getByText('Retry same publication')).toBeDisabled();
+  fireEvent.click(screen.getByText('Refresh publication status'));
+  await screen.findByText('Publication: retryable');
   fireEvent.click(screen.getByText('Retry same publication'));
   await screen.findByText('Publication: published');
   expect(api.publish).toHaveBeenCalledTimes(2);

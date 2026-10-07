@@ -268,8 +268,6 @@ const IMPORT_ENDPOINTS = {
   owlExport: setting('API_IMPORT_OWL_EXPORT') || '/api/v1/import/owl/{task_id}/export',
   artifacts: setting('API_IMPORT_ARTIFACTS') || '/api/v1/import/artifacts/{task_id}',
   formats: setting('API_IMPORT_FORMATS') || '/api/v1/import/formats',
-  ollamaQuery: setting('API_IMPORT_OLLAMA_QUERY') || '/api/v1/import/ollama/query',
-  ollamaHealth: setting('API_IMPORT_OLLAMA_HEALTH') || '/api/v1/import/ollama/health',
   tasks: setting('API_IMPORT_TASKS') || '/api/v1/import/tasks',
   governed: setting('API_GOVERNED_IMPORT') || '/api/v1/governed-import',
   uploadDataImport: setting('API_DATA_IMPORT_UPLOAD') || '/data-import/upload',

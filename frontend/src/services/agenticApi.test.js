@@ -1,5 +1,6 @@
 import { applyAgenticAuth, agenticAPI, agenticClient } from './agenticApi';
 import { clearServiceAuthToken, setServiceAuthToken } from './serviceAuth';
+import { buildSemanticServiceUrl } from '../config';
 
 afterEach(() => clearServiceAuthToken());
 
@@ -12,7 +13,7 @@ test('a scoped ontology-agent token takes precedence over the app token', () => 
 
 test('the app token is used when a request has no scoped token', () => {
   setServiceAuthToken('app-token');
-  const configured = applyAgenticAuth({ headers: {} });
+  const configured = applyAgenticAuth({ headers: {}, method: 'get', url: buildSemanticServiceUrl('agentic', '/api/v1/agents') });
   expect(configured.headers.Authorization).toBe('Bearer app-token');
 });
 

@@ -72,6 +72,19 @@ def metrics(ontology_id: str = '', ontology_prefix: str = '') -> dict:
         raise HTTPException(503, 'Graph metrics unavailable; check graph connectivity and service logs') from exc
 
 
+from .bridge_router import bridge_service_identity
+
+
+@router.get('/mapping-terms', dependencies=[Depends(bridge_service_identity)], summary='Private peer read of scoped ontology mapping targets from the graph data layer')
+def mapping_terms(scope: str) -> dict:
+    try:
+        return publisher.mapping_terms(scope)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(503, 'Graph mapping data unavailable; check graph service dependencies') from exc
+
+
 @router.get("/search", dependencies=[Depends(graph_read_identity)], summary="Search graph resources with bounded parameterized ranking")
 def search(query: str, limit: int = 50, ontology_id: str = '', ontology_prefix: str = '') -> dict:
     try:

@@ -6,6 +6,8 @@ from fastapi import HTTPException, Request
 
 # Human approval contracts; service boundary headers are handled separately.
 APPROVAL_TOKENS = {
+    'bridge.mapping.preview': 'AGENTIC_APPROVAL_TOKEN',
+    'bridge.mapping.publish': 'AGENTIC_APPROVAL_TOKEN',
     'ontology.register': 'ONTOLOGY_APPROVAL_TOKEN',
     'ontology.transition': 'ONTOLOGY_APPROVAL_TOKEN',
     'ontology.merge.apply': 'ONTOLOGY_APPROVAL_TOKEN',

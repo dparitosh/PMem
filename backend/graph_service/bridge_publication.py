@@ -33,7 +33,7 @@ def publish(command):
     if not isinstance(rows, list) or not 1 <= len(rows) <= 2000:
         raise ValueError('Publication requires 1 to 2000 approved rows.')
     for row in rows:
-        if not all(row.get(k) for k in ('candidate_id','import_id','import_row_key','ontology_class_element_id')) or row.get('target_ontology_type') not in {'Class','ObjectProperty','DatatypeProperty','AnnotationProperty'}:
+        if not isinstance(row, dict) or not all(row.get(k) for k in ('candidate_id','import_id','import_row_key','ontology_class_element_id')) or row.get('target_ontology_type') not in {'Class','ObjectProperty','DatatypeProperty','AnnotationProperty'}:
             raise ValueError('Invalid approved mapping target or source.')
     with session() as graph:
         constraint = graph.run(
@@ -92,12 +92,14 @@ def _publish_transaction(tx, command):
         id=publication_id, digest=command['request_digest'], receipt=json.dumps(result),
         preview=command['preview_id'], completed=result['completed_at']).consume()
     if os.getenv('AGENT_MEMORY_ENABLED', '').lower() == 'true':
+        from backend.Services.agent_memory_service import AgentMemoryService
+        facts = [AgentMemoryService._mapping_fact_row(command['ontology_id'], row['import_id'], row, publication_id) for row in command['rows']]
         tx.run('''UNWIND $rows AS row
-            MERGE (f:AgentMemoryFact {fact_id:$id+':'+row.candidate_id})
-            SET f.kind='semantic_bridge_mapping', f.source=row.source_term,
-                f.source_type=row.source_type, f.target=row.ontology_term,
-                f.target_type=row.target_ontology_type, f.ontology_id=$ontology,
-                f.import_task_id=row.import_id, f.confidence=row.confidence,
-                f.mapping_type=row.mapping_type, f.task_id=$id, f.updated_at=$completed''',
-            rows=command['rows'], id=publication_id, ontology=command['ontology_id'], completed=result['completed_at']).consume()
+            MERGE (f:AgentMemoryFact {fact_id:row.fact_id})
+            SET f.kind='semantic_bridge_mapping', f.scope=row.scope, f.source=row.source,
+                f.source_type=row.source_type, f.target=row.target,
+                f.target_type=row.target_type, f.ontology_id=row.ontology_id,
+                f.import_task_id=row.import_task_id, f.confidence=row.confidence,
+                f.mapping_type=row.mapping_type, f.task_id=row.task_id, f.updated_at=$completed''',
+            rows=facts, completed=result['completed_at']).consume()
     return result

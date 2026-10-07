@@ -97,6 +97,24 @@ results still take priority for current facts.
 
 ### Semantic Bridge
 
+The Semantic Bridge UI invokes Ontology Governor to create a saved recommendation
+preview. Recommendations are retained in PostgreSQL (`semantic_bridge_jobs_v1`)
+and displayed with evidence, validation, eligibility and the agent run ID. Users
+can reload the saved preview ID or download its evidence. Manual mapping drafts
+are included in the preview; the server resolves source rows and graph targets
+instead of accepting browser-supplied graph identifiers.
+
+Connect governed agent credentials in Admin and enter the steward identity before
+creating a preview. Select eligible recommendations and confirm review before
+publishing. A recommendation never approves itself. Changes to the selected
+source, ontology or manual mappings require a new preview. Publication receipts
+and saved job status support recovery after an interrupted request.
+
+The ontology merge controls also invoke Ontology Governor. Preview two registered
+ontologies with retained RDF artifacts, review conflicts, then explicitly create
+the merged draft. Graph-only ingestion records are sufficient for mapping lookup
+but do not replace the RDF artifacts required for ontology merge or reasoning.
+
 After `instance.link`, the app records approved mappings as reusable facts:
 
 - source instance term

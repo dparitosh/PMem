@@ -6,7 +6,7 @@
     {"id": "ontology-export", "name": "Ontology Export", "tools": ["ontology.export"], "approval_required": true, "system_prompt": "Export only after the existing human approval contract is satisfied. Do not alter ontology semantics."},
     {"id": "ontology-orchestrator", "name": "Ontology Orchestrator", "tools": ["ontology.agent.orchestrate"], "approval_required": false, "system_prompt": "Run intake, structural review, and Bridge planning in order. Preserve evidence. Stop before approval or publication."},
     {"id": "context-analyst", "name": "Business Context Analyst", "tools": ["context.upsert", "context.search", "context.where_used"], "approval_required": false},
-    {"id": "ontology-governor", "name": "Ontology Governor", "tools": ["ontology.register", "ontology.transition", "ontology.export", "ontology.merge.preview", "ontology.merge.apply", "engineering.publish"], "approval_required": true},
+    {"id": "ontology-governor", "name": "Ontology Governor", "tools": ["ontology.register", "ontology.transition", "ontology.export", "ontology.merge.preview", "ontology.merge.apply", "bridge.mapping.preview", "bridge.mapping.publish", "engineering.publish"], "approval_required": true},
     {"id": "engineering-parser", "name": "Engineering Parser", "tools": ["engineering.inspect", "profile.inspect", "profile.execute"], "approval_required": false},
     {"id": "graph-analyst", "name": "Graph Analyst", "tools": ["graph.analytics", "graph.neighborhood", "context.search", "context.where_used", "oslc.graph_rag"], "approval_required": false},
     {"id": "oslc-link-agent", "name": "OSLC Link Agent", "tools": ["oslc.remote.catalog", "oslc.remote.query", "oslc.remote.sync"], "approval_required": false},
@@ -16,6 +16,8 @@
     {"id": "data-quality-monitor", "name": "Data Quality Monitor", "tools": ["pipeline.telemetry", "pipeline.transform"], "approval_required": false}
   ],
   "tools": [
+    {"id": "bridge.mapping.preview", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/workflows/bridge/previews", "mutates": true},
+    {"id": "bridge.mapping.publish", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/workflows/bridge/previews/{preview_id}/publish", "mutates": true},
     {"id": "ontology.register", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/register", "mutates": true, "input_kind": "multipart"},
     {"id": "ontology.transition", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/{ontology_id}/transition", "mutates": true},
     {"id": "ontology.export", "transport": "openapi", "service": "ingestion", "method": "GET", "path": "/ontology/{ontology_id}/export", "mutates": false},

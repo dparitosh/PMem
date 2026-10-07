@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import json
+import asyncio
 from backend.depo_platform.service_urls import service_url
 import re
 from typing import Any
@@ -28,17 +30,24 @@ class KnowledgeCompanion:
             raise ValueError("message is required")
         endpoint = f"{self._graph_root()}/graph/search"
         try:
-            async with httpx.AsyncClient(timeout=float(os.getenv("COMPANION_RETRIEVAL_TIMEOUT_SECONDS", "15"))) as client:
+            from backend.depo_platform.network import bounded_timeout_seconds
+            timeout = bounded_timeout_seconds("COMPANION_RETRIEVAL_TIMEOUT_SECONDS", default=15, maximum=120)
+            async with asyncio.timeout(timeout), httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
                 if headers is None:
                     headers = {"Authorization": f"Bearer {os.environ['GRAPH_READ_TOKEN']}"} if os.getenv('GRAPH_READ_TOKEN') else {}
                 from backend.depo_platform.network import gateway_subscription_headers
                 headers = {**headers, **gateway_subscription_headers(endpoint)}
-                response = await client.get(endpoint, params={"query": query, "limit": min(self.max_nodes, 200), "ontology_id": ontology_id, "ontology_prefix": ontology_prefix}, headers=headers)
-                response.raise_for_status()
-        except httpx.HTTPError as exc:
+                from .response_limits import read_bounded_response
+                async with client.stream('GET', endpoint, params={"query": query, "limit": min(self.max_nodes, 200), "ontology_id": ontology_id, "ontology_prefix": ontology_prefix}, headers=headers) as response:
+                    response.raise_for_status()
+                    graph = json.loads(await read_bounded_response(response))
+        except (httpx.HTTPError, TimeoutError, ValueError) as exc:
             raise RuntimeError("Knowledge graph retrieval is unavailable; no answer was generated") from exc
-        graph = dict(response.json())
-        nodes, relationships = list(graph.get("nodes") or []), list(graph.get("relationships") or [])
+        if not isinstance(graph, dict) or not isinstance(graph.get('nodes'), list) or not isinstance(graph.get('relationships'), list):
+            raise RuntimeError('Graph retrieval returned invalid evidence')
+        nodes, relationships = graph['nodes'], graph['relationships']
+        if any(not isinstance(node, dict) or not isinstance(node.get('properties'), dict) for node in nodes) or any(not isinstance(edge, dict) for edge in relationships):
+            raise RuntimeError('Graph retrieval returned invalid evidence')
         query_tokens = self._tokens(query)
         scored: list[tuple[int, dict[str, Any]]] = []
         for node in nodes:

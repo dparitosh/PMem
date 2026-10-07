@@ -16,7 +16,7 @@ function errorMessage(error) {
   return 'Request interrupted. Refresh job status before retrying.';
 }
 
-export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bridgeApi }) {
+export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMappings = [], api = bridgeApi }) {
   const [preview, setPreview] = useState(null);
   const [job, setJob] = useState(null);
   const [selected, setSelected] = useState([]);
@@ -28,6 +28,14 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
   const [agentReport, setAgentReport] = useState(null);
   const generation = useRef(0);
   const activeOperation = useRef(null);
+  const mappingsKey = JSON.stringify(manualMappings);
+  const [credentialRevision, setCredentialRevision] = useState(0);
+  useEffect(() => {
+    const invalidate = () => setCredentialRevision(value => value + 1);
+    const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired'];
+    events.forEach(event => window.addEventListener(event, invalidate));
+    return () => events.forEach(event => window.removeEventListener(event, invalidate));
+  }, []);
   useEffect(() => {
     generation.current += 1;
     activeOperation.current = null;
@@ -35,7 +43,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
     setConfirmed(false);
     try { setResumeId(sessionStorage.getItem(`bridge-preview:${ontologyId}:${importTaskId}`) || ''); } catch { setResumeId(''); }
     return () => { generation.current += 1; };
-  }, [ontologyId, importTaskId]);
+  }, [ontologyId, importTaskId, mappingsKey, credentialRevision]);
 
   const invoke = async (operation) => {
     if (activeOperation.current !== null) return;
@@ -51,8 +59,12 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
     }
   };
   const adoptPreview = (value) => {
-    if (value.kind !== 'preview' || value.ontology_id !== ontologyId || value.import_task_id !== importTaskId) {
+    if (!value || value.kind !== 'preview' || value.ontology_id !== ontologyId || value.import_task_id !== importTaskId) {
       throw new PreviewInputError('Preview belongs to another source or ontology. Select its inputs first.');
+    }
+    if (!value.job_id || !value.publication_job_id || !Array.isArray(value.candidates) ||
+        value.candidates.some(candidate => !candidate || !candidate.candidate_id)) {
+      throw new PreviewInputError('Saved preview is incomplete. Create a new preview before review.');
     }
     setPreview(value); setSelected([]); setJob(null); setConfirmed(false); setResumeId(value.job_id);
     try { sessionStorage.setItem(`bridge-preview:${ontologyId}:${importTaskId}`, value.job_id); } catch { /* optional recovery aid */ }
@@ -73,17 +85,19 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
     if (response.data.status === 'published') setConfirmed(false);
   };
   const fixedSelection = !!job;
-  const canPublish = preview && selected.length > 0 && confirmed && !busy && (!job || ['approved', 'retryable'].includes(job.status));
+  const hasApproval = Boolean(actor.trim() && getCredentialProfile('AGENTIC_APPROVAL_TOKEN'));
+  const canPublish = hasApproval && preview && selected.length > 0 && confirmed && !busy && (!job || ['approved', 'retryable'].includes(job.status));
   const buttonStyle = { padding: '8px 12px', marginRight: 8, marginTop: 8 };
   return <section aria-label="Governed Semantic Bridge jobs" style={{ background: 'var(--ui-surface, #fff)', color: 'var(--ui-text, #1f2933)', padding: 16, border: '1px solid var(--ui-border, #ccd5df)', borderRadius: 8, marginTop: 16 }}>
-    <h3>Preview → review → publish</h3>
-    <p>Create a saved preview, select valid mappings, then approve publication. Nothing is selected automatically.</p>
+    <h3>Agent recommendations → review → publish</h3>
+    <p>Ontology Governor creates the saved preview and publishes only your reviewed selection. Manual mapping drafts are included and validated against the selected source and ontology. Nothing is selected automatically.</p>
     <details><summary>Approval identity</summary>
       <p>Manage and validate service credentials in Admin. Supply the approver identity for reviewed publication here.</p>
       <label>Approver <input aria-label="Approver" value={actor} onChange={e => setActor(e.target.value)} /></label>{' '}
     </details>
-    <button type="button" style={buttonStyle} disabled={busy || !ontologyId || !importTaskId} onClick={() => invoke(async current => {
-      const result = await api.preview(ontologyId, importTaskId, getCredentialProfile('GRAPH_READ_TOKEN'));
+    {!hasApproval && <p>Enter an approver and connect governed agent access in Admin before preview or publication.</p>}
+    <button type="button" style={buttonStyle} disabled={busy || !ontologyId || !importTaskId || !hasApproval} onClick={() => invoke(async current => {
+      const result = await api.preview(ontologyId, importTaskId, {approved_by: actor.trim(), approval_token: getCredentialProfile('AGENTIC_APPROVAL_TOKEN')}, manualMappings);
       if (current()) adoptPreview(result.data);
     })}>Create preview</button>
     <button type="button" style={buttonStyle} disabled={busy || !ontologyId || !importTaskId || !agenticAPI.isConfigured()} onClick={() => invoke(async current => {
@@ -103,6 +117,10 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
         </li>)}
       </ul>}
       {agentReport.steps?.at(-1)?.result?.candidate_limit_reached && <p>Candidate search was limited. Narrow the ontology or review the full Bridge preview.</p>}
+      {agentReport.steps?.at(-1)?.result?.llm && <div>
+        <strong>Model recommendation (review only):</strong>
+        <p>{agentReport.steps.at(-1).result.llm.text || (agentReport.steps.at(-1).result.llm.enabled ? 'Model unavailable; deterministic review evidence remains available.' : 'Model recommendations are disabled.')}</p>
+      </div>}
     </div>}
     <label>Saved preview ID <input aria-label="Saved preview ID" value={resumeId} onChange={e => setResumeId(e.target.value)} /></label>
     <button type="button" style={buttonStyle} disabled={busy || !resumeId.trim() || !ontologyId || !importTaskId} onClick={() => invoke(async current => {
@@ -122,7 +140,13 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
     {message && <p role="alert">{message}</p>}
     {preview && <>
       <p><strong>Preview:</strong> {preview.job_id} · {preview.candidates.length} candidates · {selected.length} selected</p>
-      <p>Approvals are bound to this source and ontology snapshot. Changes require a new preview. Saved manual mapping drafts elsewhere on this page are not published by this job.</p>
+      <p>Approvals are bound to this source and ontology snapshot. Source or manual mapping changes require a new preview.</p>
+      {preview.agent_run_id && <p>Preview agent run: {preview.agent_run_id}</p>}
+      {preview.recommendation_summary && <p role="status">{preview.recommendation_summary.total} mapping recommendations; {preview.recommendation_summary.eligible} eligible for review. Recommendations do not grant publication approval.</p>}
+      {preview.candidates.map(candidate => <details key={`evidence:${candidate.candidate_id}`}><summary>{candidate.source_term} → {candidate.ontology_term}: recommendation evidence</summary>
+        <p>{(candidate.evidence || []).join(', ') || 'No supporting evidence recorded.'}</p>
+        <p>{candidate.eligible ? 'Eligible for review' : 'Not eligible for publication'}. {(candidate.validation_errors || []).join('; ')}</p>
+      </details>)}
       <div style={{ maxHeight: 360, overflow: 'auto' }}><table style={{ width: '100%', textAlign: 'left' }}>
         <thead><tr><th>Approve</th><th>Source</th><th>Ontology target</th><th>Validation</th><th>Confidence</th></tr></thead>
         <tbody>{preview.candidates.map(candidate => <tr key={candidate.candidate_id}>
@@ -143,7 +167,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
         // Freeze the selection immediately; response loss must not allow editing.
         setJob({ job_id: preview.publication_job_id, status: 'publishing', approved_ids: selected });
         try {
-          const result = await api.publish(preview.job_id, selected, { approved_by: actor, approval_token: getCredentialProfile('AGENTIC_APPROVAL_TOKEN') });
+          const result = await api.publish(preview.job_id, selected, { approved_by: actor.trim(), approval_token: getCredentialProfile('AGENTIC_APPROVAL_TOKEN') });
           if (current()) { setJob(result.data); setConfirmed(false); }
         } finally { /* Shared credentials remain managed in Admin. */ }
       })}>{busy ? 'Working…' : job ? 'Retry same publication' : 'Publish approved mappings'}</button>
@@ -154,7 +178,8 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, api = bri
         const url = URL.createObjectURL(result.data); const link = document.createElement('a');
         link.href = url; link.download = 'semantic-bridge-job.json'; link.click(); URL.revokeObjectURL(url);
       })}>Download evidence</button>
-      {job && <div role="status"><strong>Publication: {job.status}</strong><div>{job.job_id}</div>
+    {job && <div role="status"><strong>Publication: {job.status}</strong><div>{job.job_id}</div>
+        {job.agent_run_id && <p>Publication agent run: {job.agent_run_id}</p>}
         {job.receipt && <p>{job.receipt.applied_links} mappings published. Approved by {job.receipt.approved_by}.</p>}
         {job.error && <p>{job.error}</p>}
       </div>}

@@ -269,18 +269,11 @@ def _llm_suggestion(plan: dict[str, int], instance_metadata: dict[str, Any]) -> 
     if os.getenv("ONTOLOGY_AGENT_LLM_ENABLED", "false").lower() != "true":
         return {"enabled": False, "mode": "deterministic-evidence-only"}
     try:
-        from backend.core.llm import LLM_AVAILABLE, llm
-        if not LLM_AVAILABLE:
-            return {"enabled": True, "status": "unavailable", "mode": "review-only"}
-        prompt = (
-            "You are a review-only ontology assistant. Given these measured mapping counts "
-            f"{plan} and instance metadata keys {sorted(instance_metadata)}, provide at most "
-            "three concise validation questions. Do not propose writes or approvals."
-        )
-        response = llm.invoke(prompt)
-        content = getattr(response, "content", response)
-        if isinstance(content, list):
-            content = " ".join(str(item.get("text", item)) if isinstance(item, dict) else str(item) for item in content)
+        import asyncio
+        from .local_llm import summarize
+        content = asyncio.run(summarize(
+            'Provide at most three validation questions about these measured mapping counts. Do not propose writes or approvals.',
+            [{'evidence_type': 'mapping_summary', 'counts': plan, 'metadata_keys': sorted(instance_metadata)}]))
         return {"enabled": True, "status": "suggestion", "mode": "review-only", "text": str(content)[:4000]}
     except Exception:
         return {"enabled": True, "status": "unavailable", "mode": "review-only"}

@@ -1,4 +1,5 @@
 import { getCredentialProfile } from '../services/serviceAuth';
+import { ontologyMergeAgent } from '../services/ontologyMergeAgent';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Search, Upload, FileText, Download, Network } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
@@ -1565,6 +1566,15 @@ export default function OntologyMapper() {
   useEffect(() => { inferenceGeneration.current += 1; setInferenceBusy(false); }, [selectedOntologyApi]);
   const [mergeResult, setMergeResult] = useState(null);
   const [mergeApprover, setMergeApprover] = useState('');
+  useEffect(() => {
+    const invalidate = () => {
+      mergeGeneration.current += 1; inferenceGeneration.current += 1;
+      setMergeResult(null); setMergeBusy(false); setInferenceBusy(false);
+    };
+    const events = ['depo:credentials-changed', 'depo:credentials-cleared'];
+    events.forEach(event => window.addEventListener(event, invalidate));
+    return () => { events.forEach(event => window.removeEventListener(event, invalidate)); mergeGeneration.current += 1; };
+  }, []);
   const selectedImportTask = useMemo(
     () => importTasks.find((task) => task.task_id === selectedImportTaskId) || null,
     [importTasks, selectedImportTaskId],
@@ -1610,13 +1620,13 @@ export default function OntologyMapper() {
   const selectedImportManifest = selectedImportTask?.artifact_manifest || selectedImportTask?.artifactManifest || null;
   const selectedBridgeSummary = unifyResult?.summary || null;
   const mergeConflictCount = Number(
-    mergeResult?.report?.summary?.conflict_count
+    mergeResult?.governedPreview?.conflicts?.length
+    ?? mergeResult?.report?.summary?.conflict_count
     ?? mergeResult?.report?.conflict_count
     ?? 0,
   );
   const mergePlanReady = Boolean(
     mergeResult?.kind === 'success'
-    && mergeResult?.task_id
     && mergeResult?.report
     && mergeResult?.governedPreview?.preview_id
     && mergeConflictCount === 0,
@@ -2154,23 +2164,19 @@ export default function OntologyMapper() {
     setMergeBusy(true);
     setMergeResult(null);
     try {
-      const res = await API_METHODS.workflow.execute('ontology.merge', {
-        source_ontology_id: mergeSourceOntologyId,
-        target_ontology_id: selectedMapping,
-      });
-      const payload = res.data || {};
-      const governed = await API_METHODS.ontology.governedMergePreview(
+      const governed = await ontologyMergeAgent.preview(
         [mergeSourceOntologyId, selectedMapping],
         { ontology_name: `Merged ${selectedMapping}`, prefix: `merged_${Date.now()}` },
+        mergeApprover,
       );
       if (generation !== mergeGeneration.current) return;
       setMergeResult({
         kind: 'success',
         text: 'Merge plan ready. Review overlaps, additions, conflicts, and subclass gaps before commit.',
-        task_id: payload.task_id,
-        report: payload.result || null,
-        artifact_manifest: payload.artifact_manifest || null,
-        governedPreview: governed.data || governed,
+        agentRunId: governed.runId,
+        report: governed.result,
+        artifact_manifest: null,
+        governedPreview: governed.result,
       });
     } catch (e) {
       if (generation !== mergeGeneration.current) return;
@@ -2207,12 +2213,13 @@ export default function OntologyMapper() {
       return;
     }
     try {
-      const res = await API_METHODS.ontology.governedMergeApply(mergeResult.governedPreview.preview_id, mergeApprover.trim(), getCredentialProfile('ONTOLOGY_APPROVAL_TOKEN'));
+      const res = await ontologyMergeAgent.apply(mergeResult.governedPreview.preview_id, mergeApprover);
       if (generation !== mergeGeneration.current) return;
       setMergeResult({
         kind: 'success',
-        text: res?.data?.message || 'Merged ontology registered as a draft. Graph publication requires its separate governed action.',
-        report: { ...(mergeResult.report || {}), governed: res?.data || res },
+        text: 'Merged ontology registered as a draft. Graph publication requires its separate governed action.',
+        agentRunId: res.runId,
+        report: { ...(mergeResult.report || {}), governed: res.result },
         governedPreview: mergeResult.governedPreview,
         artifact_manifest: null,
       });
@@ -2821,7 +2828,7 @@ export default function OntologyMapper() {
                 <div style={{ marginTop: '8px', fontSize: '11px', color: C.textSec }}>
                   {selectedImportTaskId ? `Auto-detected source format: ${selectedMappingType || 'unknown'}.` : 'Select an imported instance to continue.'}
                 </div>
-                <SemanticBridgeJobs ontologyId={selectedOntologyApi} importTaskId={selectedImportTaskId} />
+                <SemanticBridgeJobs ontologyId={selectedOntologyApi} importTaskId={selectedImportTaskId} manualMappings={(mappingEdges || []).filter(edge => edge.source_instance_id === selectedImportTaskId && edge.evidence?.includes('user-selected bridge')).map(edge => ({source_term: edge.source_term, source_type: edge.source_type, target_term: edge.target_term, target_ontology_type: edge.target_ontology_type}))} />
                 {(importTasksError || unifyResult) && (
                   <div style={{
                     marginTop: '12px',
@@ -2952,7 +2959,7 @@ export default function OntologyMapper() {
               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '14px', marginBottom: '16px', background: C.bg }}>
                 <div style={{ fontSize: '13px', fontWeight: 700, color: C.textPrimary, marginBottom: '4px' }}>Ontology merge</div>
                 <div style={{ fontSize: '11px', color: C.textSec, marginBottom: '12px', lineHeight: 1.45 }}>
-                  Use the active ontology as the merge target. Select one other ontology as the source, review the merge plan, then export or commit the merge when the overlap report looks right.
+                  The Ontology Governor combines the selected source and active ontology into a new draft. Review the merge plan, then approve the merge when the overlap report looks right.
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: '10px', alignItems: 'end' }}>
                   <div>
@@ -2969,7 +2976,7 @@ export default function OntologyMapper() {
                     </select>
                   </div>
                   <div style={{ border: `1px solid ${C.border}`, borderRadius: '6px', background: C.surface, padding: '10px 12px', minHeight: '42px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, marginBottom: '4px' }}>Target ontology</div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, marginBottom: '4px' }}>Second source (active ontology)</div>
                     <div style={{ fontSize: '12px', color: C.textPrimary }}>{selectedOntologyOption?.label || 'Select the active ontology in the header above'}</div>
                   </div>
                   <div>
@@ -2977,7 +2984,7 @@ export default function OntologyMapper() {
                     <input value={mergeApprover} onChange={(e) => setMergeApprover(e.target.value)} placeholder="name or service principal" style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }} />
                   </div>
                   <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Approval key: managed in Admin → Service credentials</label>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Connect governed agent access in Admin → Service credentials. Both sources require retained RDF artifacts; the merge creates a new draft.</label>
                   </div>
                   <button
                     type="button"
@@ -2990,16 +2997,18 @@ export default function OntologyMapper() {
                   <button
                     type="button"
                     onClick={handleCommitOntologyMerge}
-                    disabled={mergeBusy || !mergePlanReady || !mergeApprover.trim() || !getCredentialProfile('ONTOLOGY_APPROVAL_TOKEN')}
+                    disabled={mergeBusy || !mergePlanReady || !mergeApprover.trim() || !getCredentialProfile('AGENTIC_APPROVAL_TOKEN')}
                     title={mergePlanReady ? 'Commit the reviewed conflict-free merge plan' : 'Review a conflict-free merge plan before committing'}
                     style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: mergeBusy || !mergePlanReady ? C.textMuted : C.primaryDark, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: mergeBusy || !mergePlanReady ? 'not-allowed' : 'pointer' }}
                   >
-                    Merge into target
+                    Create merged draft
                   </button>
                 </div>
                 {mergeResult && (
                   <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '6px', border: `1px solid ${mergeResult.kind === 'error' ? C.red : C.borderDark}`, background: mergeResult.kind === 'error' ? '#FFE5E5' : C.surface }}>
                     <div style={{ fontSize: '12px', fontWeight: 700, color: mergeResult.kind === 'error' ? C.red : C.textPrimary }}>{mergeResult.text}</div>
+                    {mergeResult.agentRunId && <div>Agent run: {mergeResult.agentRunId}</div>}
+                    {mergeResult.governedPreview && <div>Merged triples: {mergeResult.governedPreview.triple_count} | Duplicate triples: {mergeResult.governedPreview.duplicate_triple_count} | Conflicts: {mergeResult.governedPreview.conflicts?.length || 0}</div>}
                     {mergeResult.report?.summary && (
                       <div style={{ fontSize: '11px', color: C.textSec, marginTop: '6px', lineHeight: 1.45 }}>
                         Overlaps {mergeResult.report.summary.overlap_count ?? 0} | Additions {mergeResult.report.summary.addition_count ?? 0} | Conflicts {mergeResult.report.summary.conflict_count ?? mergeResult.report.conflict_count ?? 0} | Subclass gaps {mergeResult.report.summary.subclass_gap_count ?? 0}

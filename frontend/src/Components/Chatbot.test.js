@@ -32,6 +32,46 @@ vi.mock('@siemens/ix-react', () => ({
 
 const bytes = (value) => new Uint8Array(Array.from(value).map((character) => character.charCodeAt(0)));
 
+test('completed chat shows generation status and the telemetry run', async () => {
+  setCredentialProfile('GRAPH_READ_TOKEN', 'read-fixture');
+  let sent = false;
+  global.fetch = vi.fn((_url, options = {}) => {
+    if (options.method !== 'POST') return Promise.resolve({ ok: true, headers: { get: () => null }, json: async () => ({ queries: [] }) });
+    return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, body: { getReader: () => ({ read: async () => {
+      if (sent) return { done: true };
+      sent = true;
+      return { done: false, value: bytes('data: {"response":"Verified evidence","evidence":[],"sources":[],"answerable":true,"run_id":"chat-run-1","generation":{"status":"unavailable"}}\n\ndata: {"done":true}\n\n') };
+    } }) } });
+  });
+  render(<Chatbot />);
+  fireEvent.change(screen.getByLabelText('Chat question'), { target: { value: 'Find product' } });
+  fireEvent.click(screen.getByLabelText('Send chat question'));
+  await screen.findByText('Model generation: unavailable');
+  expect(screen.getByText('Agent run: chat-run-1')).toBeInTheDocument();
+});
+
+test('Stop cancels generation and does not publish partial text as an answer', async () => {
+  const results = vi.fn();
+  let rejectRead, sent = false;
+  global.fetch = vi.fn((_url, options = {}) => {
+    if (options.method !== 'POST') return Promise.resolve({ ok: true, headers: { get: () => null }, json: async () => ({ queries: [] }) });
+    options.signal.addEventListener('abort', () => rejectRead?.(new DOMException('Aborted', 'AbortError')));
+    return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, body: { getReader: () => ({ read: async () => {
+      if (sent) return new Promise((_resolve, reject) => { rejectRead = reject; });
+      sent = true;
+      return { done: false, value: bytes('data: {"token":"Partial evidence"}\n\n') };
+    } }) } });
+  });
+  render(<Chatbot setChatResults={results} />);
+  fireEvent.change(screen.getByLabelText('Chat question'), { target: { value: 'Find product' } });
+  fireEvent.click(screen.getByLabelText('Send chat question'));
+  await screen.findByText('Partial evidence');
+  fireEvent.click(screen.getByText('Stop response'));
+  await waitFor(() => expect(screen.getByLabelText('Send chat question')).not.toBeDisabled());
+  expect(screen.getByText('Stopped — partial text is not a completed answer.')).toBeInTheDocument();
+  expect(results).not.toHaveBeenCalled();
+});
+
 test('scope changes abort old evidence and clear the previous server session', async () => {
   window.sessionStorage.clear();
   const results = jest.fn();

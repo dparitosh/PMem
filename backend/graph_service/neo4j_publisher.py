@@ -169,6 +169,20 @@ class Neo4jPublisher:
                 timeout = bounded_timeout_seconds("GRAPH_QUERY_TIMEOUT_SECONDS", default=30, maximum=300)
                 return session.run(Query(query, timeout=timeout), parameters).data()
 
+    def mapping_terms(self, scope: str) -> dict[str, Any]:
+        if not isinstance(scope, str) or not scope.strip() or len(scope) > 256:
+            raise ValueError('Select a valid ontology scope.')
+        scopes = {scope, scope.lower()}
+        if 'ap242' in scope.lower() or scope.lower() == 'step':
+            scopes.update({'ap242', 'step_ap242_mbd3d', 'AP242', 'STEP_AP242_MBD3D'})
+        kinds = [{'kind': kind, 'iri': 'http://www.w3.org/2002/07/owl#' + kind}
+                 for kind in ('Class', 'ObjectProperty', 'DatatypeProperty', 'AnnotationProperty')]
+        rows = self._session_rows(cypher.MAPPING_TERMS, scopes=sorted(scopes), kinds=kinds,
+                                  rdf_type='http://www.w3.org/1999/02/22-rdf-syntax-ns#type')
+        if len(rows) > 10000:
+            raise ValueError('Ontology mapping lookup exceeds 10000 terms; narrow the ontology scope.')
+        return {'scope': scope, 'terms': rows}
+
     def projection(self, *, ontology_id: str, limit: int = 3000) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 10_000))
         nodes = self._session_rows(

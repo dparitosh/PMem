@@ -89,3 +89,23 @@ ONTOLOGY_SEARCH_NODES = (
     "RETURN n.iri AS id, n.label AS label, n.kind AS type, n.ontology_id AS ontology_id, score "
     "ORDER BY score DESC, label LIMIT $limit"
 )
+
+
+# Complete bounded mapping targets; executed only by the Graph data service.
+MAPPING_TERMS = """UNWIND $kinds AS kind
+            MATCH (n) WHERE (n.prefix IN $scopes OR n.ontology_prefix IN $scopes
+                OR n.ontology_id IN $scopes OR n.source_ontology IN $scopes)
+            AND ((kind.kind='Class' AND n:OntologyClass)
+                OR (kind.kind='ObjectProperty' AND n:ObjectProperty)
+                OR (kind.kind='DatatypeProperty' AND n:DatatypeProperty)
+                OR (kind.kind='AnnotationProperty' AND n:AnnotationProperty)
+                OR (n:OntologyResource AND EXISTS {
+                    MATCH (n)-[r:SEMANTIC_RELATION]->(t:OntologyResource)
+                    WHERE r.predicate=$rdf_type AND t.iri=kind.iri }))
+            OPTIONAL MATCH (n)-[:DOMAIN]->(domain)
+            OPTIONAL MATCH (n)-[:RANGE]->(range)
+            RETURN elementId(n) AS element_id, coalesce(n.name,n.label,n.iri,n.uri) AS name,
+                coalesce(n.iri,n.uri) AS iri, kind.kind AS kind,
+                collect(DISTINCT coalesce(domain.iri,domain.uri,domain.name)) AS domains,
+                collect(DISTINCT coalesce(range.iri,range.uri,range.name)) AS ranges
+            ORDER BY element_id, kind LIMIT 10001"""

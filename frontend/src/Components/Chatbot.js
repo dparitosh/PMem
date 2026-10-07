@@ -100,7 +100,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             abortRef.current = controller;
             requestActiveRef.current = true;
             setRequestActive(true);
-            const timeoutMs = Number(config.chatStreamTimeout) || 900000;
+            const timeoutMs = Math.min(300000, Math.max(1000, Number(config.chatStreamTimeout) || 180000));
             timeoutId = window.setTimeout(() => {
                 timedOut = true;
                 controller.abort();
@@ -119,6 +119,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
 
             let accumulated = '';
             let buffer = '';
+            let streamBytes = 0;
             let streamCompleted = false;
             let streamFailed = false;
             let evidenceReceived = false;
@@ -188,7 +189,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 if (!raw) return;
                 try {
                     const parsed = JSON.parse(raw);
-                    if (parsed.token) {
+                    if (typeof parsed.token === 'string') {
                         accumulated += parsed.token;
                         setShowSpinner(false);
                         setStatusLabel(null);
@@ -204,16 +205,17 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                         responseSources = Array.isArray(parsed.sources) ? parsed.sources : [];
                         responseAnswerable = parsed.answerable;
                         setChatMessages(prev => prev.map(m =>
-                            m.id === assistantId ? { ...m, text: accumulated, evidence: responseEvidence, sources: responseSources, answerable: responseAnswerable } : m
+                            m.id === assistantId ? { ...m, text: accumulated, evidence: responseEvidence, sources: responseSources, answerable: responseAnswerable, generation: parsed.generation, runId: parsed.run_id } : m
                         ));
                     } else if (parsed.status) {
                         setStatusLabel(parsed.status);
-                    } else if (parsed.done) {
+                    } else if (parsed.done === true) {
                         streamCompleted = true;
                         if ((!accumulated || !evidenceReceived) && !streamFailed) {
                             streamFailed = true;
                             const emptyMessage = 'The response was incomplete or missing evidence. Please try again.';
                             setError(emptyMessage);
+                            setQuestion(messageText);
                             setChatMessages(prev => prev.map(m =>
                                 m.id === assistantId ? { ...m, text: emptyMessage, streaming: false } : m
                             ));
@@ -229,6 +231,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                         streamFailed = true;
                         const errMsg = typeof parsed.error === 'string' ? parsed.error : 'An error occurred.';
                         setError(errMsg);
+                        setQuestion(messageText);
                         setStatusLabel(null);
                         setShowSpinner(false);
                         setChatMessages(prev => prev.map(m =>
@@ -239,12 +242,17 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             };
 
             while (true) {
+                if (controller.signal.aborted) return;
                 const { done, value } = await reader.read();
                 if (done) break;
+                streamBytes += value.byteLength;
+                if (streamBytes > 8 * 1024 * 1024) { await reader.cancel(); throw new Error('Chat response exceeds the permitted size. Narrow your question.'); }
                 buffer += decoder.decode(value, { stream: true });
+                if (buffer.length > 1024 * 1024) { await reader.cancel(); throw new Error('Chat response frame exceeds the permitted size.'); }
                 const lines = buffer.split('\n');
                 buffer = lines.pop();
                 for (const line of lines) processLine(line.trim());
+                if (streamCompleted) { await reader.cancel?.(); break; }
             }
             buffer += decoder.decode();
             if (buffer.trim()) processLine(buffer.trim());
@@ -253,6 +261,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             }
 
         } catch (err) {
+            if (!controller?.signal.aborted || timedOut) setQuestion(messageText);
             if (err.name === 'AbortError') {
                 if (timedOut) {
                     const timeoutMessage = 'Chat request timed out. Please try again.';
@@ -496,6 +505,9 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                                     ) : (
                                         msg.text
                                     )}
+                                    {msg.generation && <p>Model generation: {msg.generation.status}</p>}
+                                    {msg.runId && <small>Agent run: {msg.runId}</small>}
+                                    {msg.stopped && <p>Stopped — partial text is not a completed answer.</p>}
                                     {msg.streaming && showSpinner && (
                                         <span style={{ display: 'inline-block', marginLeft: 6, fontSize: 10, color: '#888' }}>...</span>
                                     )}
@@ -532,6 +544,10 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                         onValueChange={(event) => setQuestion(event.detail)}
                         onPromptSubmit={(event) => handleAsk(event.detail)}
                     />
+                    {requestActive && <button type="button" onClick={() => {
+                        abortRef.current?.abort(); setStatusLabel('Stopped. Partial text is not a completed answer.');
+                        setChatMessages(messages => messages.map(message => message.streaming ? { ...message, streaming: false, stopped: true } : message));
+                    }}>Stop response</button>}
                 </div>
             </div>
         </div>

@@ -112,7 +112,7 @@ class SemanticWorkflowService:
     @staticmethod
     def _read_ontology_file(meta: Dict[str, Any]) -> str:
         path = Path(meta.get("file_path", ""))
-        if not path.exists():
+        if not path.is_file():
             return ""
         try:
             return path.read_text(encoding="utf-8-sig", errors="replace")
@@ -356,6 +356,11 @@ class SemanticWorkflowService:
     @classmethod
     def _load_ontology_term_lookup(cls, ontology_prefix: str) -> Dict[str, List[Dict[str, Any]]]:
         """Load ontology classes and properties into a bridge lookup table."""
+        # Mapping targets must resolve to current graph IDs, including property
+        # records from ingestion and declared types in a published projection.
+        graph_lookup = cls._load_graph_term_lookup(ontology_prefix)
+        if graph_lookup:
+            return graph_lookup
         ontology_identifier = cls._resolve_ontology_id(ontology_prefix) or ontology_prefix
         try:
             lookup = OntologyReasoningService.build_term_lookup(
@@ -394,6 +399,28 @@ class SemanticWorkflowService:
                 "range": item.get("range") or [],
             }
             lookup.setdefault(normalized, []).append(entry)
+        return lookup
+
+    @classmethod
+    def _load_graph_term_lookup(cls, scope: str) -> Dict[str, List[Dict[str, Any]]]:
+        from backend.depo_platform.graph_data_client import graph_data_client
+        records = graph_data_client.mapping_terms(scope)
+        lookup = {}
+        for record in records:
+            label = str(record.get('name') or '').strip()
+            if not label or not record.get('element_id'):
+                continue
+            iri = record.get('iri') or ''
+            entry = {'element_id': record['element_id'], 'graph_element_id': record['element_id'],
+                'graph_linkable': True, 'class_name': label, 'term_name': label,
+                'target_ontology_type': record['kind'], 'target_ontology_iri': iri,
+                'iri': iri, 'domain': record.get('domains') or [], 'range': record.get('ranges') or [],
+                'prefix': scope, 'normalized': cls._normalized_key(label),
+                'tokens': _tokenize(label), 'is_generic': cls._is_generic_term(label)}
+            for alias in {label, str(iri).rsplit('#', 1)[-1].rsplit('/', 1)[-1]}:
+                key = cls._normalized_key(alias)
+                if key:
+                    lookup.setdefault(key, []).append(entry)
         return lookup
 
     @staticmethod

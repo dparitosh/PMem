@@ -44,10 +44,14 @@ class BridgeJobs:
             raise KeyError(job_id)
         return copy.deepcopy(job)
 
-    def preview(self, ontology_id, import_task_id, actor):
+    def preview(self, ontology_id, import_task_id, actor, manual_mappings=None):
         if not ontology_id or not import_task_id:
             raise ValueError('Select an ontology and an imported instance.')
         snapshot, candidates = self.source.preview(ontology_id, import_task_id)
+        if manual_mappings:
+            candidates.extend(self.source.manual_candidates(ontology_id, import_task_id, manual_mappings))
+            if snapshot != self.source.snapshot(ontology_id, import_task_id):
+                raise BridgeConflict('Source changed while resolving manual mappings. Retry preview.')
         if len(candidates) > 2000:
             raise ValueError('Preview exceeds 2000 candidates. Narrow the imported source before review.')
         rows = {}
@@ -66,6 +70,10 @@ class BridgeJobs:
                'ontology_id': ontology_id, 'import_task_id': import_task_id,
                'created_by': actor, 'created_at': now(), 'snapshot': snapshot,
                'candidates': list(rows.values())}
+        job['recommendation_summary'] = {'total': len(rows),
+            'eligible': sum(1 for row in rows.values() if row['eligible']),
+            'requires_review': True,
+            'definition': 'Recommendations are evidence for user review, not publication approval.'}
         job['preview_digest'] = digest(job)
         self.store.put(preview_id, job)
         return job
@@ -150,12 +158,21 @@ class BridgeSource:
         from backend.Services.semantic_workflow_service import SemanticWorkflowService as service
         from backend.Services.unified_data_import import UnifiedDataImportService
         ontology_id = service._resolve_ontology_id(ontology_id)
-        meta = service._ontology_metadata(ontology_id)
+        try:
+            meta = service._ontology_metadata(ontology_id)
+        except ValueError as exc:
+            if 'Ontology not found' not in str(exc):
+                raise
+            # Graph-native records are sufficient for instance mapping, which
+            # does not claim to perform RDF reasoning or ontology merging.
+            meta = {'prefix': ontology_id}
         task = service._load_import_task({'task_id': import_id})
         scope = meta.get('prefix') or meta.get('ontology_prefix') or ontology_id
         # Include live graph IDs/type metadata as well as retained ontology bytes.
         terms = service._load_ontology_term_lookup(scope)
         classes = UnifiedDataImportService._load_ontology_class_lookup(scope)
+        if not terms and not classes:
+            raise ValueError('No ontology terms are available for mapping. Check the selected ontology and graph projection.')
         snapshot = {'source': digest(task.get('parsed_rows') or []),
                     'ontology': digest([ontology_id, scope, service._read_ontology_file(meta), canonical_lookup(terms), canonical_lookup(classes)])}
         return service, task, scope, snapshot
@@ -170,6 +187,57 @@ class BridgeSource:
             raise BridgeConflict('Source changed while previewing. Retry preview.')
         return snapshot, candidates
 
+    def manual_candidates(self, ontology_id, import_id, mappings):
+        if not isinstance(mappings, list) or len(mappings) > 2000:
+            raise ValueError('Manual mappings must contain at most 2000 entries')
+        service, task, scope, _ = self._read(ontology_id, import_id)
+        from backend.Services.unified_data_import import UnifiedDataImportService
+        lookup = service._load_ontology_term_lookup(scope)
+        classes = UnifiedDataImportService._load_ontology_class_lookup(scope)
+        terms = {}
+        # Class lookup entries originate in Neo4j; other terms can be retained
+        # RDF-only declarations and must explicitly carry graph provenance.
+        graph_classes = [[{**term, 'graph_linkable': True} for term in values] for values in classes.values()]
+        for values in [*graph_classes, *lookup.values()]:
+            for term in values:
+                identity = term.get('graph_element_id') or term.get('element_id')
+                if identity:
+                    key = (str(identity), term.get('target_ontology_type') or 'Class')
+                    terms[key] = {**terms.get(key, {}), **term}
+        candidates = []
+        for mapping in mappings:
+            if not isinstance(mapping, dict):
+                raise ValueError('Manual mapping must be an object')
+            target = str(mapping.get('target_term') or '')
+            kind = mapping.get('target_ontology_type')
+            matches = [term for term in terms.values() if (term.get('target_ontology_type') or 'Class') == kind and
+                       target in {str(term.get(key) or '') for key in ('class_name', 'term_name', 'iri', 'uri', 'target_ontology_iri', 'element_id', 'graph_element_id')}]
+            if len(matches) != 1:
+                raise ValueError('Manual mapping target is missing or ambiguous; select a unique graph-backed ontology term')
+            term = matches[0]
+            graph_id = term.get('graph_element_id') or (term.get('element_id') if term.get('graph_linkable', False) else None)
+            if not graph_id:
+                raise ValueError('Manual mapping target is not published in the graph')
+            rows = [row for row in task.get('parsed_rows') or [] if
+                    service._candidate_display_value(row) == mapping.get('source_term') and
+                    service._classify_source_row(row) == mapping.get('source_type')]
+            if not rows:
+                raise ValueError('Manual mapping source is not present in the selected imported instance')
+            for row in rows:
+                validation = service._validate_candidate_pair(mapping.get('source_type'), kind, term, row)
+                row_key = row.get('import_row_key') or row.get('id')
+                if not validation['is_valid'] or not row_key:
+                    raise ValueError('Manual mapping source/target pair is invalid')
+                candidates.append({'import_id': import_id, 'import_row_key': row_key,
+                    'source_term': mapping['source_term'], 'source_type': mapping['source_type'],
+                    'ontology_term': term.get('class_name') or term.get('term_name') or target,
+                    'ontology_class_element_id': graph_id, 'target_ontology_type': kind,
+                    'target_ontology_iri': term.get('target_ontology_iri') or term.get('iri') or term.get('uri'),
+                    'mapping': scope, 'mapping_type': 'closeMatch', 'confidence': 1,
+                    'validation_status': validation['status'], 'validation_errors': validation['errors'],
+                    'evidence': ['user-selected mapping; server-resolved source and target']})
+        return candidates
+
 
 class GraphBridgeClient:
     def _request(self, method, path, **kwargs):
@@ -182,7 +250,7 @@ class GraphBridgeClient:
         # Existing peer configuration ends in /api/v1; graph routes own /graph.
         if base.endswith('/api/v1'):
             base = base[:-7]
-        with httpx.Client(timeout=bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180)) as client:
+        with httpx.Client(timeout=bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180), trust_env=False) as client:
             response = client.request(method, base + '/api/v1/graph/bridge/' + path,
                                       headers={'Authorization': 'Bearer ' + token}, **kwargs)
         # A missing receipt is expected only for an idempotency lookup. A POST

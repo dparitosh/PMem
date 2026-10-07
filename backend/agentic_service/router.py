@@ -27,6 +27,7 @@ from .dt_bindings import extend_catalog, capabilities as dt_capabilities
 from .telemetry import telemetry
 from . import sessions
 from .response_limits import read_bounded_response
+from .recommendations import recommendations
 from backend.Services.agent_memory_service import AgentMemoryService
 
 logger = logging.getLogger(__name__)
@@ -305,7 +306,7 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
         if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true':
             from .local_llm import settings
             generation_budget = settings()[3]
-        async with asyncio.timeout(bounded_timeout_seconds('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', default=15) + generation_budget + 5):
+        async with asyncio.timeout(bounded_timeout_seconds('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', default=15, maximum=120) + generation_budget + 5):
             kwargs = {'headers': headers, 'ontology_id': (payload.get('graph_context') or {}).get('ontology', '')}
             if (payload.get('graph_context') or {}).get('ontology_prefix'):
                 kwargs['ontology_prefix'] = payload['graph_context']['ontology_prefix']
@@ -361,7 +362,7 @@ def companion_job_status(job_id: str, request: Request) -> dict:
 @router.get("/chat/health")
 @router.get("/chat/status")
 def companion_health() -> dict:
-    return {"status": "ok", "service": "knowledge-companion", "mode": "ontology-search", "streaming": True, 'incremental_generation': False, 'job_execution': 'synchronous', "fail_closed": True}
+    return {"status": "ok", "service": "knowledge-companion", "mode": "ontology-search", "streaming": True, 'incremental_generation': os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true', 'job_execution': 'synchronous', "fail_closed": True}
 
 
 @router.get('/llm/health', dependencies=[Depends(graph_read_identity)])
@@ -372,7 +373,7 @@ async def local_llm_health() -> dict:
 
 @router.get("/chat/capabilities")
 def companion_capabilities() -> dict:
-    return {"name": "knowledge-companion", "mode": "ontology-search", "operations": ["validate", "ask", "stream", "job", "sample-queries"], 'stream_mode': 'completed-response-events', 'job_execution': 'synchronous', "evidence_required": True, 'instance_comparison': False, 'change_impact_analysis': False}
+    return {"name": "knowledge-companion", "mode": "ontology-search", "operations": ["validate", "ask", "stream", "job", "sample-queries"], 'stream_mode': 'evidence-and-optional-generation-tokens', 'job_execution': 'synchronous', "evidence_required": True, 'instance_comparison': False, 'change_impact_analysis': False}
 
 
 @router.post("/chat-stream", dependencies=[Depends(graph_read_identity)])
@@ -389,7 +390,7 @@ async def companion_stream(payload: ChatRequest, request: Request) -> StreamingR
             try:
                 result = await _companion_chat(payload, request, on_token=token)
                 await queue.put({'response': result['response'], 'evidence': result['evidence'],
-                    'sources': result['sources'], 'answerable': result['answerable'], 'run_id': result['run_id']})
+                    'sources': result['sources'], 'answerable': result['answerable'], 'run_id': result['run_id'], 'generation': result.get('generation')})
                 await queue.put({'done': True})
             except Exception:
                 await queue.put({'error': 'Knowledge companion stream failed; no complete answer was retained'})
@@ -424,11 +425,29 @@ async def suggest_agent_tool(agent_id: str, payload: dict[str, Any], request: Re
         command = {'agent_id': agent_id, 'tool_id': suggestion['tool_id'], 'inputs': suggestion.get('inputs', {})}
         planned = plan(command)
         await _preflight_tools([command], request)
-        return {**planned, 'command': command, 'status': 'proposal', 'execution': 'requires_explicit_run_request'}
+        result = {**planned, 'command': command, 'status': 'proposal', 'execution': 'requires_explicit_run_request'}
+        try:
+            return await _agent_io(recommendations.create, result, sessions.owner(request, graph_read_identity(request)))
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise HTTPException(503, 'Recommendation could not be saved; no tool was executed') from exc
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(422, 'Agent returned an invalid or incomplete tool proposal') from exc
     except (httpx.HTTPError, TimeoutError) as exc:
         raise HTTPException(503, 'Agent model or tool contract is unavailable') from exc
+
+
+@router.get('/agent-recommendations/{recommendation_id}', dependencies=[Depends(graph_read_identity)])
+def saved_recommendation(recommendation_id: str, request: Request) -> dict:
+    try:
+        return recommendations.get(recommendation_id, sessions.owner(request, graph_read_identity(request)))
+    except KeyError as exc:
+        raise HTTPException(404, 'Saved recommendation not found') from exc
+    except PermissionError as exc:
+        raise HTTPException(403, 'Saved recommendation belongs to another identity') from exc
+    except Exception as exc:
+        raise HTTPException(503, 'Recommendation storage unavailable') from exc
 
 
 @router.post("/plans")
@@ -573,6 +592,21 @@ async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
     if not isinstance(payload.get('inputs', {}), dict):
         raise HTTPException(422, 'inputs must be an object')
     tool, inputs = plan_result["tool"], dict(payload.get("inputs") or {})
+    if tool['id'] in {'bridge.mapping.preview', 'bridge.mapping.publish'}:
+        # Reuse the durable Bridge job implementation in this service rather
+        # than self-HTTP with a supervisor token on a read-authenticated route.
+        from .bridge_router import jobs, PreviewInput, ApprovalInput, translate
+        from pydantic import ValidationError
+        try:
+            command = PreviewInput(**inputs) if tool['id'] == 'bridge.mapping.preview' else ApprovalInput(**{key: value for key, value in inputs.items() if key != 'preview_id'})
+        except ValidationError as exc:
+            raise HTTPException(422, 'Invalid Bridge inputs; check source IDs and reviewed candidate selection') from exc
+        if tool['id'] == 'bridge.mapping.preview':
+            result = await _agent_io(translate, lambda: jobs.preview(command.ontology_id, command.import_task_id, approved_by, command.manual_mappings))
+        else:
+            preview_id = inputs.pop('preview_id', '')
+            result = await _agent_io(translate, lambda: jobs.publish(preview_id, command.approved_candidate_ids, approved_by))
+        return {'agent_id': plan_result['agent'], 'tool_id': tool['id'], 'approved_by': approved_by, 'result': result}
     if tool.get('transport') == 'mcp':
         from .mcp_transport import invoke
         # Mutating MCP tools need an explicit downstream approval contract too.
