@@ -307,6 +307,8 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
             generation_budget = settings()[3]
         async with asyncio.timeout(bounded_timeout_seconds('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', default=15) + generation_budget + 5):
             kwargs = {'headers': headers, 'ontology_id': (payload.get('graph_context') or {}).get('ontology', '')}
+            if (payload.get('graph_context') or {}).get('ontology_prefix'):
+                kwargs['ontology_prefix'] = payload['graph_context']['ontology_prefix']
             if on_token:
                 kwargs['on_token'] = on_token
             result = await companion.ask(query, **kwargs)

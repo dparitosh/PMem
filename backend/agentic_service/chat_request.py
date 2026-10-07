@@ -6,6 +6,7 @@ class ChatContext(BaseModel):
     # Browser labels/node text are deliberately not evidence. Only this scope
     # identifier is used to filter server-owned graph retrieval.
     ontology: StrictStr = Field(default='', max_length=128)
+    ontology_prefix: StrictStr = Field(default='', max_length=128)
 
 
 class ChatRequest(BaseModel):

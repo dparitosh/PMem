@@ -1,5 +1,72 @@
 # Azure API Management registration
 
+## Ollama model discovery and generation
+
+The DEPO service registration script below does not register Ollama. Configure
+its APIM API separately. A `route_missing` diagnostic reports that model
+discovery returned HTTP 404; it does not establish whether generation works.
+Use APIM's Test trace to distinguish an unmatched frontend operation from a
+404 returned by the configured backend.
+
+An importable native Ollama contract is supplied in
+`infra/azure-apim/ollama.openapi.json`. For a new API, use suffix `ollama` and
+the private Ollama backend root, for example `http://<ollama-private-host>:11434`.
+Do not append `/ollama` or `/api` to that backend root unless the actual backend
+proxy requires that prefix. The operation path already includes `/api`.
+
+```powershell
+az apim api import `
+  --resource-group "<resource-group>" `
+  --service-name "<apim-name>" `
+  --api-id "<ollama-api-id>" `
+  --path "ollama" `
+  --display-name "Ollama" `
+  --service-url "http://<ollama-private-host>:11434" `
+  --specification-format OpenApiJson `
+  --specification-path ".\infra\azure-apim\ollama.openapi.json" `
+  --protocols https `
+  --subscription-required true
+```
+
+For an existing API, review its operations and policies first. Importing into
+its API ID updates that API; do not replace a custom gateway contract blindly.
+Add or repair the missing `GET /api/tags` operation if generation already works.
+Required native routes are `GET /api/tags` for discovery, `POST /api/chat` for
+chat and tool proposals, and `POST /api/generate` if a generate operation is
+configured. Embedding clients use `/api/embed` or legacy `/api/embeddings`.
+
+Keep streaming forwarding unbuffered for chat/generate routes. Preserve native
+Ollama request and response JSON shapes. The provided contract does not add
+authentication policies, configure backend credentials or provision models.
+Attach the appropriate APIM product/subscription and existing security policies.
+
+Server configuration for this topology:
+
+```dotenv
+OLLAMA_BASE_URL=https://<apim-name>.azure-api.net/ollama
+OLLAMA_CHAT_API_URL=https://<apim-name>.azure-api.net/ollama/api/chat
+LLM_MODEL_NAME=llama3:latest
+OLLAMA_API_KEY=<server-side-secret>
+OLLAMA_API_KEY_HEADER=Ocp-Apim-Subscription-Key
+```
+
+Use `Ocp-Apim-Subscription-Key` only when the key is an APIM subscription key
+and APIM uses that default header. Keep `api-key` when an existing custom
+policy or backend explicitly accepts it. The application does not translate
+between those authentication contracts. Use HTTPS on the public gateway so
+the configured key is not sent over plaintext HTTP.
+
+From the application VM, verify the model-list route returns an Ollama JSON
+`models` array containing the exact configured model. Then separately test
+the configured generation operation with `stream=false` and a small prompt;
+test streaming and tool proposals independently if those features are used.
+For 404s, check API suffix, operation method/path, backend base and rewrite
+policy in the APIM trace. For 401/403s, check the product subscription and
+configured header. Restart the affected services after environment changes.
+
+References: [APIM operation exposure](https://learn.microsoft.com/en-us/azure/api-management/add-api-manually)
+and [Ollama native API](https://github.com/ollama/ollama/blob/main/docs/api.md).
+
 Azure API Management (APIM) is the only public entry point for the DEPO
 microservices. Keep service URLs private (VNet/private endpoint) and register
 their OpenAPI documents through APIM.

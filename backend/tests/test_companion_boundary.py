@@ -18,9 +18,11 @@ class CompanionBoundaryTests(unittest.TestCase):
 
     def test_context_retains_only_bounded_scope(self):
         request = ChatRequest(message='product', graph_context={'ontology': 'qif', 'visibleGraph': {'nodes': [{'label': 'untrusted'}]}})
-        self.assertEqual(request.graph_context.model_dump(), {'ontology': 'qif'})
+        self.assertEqual(request.graph_context.model_dump(), {'ontology': 'qif', 'ontology_prefix': ''})
         with self.assertRaises(ValidationError):
             ChatRequest(message='product', graph_context={'ontology': 'x' * 129})
+        with self.assertRaises(ValidationError):
+            ChatRequest(message='product', graph_context={'ontology_prefix': 'x' * 129})
 
     def test_rotated_caller_read_key_overrides_stale_environment(self):
         path = Path(__file__).resolve().parents[1] / 'agentic_service/transport_auth.py'

@@ -221,11 +221,14 @@ class Neo4jPublisher:
             "view": view,
         }
 
-    def metrics(self, *, ontology_id: str = '') -> dict[str, Any]:
+    def metrics(self, *, ontology_id: str = '', ontology_prefix: str = '') -> dict[str, Any]:
         """Aggregate the published RDF projection, never an explorer sample."""
         ontology_id = ontology_id.strip()
         if len(ontology_id) > 128:
             raise ValueError('ontology_id must contain at most 128 characters')
+        ontology_prefix = ontology_prefix.strip()
+        if len(ontology_prefix) > 128:
+            raise ValueError('ontology_prefix must contain at most 128 characters')
         query = """
         CALL {
           MATCH (n:OntologyResource)
@@ -267,6 +270,10 @@ class Neo4jPublisher:
         breakdown = result.get('ontology_breakdown') or []
         result['ontology_breakdown'] = breakdown[:200]
         result['breakdown_truncated'] = len(breakdown) > 200
+        legacy = self._session_rows(cypher.LEGACY_METRICS, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
+        if not legacy:
+            raise RuntimeError('Existing ontology metrics query returned no aggregate result')
+        result['existing_ontology'] = {**legacy[0], 'definition': 'Existing ingestion records counted by Neo4j labels. These are separate from declared RDF types in the published projection.'}
         return {**result, 'scope': {'type': 'published_rdf_projection', 'ontology_id': ontology_id or None,
             'sampled': False, 'inferred': False},
             'definition': 'Declared RDF/OWL types in the published projection. Named individuals count explicit owl:NamedIndividual declarations. Resources include referenced vocabulary and blank nodes; literal values are stored as properties, not relationship edges.'}
@@ -297,7 +304,7 @@ class Neo4jPublisher:
             view={"type": "overview", "limit": safe_limit, "truncated": len(nodes) >= safe_limit},
         )
 
-    def search(self, *, query: str, limit: int = 50, ontology_id: str = '') -> dict[str, Any]:
+    def search(self, *, query: str, limit: int = 50, ontology_id: str = '', ontology_prefix: str = '') -> dict[str, Any]:
         stop_words = {"and", "the", "for", "from", "show", "with", "relationship", "relationships"}
         terms = sorted({token for token in re.findall(r"[a-z0-9]+", str(query).lower()) if len(token) >= 3 and token not in stop_words})
         if not terms:
@@ -305,35 +312,38 @@ class Neo4jPublisher:
         safe_limit = max(1, min(int(limit), 200))
         if len(ontology_id) > 128:
             raise ValueError('ontology_id must be at most 128 characters')
+        if len(ontology_prefix) > 128:
+            raise ValueError('ontology_prefix must be at most 128 characters')
         nodes = self._session_rows(cypher.ONTOLOGY_SEARCH_NODES, terms=terms, limit=safe_limit, ontology_id=ontology_id)
-        ids = [node["id"] for node in nodes]
-        edges = [] if not ids else self._session_rows(cypher.ONTOLOGY_TRAVERSAL_EDGES, ids=ids, limit=safe_limit * 4)
+        legacy = self._session_rows(cypher.LEGACY_SEARCH, terms=terms, limit=safe_limit, ontology_id=ontology_id, ontology_prefix=ontology_prefix)
+        combined = sorted(nodes + legacy, key=lambda node: (-int(node.get('score') or 0), str(node.get('label') or '')))
+        selected = combined[:safe_limit]
+        # Read edges after ranking so excluded candidates cannot consume the
+        # relationship budget of the resources actually returned to chat.
+        selected_ids = {node['id'] for node in selected}
+        edges = self._read_edges([node['id'] for node in nodes if node['id'] in selected_ids], limit=safe_limit * 4)
+        edges += self._read_edges([node['id'] for node in legacy if node['id'] in selected_ids], limit=safe_limit * 4, existing=True)
+        edges = edges[:safe_limit * 4]
         return self._explorer_payload(
-            nodes=nodes, edges=edges,
-            view={"type": "search", "query": query, "terms": terms, "limit": safe_limit, "truncated": len(nodes) >= safe_limit},
+            nodes=selected, edges=edges,
+            view={"type": "search", "query": query, "terms": terms, "ontology_id": ontology_id, "limit": safe_limit, "truncated": len(combined) >= safe_limit, "source": "published_and_existing_ontology"},
         )
 
     def _legacy_overview(self, *, limit: int) -> dict[str, Any]:
-        nodes = self._session_rows(
-            "MATCH (n) WHERE n:OntologyClass OR n:ObjectProperty OR n:DatatypeProperty "
-            "RETURN elementId(n) AS id, coalesce(n.name, n.label, n.uri) AS label, "
-            "coalesce(n.concept_type, head(labels(n)), 'resource') AS type, "
-            "n.source_ontology AS ontology_id "
-            "ORDER BY coalesce(n.name, n.label, n.uri) LIMIT $limit",
-            limit=limit,
-        )
+        nodes = self._session_rows(cypher.LEGACY_OVERVIEW, limit=limit)
         ids = [node["id"] for node in nodes]
-        edges = [] if not ids else self._session_rows(
-            "MATCH (a)-[r]->(b) "
-            "WHERE elementId(a) IN $ids AND elementId(b) IN $ids "
-            "RETURN elementId(a) AS source, elementId(b) AS target, type(r) AS type LIMIT $limit",
-            ids=ids, limit=limit * 4,
-        )
+        edges = self._read_edges(ids, limit=limit * 4, existing=True)
         return self._explorer_payload(
             nodes=nodes,
             edges=edges,
             view={"type": "overview", "source": "existing_ontology", "limit": limit, "truncated": len(nodes) >= limit},
         )
+
+    def _read_edges(self, ids: list[str], *, limit: int, existing: bool = False) -> list[dict[str, Any]]:
+        if not ids:
+            return []
+        return self._session_rows(cypher.LEGACY_EDGES if existing else cypher.ONTOLOGY_TRAVERSAL_EDGES,
+                                  ids=ids, limit=limit)
 
     def explorer_projection(self, *, ontology_id: str, limit: int = 900) -> dict[str, Any]:
         projection = self.projection(ontology_id=ontology_id, limit=limit)
@@ -352,10 +362,7 @@ class Neo4jPublisher:
         if not nodes:
             return self._legacy_traversal(node_id=iri, depth=hops, limit=safe_limit)
         ids = [node["id"] for node in nodes]
-        edges = [] if not ids else self._session_rows(
-            cypher.ONTOLOGY_TRAVERSAL_EDGES,
-            ids=ids, limit=safe_limit * 4,
-        )
+        edges = self._read_edges(ids, limit=safe_limit * 4)
         return self._explorer_payload(
             nodes=nodes,
             edges=edges,
@@ -366,22 +373,11 @@ class Neo4jPublisher:
         depth = max(1, min(int(depth), 5))
         limit = max(1, min(int(limit), 1_000))
         nodes = self._session_rows(
-            "MATCH (root) WHERE elementId(root) = $node_id "
-            f"OPTIONAL MATCH path=(root)-[*0..{depth}]-(neighbor) "
-            "WHERE length(path) <= $depth "
-            "WITH root, neighbor ORDER BY elementId(neighbor) "
-            "WITH root, collect(DISTINCT neighbor) AS neighbors "
-            "UNWIND [root] + [n IN neighbors WHERE n <> root][..($limit - 1)] AS node "
-            "RETURN DISTINCT elementId(node) AS id, coalesce(node.name, node.label, node.uri) AS label, "
-            "coalesce(node.concept_type, head(labels(node)), 'resource') AS type, node.source_ontology AS ontology_id",
+            cypher.LEGACY_TRAVERSAL_NODES.replace('*0..5', f'*0..{depth}'),
             node_id=node_id, depth=depth, limit=limit,
         )
         ids = [node["id"] for node in nodes]
-        edges = [] if not ids else self._session_rows(
-            "MATCH (a)-[r]->(b) WHERE elementId(a) IN $ids AND elementId(b) IN $ids "
-            "RETURN elementId(a) AS source, elementId(b) AS target, type(r) AS type LIMIT $limit",
-            ids=ids, limit=limit * 4,
-        )
+        edges = self._read_edges(ids, limit=limit * 4, existing=True)
         return self._explorer_payload(
             nodes=nodes,
             edges=edges,

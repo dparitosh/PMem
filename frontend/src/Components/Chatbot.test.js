@@ -32,6 +32,36 @@ vi.mock('@siemens/ix-react', () => ({
 
 const bytes = (value) => new Uint8Array(Array.from(value).map((character) => character.charCodeAt(0)));
 
+test('scope changes abort old evidence and clear the previous server session', async () => {
+  window.sessionStorage.clear();
+  const results = jest.fn();
+  let rejectRead;
+  let tokenSent = false;
+  global.fetch = jest.fn((_url, options = {}) => {
+    if (options.method !== 'POST') return Promise.resolve({ ok: true, headers: { get: () => null }, json: async () => ({ queries: [] }) });
+    options.signal.addEventListener('abort', () => rejectRead?.(new DOMException('Aborted', 'AbortError')));
+    return Promise.resolve({ ok: true, status: 200, headers: { get: name => name === 'x-session-id' ? 'old-session' : null },
+      body: { getReader: () => ({ read: () => {
+        if (!tokenSent) { tokenSent = true; return Promise.resolve({ done: false, value: bytes('data: {"token":"Old scope answer"}\n\n') }); }
+        return new Promise((_resolve, reject) => { rejectRead = reject; });
+      } }) } });
+  });
+  const graphData = { nodes: [{ properties: { label: 'Browser text is not evidence' } }] };
+  const { rerender } = render(<Chatbot setChatResults={results} ontologyId="first" graphData={graphData} />);
+  setCredentialProfile('GRAPH_READ_TOKEN', 'read-key');
+  fireEvent.change(screen.getByLabelText('Chat question'), { target: { value: 'Show product' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send chat question' }));
+  expect(await screen.findByText('Old scope answer')).toBeInTheDocument();
+  const request = global.fetch.mock.calls.find(([, options]) => options.method === 'POST')[1];
+  expect(JSON.parse(request.body).graph_context).toEqual({ ontology: 'first', ontology_prefix: '' });
+  rerender(<Chatbot setChatResults={results} ontologyId="second" graphData={graphData} />);
+  await waitFor(() => expect(request.signal.aborted).toBe(true));
+  expect(screen.queryByText('Old scope answer')).not.toBeInTheDocument();
+  expect(window.sessionStorage.getItem('depo.sessionId.v1')).toBeNull();
+  expect(screen.getByLabelText('Chat question')).not.toBeDisabled();
+  expect(results).toHaveBeenLastCalledWith([]);
+});
+
 test('a truncated response is not published as a successful answer', async () => {
   window.sessionStorage.clear();
   let sent = false;
@@ -121,7 +151,8 @@ test('keeps chat input locked until the SSE stream completes and clears the serv
   });
 
   const setChatResults = jest.fn();
-  render(<Chatbot setChatResults={setChatResults} graphData={{ nodes: [], links: [] }} searchResults={[]} />);
+  const { rerender } = render(<Chatbot setChatResults={setChatResults} ontologyId="uuid-123" ontologyPrefix="qif" />);
+  rerender(<Chatbot setChatResults={setChatResults} ontologyId="uuid-456" ontologyPrefix="qif" />);
   setCredentialProfile('GRAPH_READ_TOKEN', 'read-test-key');
 
   const input = screen.getByRole('textbox', { name: 'Chat question' });
@@ -130,6 +161,7 @@ test('keeps chat input locked until the SSE stream completes and clears the serv
 
   expect(await screen.findByText('Hello')).toBeInTheDocument();
   const sent = global.fetch.mock.calls.find(([, options]) => options.method === 'POST');
+  expect(JSON.parse(sent[1].body).graph_context).toEqual({ ontology: 'uuid-456', ontology_prefix: 'qif' });
   expect(sent[1].headers.Authorization).toBe('Bearer read-test-key');
   expect(JSON.stringify(window.sessionStorage)).not.toContain('read-test-key');
   expect(input).toBeDisabled();

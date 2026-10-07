@@ -3132,7 +3132,10 @@ Put these values in the root `.env.local`, never the frontend environment. Use t
 ```dotenv
 USE_LLM=ollama
 USE_EMBEDDER=ollama
-OLLAMA_BASE_URL=http://azdtapimanager.azure-api.net/ollama
+# Public APIM root; use HTTPS. This example requires subscription authentication.
+OLLAMA_BASE_URL=https://azdtapimanager.azure-api.net/ollama
+# Root defaults to POST /api/chat; APIM must expose it.
+# OLLAMA_API_URL=https://azdtapimanager.azure-api.net/ollama/api/chat
 OLLAMA_API_KEY=<issued-subscription-key>
 OLLAMA_API_KEY_HEADER=Ocp-Apim-Subscription-Key
 LLM_MODEL_NAME=llama3.1:8b
@@ -3185,7 +3188,10 @@ In the root `.env.local`, configure the API URL, key and model names. Remove OLL
 ```dotenv
 USE_LLM=ollama
 USE_EMBEDDER=ollama
-OLLAMA_API_URL=http://azdtapimanager.azure-api.net/ollama
+# Native Ollama root; defaults to POST /api/chat. Use HTTPS for the public gateway.
+OLLAMA_API_URL=https://azdtapimanager.azure-api.net/ollama
+# To retain a native generate operation instead, replace the preceding entry:
+# OLLAMA_API_URL=https://azdtapimanager.azure-api.net/ollama/api/generate
 OLLAMA_API_KEY=<your-current-api-key>
 LLM_MODEL_NAME=llama3.1:8b
 EMBED_MODEL_NAME=nomic-embed-text:latest
@@ -3337,8 +3343,14 @@ For a custom endpoint exposing native Ollama generation, retain the operation an
 
 ```dotenv
 USE_LLM=ollama
-OLLAMA_BASE_URL=http://azdtapimanager.azure-api.net/ollama/api/generate
-OLLAMA_API_URL=
+# Root retains the APIM API suffix. The operation belongs in OLLAMA_API_URL.
+OLLAMA_BASE_URL=https://azdtapimanager.azure-api.net/ollama
+# Native generation operation; sends model, prompt and optional system fields.
+OLLAMA_API_URL=https://azdtapimanager.azure-api.net/ollama/api/generate
+# Optional tool-chat route, only after verifying APIM exposes POST /api/chat:
+# OLLAMA_CHAT_API_URL=https://azdtapimanager.azure-api.net/ollama/api/chat
+# Discovery separately calls GET https://azdtapimanager.azure-api.net/ollama/api/tags.
+# A missing tags route does not establish whether generation works.
 OLLAMA_API_KEY=<existing-custom-api-key>
 OLLAMA_API_KEY_HEADER=api-key
 LLM_MODEL_NAME=llama3:latest
@@ -3352,6 +3364,26 @@ Use the model actually installed on the server. Companion and ontology LLM initi
 Deploy the updated files to the customer VM, apply these entries to its existing root `.env.local` without duplicates, then stop and start backend services using `manage-depo.ps1`. Ollama keys are outside the PostgreSQL application-key store. No frontend rebuild is required for these server settings alone.
 
 ### Ollama generation and tool-chat capability
+
+These URLs illustrate the native routes for the APIM suffix used in the
+examples. They have not been verified against the live gateway. Import or
+repair the corresponding operations before expecting the checks to pass.
+
+| Setting or check | Example URL | Purpose |
+| --- | --- | --- |
+| `OLLAMA_BASE_URL` | `https://azdtapimanager.azure-api.net/ollama` | API root without an operation suffix |
+| `OLLAMA_API_URL` for generate | `https://azdtapimanager.azure-api.net/ollama/api/generate` | Native POST text generation |
+| `OLLAMA_API_URL` for chat | `https://azdtapimanager.azure-api.net/ollama/api/chat` | Alternative native POST chat generation |
+| `OLLAMA_CHAT_API_URL` | `https://azdtapimanager.azure-api.net/ollama/api/chat` | Optional native POST tool-chat route |
+| Derived model-list check | `https://azdtapimanager.azure-api.net/ollama/api/tags` | GET installed models; not a generation URL |
+
+Choose one generation operation. Update existing entries instead of appending
+duplicates. The local default in `config/deployment.env.example` remains
+`http://127.0.0.1:11434`; its commented APIM examples show the alternative.
+Use the server's exact installed model name, such as `llama3:latest`. The model
+name is a request field, not part of the URL. See
+[Ollama APIM setup](infra/azure-apim/README.md#ollama-model-discovery-and-generation)
+and the supplied [OpenAPI contract](infra/azure-apim/ollama.openapi.json).
 
 Companion summaries and ontology review suggestions can use native `/api/generate`. Tool-calling chat uses a separate `ChatOllama` client and requires native `/api/chat` plus a model supporting tool calls. A generate-only endpoint does not provide that capability. If the proxy exposes chat separately, configure `OLLAMA_CHAT_API_URL` with its API root or full `/api/chat` URL. Leave it blank when chat is unavailable. Text generation remains usable while tool workflows report unavailable. Never point the chat setting to `/api/generate`.
 

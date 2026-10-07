@@ -22,7 +22,7 @@ class KnowledgeCompanion:
         configured = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1")
         return configured if configured.endswith("/api/v1") else f"{configured}/api/v1"
 
-    async def ask(self, message: str, *, headers: dict | None = None, ontology_id: str = '', on_token=None) -> dict[str, Any]:
+    async def ask(self, message: str, *, headers: dict | None = None, ontology_id: str = '', ontology_prefix: str = '', on_token=None) -> dict[str, Any]:
         query = " ".join(str(message or "").split())
         if not query:
             raise ValueError("message is required")
@@ -33,7 +33,7 @@ class KnowledgeCompanion:
                     headers = {"Authorization": f"Bearer {os.environ['GRAPH_READ_TOKEN']}"} if os.getenv('GRAPH_READ_TOKEN') else {}
                 from backend.depo_platform.network import gateway_subscription_headers
                 headers = {**headers, **gateway_subscription_headers(endpoint)}
-                response = await client.get(endpoint, params={"query": query, "limit": min(self.max_nodes, 200), "ontology_id": ontology_id}, headers=headers)
+                response = await client.get(endpoint, params={"query": query, "limit": min(self.max_nodes, 200), "ontology_id": ontology_id, "ontology_prefix": ontology_prefix}, headers=headers)
                 response.raise_for_status()
         except httpx.HTTPError as exc:
             raise RuntimeError("Knowledge graph retrieval is unavailable; no answer was generated") from exc

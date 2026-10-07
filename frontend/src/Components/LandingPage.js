@@ -14,6 +14,17 @@ function fmt(n) {
   return Number(n).toLocaleString();
 }
 
+export function ExistingOntologyMetrics({ metrics }) {
+  return <section aria-label="Existing ontology metrics">
+    <h3>Existing ontology records</h3>
+    <p className="ix-landing-page__projection-note">{metrics.definition} Chat searches these records as well as published RDF resources.</p>
+    <div className="ix-landing-page__metric-row">
+      {[['classes', 'Class records'], ['object_properties', 'Object property records'], ['data_properties', 'Data property records'], ['annotation_properties', 'Annotation property records'], ['named_individuals', 'Named individual records'], ['resources', 'Total existing records'], ['relationships', 'Existing record relationships']].map(([key, label]) =>
+        <div key={key}><strong>{fmt(metrics[key])}</strong><span>{label}</span></div>)}
+    </div>
+  </section>;
+}
+
 export function ontologyTypeLabel(ontology) {
   const type = [ontology.ontology_type, ontology.schema_format, ontology.file_type, ontology.type]
     .find(value => value && !['neo4j', 'neo4j_live', 'neo4j_projection'].includes(String(value).toLowerCase()));
@@ -133,6 +144,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
   const [metricsError, setMetricsError] = useState('');
   const [lastRefreshed, setLastRefreshed] = useState(null);
   const metricsRequest = useRef(null);
+  const selectedPrefix = ontologies.find(o => (o.ontology_id || o.id) === selectedOntology)?.prefix || '';
 
   const loadMetrics = useCallback(async () => {
     metricsRequest.current?.abort();
@@ -141,7 +153,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
     setMetricsLoading(true);
     setMetricsError('');
     try {
-      const response = await graphApi.getMetrics(selectedOntology, controller.signal);
+      const response = await graphApi.getMetrics(selectedOntology, controller.signal, selectedPrefix);
       if (controller.signal.aborted) return;
       const graph = responsePayload(response);
       if (graph.scope?.sampled !== false || graph.scope?.type !== 'published_rdf_projection' ||
@@ -159,7 +171,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
     } finally {
       if (!controller.signal.aborted) setMetricsLoading(false);
     }
-  }, [selectedOntology]);
+  }, [selectedOntology, selectedPrefix]);
 
   useEffect(() => {
     loadMetrics();
@@ -215,6 +227,8 @@ export default function LandingPage({ setChatResults, onNavigate }) {
                 </div>
                 <p className="ix-landing-page__projection-note">{metrics?.definition}</p>
                 <p className="ix-landing-page__projection-note">Complete counts for the published projection; inferred axioms and unpublished registry artifacts are excluded.</p>
+                {metrics?.resources === 0 && <p role="status" className="ix-landing-page__projection-note">No RDF projection is published for this scope. Registration alone does not create a published projection.</p>}
+                {metrics?.existing_ontology?.resources > 0 && <ExistingOntologyMetrics metrics={metrics.existing_ontology} />}
                 <BreakdownTable title="Graph resources by ontology" rows={metrics?.ontology_breakdown || []} colKey="ontology" colLabel="Resources" />
                 {metrics?.breakdown_truncated && <p className="ix-landing-page__projection-note">Showing the largest 200 ontologies; aggregate totals include all ontologies.</p>}
               </>}
@@ -228,7 +242,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
           <div className="ix-landing-page__chat-body">
             <ErrorBoundary>
               <Suspense fallback={<div className="depo-muted">Loading Knowledge Companion…</div>}>
-                <Chatbot setChatResults={setChatResults} />
+                <Chatbot setChatResults={setChatResults} ontologyId={selectedOntology} ontologyPrefix={selectedPrefix} />
               </Suspense>
             </ErrorBoundary>
           </div>

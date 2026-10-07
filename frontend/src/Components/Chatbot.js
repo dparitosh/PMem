@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Sparkles } from 'lucide-react';
 import { IxChatInput } from '@siemens/ix-react';
 import '../CSS/chat.css';
@@ -21,7 +21,7 @@ const CHAT_COLORS = {
     textMuted: 'var(--theme-color-soft-text, #66788a)',
 };
 
-const Chatbot = ({ setChatResults, graphData, searchResults }) => {
+const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = '' }) => {
     const [chatMessages, setChatMessages] = useState([]);
     const [question, setQuestion] = useState('');
     const [showSpinner, setShowSpinner] = useState(false);
@@ -33,6 +33,28 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
     const messageSequenceRef = useRef(0);
     const messagesEndRef = useRef(null);
     const sessionIdRef = useRef(getClientSessionId());
+    const scopeId = ontologyId || graphData?.view?.ontology_id || graphData?.ontology_id || graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '';
+    const scopePrefix = ontologyPrefix || graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '';
+    const scopeRef = useRef({ id: scopeId, prefix: scopePrefix });
+    const resetConversation = useCallback(() => {
+        abortRef.current?.abort();
+        abortRef.current = null;
+        requestActiveRef.current = false;
+        clearClientSessionId();
+        sessionIdRef.current = null;
+        setChatMessages([]);
+        setChatResults?.([]);
+        setRequestActive(false);
+        setShowSpinner(false);
+        setStatusLabel(null);
+        setError(null);
+    }, [setChatResults]);
+
+    useEffect(() => {
+        if (scopeRef.current.id === scopeId && scopeRef.current.prefix === scopePrefix) return;
+        scopeRef.current = { id: scopeId, prefix: scopePrefix };
+        resetConversation();
+    }, [scopeId, scopePrefix, resetConversation]);
 
     useEffect(() => {
         let readKey = getCredentialProfile('GRAPH_READ_TOKEN');
@@ -40,17 +62,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             const nextKey = getCredentialProfile('GRAPH_READ_TOKEN');
             if (nextKey === readKey) return;
             readKey = nextKey;
-            abortRef.current?.abort();
-            abortRef.current = null;
-            requestActiveRef.current = false;
-            clearClientSessionId();
-            sessionIdRef.current = null;
-            setChatMessages([]);
-            setChatResults?.([]);
-            setRequestActive(false);
-            setShowSpinner(false);
-            setStatusLabel(null);
-            setError(null);
+            resetConversation();
         };
         window.addEventListener('depo:credentials-changed', reset);
         window.addEventListener('depo:credentials-cleared', reset);
@@ -58,68 +70,8 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
             window.removeEventListener('depo:credentials-changed', reset);
             window.removeEventListener('depo:credentials-cleared', reset);
         };
-    }, [setChatResults]);
+    }, [resetConversation]);
 
-    const buildGraphContextSnapshot = () => {
-        const summarizeNode = (node) => {
-            const props = node?.properties && typeof node.properties === 'object' ? node.properties : {};
-            return {
-                elementId: node?.elementId || node?.id || props.elementId || props.id || '',
-                name: node?.name || props.name || node?.title || props.title || node?.label || props.label || '',
-                label: node?.label || node?.labels?.[0] || props.label || props.class_label || props.class_name || '',
-                type: node?.entity_type || props.entity_type || props.type || props.original_type || '',
-            };
-        };
-
-        const summarizeLink = (link) => ({
-            type: link?.type || link?.label || '',
-            source: typeof link?.source === 'object' ? (link.source.elementId || link.source.id || link.source.name || '') : (link?.source || ''),
-            target: typeof link?.target === 'object' ? (link.target.elementId || link.target.id || link.target.name || '') : (link?.target || ''),
-        });
-
-        const normalizeGraph = (payload) => {
-            if (!payload) return { nodes: [], links: [] };
-            if (Array.isArray(payload)) {
-                return { nodes: payload, links: [] };
-            }
-            return {
-                nodes: Array.isArray(payload.nodes) ? payload.nodes : [],
-                links: Array.isArray(payload.links) ? payload.links : payload.relationships || [],
-            };
-        };
-
-        const visibleGraph = normalizeGraph(graphData);
-        const searchGraph = normalizeGraph(searchResults);
-
-        const graphSummary = (graph, name) => ({
-            name,
-            nodeCount: graph.nodes.length,
-            linkCount: graph.links.length,
-            nodes: graph.nodes.slice(0, 12).map(summarizeNode),
-            links: graph.links.slice(0, 16).map(summarizeLink),
-        });
-
-        if (!visibleGraph.nodes.length && !visibleGraph.links.length && !searchGraph.nodes.length && !searchGraph.links.length) {
-            return null;
-        }
-
-        const selectedNode = graphData?.selectedNode || graphData?.selected_node || graphData?.root || null;
-        return {
-            source: 'frontend-graph-context',
-            capturedAt: new Date().toISOString(),
-            selectedNode: selectedNode ? summarizeNode(selectedNode) : null,
-            rootNode: graphData?.root ? summarizeNode(graphData.root) : null,
-            viewMode: graphData?.view?.mode || graphData?.mode || '',
-            ontology: graphData?.view?.ontology_id || graphData?.ontology_id || graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '',
-            importId: graphData?.view?.import_id || graphData?.import_id || '',
-            searchQuery: graphData?.view?.search || graphData?.search || '',
-            visibleGraph: graphSummary(visibleGraph, 'visibleGraph'),
-            searchResults: graphSummary(searchGraph, 'searchResults'),
-        };
-    };
-
-    /* response formatting lives in utils/chatMarkdown.js */
-    const parseMarkdown = formatChatMarkdown;
     const [sampleQueries, setSampleQueries] = useState([
         'Find ontology resources matching product',
         'Find ontology resources matching requirement',
@@ -178,7 +130,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
 
             let activeSessionId = getClientSessionId() || sessionIdRef.current;
             sessionIdRef.current = activeSessionId;
-            const graphContext = buildGraphContextSnapshot();
+            const graphContext = scopeId ? { ontology: scopeId, ontology_prefix: scopePrefix } : null;
             let requestAuthorization = '';
             const sendRequest = (sessionId) => {
                 const authHeaders = serviceAuthHeaders(buildUrl(API.chat.chatStream), 'post');
@@ -437,19 +389,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                 {chatMessages.length > 0 && (
                     <button
                         type="button"
-                        onClick={() => {
-                            if (abortRef.current) abortRef.current.abort();
-                            abortRef.current = null;
-                            requestActiveRef.current = false;
-                            clearClientSessionId();
-                            sessionIdRef.current = null;
-                            setChatMessages([]);
-                            if (setChatResults) setChatResults([]);
-                            setStatusLabel(null);
-                            setShowSpinner(false);
-                            setRequestActive(false);
-                            setError(null);
-                        }}
+                        onClick={resetConversation}
                         title="Clear conversation"
                         style={{
                             background: 'var(--theme-color-std-background)', color: 'var(--theme-color-std-text, #252a2e)',
@@ -538,7 +478,7 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
                                 >
                                     {msg.role === 'assistant' ? (
                                         <>
-                                            <div dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.text) }} />
+                                            <div dangerouslySetInnerHTML={{ __html: formatChatMarkdown(msg.text) }} />
                                             {Array.isArray(msg.evidence) && msg.evidence.length > 0 && (
                                                 <details style={{ marginTop: 8 }}>
                                                     <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Evidence ({msg.evidence.length})</summary>
@@ -598,11 +538,4 @@ const Chatbot = ({ setChatResults, graphData, searchResults }) => {
     );
 };
 
-// Memoize while still allowing graph context updates to flow into chat prompts
-export default React.memo(
-    Chatbot,
-    (prevProps, nextProps) =>
-        prevProps.setChatResults === nextProps.setChatResults &&
-        prevProps.graphData === nextProps.graphData &&
-        prevProps.searchResults === nextProps.searchResults
-);
+export default React.memo(Chatbot);

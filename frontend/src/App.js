@@ -234,9 +234,6 @@ function App() {
                     <Chatbot
                       key={`chat-${serviceAuthRevision}`}
                     graphData={data}
-                    searchResults={searchResults}
-                    chatResults={chatResults}
-                    setSearchResults={setSearchResults}
                     setChatResults={setChatResults}
                   />
                 </Suspense>
