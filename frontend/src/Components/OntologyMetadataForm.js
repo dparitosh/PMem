@@ -175,7 +175,7 @@ export default function OntologyMetadataForm({
               marginBottom: '6px',
               fontWeight: 700,
               fontSize: '13px',
-              color: C.primary
+              color: C.primaryText
             }}>
               Ontology Name *
             </label>
@@ -215,7 +215,7 @@ export default function OntologyMetadataForm({
               marginBottom: '6px',
               fontWeight: 700,
               fontSize: '13px',
-              color: C.primary
+              color: C.primaryText
             }}>
               Namespace Prefix (optional)
             </label>
@@ -256,7 +256,7 @@ export default function OntologyMetadataForm({
               marginBottom: '6px',
               fontWeight: 700,
               fontSize: '13px',
-              color: C.primary
+              color: C.primaryText
             }}>
               Generate As * {fileType === 'xsd' && <span style={{ fontSize: '11px', color: C.green }}>→ SHACL recommended</span>} {fileType === 'xmi' && <span style={{ fontSize: '11px', color: C.green }}>→ OWL recommended</span>}
             </label>
@@ -307,7 +307,7 @@ export default function OntologyMetadataForm({
               <legend style={{
                 fontSize: '13px',
                 fontWeight: 700,
-                color: C.primary,
+                color: C.primaryText,
                 marginLeft: '-6px',
                 paddingLeft: '6px'
               }}>
@@ -329,7 +329,7 @@ export default function OntologyMetadataForm({
                     style={{ marginRight: '8px', marginTop: '2px', cursor: 'pointer' }}
                   />
                   <div>
-                    <strong style={{ color: C.primary }}>Schema/Ontology</strong>
+                    <strong style={{ color: C.primaryText }}>Schema/Ontology</strong>
                     <br/>
                     <span style={{ fontSize: '11px', color: C.textMuted }}>
                       For metadata and standards files (e.g., OMG SysML profile, reference ontologies)
@@ -352,7 +352,7 @@ export default function OntologyMetadataForm({
                     style={{ marginRight: '8px', marginTop: '2px', cursor: 'pointer' }}
                   />
                   <div>
-                    <strong style={{ color: C.primary }}>Instance/Model Data</strong>
+                    <strong style={{ color: C.primaryText }}>Instance/Model Data</strong>
                     <br/>
                     <span style={{ fontSize: '11px', color: C.textMuted }}>
                       For concrete implementations (e.g., MBSE models, product data)
@@ -370,7 +370,7 @@ export default function OntologyMetadataForm({
               marginBottom: '6px',
               fontWeight: 700,
               fontSize: '13px',
-              color: C.primary
+              color: C.primaryText
             }}>
               Description
             </label>

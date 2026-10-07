@@ -24,8 +24,8 @@ export function ontologyTypeLabel(ontology) {
 }
 
 export function OntologyList({ ontologies, loading }) {
-  if (loading) return <div style={{ color: '#888', fontSize: 12, padding: 8 }}>Loading ontologies...</div>;
-  if (!ontologies.length) return <div style={{ color: '#888', fontSize: 12, padding: 8 }}>No ontologies registered yet.</div>;
+  if (loading) return <div style={{ color: UI_COLORS.textSec, fontSize: 12, padding: 8 }}>Loading ontologies...</div>;
+  if (!ontologies.length) return <div style={{ color: UI_COLORS.textSec, fontSize: 12, padding: 8 }}>No ontologies registered yet.</div>;
 
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -40,13 +40,13 @@ export function OntologyList({ ontologies, loading }) {
         <tbody>
           {ontologies.map((o, i) => (
             <tr key={o.id || i} style={{ background: i % 2 === 0 ? 'var(--theme-color-component-1)' : 'transparent' }}>
-              <td style={{ padding: '6px 10px', fontWeight: 600, color: UI_COLORS.primary }}>
+              <td style={{ padding: '6px 10px', fontWeight: 600, color: 'var(--ui-primary, #005a9c)' }}>
                 {o.label || o.name || o.ontology_name || o.prefix || o.id || o.ontology_id}
               </td>
               <td style={{ padding: '6px 10px' }}>{o.prefix || o.ontology_prefix || 'Not supplied'}</td>
               <td style={{ padding: '6px 10px' }}>
                 <span style={{
-                  background: UI_COLORS.primaryLight, color: UI_COLORS.primary,
+                  background: UI_COLORS.primaryLight, color: 'var(--ui-primary, #005a9c)',
                   borderRadius: 4, padding: '2px 7px', fontSize: 11, fontWeight: 600,
                 }}>
                   {ontologyTypeLabel(o).toUpperCase()}
@@ -92,7 +92,7 @@ function BreakdownTable({ title, rows, colKey, colLabel = 'Count' }) {
               const pct = Math.round((cnt / maxCount) * 100);
               return (
                 <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--theme-color-component-1)' }}>
-                  <td style={{ padding: '4px 8px', color: UI_COLORS.primary, fontWeight: 500 }}>
+                  <td style={{ padding: '4px 8px', color: 'var(--ui-primary, #005a9c)', fontWeight: 500 }}>
                     {r[colKey] || '-'}
                   </td>
                   <td style={{ padding: '4px 8px', textAlign: 'right' }}>

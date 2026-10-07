@@ -16,7 +16,7 @@ vi.mock('@siemens/ix-react', () => ({
   IxButton: ({ children, ...props }) => <button {...props}>{children}</button>,
   IxContent: ({ children, ...props }) => <main {...props}>{children}</main>,
   IxContentHeader: ({ headerTitle }) => <h1>{headerTitle}</h1>,
-  IxMenu: ({ children, enableToggleTheme: _enableToggleTheme, i18nToggleTheme: _i18nToggleTheme, ...props }) => <nav {...props}>{children}</nav>,
+  IxMenu: ({ children, enableToggleTheme, i18nToggleTheme: _i18nToggleTheme, ...props }) => <nav data-theme-toggle={String(enableToggleTheme)} {...props}>{children}</nav>,
   IxMenuItem: ({ children, active, ...props }) => <button aria-current={active ? 'page' : undefined} {...props}>{children}</button>,
 }));
 
@@ -66,4 +66,6 @@ test('exposes active navigation, backend status, chat drawer state, and persiste
   expect(document.documentElement.dataset.ixColorSchema).toBe('dark');
   expect(window.localStorage.getItem('depo.colorSchema')).toBe('dark');
   expect(screen.getByRole('button', { name: 'Use light theme' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('navigation')).toHaveAttribute('data-theme-toggle', 'false');
+  expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument();
 });

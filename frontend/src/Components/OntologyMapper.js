@@ -171,7 +171,7 @@ export function RequirementsWorkbench({ filter = "", onNavigate }) {
                 {visibleRequirements.length === 0 && <tr><td colSpan={6} style={TD({ textAlign: 'center', padding: '26px', color: C.textMuted })}>No requirements match the current filter or graph source.</td></tr>}
                 {visibleRequirements.map((row, idx) => (
                   <tr key={`${row.id}-${idx}`} style={{ background: idx % 2 === 0 ? C.surface : C.bg }}>
-                    <td style={TD({ fontFamily: 'monospace', fontWeight: 800, color: C.primary })}>{row.id}</td>
+                    <td style={TD({ fontFamily: 'monospace', fontWeight: 800, color: C.primaryText })}>{row.id}</td>
                     <td style={TD({ fontWeight: 800, color: C.primaryDark })}>{row.source || 'Graph'}</td>
                     <td style={TD({ fontWeight: 700 })}>{row.title}</td>
                     <td style={TD({ fontSize: '12px', lineHeight: 1.45 })}>
@@ -324,7 +324,7 @@ function VocabularyTable({ edges, filter }) {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '16px', alignItems: 'start' }}>
                           <div>
                             <div style={{ fontSize: '11px', fontWeight: 700, color: C.textSec, textTransform: 'uppercase', marginBottom: '4px' }}>Source</div>
-                            <div style={{ fontWeight: 700, color: C.primary }}>{e.source_label || e.source_term.split(':').pop()}</div>
+                            <div style={{ fontWeight: 700, color: C.primaryText }}>{e.source_label || e.source_term.split(':').pop()}</div>
                             <code style={{ fontSize: '11px', color: C.textSec, wordBreak: 'break-all' }}>{e.source_term}</code>
                           </div>
                           <div style={{ textAlign: 'center', paddingTop: '10px' }}>
@@ -333,7 +333,7 @@ function VocabularyTable({ edges, filter }) {
                           </div>
                           <div>
                             <div style={{ fontSize: '11px', fontWeight: 700, color: C.textSec, textTransform: 'uppercase', marginBottom: '4px' }}>Target</div>
-                            <div style={{ fontWeight: 700, color: C.primary }}>{e.target_label || e.target_term.split(':').pop()}</div>
+                            <div style={{ fontWeight: 700, color: C.primaryText }}>{e.target_label || e.target_term.split(':').pop()}</div>
                             <code style={{ fontSize: '11px', color: C.textSec, wordBreak: 'break-all' }}>{e.target_term}</code>
                           </div>
                         </div>
@@ -660,7 +660,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
               </span>
             )}
             {reasoning?.engine === 'owlready2' && (
-              <span style={{ fontSize: '10px', fontWeight: 700, color: C.primary, background: C.primaryLight, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
+              <span style={{ fontSize: '10px', fontWeight: 700, color: C.primaryText, background: C.primaryLight, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
                 Reasoned ontology
               </span>
             )}
@@ -701,7 +701,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
             return (
               <section key={prefix} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'hidden' }}>
                 <div style={{ background: C.bg, padding: '8px 10px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 800, color: C.primary }}>{prefix}</span>
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: C.primaryText }}>{prefix}</span>
                   <span style={{ fontSize: '11px', color: C.textSec }}>{terms.length} terms</span>
                 </div>
                 <div style={{ padding: '8px 10px', display: 'grid', gap: '8px' }}>
@@ -1091,7 +1091,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
       tooltipField: 'termId',
       cellStyle: { ...gridTextCell, display: 'flex', alignItems: 'center' },
       cellRenderer: (params) => (
-        <button type="button" onClick={() => setSelectedTermId(params.data.termId)} style={{ border: 'none', background: 'transparent', color: C.primary, fontWeight: 700, cursor: 'pointer', padding: 0, minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <button type="button" onClick={() => setSelectedTermId(params.data.termId)} style={{ border: 'none', background: 'transparent', color: C.primaryText, fontWeight: 700, cursor: 'pointer', padding: 0, minWidth: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {params.value}
         </button>
       ),
@@ -1161,7 +1161,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
             {browserStats.map((stat) => (
               <div key={stat.label} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 10px' }}>
                 <div style={{ fontSize: 10, fontWeight: 800, color: C.textMuted, textTransform: 'uppercase' }}>{stat.label}</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: C.primary, marginTop: 2 }}>{stat.value}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: C.primaryText, marginTop: 2 }}>{stat.value}</div>
               </div>
             ))}
           </div>
@@ -1175,7 +1175,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
             <div style={{ fontSize: 11, color: C.textSec }}>Selected ontology term details</div>
           </div>
           {selectedTerm?.ontology_prefix && (
-            <span style={{ alignSelf: 'center', background: C.primaryLight, color: C.primary, border: `1px solid ${C.border}`, borderRadius: 999, padding: '2px 8px', fontSize: 11, fontWeight: 800, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ alignSelf: 'center', background: C.primaryLight, color: C.primaryText, border: `1px solid ${C.border}`, borderRadius: 999, padding: '2px 8px', fontSize: 11, fontWeight: 800, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {selectedTerm.ontology_prefix}
             </span>
           )}
@@ -1183,7 +1183,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
         {selectedTerm ? (
           <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'minmax(220px, 1.1fr) repeat(2, minmax(110px, 0.4fr)) minmax(260px, 1.5fr)', gap: 10, alignItems: 'stretch' }}>
             <section style={{ display: 'grid', gap: 5, minWidth: 0 }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: C.primary, wordBreak: 'break-word' }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: C.primaryText, wordBreak: 'break-word' }}>
                 {selectedTerm.label || String(selectedTerm.term_id).split(':').pop()}
               </div>
               <code style={{ display: 'block', fontSize: 11, color: C.textSec, wordBreak: 'break-all' }}>{selectedTerm.term_id}</code>
@@ -2468,7 +2468,7 @@ export default function OntologyMapper() {
             display: 'grid',
             placeItems: 'center',
             background: C.primaryLight,
-            color: C.primary,
+            color: C.primaryText,
             flex: '0 0 auto',
           }}>
             <Network size={16} strokeWidth={2.4} />

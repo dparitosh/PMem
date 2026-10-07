@@ -124,7 +124,7 @@ export default function AppShell({
         {/* Keep the desktop menu breakpoint explicit. IX recalculates overflow
             while custom elements hydrate; an implicit breakpoint can trigger
             its scroll handler before the menu items container exists. */}
-        <IxMenu aria-label="Application navigation" breakpoint="lg" enableToggleTheme i18nToggleTheme="Toggle light and dark theme">
+        <IxMenu aria-label="Application navigation" breakpoint="lg" enableToggleTheme={false}>
           {navigationItems.map((item) => (
             <IxMenuItem
               key={item.id}

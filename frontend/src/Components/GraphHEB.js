@@ -103,7 +103,7 @@ function RecPanelResult({ service, data, setRecPanel, setActiveTab }) {
   const viewBtn = (names) => (
     <button
       onClick={() => { window.dispatchEvent(new CustomEvent('dt-highlight-nodes', { detail: { names } })); setRecPanel(p => ({ ...p, open: false })); }}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', border: `1px solid ${UI_COLORS.primary}`, borderRadius: '5px', background: UI_COLORS.primaryLight, color: UI_COLORS.primary, fontSize: '11px', fontWeight: 600, cursor: 'pointer', marginTop: '8px' }}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', border: `1px solid ${UI_COLORS.primary}`, borderRadius: '5px', background: UI_COLORS.primaryLight, color: UI_COLORS.primaryText, fontSize: '11px', fontWeight: 600, cursor: 'pointer', marginTop: '8px' }}
     >
       \uD83D\uDD0E Highlight in Graph
     </button>
@@ -132,7 +132,7 @@ function RecPanelResult({ service, data, setRecPanel, setActiveTab }) {
         <div style={{ fontWeight: 700, marginBottom: '8px' }}>{data.similar_parts?.length || 0} similar parts</div>
         {(data.similar_parts || []).slice(0, 10).map((p, i) => (
           <div key={i} style={_ROW}>
-            <strong>{p.name}</strong> \u2014 <span style={{ color: UI_COLORS.primary, fontWeight: 600 }}>{p.similarity_score}</span>
+            <strong>{p.name}</strong> \u2014 <span style={{ color: UI_COLORS.primaryText, fontWeight: 600 }}>{p.similarity_score}</span>
             {p.shared_assembly && <span style={_PILL('#27ae60')}>Assembly</span>}
             {p.traceability_link && <span style={_PILL('#e67e22')}>{p.traceability_link}</span>}
           </div>

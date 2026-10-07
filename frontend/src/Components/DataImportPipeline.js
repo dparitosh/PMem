@@ -1530,7 +1530,7 @@ export default function DataImportPipeline() {
       return { text: 'Complete', bg: '#E8F5E9', color: C.green };
     }
     if (progress > 0) {
-      return { text: 'Processing', bg: '#E3F2FD', color: C.primary };
+      return { text: 'Processing', bg: '#E3F2FD', color: C.primaryText };
     }
     return { text: 'Pending', bg: C.bg, color: C.textMuted };
   };
@@ -2011,7 +2011,7 @@ export default function DataImportPipeline() {
                 height: '24px',
                 borderRadius: '6px',
                 background: C.primaryLight,
-                color: C.primary,
+                color: C.primaryText,
                 display: 'grid',
                 placeItems: 'center',
                 flex: '0 0 auto',
@@ -2047,7 +2047,7 @@ export default function DataImportPipeline() {
             <span style={{
               fontSize: '9px',
               fontWeight: '700',
-              color: C.primary,
+              color: C.primaryText,
               background: '#FFFFFF',
               border: `1px solid ${C.primaryLight}`,
               borderRadius: '4px',
@@ -2217,7 +2217,7 @@ export default function DataImportPipeline() {
               style={{
                 padding: '4px 8px',
                 background: '#fff',
-                color: C.primary,
+                color: C.primaryText,
                 border: `1px solid ${C.borderDark}`,
                 borderRadius: '3px',
                 fontSize: '10px',
@@ -2272,7 +2272,7 @@ export default function DataImportPipeline() {
                 fontSize: '10px',
                 lineHeight: 1.45,
               }}>
-                <strong style={{ color: C.textPrimary }}>Bridge sequence:</strong> select the completed import artifact, choose the target ontology, create a Bridge preview job, review candidate IDs, then publish approved mappings. For CAD STEP/STP/STPX, use <strong style={{ color: C.primary }}>{ap242OntologyOption?.name || 'step_ap242_mbd3d / AP242 MBD/3D'}</strong>; this creates semantic mapping relationships and class links for matched instances.
+                <strong style={{ color: C.textPrimary }}>Bridge sequence:</strong> select the completed import artifact, choose the target ontology, create a Bridge preview job, review candidate IDs, then publish approved mappings. For CAD STEP/STP/STPX, use <strong style={{ color: C.primaryText }}>{ap242OntologyOption?.name || 'step_ap242_mbd3d / AP242 MBD/3D'}</strong>; this creates semantic mapping relationships and class links for matched instances.
                 {!ap242OntologyOption && (
                   <span style={{ display: 'block', color: C.orange, fontWeight: 700, marginTop: '3px' }}>
                     AP242 ontology is not registered yet. Upload AP242 MBD/3D ontology in Create ontology before applying STEP links.
@@ -2420,7 +2420,7 @@ export default function DataImportPipeline() {
           marginBottom: activeJobs.length > 0 ? '10px' : 0,
         }}>
           {[
-            { label: 'Active jobs', value: jobSummary.active, color: C.primary },
+            { label: 'Active jobs', value: jobSummary.active, color: C.primaryText },
             { label: 'Completed', value: jobSummary.completed, color: C.green },
             { label: 'Needs attention', value: jobSummary.failed, color: C.red },
             { label: 'Queued', value: jobSummary.pending, color: C.orange },
@@ -2703,7 +2703,7 @@ export default function DataImportPipeline() {
                           borderRadius: '3px',
                           padding: '2px 6px',
                           fontSize: '9px',
-                          color: C.primary,
+                          color: C.primaryText,
                           fontWeight: '500',
                         }}>
                           {f.name}{f.pendingMetadata ? ' (pending metadata)' : ''}
@@ -2796,7 +2796,7 @@ export default function DataImportPipeline() {
           </div>
           <div style={{ fontSize: '10px', color: C.textSec, lineHeight: 1.45, marginTop: '2px' }}>
             Use this flow for ontology or schema sources only. Namespace capture, preview, and registration happen here; instance ingestion stays in
-            <span style={{ color: C.primary, fontWeight: '700' }}> Import instance graph</span>.
+            <span style={{ color: C.primaryText, fontWeight: '700' }}> Import instance graph</span>.
           </div>
           {ontologyCatalogState.message && (
             <div style={{
@@ -2815,7 +2815,7 @@ export default function DataImportPipeline() {
           style={{
             padding: '4px 10px',
             background: '#fff',
-            color: C.primary,
+            color: C.primaryText,
             border: `1px solid ${C.borderDark}`,
             borderRadius: '3px',
             fontSize: '10px',
@@ -2870,7 +2870,7 @@ export default function DataImportPipeline() {
           </div>
           <div style={{ fontSize: '10px', color: C.textSec, lineHeight: 1.45, marginTop: '2px' }}>
             Files load first as source-faithful instance data. Ontology selection and semantic linking now happen in
-            <span style={{ color: C.primary, fontWeight: '700' }}> Link instances to ontology</span>.
+            <span style={{ color: C.primaryText, fontWeight: '700' }}> Link instances to ontology</span>.
           </div>
           {isStepContext && (
             <div style={{
@@ -3071,7 +3071,7 @@ export default function DataImportPipeline() {
                         fontWeight: '700',
                         padding: '2px 6px',
                         backgroundColor: C.primaryLight,
-                        color: C.primary,
+                        color: C.primaryText,
                         borderRadius: '3px',
                         whiteSpace: 'nowrap',
                         display: 'inline-flex',
@@ -3288,7 +3288,7 @@ export default function DataImportPipeline() {
                         style={{
                           padding: '6px 10px',
                           background: '#fff',
-                          color: C.primary,
+                          color: C.primaryText,
                           border: `1px solid ${C.primary}`,
                           borderRadius: '4px',
                           fontSize: '10px',
@@ -3523,19 +3523,19 @@ export default function DataImportPipeline() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', fontSize: '12px' }}>
                 <div>
                   <div style={{ color: C.textMuted, marginBottom: '4px' }}>Total Rows</div>
-                  <div style={{ fontSize: '16px', fontWeight: '700', color: C.primary }}>
+                  <div style={{ fontSize: '16px', fontWeight: '700', color: C.primaryText }}>
                     {previewData.row_count ?? 0}
                   </div>
                 </div>
                 <div>
                   <div style={{ color: C.textMuted, marginBottom: '4px' }}>Columns</div>
-                  <div style={{ fontSize: '16px', fontWeight: '700', color: C.primary }}>
+                  <div style={{ fontSize: '16px', fontWeight: '700', color: C.primaryText }}>
                     {(previewData.columns || []).length}
                   </div>
                 </div>
                 <div>
                   <div style={{ color: C.textMuted, marginBottom: '4px' }}>Node Labels</div>
-                  <div style={{ fontSize: '16px', fontWeight: '700', color: C.primary }}>
+                  <div style={{ fontSize: '16px', fontWeight: '700', color: C.primaryText }}>
                     {previewData.auto_schema?.nodes?.length || 1}
                   </div>
                 </div>
@@ -3557,7 +3557,7 @@ export default function DataImportPipeline() {
                     key={`col-${idx}-${col}`}
                     style={{
                       background: C.primaryLight,
-                      color: C.primary,
+                      color: C.primaryText,
                       padding: '4px 8px',
                       borderRadius: '3px',
                       fontSize: '11px',

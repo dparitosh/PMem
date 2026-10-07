@@ -27,7 +27,7 @@ const TH = {
   textAlign: 'left',
   padding: '9px 12px',
   borderBottom: `2px solid ${C.primary}`,
-  color: C.primary,
+  color: C.primaryText,
   fontWeight: 700,
   fontSize: '11px',
   textTransform: 'uppercase',
@@ -122,7 +122,7 @@ const SectionHeader = ({ icon: Icon, label, count, color = C.primary }) => (
     <span>{label}</span>
     {count !== undefined && (
       <span style={{
-        background: C.primaryLight, color: C.primary,
+        background: C.primaryLight, color: C.primaryText,
         fontSize: '11px', fontWeight: 700, padding: '1px 8px', borderRadius: '10px',
       }}>{count}</span>
     )}
@@ -264,7 +264,7 @@ const ScenarioPanel = ({ onSelect, health }) => {
     {
       id: 'similar-parts',
       Icon: Search,
-      color: C.primary,
+      color: C.primaryText,
       lightColor: C.primaryLight,
       title: 'Similar Parts',
       tagline: 'Find reuse candidates with structural and semantic similarity.',
@@ -433,7 +433,7 @@ const AIInsightBanner = ({ service, data }) => {
   } else if (service === 'similar-parts' && data?.source_part) {
     const count = data.similar_parts?.length || 0;
     insight = {
-      color: C.primary, bg: C.primaryLight, Icon: Info,
+      color: C.primaryText, bg: C.primaryLight, Icon: Info,
       headline: `${count} candidate part${count !== 1 ? 's' : ''} identified for reuse consideration`,
       chips: [{ value: count, label: 'Candidates' }],
       cta: 'Score combines structure, type, layer, and traceability.',
@@ -456,7 +456,7 @@ const AIInsightBanner = ({ service, data }) => {
 
   if (!insight) {
     insight = {
-      color: C.primary,
+      color: C.primaryText,
       bg: C.primaryLight,
       Icon: Info,
       headline: 'Analysis completed',
@@ -607,7 +607,7 @@ const RecommendationsTab = () => {
 
   const services = [
     { id: 'change-impact',  Icon: Zap,     label: 'Change Impact',        color: C.orange  },
-    { id: 'similar-parts',  Icon: Search,  label: 'Similar Parts',        color: C.primary },
+    { id: 'similar-parts',  Icon: Search,  label: 'Similar Parts',        color: C.primaryText },
     { id: 'manufacturing',  Icon: Factory, label: 'Process Context', color: C.green   },
   ];
   return (
@@ -791,7 +791,7 @@ const ChangeImpactResult = ({ data }) => {
   const tabs = [
     { id: 'overview',      label: 'Overview',           color: C.orange  },
     { id: 'parts',         label: 'Impacted Parts',      color: C.orange,  count: data.impacted_parts?.length        || 0 },
-    { id: 'assembly',      label: 'Assembly Impact',     color: C.primary, count: data.assembly_impact?.length       || 0 },
+    { id: 'assembly',      label: 'Assembly Impact',     color: C.primaryText, count: data.assembly_impact?.length       || 0 },
     { id: 'requirements',  label: 'Requirements',        color: C.amber,   count: data.impacted_requirements?.length || 0 },
     { id: 'processes',     label: 'Processes',           color: C.green,   count: data.process_impacts?.length       || 0 },
     { id: 'realization',   label: 'Realization Chain',   color: C.orange,  count: data.realization_chain?.length     || 0 },
@@ -834,7 +834,7 @@ const ChangeImpactResult = ({ data }) => {
               <tbody>
                 {data.impacted_parts.map((p, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
-                    <td style={TD}><span style={{ fontWeight: 700, color: C.primary }}>{p.name}</span></td>
+                    <td style={TD}><span style={{ fontWeight: 700, color: C.primaryText }}>{p.name}</span></td>
                     <td style={TD}><Badge color={C.primaryHover}>{p.source_tag || 'Ã¢â‚¬â€'}</Badge></td>
                     <td style={TD}><span style={{ fontWeight: 600, color: C.orange }}>{p.relation_type || 'Ã¢â‚¬â€'}</span></td>
                     <td style={TD}>{p.class_name || 'Ã¢â‚¬â€'}</td>
@@ -856,7 +856,7 @@ const ChangeImpactResult = ({ data }) => {
               <tbody>
                 {data.assembly_impact.map((a, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
-                    <td style={TD}><span style={{ fontWeight: 700, color: C.primary }}>{a.assembly_name}</span></td>
+                    <td style={TD}><span style={{ fontWeight: 700, color: C.primaryText }}>{a.assembly_name}</span></td>
                     <td style={TD}><span style={{ fontWeight: 600, color: C.textSec }}>{a.depth}</span></td>
                     <td style={TD}>{a.from_part || 'Ã¢â‚¬â€'}</td>
                   </tr>
@@ -879,7 +879,7 @@ const ChangeImpactResult = ({ data }) => {
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
                     <td style={TD}><span style={{ fontWeight: 700, color: C.amber }}>{r.name}</span></td>
                     <td style={TD}><Badge color={C.amber}>{r.catalogue_id || 'Ã¢â‚¬â€'}</Badge></td>
-                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{r.linked_part || 'Ã¢â‚¬â€'}</span></td>
+                    <td style={TD}><span style={{ color: C.primaryText, fontWeight: 600 }}>{r.linked_part || 'Ã¢â‚¬â€'}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -900,7 +900,7 @@ const ChangeImpactResult = ({ data }) => {
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
                     <td style={TD}><span style={{ fontWeight: 700, color: C.green }}>{p.name}</span></td>
                     <td style={TD}><Badge color={C.green}>{p.source_tag || 'Ã¢â‚¬â€'}</Badge></td>
-                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{p.from_part || 'Ã¢â‚¬â€'}</span></td>
+                    <td style={TD}><span style={{ color: C.primaryText, fontWeight: 600 }}>{p.from_part || 'Ã¢â‚¬â€'}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -919,9 +919,9 @@ const ChangeImpactResult = ({ data }) => {
               <tbody>
                 {data.realization_chain.map((r, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
-                    <td style={TD}><span style={{ fontWeight: 700, color: C.primary }}>{r.name}</span></td>
+                    <td style={TD}><span style={{ fontWeight: 700, color: C.primaryText }}>{r.name}</span></td>
                     <td style={TD}><Badge color={C.orange}>{r.link_type || 'Ã¢â‚¬â€'}</Badge></td>
-                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{r.from_part || 'Ã¢â‚¬â€'}</span></td>
+                    <td style={TD}><span style={{ color: C.primaryText, fontWeight: 600 }}>{r.from_part || 'Ã¢â‚¬â€'}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -944,8 +944,8 @@ const SimilarPartsResult = ({ data }) => {
 
   const sp = data.source_part || {};
   const tabs = [
-    { id: 'overview', label: 'Overview',       color: C.primary },
-    { id: 'results',  label: 'Similar Parts',   color: C.primary, count: data.similar_parts?.length || 0 },
+    { id: 'overview', label: 'Overview',       color: C.primaryText },
+    { id: 'results',  label: 'Similar Parts',   color: C.primaryText, count: data.similar_parts?.length || 0 },
   ];
 
   return (
@@ -955,7 +955,7 @@ const SimilarPartsResult = ({ data }) => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
           <Search size={17} color={C.primary} strokeWidth={2.5} />
           <span style={{ fontSize: '15px', fontWeight: 700, color: C.textPrimary }}>
-            Similar parts to: <span style={{ color: C.primary }}>{sp.name}</span>
+            Similar parts to: <span style={{ color: C.primaryText }}>{sp.name}</span>
           </span>
         </div>
         <div>
@@ -971,7 +971,7 @@ const SimilarPartsResult = ({ data }) => {
         <div style={CARD}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
             <div style={{ padding: '14px', borderRadius: '8px', background: C.primaryLight, textAlign: 'center' }}>
-              <div style={{ fontSize: '28px', fontWeight: 800, color: C.primary }}>{data.similar_parts?.length || 0}</div>
+              <div style={{ fontSize: '28px', fontWeight: 800, color: C.primaryText }}>{data.similar_parts?.length || 0}</div>
               <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase', fontWeight: 600 }}>Candidates found</div>
             </div>
             <div style={{ padding: '14px', borderRadius: '8px', background: C.bg, textAlign: 'center' }}>
@@ -1005,7 +1005,7 @@ const SimilarPartsResult = ({ data }) => {
               <tbody>
                 {data.similar_parts.map((p, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
-                    <td style={TD}><span style={{ fontWeight: 700, color: C.primary }}>{p.name}</span></td>
+                    <td style={TD}><span style={{ fontWeight: 700, color: C.primaryText }}>{p.name}</span></td>
                     <td style={TD}><SimilarityBar score={p.similarity_score} /></td>
                     <td style={TD}><CheckCell value={p.source_tag_match} /></td>
                     <td style={TD}><CheckCell value={p.rflp_layer_match} /></td>
@@ -1040,10 +1040,10 @@ const ManufacturingResult = ({ data }) => {
   const summary = data.process_summary || {};
   const tabs = [
     { id: 'overview',  label: 'Overview',           color: C.green  },
-    { id: 'direct',    label: 'Direct Processes',    color: C.primary, count: data.direct_processes?.length          || 0 },
+    { id: 'direct',    label: 'Direct Processes',    color: C.primaryText, count: data.direct_processes?.length          || 0 },
     { id: 'instances', label: 'Process Instances',   color: C.orange,  count: data.process_instances?.length         || 0 },
     { id: 'related',   label: 'Related Processes',   color: C.amber,   count: data.related_part_processes?.length    || 0 },
-    { id: 'summary',   label: 'Type Summary',        color: C.primary  },
+    { id: 'summary',   label: 'Type Summary',        color: C.primaryText  },
   ];
 
   return (
@@ -1062,7 +1062,7 @@ const ManufacturingResult = ({ data }) => {
           </div>
           <div style={{ display: 'flex', gap: '20px' }}>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '22px', fontWeight: 700, color: C.primary }}>{summary.total_direct || 0}</div>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: C.primaryText }}>{summary.total_direct || 0}</div>
               <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase' }}>Direct</div>
             </div>
             <div style={{ textAlign: 'center' }}>
@@ -1114,7 +1114,7 @@ const ManufacturingResult = ({ data }) => {
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
                     <td style={TD}><span style={{ fontWeight: 700, color: C.orange }}>{p.name}</span></td>
                     <td style={TD}><Badge color={C.orange}>{p.source_tag || 'Ã¢â‚¬â€'}</Badge></td>
-                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{p.references_instance || 'Ã¢â‚¬â€'}</span></td>
+                    <td style={TD}><span style={{ color: C.primaryText, fontWeight: 600 }}>{p.references_instance || 'Ã¢â‚¬â€'}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -1134,7 +1134,7 @@ const ManufacturingResult = ({ data }) => {
                 {data.related_part_processes.map((p, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.surface : C.bg }}>
                     <td style={TD}><span style={{ fontWeight: 700, color: C.amber }}>{p.process_name}</span></td>
-                    <td style={TD}><span style={{ color: C.primary, fontWeight: 600 }}>{p.part_name || 'Ã¢â‚¬â€'}</span></td>
+                    <td style={TD}><span style={{ color: C.primaryText, fontWeight: 600 }}>{p.part_name || 'Ã¢â‚¬â€'}</span></td>
                     <td style={TD}><Badge color={C.amber}>{p.relation || 'Ã¢â‚¬â€'}</Badge></td>
                   </tr>
                 ))}
@@ -1153,7 +1153,7 @@ const ManufacturingResult = ({ data }) => {
                   padding: '12px 18px', borderRadius: '8px',
                   background: C.primaryLight, border: `1px solid ${C.primary}20`, minWidth: '130px',
                 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: C.primary }}>{type}</div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: C.primaryText }}>{type}</div>
                   <div style={{ fontSize: '22px', fontWeight: 700, color: C.textPrimary, margin: '4px 0' }}>{procs.length}</div>
                   <div style={{ fontSize: '11px', color: C.textSec, textTransform: 'uppercase' }}>processes</div>
                 </div>

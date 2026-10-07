@@ -15,6 +15,7 @@ html[data-ix-color-schema='dark'] { color-scheme: dark; }
 :root {
   --ui-primary: #005a9c;
   --ui-primary-dark: #003f73;
+  --ui-primary-soft: #e8f1fc;
   --ui-danger: #b42318;
   --ui-warning: #8a5a00;
   --ui-surface: #ffffff;
@@ -29,6 +30,7 @@ html[data-ix-color-schema='dark'] { color-scheme: dark; }
 html[data-ix-color-schema='dark'] {
   --ui-primary: #4db3ff;
   --ui-primary-dark: #8acbff;
+  --ui-primary-soft: #203b50;
   --ui-danger: #ff8a80;
   --ui-warning: #ffd166;
   --ui-surface: #1f2933;

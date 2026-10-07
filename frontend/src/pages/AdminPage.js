@@ -242,7 +242,7 @@ export default function AdminPage({ onSchemaCleaned }) {
           disabled={loading}
           style={{
             border: `1px solid ${widgetColors.blue}`,
-            background: '#fff',
+            background: 'var(--ui-surface, #fff)',
             color: widgetColors.blue,
             borderRadius: 5,
             fontSize: 12,
@@ -370,7 +370,7 @@ export default function AdminPage({ onSchemaCleaned }) {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
           {secondaryCatalogs.map((catalog) => (
-            <details key={catalog.title} style={{ border: `1px solid ${widgetColors.border}`, borderRadius: 10, padding: 10, background: '#fff' }}>
+            <details key={catalog.title} style={{ border: `1px solid ${widgetColors.border}`, borderRadius: 10, padding: 10, background: 'var(--ui-surface, #fff)' }}>
               <summary style={{ cursor: 'pointer', color: widgetColors.text, fontSize: 13, fontWeight: 800 }}>
                 {catalog.title} ({catalog.count})
               </summary>

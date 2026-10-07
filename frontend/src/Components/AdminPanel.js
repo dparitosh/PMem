@@ -5,7 +5,7 @@ import { useOntologies } from '../contexts/OntologyContext';
 import { UI_COLORS } from '../styles/uiTokens';
 
 const colors = {
-  blue: UI_COLORS.primary,
+  blue: UI_COLORS.primaryText,
   border: UI_COLORS.border,
   text: UI_COLORS.textPrimary,
   muted: UI_COLORS.textSec,
@@ -18,14 +18,14 @@ const colors = {
 const cardStyle = {
   border: `1px solid ${colors.border}`,
   borderRadius: 5,
-  background: '#fff',
+  background: UI_COLORS.surface,
   padding: 8,
 };
 
 const buttonStyle = {
   border: '1px solid #c8d3df',
   borderRadius: 5,
-  background: '#fff',
+  background: UI_COLORS.surface,
   color: colors.text,
   fontSize: 12,
   fontWeight: 700,
