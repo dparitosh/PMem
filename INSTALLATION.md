@@ -3365,6 +3365,28 @@ Deploy the updated files to the customer VM, apply these entries to its existing
 
 ### Ollama generation and tool-chat capability
 
+Run the PowerShell diagnostic on the application VM using the same environment
+file as the services. It prints routes, status and model availability without
+printing keys or upstream response bodies. Remote keyed URLs must use HTTPS.
+Run the saved `.ps1` file; do not paste its contents line by line at the console.
+`$PSScriptRoot` is supplied when PowerShell executes a saved script. Keep
+`runtime-config.ps1` beside it in `infra\windows`.
+
+```powershell
+Set-Location 'E:\App\PMem'
+# Read-only model-list check:
+.\infra\windows\test-depo-ollama.ps1 -EnvFile .\.env.local
+# Also send a small prompt to the configured /api/generate or /api/chat operation:
+.\infra\windows\test-depo-ollama.ps1 -EnvFile .\.env.local -ProbeGeneration -TimeoutSeconds 60
+# Optional separate native chat completion test (does not verify tool calls):
+.\infra\windows\test-depo-ollama.ps1 -EnvFile .\.env.local -ProbeGeneration -ProbeChat -TimeoutSeconds 60
+```
+
+Discovery and generation are tested independently. A model-list 404 remains a
+failed diagnostic even when generation succeeds; repair APIM's tags route to
+make the application readiness check pass. The script does not edit `.env.local`,
+register APIM operations, install models or restart services.
+
 These URLs illustrate the native routes for the APIM suffix used in the
 examples. They have not been verified against the live gateway. Import or
 repair the corresponding operations before expecting the checks to pass.
