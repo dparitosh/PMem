@@ -30,6 +30,10 @@ def _key(payload: dict) -> str:
     return f"{payload['product_id']}:{payload['version']}"
 
 
+def _public_product(record: dict) -> dict:
+    return {key: value for key, value in record.items() if key not in {'package_storage', 'approval_token', 'authorization', 'api_key'}}
+
+
 def _artifact_records(payload: dict) -> tuple[list[tuple[dict, Path]], list[str]]:
     records, errors = [], []
     items = payload.get("artifacts", [])
@@ -155,7 +159,7 @@ async def publish(payload: dict, request: Request) -> dict:
         if existing and existing.get("idempotency_key") == idempotency_key and idempotency_key:
             if existing.get('publication_digest') != publication_digest(payload, artifacts):
                 raise HTTPException(409, 'Idempotency key was already used with different or unverified content')
-            return existing
+            return _public_product(existing)
         if existing:
             raise HTTPException(409, "A product version is immutable; retry catalog delivery or publish a new version")
         try:
@@ -173,7 +177,7 @@ async def publish(payload: dict, request: Request) -> dict:
         record['publication_digest'] = package['manifest']['publication_digest']
         store.put_with_related(key, record, related_namespace=approval_store.namespace,
             related_key=f"{key}:{record['published_at']}", related_value={"product": key, "approved_by": approver, "approved_at": _now()})
-        return store.put(key, await _register_catalog(record))
+        return _public_product(store.put(key, await _register_catalog(record)))
 
 
 @router.post("/{product_version}/retry-catalog")
@@ -187,7 +191,7 @@ async def retry_catalog(product_version: str, payload: dict, request: Request) -
         approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
         if record.get("status") == "revoked":
             raise HTTPException(409, "A revoked product cannot be published")
-        return store.put(product_version, await _register_catalog(record))
+        return _public_product(store.put(product_version, await _register_catalog(record)))
 
 
 @router.post("/reconcile")
@@ -210,7 +214,7 @@ async def revoke(product_version: str, payload: dict, request: Request) -> dict:
         # or be interrupted by process shutdown. Reconciliation delivers it.
         revoked = {**revoked, "status": "pending_catalog_registration", "next_catalog_attempt_at": None}
         store.put(product_version, revoked)
-        return store.put(product_version, await _register_catalog(revoked))
+        return _public_product(store.put(product_version, await _register_catalog(revoked)))
 
 
 @router.get("", dependencies=[Depends(graph_read_identity)])

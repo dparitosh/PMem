@@ -20,7 +20,8 @@ from fastapi import HTTPException, Request
 from backend.agentic_service.recovery import prepare_recovery, reconcile, fingerprint, execution_payload
 from backend.agentic_service.input_contracts import validate, validate_operation, validate_bindings
 from backend.agentic_service.mapping_validation import check_mapping
-from backend.agentic_service.workflow_control import checkpoint, WorkflowCancelled
+from backend.agentic_service.workflow_control import checkpoint, WorkflowCancelled, execution_heartbeat
+from backend.depo_platform.network import bounded_timeout_seconds
 
 
 def functions(path, names, namespace):
@@ -55,6 +56,7 @@ def runner():
     ns = {'Any':Any, 'Request':Request, 'HTTPException':HTTPException, 'asyncio':asyncio, 'os':os,
           'datetime':datetime,'timezone':timezone,'timedelta':timedelta,'uuid4':uuid4,'time':__import__('time'),
           'logger':logging.getLogger('runner-test'), 'workflow_store':store, 'workflow_controls':controls,
+          'workflow_heartbeats':Store(), 'execution_heartbeat':execution_heartbeat, 'bounded_timeout_seconds':bounded_timeout_seconds,
           'catalog':SimpleNamespace(item=lambda *args:workflow), 'workflow_plan':planned,
           'approval_identity':lambda *args,**kw:'actor','graph_read_identity':lambda *args:'actor',
           'sessions':SimpleNamespace(owner=lambda *args:'owner'), '_agent_io':io,

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from backend.depo_platform.network import bounded_timeout_seconds
 from datetime import datetime, timezone
 from typing import Any
 
@@ -17,7 +18,7 @@ def put(worker_id: str, **values: Any) -> dict[str, Any]:
 
 def summary() -> dict[str, Any]:
     now = datetime.now(timezone.utc)
-    stale_after = max(30, min(int(os.getenv("DEPO_PIPELINE_WORKER_STALE_SECONDS", "60")), 3600))
+    stale_after = int(bounded_timeout_seconds('DEPO_PIPELINE_WORKER_STALE_SECONDS', default=60, minimum=30))
     workers = []
     for stored in store.all().values():
         item = dict(stored)

@@ -15,7 +15,8 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response, StreamingResponse
 from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from backend.mesh_store import PostgresRegistry
-from .workflow_control import checkpoint as workflow_checkpoint, WorkflowCancelled
+from .workflow_control import checkpoint as workflow_checkpoint, WorkflowCancelled, execution_heartbeat, last_activity
+from backend.depo_platform.network import bounded_timeout_seconds
 from .companion import companion
 from .chat_request import ChatRequest
 from .transport_auth import APPROVAL_TOKENS, downstream_headers, downstream_inputs, tool_retry_allowed
@@ -68,6 +69,7 @@ class Catalog:
 catalog = Catalog()
 workflow_store = PostgresRegistry("agentic_workflow_runs")
 workflow_controls = PostgresRegistry("agentic_workflow_controls")
+workflow_heartbeats = PostgresRegistry('agentic_workflow_heartbeats')
 dt_run_store = PostgresRegistry("dt_agent_runs")
 companion_job_store = PostgresRegistry("agentic_companion_jobs")
 _services = {"agentic": "AGENTIC_SERVICE_URL", "ontology": "ONTOLOGY_SERVICE_URL", "graph": "GRAPH_SERVICE_URL", "ingestion": "INGESTION_SERVICE_URL", "oslc": "OSLC_SERVICE_URL", "qif": "QIF_SERVICE_URL", "catalog": "DATA_CATALOG_URL", "data_products": "DATA_PRODUCT_SERVICE_URL", "ceim": "CEIM_SERVICE_URL", "data_pipeline": "DATA_PIPELINE_SERVICE_URL"}
@@ -303,7 +305,7 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
         if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true':
             from .local_llm import settings
             generation_budget = settings()[3]
-        async with asyncio.timeout(float(os.getenv('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', '15')) + generation_budget + 5):
+        async with asyncio.timeout(bounded_timeout_seconds('COMPANION_RETRIEVAL_TIMEOUT_SECONDS', default=15) + generation_budget + 5):
             kwargs = {'headers': headers, 'ontology_id': (payload.get('graph_context') or {}).get('ontology', '')}
             if on_token:
                 kwargs['on_token'] = on_token
@@ -321,7 +323,7 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
             evidence_count=len(result.get("evidence") or []),
         )
         return {**result, 'run_id': observation['run_id'], 'telemetry_run_id': observation['run_id'], 'session_id': session['session_id'], 'session_expires_at': session['expires_at'],
-                'session_idle_seconds': int(os.getenv('AGENT_SESSION_IDLE_SECONDS', '1800')), 'mode': 'evidence-grounded'}
+                'session_idle_seconds': int(bounded_timeout_seconds('AGENT_SESSION_IDLE_SECONDS', default=1800, maximum=86400)), 'mode': 'evidence-grounded'}
     except BaseException as exc:
         status = 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
         await _agent_io(_finish_observation, observation, observed_at, status=status, error_type=type(exc).__name__)
@@ -588,7 +590,7 @@ async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
         endpoint = _base(tool["service"]) + path
         headers = downstream_headers(request, endpoint, tool=tool)
         inputs = downstream_inputs(tool, inputs, approved_by)
-        async with httpx.AsyncClient(timeout=float(os.getenv("AGENTIC_TOOL_TIMEOUT_SECONDS", "30")), trust_env=False) as client:
+        async with httpx.AsyncClient(timeout=bounded_timeout_seconds('AGENTIC_TOOL_TIMEOUT_SECONDS', default=30), trust_env=False) as client:
             if tool.get("input_kind") == "multipart":
                 form, files = _multipart(inputs, 'artifact' if tool['id'] == 'ontology.register' else 'file')
                 response = await _bounded_tool_request(client, tool["method"], endpoint, headers=headers, data=form, files=files)
@@ -607,6 +609,10 @@ async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
                 raise HTTPException(502, 'Downstream tool returned invalid JSON') from exc
         return {"agent_id": plan_result["agent"], "tool_id": tool["id"], "approved_by": approved_by, "result": result}
     except ValueError as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        raise HTTPException(status_code=status if 400 <= status < 600 else 502,
+                            detail=f'Downstream tool rejected the request (HTTP {status})') from exc
     except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail="Downstream tool request failed; inspect service status before retrying") from exc
 
 
@@ -619,7 +625,7 @@ async def run(payload: dict[str, Any], request: Request) -> dict:
         graph_read_identity(request)
     observation, started = await _agent_io(telemetry.start, operation='tool', request_id=getattr(request.state, 'request_id', ''))
     try:
-        async with asyncio.timeout(float(os.getenv('AGENTIC_RUN_TIMEOUT_SECONDS', '300'))):
+        async with asyncio.timeout(bounded_timeout_seconds('AGENTIC_RUN_TIMEOUT_SECONDS', default=300)):
             result = await _dispatch(payload, request)
         await _agent_io(_tool_span, observation, tool_id=result['tool_id'], attempt=1, status='completed', duration_ms=(time.perf_counter()-started)*1000)
         await _agent_io(_finish_observation, observation, started, status='completed')
@@ -690,7 +696,7 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
             if not 0 <= retries <= 5:
                 raise ValueError('Workflow retries must be between zero and five')
             retries_by_step.append(retries)
-        timeout = float(os.getenv('AGENTIC_RUN_TIMEOUT_SECONDS', '300'))
+        timeout = bounded_timeout_seconds('AGENTIC_RUN_TIMEOUT_SECONDS', default=300)
         run_id = recovery['run_id'] if recovery else f'run-{uuid4()}'
         request_id = getattr(request.state, 'request_id', '')
         observation, observed_at = await _agent_io(telemetry.start, operation='workflow', request_id=request_id, workflow_id=workflow['id'], workflow_run_id=run_id)
@@ -712,7 +718,7 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
                 raise HTTPException(409, 'Recovery was claimed by another execution')
         else:
             await _agent_io(workflow_store.create, run_id, record)
-        async with asyncio.timeout(timeout):
+        async with asyncio.timeout(timeout), execution_heartbeat(workflow_heartbeats, f"{run_id}:{record['execution_id']}"):
             for index, step in enumerate(workflow['steps']):
                 if index < len(record['traces']):
                     continue
@@ -800,7 +806,8 @@ async def reconcile_workflow(run_id: str, payload: dict[str, Any], request: Requ
     if not record:
         raise HTTPException(404, 'Workflow run not found')
     try:
-        updated = reconcile(record, payload.get('outcome'), payload.get('evidence'), actor, payload.get('result'), payload.get('executor_stopped', False))
+        heartbeat = await _agent_io(workflow_heartbeats.get, f"{run_id}:{record.get('execution_id', '')}")
+        updated = reconcile(record, payload.get('outcome'), payload.get('evidence'), actor, payload.get('result'), payload.get('executor_stopped', False), activity_at=last_activity(record, heartbeat))
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
     if not await _agent_io(workflow_store.compare_and_put, run_id, record, updated):
@@ -818,7 +825,8 @@ async def recover_workflow(run_id: str, payload: dict[str, Any], request: Reques
     try:
         workflow = catalog.item('workflows', record['workflow_id'])
         definition = {'workflow': workflow, 'steps': workflow_plan({'workflow_id': record['workflow_id']})['steps']}
-        recovery = prepare_recovery(record, definition)
+        heartbeat = await _agent_io(workflow_heartbeats.get, f"{run_id}:{record.get('execution_id', '')}")
+        recovery = prepare_recovery(record, definition, activity_at=last_activity(record, heartbeat))
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
     command = {**recovery['execution_payload'], 'approved_by': payload.get('approved_by'), 'approval_token': payload.get('approval_token')}
@@ -870,7 +878,8 @@ def workflow_run(run_id: str, request: Request) -> dict:
         # does not overwrite a concurrently completing run or repeat its writes.
         return {**{key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}, 'status': 'interrupted', 'reconciliation_required': True,
                 'error_type': 'ExecutionDeadlineElapsed', 'state_source': 'deadline_projection'}
-    if record.get('status') == 'running' and (datetime.now(timezone.utc) - datetime.fromisoformat(record['updated_at'])).total_seconds() >= 60 and not (record.get('pending_step') or {}).get('mutates'):
+    heartbeat = workflow_heartbeats.get(f"{run_id}:{record.get('execution_id', '')}") if record.get('status') == 'running' else None
+    if record.get('status') == 'running' and (datetime.now(timezone.utc) - datetime.fromisoformat(last_activity(record, heartbeat))).total_seconds() >= 60 and not (record.get('pending_step') or {}).get('mutates'):
         return {**{key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}, 'status': 'interrupted', 'state_source': 'inactivity_projection'}
     control = workflow_controls.get(run_id) or {}
     return {**{key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}, 'control': control}

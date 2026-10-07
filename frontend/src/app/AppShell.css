@@ -764,3 +764,6 @@ html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(
     font-size: 18px;
   }
 }
+.depo-first-product-guide { padding: 1rem; border: 1px solid var(--theme-color-soft-bdr, #c8d3df); border-radius: 8px; overflow-wrap: anywhere; }
+.depo-service-integrations > .depo-first-product-guide { grid-column: 1 / -1; }
+.depo-first-product-guide li { margin: .65rem 0; }

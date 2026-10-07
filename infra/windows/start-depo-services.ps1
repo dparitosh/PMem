@@ -165,7 +165,13 @@ foreach ($service in $services | Where-Object { $_.Port }) {
   $deadline = (Get-Date).AddSeconds($ServiceStartupTimeoutSeconds)
   $ready = $false
   $corsMismatch = ''
+  $lastProbeFailure = 'No readiness response received.'
   do {
+    $servicePidPath = Join-Path $stateDir "$($service.Name).pid"
+    $servicePid = [int](Get-Content -LiteralPath $servicePidPath)
+    if (-not (Get-Process -Id $servicePid -ErrorAction SilentlyContinue)) {
+      throw "DEPO service '$($service.Name)' exited before readiness (PID $servicePid). Inspect $stateDir\$($service.Name).err.log and $stateDir\$($service.Name).out.log for the startup exception. Increasing the startup timeout will not repair an exited process."
+    }
     try {
       # Liveness means a Python process exists; readiness also verifies every
       # configured shared dependency before a service is announced usable.
@@ -180,11 +186,12 @@ foreach ($service in $services | Where-Object { $_.Port }) {
         }
       }
     } catch {
+      $lastProbeFailure = $_.Exception.Message
       Start-Sleep -Milliseconds 500
     }
   } while (-not $ready -and (Get-Date) -lt $deadline)
   if ($corsMismatch) { throw $corsMismatch }
-  if (-not $ready) { throw "DEPO service '$($service.Name)' did not become ready within $ServiceStartupTimeoutSeconds seconds. Check $stateDir\$($service.Name).err.log. For a slower cold start, retry with -ServiceStartupTimeoutSeconds 600." }
+  if (-not $ready) { throw "DEPO service '$($service.Name)' did not become ready within $ServiceStartupTimeoutSeconds seconds. Last probe: $lastProbeFailure Check $stateDir\$($service.Name).err.log and $stateDir\$($service.Name).out.log. Increase the timeout only if the process is still initializing." }
   if ($env:AUTH_MODE -eq 'token') {
     try {
       $access = Invoke-RestMethod -Uri "http://${peerHost}:$($service.Port)/auth/access" -Headers @{ Authorization = "Bearer $($env:GRAPH_READ_TOKEN)" } -TimeoutSec 10

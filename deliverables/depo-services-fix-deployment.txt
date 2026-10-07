@@ -35,3 +35,23 @@ The package also includes the orchestration update. Read orchestration-completio
 for recovery/reconciliation controls, live OpenAPI preflight requirements, stdio MCP
 configuration, agent tool proposals, mapping checks and incremental chat streaming.
 Preserve existing PostgreSQL records; the new execution fields are stored as JSON.
+
+Data and agent service evidence fixes (2026-10-07)
+- Quality accepted partitions retain source IDs, provenance and original source fields.
+- Quality reports collect independent validation issues and count rejected records once.
+- Dimension scores include assessed/not-assessed counts; uniqueness is null when no IDs can be assessed.
+- Entirely rejected batches retain a report with quality_gate=failed and status=quality_warning, without Spark allocation.
+- Agent downstream HTTP rejection statuses are preserved; transport failures remain 503.
+- Publication, idempotent retries, catalog retries and revocation responses omit internal package paths and credential fields.
+- Local regression run: 15 tests, 14 passed and one skipped because the optional test dependency is unavailable. No live VM validation.
+
+State, session and timing fixes (2026-10-07)
+- Companion session updates use per-session advisory locks and monotonic last-seen timestamps.
+- Session pruning checks both absolute and configured idle expiry.
+- Workflows emit separate per-execution heartbeats every ten seconds, including during pause and active tool waits. State projection, recovery and reconciliation consult those heartbeats; deadlines are unchanged.
+- Malformed, nonfinite and nonpositive timing settings fall back to safe defaults. Session, worker lease/poll/staleness, workflow/tool and companion retrieval settings use bounded parsing.
+- New heartbeat records use the existing registry table; no schema migration is required.
+- Verification: 19 targeted regression tests, 18 passed and one skipped for an unavailable optional test dependency. Existing full FastAPI recovery/security suites were updated but not rerun in this dependency-light runtime.
+- Live PostgreSQL concurrency and VM deployment remain unverified.
+
+Broader verification completed 2026-10-07: 68 backend tests passed, including FastAPI recovery/security tests; 19 frontend tests passed. Temporary test dependencies were used only for validation. Live VM and PostgreSQL concurrency verification remain pending.

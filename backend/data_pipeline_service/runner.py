@@ -327,47 +327,59 @@ class SparkJobRunner:
         if len(records) > self.max_records:
             raise ValueError(f"records exceeds the maximum of {self.max_records}")
 
-        enriched: list[dict[str, Any]] = []
+        accepted: list[dict[str, Any]] = []
         rejections: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
+        assessed = {dimension: 0 for dimension in ('completeness', 'validity', 'uniqueness', 'provenance')}
+        failed = {dimension: set() for dimension in assessed}
         for index, record in enumerate(records):
+            issues = []
+            def reject(rule, dimension, message):
+                issues.append({'index': index, 'rule': rule, 'dimension': dimension, 'message': message})
+                failed[dimension].add(index)
+            for dimension in ('completeness', 'validity', 'provenance'):
+                assessed[dimension] += 1
             if not isinstance(record, dict):
-                rejections.append({"index": index, "rule": "record.object", "dimension": "validity", "message": "Record must be an object"})
-                continue
-            source_id = str(record.get("source_id") or record.get("external_id") or "").strip()
-            provenance = record.get("provenance")
-            artifact_id = str(record.get("artifact_id") or (provenance or {}).get("artifact_id") or "").strip() if isinstance(provenance, dict) else str(record.get("artifact_id") or "").strip()
-            if not source_id:
-                rejections.append({"index": index, "rule": "identity.required", "dimension": "completeness", "message": "source_id or external_id is required"})
-                continue
-            if not artifact_id:
-                rejections.append({"index": index, "rule": "provenance.artifact", "dimension": "provenance", "message": "artifact_id or provenance.artifact_id is required"})
-                continue
-            if source_id in seen_ids:
-                rejections.append({"index": index, "rule": "identity.unique", "dimension": "uniqueness", "message": "source_id must be unique within a batch"})
-                continue
-            seen_ids.add(source_id)
-            enriched.append({**record, "source_id": source_id, "artifact_id": artifact_id})
-
-        accepted, validity_rejections = self._validate_records(enriched)
-        rejections.extend([{**item, "dimension": "validity"} for item in validity_rejections])
-        if not accepted:
-            raise ValueError("No records passed the data quality contract")
+                for dimension in ('completeness', 'validity', 'provenance'):
+                    reject('record.object', dimension, 'Record must be an object')
+            else:
+                source_id = str(record.get('source_id') or record.get('external_id') or '').strip()
+                provenance = record.get('provenance')
+                artifact_id = str(record.get('artifact_id') or (provenance.get('artifact_id') if isinstance(provenance, dict) else '') or '').strip()
+                if not source_id:
+                    reject('identity.required', 'completeness', 'source_id or external_id is required')
+                else:
+                    assessed['uniqueness'] += 1
+                    if source_id in seen_ids:
+                        reject('identity.unique', 'uniqueness', 'source_id must be unique within a batch')
+                    seen_ids.add(source_id)
+                if not artifact_id:
+                    reject('provenance.artifact', 'provenance', 'artifact_id or provenance.artifact_id is required')
+                valid, invalid = self._validate_records([record])
+                for issue in invalid:
+                    reject(issue['rule'], 'validity', issue['message'])
+                if not issues:
+                    accepted.append({**record, **valid[0], 'source_id': source_id, 'artifact_id': artifact_id})
+            rejections.extend(issues)
+        rejected_records = len({issue['index'] for issue in rejections})
         started = time.perf_counter()
-        with self._lock:
-            spark = self._spark_session()
-            rows = [row.asDict() for row in spark.createDataFrame(accepted).groupBy("source_standard", "canonical_concept", "validation_status").count().orderBy("source_standard", "canonical_concept", "validation_status").collect()]
+        rows = []
+        if accepted:
+            with self._lock:
+                spark = self._spark_session()
+                summary_records = [{key: record[key] for key in ('source_standard', 'canonical_concept', 'validation_status')} for record in accepted]
+                rows = [row.asDict() for row in spark.createDataFrame(summary_records).groupBy('source_standard', 'canonical_concept', 'validation_status').count().orderBy('source_standard', 'canonical_concept', 'validation_status').collect()]
         job_id = str(uuid.uuid4())
         accepted_artifact = self._retain_json_artifact(accepted, filename=f"{job_id}-accepted-quality.json", kind="accepted-data-quality-partition", correlation_id=correlation_id)
         rejected_artifact = self._retain_json_artifact(rejections, filename=f"{job_id}-rejected-quality.json", kind="rejected-data-quality-partition", correlation_id=correlation_id) if rejections else None
         quality = {
             "quality_profile": "data-quality-core-v1",
-            "input_records": len(records), "accepted_records": len(accepted), "rejected_records": len(rejections),
-            "completeness": round((len(records) - len([item for item in rejections if item.get("dimension") == "completeness"])) / len(records), 4),
-            "validity": round((len(records) - len([item for item in rejections if item.get("dimension") == "validity"])) / len(records), 4),
-            "uniqueness": round((len(records) - len([item for item in rejections if item.get("dimension") == "uniqueness"])) / len(records), 4),
-            "provenance": round((len(records) - len([item for item in rejections if item.get("dimension") == "provenance"])) / len(records), 4),
-            "quality_gate": "passed" if not rejections else "warning",
+            "input_records": len(records), "accepted_records": len(accepted), "rejected_records": rejected_records,
+            **{dimension: round((assessed[dimension] - len(failed[dimension])) / assessed[dimension], 4) if assessed[dimension] else None for dimension in assessed},
+            'dimension_assessed_records': assessed,
+            'dimension_not_assessed_records': {dimension: len(records) - count for dimension, count in assessed.items()},
+            'rejection_issue_count': len(rejections),
+            "quality_gate": "failed" if not accepted else "passed" if not rejections else "warning",
             "rejections": rejections[:100],
         }
         result = {

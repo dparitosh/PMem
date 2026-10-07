@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { IxButton } from '@siemens/ix-react';
 import { apiClient } from '../services/apiClient';
 import { buildSemanticServiceUrl } from '../config';
+import FirstProductGuide from './FirstProductGuide';
 
 const serviceUrl = (service, path) => buildSemanticServiceUrl(service, path);
 
@@ -103,6 +104,7 @@ export default function ServiceIntegrationPanel() {
         </div>
       </article>
       {state.error && <div role="status" className="depo-service-integrations__error">{state.error}</div>}
+      {!state.loading && state.catalog?.total === 0 && state.products?.total === 0 && <FirstProductGuide />}
     </section>
   );
 }

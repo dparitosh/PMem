@@ -7,6 +7,7 @@ import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { useOntologies } from '../contexts/OntologyContext';
 import { loadProductCollection } from '../services/productCollection';
 import SchemaProductPublisher from '../Components/SchemaProductPublisher';
+import FirstProductGuide from '../Components/FirstProductGuide';
 
 const columns = [
   { field: 'product_id', headerName: 'Product ID', flex: 1.2 },
@@ -85,7 +86,7 @@ export default function DataProductsPage({ mode = 'products' }) {
     {state.loading && <p role="status">Loading products…</p>}
     {state.error && <div role="alert" className="depo-alert depo-alert--warning">{state.error}</div>}
     {state.warning && <div role="alert" className="depo-alert depo-alert--warning">{state.warning}</div>}
-    {!state.loading && !state.error && state.rows.length === 0 && <p>No products are registered yet. Creating an ontology does not publish a data product.</p>}
+    {!state.loading && !state.error && !state.warning && state.rows.length === 0 && <FirstProductGuide catalog={catalog} />}
     {!catalog && <section aria-label="Schema design drafts">
       <h3>Schema design drafts ({drafts.length})</h3>
       {ontologyLoading && <p role="status">Loading ontology draft metadata…</p>}

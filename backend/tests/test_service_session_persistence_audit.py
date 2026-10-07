@@ -104,6 +104,7 @@ class AuditRegressions(unittest.TestCase):
             raise asyncio.CancelledError()
         ns = {'store': store, '_register_catalog': interrupted, 'Request': object,
               'approval_identity': lambda *a, **k: 'approver', '_now': lambda: '2026-10-06T00:00:00Z'}
+        function('backend/data_product_service/router.py', '_public_product', ns)
         revoke = function('backend/data_product_service/router.py', 'revoke', ns)
         with self.assertRaises(asyncio.CancelledError): asyncio.run(revoke('p:1.0.0', {}, object()))
         saved = store.get('p:1.0.0')

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import math
 
 
 def gateway_subscription_headers(endpoint: str) -> dict[str, str]:
@@ -34,6 +35,8 @@ def bounded_timeout_seconds(name: str, *, default: float, minimum: float = 1.0, 
     try:
         value = float(os.getenv(name, str(default)))
     except (TypeError, ValueError):
+        return default
+    if not math.isfinite(value) or value <= 0:
         return default
     return max(minimum, min(maximum, value))
 

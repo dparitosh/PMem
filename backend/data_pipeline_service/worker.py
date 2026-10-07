@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from backend.depo_platform.network import bounded_timeout_seconds
 import logging
 import signal
 import threading
@@ -13,8 +14,8 @@ from .runner import runner
 
 def run() -> None:
     worker_id = run_records.worker_identity()
-    lease_seconds = max(30, min(int(os.getenv("DEPO_PIPELINE_LEASE_SECONDS", "300")), 3600))
-    poll_seconds = max(1, min(int(os.getenv("DEPO_PIPELINE_POLL_SECONDS", "5")), 60))
+    lease_seconds = int(bounded_timeout_seconds('DEPO_PIPELINE_LEASE_SECONDS', default=300, minimum=30))
+    poll_seconds = int(bounded_timeout_seconds('DEPO_PIPELINE_POLL_SECONDS', default=5, maximum=60))
     stop = threading.Event()
     for event in (signal.SIGINT, signal.SIGTERM):
         try:
@@ -41,7 +42,7 @@ def run() -> None:
         lease_lost = threading.Event()
         lease_record = [record]
         def renew_lease() -> None:
-            stale_seconds = max(30, min(int(os.getenv("DEPO_PIPELINE_WORKER_STALE_SECONDS", "60")), 3600))
+            stale_seconds = int(bounded_timeout_seconds('DEPO_PIPELINE_WORKER_STALE_SECONDS', default=60, minimum=30))
             while not heartbeat_stop.wait(min(max(1, lease_seconds // 3), stale_seconds / 3)):
                 try:
                     lease_record[0] = run_records.heartbeat(lease_record[0], worker_id=worker_id, lease_seconds=lease_seconds)

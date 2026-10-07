@@ -20,9 +20,9 @@ def execution_payload(payload):
     return clean({key: payload[key] for key in ('workflow_id', 'inputs', 'step_inputs') if key in payload})
 
 
-def prepare_recovery(record, workflow):
+def prepare_recovery(record, workflow, activity_at=None):
     if record.get('status') == 'running':
-        age = (datetime.now(timezone.utc) - datetime.fromisoformat(record['updated_at'])).total_seconds()
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(activity_at or record['updated_at'])).total_seconds()
         if age < 60:
             raise ValueError('Execution has recent activity; recovery is blocked')
     elif record.get('status') not in {'failed', 'interrupted', 'recoverable'}:
@@ -43,9 +43,9 @@ def prepare_recovery(record, workflow):
     return result
 
 
-def reconcile(record, outcome, evidence, actor, result=None, executor_stopped=False):
+def reconcile(record, outcome, evidence, actor, result=None, executor_stopped=False, activity_at=None):
     if record.get('status') == 'running':
-        age = (datetime.now(timezone.utc) - datetime.fromisoformat(record['updated_at'])).total_seconds()
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(activity_at or record['updated_at'])).total_seconds()
         if executor_stopped is not True or age < 60:
             raise ValueError('Verify that the stale executor has stopped before reconciling its write')
     elif record.get('status') not in {'failed', 'interrupted', 'timed_out'}:

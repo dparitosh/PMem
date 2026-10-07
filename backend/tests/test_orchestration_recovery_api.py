@@ -22,6 +22,7 @@ def recovery_api(monkeypatch):
     store=Store()
     monkeypatch.setattr(routes,'workflow_store',store)
     monkeypatch.setattr(routes,'workflow_controls',Store())
+    monkeypatch.setattr(routes,'workflow_heartbeats',Store())
     monkeypatch.setattr(routes,'_preflight_tools',AsyncMock())
     dispatch=AsyncMock(return_value={'result':{'answer':'second result'}})
     monkeypatch.setattr(routes,'_dispatch',dispatch)

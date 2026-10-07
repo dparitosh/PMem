@@ -24,6 +24,7 @@ def client(monkeypatch):
     monkeypatch.setenv('ALLOWED_ORIGINS', 'http://localhost:3000')
     app = create_service_app(title='Agentic security fixture', version='test', readiness_check=configuration_status)
     monkeypatch.setattr(router, 'workflow_controls', InMemoryRegistry('security-controls'))
+    monkeypatch.setattr(router, 'workflow_heartbeats', InMemoryRegistry('security-heartbeats'))
     app.include_router(router.router)
     return TestClient(app)
 

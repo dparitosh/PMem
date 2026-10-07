@@ -32,7 +32,6 @@ def normalize_ontology_entry(row: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     prefix = _first(
         data.get("prefix"),
         data.get("ontology_prefix"),
-        ontology_id,
     )
     ontology_name = _first(
         data.get("ontology_name"),
@@ -81,4 +80,3 @@ def normalize_ontology_entry(row: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 def normalize_ontology_entries(rows: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [normalize_ontology_entry(row) for row in rows]
-

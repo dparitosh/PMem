@@ -543,8 +543,9 @@ class OntologyUploadManager:
         indexed: Dict[str, Dict[str, Any]] = {}
         for source_row in normalize_ontology_entries(ontologies):
             row = dict(source_row)
-            prefix = str(row.get("prefix") or row.get("ontology_prefix") or row.get("ontology_id") or "").strip()
-            if not prefix:
+            prefix = str(row.get("prefix") or row.get("ontology_prefix") or "").strip()
+            registry_key = prefix or str(row.get("ontology_id") or "").strip()
+            if not registry_key:
                 continue
             row["prefix"] = prefix
             row["ontology_prefix"] = row.get("ontology_prefix") or prefix
@@ -552,7 +553,7 @@ class OntologyUploadManager:
             row.setdefault("node_count", row.get("neo4j_nodes_merged", 0) or 0)
             row.setdefault("relationship_count", row.get("neo4j_relationships_merged", 0) or 0)
             row["availability"] = "metadata_only"
-            indexed[prefix.lower()] = row
+            indexed[registry_key.lower()] = row
         return indexed
 
     @classmethod

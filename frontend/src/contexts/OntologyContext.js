@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { apiClient } from '../services/apiClient';
 import { buildUrl } from '../config';
 import logger from '../utils/logger';
-import { normalizeOntologyRows as normalizeRegistryRows } from '../utils/ontologyRegistry';
+import { normalizeOntologyRows as normalizeRegistryRows, mergeOntologyMetadata } from '../utils/ontologyRegistry';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 
 /**
@@ -67,7 +67,13 @@ export const OntologyProvider = ({ children }) => {
           if (!Array.isArray(rows)) { lastError = new Error('Registry returned an invalid ontology list.'); failedSources.push(index === 0 ? 'Ontology catalog' : 'Ingestion registry'); continue; }
           successes += 1;
           for (const row of normalizeOntologyRows(rows)) {
-            if (row.value && !merged.has(row.value)) merged.set(row.value, row);
+            if (!row.value) continue;
+            if (!merged.has(row.value)) merged.set(row.value, row);
+            else {
+              const existing = merged.get(row.value);
+              // Native identities remain authoritative; legacy metadata can fill gaps.
+              merged.set(row.value, mergeOntologyMetadata(existing, row));
+            }
           }
         }
         if (!successes) throw lastError || new Error('Failed to load ontologies');

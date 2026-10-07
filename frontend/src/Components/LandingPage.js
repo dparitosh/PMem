@@ -14,14 +14,16 @@ function fmt(n) {
   return Number(n).toLocaleString();
 }
 
-function ontologyTypeLabel(ontology) {
-  if (ontology.type) return ontology.type;
+export function ontologyTypeLabel(ontology) {
+  const type = [ontology.ontology_type, ontology.schema_format, ontology.file_type, ontology.type]
+    .find(value => value && !['neo4j', 'neo4j_live', 'neo4j_projection'].includes(String(value).toLowerCase()));
+  if (type) return type;
   if (ontology.source === 'engineering-conversion:express') return 'EXPRESS schema';
   if (ontology.source === 'legacy_ingestion_migration') return 'Ontology';
   return 'Ontology';
 }
 
-function OntologyList({ ontologies, loading }) {
+export function OntologyList({ ontologies, loading }) {
   if (loading) return <div style={{ color: '#888', fontSize: 12, padding: 8 }}>Loading ontologies...</div>;
   if (!ontologies.length) return <div style={{ color: '#888', fontSize: 12, padding: 8 }}>No ontologies registered yet.</div>;
 
@@ -30,7 +32,7 @@ function OntologyList({ ontologies, loading }) {
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
           <tr style={{ background: 'var(--theme-color-component-2)', color: 'var(--theme-color-std-text)', borderBottom: '1px solid #cfd8e3' }}>
-            {['Name', 'Type', 'Uses', 'Last used / registered'].map(h => (
+            {['Name', 'Prefix', 'Type', 'Uses', 'Last used / registered'].map(h => (
               <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600 }}>{h}</th>
             ))}
           </tr>
@@ -41,6 +43,7 @@ function OntologyList({ ontologies, loading }) {
               <td style={{ padding: '6px 10px', fontWeight: 600, color: UI_COLORS.primary }}>
                 {o.label || o.name || o.ontology_name || o.prefix || o.id || o.ontology_id}
               </td>
+              <td style={{ padding: '6px 10px' }}>{o.prefix || o.ontology_prefix || 'Not supplied'}</td>
               <td style={{ padding: '6px 10px' }}>
                 <span style={{
                   background: UI_COLORS.primaryLight, color: UI_COLORS.primary,

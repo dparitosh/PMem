@@ -21,13 +21,18 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
   const [dependencies, setDependencies] = useState([]);
   const [paths, setPaths] = useState('');
   const [converted, setConverted] = useState(null);
+  const [sourceChanged, setSourceChanged] = useState(false);
   useEffect(() => {
     request.current?.abort(); request.current = null; pending.current = null;
     setFields({ name: draft?.name || '', version: '1.0.0', classification: 'internal' });
     setPreview(null); setReceipt(null); setError(''); setConverted(null); setBusy(false);
+    setSourceChanged(false); setSource(null); setDependencies([]); setPaths('');
     return () => request.current?.abort();
   }, [draft]);
-  const activeDraft = converted?.data_product_draft || draft;
+  const activeDraft = converted?.data_product_draft || (sourceChanged ? null : draft);
+  function invalidateInspection() {
+    setSourceChanged(true); setConverted(null); setPreview(null); setReceipt(null); setError('');
+  }
   async function perform(action) {
     if (busy || request.current) return;
     const controller = new AbortController(); request.current = controller; setBusy(true); setError('');
@@ -71,12 +76,13 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
     <h3>Publish schema design evidence</h3>
     <p>This package contains a review-only schema plan. It does not create warehouse tables or certify business metrics. The service verifies the referenced approved semantic release during publication.</p>
     <details><summary>Inspect an XSD with dependency files</summary>
-      <label>Root XSD <input type="file" accept=".xsd" disabled={busy || !!pending.current} onChange={event => setSource(event.target.files[0] || null)} /></label>
-      <label>Dependency XSD files <input type="file" accept=".xsd" multiple disabled={busy || !!pending.current} onChange={event => setDependencies(Array.from(event.target.files))} /></label>
+      <label>Root XSD <input type="file" accept=".xsd" disabled={busy || !!pending.current} onChange={event => { invalidateInspection(); setSource(event.target.files[0] || null); }} /></label>
+      <label>Dependency XSD files <input type="file" accept=".xsd" multiple disabled={busy || !!pending.current} onChange={event => { invalidateInspection(); setDependencies(Array.from(event.target.files)); }} /></label>
       <p>Selected dependency order: {dependencies.map(file => file.name).join(', ') || 'None'}</p>
-      <label>Relative paths, one per file (e.g. types/Part.xsd)<textarea value={paths} disabled={busy || !!pending.current} onChange={event => setPaths(event.target.value)} /></label>
+      <label>Relative paths, one per file (e.g. types/Part.xsd)<textarea value={paths} disabled={busy || !!pending.current} onChange={event => { invalidateInspection(); setPaths(event.target.value); }} /></label>
       <IxButton disabled={busy || !!pending.current} onClick={() => perform('inspect')}>Inspect schema set</IxButton>
     </details>
+    {sourceChanged && !activeDraft && <p role="status">Source selection changed. Inspect the schema set again before validating or publishing.</p>}
     {activeDraft && <>
       <p>Readiness: {activeDraft.analytics_readiness || 'Requires review'}; quality: {activeDraft.quality_status || 'Not assessed'}</p>
       {converted?.analytics_schema_plan?.ddl_blockers?.length > 0 && <div role="alert">Schema materialization blockers: {converted.analytics_schema_plan.ddl_blockers.join('; ')}</div>}
