@@ -22,3 +22,10 @@ class RecommendationPersistenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'credentials'):
             self.records.create(self.proposal, 'owner')
         self.assertEqual(self.records.store.all(), {})
+
+    def test_prompt_snapshot_is_retained_with_owner_access(self):
+        self.proposal['prompt_details'] = {'system_prompt': 'Review only', 'user_request': 'Inspect ontology', 'prompt_version': 'v2'}
+        saved = self.records.create(self.proposal, 'owner')
+        self.proposal['prompt_details']['system_prompt'] = 'changed later'
+        restored = self.records.get(saved['recommendation_id'], 'owner')
+        self.assertEqual(restored['prompt_details']['system_prompt'], 'Review only')

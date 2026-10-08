@@ -91,6 +91,28 @@ html[data-ix-color-schema='dark'] .chat-messages {
   color: var(--ui-text) !important;
 }
 
+/* Native option popups need explicit foreground/background colors; inherited
+   field colors alone can produce unreadable options in the other theme. */
+#root select {
+  max-width: 100%;
+  min-height: 36px;
+  font: inherit;
+  color: var(--ui-text);
+  background-color: var(--ui-surface);
+  border-color: var(--ui-border);
+}
+#root select option,
+#root select optgroup {
+  color: var(--ui-text);
+  background-color: var(--ui-surface);
+}
+#root select:focus-visible {
+  outline: 2px solid var(--ui-accent, #005a9c);
+  outline-offset: 2px;
+}
+html[data-ix-color-schema='dark'] #root select { color-scheme: dark; }
+html[data-ix-color-schema='light'] #root select { color-scheme: light; }
+
 /* Slotted IX content inherits from the custom-element host. Keep every card
    bounded by its grid cell and make foreground colors follow the active IX
    schema, including legacy pages that still emit common light-theme inline

@@ -11,6 +11,9 @@ import KpiStrip from '../widgets/KpiStrip';
 import RegistryWidget from '../widgets/RegistryWidget';
 import { widgetCardStyle, widgetColors } from '../widgets/widgetStyles';
 import ServiceIntegrationPanel from '../Components/ServiceIntegrationPanel';
+import WorkspaceTabs from '../Components/WorkspaceTabs';
+
+const adminTabs = [{id:'overview',label:'Overview'}, {id:'access',label:'API access'}, {id:'agents',label:'Agents & workflows'}, {id:'services',label:'Services & catalogs'}, {id:'maintenance',label:'Maintenance'}];
 
 const routeColumns = [
   { field: 'method', width: 100 },
@@ -69,6 +72,15 @@ const packageColumns = [
 ];
 
 export default function AdminPage({ onSchemaCleaned }) {
+  const [section, setSection] = useState(() => {
+    try { const saved = sessionStorage.getItem('depo:admin-tab'); return adminTabs.some(tab => tab.id === saved) ? saved : 'overview'; } catch { return 'overview'; }
+  });
+  useEffect(() => {
+    const select = event => { if (adminTabs.some(tab => tab.id === event.detail)) setSection(event.detail); };
+    window.addEventListener('depo:admin-section', select);
+    return () => window.removeEventListener('depo:admin-section', select);
+  }, []);
+  useEffect(() => { try { sessionStorage.setItem('depo:admin-tab', section); } catch {} }, [section]);
   const agenticEnabled = agenticAPI.isEnabled();
   const agenticConfigured = agenticAPI.isConfigured();
   const [registry, setRegistry] = useState(null);
@@ -231,12 +243,14 @@ export default function AdminPage({ onSchemaCleaned }) {
 
   return (
     <div className="depo-page">
+      <WorkspaceTabs label="Admin sections" tabs={adminTabs} value={section} onChange={setSection} idPrefix="depo-admin" />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 12, color: widgetColors.muted, lineHeight: 1.4, maxWidth: 720 }}>
-          Registry tables are read-only operational views. Use the maintenance panel for cache, targeted graph cleanup, ontology metadata cleanup, and reset actions.
+          {{overview:'Service health and operational summary.', access:'Connect registered credentials, verify stored access, or reconnect an expired session.', agents:'Review agent recommendations and monitor workflow execution.', services:'Browse service, data-source, configuration and API catalogs.', maintenance:'Controlled cleanup and current Neo4j schema status.'}[section]}
         </div>
         <button
           type="button"
+          hidden={!['overview', 'services'].includes(section)}
           onClick={loadRegistry}
           disabled={loading}
           style={{
@@ -254,16 +268,14 @@ export default function AdminPage({ onSchemaCleaned }) {
         </button>
       </div>
 
-      {error && (
+      {error && ['overview', 'services'].includes(section) && (
         <div style={{ ...widgetCardStyle, padding: 10, color: widgetColors.danger, fontSize: 12, fontWeight: 700 }}>
           {error}
         </div>
       )}
 
-      <CredentialSettings />
-      <ServiceIntegrationPanel />
-      {agenticConfigured && <AgentProposalPanel />}
-      {agenticConfigured && <AgentControlPanel />}
+      <div hidden={section !== 'access'} role="tabpanel" id="depo-admin-panel-access" aria-labelledby="depo-admin-tab-access"><CredentialSettings /></div>
+      <div hidden={section !== 'overview'} role="tabpanel" id="depo-admin-panel-overview" aria-labelledby="depo-admin-tab-overview">{section === 'overview' && <ServiceIntegrationPanel />}
 
       <KpiStrip
         items={[
@@ -275,6 +287,11 @@ export default function AdminPage({ onSchemaCleaned }) {
           { label: 'Workflows', value: counts.workflows },
         ]}
       />
+      </div>
+
+      <div hidden={section !== 'agents'} role="tabpanel" id="depo-admin-panel-agents" aria-labelledby="depo-admin-tab-agents">
+      {section === 'agents' && agenticConfigured && <AgentProposalPanel />}
+      {section === 'agents' && agenticConfigured && <AgentControlPanel />}
 
       <section className="depo-panel" style={{ marginBottom: 12 }}>
         <div className="depo-panel__header">
@@ -331,24 +348,25 @@ export default function AdminPage({ onSchemaCleaned }) {
           </div>
         )}
       </section>
+      </div>
 
-      <div className="depo-two-column">
-        <section className="depo-panel">
+      <div>
+        <section className="depo-panel" hidden={section !== 'maintenance'} role="tabpanel" id="depo-admin-panel-maintenance" aria-labelledby="depo-admin-tab-maintenance">
           <div className="depo-panel__header">
             <div>
               <div className="depo-panel__title">Operations</div>
               <div className="depo-panel__meta">Controlled cleanup and current Neo4j schema status.</div>
             </div>
           </div>
-          <AdminPanel onSchemaCleaned={onSchemaCleaned} />
+          {section === 'maintenance' && <AdminPanel onSchemaCleaned={onSchemaCleaned} />}
         </section>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div hidden={section !== 'services'} style={section === 'services' ? { display: 'flex', flexDirection: 'column', gap: 12 } : undefined} role="tabpanel" id="depo-admin-panel-services" aria-labelledby="depo-admin-tab-services">
           <RegistryWidget title="Service Catalog" rows={registry?.services || []} columns={serviceColumns} height={320} />
           <RegistryWidget title="Data Sources" rows={registry?.data_sources || []} columns={dataSourceColumns} height={250} />
         </div>
       </div>
 
-      <details style={{ ...widgetCardStyle, padding: 12 }}>
+      <details hidden={section !== 'services'} style={{ ...widgetCardStyle, padding: 12 }}>
         <summary style={{ cursor: 'pointer', color: widgetColors.text, fontSize: 14, fontWeight: 800 }}>
           Additional catalogs
         </summary>
@@ -360,7 +378,7 @@ export default function AdminPage({ onSchemaCleaned }) {
                 border: `1px solid ${widgetColors.border}`,
                 borderRadius: 10,
                 padding: '10px 12px',
-                background: '#f8fafc',
+                background: 'var(--ui-surface, #f8fafc)',
               }}
             >
               <div style={{ fontSize: 11, color: widgetColors.muted, marginBottom: 4 }}>{catalog.title}</div>
@@ -387,7 +405,7 @@ export default function AdminPage({ onSchemaCleaned }) {
         </div>
       </details>
 
-      <div style={{ ...widgetCardStyle, padding: 10, display: 'flex', gap: 8, alignItems: 'center', color: widgetColors.muted, fontSize: 12 }}>
+      <div hidden={section !== 'services'} style={{ ...widgetCardStyle, padding: 10, ...(section === 'services' ? {display:'flex'} : {}), gap: 8, alignItems: 'center', color: widgetColors.muted, fontSize: 12 }}>
         <Bot size={14} color={widgetColors.blue} />
         Configuration editing APIs are intentionally deferred; this version is a read-only operational catalog.
       </div>

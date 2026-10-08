@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 
-export default function WorkspaceTabs({ label, tabs, value, onChange }) {
+export default function WorkspaceTabs({ label, tabs, value, onChange, idPrefix }) {
   const buttons = useRef([]);
   const navigate = (event, index) => {
     let next;
@@ -15,6 +15,7 @@ export default function WorkspaceTabs({ label, tabs, value, onChange }) {
   };
   return <div role="tablist" aria-label={label} style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
     {tabs.map((tab,index) => <button key={tab.id} ref={node => {buttons.current[index]=node;}} type="button" role="tab"
+      id={idPrefix ? `${idPrefix}-tab-${tab.id}` : undefined} aria-controls={idPrefix ? `${idPrefix}-panel-${tab.id}` : undefined}
       aria-selected={value===tab.id} tabIndex={value===tab.id?0:-1} onKeyDown={event=>navigate(event,index)}
       onClick={()=>onChange(tab.id)} className="depo-button depo-button--secondary"
       style={value===tab.id?{background:'var(--ui-primary, #007a99)',color:'#fff'}:undefined}>{tab.label}</button>)}

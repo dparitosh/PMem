@@ -1,4 +1,4 @@
-import { test } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 
@@ -7,7 +7,7 @@ const pages = [...navigation.matchAll(/\{ id: '([^']+)', label: '([^']+)'/g)].ma
 assert.equal(pages.length, 17);
 
 for (const theme of ['light', 'dark']) {
- test(`all 17 pages navigate with retained session in ${theme} mode`, async ({ page, baseURL }) => {
+ test(`all 17 pages navigate with retained session in ${theme} mode`, async ({ page, baseURL }, testInfo) => {
   const crashes = [], reads = [], results = [];
   page.on('pageerror', error => crashes.push(error.message));
   page.on('console', message => { if (message.type() === 'error' && message.text().includes('ErrorBoundary caught:')) crashes.push(message.text()); });
@@ -30,6 +30,8 @@ for (const theme of ['light', 'dark']) {
     await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' }, body: JSON.stringify(body) });
   });
   await page.goto('/#/graph');
+  await page.getByRole('button', {name:'Revalidate or reconnect API access',exact:true}).click();
+  await page.getByText(/Read access verified:/).waitFor();
   const documentIdentity = await page.evaluate(() => window.__navigationDocument);
   for (const { id, label } of pages) {
     const item = page.locator('ix-menu-item').nth(pages.findIndex(item => item.id === id));
@@ -40,6 +42,19 @@ for (const theme of ['light', 'dark']) {
     assert.equal(await page.evaluate(() => window.__navigationDocument), documentIdentity, 'Navigation must not reload the document');
     assert.equal(await page.getByText('Warning: Something went wrong', { exact: true }).count(), 0, `No error boundary on ${label}: ${crashes.join('; ')}`);
     results.push({ id, label, status: 'passed' });
+    if (id === 'admin') {
+      await page.getByRole('tab', {name:'Agents & workflows', exact:true}).click();
+      await page.locator('.depo-agent-recommendations').screenshot({ path: testInfo.outputPath(`recommendations-${theme}-desktop.png`) });
+      await page.getByRole('tab', {name:'API access', exact:true}).click();
+      assert.equal(await page.getByLabel('Administrator key for connection', {exact:true}).isVisible(), true);
+      await page.getByRole('tab', {name:'Overview', exact:true}).click();
+    }
+    if (id === 'ontology') {
+      await page.getByRole('tab', { name: '2. Semantic Bridge', exact: true }).click();
+      await page.locator('.depo-bridge-review').waitFor();
+      assert.equal(await page.locator('.depo-ontology-merge').getAttribute('open'), null);
+      await page.locator('.depo-bridge-review').screenshot({ path: testInfo.outputPath(`bridge-${theme}-desktop.png`) });
+    }
   }
   await page.goBack();
   await page.goForward();
@@ -49,10 +64,24 @@ for (const theme of ['light', 'dark']) {
     await page.waitForFunction(label => document.querySelector('ix-content-header')?.headerTitle === label, label);
     await page.waitForFunction(() => !document.querySelector('.depo-page-loading'));
     assert.equal(await page.getByText('Warning: Something went wrong', { exact: true }).count(), 0, `No narrow-page error boundary on ${label}`);
+    if (id === 'admin') {
+      await page.getByRole('tab', {name:'Agents & workflows', exact:true}).click();
+      await page.locator('.depo-agent-recommendations').screenshot({ path: testInfo.outputPath(`recommendations-${theme}-mobile.png`) });
+    }
   }
   assert.deepEqual(crashes, []);
   const protectedReads = reads.filter(read => /\/api\/v1\/(?:catalog\/products|data-products|observability\/summary|graph\/metrics)$/.test(read.path));
   assert.ok(protectedReads.length > 0);
   assert.ok(protectedReads.every(read => read.authorization === 'Bearer depo_session_navigation'), 'Read session follows protected requests across page navigation');
+  await page.setViewportSize({width:1280,height:800});
+  await page.evaluate(async () => {
+    const auth = await import('/src/services/serviceAuth.js');
+    auth.expireBrowserSession('depo_session_navigation');
+  });
+  await page.getByText('API session expired. Use Reconnect access to restore registered scopes.').waitFor();
+  await page.getByRole('button', {name:'Revalidate or reconnect API access',exact:true}).click();
+  await page.getByRole('tab', {name:'API access',exact:true}).waitFor();
+  await expect(page.getByRole('tab', {name:'API access',exact:true})).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByLabel('Administrator key for connection', {exact:true})).toBeVisible();
  });
 }

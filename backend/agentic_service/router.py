@@ -253,12 +253,12 @@ def _ontology_agent_call(operation, payload: dict[str, Any]) -> dict:
         result = operation(payload)
         _finish_observation(observation, started, status='completed')
         return {**result, 'run_id': observation['run_id'], 'telemetry_run_id': observation['run_id']}
-    except (ValueError, OSError) as exc:
+    except ValueError as exc:
         _finish_observation(observation, started, status='failed', error_type=type(exc).__name__)
         raise HTTPException(status_code=422, detail=str(exc), headers={'X-DEPO-Run-ID': observation['run_id']}) from exc
     except Exception as exc:
         _finish_observation(observation, started, status='failed', error_type=type(exc).__name__)
-        raise HTTPException(status_code=422, detail="Ontology agent could not parse the supplied artifact", headers={'X-DEPO-Run-ID': observation['run_id']}) from exc
+        raise HTTPException(status_code=503, detail="Ontology agent dependency failed; inspect service logs using the run ID", headers={'X-DEPO-Run-ID': observation['run_id']}) from exc
 
 
 @router.post("/ontology-agents/intake", dependencies=[Depends(graph_read_identity)])
@@ -344,14 +344,20 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
                 or not isinstance(result.get('answerable'), bool)):
             raise RuntimeError('Knowledge companion returned an invalid evidence response')
         await run_in_threadpool(AgentMemoryService.record_chat_turn, session_id=memory_key,
-            user_message=message, assistant_response=result['response'])
+            user_message=message, assistant_response=result['response'], generation=result.get('generation'))
+        retained_id = 'companion-turn-' + observation['run_id']
+        await _agent_io(companion_job_store.put, retained_id, {
+            'job_id': retained_id, 'status': 'completed', 'session_id': session['session_id'],
+            'owner': sessions.owner(request, graph_read_identity(request)),
+            'user_request': message, 'response': result['response'], 'generation': result.get('generation'),
+            'evidence': result['evidence'], 'sources': result['sources'], 'answerable': result['answerable'], 'finished_at': _now()})
         await _agent_io(_finish_observation,
             observation,
             observed_at,
             status="completed",
             evidence_count=len(result.get("evidence") or []),
         )
-        return {**result, 'run_id': observation['run_id'], 'telemetry_run_id': observation['run_id'], 'session_id': session['session_id'], 'session_expires_at': session['expires_at'],
+        return {**result, 'retained_prompt_job_id': retained_id, 'run_id': observation['run_id'], 'telemetry_run_id': observation['run_id'], 'session_id': session['session_id'], 'session_expires_at': session['expires_at'],
                 'session_idle_seconds': int(bounded_timeout_seconds('AGENT_SESSION_IDLE_SECONDS', default=1800, maximum=86400)), 'mode': 'evidence-grounded'}
     except BaseException as exc:
         status = 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
@@ -370,6 +376,7 @@ async def companion_job(payload: ChatRequest, request: Request) -> dict:
     job_id = f"companion-{uuid4()}"
     record = {"job_id": job_id, "status": "completed", "session_id": response["session_id"], "response": response["response"], "answerable": response["answerable"], "evidence": response["evidence"], "sources": response["sources"], "created_at": created_at, "finished_at": _now()}
     record['owner'] = sessions.owner(request, graph_read_identity(request))
+    record['generation'] = response.get('generation')
     await _agent_io(companion_job_store.put, job_id, record)
     return {"status": "completed", "execution_mode": 'synchronous', "job_id": job_id, "poll_endpoint": f"/api/v1/chat/jobs/{job_id}", "session_id": response["session_id"]}
 
@@ -388,7 +395,7 @@ def companion_job_status(job_id: str, request: Request) -> dict:
 @router.get("/chat/health")
 @router.get("/chat/status")
 def companion_health() -> dict:
-    return {"status": "ok", "service": "knowledge-companion", "mode": "ontology-search", "streaming": True, 'incremental_generation': os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true', 'job_execution': 'synchronous', "fail_closed": True}
+    return {"status": "ok", "service": "knowledge-companion", "mode": "ontology-search", "streaming": True, 'incremental_generation': os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true' and os.getenv('OLLAMA_STREAMING_ENABLED', 'false').strip().lower() == 'true', 'job_execution': 'synchronous', "fail_closed": True}
 
 
 @router.get('/llm/health', dependencies=[Depends(graph_read_identity)])
@@ -424,7 +431,11 @@ async def companion_stream(payload: ChatRequest, request: Request) -> StreamingR
         try:
             yield 'data: {"status": "Retrieving graph evidence"}\n\n'
             while True:
-                event = await queue.get()
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15)
+                except TimeoutError:
+                    yield ': keepalive\n\n'
+                    continue
                 if event is None:
                     break
                 yield f'data: {json.dumps(event)}\n\n'
@@ -447,12 +458,35 @@ async def suggest_agent_tool(agent_id: str, payload: dict[str, Any], request: Re
     try:
         agent = catalog.item('agents', agent_id)
         selected = [catalog.item('tools', identifier) for identifier in agent.get('tools', [])]
+        attachment = payload.get('attachment')
+        if attachment is not None:
+            try:
+                if not isinstance(attachment, dict): raise ValueError('Invalid attachment')
+                _multipart({'file': attachment})
+            except ValueError as exc:
+                raise HTTPException(422, 'Source attachment is invalid or exceeds the configured upload limit') from exc
+        selected = [tool for tool in selected if tool.get('input_kind') != 'multipart' or attachment is not None]
         selected = await _proposal_tools(selected, request)
-        suggestion = await suggest_tool(agent, selected, payload.get('task'))
+        for tool in selected:
+            if tool.get('input_kind') == 'multipart':
+                schema = tool['input_schema']
+                schema['properties'].pop('file', None)
+                schema['required'] = [key for key in schema.get('required', []) if key != 'file']
+        if not selected: raise HTTPException(422, 'Attach a source file for this agent before requesting a recommendation')
+        context = payload.get('context')
+        if context is not None and (not isinstance(context, dict) or len(json.dumps(context)) > 16000):
+            raise ValueError('Invalid page context')
+        task = payload.get('task')
+        attachment_metadata = {key: attachment.get(key) for key in ('filename', 'content_type')} if attachment else None
+        suggestion = await suggest_tool(agent, selected, task, context=context, attachment_metadata=attachment_metadata)
         command = {'agent_id': agent_id, 'tool_id': suggestion['tool_id'], 'inputs': suggestion.get('inputs', {})}
+        chosen = next((tool for tool in selected if tool['id'] == command['tool_id']), None)
+        if chosen is None: raise ValueError('Tool is not allowlisted')
+        if chosen.get('input_kind') == 'multipart':
+            command['inputs']['file'] = attachment
         planned = plan(command)
         await _preflight_tools([command], request)
-        result = {**planned, 'command': command, 'status': 'proposal', 'execution': 'requires_explicit_run_request'}
+        result = {**planned, 'command': command, 'context': context, 'status': 'proposal', 'execution': 'requires_explicit_run_request', 'prompt_details': suggestion.get('prompt_details')}
         try:
             return await _agent_io(recommendations.create, result, sessions.owner(request, graph_read_identity(request)))
         except ValueError:
@@ -539,6 +573,8 @@ def _multipart(inputs: dict[str, Any], file_field: str = 'file') -> tuple[dict[s
     encoded = str(upload.get("content_base64") or "")
     if not upload.get("filename") or not encoded:
         raise ValueError("Multipart tools require inputs.file.filename and inputs.file.content_base64")
+    if not isinstance(upload['filename'], str) or len(upload['filename']) > 255 or any(ord(char) < 32 for char in upload['filename']):
+        raise ValueError('Attachment filename must be a valid name of at most 255 characters')
     limit = int(os.getenv('AGENTIC_MAX_UPLOAD_BYTES', str(25 * 1024 * 1024)))
     if len(encoded) > 4 * ((limit + 2) // 3):
         raise ValueError('Agent file exceeds AGENTIC_MAX_UPLOAD_BYTES')
@@ -557,6 +593,33 @@ async def _bounded_tool_request(client, method, endpoint, **kwargs):
         response.raise_for_status()
         content = await read_bounded_response(response)
         return httpx.Response(response.status_code, headers=response.headers, content=content, request=response.request)
+
+
+async def _await_pipeline_run(child_id):
+    """Only poll the accepted job; the caller retains the original deadline."""
+    from urllib.parse import quote
+    from backend.depo_platform.network import service_bearer_headers
+    endpoint = _base('data_pipeline') + '/pipeline/jobs/runs/' + quote(child_id, safe='')
+    failures = 0
+    async with httpx.AsyncClient(timeout=15, trust_env=False) as client:
+        while True:
+            try:
+                response = await _bounded_tool_request(client, 'GET', endpoint, headers=service_bearer_headers('GRAPH_READ_TOKEN', service_name='data-job status', endpoint=endpoint))
+                child = response.json()
+                failures = 0
+            except httpx.HTTPError as exc:
+                failures += 1
+                if failures >= 3 or getattr(getattr(exc, 'response', None), 'status_code', None) in {401, 403, 404}:
+                    raise HTTPException(503, 'Dependent data-job status is unverified; inspect its retained run before retrying') from exc
+                await asyncio.sleep(3)
+                continue
+            if not isinstance(child, dict) or child.get('run_id') != child_id or not isinstance(child.get('status'), str):
+                raise HTTPException(502, 'Invalid data job status')
+            if child['status'] not in {'queued', 'running'}:
+                if child['status'] not in {'completed', 'quality_warning', 'validation_failed'}:
+                    raise HTTPException(502, 'Dependent data job did not complete successfully')
+                return {'status': child['status'], 'run_manifest': child}
+            await asyncio.sleep(3)
 
 
 async def _proposal_tools(tools, request):
@@ -845,6 +908,12 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
                                                    'inputs': execution_payload({'inputs':inputs})['inputs']}, updated_at=_now())
                         await _persist_workflow(record)
                         result = await _dispatch(command, request)
+                        if step['tool_id'] == 'pipeline.run' and isinstance(result.get('result'), dict) and result['result'].get('status') == 'queued':
+                            child_id = (result['result'].get('run_manifest') or {}).get('run_id')
+                            if not isinstance(child_id, str) or not child_id: raise HTTPException(502, 'Queued data job has no run identity')
+                            record['pending_step']['child_run_id'] = child_id
+                            await _persist_workflow(record)
+                            result['result'] = await _await_pipeline_run(child_id)
                         duration = (time.perf_counter() - tool_started)*1000
                         record['traces'].append({'sequence': index+1, 'tool_id': step['tool_id'], 'attempt': attempt, 'status': 'completed', 'duration_ms': round(duration, 2), 'result': result.get('result', {})})
                         await _agent_io(_tool_span, observation, tool_id=step['tool_id'], attempt=attempt, status='completed', duration_ms=duration)

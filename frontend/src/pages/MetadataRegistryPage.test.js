@@ -31,6 +31,30 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
+test('malformed registry response is not reported as an empty governed registry', async () => {
+  API_METHODS.metadataRegistry.list.mockResolvedValue({ data: {} });
+  render(<MetadataRegistryPage />);
+  expect(await screen.findByText(/invalid asset list/)).toBeVisible();
+  expect(screen.queryByText('No governed metadata assets are registered yet.')).toBeNull();
+});
+
+test('dictionary prepares a source-linked draft without writing until Register', async () => {
+  API_METHODS.metadataRegistry.list.mockResolvedValue({ data: { assets: [] } });
+  API_METHODS.ontology.getDataDictionary.mockResolvedValue({ data: { entities: { Part: { definition: 'A physical part' } }, properties: {}, relationships: {} } });
+  API_METHODS.metadataRegistry.create.mockResolvedValue({ data: { asset_id: 'registered', name: 'Part', lifecycle_status: 'draft', version: '1.0.0' } });
+  render(<MetadataRegistryPage />);
+  await screen.findByText('No governed metadata assets are registered yet.');
+  fireEvent.click(screen.getByRole('tab', { name: 'Data Dictionary' }));
+  fireEvent.change(screen.getByLabelText('Select registry source for Data Dictionary'), { target: { value: 'onto-1' } });
+  fireEvent.click(await screen.findByRole('button', { name: 'Prepare draft registration' }));
+  expect(API_METHODS.metadataRegistry.create).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Register', exact: true }));
+  await waitFor(() => expect(API_METHODS.metadataRegistry.create).toHaveBeenCalledWith(expect.objectContaining({
+    asset_id: 'ontology-term:onto-1:class:fallback%3APart', name: 'Part', definition: 'A physical part',
+    lifecycle_status: 'draft', implementation_ref: 'fallback:Part', namespace_prefix: 'fallback',
+  }), expect.objectContaining({ signal: expect.any(AbortSignal) })));
+});
+
 test('catalog refresh reloads the dictionary selected in the active tab', async () => {
   API_METHODS.metadataRegistry.list.mockResolvedValue({ data: { assets: [] } });
   API_METHODS.ontology.getDataDictionary.mockResolvedValue({ data: { entities: { Part: {} }, properties: {}, relationships: {} } });

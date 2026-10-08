@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { buildSemanticServiceUrl, config } from '../config';
 import { getCredentialProfile, setCredentialProfile, clearServiceAuthToken, getGatewaySubscriptionKey, setGatewaySubscriptionKey, serviceAuthHeaders, setBrowserSessionExpiry, getBrowserSessionStatus, handleSessionRejection } from '../services/serviceAuth';
 import ServiceAccessDiscovery from '../app/ServiceAccessDiscovery';
+import { verifyStoredReadAccess } from '../services/readAccessVerification';
 import './CredentialSettings.css';
 
 const profiles = Object.keys(credentialServices);
@@ -35,27 +36,11 @@ export default function CredentialSettings() {
     const timeout = setTimeout(() => controller.abort(), 15000);
     setCheckingSession(true);
     setSessionStatus('Checking stored session against registered services…');
-    const services = Object.entries(config.semanticServiceUrls).filter(([, base]) => base);
-    Promise.all(services.map(async ([service]) => {
-      try {
-        const endpoint = buildSemanticServiceUrl(service, '/auth/access');
-        const response = await fetch(endpoint, { headers: { ...serviceAuthHeaders(endpoint), Authorization: `Bearer ${token}` }, signal: controller.signal, credentials: 'omit', redirect: 'error' });
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok || body.status !== 'authorized') {
-          const detail = typeof body.detail === 'string' ? body.detail : 'Read access was not authorized';
-          if (active && getCredentialProfile('GRAPH_READ_TOKEN') === token) handleSessionRejection(response.status, `Bearer ${token}`, detail);
-          return `${service}: HTTP ${response.status}; ${detail}`;
-        }
-        return null;
-      } catch (error) { return `${service}: ${error.name === 'AbortError' ? 'Verification timed out' : 'Service could not be reached'}`; }
-    })).then(checks => {
+    verifyStoredReadAccess({ signal: controller.signal }).then(result => {
       if (!active) return;
       const current = getCredentialProfile('GRAPH_READ_TOKEN');
       if (current && current !== token) return;
-      const failures = checks.filter(Boolean);
-      const message = failures.length || !services.length || !current
-        ? failures.join('; ') || 'Session expired or no services are configured. Reconnect registered services.'
-        : `Read session verified: ${services.map(([service]) => service).join(', ')}. Individual API keys are not displayed.`;
+      const message = result.status === 'verified' ? result.message.replace('Read access verified:', 'Read session verified:') + ' Individual API keys are not displayed.' : result.message;
       setSessionStatus(message);
       setResults({ GRAPH_READ_TOKEN: message });
     }).finally(() => { clearTimeout(timeout); if (active) setCheckingSession(false); });

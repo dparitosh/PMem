@@ -553,6 +553,7 @@ export default function DataImportPipeline() {
       return;
     }
 
+    const shouldPublish = publishOntology && ['xsd', 'xmi', 'ontology', 'owl', 'rdf', 'ttl'].includes(file.fileType);
     try {
       setStartedFiles(prev => new Set([...prev, fileId]));
       setPipelineStatus(prev => ({
@@ -568,7 +569,6 @@ export default function DataImportPipeline() {
         }
       }));
 
-      const shouldPublish = publishOntology && ['xsd', 'xmi'].includes(file.fileType);
       let uploadData;
       if (shouldPublish) {
         const form = new FormData();
@@ -632,6 +632,7 @@ export default function DataImportPipeline() {
       setError(null);
     } catch (err) {
       const backendDetail = err?.response?.data?.detail;
+      const outcomeUnknown = shouldPublish && (!err?.response || err.response.status >= 500);
       const detail = Array.isArray(backendDetail)
         ? backendDetail.map(item => `${Array.isArray(item.loc) ? item.loc.join('.') : 'Upload'}: ${item.msg || 'Invalid value'}`).join('; ')
         : typeof backendDetail === 'string' ? backendDetail : err.message;
@@ -642,8 +643,11 @@ export default function DataImportPipeline() {
           stage: 'error',
           backendStage: 'error',
           progress: 0,
-          status: 'failed',
-          message: String(detail),
+          status: outcomeUnknown ? 'outcome_unknown' : 'failed',
+          outcomeUnknown,
+          message: outcomeUnknown
+            ? `Publication outcome is unverified. Check the ontology and graph publication before retrying with the same source and metadata. ${String(detail)}`
+            : String(detail),
           error: true,
         }
       }));
@@ -1836,7 +1840,7 @@ export default function DataImportPipeline() {
       <fieldset style={{ marginBottom: '12px', color: C.textPrimary }}>
         <legend>Workflow access</legend>
         <p>Manage and validate keys in <a href="#/admin">Admin → Service credentials</a> before starting uploads or jobs.</p>
-        <label><input type="checkbox" checked={publishOntology} onChange={event => setPublishOntology(event.target.checked)} /> Convert XSD/XMI to OWL, register and publish to Neo4j after policy and quality checks</label>
+        <label><input type="checkbox" checked={publishOntology} onChange={event => setPublishOntology(event.target.checked)} /> Register and publish XSD/XMI or OWL/RDF/TTL to Neo4j after policy and quality checks</label>
         <p>Leave unchecked to retain the source using the selected generation type. For a restored failed job, remove the row and select the original source file again.</p>
       </fieldset>
       {/* Ontology Metadata Form Modal */}

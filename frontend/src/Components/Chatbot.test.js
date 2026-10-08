@@ -48,6 +48,21 @@ test('completed chat shows generation status and the telemetry run', async () =>
   fireEvent.click(screen.getByLabelText('Send chat question'));
   await screen.findByText('Model generation: unavailable');
   expect(screen.getByText('Agent run: chat-run-1')).toBeInTheDocument();
+  expect(screen.getByText('You · Question 1')).toBeVisible();
+  expect(screen.getByText('Companion · Response 1')).toBeVisible();
+  const history = screen.getByRole('log', { name: 'Conversation history' });
+  Object.defineProperties(history, { scrollHeight: { configurable: true, value: 1000 }, clientHeight: { configurable: true, value: 200 } });
+  fireEvent.scroll(history, { target: { scrollTop: 0 } });
+  expect(screen.getByRole('button', { name: 'Jump to latest message' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Jump to latest message' }));
+  expect(screen.queryByRole('button', { name: 'Jump to latest message' })).toBeNull();
+  fireEvent.scroll(history, { target: { scrollTop: 0 } });
+  fireEvent.change(screen.getByLabelText('Chat question'), { target: { value: 'Find requirement' } });
+  fireEvent.click(screen.getByLabelText('Send chat question'));
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Jump to latest message' })).toBeNull());
+  fireEvent.click(screen.getByRole('button', { name: 'Clear conversation' }));
+  expect(screen.queryByText('Verified evidence')).toBeNull();
+  expect(screen.getByLabelText('Chat question')).toHaveValue('');
 });
 
 test('Stop cancels generation and does not publish partial text as an answer', async () => {

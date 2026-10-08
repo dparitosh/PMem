@@ -27,11 +27,15 @@ class Failure(Exception):
 class AgentCatalogControls(unittest.IsolatedAsyncioTestCase):
     async def test_cancel_stops_at_checkpoint(self):
         with self.assertRaises(WorkflowCancelled):
-            await checkpoint(SimpleNamespace(get=lambda key: {"action": "cancel"}), "run_1")
+            writes = []
+            await checkpoint(SimpleNamespace(get=lambda key: {"action": "cancel"}, compare_and_put=lambda *args: writes.append(args) or True), "run_1")
+        self.assertEqual(writes[0][2]['effective_action'], 'cancel')
 
     async def test_pause_waits_for_resume(self):
         states = iter([{"action": "pause"}, {"action": "resume"}])
-        await checkpoint(SimpleNamespace(get=lambda key: next(states)), "run_1")
+        writes = []
+        await checkpoint(SimpleNamespace(get=lambda key: next(states), compare_and_put=lambda *args: writes.append(args) or True), "run_1")
+        self.assertEqual([item[2]['effective_action'] for item in writes], ['pause', 'resume'])
 
     def test_catalog_write_verifies_central_authority(self):
         module = ModuleType("backend.depo_platform.credentials")
@@ -79,7 +83,7 @@ class AgentCatalogControls(unittest.IsolatedAsyncioTestCase):
         class Graph:
             def parse(self, **kwargs): parsed.append(kwargs); return self
             def __len__(self): return 1
-        fn = extract("agentic_service/ontology_orchestrator.py", "_load", {"Graph": Graph, "Path": Path, "os": __import__("os")})
+        fn = extract("agentic_service/ontology_orchestrator.py", "_load", {"Graph": Graph, "Path": Path, "os": __import__("os"), "hashlib": __import__("hashlib")})
         with TemporaryDirectory() as temp, patch.dict(sys.modules, {"backend.ontology_service.catalog": native}):
             path = Path(temp) / "demo.owl"; path.write_text("turtle")
             fn(path)

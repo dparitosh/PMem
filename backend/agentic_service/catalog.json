@@ -1,81 +1,576 @@
 {
   "agents": [
-    {"id": "ontology-intake", "name": "Ontology Intake", "tools": ["engineering.inspect", "ontology.generate", "ontology.agent.intake"], "approval_required": false, "system_prompt": "Your role is ontology-intake. Task scope: Inspect retained RDF/OWL or engineering source evidence. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."},
-    {"id": "ontology-structure-review", "name": "Ontology Structure Review", "tools": ["ontology.agent.review"], "approval_required": false, "system_prompt": "Your role is ontology-structure-review. Task scope: Review declared classes, properties and observable structural issues. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."},
-    {"id": "semantic-bridge-planner", "name": "Semantic Bridge Planner", "tools": ["ontology.agent.bridge-plan"], "approval_required": false, "system_prompt": "Your role is semantic-bridge-planner. Task scope: Prepare grounded mapping candidates and unresolved validation checks. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."},
-    {"id": "ontology-export", "name": "Ontology Export", "tools": ["ontology.export"], "approval_required": true, "system_prompt": "Your role is ontology-export. Task scope: Export an approved ontology through its service contract. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."},
-    {"id": "ontology-orchestrator", "name": "Ontology Orchestrator", "tools": ["ontology.agent.orchestrate"], "approval_required": false, "system_prompt": "Your role is ontology-orchestrator. Task scope: Sequence deterministic intake, structure review and mapping planning. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."},
-    {"id": "context-analyst", "name": "Business Context Analyst", "tools": ["context.upsert", "context.search", "context.where_used"], "approval_required": false, "system_prompt": "Your role is context-analyst. Task scope: Search business context and update context objects after approval. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."},
-    {"id": "ontology-governor", "name": "Ontology Governor", "tools": ["ontology.register", "ontology.transition", "ontology.export", "ontology.merge.preview", "ontology.merge.apply", "bridge.mapping.preview", "bridge.mapping.publish", "engineering.publish"], "approval_required": true, "system_prompt": "Your role is ontology-governor. Task scope: Review and authorize registration, lifecycle changes, merge and mapping publication. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."},
-    {"id": "engineering-parser", "name": "Engineering Parser", "tools": ["engineering.inspect", "profile.inspect", "profile.execute"], "approval_required": false, "system_prompt": "Your role is engineering-parser. Task scope: Inspect engineering files and execute bounded source profiles. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."},
-    {"id": "graph-analyst", "name": "Graph Analyst", "tools": ["graph.analytics", "graph.neighborhood", "context.search", "context.where_used", "oslc.graph_rag"], "approval_required": false, "system_prompt": "Your role is graph-analyst. Task scope: Read ontology analytics, neighborhoods and graph-grounded evidence. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."},
-    {"id": "oslc-link-agent", "name": "OSLC Link Agent", "tools": ["oslc.remote.catalog", "oslc.remote.query", "oslc.remote.sync"], "approval_required": false, "system_prompt": "Your role is oslc-link-agent. Task scope: Read linked resources and synchronize approved remote OSLC data. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."},
-    {"id": "schema-set-agent", "name": "Engineering Schema-Set Agent", "tools": ["schema-set.standards", "schema-set.upload", "qif.task.status", "qif.task.commit"], "approval_required": false, "system_prompt": "Your role is schema-set-agent. Task scope: Inspect schema sets and commit reviewed QIF tasks. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."},
-    {"id": "data-product-governor", "name": "Data Product Governor", "tools": ["data.catalog.products", "data.product.preview", "data.product.publish", "data.product.revoke"], "approval_required": true, "system_prompt": "Your role is data-product-governor. Task scope: Preview, publish and revoke approved retained evidence packages. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."},
-    {"id": "ceim-mapper", "name": "CEIM Mapper", "tools": ["ceim.contract", "ceim.normalize.batch"], "approval_required": false, "system_prompt": "Your role is ceim-mapper. Task scope: Normalize supplied records against the CEIM contract. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."},
-    {"id": "data-quality-monitor", "name": "Data Quality Monitor", "tools": ["pipeline.telemetry", "pipeline.transform"], "approval_required": false, "system_prompt": "Your role is data-quality-monitor. Task scope: Inspect pipeline telemetry and request approved transformations. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."}
+    {
+      "id": "ontology-intake",
+      "name": "Ontology Intake",
+      "tools": [
+        "engineering.inspect",
+        "ontology.generate",
+        "ontology.agent.intake"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is ontology-intake. Task scope: Inspect retained RDF/OWL or engineering source evidence. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "ontology-structure-review",
+      "name": "Ontology Structure Review",
+      "tools": [
+        "ontology.agent.review"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is ontology-structure-review. Task scope: Review declared classes, properties and observable structural issues. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "semantic-bridge-planner",
+      "name": "Semantic Bridge Planner",
+      "tools": [
+        "ontology.agent.bridge-plan"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is semantic-bridge-planner. Task scope: Prepare grounded mapping candidates and unresolved validation checks. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "ontology-export",
+      "name": "Ontology Export",
+      "tools": [
+        "ontology.export"
+      ],
+      "approval_required": true,
+      "system_prompt": "Your role is ontology-export. Task scope: Export an approved ontology through its service contract. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "ontology-orchestrator",
+      "name": "Ontology Orchestrator",
+      "tools": [
+        "ontology.agent.orchestrate"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is ontology-orchestrator. Task scope: Sequence deterministic intake, structure review and mapping planning. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "context-analyst",
+      "name": "Business Context Analyst",
+      "tools": [
+        "context.upsert",
+        "context.search",
+        "context.where_used"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is context-analyst. Task scope: Search business context and update context objects after approval. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "ontology-governor",
+      "name": "Ontology Governor",
+      "tools": [
+        "ontology.register",
+        "ontology.transition",
+        "ontology.export",
+        "ontology.merge.preview",
+        "ontology.merge.apply",
+        "bridge.mapping.preview",
+        "bridge.mapping.publish",
+        "engineering.publish"
+      ],
+      "approval_required": true,
+      "system_prompt": "Your role is ontology-governor. Task scope: Review and authorize registration, lifecycle changes, merge and mapping publication. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "engineering-parser",
+      "name": "Engineering Parser",
+      "tools": [
+        "engineering.inspect",
+        "profile.inspect",
+        "profile.execute"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is engineering-parser. Task scope: Inspect engineering files and execute bounded source profiles. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "graph-analyst",
+      "name": "Graph Analyst",
+      "tools": [
+        "graph.analytics",
+        "graph.neighborhood",
+        "context.search",
+        "context.where_used",
+        "oslc.graph_rag"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is graph-analyst. Task scope: Read ontology analytics, neighborhoods and graph-grounded evidence. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "oslc-link-agent",
+      "name": "OSLC Link Agent",
+      "tools": [
+        "oslc.remote.catalog",
+        "oslc.remote.query",
+        "oslc.remote.sync"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is oslc-link-agent. Task scope: Read linked resources and synchronize approved remote OSLC data. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "schema-set-agent",
+      "name": "Engineering Schema-Set Agent",
+      "tools": [
+        "schema-set.standards",
+        "schema-set.upload",
+        "qif.task.status",
+        "qif.task.commit"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is schema-set-agent. Task scope: Inspect schema sets and commit reviewed QIF tasks. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "data-product-governor",
+      "name": "Data Product Governor",
+      "tools": [
+        "data.catalog.products",
+        "data.product.preview",
+        "data.product.publish",
+        "data.product.revoke"
+      ],
+      "approval_required": true,
+      "system_prompt": "Your role is data-product-governor. Task scope: Preview, publish and revoke approved retained evidence packages. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "ceim-mapper",
+      "name": "CEIM Mapper",
+      "tools": [
+        "ceim.contract",
+        "ceim.normalize.batch"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is ceim-mapper. Task scope: Normalize supplied records against the CEIM contract. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+    },
+    {
+      "id": "data-quality-monitor",
+      "name": "Data Quality Monitor",
+      "tools": [
+        "pipeline.telemetry",
+        "pipeline.transform",
+        "pipeline.run"
+      ],
+      "approval_required": false,
+      "system_prompt": "Your role is data-quality-monitor. Inspect retained data-job evidence and propose running an approved, enabled data-quality or profiling job through pipeline.run. Use the exact registered job_id and version. Never invent reports, job definitions or business rules. Execution and publication require the existing service approvals."
+    }
   ],
   "tools": [
-    {"id": "bridge.mapping.preview", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/workflows/bridge/previews", "mutates": true},
-    {"id": "bridge.mapping.publish", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/workflows/bridge/previews/{preview_id}/publish", "mutates": true},
-    {"id": "ontology.register", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/register", "mutates": true, "input_kind": "multipart"},
-    {"id": "ontology.transition", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/{ontology_id}/transition", "mutates": true},
-    {"id": "ontology.export", "transport": "openapi", "service": "ingestion", "method": "GET", "path": "/ontology/{ontology_id}/export", "mutates": false},
-    {"id": "oslc.graph_rag", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/oslc/graph-rag", "mutates": false},
-    {"id": "ontology.generate", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/generate", "mutates": false},
-    {"id": "ontology.merge.preview", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/merges/preview", "mutates": false},
-    {"id": "ontology.merge.apply", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/merges/{preview_id}/apply", "mutates": true},
-    {"id": "context.upsert", "transport": "openapi", "service": "ontology", "method": "POST", "path": "/ontologies/business-context/objects", "mutates": true},
-    {"id": "context.search", "transport": "openapi", "service": "ontology", "method": "GET", "path": "/ontologies/business-context/search", "mutates": false},
-    {"id": "context.where_used", "transport": "openapi", "service": "ontology", "method": "GET", "path": "/ontologies/business-context/objects/{object_id}/where-used", "mutates": false},
-    {"id": "engineering.inspect", "transport": "openapi", "service": "ingestion", "method": "POST", "path": "/schema-conversions/inspect", "mutates": false, "input_kind": "multipart"},
-    {"id": "engineering.publish", "transport": "openapi", "service": "ingestion", "method": "POST", "path": "/engineering-workflows", "mutates": true, "input_kind": "multipart"}
-    ,{"id": "profile.inspect", "transport": "openapi", "service": "ingestion", "method": "POST", "path": "/source-profiles/inspect", "mutates": false, "input_kind": "multipart"}
-    ,{"id": "profile.execute", "transport": "openapi", "service": "ingestion", "method": "POST", "path": "/source-profiles/{profile_id}/execute", "mutates": false, "input_kind": "multipart"}
-    ,{"id": "graph.analytics", "transport": "openapi", "service": "graph", "method": "GET", "path": "/graph/ontologies/{ontology_id}/analytics", "mutates": false}
-    ,{"id": "graph.neighborhood", "transport": "openapi", "service": "graph", "method": "GET", "path": "/graph/ontologies/{ontology_id}/neighborhood", "mutates": false}
-    ,{"id": "oslc.remote.catalog", "transport": "openapi", "service": "oslc", "method": "GET", "path": "/oslc/remote/catalog", "mutates": false}
-    ,{"id": "oslc.remote.query", "transport": "openapi", "service": "oslc", "method": "POST", "path": "/oslc/remote/query/{resource_type}", "mutates": false}
-    ,{"id": "oslc.remote.sync", "transport": "openapi", "service": "oslc", "method": "POST", "path": "/oslc/remote/sync/{resource_type}", "mutates": true}
-    ,{"id": "qif.catalog", "transport": "openapi", "service": "qif", "method": "GET", "path": "/qif/catalog", "mutates": false}
-    ,{"id": "qif.reference.task", "transport": "openapi", "service": "qif", "method": "POST", "path": "/qif/tasks/reference", "mutates": false, "input_kind": "form"}
-    ,{"id": "qif.task.status", "transport": "openapi", "service": "qif", "method": "GET", "path": "/qif/tasks/{task_id}", "mutates": false}
-    ,{"id": "qif.task.commit", "transport": "openapi", "service": "qif", "method": "POST", "path": "/qif/tasks/{task_id}/commit", "mutates": true}
-    ,{"id": "schema-set.standards", "transport": "openapi", "service": "qif", "method": "GET", "path": "/qif/schema-sets/standards", "mutates": false}
-    ,{"id": "schema-set.upload", "transport": "openapi", "service": "qif", "method": "POST", "path": "/qif/schema-sets/upload", "mutates": false, "input_kind": "multipart"}
-    ,{"id": "data.catalog.products", "transport": "openapi", "service": "catalog", "method": "GET", "path": "/catalog/products", "mutates": false}
-    ,{"id": "data.product.preview", "transport": "openapi", "service": "data_products", "method": "POST", "path": "/data-products/preview", "mutates": false}
-    ,{"id": "data.product.publish", "transport": "openapi", "service": "data_products", "method": "POST", "path": "/data-products/publish", "mutates": true}
-    ,{"id": "data.product.revoke", "transport": "openapi", "service": "data_products", "method": "POST", "path": "/data-products/{product_version}/revoke", "mutates": true}
-    ,{"id": "ceim.contract", "transport": "openapi", "service": "ceim", "method": "GET", "path": "/ceim/contract", "mutates": false}
-    ,{"id": "ceim.normalize.batch", "transport": "openapi", "service": "ceim", "method": "POST", "path": "/ceim/normalize/batch", "mutates": false}
-    ,{"id": "pipeline.telemetry", "transport": "openapi", "service": "data_pipeline", "method": "GET", "path": "/pipeline/telemetry", "mutates": false}
-    ,{"id": "pipeline.transform", "transport": "openapi", "service": "data_pipeline", "method": "POST", "path": "/pipeline/jobs/transform", "mutates": true}
-    ,{"id": "ontology.agent.orchestrate", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/ontology-agents/orchestrate", "mutates": false}
-    ,{"id": "ontology.agent.intake", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/ontology-agents/intake", "mutates": false}
-    ,{"id": "ontology.agent.review", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/ontology-agents/review", "mutates": false}
-    ,{"id": "ontology.agent.bridge-plan", "transport": "openapi", "service": "agentic", "method": "POST", "path": "/ontology-agents/bridge-plan", "mutates": false}
+    {
+      "id": "bridge.mapping.preview",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/workflows/bridge/previews",
+      "mutates": true
+    },
+    {
+      "id": "bridge.mapping.publish",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/workflows/bridge/previews/{preview_id}/publish",
+      "mutates": true
+    },
+    {
+      "id": "ontology.register",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "POST",
+      "path": "/ontologies/register",
+      "mutates": true,
+      "input_kind": "multipart"
+    },
+    {
+      "id": "ontology.transition",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "POST",
+      "path": "/ontologies/{ontology_id}/transition",
+      "mutates": true
+    },
+    {
+      "id": "ontology.export",
+      "transport": "openapi",
+      "service": "ingestion",
+      "method": "GET",
+      "path": "/ontology/{ontology_id}/export",
+      "mutates": false
+    },
+    {
+      "id": "oslc.graph_rag",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/oslc/graph-rag",
+      "mutates": false
+    },
+    {
+      "id": "ontology.generate",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "POST",
+      "path": "/ontologies/generate",
+      "mutates": false
+    },
+    {
+      "id": "ontology.merge.preview",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "POST",
+      "path": "/ontologies/merges/preview",
+      "mutates": false
+    },
+    {
+      "id": "ontology.merge.apply",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "POST",
+      "path": "/ontologies/merges/{preview_id}/apply",
+      "mutates": true
+    },
+    {
+      "id": "context.upsert",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "POST",
+      "path": "/ontologies/business-context/objects",
+      "mutates": true
+    },
+    {
+      "id": "context.search",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "GET",
+      "path": "/ontologies/business-context/search",
+      "mutates": false
+    },
+    {
+      "id": "context.where_used",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "GET",
+      "path": "/ontologies/business-context/objects/{object_id}/where-used",
+      "mutates": false
+    },
+    {
+      "id": "engineering.inspect",
+      "transport": "openapi",
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/schema-conversions/inspect",
+      "mutates": false,
+      "input_kind": "multipart"
+    },
+    {
+      "id": "engineering.publish",
+      "transport": "openapi",
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/engineering-workflows",
+      "mutates": true,
+      "input_kind": "multipart"
+    },
+    {
+      "id": "profile.inspect",
+      "transport": "openapi",
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/source-profiles/inspect",
+      "mutates": false,
+      "input_kind": "multipart"
+    },
+    {
+      "id": "profile.execute",
+      "transport": "openapi",
+      "service": "ingestion",
+      "method": "POST",
+      "path": "/source-profiles/{profile_id}/execute",
+      "mutates": false,
+      "input_kind": "multipart"
+    },
+    {
+      "id": "graph.analytics",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "GET",
+      "path": "/graph/ontologies/{ontology_id}/analytics",
+      "mutates": false
+    },
+    {
+      "id": "graph.neighborhood",
+      "transport": "openapi",
+      "service": "graph",
+      "method": "GET",
+      "path": "/graph/ontologies/{ontology_id}/neighborhood",
+      "mutates": false
+    },
+    {
+      "id": "oslc.remote.catalog",
+      "transport": "openapi",
+      "service": "oslc",
+      "method": "GET",
+      "path": "/oslc/remote/catalog",
+      "mutates": false
+    },
+    {
+      "id": "oslc.remote.query",
+      "transport": "openapi",
+      "service": "oslc",
+      "method": "POST",
+      "path": "/oslc/remote/query/{resource_type}",
+      "mutates": false
+    },
+    {
+      "id": "oslc.remote.sync",
+      "transport": "openapi",
+      "service": "oslc",
+      "method": "POST",
+      "path": "/oslc/remote/sync/{resource_type}",
+      "mutates": true
+    },
+    {
+      "id": "qif.catalog",
+      "transport": "openapi",
+      "service": "qif",
+      "method": "GET",
+      "path": "/qif/catalog",
+      "mutates": false
+    },
+    {
+      "id": "qif.reference.task",
+      "transport": "openapi",
+      "service": "qif",
+      "method": "POST",
+      "path": "/qif/tasks/reference",
+      "mutates": false,
+      "input_kind": "form"
+    },
+    {
+      "id": "qif.task.status",
+      "transport": "openapi",
+      "service": "qif",
+      "method": "GET",
+      "path": "/qif/tasks/{task_id}",
+      "mutates": false
+    },
+    {
+      "id": "qif.task.commit",
+      "transport": "openapi",
+      "service": "qif",
+      "method": "POST",
+      "path": "/qif/tasks/{task_id}/commit",
+      "mutates": true
+    },
+    {
+      "id": "schema-set.standards",
+      "transport": "openapi",
+      "service": "qif",
+      "method": "GET",
+      "path": "/qif/schema-sets/standards",
+      "mutates": false
+    },
+    {
+      "id": "schema-set.upload",
+      "transport": "openapi",
+      "service": "qif",
+      "method": "POST",
+      "path": "/qif/schema-sets/upload",
+      "mutates": false,
+      "input_kind": "multipart"
+    },
+    {
+      "id": "data.catalog.products",
+      "transport": "openapi",
+      "service": "catalog",
+      "method": "GET",
+      "path": "/catalog/products",
+      "mutates": false
+    },
+    {
+      "id": "data.product.preview",
+      "transport": "openapi",
+      "service": "data_products",
+      "method": "POST",
+      "path": "/data-products/preview",
+      "mutates": false
+    },
+    {
+      "id": "data.product.publish",
+      "transport": "openapi",
+      "service": "data_products",
+      "method": "POST",
+      "path": "/data-products/publish",
+      "mutates": true
+    },
+    {
+      "id": "data.product.revoke",
+      "transport": "openapi",
+      "service": "data_products",
+      "method": "POST",
+      "path": "/data-products/{product_version}/revoke",
+      "mutates": true
+    },
+    {
+      "id": "ceim.contract",
+      "transport": "openapi",
+      "service": "ceim",
+      "method": "GET",
+      "path": "/ceim/contract",
+      "mutates": false
+    },
+    {
+      "id": "ceim.normalize.batch",
+      "transport": "openapi",
+      "service": "ceim",
+      "method": "POST",
+      "path": "/ceim/normalize/batch",
+      "mutates": false
+    },
+    {
+      "id": "pipeline.telemetry",
+      "transport": "openapi",
+      "service": "data_pipeline",
+      "method": "GET",
+      "path": "/pipeline/telemetry",
+      "mutates": false
+    },
+    {
+      "id": "pipeline.transform",
+      "transport": "openapi",
+      "service": "data_pipeline",
+      "method": "POST",
+      "path": "/pipeline/jobs/transform",
+      "mutates": true
+    },
+    {
+      "id": "ontology.agent.orchestrate",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/ontology-agents/orchestrate",
+      "mutates": false
+    },
+    {
+      "id": "ontology.agent.intake",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/ontology-agents/intake",
+      "mutates": false
+    },
+    {
+      "id": "ontology.agent.review",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/ontology-agents/review",
+      "mutates": false
+    },
+    {
+      "id": "ontology.agent.bridge-plan",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/ontology-agents/bridge-plan",
+      "mutates": false
+    },
+    {
+      "id": "pipeline.run",
+      "transport": "openapi",
+      "service": "data_pipeline",
+      "method": "POST",
+      "path": "/pipeline/jobs/definitions/{job_id}/{version}/run",
+      "mutates": true
+    }
   ],
   "mcp_servers": [
-    {"id": "semantica", "transport": "stdio", "command": "python", "args": ["-m", "semantica.mcp_server"], "environment": ["SEMANTICA_KG_PATH"], "operations": ["ontology", "reasoning", "validation"]}
+    {
+      "id": "semantica",
+      "transport": "stdio",
+      "command": "python",
+      "args": [
+        "-m",
+        "semantica.mcp_server"
+      ],
+      "environment": [
+        "SEMANTICA_KG_PATH"
+      ],
+      "operations": [
+        "ontology",
+        "reasoning",
+        "validation"
+      ]
+    }
   ],
   "workflows": [
-    {"id": "data-product-governed-publication", "name": "Validate and publish retained data-product evidence", "steps": [
-      {"agent_id": "data-product-governor", "tool_id": "data.product.preview"},
-      {"agent_id": "data-product-governor", "tool_id": "data.product.publish", "approval_required": true}
-    ]},
-    {"id": "engineering-governed-publish", "name": "Engineering schema to governed ontology", "steps": [
-      {"agent_id": "ontology-intake", "tool_id": "engineering.inspect"},
-      {"agent_id": "ontology-governor", "tool_id": "engineering.publish", "approval_required": true}
-    ]},
-    {"id": "business-context-enrichment", "name": "Business object context enrichment", "steps": [
-      {"agent_id": "context-analyst", "tool_id": "context.upsert"},
-      {"agent_id": "context-analyst", "tool_id": "context.where_used"}
-    ]},
-    {"id": "ontology-review-and-bridge-plan", "name": "Ontology intake, structure review and Semantic Bridge planning", "steps": [
-      {"agent_id": "ontology-intake", "tool_id": "ontology.agent.intake"},
-      {"agent_id": "ontology-structure-review", "tool_id": "ontology.agent.review", "input_bindings": {"artifact_digest": "$steps.1.result.artifact_digest"}},
-      {"agent_id": "semantic-bridge-planner", "tool_id": "ontology.agent.bridge-plan", "input_bindings": {"artifact_digest": "$steps.1.result.artifact_digest"}}
-    ]}
+    {
+      "id": "data-product-governed-publication",
+      "name": "Validate and publish retained data-product evidence",
+      "steps": [
+        {
+          "agent_id": "data-product-governor",
+          "tool_id": "data.product.preview"
+        },
+        {
+          "agent_id": "data-product-governor",
+          "tool_id": "data.product.publish",
+          "approval_required": true
+        }
+      ]
+    },
+    {
+      "id": "engineering-governed-publish",
+      "name": "Engineering schema to governed ontology",
+      "steps": [
+        {
+          "agent_id": "ontology-intake",
+          "tool_id": "engineering.inspect"
+        },
+        {
+          "agent_id": "ontology-governor",
+          "tool_id": "engineering.publish",
+          "approval_required": true
+        }
+      ]
+    },
+    {
+      "id": "business-context-enrichment",
+      "name": "Business object context enrichment",
+      "steps": [
+        {
+          "agent_id": "context-analyst",
+          "tool_id": "context.upsert"
+        },
+        {
+          "agent_id": "context-analyst",
+          "tool_id": "context.where_used"
+        }
+      ]
+    },
+    {
+      "id": "ontology-review-and-bridge-plan",
+      "name": "Ontology intake, structure review and Semantic Bridge planning",
+      "steps": [
+        {
+          "agent_id": "ontology-intake",
+          "tool_id": "ontology.agent.intake"
+        },
+        {
+          "agent_id": "ontology-structure-review",
+          "tool_id": "ontology.agent.review",
+          "input_bindings": {
+            "artifact_digest": "$steps.1.result.artifact_digest"
+          }
+        },
+        {
+          "agent_id": "semantic-bridge-planner",
+          "tool_id": "ontology.agent.bridge-plan",
+          "input_bindings": {
+            "artifact_digest": "$steps.1.result.artifact_digest"
+          }
+        }
+      ]
+    }
   ]
 }

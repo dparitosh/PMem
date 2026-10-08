@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { bridgeApi } from '../../services/bridgeApi';
 import agenticAPI from '../../services/agenticApi';
 import { bridgeReviewPayload } from '../../services/bridgeReviewPayload';
+import WorkflowTaskPanel from '../WorkflowTaskPanel';
 
 
 class PreviewInputError extends Error {}
@@ -89,11 +90,11 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
   const hasApproval = Boolean(actor.trim() && getCredentialProfile('AGENTIC_APPROVAL_TOKEN'));
   const canPublish = hasApproval && preview && selected.length > 0 && confirmed && !busy && (!job || ['approved', 'retryable'].includes(job.status));
   const buttonStyle = { padding: '8px 12px', marginRight: 8, marginTop: 8 };
-  return <section aria-label="Governed Semantic Bridge jobs" style={{ background: 'var(--ui-surface, #fff)', color: 'var(--ui-text, #1f2933)', padding: 16, border: '1px solid var(--ui-border, #ccd5df)', borderRadius: 8, marginTop: 16 }}>
-    <h3>Agent recommendations → review → publish</h3>
-    <p>Ontology Governor creates the saved preview and publishes only your reviewed selection. Manual mapping drafts are included and validated against the selected source and ontology. Nothing is selected automatically.</p>
-    <details><summary>Approval identity</summary>
-      <p>Manage and validate service credentials in Admin. Supply the approver identity for reviewed publication here.</p>
+  return <section className="depo-bridge-review" aria-label="Governed Semantic Bridge jobs" style={{ background: 'var(--ui-surface, #fff)', color: 'var(--ui-text, #1f2933)', padding: 16, border: '1px solid var(--ui-border, #ccd5df)', borderRadius: 8, marginTop: 16 }}>
+    <h3>Review and publish mappings</h3>
+    <p>Create a preview, review the evidence, and select mappings to publish. Manual drafts are validated with the same source and target.</p>
+    <details><summary>Who approves publication?</summary>
+      <p>The approver is the person authorised to accept these mappings. The Ontology Governor prepares and checks the operation; it cannot approve on your behalf. Connect governed credentials in Admin.</p>
       <label>Approver <input aria-label="Approver" value={actor} onChange={e => setActor(e.target.value)} /></label>{' '}
     </details>
     {!hasApproval && <p>Enter an approver and connect governed agent access in Admin before preview or publication.</p>}
@@ -101,13 +102,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
       const result = await api.preview(ontologyId, importTaskId, {approved_by: actor.trim(), approval_token: getCredentialProfile('AGENTIC_APPROVAL_TOKEN')}, manualMappings);
       if (current()) adoptPreview(result.data);
     })}>Create preview</button>
-    <button type="button" style={buttonStyle} disabled={busy || !ontologyId || !importTaskId || !agenticAPI.isConfigured()} onClick={() => invoke(async current => {
-      const result = await agenticAPI.orchestrateOntology({ workflow_id: 'ontology_review', ontology_id: ontologyId, import_task_id: importTaskId }, authOptions(getCredentialProfile('GRAPH_READ_TOKEN')));
-      if (current()) {
-        try { setAgentReport(bridgeReviewPayload(result.data)); }
-        catch { throw new PreviewInputError('Ontology agent review returned an invalid response. Refresh before retrying.'); }
-      }
-    })}>Run ontology agent review</button>
+    <WorkflowTaskPanel workflowId="ontology-review-and-bridge-plan" inputs={{ ontology_id: ontologyId, import_task_id: importTaskId }} label="Run ontology agent review" disabled={busy || !ontologyId || !importTaskId || !agenticAPI.isConfigured()} onResult={run => setAgentReport(bridgeReviewPayload({ steps: run.traces.map(trace => ({ result: trace.result })) }))} />
     {!agenticAPI.isConfigured() && <small>Enable the Agentic service to run ontology intake and review.</small>}
     {agentReport && <div role="status" style={{ marginTop: 8, padding: 8, background: 'var(--ui-surface)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)' }}>
       <strong>Ontology agent review:</strong> {agentReport.steps?.length || 0} steps completed; publication requires human approval.
@@ -128,10 +123,12 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
             <p>{question.question}</p><p>Evidence IRIs: {question.evidence_iris?.join(', ') || 'No citation supplied'}</p>
           </div>)}
           <p>Limitations: {agentReport.steps.at(-1).result.llm.review.limitations}</p>
+          {agentReport.steps.at(-1).result.llm.review.prompt_details && <details><summary>Prompt details used for this review</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 300, overflow: 'auto' }}>{JSON.stringify(agentReport.steps.at(-1).result.llm.review.prompt_details, null, 2)}</pre></details>}
         </div>}
         <p>{agentReport.steps.at(-1).result.llm.text || (agentReport.steps.at(-1).result.llm.enabled ? 'Model unavailable; deterministic review evidence remains available.' : 'Model recommendations are disabled.')}</p>
       </div>}
     </div>}
+    <details className="depo-saved-recommendation"><summary>Resume a saved preview</summary>
     <label>Saved preview ID <input aria-label="Saved preview ID" value={resumeId} onChange={e => setResumeId(e.target.value)} /></label>
     <button type="button" style={buttonStyle} disabled={busy || !resumeId.trim() || !ontologyId || !importTaskId} onClick={() => invoke(async current => {
       const result = await api.status(resumeId.trim(), getCredentialProfile('GRAPH_READ_TOKEN'));
@@ -147,6 +144,7 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
         if (current()) setJob(null);
       }
     })}>Load preview</button>
+    </details>
     {message && <p role="alert">{message}</p>}
     {preview && <>
       <p><strong>Preview:</strong> {preview.job_id} · {preview.candidates.length} candidates · {selected.length} selected</p>
@@ -195,8 +193,4 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
       </div>}
     </>}
   </section>;
-}
-
-function authOptions(token) {
-  return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
 }

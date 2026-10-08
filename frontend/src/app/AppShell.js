@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   IxApplication,
   IxApplicationHeader,
@@ -11,11 +11,13 @@ import {
   IxMenuItem,
 } from '@siemens/ix-react';
 import { navigationItems, pageLabel } from './navigation';
-import { getServiceAuthToken } from '../services/serviceAuth';
+import { getServiceAuthToken, wasBrowserSessionExpired } from '../services/serviceAuth';
 import RunRecoveryNotice from './RunRecoveryNotice';
+import { verifyStoredReadAccess } from '../services/readAccessVerification';
 import './AppShell.css';
 
 const THEME_STORAGE_KEY = 'depo.colorSchema';
+const EXPIRED_ACCESS_MESSAGE = 'API session expired. Use Reconnect access to restore registered scopes.';
 
 function initialColorSchema() {
   try {
@@ -40,8 +42,37 @@ export default function AppShell({
 }) {
   const [colorSchema, setColorSchema] = useState(initialColorSchema);
   const [apiAccessConfigured, setApiAccessConfigured] = useState(() => Boolean(getServiceAuthToken()));
+  const [verifyingAccess, setVerifyingAccess] = useState(false);
+  const [accessMessage, setAccessMessage] = useState(() => wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : '');
+  const accessRequest = useRef(null);
+  useEffect(() => () => { accessRequest.current?.abort(); accessRequest.current = null; }, []);
+  const openAccess = () => {
+    try { sessionStorage.setItem('depo:admin-tab', 'access'); } catch {}
+    window.dispatchEvent(new CustomEvent('depo:admin-section', { detail: 'access' }));
+    onPageChange('admin');
+  };
+  const revalidateAccess = async () => {
+    if (accessRequest.current) return;
+    const controller = new AbortController(); accessRequest.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    setVerifyingAccess(true); setAccessMessage('Checking stored API access…');
+    try {
+      const result = await verifyStoredReadAccess({ signal: controller.signal });
+      if (!controller.signal.aborted) {
+        setAccessMessage(result.message);
+      }
+      if (result.status === 'reconnect_required' && (!controller.signal.aborted || wasBrowserSessionExpired())) openAccess();
+    } catch { if (!controller.signal.aborted) setAccessMessage('Access could not be verified. Try again.'); }
+    finally {
+      clearTimeout(timeout);
+      if (accessRequest.current === controller) {
+        accessRequest.current = null; setVerifyingAccess(false);
+        if (controller.signal.aborted) setAccessMessage('Verification timed out. Retry when services are reachable.');
+      }
+    }
+  };
   useEffect(() => {
-    const changed = () => { setApiAccessConfigured(Boolean(getServiceAuthToken())); onServiceAuthChange?.(); };
+    const changed = event => { setApiAccessConfigured(Boolean(getServiceAuthToken())); setAccessMessage(event.type === 'depo:session-expired' || wasBrowserSessionExpired() ? EXPIRED_ACCESS_MESSAGE : ''); onServiceAuthChange?.(); };
     window.addEventListener('depo:credentials-changed', changed);
     window.addEventListener('depo:credentials-cleared', changed);
     window.addEventListener('depo:session-expired', changed);
@@ -91,12 +122,13 @@ export default function AppShell({
           <IxButton
             type="button"
             variant="tertiary"
-            onClick={() => {
-              onPageChange('admin');
-            }}
+            onClick={openAccess}
             aria-label="Configure API access"
           >
-            API access{apiAccessConfigured ? ' key stored' : ''}
+            API access{apiAccessConfigured ? ' configured' : ''}
+          </IxButton>
+          <IxButton type="button" variant="tertiary" disabled={verifyingAccess} onClick={revalidateAccess} aria-label="Revalidate or reconnect API access">
+            {verifyingAccess ? 'Checking access…' : apiAccessConfigured ? 'Revalidate access' : 'Reconnect access'}
           </IxButton>
           <IxButton
             id="depo-chat-toggle"
@@ -145,6 +177,7 @@ export default function AppShell({
         <IxContent id="main-content" className="depo-ix-content">
 
           <div className="depo-ix-page">
+            {accessMessage && <div aria-live="polite" className="depo-alert">{accessMessage}</div>}
             <IxContentHeader
               headerTitle={pageLabel(activePage)}
               headerSubtitle={activePage === 'home' ? 'Digital thread workspace' : undefined}

@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import hashlib
 import json
+import asyncio
 from starlette.concurrency import run_in_threadpool
 from backend.depo_platform.service_urls import service_url
 from typing import Any
@@ -26,15 +27,29 @@ class EngineeringWorkflow:
         self.converter = converter or EngineeringSchemaConverter()
         self.ontology_url = service_url("ONTOLOGY_SERVICE_URL", "http://127.0.0.1:8011/api/v1")
         self.graph_url = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1")
-        self.timeout = float(os.getenv("SERVICE_REQUEST_TIMEOUT_SECONDS", "30"))
+        from backend.depo_platform.network import bounded_timeout_seconds
+        self.timeout = bounded_timeout_seconds('SERVICE_REQUEST_TIMEOUT_SECONDS', default=30, maximum=300)
 
     async def run(
+        self, **kwargs,
+    ) -> dict[str, Any]:
+        from backend.depo_platform.network import bounded_timeout_seconds
+        deadline = bounded_timeout_seconds('ENGINEERING_WORKFLOW_TIMEOUT_SECONDS', default=300, maximum=3600)
+        async with asyncio.timeout(deadline):
+            return await self._run(**kwargs)
+
+    async def _run(
         self, *, filename: str, content: bytes, ontology_name: str = "", prefix: str = "",
         description: str = "", register: bool = True, publish: bool = False,
         enforce_quality: bool = True, policy_exception_ids: list[str] | None = None,
         request_id: str | None = None,
     ) -> dict[str, Any]:
-        conversion = await run_in_threadpool(self.converter.convert, filename=filename, content=content)
+        from pathlib import Path
+        if Path(filename).suffix.lower() in {'.ttl', '.rdf', '.owl'}:
+            from .rdf_conversion import convert_rdf
+            conversion = await run_in_threadpool(convert_rdf, filename=filename, content=content)
+        else:
+            conversion = await run_in_threadpool(self.converter.convert, filename=filename, content=content)
         if publish and not register:
             raise ValueError("Graph publication requires ontology registration")
         if not register:
@@ -56,7 +71,7 @@ class EngineeringWorkflow:
                 json.dumps([filename, ontology_name, prefix, description], ensure_ascii=False).encode("utf-8") + b"\0" + content
             ).hexdigest(),
         }
-        async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
+        async with httpx.AsyncClient(timeout=self.timeout, headers=headers, trust_env=False) as client:
             policy_response = await client.post(
                 f"{self.ontology_url}/ontologies/policies/evaluate",
                 json={"decision": {"outcome": "approved", "confidence": 1.0,
@@ -103,8 +118,14 @@ class EngineeringWorkflow:
                 headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API", endpoint=self.graph_url),
             )
             published.raise_for_status()
+            receipt = published.json()
+            if (not isinstance(receipt, dict)
+                    or receipt.get("status") != "success"
+                    or receipt.get("ontology_id") != registration["ontology_id"]
+                    or receipt.get("publication_id") != data["source"].split(":", 1)[1]):
+                raise RuntimeError("Graph publication outcome is unverified: receipt identity did not match. Reconcile publication before retrying.")
             result["status"] = "published"
-            result["graph_publication"] = published.json()
+            result["graph_publication"] = receipt
             return result
 
     @staticmethod

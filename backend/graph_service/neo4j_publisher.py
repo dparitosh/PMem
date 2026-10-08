@@ -9,6 +9,7 @@ from typing import Any
 
 from neo4j import GraphDatabase, Query
 from rdflib import Graph, Literal
+from rdflib.compare import to_canonical_graph
 from rdflib.namespace import OWL, RDF, RDFS
 from semantica.kg import GraphAnalyzer
 from . import query_repository as cypher
@@ -51,6 +52,7 @@ class Neo4jPublisher:
             raise RuntimeError("NEO4J_PASS is not configured")
         rdf_graph = Graph()
         rdf_graph.parse(data=content, format="turtle")
+        rdf_graph = to_canonical_graph(rdf_graph)
         labels = {str(subject): str(label) for subject, label in rdf_graph.subject_objects(RDFS.label)}
         class_iris = {str(subject) for subject in rdf_graph.subjects(RDF.type, OWL.Class)}
         property_iris = {
@@ -114,6 +116,13 @@ class Neo4jPublisher:
             for relationship in ceim_relationships.values()
         })
         def publish_transaction(tx):
+            # The permanent, uniquely constrained receipt key serializes writers.
+            tx.run("MERGE (lock:OntologyPublication {ontology_id: $ontology_id, publication_id: '__lock__'}) SET lock.publication_lock = $updated_at",
+                   ontology_id=ontology_id, updated_at=now).consume()
+            tx.run("MATCH (a:OntologyResource {ontology_id: $ontology_id})-[edge]->(b:OntologyResource {ontology_id: $ontology_id}) WHERE edge.ontology_id = $ontology_id AND type(edge) IN $types DELETE edge",
+                   ontology_id=ontology_id, types=list(relationships)).consume()
+            tx.run("MATCH (node:RetainedOntologyIdentity {ontology_id: $ontology_id}) WHERE node.iri IN $iris SET node:OntologyResource REMOVE node:RetainedOntologyIdentity",
+                   ontology_id=ontology_id, iris=list(resource_iris)).consume()
             tx.run(resource_query, rows=resources, ontology_id=ontology_id, prefix=prefix, updated_at=now).consume()
             for relation_type, rows in relationships.items():
                 if not rows:
@@ -125,13 +134,24 @@ class Neo4jPublisher:
                 {relation_queries[relation_type]}
                 """
                 tx.run(query, rows=rows, ontology_id=ontology_id).consume()
+            # Keep externally referenced identities, but remove their projection
+            # label so stale records cannot inflate RDF metrics or search.
+            tx.run("MATCH (node:OntologyResource {ontology_id: $ontology_id}) WHERE NOT node.iri IN $iris REMOVE node:OntologyResource SET node:RetainedOntologyIdentity",
+                   ontology_id=ontology_id, iris=list(resource_iris)).consume()
+            tx.run("MATCH (node:RetainedOntologyIdentity {ontology_id: $ontology_id}) WHERE NOT (node)--() DELETE node",
+                   ontology_id=ontology_id).consume()
+            tx.run("MATCH (node:OntologyResource {ontology_id: $ontology_id}) REMOVE node:RetainedOntologyIdentity",
+                   ontology_id=ontology_id).consume()
+            tx.run("MATCH (receipt:OntologyPublication {ontology_id: $ontology_id}) SET receipt.current = false",
+                   ontology_id=ontology_id).consume()
             if publication_id:
                 tx.run(
                     """
                     MERGE (receipt:OntologyPublication {ontology_id: $ontology_id, publication_id: $publication_id})
+                    ON CREATE SET receipt.published_at = $published_at
                     SET receipt.prefix = $prefix, receipt.resources = $resources,
                         receipt.relationships = $relationships, receipt.hierarchy_edges = $hierarchy_edges,
-                        receipt.status = 'published', receipt.published_at = $published_at
+                        receipt.status = 'published', receipt.current = true
                     """,
                     ontology_id=ontology_id, publication_id=publication_id, prefix=prefix,
                     resources=len(resources), relationships=sum(len(rows) for rows in relationships.values()),
@@ -154,7 +174,7 @@ class Neo4jPublisher:
             """
             MATCH (receipt:OntologyPublication {ontology_id: $ontology_id, publication_id: $publication_id})
             RETURN receipt { .ontology_id, .publication_id, .prefix, .resources, .relationships,
-                             .hierarchy_edges, .status, .published_at } AS receipt
+                             .hierarchy_edges, .status, .published_at, .current } AS receipt
             """,
             ontology_id=ontology_id, publication_id=publication_id,
         )

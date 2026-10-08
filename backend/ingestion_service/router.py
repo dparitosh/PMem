@@ -284,8 +284,10 @@ async def run_engineering_workflow(
             description=description, register=register_ontology, request_id=getattr(request.state, "request_id", None),
             publish=publish, enforce_quality=enforce_quality, policy_exception_ids=policy_exception_ids,
         )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail='Engineering workflow deadline exceeded. Publication outcome may be uncertain; retry the same source and metadata to reconcile it.') from exc
     except (httpx.HTTPError, RuntimeError) as exc:
-        raise HTTPException(status_code=503, detail=f"Ontology service is unavailable: {exc}") from exc
+        raise HTTPException(status_code=503, detail='A dependent engineering workflow service is unavailable. Check ingestion logs and retry the same source and metadata.') from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

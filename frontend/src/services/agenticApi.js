@@ -33,7 +33,8 @@ function agenticUrl(endpoint) {
 }
 
 export const agenticAPI = {
-  getRun: (id, kind = 'workflow') => agenticClient.get(agenticUrl(`/api/v1/${kind === 'dt' ? 'integrations/dt-requirements-design/runs' : kind === 'workflow' ? 'workflow-runs' : 'runs'}/${encodeURIComponent(id)}`)),
+  controlWorkflow: (id, action, options = {}) => agenticClient.post(agenticUrl(`/api/v1/workflow-runs/${encodeURIComponent(id)}/control`), { action }, options),
+  getRun: (id, kind = 'workflow', options = {}) => agenticClient.get(agenticUrl(`/api/v1/${kind === 'dt' ? 'integrations/dt-requirements-design/runs' : kind === 'workflow' ? 'workflow-runs' : 'runs'}/${encodeURIComponent(id)}`), options),
   isEnabled: () => true,
   isConfigured: () => Boolean(config.semanticServiceUrls?.agentic),
   health: (options = {}) => agenticClient.get(agenticUrl(API.agentic.health), options),

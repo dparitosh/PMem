@@ -3,6 +3,8 @@
 import { config } from '../config';
 import { operationForUrl } from './serviceContractRegistry';
 const profileTokens = new Map();
+let browserAccessExpired = false;
+export function wasBrowserSessionExpired() { return browserAccessExpired; }
 export function setCredentialProfile(profile, value) {
   if (!/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile)) throw new Error('Invalid credential profile');
   const token = String(value || '').trim();
@@ -10,7 +12,7 @@ export function setCredentialProfile(profile, value) {
   if (previous !== token) clearPendingPublications();
   if (profile === 'GRAPH_READ_TOKEN') {
     if (browserSession && token !== browserSession.token) expireBrowserSession(browserSession.token);
-    serviceToken = token; persistBrowserSession(); return;
+    serviceToken = token; if (token) browserAccessExpired = false; persistBrowserSession(); return;
   }
   if (token) profileTokens.set(profile, token); else profileTokens.delete(profile);
   persistBrowserSession();
@@ -32,7 +34,7 @@ function clearPendingPublications() {
     const storage = window.sessionStorage;
     for (let index = storage.length - 1; index >= 0; index--) {
       const key = storage.key(index);
-      if (key?.startsWith('depo:pending-publication:')) storage.removeItem(key);
+        if (key?.startsWith('depo:pending-publication:') || key?.startsWith('["depo:task-run",') || key === 'depo:agent-recommendation') storage.removeItem(key);
     }
   } catch { /* Restricted storage must not prevent credential revocation. */ }
 }
@@ -74,6 +76,7 @@ function checkBrowserSessionExpiry() {
 
 export function expireBrowserSession(token) {
   if (!browserSession || browserSession.token !== token) return;
+  browserAccessExpired = true;
   clearPendingPublications();
   if (serviceToken === token) serviceToken = '';
   for (const [profile, value] of profileTokens) if (value === token) profileTokens.delete(profile);
@@ -108,6 +111,7 @@ export function setServiceAuthToken(value) {
 }
 
 export function clearServiceAuthToken() {
+  browserAccessExpired = false;
   clearPendingPublications();
   clearTimeout(expiryTimer); expiryTimer = null; browserSession = null;
   removeStoredSession();

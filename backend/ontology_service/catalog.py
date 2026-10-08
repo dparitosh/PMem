@@ -315,6 +315,16 @@ class OntologyCatalog:
         metadata.update({"status": "superseded", "superseded_by": _safe_token(successor_id, field="successor_id"), "superseded_at": _now()})
         return self._save_metadata(metadata)
 
+    def with_publication_lock(self, ontology_id: str, operation):
+        """Keep approval transitions serialized with a complete publication."""
+        _safe_token(ontology_id, field='ontology_id')
+        with self._transition_lock:
+            lock = self.registry.advisory_lock(f'lifecycle:{ontology_id}') if self._postgres_enabled else nullcontext(True)
+            with lock as acquired:
+                if not acquired:
+                    raise ValueError('Ontology lifecycle is being updated; retry')
+                return operation()
+
     def transition(self, *, ontology_id: str, target: str, actor: str, reason: str = "") -> dict[str, Any]:
         """Move an ontology through the minimal review lifecycle with evidence."""
         _safe_token(ontology_id, field="ontology_id")

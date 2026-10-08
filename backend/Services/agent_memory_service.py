@@ -144,6 +144,7 @@ class AgentMemoryService:
         user_message: str,
         assistant_response: str,
         graph_context: Optional[Dict[str, Any]] = None,
+        generation: Optional[Dict[str, Any]] = None,
         status: str = "completed",
     ) -> None:
         """Persist one chat turn and optional graph context as short-term memory."""
@@ -169,6 +170,7 @@ class AgentMemoryService:
             MERGE (a:AgentMemoryMessage {message_id: $assistant_id})
             SET a.role = 'assistant',
                 a.text = $assistant_response,
+                a.generation_json = $generation_json,
                 a.created_at = $now,
                 a.status = $status
             MERGE (s)-[:HAS_MESSAGE]->(u)
@@ -190,6 +192,7 @@ class AgentMemoryService:
                 "assistant_id": assistant_id,
                 "user_message": str(user_message or "")[:4000],
                 "assistant_response": str(assistant_response or "")[:12000],
+                "generation_json": json.dumps(generation or {}),
                 "status": status,
                 "scope": cls.scope(),
                 "touched_nodes": touched_nodes[:100],

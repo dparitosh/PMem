@@ -153,12 +153,13 @@ test('changing inputs discards old preview and credentials are not persisted', a
 
 test('ontology review displays structured evidence citations and limitations', async () => {
   const configured=vi.spyOn(agenticAPI,'isConfigured').mockReturnValue(true);
-  const review=vi.spyOn(agenticAPI,'orchestrateOntology').mockResolvedValue({data:{steps:[{result:{llm:{enabled:true,text:'Review only',review:{questions:[{question:'Is the domain compatible?',evidence_iris:['urn:Part']}],limitations:'No formal reasoner was run.'}}}}]}});
+  const review=vi.spyOn(agenticAPI,'runWorkflow').mockResolvedValue({data:{run_id:'review-run'}});
+  const status=vi.spyOn(agenticAPI,'getRun').mockResolvedValue({data:{run_id:'review-run',workflow_id:'ontology-review-and-bridge-plan',status:'completed',traces:[{result:{llm:{enabled:true,text:'Review only',review:{questions:[{question:'Is the domain compatible?',evidence_iris:['urn:Part']}],limitations:'No formal reasoner was run.'}}}}]}});
   try {
     mount();
     fireEvent.click(screen.getByText('Run ontology agent review'));
     await screen.findByText('Evidence IRIs: urn:Part');
     expect(screen.getByText('Limitations: No formal reasoner was run.')).toBeVisible();
     expect(api.publish).not.toHaveBeenCalled();
-  } finally {configured.mockRestore();review.mockRestore();}
+  } finally {configured.mockRestore();review.mockRestore();status.mockRestore();}
 });

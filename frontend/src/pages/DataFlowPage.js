@@ -5,6 +5,7 @@ import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { readRequestedRunId, requireRunManifest } from '../workflows/runTracking';
 import './DataFlowPage.css';
 import { productDraftFromRun } from '../services/analyticsProductDraft';
+import AgentProposalPanel from '../Components/AgentProposalPanel';
 
 const REFRESH_INTERVAL_MS = 15000;
 
@@ -286,6 +287,7 @@ export default function DataFlowPage() {
 
   return (
     <section className="data-flow-page" aria-labelledby="data-flow-title">
+      <AgentProposalPanel title="Data job recommendations" agentIds={['data-quality-monitor', 'engineering-parser', 'ceim-mapper']} context={selectedRun ? { run_id: selectedRun.run_id, job_id: selectedRun.job_id, version: selectedRun.version, job_type: selectedRun.job_type } : { page: 'data-flow' }} />
       <header className="data-flow-page__header">
         <div>
           <p className="data-flow-page__eyebrow">Data processing operations</p>

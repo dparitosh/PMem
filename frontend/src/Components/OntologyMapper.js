@@ -2,6 +2,7 @@ import useRuleValidation from '../hooks/useRuleValidation';
 import { requirementsPayload } from '../services/pagePayloads';
 import { dictionaryPayload } from '../services/ontologyPayload';
 import WorkspaceTabs from './WorkspaceTabs';
+import OntologyPublicationPanel from './OntologyPublicationPanel';
 import { getCredentialProfile } from '../services/serviceAuth';
 import { ontologyMergeAgent } from '../services/ontologyMergeAgent';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -614,7 +615,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
           <div style={{ padding: '9px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
             <span style={{ fontSize: '12px', fontWeight: 700, color: C.textPrimary }}>Owlready2 Semantics</span>
             <span style={{ fontSize: '10px', fontWeight: 700, color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '999px', padding: '2px 7px' }}>
-              {reasoning.summary?.classes || 0} classes Ã‚Â· {reasoning.summary?.subclass_edges || 0} subclass links
+              {reasoning.summary?.classes || 0} classes  |  {reasoning.summary?.subclass_edges || 0} subclass links
             </span>
           </div>
           <div style={{ padding: '10px 12px', display: 'grid', gap: '10px' }}>
@@ -635,7 +636,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
                   <div key={prop.iri} style={{ fontSize: '12px', color: C.textPrimary, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '6px', padding: '6px 8px' }}>
                     <strong>{prop.label}</strong>
                     <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
-                      Domain: {(prop.domain || []).map((d) => d.label).join(', ') || 'None'} Ã‚Â· Range: {(prop.range || []).map((r) => r.label).join(', ') || 'None'}
+                      Domain: {(prop.domain || []).map((d) => d.label).join(', ') || 'None'}  |  Range: {(prop.range || []).map((r) => r.label).join(', ') || 'None'}
                     </div>
                   </div>
                 ))}
@@ -1570,6 +1571,9 @@ export default function OntologyMapper() {
   useEffect(() => { inferenceGeneration.current += 1; inferenceRequest.current?.abort(); setInferenceResult(null); setInferenceError(null); setInferenceBusy(false); return () => inferenceRequest.current?.abort(); }, [selectedOntologyApi, inferenceRules, inferenceLimit]);
   const [mergeResult, setMergeResult] = useState(null);
   const [mergeApprover, setMergeApprover] = useState('');
+  const [mergeEntitySource, setMergeEntitySource] = useState('');
+  const [mergeEntityTarget, setMergeEntityTarget] = useState('');
+  useEffect(() => { mergeGeneration.current += 1; setMergeResult(null); setMergeBusy(false); }, [mergeEntitySource, mergeEntityTarget]);
   useEffect(() => {
     const invalidate = () => {
       mergeGeneration.current += 1; inferenceGeneration.current += 1;
@@ -2175,7 +2179,8 @@ export default function OntologyMapper() {
     try {
       const governed = await ontologyMergeAgent.preview(
         [mergeSourceOntologyId, selectedMapping],
-        { ontology_name: `Merged ${selectedMapping}`, prefix: `merged_${Date.now()}` },
+        { ontology_name: `Merged ${selectedMapping}`, prefix: `merged_${Date.now()}`,
+          entity_mappings: mergeEntitySource.trim() || mergeEntityTarget.trim() ? [{ source_iri: mergeEntitySource.trim(), target_iri: mergeEntityTarget.trim() }] : [] },
         mergeApprover,
       );
       if (generation !== mergeGeneration.current) return;
@@ -2495,7 +2500,7 @@ export default function OntologyMapper() {
                 style={{ minWidth: '320px', padding: '6px 10px', background: C.surface, border: `1px solid ${mappingOptionsError ? C.red : C.borderDark}`, color: C.textPrimary, borderRadius: '5px', fontWeight: 600, fontSize: '12px', cursor: mappingOptions.length === 0 ? 'not-allowed' : 'pointer', opacity: mappingOptions.length === 0 ? 0.6 : 1 }}
               >
                 <option value="">{mappingOptions.length === 0 ? 'No ontologies loaded' : 'Select ontology'}</option>
-                {Array.from(new Map(mappingOptions.map(o => [o.prefix, o])).values()).map((o, idx) => (
+                {Array.from(new Map(mappingOptions.map(o => [o.ontology_id || o.id || o.prefix, o])).values()).map((o, idx) => (
                   <option key={o.value || `mapping-${idx}`} value={o.value}>
                     {o.label}{o.usageCount ? ` (used ${o.usageCount}x)` : ''}
                   </option>
@@ -2519,7 +2524,7 @@ export default function OntologyMapper() {
             </div>
             {stats && (
               <div style={{ fontSize: '11px', color: C.textSec, background: C.bg, border: `1px solid ${C.border}`, borderRadius: '20px', padding: '4px 10px' }}>
-                {stats.total_terms} terms Ã‚Â· {stats.total_vocabulary_mappings} mapping edges
+                {stats.total_terms} terms  |  {stats.total_vocabulary_mappings} mapping edges
               </div>
             )}
           </>
@@ -2527,6 +2532,7 @@ export default function OntologyMapper() {
       </div>
 
       <WorkspaceTabs label="Ontology Junction views" tabs={VIEWS} value={activeView} onChange={setActiveView} />
+      <details className="depo-bridge-metadata"><summary>Ontology lifecycle and Neo4j publication</summary><OntologyPublicationPanel key={selectedOntologyApi} ontologyId={selectedOntologyApi} /></details>
 
       {loading && ['alignment', 'vocabulary'].includes(activeView) ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textSec }}>
@@ -2693,8 +2699,7 @@ export default function OntologyMapper() {
               <div style={{ marginBottom: '20px', border: `2px solid ${C.primary}`, borderRadius: '8px', padding: '16px', background: C.primaryLight }}>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>Instance-to-ontology bridge</div>
                 <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '14px', lineHeight: 1.45 }}>
-                  Step 1: select one imported instance artifact. Step 2: keep the active ontology selected in the page header. Step 3: review auto-suggested mappings before applying them.
-                  This bridge links instance entities, attributes, relationships, and metadata to ontology classes and properties. Ontology-to-ontology merge is handled separately below.
+                  Select an instance and target ontology, then review mapping recommendations before publishing.
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(140px, 1fr))', gap: '8px', marginBottom: '12px' }}>
                   {[
@@ -2733,7 +2738,7 @@ export default function OntologyMapper() {
 
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
+                <div className="depo-bridge-selection" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'start' }}>
                   <div>
                     <label style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, display: 'block', marginBottom: '5px' }}>Instance</label>
                     <select
@@ -2755,15 +2760,13 @@ export default function OntologyMapper() {
                       <option value="">Select target ontology</option>
                       {mappingOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
-                    <div style={{ fontSize: '12px', color: selectedOntologyApi ? C.textPrimary : C.red, fontWeight: 600 }}>
-                      {selectedOntologyOption?.label || 'Select an ontology in the header above'}
-                    </div>
                     <div style={{ fontSize: '10px', color: C.textSec, marginTop: '4px' }}>
                       {selectedOntologyOption?.prefix ? `Prefix ${selectedOntologyOption.prefix}` : 'The semantic bridge uses the shared active ontology selection.'}
                     </div>
                   </div>
 
                 </div>
+                <details className="depo-bridge-metadata"><summary>Source and target details</summary>
                 <div style={{
                   marginTop: '12px',
                   padding: '10px 12px',
@@ -2780,10 +2783,10 @@ export default function OntologyMapper() {
                       {selectedImportTaskInfo?.filename || 'No instance selected'}
                     </div>
                     <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
-                      Task {selectedImportTaskInfo?.task_id || 'n/a'} Ã‚Â· {selectedImportTaskInfo?.file_type || 'unknown'} Ã‚Â· {selectedImportTaskInfo?.status || 'unknown'}{selectedImportTaskInfo?.current_stage ? ` Ã‚Â· ${selectedImportTaskInfo.current_stage}` : ''}
+                      Task {selectedImportTaskInfo?.task_id || 'n/a'}  |  {selectedImportTaskInfo?.file_type || 'unknown'}  |  {selectedImportTaskInfo?.status || 'unknown'}{selectedImportTaskInfo?.current_stage ? `  |  ${selectedImportTaskInfo.current_stage}` : ''}
                     </div>
                     <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
-                      Manifest {selectedImportManifest ? 'available' : 'missing'} Ã‚Â· source format {selectedMappingType || 'unknown'}
+                      Manifest {selectedImportManifest ? 'available' : 'missing'}  |  source format {selectedMappingType || 'unknown'}
                     </div>
                   </div>
                   <div>
@@ -2792,7 +2795,7 @@ export default function OntologyMapper() {
                       {selectedOntologyOption?.label || 'No ontology selected'}
                     </div>
                     <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
-                      Prefix {selectedOntologyOption?.prefix || selectedOntologyApi || 'n/a'} Ã‚Â· id {selectedOntologyOption?.value || 'n/a'}
+                      Prefix {selectedOntologyOption?.prefix || selectedOntologyApi || 'n/a'}  |  id {selectedOntologyOption?.value || 'n/a'}
                     </div>
                     <div style={{ fontSize: '11px', color: C.textSec, marginTop: '2px' }}>
                       {selectedOntologyOption?.source ? `Registered from ${selectedOntologyOption.source}` : 'Active ontology used as the semantic target for bridge validation and export.'}
@@ -2808,8 +2811,9 @@ export default function OntologyMapper() {
                   </div>
                 </div>
                 <div style={{ marginTop: '8px', fontSize: '11px', color: C.textSec }}>
-                  {selectedImportTaskId ? `Auto-detected source format: ${selectedMappingType || 'unknown'}.` : 'Select an imported instance to continue.'}
+                  {selectedImportTaskId ? `Source format: ${selectedMappingType || 'unknown'}.` : 'Select an imported instance to continue.'}
                 </div>
+                </details>
                 <SemanticBridgeJobs ontologyId={selectedOntologyApi} importTaskId={selectedImportTaskId} manualMappings={(mappingEdges || []).filter(edge => edge.source_instance_id === selectedImportTaskId && edge.evidence?.includes('user-selected bridge')).map(edge => ({source_term: edge.source_term, source_type: edge.source_type, target_term: edge.target_term, target_ontology_type: edge.target_ontology_type}))} />
                 {(importTasksError || unifyResult) && (
                   <div style={{
@@ -2832,7 +2836,7 @@ export default function OntologyMapper() {
                           selectedBridgeSummary.generic_matches_filtered !== undefined ? `Filtered: ${selectedBridgeSummary.generic_matches_filtered}` : null,
                           selectedBridgeSummary.metadata_signals_used !== undefined ? `Metadata signals: ${selectedBridgeSummary.metadata_signals_used}` : null,
                           selectedBridgeSummary.applied_links !== undefined ? `Applied links: ${selectedBridgeSummary.applied_links}` : null,
-                        ].filter(Boolean).join(' Ã‚Â· ')}
+                        ].filter(Boolean).join('  |  ')}
                       </div>
                     )}
                   </div>
@@ -2938,12 +2942,12 @@ export default function OntologyMapper() {
                 )}
               </div>
 
-              <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '14px', marginBottom: '16px', background: C.bg }}>
-                <div style={{ fontSize: '13px', fontWeight: 700, color: C.textPrimary, marginBottom: '4px' }}>Ontology merge</div>
+              <details className="depo-ontology-merge" style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '14px', marginBottom: '16px', background: C.bg }}>
+                <summary>Merge two ontologies</summary>
                 <div style={{ fontSize: '11px', color: C.textSec, marginBottom: '12px', lineHeight: 1.45 }}>
                   The Ontology Governor combines the selected source and active ontology into a new draft. Review the merge plan, then approve the merge when the overlap report looks right.
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: '10px', alignItems: 'end' }}>
+                <div className="depo-merge-fields" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px', alignItems: 'start' }}>
                   <div>
                     <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Ontology to merge</label>
                     <select
@@ -2962,12 +2966,15 @@ export default function OntologyMapper() {
                     <div style={{ fontSize: '12px', color: C.textPrimary }}>{selectedOntologyOption?.label || 'Select the active ontology in the header above'}</div>
                   </div>
                   <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Approving steward</label>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Approver</label>
                     <input value={mergeApprover} onChange={(e) => setMergeApprover(e.target.value)} placeholder="name or service principal" style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }} />
                   </div>
                   <div>
                     <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Connect governed agent access in Admin → Service credentials. Both sources require retained RDF artifacts; the merge creates a new draft.</label>
                   </div>
+                  <label>Entity to consolidate (full IRI)<input aria-label="Merge source entity IRI" value={mergeEntitySource} onChange={event => setMergeEntitySource(event.target.value)} placeholder="https://example.org/source#Part" /></label>
+                  <label>Retained entity identity (full IRI)<input aria-label="Merge target entity IRI" value={mergeEntityTarget} onChange={event => setMergeEntityTarget(event.target.value)} placeholder="https://example.org/target#Component" /></label>
+                  <p>Optional: copy a reviewed mapping into these fields. The preview rewrites the source identity and its references to the retained identity. Leave both empty to combine statements without changing entity identities.</p>
                   <button
                     type="button"
                     onClick={handlePreviewOntologyMerge}
@@ -2991,6 +2998,11 @@ export default function OntologyMapper() {
                     <div style={{ fontSize: '12px', fontWeight: 700, color: mergeResult.kind === 'error' ? C.red : C.textPrimary }}>{mergeResult.text}</div>
                     {mergeResult.agentRunId && <div>Agent run: {mergeResult.agentRunId}</div>}
                     {mergeResult.governedPreview && <div>Merged triples: {mergeResult.governedPreview.triple_count} | Duplicate triples: {mergeResult.governedPreview.duplicate_triple_count} | Conflicts: {mergeResult.governedPreview.conflicts?.length || 0}</div>}
+                    {mergeResult.governedPreview?.conflicts?.length > 0 && <details open><summary>Conflicts requiring resolution</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(mergeResult.governedPreview.conflicts, null, 2)}</pre></details>}
+                    {mergeResult.governedPreview?.changes && <details open><summary>What changes in the new draft?</summary>
+                      <p>Compared with the active ontology: {mergeResult.governedPreview.changes.added} added statements; {mergeResult.governedPreview.changes.removed} removed; {mergeResult.governedPreview.changes.unchanged} unchanged; {mergeResult.governedPreview.changes.modified_entity_count} consolidated identities. Source ontologies remain unchanged.</p>
+                      {['added', 'removed', 'unchanged'].map(kind => <details key={kind}><summary>{kind} statements (first 200)</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 240, overflow: 'auto' }}>{(mergeResult.governedPreview.changes[`${kind}_sample`] || []).join('\n') || 'None'}</pre></details>)}
+                    </details>}
                     {mergeResult.governedPreview && <p role="status">Merge combines retained RDF statements. No formal reasoning is performed; differently named entities require reviewed mappings. {mergeResult.governedPreview.validation?.limitations?.join('; ')}</p>}
                     {mergeResult.report?.summary && (
                       <div style={{ fontSize: '11px', color: C.textSec, marginTop: '6px', lineHeight: 1.45 }}>
@@ -3019,7 +3031,7 @@ export default function OntologyMapper() {
                     )}
                   </div>
                 )}
-              </div>
+              </details>
 
               {/* Ã¢â€â‚¬Ã¢â€â‚¬ Entity Mapper Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
               <div style={{ fontSize: '13px', fontWeight: 600, color: C.textPrimary, marginBottom: '10px' }}>Manual override</div>
@@ -3176,7 +3188,7 @@ export default function OntologyMapper() {
                           <td style={TD()}>
                             <div style={{ fontWeight: 600, fontSize: '12px' }}>{edge.source_label || edge.source_term || edge.source_instance_label || 'Imported entity'}</div>
                             <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
-                              {edge.source_instance_label || 'Imported instance'}{edge.source_instance_id ? ` Ã‚Â· ${edge.source_instance_id}` : ''}
+                              {edge.source_instance_label || 'Imported instance'}{edge.source_instance_id ? `  |  ${edge.source_instance_id}` : ''}
                             </div>
                             <div style={{ fontSize: '10px', color: C.textSec, fontFamily: 'monospace', lineHeight: 1.45 }}>
                               term: {edge.source_term || 'n/a'}

@@ -94,7 +94,7 @@ def configuration_status(*, check_workers=True):
             errors.append(flag)
     if os.getenv('OLLAMA_DISCOVERY_ENABLED', 'true').strip().lower() not in {'true', 'false'}:
         errors.append('OLLAMA_DISCOVERY_ENABLED')
-    for flag in ('ONTOLOGY_AGENT_LLM_ENABLED', 'COMPANION_LLM_ENABLED'):
+    for flag in ('ONTOLOGY_AGENT_LLM_ENABLED', 'COMPANION_LLM_ENABLED', 'OLLAMA_STREAMING_ENABLED'):
         if os.getenv(flag, 'false').lower() not in {'true', 'false'}:
             errors.append(flag)
     # Validate the same URL and authentication rules used by the clients.

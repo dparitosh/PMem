@@ -49,3 +49,12 @@ test('malformed recommendations cannot expose executable controls', async () => 
   await screen.findByText('Invalid agent proposal.');
   expect(screen.queryByText('Execute reviewed recommendation')).toBeNull();
 });
+
+test('saved recommendation for another selection cannot be executed', async () => {
+  agenticClient.get.mockResolvedValue({data:{requires_approval:true, context:{page:'data-flow',job_id:'old'}, command:{agent_id:'data-quality-monitor',tool_id:'pipeline.run',inputs:{}}}});
+  render(<AgentProposalPanel agentIds={['data-quality-monitor']} context={{page:'data-flow',job_id:'new'}} />);
+  fireEvent.change(screen.getByLabelText('Saved recommendation ID'), {target:{value:'old-recommendation'}});
+  fireEvent.click(screen.getByText('Load saved recommendation'));
+  await screen.findByText(/belongs to a different page or selection/);
+  expect(screen.queryByText('Execute reviewed recommendation')).toBeNull();
+});

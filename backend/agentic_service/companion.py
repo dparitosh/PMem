@@ -6,6 +6,7 @@ import json
 import asyncio
 from backend.depo_platform.service_urls import service_url
 import re
+import logging
 from typing import Any
 
 import httpx
@@ -90,15 +91,21 @@ class KnowledgeCompanion:
             await on_token(response_text)
         generation = {'enabled': False, 'status': 'disabled'}
         if os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true':
+            prompt_details = {}
             try:
                 from .local_llm import summarize
                 if on_token:
                     await on_token('\n\nModel-assisted summary (review against the evidence): ')
-                summary = await summarize(query, evidence, on_token=on_token) if on_token else await summarize(query, evidence)
+                summary = await summarize(query, evidence, on_token=on_token, prompt_details=prompt_details)
                 response_text += '\n\nModel-assisted summary (review against the evidence): ' + summary
-                generation = {'enabled': True, 'status': 'completed', 'provider': 'ollama'}
-            except Exception:
-                generation = {'enabled': True, 'status': 'unavailable', 'action': 'Check Admin Ollama diagnostics.'}
+                generation = {'enabled': True, 'status': 'completed', 'provider': 'ollama', 'prompt_details': prompt_details}
+            except Exception as failure:
+                code = getattr(getattr(failure, 'response', None), 'status_code', None)
+                status = ('authentication_rejected' if code in (401, 403) else 'route_missing' if code == 404
+                          else 'timeout' if isinstance(failure, (TimeoutError, httpx.TimeoutException))
+                          else 'invalid_response' if isinstance(failure, ValueError) else 'unavailable')
+                logging.getLogger(__name__).warning('Companion generation failed: stage=generation status=%s error_type=%s', status, type(failure).__name__)
+                generation = {'enabled': True, 'status': status, 'prompt_details': prompt_details, 'action': 'Check Admin Ollama capability diagnostics and agentic service logs.'}
                 response_text += '\n\nThe configured language model is unavailable; the graph evidence above remains available.'
         return {
             "status": "grounded", "answerable": True, "response": response_text,

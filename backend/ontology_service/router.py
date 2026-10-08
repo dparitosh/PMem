@@ -18,11 +18,101 @@ from backend.Services.ontology_upload_manager import OntologyUploadManager
 from backend.depo_platform.authorization import approval_identity
 from backend.depo_platform.network import service_bearer_headers
 from .vocabulary_service import vocabularies
+from backend.mesh_store import PostgresRegistry
+import hashlib
 
 router = APIRouter(prefix="/ontologies", tags=["ontologies"])
 intelligence = SemanticIntelligence(semantica.workspace.root)
 merges = GovernedMergeService(catalog, intelligence, catalog.root)
 business_context = BusinessContextService(catalog.root)
+graph_publications = PostgresRegistry('ontology_graph_publications_v1')
+
+
+@router.get('/{ontology_id}/publication', summary='Verify a retained ontology graph publication')
+async def ontology_publication_status(ontology_id: str) -> dict:
+    record = await run_in_threadpool(graph_publications.get, ontology_id)
+    if record:
+        metadata, content = await run_in_threadpool(catalog.read_artifact, ontology_id)
+        digest = hashlib.sha256(content).hexdigest()
+        if record.get('artifact_sha256', record.get('publication_id')) != digest:
+            record = {'ontology_id': ontology_id, 'publication_id': digest}
+    if not record:
+        metadata = await run_in_threadpool(catalog.get, ontology_id)
+        if not metadata:
+            return {'ontology_id': ontology_id, 'status': 'not_verified'}
+        _, content = await run_in_threadpool(catalog.read_artifact, ontology_id)
+        source = str(metadata.get('source') or '')
+        identifier = source.split(':', 1)[1] if source.startswith('engineering-workflow:') else hashlib.sha256(content).hexdigest()
+        record = {'ontology_id': ontology_id, 'publication_id': identifier}
+    graph_root = service_url('GRAPH_SERVICE_URL', 'http://127.0.0.1:8013').rstrip('/')
+    if not graph_root.endswith('/api/v1'): graph_root += '/api/v1'
+    try:
+        async with httpx.AsyncClient(timeout=15, trust_env=False) as client:
+            response = await client.get(f"{graph_root}/graph/ontologies/{ontology_id}/publications/{record['publication_id']}", headers=service_bearer_headers('GRAPH_READ_TOKEN', service_name='graph receipts', endpoint=graph_root))
+        if response.status_code == 404:
+            body = response.json()
+            if isinstance(body, dict) and body.get('detail') == 'Publication receipt was not found':
+                return {**record, 'status': 'not_published'}
+            raise ValueError('Receipt route is unavailable')
+        response.raise_for_status()
+        receipt = response.json()
+        if not isinstance(receipt, dict) or receipt.get('ontology_id') != ontology_id or receipt.get('publication_id') != record['publication_id'] or receipt.get('status') != 'published' or any(type(receipt.get(field)) is not int or receipt[field] < 0 for field in ('resources', 'relationships')):
+            raise ValueError('Invalid graph receipt')
+        if receipt.get('current') is False:
+            return {**record, 'status': 'not_published', 'receipt': None}
+        return {**record, 'status': 'published', 'receipt': receipt}
+    except (httpx.HTTPError, ValueError):
+        return {**record, 'status': 'unverified'}
+
+
+@router.post('/{ontology_id}/publish', summary='Publish an approved retained ontology to Neo4j')
+async def publish_registered_ontology(ontology_id: str, payload: dict[str, Any], request: Request) -> dict:
+    import asyncio
+    try:
+        return await run_in_threadpool(catalog.with_publication_lock, ontology_id,
+            lambda: asyncio.run(_publish_registered_ontology(ontology_id, payload, request)))
+    except ValueError as exc:
+        raise HTTPException(409, 'Ontology lifecycle is being updated; refresh before publication') from exc
+
+
+async def _publish_registered_ontology(ontology_id: str, payload: dict[str, Any], request: Request) -> dict:
+    actor = approval_identity(request, payload, token_env='ONTOLOGY_APPROVAL_TOKEN')
+    metadata = await run_in_threadpool(catalog.get, ontology_id)
+    if not metadata: raise HTTPException(404, 'Prepare this retained ontology in the catalog before review and publication')
+    if metadata.get('lifecycle_status') != 'approved': raise HTTPException(409, 'Approve the ontology before graph publication')
+    from rdflib import Graph
+    _, content = await run_in_threadpool(catalog.read_artifact, ontology_id)
+    turtle = await run_in_threadpool(lambda: Graph().parse(data=content, format=metadata['validation']['rdf_format']).serialize(format='turtle').encode('utf-8'))
+    publication_id = hashlib.sha256(content).hexdigest()
+    previous = await run_in_threadpool(graph_publications.get, ontology_id)
+    record = {'ontology_id': ontology_id, 'publication_id': publication_id, 'artifact_sha256': publication_id, 'approved_by': actor, 'status': 'publishing'}
+    if previous and previous.get('publication_id') == publication_id:
+        record['approved_by'] = previous.get('approved_by') or actor
+    graph_root = service_url('GRAPH_SERVICE_URL', 'http://127.0.0.1:8013').rstrip('/')
+    if not graph_root.endswith('/api/v1'): graph_root += '/api/v1'
+    try:
+        existing = await ontology_publication_status(ontology_id)
+        if existing['status'] == 'published': return existing
+        if existing['status'] == 'unverified':
+            raise ValueError('Graph receipt lookup failed; publication must be reconciled first')
+        current_metadata, current_content = await run_in_threadpool(catalog.read_artifact, ontology_id)
+        if current_metadata.get('lifecycle_status') != 'approved' or hashlib.sha256(current_content).hexdigest() != publication_id:
+            raise HTTPException(409, 'Ontology approval or artifact changed; review again before publication')
+        await run_in_threadpool(graph_publications.put, ontology_id, record)
+        async with httpx.AsyncClient(timeout=60, trust_env=False) as client:
+            response = await client.post(f'{graph_root}/graph/ontologies/publish',
+                data={'ontology_id': ontology_id, 'prefix': metadata['prefix'], 'publication_id': publication_id},
+                files={'artifact': ('ontology.ttl', turtle, 'text/turtle')},
+                headers=service_bearer_headers('GRAPH_PUBLICATION_TOKEN', service_name='graph publication', endpoint=graph_root))
+        response.raise_for_status()
+        receipt = response.json()
+        if not isinstance(receipt, dict) or receipt.get('status') != 'success' or receipt.get('ontology_id') != ontology_id or receipt.get('publication_id') != publication_id or any(type(receipt.get(field)) is not int or receipt[field] < 0 for field in ('resources', 'relationships')):
+            raise ValueError('Invalid graph receipt')
+        record = {**record, 'status': 'published', 'receipt': receipt}
+        await run_in_threadpool(graph_publications.put, ontology_id, record)
+        return record
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(503, 'Publication outcome is unverified. Verify its graph receipt before retrying.') from exc
 
 
 def _array_field(payload: dict[str, Any], name: str) -> list:

@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from rdflib import Graph, Literal, BNode
+from rdflib import Graph, Literal, BNode, URIRef, RDF, OWL, RDFS
 
 
 class GovernedMergeService:
@@ -62,6 +62,7 @@ class GovernedMergeService:
         if len(source_ids) > 16:
             raise ValueError('Merge at most 16 ontologies per preview')
         merged, occurrences, sources = Graph(), {}, []
+        baseline = set()
         for ontology_id in source_ids:
             if self.catalog.get(ontology_id) is not None:
                 metadata, content = self.catalog.read_artifact(ontology_id)
@@ -84,6 +85,39 @@ class GovernedMergeService:
                 key = tuple(term.n3() for term in triple)
                 occurrences[key] = occurrences.get(key, 0) + 1
                 merged.add(triple)
+                if ontology_id == source_ids[-1]:
+                    baseline.add(triple)
+        mappings = payload.get('entity_mappings', [])
+        if not isinstance(mappings, list) or len(mappings) > 200:
+            raise ValueError('entity_mappings must be a list of at most 200 reviewed mappings')
+        replacements = {}
+        kinds = {OWL.Class, RDFS.Class, OWL.ObjectProperty, OWL.DatatypeProperty, OWL.AnnotationProperty, OWL.NamedIndividual}
+        for item in mappings:
+            if not isinstance(item, dict) or not all(isinstance(item.get(key), str) and item[key].startswith(('http://', 'https://', 'urn:')) for key in ('source_iri', 'target_iri')):
+                raise ValueError('Each entity mapping requires absolute source_iri and target_iri')
+            source, target = URIRef(item['source_iri']), URIRef(item['target_iri'])
+            source_types = set(merged.objects(source, RDF.type)) & kinds
+            target_types = set(merged.objects(target, RDF.type)) & kinds
+            source_types = {OWL.Class if value == RDFS.Class else value for value in source_types}
+            target_types = {OWL.Class if value == RDFS.Class else value for value in target_types}
+            if source == target or not source_types or source_types != target_types or source in replacements:
+                raise ValueError('Entity mappings require distinct declared entities of the same kind and a unique source')
+            replacements[source] = target
+        if set(replacements) & set(replacements.values()):
+            raise ValueError('Chained or cyclic entity mappings require separate reviewed merges')
+        original = set(merged)
+        if replacements:
+            merged = Graph()
+            for triple in original:
+                merged.add(tuple(replacements.get(term, term) for term in triple))
+        proposed = set(merged)
+        added, removed, unchanged = proposed - baseline, baseline - proposed, proposed & baseline
+        changes = {'baseline_ontology_id': source_ids[-1], 'added': len(added), 'removed': len(removed),
+                   'unchanged': len(unchanged), 'entity_mappings': mappings,
+                   'modified_entity_count': len(replacements), 'sample_limit': 200,
+                   'added_sample': sorted(' '.join(term.n3() for term in triple) for triple in added)[:200],
+                   'removed_sample': sorted(' '.join(term.n3() for term in triple) for triple in removed)[:200],
+                   'unchanged_sample': sorted(' '.join(term.n3() for term in triple) for triple in unchanged)[:200]}
         from .merge_validation import explicit_conflicts
         conflicts = self._literal_conflicts(merged) + explicit_conflicts(merged)
         preview_id = uuid.uuid4().hex
@@ -92,8 +126,8 @@ class GovernedMergeService:
                   "ontology_name": str(payload.get("ontology_name") or "Merged Ontology"),
                   "prefix": str(payload.get("prefix") or "merged"),
                   "description": str(payload.get("description") or ""),
-                  "triple_count": len(merged), "duplicate_triple_count": sum(value - 1 for value in occurrences.values() if value > 1),
-                  "conflicts": conflicts, "publish_recommended": not conflicts,
+                  "triple_count": len(merged), "duplicate_triple_count": sum(occurrences.values()) - len(merged),
+                  "conflicts": conflicts, "publish_recommended": not conflicts, "changes": changes,
                   "validation": {"scope": "RDF union, functional literal conflicts and explicit OWL declaration contradictions",
                       "formal_reasoning_performed": False,
                       "limitations": ["Different IRIs are not automatically equivalent",
@@ -141,7 +175,8 @@ class GovernedMergeService:
             "source_ontology_ids": record["source_ontology_ids"], "approved_by": approved_by}},
         )
         version = self.intelligence.create_merge_version(ontology={"ontology_id": artifact["ontology_id"], "provenance": artifact["provenance"], "triple_count": record["triple_count"]}, author=approved_by)
-        result = {"status": "merged", "ontology": artifact, "version": version, "preview_id": preview_id}
+        result = {"status": "merged", "ontology": artifact, "version": version, "preview_id": preview_id,
+                  "changes": record.get('changes'), "approved_by": approved_by}
         record['applied_result'] = result
         self._save(values, preview_id)
         return result

@@ -8,6 +8,7 @@ import { logger } from '../utils/logger';
 import { formatChatMarkdown } from '../utils/chatMarkdown';
 import { clearClientSessionId, getClientSessionId, setClientSessionId } from '../services/apiClient';
 import { serviceAuthHeaders, getCredentialProfile, handleSessionRejection } from '../services/serviceAuth';
+import { createChatFrameParser } from '../services/chatStreamFrames';
 
 const CHAT_COLORS = {
     primary: '#005a9c',
@@ -32,6 +33,8 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     const requestActiveRef = useRef(false);
     const messageSequenceRef = useRef(0);
     const messagesEndRef = useRef(null);
+    const followLatestRef = useRef(true);
+    const [followingLatest, setFollowingLatest] = useState(true);
     const sessionIdRef = useRef(getClientSessionId());
     const scopeId = ontologyId || graphData?.view?.ontology_id || graphData?.ontology_id || graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '';
     const scopePrefix = ontologyPrefix || graphData?.view?.ontology_prefix || graphData?.ontology_prefix || '';
@@ -48,6 +51,8 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
         setShowSpinner(false);
         setStatusLabel(null);
         setError(null);
+        followLatestRef.current = true; setFollowingLatest(true);
+        setQuestion('');
     }, [setChatResults]);
 
     useEffect(() => {
@@ -90,6 +95,8 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
         try {
             // [OK] Validate input against prompt injection
             const validated = validateChatInput(messageText);
+            followLatestRef.current = true;
+            setFollowingLatest(true);
             
             // Cancel any in-flight request and finalize its placeholder.
             if (abortRef.current) abortRef.current.abort();
@@ -118,7 +125,6 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             setStatusLabel(null);
 
             let accumulated = '';
-            let buffer = '';
             let streamBytes = 0;
             let streamCompleted = false;
             let streamFailed = false;
@@ -182,13 +188,9 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
 
-            const processLine = (line) => {
+            const processEvent = (parsed) => {
                 if (controller.signal.aborted) return;
-                if (!/^data:\s?/.test(line)) return;
-                const raw = line.slice(5).trim();
-                if (!raw) return;
-                try {
-                    const parsed = JSON.parse(raw);
+                if (streamCompleted) return;
                     if (typeof parsed.token === 'string') {
                         accumulated += parsed.token;
                         setShowSpinner(false);
@@ -238,24 +240,27 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                             m.id === assistantId ? { ...m, text: errMsg, streaming: false } : m
                         ));
                     }
-                } catch (_e) { /* skip malformed SSE lines */ }
             };
+            const frames = createChatFrameParser(processEvent);
 
-            while (true) {
+            try {
+              while (true) {
                 if (controller.signal.aborted) return;
                 const { done, value } = await reader.read();
                 if (done) break;
                 streamBytes += value.byteLength;
                 if (streamBytes > 8 * 1024 * 1024) { await reader.cancel(); throw new Error('Chat response exceeds the permitted size. Narrow your question.'); }
-                buffer += decoder.decode(value, { stream: true });
-                if (buffer.length > 1024 * 1024) { await reader.cancel(); throw new Error('Chat response frame exceeds the permitted size.'); }
-                const lines = buffer.split('\n');
-                buffer = lines.pop();
-                for (const line of lines) processLine(line.trim());
+                frames.push(decoder.decode(value, { stream: true }));
                 if (streamCompleted) { await reader.cancel?.(); break; }
+              }
+              if (!streamCompleted) {
+                frames.push(decoder.decode());
+                frames.finish();
+              }
+            } finally {
+              if (!streamCompleted) await Promise.resolve(reader.cancel?.()).catch(() => {});
+              reader.releaseLock?.();
             }
-            buffer += decoder.decode();
-            if (buffer.trim()) processLine(buffer.trim());
             if (!streamCompleted) {
                 throw new Error('The chat stream ended before completion; the response is incomplete.');
             }
@@ -360,7 +365,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     }, []);
 
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView?.({ block: 'end' });
+        if (followLatestRef.current) messagesEndRef.current?.scrollIntoView?.({ block: 'end' });
     }, [chatMessages, statusLabel]);
 
     return (
@@ -405,7 +410,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                             border: '1px solid rgba(255,255,255,0.3)', borderRadius: 5,
                             padding: '2px 10px', fontSize: 11, cursor: 'pointer',
                         }}
-                    >Clear</button>
+                    >Clear conversation</button>
                 )}
             </div>
 
@@ -425,10 +430,15 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             {/* Chat body */}
             <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--theme-color-std-background, var(--ui-surface, #fff))' }}>
                 {/* Messages Container */}
-                <div className='chat-messages' style={{
+                <div className='chat-messages' role="log" aria-label="Conversation history" aria-live="off" tabIndex={0}
+                    onScroll={event => {
+                        const panel = event.currentTarget;
+                        const follow = panel.scrollHeight - panel.scrollTop - panel.clientHeight < 80;
+                        followLatestRef.current = follow; setFollowingLatest(follow);
+                    }} style={{
                     flex: 1,
                     overflowY: 'auto',
-                    padding: '4px 6px',
+                    padding: '16px',
                     backgroundColor: CHAT_COLORS.surfaceMuted,
                     minHeight: 0
                 }}>
@@ -462,29 +472,32 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                             </div>
                         </div>
                     ) : (
-                        chatMessages.map(msg => (
+                        chatMessages.map((msg, index) => (
                             <div
                                 key={msg.id}
                                 style={{
-                                    marginBottom: '4px',
+                                    marginBottom: '16px',
                                     display: 'flex',
                                     justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start'
                                 }}
                             >
                                 <div
                                     style={{
-                                        maxWidth: '90%',
-                                        padding: '6px 8px',
-                                        borderRadius: '6px',
+                                        maxWidth: msg.role === 'user' ? '90%' : '100%',
+                                        minWidth: 0,
+                                        padding: '12px 16px',
+                                        borderRadius: '10px',
                                         backgroundColor: msg.role === 'user' ? CHAT_COLORS.primary : CHAT_COLORS.assistantBubble,
-                                        color: msg.role === 'user' ? '#fff' : 'var(--theme-color-std-text, #252a2e)',
-                                        border: msg.role === 'assistant' ? '1px solid #e2e6ea' : 'none',
+                                        color: msg.role === 'user' ? '#fff' : 'var(--ui-text, var(--theme-color-std-text, #252a2e))',
+                                        border: msg.role === 'assistant' ? '1px solid var(--ui-border, #e2e6ea)' : 'none',
                                         boxShadow: msg.role === 'assistant' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
-                                        fontSize: '12px',
-                                        lineHeight: '1.4',
-                                        wordWrap: 'break-word'
+                                        fontSize: '14px',
+                                        lineHeight: '1.65',
+                                        overflowWrap: 'anywhere',
+                                        whiteSpace: msg.role === 'user' ? 'pre-wrap' : 'normal'
                                     }}
                                 >
+                                    <div className="chat-message-label">{msg.role === 'user' ? 'You · Question' : 'Companion · Response'} {Math.floor(index / 2) + 1}</div>
                                     {msg.role === 'assistant' ? (
                                         <>
                                             <div dangerouslySetInnerHTML={{ __html: formatChatMarkdown(msg.text) }} />
@@ -506,6 +519,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                                         msg.text
                                     )}
                                     {msg.generation && <p>Model generation: {msg.generation.status}</p>}
+                                    {msg.generation?.prompt_details && <details><summary>Prompt details</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 240, overflow: 'auto' }}>{JSON.stringify(msg.generation.prompt_details, null, 2)}</pre></details>}
                                     {msg.runId && <small>Agent run: {msg.runId}</small>}
                                     {msg.stopped && <p>Stopped — partial text is not a completed answer.</p>}
                                     {msg.streaming && showSpinner && (
@@ -517,6 +531,10 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                     )}
                     <div ref={messagesEndRef} aria-hidden="true" />
                 </div>
+                {!followingLatest && chatMessages.length > 0 && <button type="button" className="chat-latest-button" onClick={() => {
+                    followLatestRef.current = true; setFollowingLatest(true);
+                    messagesEndRef.current?.scrollIntoView?.({ block: 'end' });
+                }}>Jump to latest message</button>}
 
                 {/* Error Display */}
                 {error && (

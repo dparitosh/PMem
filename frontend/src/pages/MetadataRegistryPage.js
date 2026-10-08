@@ -7,6 +7,7 @@ import { useOntologies } from '../contexts/OntologyContext';
 import { API_METHODS } from '../services/apiClient';
 import RegistrySummaryCards from '../Components/registry/RegistrySummaryCards';
 import RegistryAssetsSection from '../Components/registry/RegistryAssetsSection';
+import { metadataAssetsPayload, dictionaryAssetDraft } from '../services/metadataRegistryPayload';
 
 const STATUS_LABELS = {
   draft: 'Draft',
@@ -31,7 +32,7 @@ function statusTone(value) {
   return '#8a5a00';
 }
 
-function RegistryDictionaryTable({ nodes, filter, prefixFilter, onPrefixFilterChange }) {
+function RegistryDictionaryTable({ nodes, filter, prefixFilter, onPrefixFilterChange, onRegister, disabled }) {
   const visible = nodes.filter((node) => {
     const needle = filter.trim().toLowerCase();
     return (!needle || [node.term_id, node.label, node.definition, node.source].some((value) => String(value || '').toLowerCase().includes(needle)))
@@ -51,7 +52,7 @@ function RegistryDictionaryTable({ nodes, filter, prefixFilter, onPrefixFilterCh
         )}
       </div>
       <table className="depo-table">
-        <thead><tr><th>Term ID</th><th>Label</th><th>Type</th><th>Definition</th></tr></thead>
+        <thead><tr><th>Term ID</th><th>Label</th><th>Type</th><th>Definition</th><th>Governance</th></tr></thead>
         <tbody>
           {visible.map((node) => (
             <tr key={`${node.term_id}:${node.source}`}>
@@ -59,9 +60,10 @@ function RegistryDictionaryTable({ nodes, filter, prefixFilter, onPrefixFilterCh
               <td><strong>{node.label || '—'}</strong></td>
               <td>{node.source || '—'}</td>
               <td>{node.definition || '—'}</td>
+              <td><button type="button" disabled={disabled} onClick={() => onRegister(node)}>Prepare draft registration</button></td>
             </tr>
           ))}
-          {!visible.length && <tr><td colSpan={4} style={{ textAlign: 'center', padding: 24 }}>No terms match the filter.</td></tr>}
+          {!visible.length && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}>No terms match the filter.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -80,6 +82,7 @@ export default function MetadataRegistryPage() {
   const [prefixFilter, setPrefixFilter] = useState(null);
   const [registryAssets, setRegistryAssets] = useState([]);
   const [registryLoaded, setRegistryLoaded] = useState(false);
+  const [registryStale, setRegistryStale] = useState(false);
   const [registryLoading, setRegistryLoading] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [transitioningAssetIds, setTransitioningAssetIds] = useState(new Set());
@@ -97,11 +100,14 @@ export default function MetadataRegistryPage() {
     try {
       const response = await API_METHODS.metadataRegistry.list({ limit: 1000 }, { signal: controller.signal });
       if (controller.signal.aborted || registryControllerRef.current !== controller) return;
-      setRegistryAssets(response?.data?.assets || []);
+      setRegistryAssets(metadataAssetsPayload(response?.data));
       setRegistryLoaded(true);
+      setRegistryStale(false);
       setRegistryMessage(null);
     } catch (err) {
       if (controller.signal.aborted) return;
+      setRegistryLoaded(false);
+      setRegistryStale(true);
       setRegistryMessage({ kind: 'warning', text: apiErrorMessage(err, 'Governed registry is unavailable.') });
     } finally {
       if (!controller.signal.aborted) setRegistryLoading(false);
@@ -259,6 +265,7 @@ export default function MetadataRegistryPage() {
           </button>
         </div>
         <div className="depo-panel__body" style={{ display: 'grid', gap: 12 }}>
+          {registryStale && <p role="status">Registry refresh failed. Retained rows may be stale; current counts are unavailable until refresh succeeds.</p>}
           <WorkspaceTabs label="Metadata registry views" tabs={[{id:'assets',label:'Registry assets'},{id:'dictionary',label:'Data Dictionary'}]} value={section} onChange={setSection} />
 
           {section === 'dictionary' && (
@@ -274,7 +281,16 @@ export default function MetadataRegistryPage() {
               {dictionaryLoading && <div className="depo-empty">Loading dictionary terms...</div>}
               {dictionaryError && <div className="depo-alert depo-alert--warning">{dictionaryError}</div>}
               {!dictionaryLoading && selectedOntology && !dictionaryError && (
-                <RegistryDictionaryTable nodes={dictionary} filter={dictionaryFilter} prefixFilter={prefixFilter} onPrefixFilterChange={setPrefixFilter} />
+                <RegistryDictionaryTable nodes={dictionary} filter={dictionaryFilter} prefixFilter={prefixFilter} onPrefixFilterChange={setPrefixFilter}
+                  disabled={createLoading || registryLoading || !registryLoaded} onRegister={node => {
+                    try {
+                      const source = ontologies.find(entry => entry.ontology_id === selectedOntology);
+                      const proposed = dictionaryAssetDraft(node, source);
+                      if (registryAssets.some(asset => asset.asset_id === proposed.asset_id)) throw new Error('This ontology term is already registered. Review its existing asset.');
+                      setNewAsset(proposed); setSection('assets');
+                      setRegistryMessage({ kind: 'success', text: 'Draft prepared from the ontology term. Review ownership and definition, then click Register. Nothing has been written yet.' });
+                    } catch (failure) { setDictionaryError(failure.message); }
+                  }} />
               )}
               {!selectedOntology && <div className="depo-empty">Select a registered source to inspect its terms, properties, and relationships.</div>}
             </div>
@@ -283,9 +299,9 @@ export default function MetadataRegistryPage() {
           {section === 'assets' && (
             <>
               <RegistrySummaryCards items={[
-                { icon: <Database size={15} />, label: 'Governed assets', value: registryLoaded ? registryAssets.length : ontologies.length },
-                { icon: <ShieldCheck size={15} />, label: 'Published / available', value: publishedCount },
-                { icon: <Clock3 size={15} />, label: 'Review required', value: reviewCount },
+                { icon: <Database size={15} />, label: 'Governed assets', value: registryLoaded ? registryAssets.length : '—' },
+                { icon: <ShieldCheck size={15} />, label: 'Published / available', value: registryLoaded ? publishedCount : '—' },
+                { icon: <Clock3 size={15} />, label: 'Review required', value: registryLoaded ? reviewCount : '—' },
               ]} />
               <RegistryAssetsSection
                 newAsset={newAsset}

@@ -487,7 +487,55 @@ html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(
 }
 
 .depo-panel__body {
-  padding: 12px;
+  padding: 20px;
+}
+
+/* Shared workspace rhythm: readable controls, concise headers and bounded copy. */
+.depo-page { gap: 20px; }
+.depo-widget-grid { gap: 16px; }
+.depo-panel { border-color: var(--ui-border); background: var(--ui-surface); }
+.depo-panel__header { padding: 16px 20px; flex-wrap: wrap; }
+.depo-panel__header :is(h2, h3) { margin: 0; font-size: 18px; line-height: 1.35; }
+.depo-panel__body > p { max-width: 78ch; line-height: 1.65; color: var(--ui-muted); }
+.depo-panel__meta { display: inline; }
+.depo-panel :is(input:not([type='checkbox']):not([type='radio']), select, textarea) { font-size: 14px; }
+.depo-panel .depo-field { font-size: 12px; text-transform: none; gap: 7px; }
+.depo-panel .depo-table { font-size: 14px; }
+.depo-panel .depo-table th { font-size: 12px; text-transform: none; padding: 12px; }
+.depo-panel .depo-table td { padding: 12px; line-height: 1.5; }
+.depo-panel .depo-button { font-size: 13px; }
+.depo-action-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.depo-action-steps li { display: flex; align-items: flex-start; gap: 10px; padding: 14px; border: 1px solid var(--ui-border); border-radius: 10px; color: var(--ui-text); }
+.depo-action-steps svg { flex-shrink: 0; margin-top: 2px; color: var(--ui-primary); }
+.depo-action-steps strong { display: block; font-size: 14px; }
+.depo-action-steps small { display: block; margin-top: 4px; color: var(--ui-muted); line-height: 1.5; }
+.depo-agent-recommendations .depo-panel__header h3 { display: flex; align-items: center; gap: 10px; }
+.depo-agent-recommendations .depo-panel__body > .depo-agent-compose { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr); gap: 24px; }
+.depo-agent-compose > div { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.depo-agent-recommendations .depo-agent-compose textarea { min-height: 112px; }
+.depo-agent-compose button { justify-self: start; }
+.depo-agent-compose p { margin: 0; color: var(--ui-muted); font-size: 13px; line-height: 1.6; }
+.depo-saved-recommendation { border-top: 1px solid var(--ui-border); padding-top: 16px; }
+.depo-saved-recommendation summary { cursor: pointer; font-weight: 600; margin-bottom: 12px; }
+.depo-saved-recommendation > button { margin-top: 12px; }
+.depo-ontology-workspace :is(.depo-bridge-selection, .depo-merge-fields) > div { min-width: 0; }
+.depo-bridge-metadata { margin-top: 16px; color: var(--ui-muted); }
+.depo-bridge-metadata summary { cursor: pointer; padding: 8px 0; font-size: 13px; font-weight: 600; }
+.depo-bridge-review h3 { margin: 0 0 8px; font-size: 18px; }
+.depo-bridge-review > p { font-size: 14px; max-width: 76ch; line-height: 1.6; color: var(--ui-muted); }
+.depo-bridge-review > button { border: 1px solid var(--ui-border); border-radius: 7px; background: var(--ui-surface); color: var(--ui-text); font: inherit; font-size: 13px; min-height: 40px; }
+.depo-bridge-review > button:disabled { opacity: .55; cursor: not-allowed; }
+.depo-bridge-review :is(input:not([type='checkbox']), select) { padding: 9px; border: 1px solid var(--ui-border); border-radius: 6px; background: var(--ui-surface); color: var(--ui-text); max-width: 100%; }
+.depo-ontology-merge { margin-top: 24px; }
+.depo-ontology-merge summary { font-size: 17px; font-weight: 700; cursor: pointer; padding: 4px 0; }
+.depo-merge-fields { margin-top: 16px; }
+.depo-merge-fields label { line-height: 1.5; }
+@media (max-width: 760px) {
+  .depo-panel__header, .depo-panel__body { padding: 16px; }
+  .depo-action-steps, .depo-agent-recommendations .depo-panel__body > .depo-agent-compose { grid-template-columns: 1fr; }
+  .depo-ontology-workspace .depo-bridge-selection,
+  .depo-ontology-workspace .depo-merge-fields,
+  .depo-bridge-metadata > div { grid-template-columns: 1fr !important; }
 }
 
 .depo-workflow-reconciliation { display: grid; gap: 12px; margin-top: 16px; }
