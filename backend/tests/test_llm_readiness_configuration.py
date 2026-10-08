@@ -7,6 +7,13 @@ from backend.agentic_service.configuration import configuration_status
 
 
 class LlmReadinessConfigurationTests(unittest.TestCase):
+    def test_preflight_defers_worker_presence_but_runtime_requires_it(self):
+        with patch.dict(os.environ, {'AGENTIC_EXECUTION_MODE': 'worker', 'AUTH_MODE': 'token'}, clear=True):
+            preflight = configuration_status(check_workers=False)['configuration']['invalid_settings']
+            runtime = configuration_status()['configuration']['invalid_settings']
+        self.assertNotIn('AGENTIC_WORKFLOW_WORKER', preflight)
+        self.assertIn('AGENTIC_WORKFLOW_WORKER', runtime)
+
     def settings_errors(self, **settings):
         with patch.dict(os.environ, settings, clear=True):
             return configuration_status()['configuration']['invalid_settings']

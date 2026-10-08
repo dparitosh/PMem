@@ -10,7 +10,7 @@ SERVICE_KEYS = ('AGENTIC_SERVICE_URL', 'GRAPH_SERVICE_URL', 'ONTOLOGY_SERVICE_UR
                 'DATA_PIPELINE_SERVICE_URL')
 
 
-def configuration_status():
+def configuration_status(*, check_workers=True):
     errors = []
     for key, default, minimum, maximum in (
         ('AGENT_SESSION_IDLE_SECONDS', '1800', 60, 86400),
@@ -65,7 +65,7 @@ def configuration_status():
     execution = os.getenv('AGENTIC_EXECUTION_MODE','process').strip().lower()
     if execution not in {'process','worker'} or (execution == 'worker' and mode != 'token'):
         errors.append('AGENTIC_EXECUTION_MODE')
-    if execution == 'worker':
+    if execution == 'worker' and check_workers:
         try:
             from datetime import datetime, timezone
             from backend.mesh_store import PostgresRegistry
@@ -146,7 +146,11 @@ def configuration_status():
 
 
 if __name__ == '__main__':
+    import argparse
     import json
-    result = configuration_status()
+    parser = argparse.ArgumentParser(description='Validate agentic settings and runtime readiness')
+    parser.add_argument('--preflight', action='store_true', help='Validate settings before processes start; defer worker heartbeat checks')
+    arguments = parser.parse_args()
+    result = configuration_status(check_workers=not arguments.preflight)
     print(json.dumps(result))
     raise SystemExit(0 if result['configuration']['status'] == 'ready' else 1)

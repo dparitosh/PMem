@@ -50,7 +50,9 @@ foreach ($entry in $serviceUrls.GetEnumerator()) {
 # Fail before launching processes when the agentic runtime is incomplete.
 Push-Location $root
 try {
-  & $python -m backend.agentic_service.configuration
+  # Workers are launched below, after PostgreSQL. Their heartbeats are checked
+  # by the agentic /readyz probe after every process has been started.
+  & $python -m backend.agentic_service.configuration --preflight
   if ($LASTEXITCODE -ne 0) { throw 'Agentic configuration validation failed. Configure the listed settings before starting services.' }
 } finally { Pop-Location }
 
