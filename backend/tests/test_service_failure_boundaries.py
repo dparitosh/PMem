@@ -39,7 +39,34 @@ class ServiceFailureTests(unittest.TestCase):
         async def lock(key): yield True
         store = SimpleNamespace(due_pending=lambda n: [('p:1', record)], get=lambda key: record,
                                 compare_and_put=lambda *a: True)
-        scope = actual({'reconcile_pending'}, dict(asyncio=asyncio, store=store, _product_lock=lock,
+        scope = actual({'reconcile_pending'}, dict(asyncio=asyncio, _product_io=asyncio.to_thread, store=store, _product_lock=lock,
             _register_catalog=AsyncMock(return_value={**record, 'status': 'revoked'})))
         result = asyncio.run(scope['reconcile_pending']())
         self.assertEqual(result, {'examined': 1, 'published': 0, 'revoked': 1, 'pending': 0})
+
+    def test_cancelled_thread_work_finishes_before_operation_can_release_lock(self):
+        import threading
+        async def check():
+            entered, finish = threading.Event(), threading.Event()
+            def blocking():
+                entered.set()
+                finish.wait(2)
+            fn = actual({'_product_io'}, {'asyncio': asyncio})['_product_io']
+            task = asyncio.create_task(fn(blocking))
+            await asyncio.to_thread(entered.wait, 2)
+            task.cancel()
+            await asyncio.sleep(.01)
+            self.assertFalse(task.done())
+            finish.set()
+            with self.assertRaises(asyncio.CancelledError): await task
+        asyncio.run(check())
+
+    def test_schema_selection_cannot_fall_back_to_public_tables(self):
+        from backend.depo_platform.postgres_schema import select_schema, initialise_schema
+        from unittest.mock import Mock, patch
+        import os
+        for fn in (select_schema, initialise_schema):
+            cursor = Mock()
+            cursor.fetchone.return_value = (True,)
+            with patch.dict(os.environ, {'DEPO_DATABASE_SCHEMA': 'semantic'}, clear=True): fn(cursor)
+            self.assertEqual(cursor.execute.call_args.args[0], 'SET search_path TO "semantic"')

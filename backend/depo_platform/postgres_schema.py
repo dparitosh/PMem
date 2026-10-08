@@ -33,7 +33,7 @@ def select_schema(cursor) -> str:
         raise RuntimeError(
             f"Configured PostgreSQL schema '{schema}' does not exist; run initialize-depo-schema.ps1 first"
         )
-    cursor.execute(f'SET search_path TO "{schema}", public')
+    cursor.execute(f'SET search_path TO "{schema}"')
     return schema
 
 
@@ -47,7 +47,7 @@ def initialise_schema(cursor) -> str:
             f"Configured PostgreSQL schema '{schema}' does not exist. "
             "Create it as the database administrator and grant the DEPO role USAGE, CREATE before migration."
         )
-    cursor.execute(f'SET search_path TO "{schema}", public')
+    cursor.execute(f'SET search_path TO "{schema}"')
     return schema
 
 

@@ -29,3 +29,9 @@ test('inference previews forward cancellation and explicit limits',async()=>{
  expect(post.mock.calls[0].slice(1)).toEqual([payload,options]);
  }finally{post.mockRestore();}
 });
+
+test("null dictionary sections are rejected instead of displayed as empty",()=>{
+ expect(()=>dictionaryPayload({entities:null})).toThrow(/invalid dictionary/);
+ expect(()=>dictionaryPayload({properties:{},relationships:null})).toThrow(/invalid dictionary/);
+ expect(dictionaryPayload({entities:{}})).toEqual({entities:{}});
+});

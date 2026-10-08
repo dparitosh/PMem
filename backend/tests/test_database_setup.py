@@ -185,4 +185,4 @@ def test_migration_selects_existing_schema_without_database_create(monkeypatch):
     cursor = MagicMock()
     cursor.fetchone.return_value = (True,)
     assert postgres_schema.initialise_schema(cursor) == 'semantic'
-    assert cursor.execute.call_args_list[-1].args[0] == 'SET search_path TO "semantic", public'
+    assert cursor.execute.call_args_list[-1].args[0] == 'SET search_path TO "semantic"'

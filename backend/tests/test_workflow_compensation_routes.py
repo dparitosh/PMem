@@ -40,7 +40,7 @@ class CompensationRoutes(unittest.TestCase):
         async def lock(key):
             with store.advisory_lock(key) as acquired: yield acquired
         revoke=actual_function('backend/data_product_service/router.py','revoke',{
-            'asyncio':asyncio, '_product_lock':lock,
+            'asyncio':asyncio, '_product_lock':lock, '_product_io':asyncio.to_thread,
             'store':store,'approval_identity':lambda *args,**kwargs:'steward','_now':lambda:'timestamp',
             '_register_catalog':remote,'_public_product':lambda record:record})
         payload={'idempotency_key':'compensation-1','reason':'Withdraw evidence'}

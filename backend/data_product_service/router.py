@@ -24,20 +24,33 @@ approval_store = PostgresRegistry("data_product_approvals")
 artifact_store = ArtifactStore()
 
 
+async def _product_io(callback, *args, **kwargs):
+    # Keep the operation lock until blocking work has actually stopped.
+    task = asyncio.create_task(asyncio.to_thread(callback, *args, **kwargs))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        try:
+            await task
+        except Exception:
+            pass
+        raise
+
+
 @asynccontextmanager
 async def _product_lock(key):
     lock = store.advisory_lock(key)
-    entering = asyncio.create_task(asyncio.to_thread(lock.__enter__))
+    entering = asyncio.create_task(_product_io(lock.__enter__))
     try:
         acquired = await asyncio.shield(entering)
     except asyncio.CancelledError:
         await entering
-        await asyncio.to_thread(lock.__exit__, None, None, None)
+        await _product_io(lock.__exit__, None, None, None)
         raise
     try:
         yield acquired
     finally:
-        await asyncio.to_thread(lock.__exit__, None, None, None)
+        await _product_io(lock.__exit__, None, None, None)
 
 
 def _reject_secrets(value, root=True):
@@ -156,17 +169,17 @@ async def _register_catalog(record: dict) -> dict:
 
 async def reconcile_pending(limit: int = 100) -> dict:
     """Durably retry pending catalog registrations; safe to invoke repeatedly."""
-    pending = await asyncio.to_thread(store.due_pending, limit)
+    pending = await _product_io(store.due_pending, limit)
     published = revoked = 0
     examined = 0
     for key, record in pending:
         async with _product_lock(key) as acquired:
             if not acquired: continue
-            current = await asyncio.to_thread(store.get, key)
+            current = await _product_io(store.get, key)
             if current != record: continue
             updated = await _register_catalog(current)
             examined += 1
-            if await asyncio.to_thread(store.compare_and_put, key, current, updated):
+            if await _product_io(store.compare_and_put, key, current, updated):
                 published += int(updated.get("status") == "published")
                 revoked += int(updated.get("status") == "revoked")
     return {"examined": examined, "published": published, "revoked": revoked, "pending": examined - published - revoked}
@@ -181,17 +194,17 @@ def preview(payload: dict) -> dict:
 
 @router.post("/publish")
 async def publish(payload: dict, request: Request) -> dict:
-    artifacts, errors = await asyncio.to_thread(_validate, payload)
+    artifacts, errors = await _product_io(_validate, payload)
     if errors:
         raise HTTPException(422, {"errors": errors})
     approver = approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
     key = _key(payload)
     async with _product_lock(key) as acquired:
         if not acquired: raise HTTPException(409, "Product operation is in progress; retry after it completes")
-        existing = await asyncio.to_thread(store.get, key)
+        existing = await _product_io(store.get, key)
         idempotency_key = str(payload.get("idempotency_key") or "")
         if existing and existing.get("idempotency_key") == idempotency_key and idempotency_key:
-            if existing.get('publication_digest') != await asyncio.to_thread(publication_digest, payload, artifacts):
+            if existing.get('publication_digest') != await _product_io(publication_digest, payload, artifacts):
                 raise HTTPException(409, 'Idempotency key was already used with different or unverified content')
             return _public_product(existing)
         if existing:
@@ -203,15 +216,15 @@ async def publish(payload: dict, request: Request) -> dict:
         except RuntimeError as exc:
             raise HTTPException(503, detail=str(exc)) from exc
         try:
-            package = await asyncio.to_thread(build_package, output_root=root, payload=payload, artifacts=artifacts)
+            package = await _product_io(build_package, output_root=root, payload=payload, artifacts=artifacts)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         safe_payload = {key: value for key, value in payload.items() if key not in {"approval_token", "authorization", "api_key"}}
         record = {**safe_payload, "semantic_releases": semantic_releases, "artifacts": [metadata for metadata, _ in artifacts], "manifest": package["manifest"], "package_storage": {"zip_path": str(package["zip_path"]), "package_dir": str(package["package_dir"])}, "status": "pending_catalog_registration", "catalog_attempts": 0, "published_at": _now()}
         record['publication_digest'] = package['manifest']['publication_digest']
-        await asyncio.to_thread(store.put_with_related, key, record, related_namespace=approval_store.namespace,
+        await _product_io(store.put_with_related, key, record, related_namespace=approval_store.namespace,
             related_key=f"{key}:{record['published_at']}", related_value={"product": key, "approved_by": approver, "approved_at": _now()})
-        return _public_product(await asyncio.to_thread(store.put, key, await _register_catalog(record)))
+        return _public_product(await _product_io(store.put, key, await _register_catalog(record)))
 
 
 @router.post("/{product_version}/retry-catalog")
@@ -219,13 +232,13 @@ async def retry_catalog(product_version: str, payload: dict, request: Request) -
     approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
     async with _product_lock(product_version) as acquired:
         if not acquired: raise HTTPException(409, "Product operation is in progress; retry after it completes")
-        record = await asyncio.to_thread(store.get, product_version)
+        record = await _product_io(store.get, product_version)
         if not record:
             raise HTTPException(404, "Data product not found")
         approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
         if record.get("status") == "revoked":
             raise HTTPException(409, "A revoked product cannot be published")
-        return _public_product(await asyncio.to_thread(store.put, product_version, await _register_catalog(record)))
+        return _public_product(await _product_io(store.put, product_version, await _register_catalog(record)))
 
 
 @router.post("/reconcile")
@@ -242,7 +255,7 @@ async def revoke(product_version: str, payload: dict, request: Request) -> dict:
     approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
     async with _product_lock(product_version) as acquired:
         if not acquired: raise HTTPException(409, "Product operation is in progress; retry after it completes")
-        record = await asyncio.to_thread(store.get, product_version)
+        record = await _product_io(store.get, product_version)
         if not record:
             raise HTTPException(404, "Data product not found")
         approver = approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
@@ -256,8 +269,8 @@ async def revoke(product_version: str, payload: dict, request: Request) -> dict:
         # Commit the local revocation before a remote request can block, fail,
         # or be interrupted by process shutdown. Reconciliation delivers it.
         revoked = {**revoked, "status": "pending_catalog_registration", "next_catalog_attempt_at": None}
-        await asyncio.to_thread(store.put, product_version, revoked)
-        return _public_product(await asyncio.to_thread(store.put, product_version, await _register_catalog(revoked)))
+        await _product_io(store.put, product_version, revoked)
+        return _public_product(await _product_io(store.put, product_version, await _register_catalog(revoked)))
 
 
 @router.get("", dependencies=[Depends(graph_read_identity)])
