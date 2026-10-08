@@ -12,6 +12,10 @@ def fingerprint(value):
 def execution_payload(payload):
     def clean(value):
         if isinstance(value, dict):
+            for key in value:
+                name = key.lower()
+                if name not in {'approval_token', 'api_key', 'authorization', 'access_token', 'password'} and (name in {'headers', 'credentials', 'token', 'secret'} or name.endswith(('_token', '_api_key', '_password', '_secret'))):
+                    raise ValueError('Workflow inputs cannot contain credentials or arbitrary headers')
             return {key: clean(item) for key, item in value.items()
                     if key.lower() not in {'approval_token', 'api_key', 'authorization', 'access_token', 'password'}}
         if isinstance(value, list):

@@ -50,10 +50,17 @@ class OllamaService:
         with request_slot_sync(self._native_base_url() + '/api/' + operation):
             response = self._session.post(
                 self._native_base_url() + '/api/' + operation,
-                json=body, headers=self._headers(), timeout=ollama_timeout())
-            response.raise_for_status()
-            result = response.json()
-            content = result.get('response') if operation == 'generate' else result.get('message', {}).get('content')
+                json=body, headers=self._headers(), timeout=ollama_timeout(), stream=True)
+            try:
+                response.raise_for_status()
+                from backend.agentic_service.response_limits import read_bounded_response_sync
+                import json
+                result = json.loads(read_bounded_response_sync(response))
+            finally:
+                response.close()
+            if not isinstance(result, dict) or result.get('error') or result.get('done') is not True:
+                raise ValueError('Ollama returned an invalid or incomplete answer')
+            content = result.get('response') if operation == 'generate' else (result.get('message') or {}).get('content')
             if not isinstance(content, str) or not content.strip():
                 raise ValueError('Ollama returned no answer')
             return content.strip()
@@ -71,10 +78,17 @@ class OllamaService:
             response = self._session.get(
                 f"{native_base}/api/tags",
                 headers=self._headers(),
-                timeout=5,
+                timeout=5, stream=True,
             )
-            if response.status_code == 200:
-                data = response.json()
+            try:
+                if response.status_code != 200:
+                    return []
+                from backend.agentic_service.response_limits import read_bounded_response_sync
+                import json
+                data = json.loads(read_bounded_response_sync(response))
+            finally:
+                response.close()
+            if isinstance(data, dict):
                 models = data.get('models')
                 if not isinstance(models, list) or any(not isinstance(m, dict) or not isinstance(m.get('name') or m.get('model'), str) for m in models):
                     raise ValueError('Invalid Ollama model list')
@@ -199,7 +213,8 @@ Keep it friendly and actionable."""
             return {
                 'answer': response,
                 'reasoning': f"Based on {', '.join(sources) if sources else 'general knowledge'}",
-                'confidence': 0.8 if response else 0.3,
+                'confidence': None,
+                'confidence_status': 'not_calibrated',
                 'sources': sources,
                 'timestamp': datetime.now().isoformat()
             }

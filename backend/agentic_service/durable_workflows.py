@@ -105,13 +105,19 @@ async def execute_candidate(record):
         try: recovery = prepare_recovery(record,definition,activity_at=last_activity(record,heartbeat))
         except ValueError: return  # Active, expired or uncertain mutations are never replayed.
     else: recovery = dict(record)
-    try:
+    def verify_grant():
         if record.get('credential_fingerprints') != credential_snapshot() or record.get('workflow_digest') != fingerprint(definition) or record.get('transport_fingerprint') != transport_snapshot():
             raise ValueError('Authorization or tool contracts changed')
         for name in record['credential_fingerprints']:
             require_active_token(name)
             if uses_postgres(): verify_key(name,os.environ[name].strip())
-    except Exception:
+    try:
+        await routes._agent_io(verify_grant)
+    except Exception as exc:
+        # Authority outages do not revoke an existing grant. The queue retries
+        # verification; the original deadline remains authoritative.
+        if getattr(exc, 'status_code', None) == 503:
+            return
         await routes._agent_io(routes.workflow_store.compare_and_put,run_id,record,{**record,'status':'failed','error_type':'WorkerAuthorizationChanged'})
         return
     claimed = {**record,'status':'running','execution_id':uuid4().hex,'updated_at':datetime.now(timezone.utc).isoformat()}

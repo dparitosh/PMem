@@ -56,7 +56,7 @@ def products(domain: str = "", limit: int = 100, offset: int = 0) -> dict:
 
 @router.get("/products/{product_id}", dependencies=[Depends(graph_read_identity)])
 def product(product_id: str) -> dict:
-    values = store.all()
+    values = store.product_versions(product_id)
     versions = [value for key, value in values.items() if key.startswith(f"{product_id}:") and not key.endswith(":latest")]
     if not versions:
         raise HTTPException(404, "Data product not found")
@@ -94,7 +94,7 @@ def _register_version(product_id: str, version: str, payload: dict) -> dict:
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
     record = {**payload, "product_id": product_id, "version": version, "updated_at": _now()}
-    candidates = [value for item_key, value in store.all().items() if item_key.startswith(f"{product_id}:") and not item_key.endswith(":latest") and item_key != key and value.get("lifecycle_state") != "revoked"]
+    candidates = [value for item_key, value in store.product_versions(product_id).items() if item_key.startswith(f"{product_id}:") and not item_key.endswith(":latest") and item_key != key and value.get("lifecycle_state") != "revoked"]
     if record.get("lifecycle_state") != "revoked":
         candidates.append(record)
     latest_version = max(candidates, key=lambda value: _semver(value["version"]))["version"] if candidates else None

@@ -41,6 +41,11 @@ class PostgresRegistry:
             cursor.execute("SELECT key, value FROM depo_registry WHERE namespace = %s", (self.namespace,))
             return {key: value for key, value in cursor.fetchall()}
 
+    def product_versions(self, product_id):
+        with self._connect() as db, db.cursor() as cursor:
+            cursor.execute("SELECT key, value FROM depo_registry WHERE namespace=%s AND value->>'product_id'=%s", (self.namespace, product_id))
+            return dict(cursor.fetchall())
+
     def get(self, key: str) -> dict[str, Any] | None:
         with self._connect() as connection, connection.cursor() as cursor:
             cursor.execute("SELECT value FROM depo_registry WHERE namespace = %s AND key = %s", (self.namespace, key))
@@ -113,6 +118,7 @@ class PostgresRegistry:
                 WHERE r.namespace=%s AND r.value->>'execution_mode'='worker'
                   AND COALESCE(r.value->'pending_step'->>'mutates','false') <> 'true'
                   AND COALESCE(r.value->>'reconciliation_required','false') <> 'true'
+                  AND COALESCE(r.value->'compensations', '{}'::jsonb) IN ('{}'::jsonb, 'null'::jsonb)
                   AND (r.value->>'status' IN ('queued','interrupted') OR
                        (r.value->>'status'='running' AND GREATEST(r.updated_at,COALESCE(h.updated_at,r.updated_at)) <= %s::timestamptz))
                 ORDER BY r.updated_at ASC, r.key ASC LIMIT %s

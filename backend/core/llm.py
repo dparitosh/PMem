@@ -268,16 +268,20 @@ except Exception as exc:
 # --- Initialize unstructured LLM (document processing with vision) ---
 unstructured_llm_error = None
 unstructured_llm = None
+unstructured_provider = None
 
 if USE_UNSTRUCTURED_LLM:
     try:
         # Try APIM first if available
-        if UNSTRUCTURED_APIM_ENDPOINT and UNSTRUCTURED_APIM_SUBSCRIPTION_KEY:
+        if UNSTRUCTURED_LLM_TYPE == "azure" and UNSTRUCTURED_APIM_ENDPOINT and UNSTRUCTURED_APIM_SUBSCRIPTION_KEY:
             unstructured_llm = _init_unstructured_apim_llm()
+            unstructured_provider = "azure"
         elif UNSTRUCTURED_LLM_TYPE == "azure":
             unstructured_llm = _init_unstructured_azure_llm()
+            unstructured_provider = "azure"
         elif UNSTRUCTURED_LLM_TYPE == "ollama":
             unstructured_llm = _init_unstructured_ollama_llm()
+            unstructured_provider = "ollama"
         else:
             raise ValueError(f"Unknown UNSTRUCTURED_LLM_TYPE: {UNSTRUCTURED_LLM_TYPE}")
     except Exception as exc:
@@ -353,7 +357,7 @@ if USE_UNSTRUCTURED_LLM:
     if unstructured_llm_error:
         logger.error(f"⚠️ Unstructured LLM error: {unstructured_llm_error}")
     else:
-        if UNSTRUCTURED_APIM_ENDPOINT:
+        if unstructured_provider == "azure" and UNSTRUCTURED_APIM_ENDPOINT:
             logger.info(f"Using APIM gateway for document processing (unstructured)")
         else:
             logger.info(f"Using {UNSTRUCTURED_LLM_TYPE.upper()} for document processing (unstructured)")
@@ -376,7 +380,7 @@ if USE_LLM == 'ollama':
         tool_llm = GuardedOllama(tool_llm, ollama_tool_chat_root() + '/api/chat')
     if not USE_UNSTRUCTURED_LLM:
         unstructured_llm = llm
-if USE_UNSTRUCTURED_LLM and UNSTRUCTURED_LLM_TYPE == 'ollama' and not unstructured_llm_error:
+if USE_UNSTRUCTURED_LLM and unstructured_provider == 'ollama' and not unstructured_llm_error:
     from backend.core.guarded_ollama import GuardedOllama
     from backend.core.ollama_auth import ollama_generation_route
     unstructured_llm = GuardedOllama(unstructured_llm, ollama_generation_route(UNSTRUCTURED_OLLAMA_BASE_URL)[0])

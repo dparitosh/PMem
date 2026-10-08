@@ -2,7 +2,7 @@ import ast
 import asyncio
 import copy
 import unittest
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock
 from backend.agentic_service.workflow_receipts import compensation_plan
@@ -36,7 +36,11 @@ class CompensationRoutes(unittest.TestCase):
     def test_revocation_retry_is_idempotent_and_cannot_claim_another_revocation(self):
         store=Store({'product_id':'quality','version':'1.0.0','lifecycle_state':'published'})
         remote=AsyncMock(side_effect=lambda record:record)
+        @asynccontextmanager
+        async def lock(key):
+            with store.advisory_lock(key) as acquired: yield acquired
         revoke=actual_function('backend/data_product_service/router.py','revoke',{
+            'asyncio':asyncio, '_product_lock':lock,
             'store':store,'approval_identity':lambda *args,**kwargs:'steward','_now':lambda:'timestamp',
             '_register_catalog':remote,'_public_product':lambda record:record})
         payload={'idempotency_key':'compensation-1','reason':'Withdraw evidence'}

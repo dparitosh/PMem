@@ -120,7 +120,7 @@ async def _reconcile_graph_publication(
     graph_url = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013")
     graph_root = graph_url if graph_url.endswith("/api/v1") else f"{graph_url}/api/v1"
     try:
-        async with httpx.AsyncClient(timeout=min(timeout_seconds, 15)) as client:
+        async with httpx.AsyncClient(timeout=min(timeout_seconds, 15), trust_env=False) as client:
             response = await client.get(
                 f"{graph_root}/graph/ontologies/{ontology_id}/publications/{publication_id}", headers=service_bearer_headers("GRAPH_READ_TOKEN", service_name="graph publication receipts", endpoint=graph_root),
             )
@@ -414,7 +414,7 @@ async def publish_job_run(run_id: str, payload: dict[str, Any], request: Request
             ))
             publication_timeout = bounded_timeout_seconds("GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180)
             try:
-                async with httpx.AsyncClient(timeout=publication_timeout) as client:
+                async with httpx.AsyncClient(timeout=publication_timeout, trust_env=False) as client:
                     response = await client.post(f"{ceim_root}/ceim/publications/graph", json=publication_payload, headers=forwarded_headers)
             except httpx.TimeoutException as exc:
                 # Never retry a mutation blindly. Query the graph's durable

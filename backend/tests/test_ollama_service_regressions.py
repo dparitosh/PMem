@@ -1,4 +1,5 @@
 import ast
+import json
 import os
 import types
 import unittest
@@ -40,7 +41,7 @@ class OllamaServiceRegressions(unittest.TestCase):
     def test_chat_route_payload_and_timeout(self):
         with patch.dict(os.environ, {'LLM_REQUEST_TIMEOUT_SECONDS':'2'}, clear=True):
             service, session = self.service()
-            session.post.return_value.json.return_value = {'message': {'content':'answer'}}
+            session.post.return_value.iter_content.return_value = [json.dumps({'message': {'content':'answer'}, 'done': True}).encode()]
             self.assertEqual(service.query('question', temperature=0.2), 'answer')
             args, kw = session.post.call_args
             self.assertEqual(args[0], 'http://fixture/api/chat')
@@ -51,7 +52,7 @@ class OllamaServiceRegressions(unittest.TestCase):
     def test_generate_route(self):
         with patch.dict(os.environ, {}, clear=True):
             service, session = self.service('http://fixture/api/generate')
-            session.post.return_value.json.return_value = {'response':'answer'}
+            session.post.return_value.iter_content.return_value = [json.dumps({'response':'answer', 'done': True}).encode()]
             self.assertEqual(service.query('question'), 'answer')
             self.assertEqual(session.post.call_args.args[0], 'http://fixture/api/generate')
 
@@ -59,15 +60,57 @@ class OllamaServiceRegressions(unittest.TestCase):
         service, session = self.service()
         session.get.return_value.status_code = 200
         for body in ({'message':{}}, {'models':[]}, {'models':[{'name':'another'}]}):
-            session.get.return_value.json.return_value = body
+            session.get.return_value.iter_content.return_value = [json.dumps(body).encode()]
             self.assertFalse(service.health_check())
-        session.get.return_value.json.return_value = {'models':[{'name':'fixture:latest'}]}
+        session.get.return_value.iter_content.return_value = [json.dumps({'models':[{'name':'fixture:latest'}]}).encode()]
         self.assertTrue(service.health_check())
 
     def test_failed_generation_raises(self):
         service, session = self.service()
-        session.post.return_value.json.return_value = {'error':'missing model'}
+        session.post.return_value.iter_content.return_value = [json.dumps({'error':'missing model'}).encode()]
         with self.assertRaises(RuntimeError): service.answer_question('question')
+
+    def test_partial_or_error_answers_are_rejected_and_response_closed(self):
+        service, session = self.service()
+        for body in ({'message': {'content': 'partial'}, 'done': False},
+                     {'message': {'content': 'partial'}},
+                     {'message': {'content': 'answer'}, 'done': True, 'error': 'failed'}):
+            session.post.return_value.iter_content.return_value = [json.dumps(body).encode()]
+            self.assertIsNone(service.query('question'))
+        self.assertEqual(session.post.return_value.close.call_count, 3)
+
+    def test_oversized_generation_and_discovery_are_rejected(self):
+        with patch.dict(os.environ, {'AGENTIC_MAX_RESPONSE_BYTES': '10'}, clear=True):
+            service, session = self.service()
+            session.post.return_value.iter_content.return_value = [b'x' * 11]
+            self.assertIsNone(service.query('question'))
+            session.post.return_value.close.assert_called_once()
+            session.get.return_value.status_code = 200
+            session.get.return_value.iter_content.return_value = [b'x' * 11]
+            self.assertEqual(service.list_models(), [])
+            session.get.return_value.close.assert_called_once()
+
+    def test_answer_does_not_invent_confidence(self):
+        service, session = self.service()
+        session.post.return_value.iter_content.return_value = [json.dumps(
+            {'message': {'content': 'answer'}, 'done': True}).encode()]
+        result = service.answer_question('question')
+        self.assertIsNone(result['confidence'])
+        self.assertEqual(result['confidence_status'], 'not_calibrated')
+
+    def test_explicit_ollama_document_provider_wins_over_azure_credentials(self):
+        tree = ast.parse(Path('backend/core/llm.py').read_text(encoding='utf-8'))
+        branch = next(n for n in tree.body if isinstance(n, ast.If)
+                      and isinstance(n.test, ast.Name) and n.test.id == 'USE_UNSTRUCTURED_LLM')
+        seen = []
+        scope = dict(USE_UNSTRUCTURED_LLM=True, UNSTRUCTURED_LLM_TYPE='ollama',
+                     UNSTRUCTURED_APIM_ENDPOINT='https://azure', UNSTRUCTURED_APIM_SUBSCRIPTION_KEY='fixture',
+                     _init_unstructured_ollama_llm=lambda: seen.append('ollama') or object(),
+                     _init_unstructured_apim_llm=lambda: seen.append('azure'),
+                     _init_unstructured_azure_llm=lambda: seen.append('azure'))
+        exec(compile(ast.Module(body=[branch], type_ignores=[]), '<document selection>', 'exec'), scope)
+        self.assertEqual(seen, ['ollama'])
+        self.assertEqual(scope['unstructured_provider'], 'ollama')
 
     def test_invalid_ports(self):
         for url in ('http://localhost:bad', 'http://localhost:65536', 'http://localhost:0'):

@@ -54,10 +54,10 @@ class ArchitectureTests(unittest.TestCase):
         class HTTPError(OSError):
             __module__ = 'requests.exceptions'
             def __init__(self, code): self.response = types.SimpleNamespace(status_code=code)
-        state={'active':0, 'failures':0, 'until':0}
-        for code in (400,401,403,404): _failure(state, 2, 30, HTTPError(code))
+        state={'active':0, 'failures':0, 'until':0, 'generation':0}
+        for code in (400,401,403,404): _failure(state, 2, 30, HTTPError(code), state['generation'])
         self.assertEqual(state['failures'], 0)
-        for code in (429,503): _failure(state, 2, 30, HTTPError(code))
+        for code in (429,503): _failure(state, 2, 30, HTTPError(code), state['generation'])
         self.assertEqual(state['failures'], 2)
         self.assertGreater(state['until'], 0)
 

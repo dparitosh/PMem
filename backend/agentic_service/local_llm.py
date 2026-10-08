@@ -43,9 +43,11 @@ async def _health():
                   'probe_timeout_seconds': probe_timeout}
     try:
         async with asyncio.timeout(probe_timeout), httpx.AsyncClient(timeout=probe_timeout, trust_env=False) as client:
-            response = await client.get(endpoint, headers=headers)
-            response.raise_for_status()
-        body = response.json()
+            async with client.stream('GET', endpoint, headers=headers) as response:
+                response.raise_for_status()
+                from .response_limits import read_bounded_response
+                import json
+                body = json.loads(await read_bounded_response(response))
         if not isinstance(body, dict) or not isinstance(body.get('models'), list):
             raise ValueError('Invalid model-list response')
         if any(not isinstance(item, dict) or not isinstance(item.get('name') or item.get('model'), str) for item in body['models']):
