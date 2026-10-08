@@ -12,15 +12,66 @@ let api;
 beforeEach(() => {
   sessionStorage.clear();
   setCredentialProfile('AGENTIC_APPROVAL_TOKEN', 'supervisor');
+  setCredentialProfile('GRAPH_READ_TOKEN', 'reader');
   api = { preview: vi.fn().mockResolvedValue({ data: preview }), status: vi.fn(), publish: vi.fn().mockResolvedValue({ data: { job_id: 'publish-1', status: 'published', receipt: { applied_links: 1, approved_by: 'reviewer' } } }) };
 });
 afterEach(cleanup);
 const mount = () => {
   const view = render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  view.container.querySelector('details').open = true;
   fireEvent.change(screen.getByLabelText('Approver'), {target: {value: 'reviewer'}});
   return view;
 };
 async function create() { fireEvent.click(screen.getByText('Create preview')); await screen.findByLabelText('Approve part to Part'); }
+
+test('automated workflow publishes validated results without individual approval clicks', async () => {
+  api.automate = vi.fn().mockResolvedValue({data:{run_id:'workflow-1',status:'completed',traces:[
+    {tool_id:'bridge.mapping.preview',status:'completed',result:preview},
+    {tool_id:'bridge.mapping.evaluate',status:'completed',result:{accepted_ids:['valid'],held_count:1,decisions:[{candidate_id:'invalid',decision:'hold',reasons:['invalid_target_or_source']}]}},
+    {tool_id:'bridge.mapping.publish_automatic',status:'completed',result:{job_id:'publish-1',status:'published',approved_ids:['valid'],receipt:{applied_links:1}}},
+  ]}});
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  await screen.findByText(/1 mappings published to Neo4j/);
+  expect(api.automate).toHaveBeenCalledTimes(1);
+  expect(api.publish).not.toHaveBeenCalled();
+  expect(Object.keys(sessionStorage).some(key => key.startsWith('bridge-workflow:') && sessionStorage.getItem(key) === 'workflow-1')).toBe(true);
+  expect(screen.getByText('Run automated mapping and publish')).toBeDisabled();
+});
+
+test('lost automation response blocks duplicate publication and exposes recovery instructions', async () => {
+  api.automate = vi.fn().mockRejectedValue(new Error('network'));
+  const view = render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  await screen.findByText(/Inspect recent workflows in agent telemetry/);
+  expect(screen.getByText('Run automated mapping and publish')).toBeDisabled();
+  expect(screen.getByText('Refresh automation result')).toBeDisabled();
+  view.unmount();
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  expect(screen.getByText('Run automated mapping and publish')).toBeDisabled();
+  expect(screen.getByLabelText('Recover mapping workflow ID')).toBeVisible();
+});
+
+test('malformed steward decisions produce a recovery message without crashing the page', async () => {
+  api.automate=vi.fn().mockResolvedValue({data:{run_id:'bad-policy',status:'completed',traces:[
+    {tool_id:'bridge.mapping.evaluate',status:'completed',result:{accepted_ids:[],held_count:1,decisions:[{candidate_id:'invalid',decision:'hold',reasons:'invalid'}]}}
+  ]}});
+  render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  await screen.findByText('Invalid steward evidence. Refresh the retained workflow before retrying.');
+  expect(screen.getByText('Run automated mapping and publish')).toBeDisabled();
+});
+
+test('running instance workflows refresh automatically and display server-supported controls', async () => {
+  api.automate=vi.fn().mockResolvedValue({data:{run_id:'poll-run',status:'running',allowed_actions:['pause','cancel'],traces:[]}});
+  api.automationStatus=vi.fn().mockResolvedValue({data:{run_id:'poll-run',status:'completed',traces:[]}});
+  const view=render(<SemanticBridgeJobs ontologyId="ontology" importTaskId="import" api={api} />);
+  fireEvent.click(screen.getByText('Run automated mapping and publish'));
+  await screen.findByRole('button',{name:'pause'});
+  await waitFor(() => expect(api.automationStatus).toHaveBeenCalledWith('poll-run'),{timeout:4500});
+  await screen.findByText('Prepare another mapping run');
+  view.unmount();
+});
 
 test('saves manual drafts as visible recommendations without selecting publication', async () => {
   const manual = [{ source_term: 'part', source_type: 'Entity', target_term: 'Part', target_ontology_type: 'Class' }];

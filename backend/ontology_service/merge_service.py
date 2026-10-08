@@ -126,7 +126,8 @@ class GovernedMergeService:
                   "ontology_name": str(payload.get("ontology_name") or "Merged Ontology"),
                   "prefix": str(payload.get("prefix") or "merged"),
                   "description": str(payload.get("description") or ""),
-                  "triple_count": len(merged), "duplicate_triple_count": sum(occurrences.values()) - len(merged),
+                  "triple_count": len(merged), "duplicate_triple_count": sum(occurrences.values()) - len(occurrences),
+                  "consolidated_triple_count": len(original) - len(merged),
                   "conflicts": conflicts, "publish_recommended": not conflicts, "changes": changes,
                   "validation": {"scope": "RDF union, functional literal conflicts and explicit OWL declaration contradictions",
                       "formal_reasoning_performed": False,
@@ -144,7 +145,47 @@ class GovernedMergeService:
                 raise ValueError('A merge operation is already running; refresh and retry')
             return self._apply(preview_id, approved_by)
 
-    def _apply(self, preview_id: str, approved_by: str) -> dict[str, Any]:
+    def evaluate_policy(self, preview_id: str) -> dict[str, Any]:
+        record = self.registry.get(preview_id) if self.registry is not None else self._load().get(preview_id)
+        if not record:
+            raise ValueError('Merge preview not found')
+        graph = Graph()
+        graph.parse(data=record['turtle'], format='turtle')
+        from .merge_validation import explicit_conflicts
+        conflicts = self._literal_conflicts(graph) + explicit_conflicts(graph)
+        # Automatic union preserves every entity identity. Consolidations remain
+        # explicit reviewed operations because RDF union cannot prove equivalence.
+        reasons = []
+        if conflicts or record.get('conflicts'): reasons.append('unresolved_rdf_owl_conflicts')
+        if record.get('changes', {}).get('entity_mappings'): reasons.append('entity_consolidation_requires_review')
+        return {'preview_id': preview_id, 'policy': 'conflict-free-union-v1',
+                'status': 'held' if reasons else 'ready', 'reasons': reasons,
+                'conflicts': conflicts, 'changes': record.get('changes'),
+                'validation': record.get('validation')}
+
+    def receipt(self, preview_id: str) -> dict[str, Any]:
+        record = self.registry.get(preview_id) if self.registry is not None else self._load().get(preview_id)
+        if not record or not record.get('applied_result'):
+            raise ValueError('No completed merge receipt is retained')
+        result = record['applied_result']
+        artifact, content = self.catalog.read_artifact(result['ontology']['ontology_id'])
+        provenance = artifact.get('provenance') or {}
+        if (result.get('preview_id') != preview_id or provenance.get('preview_id') != preview_id
+                or provenance.get('source_ontology_ids') != record['source_ontology_ids']
+                or hashlib.sha256(content).digest() != hashlib.sha256(record['turtle'].encode('utf-8')).digest()):
+            raise ValueError('Merge receipt does not match the retained artifact')
+        return result
+
+    def apply_automatic(self, preview_id: str, approved_by: str) -> dict[str, Any]:
+        with self._operation_lock() as acquired:
+            if acquired is False:
+                raise ValueError('A merge operation is already running; refresh and retry')
+            decision = self.evaluate_policy(preview_id)
+            if decision['status'] == 'held':
+                return decision
+            return {**self._apply(preview_id, approved_by, approval_policy=decision), 'approval_policy': decision}
+
+    def _apply(self, preview_id: str, approved_by: str, approval_policy=None) -> dict[str, Any]:
         if not str(approved_by).strip():
             raise ValueError("approved_by is required for a governed merge")
         if self.registry is not None:
@@ -166,13 +207,16 @@ class GovernedMergeService:
             raise ValueError('Merge contains explicit RDF/OWL contradictions; create and review a new preview')
         if not record.get('approved_by'):
             record['approved_by'] = approved_by
+            if approval_policy is not None:
+                record['approval_policy'] = approval_policy
             self._save(values, preview_id)
         approved_by = record['approved_by']
         artifact = self.catalog.register(
             content=record["turtle"].encode("utf-8"), filename=f"{record['prefix']}_merged.ttl",
             ontology_name=record["ontology_name"], prefix=record["prefix"], description=record["description"],
             source='governed-merge:' + hashlib.sha256(preview_id.encode('utf-8')).hexdigest(), extra_metadata={"status": "merged", "provenance": {"preview_id": preview_id,
-            "source_ontology_ids": record["source_ontology_ids"], "approved_by": approved_by}},
+            "source_ontology_ids": record["source_ontology_ids"], "approved_by": approved_by,
+            **({'approval_policy': record['approval_policy']} if record.get('approval_policy') else {})}},
         )
         version = self.intelligence.create_merge_version(ontology={"ontology_id": artifact["ontology_id"], "provenance": artifact["provenance"], "triple_count": record["triple_count"]}, author=approved_by)
         result = {"status": "merged", "ontology": artifact, "version": version, "preview_id": preview_id,

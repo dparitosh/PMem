@@ -90,6 +90,16 @@ class PostgresRegistry:
             )
             return [row[0] for row in cursor.fetchall()]
 
+    def prune_completed(self, retention_days: int) -> int:
+        """Expire completed records in this namespace, using database timestamps."""
+        if not 1 <= retention_days <= 3650:
+            raise ValueError('Retention must be between 1 and 3650 days')
+        ensure_execution_allowed()
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("DELETE FROM depo_registry WHERE namespace=%s AND value->>'status'='completed' AND updated_at < now() - %s * interval '1 day'",
+                           (self.namespace, retention_days))
+            return cursor.rowcount
+
     def latest_job_run(self, job_id: str, version: str) -> dict[str, Any] | None:
         with self._connect() as connection, connection.cursor() as cursor:
             cursor.execute("SELECT value FROM depo_registry WHERE namespace=%s AND value->>'job_id'=%s AND value->>'job_version'=%s ORDER BY (value->>'started_at')::timestamptz DESC, key DESC LIMIT 1", (self.namespace, job_id, version))

@@ -8,9 +8,11 @@ from fastapi import HTTPException, Request
 APPROVAL_TOKENS = {
     'bridge.mapping.preview': 'AGENTIC_APPROVAL_TOKEN',
     'bridge.mapping.publish': 'AGENTIC_APPROVAL_TOKEN',
+    'bridge.mapping.publish_automatic': 'AGENTIC_APPROVAL_TOKEN',
     'ontology.register': 'ONTOLOGY_APPROVAL_TOKEN',
     'ontology.transition': 'ONTOLOGY_APPROVAL_TOKEN',
     'ontology.merge.apply': 'ONTOLOGY_APPROVAL_TOKEN',
+    'ontology.merge.apply_automatic': 'ONTOLOGY_APPROVAL_TOKEN',
     'data.product.publish': 'DATA_PRODUCT_APPROVAL_TOKEN',
     'data.product.revoke': 'DATA_PRODUCT_APPROVAL_TOKEN',
     'pipeline.run': 'DATA_JOB_EXECUTION_TOKEN',

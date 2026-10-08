@@ -23,6 +23,12 @@ class ApprovalInput(BaseModel):
     approval_token: str | None = None
 
 
+class AutomaticApprovalInput(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    approved_by: str | None = None
+    approval_token: str | None = None
+
+
 def translate(action):
     try:
         return action()
@@ -50,6 +56,17 @@ def status(job_id: str):
 def publish(preview_id: str, payload: ApprovalInput, request: Request):
     actor = approval_identity(request, payload.model_dump(), token_env='AGENTIC_APPROVAL_TOKEN')
     return translate(lambda: jobs.publish(preview_id, payload.approved_candidate_ids, actor))
+
+
+@router.get('/bridge/previews/{preview_id}/policy', dependencies=[Depends(graph_read_identity)])
+def policy(preview_id: str):
+    return translate(lambda: jobs.evaluate_policy(preview_id))
+
+
+@router.post('/bridge/previews/{preview_id}/publish-automatic')
+def automatic(preview_id: str, payload: AutomaticApprovalInput, request: Request):
+    actor = approval_identity(request, payload.model_dump(), token_env='AGENTIC_APPROVAL_TOKEN')
+    return translate(lambda: jobs.publish_automatic(preview_id, actor))
 
 
 @router.get('/bridge/jobs/{job_id}/artifact', dependencies=[Depends(graph_read_identity)])

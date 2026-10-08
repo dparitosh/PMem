@@ -21,8 +21,8 @@ export default function RegistryWidget({ title, rows = [], columns, height = 300
   const columnDefs = useMemo(() => columns || normalizeColumns(rows), [columns, rows]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+    <div className="depo-registry-widget" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="depo-registry-widget__header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
         <div style={{ color: widgetColors.text, fontSize: 15, fontWeight: 800 }}>{title}</div>
         <input
           value={filter}

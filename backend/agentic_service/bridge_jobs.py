@@ -78,7 +78,42 @@ class BridgeJobs:
         self.store.put(preview_id, job)
         return job
 
-    def publish(self, preview_id, approved_ids, actor):
+    def evaluate_policy(self, preview_id):
+        """Deterministic steward decision over an immutable saved preview."""
+        preview = self.get(preview_id)
+        if preview.get('kind') != 'preview' or digest({k:v for k,v in preview.items() if k != 'preview_digest'}) != preview.get('preview_digest'):
+            raise BridgeConflict('Preview integrity check failed. Create a new preview.')
+        decisions, accepted = [], []
+        sources = {}
+        for row in preview['candidates']:
+            key = (row.get('import_row_key'), row.get('source_term'), row.get('source_type'))
+            if row.get('rank') == 1:
+                sources[key] = sources.get(key, 0) + 1
+        for row in preview['candidates']:
+            key = (row.get('import_row_key'), row.get('source_term'), row.get('source_type'))
+            checks = []
+            if not row.get('eligible'): checks.append('invalid_target_or_source')
+            if row.get('validation_status') != 'auto_approved': checks.append('not_automatically_validated')
+            if row.get('validation_warnings'): checks.append('validation_warning')
+            if row.get('ambiguous') or sources.get(key, 0) != 1: checks.append('ambiguous_target')
+            if row.get('generic_match') or row.get('rank') != 1: checks.append('non_specific_or_alternative_match')
+            confidence = row.get('confidence')
+            if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not .9 <= confidence <= 1:
+                checks.append('insufficient_confidence')
+            if not checks: accepted.append(row['candidate_id'])
+            decisions.append({'candidate_id': row['candidate_id'], 'decision': 'hold' if checks else 'publish', 'reasons': checks})
+        return {'policy': 'validated-only-v1', 'preview_id': preview_id,
+                'accepted_ids': sorted(accepted), 'held_count': len(decisions)-len(accepted),
+                'decisions': decisions, 'status': 'ready' if accepted else 'held'}
+
+    def publish_automatic(self, preview_id, actor):
+        decision = self.evaluate_policy(preview_id)
+        if not decision['accepted_ids']:
+            return {**decision, 'status': 'held', 'applied_links': 0}
+        return {**self.publish(preview_id, decision['accepted_ids'], actor, approval_policy=decision),
+                'policy_decision': decision}
+
+    def publish(self, preview_id, approved_ids, actor, approval_policy=None):
         if not isinstance(preview_id, str) or not preview_id.startswith('bridge-preview-'):
             raise ValueError('Select a saved Semantic Bridge preview before publication.')
         if not isinstance(approved_ids, list) or not approved_ids or not all(isinstance(x, str) for x in approved_ids):
@@ -104,6 +139,10 @@ class BridgeJobs:
                 'status': 'approved', 'approved_ids': selected, 'approved_by': actor,
                 'created_at': now(), 'attempts': 0,
                 'ontology_id': preview['ontology_id'], 'import_task_id': preview['import_task_id']}
+            if approval_policy is not None:
+                if existing and existing.get('approval_policy') != approval_policy:
+                    raise BridgeConflict('Publication approval policy changed. Create a new preview.')
+                job['approval_policy'] = copy.deepcopy(approval_policy)
             if job['status'] == 'published':
                 return job
             self.store.put(job_id, job)

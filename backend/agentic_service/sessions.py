@@ -46,7 +46,7 @@ def open_session(request, actor, session_id=None):
             raise HTTPException(404, 'Session not found; start without session_id')
         else:
             record = {'session_id': identifier, 'owner': identity, 'created_at': current.isoformat(),
-                      'expires_at': (current + timedelta(seconds=int(bounded_timeout_seconds('AGENT_SESSION_MAX_SECONDS', default=86400, maximum=604800)))).isoformat()}
+                      'expires_at': (current + timedelta(seconds=int(bounded_timeout_seconds('AGENT_SESSION_MAX_SECONDS', default=86400, maximum=2592000)))).isoformat()}
         record['last_seen_at'] = max(current.isoformat(), record.get('last_seen_at', ''))
         store.put(identifier, record)
         return record

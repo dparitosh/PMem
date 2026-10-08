@@ -32,6 +32,7 @@ class DurableWorkerTests(unittest.TestCase):
             fastapi=ModuleType('fastapi'); fastapi.HTTPException=type('HttpError',(Exception,),{'__init__':lambda self,*args:Exception.__init__(self,*args)})
             modules.update({sessions.__name__:sessions,fastapi.__name__:fastapi})
             routes._preflight_tools=AsyncMock()
+            routes._workflow_owner=lambda *args:'original-owner'
             with patch.dict(sys.modules,modules):
                 result=asyncio.run(enqueue({'workflow_id':'review','inputs':{'artifact':'retained'},'approval_token':'browser-secret'},object()))
             self.assertEqual(result['status'],'queued')

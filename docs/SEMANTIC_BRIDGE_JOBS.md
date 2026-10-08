@@ -2,7 +2,21 @@
 
 The Semantic Bridge panel in the Ontology Mapper supports saved previews, explicit mapping selection, approval, publication status, recovery, and JSON evidence downloads. PostgreSQL stores job records; the graph service writes mappings and their receipt in one Neo4j transaction. Spark/PySpark is not required for this review and publication flow.
 
-## Operator workflow
+## Automated tasks
+
+Semantic Bridge separates **Map instance to ontology** from **Merge two ontologies**.
+
+For instance mapping, select an import and ontology, then choose **Run automated mapping and publish**. The saved `bridge-validated-automation` workflow runs the governor, steward, and governor. `validated-only-v1` publishes only eligible, automatically validated, warning-free, unambiguous rank-one matches with confidence at least 0.9. Other candidates are held with reasons. This is deterministic policy validation, not LLM self-approval. Starting the task delegates publication using connected governed credentials; each publication retains policy evidence.
+
+For ontology merging, select two different retained RDF ontologies and choose **Run automatic merge and create draft**. The `ontology-union-automation` workflow creates a saved union preview, evaluates it with the steward, and applies `conflict-free-union-v1` through the governor. Conflicting explicit declarations or functional literal values hold the merge. Automatic union preserves entity identities; reviewed identity consolidation is available under Advanced. The resulting registry draft retains source IDs, changes, actor, and policy provenance. It is not automatically approved or published to Neo4j, and these checks do not establish full logical consistency.
+
+Both automation panels refresh running tasks and expose pause/resume/cancel when supported by the server. An unconfirmed submission blocks repeat execution, including after reload; recover its ID from workflow history. Credential renewal preserves workflow bookmarks, which contain no approval token. An inaccessible run cannot be cleared to bypass recovery. Manual merge actions stay disabled while automatic merging is active or unverified.
+
+Process-mode submissions return their workflow ID after the run is persisted, before tool execution completes. Reader ownership is independent of the publication approver. Receipt reconciliation supports automatic mapping publication and automatic merge without replaying writes; merge receipts verify saved preview provenance and retained artifact bytes. Merge reporting distinguishes original RDF duplicates from statements collapsed by reviewed identity consolidation.
+
+Production verification still requires the customer's PostgreSQL, Neo4j, service credentials, and running APIs.
+
+## Advanced manual workflow
 
 1. Select the imported instance and target ontology in Ontology Mapper.
 2. In **Preview → review → publish**, choose **Create preview**. No mappings are selected automatically. Preview does not publish mappings, memory facts, or modification events.

@@ -2,21 +2,33 @@ import React, { useEffect, useRef, useState } from 'react';
 import agenticAPI from '../services/agenticApi';
 import { publicationRecoveryScope, getCredentialProfile } from '../services/serviceAuth';
 
-export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled, onResult }) {
-  const key = JSON.stringify(['depo:task-run', publicationRecoveryScope(), workflowId, inputs]);
+export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled, onResult, governed = false, stepInputs, onActivityChange }) {
+  const key = JSON.stringify(['depo:task-run', publicationRecoveryScope(), workflowId, inputs, stepInputs || null, governed]);
   const [run, setRun] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [runId, setRunId] = useState('');
   const [revision, setRevision] = useState(0);
+  const [submissionUnknown, setSubmissionUnknown] = useState(false);
+  const [recoveryId, setRecoveryId] = useState('');
   const resultHandler = useRef(onResult); resultHandler.current = onResult;
   const request = useRef(null);
   useEffect(() => {
-    request.current?.abort(); setRun(null); setBusy(false); setError('');
-    try { setRunId(sessionStorage.getItem(key) || ''); } catch { setRunId(''); }
-    const clear = () => { request.current?.abort(); setRunId(''); setRun(null); setBusy(false); try { sessionStorage.removeItem(key); } catch {} };
+    request.current?.abort(); setRun(null); setBusy(false); setError(''); setSubmissionUnknown(false);
+    try {
+      const retained = sessionStorage.getItem(key) || '';
+      setRunId(retained === 'submission-unconfirmed' ? '' : retained);
+      if (retained === 'submission-unconfirmed') {
+        setSubmissionUnknown(true); setError('Task submission was not confirmed. Check workflow history before retrying.');
+      }
+    } catch { setRunId(''); }
+    const clear = () => { request.current?.abort(); setRun(null); setBusy(false); setRecoveryId(''); setRevision(value => value + 1); };
     const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired'];
     events.forEach(event => window.addEventListener(event, clear));
     return () => { request.current?.abort(); events.forEach(event => window.removeEventListener(event, clear)); };
   }, [key]);
+  useEffect(() => {
+    const terminal = ['completed','cancelled','failed','timed_out'].includes(run?.status) && !run?.reconciliation_required;
+    onActivityChange?.(busy || submissionUnknown || (!!runId && !terminal));
+  }, [busy, submissionUnknown, runId, run?.status, run?.reconciliation_required, onActivityChange]);
   useEffect(() => {
     if (!runId) return;
     const controller = new AbortController(); let timer;
@@ -41,18 +53,30 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
     const controller = new AbortController(); request.current = controller; setBusy(true); setError('');
     try {
       const token = getCredentialProfile('GRAPH_READ_TOKEN');
-      const { data } = await agenticAPI.runWorkflow(workflowId, inputs, {}, { signal: controller.signal, ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}) });
+      const approval = getCredentialProfile('AGENTIC_APPROVAL_TOKEN');
+      if (!token || (governed && !approval)) throw new Error('Connect reader and governed agent access in Admin.');
+      const execution = { ...(governed ? {approved_by:'ontology-merge-automation',approval_token:approval} : {}), ...(stepInputs ? {step_inputs:stepInputs} : {}) };
+      try { sessionStorage.setItem(key, 'submission-unconfirmed'); } catch { /* server retains the workflow */ }
+      const { data } = await agenticAPI.runWorkflow(workflowId, inputs, execution, { signal: controller.signal, ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}) });
       if (controller.signal.aborted) return;
       if (!data.run_id) throw new Error('Missing workflow identity.');
       setRunId(data.run_id);
       try { sessionStorage.setItem(key, data.run_id); } catch { setError('Run started; bookmark its ID because browser recovery storage is unavailable.'); }
-    } catch (failure) { if (!controller.signal.aborted) setError('Task submission was not confirmed. Check workflow history before retrying.'); }
+    } catch (failure) { if (!controller.signal.aborted) { setSubmissionUnknown(true); setError('Task submission was not confirmed. Check workflow history before retrying.'); } }
     finally { if (!controller.signal.aborted) setBusy(false); }
   };
   return <section className="depo-workflow-reconciliation" aria-label="Background agent task">
-    <div><button type="button" className="depo-button" disabled={disabled || busy || !!runId} onClick={start}>{busy ? 'Submitting…' : label}</button>
+    <div><button type="button" className="depo-button" disabled={disabled || busy || !!runId || submissionUnknown || !getCredentialProfile('GRAPH_READ_TOKEN') || (governed && !getCredentialProfile('AGENTIC_APPROVAL_TOKEN'))} onClick={start}>{busy ? 'Submitting…' : label}</button>
     {runId && <button type="button" className="depo-button depo-button--secondary" onClick={() => setRevision(value => value + 1)}>Refresh status</button>}</div>
     {error && <p role="alert">{error}</p>}
+    {submissionUnknown && !runId && <div>
+      <label>Recover workflow ID <input value={recoveryId} onChange={event => setRecoveryId(event.target.value)} /></label>
+      <button type="button" disabled={!recoveryId.trim()} onClick={() => {
+        const id = recoveryId.trim(); setRunId(id); setSubmissionUnknown(false);
+        try { sessionStorage.setItem(key, id); } catch { /* optional recovery */ }
+      }}>Inspect retained workflow</button>
+      <small>Find this task in agent workflow history. Inspect its status before submitting another merge.</small>
+    </div>}
     {runId && <p role="status">Workflow {runId}: {run?.execution_state || run?.status || 'checking'}. Results remain retained after leaving this page.</p>}
     {run?.pending_step?.child_run_id && <p>Waiting for dependent data job: {String(run.pending_step.child_run_id)}. Workflow completion requires its result.</p>}
     {run?.allowed_actions?.map(action => <button type="button" key={action} disabled={busy} onClick={async () => {
@@ -62,7 +86,7 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
       finally { if (!controller.signal.aborted) setBusy(false); }
     }}>{action}</button>)}
     {runId && <small>Controls take effect between tools. Completed writes remain retained.</small>}
-    {runId && error && <button type="button" onClick={() => { try { sessionStorage.removeItem(key); } catch {} setRunId(''); setRun(null); setError('Bookmark cleared. This does not cancel the old run; inspect workflow history before submitting another task.'); }}>Clear inaccessible run bookmark</button>}
+    {runId && error && <p>Reconnect access and refresh this retained workflow. An inaccessible run cannot be cleared while its outcome is unverified.</p>}
     {['completed', 'cancelled', 'failed', 'timed_out'].includes(run?.status) && !run?.reconciliation_required && <button type="button" onClick={() => {
       try { sessionStorage.removeItem(key); } catch {} setRunId(''); setRun(null); setError('');
     }}>Prepare a new task</button>}

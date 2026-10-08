@@ -6,7 +6,7 @@ from backend.depo_platform.service_urls import service_url
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from .catalog import catalog, ontology_upload_limit
@@ -15,7 +15,7 @@ from .merge_service import GovernedMergeService
 from .business_context import BusinessContextService
 from .semantica_adapter import semantica
 from backend.Services.ontology_upload_manager import OntologyUploadManager
-from backend.depo_platform.authorization import approval_identity
+from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from backend.depo_platform.network import service_bearer_headers
 from .vocabulary_service import vocabularies
 from backend.mesh_store import PostgresRegistry
@@ -266,6 +266,31 @@ def apply_merge(preview_id: str, payload: dict[str, Any], request: Request) -> d
     try:
         approver = approval_identity(request, payload, token_env="ONTOLOGY_APPROVAL_TOKEN")
         return merges.apply(preview_id, approver)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get('/merges/{preview_id}/policy', summary='Inspect automatic ontology merge policy')
+def merge_policy(preview_id: str, reader: str = Depends(graph_read_identity)) -> dict:
+    try:
+        return merges.evaluate_policy(preview_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get('/merges/{preview_id}/receipt', summary='Verify retained merged draft without repeating writes')
+def merge_receipt(preview_id: str, reader: str = Depends(graph_read_identity)) -> dict:
+    try:
+        return merges.receipt(preview_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post('/merges/{preview_id}/apply-automatic', summary='Create a conflict-free union draft under delegated approval')
+def automatic_merge(preview_id: str, payload: dict[str, Any], request: Request) -> dict:
+    try:
+        approver = approval_identity(request, payload, token_env='ONTOLOGY_APPROVAL_TOKEN')
+        return merges.apply_automatic(preview_id, approver)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

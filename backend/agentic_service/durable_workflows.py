@@ -66,7 +66,7 @@ async def enqueue(payload, request, recovery=None):
     now = datetime.now(timezone.utc)
     definition = {'workflow':workflow,'steps':plan['steps']}
     record = {**(recovery or {}), 'run_id': recovery['run_id'] if recovery else 'run-'+str(uuid4()),
-              'owner': recovery['owner'] if recovery else sessions.owner(request,actor),
+              'owner': recovery['owner'] if recovery else routes._workflow_owner(request,actor),
               'workflow_id':workflow['id'],'status':'queued','execution_mode':'worker',
               'execution_id':uuid4().hex,'execution_payload':command,'workflow_definition':definition,
               'workflow_digest':fingerprint(definition),'approved_actor':actor,'credential_fingerprints':credentials,

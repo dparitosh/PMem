@@ -13,6 +13,7 @@ import {
 } from 'ag-grid-community';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
+import './dataGrid.css';
 import { widgetCardStyle, widgetColors } from './widgetStyles';
 
 // Register only the table capabilities this shared widget exposes.  The

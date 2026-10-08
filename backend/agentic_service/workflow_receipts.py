@@ -30,10 +30,27 @@ async def lookup(record, request):
         async with httpx.AsyncClient(timeout=15,trust_env=False) as client:
             response = await routes._bounded_tool_request(client,'GET',endpoint,headers=downstream_headers(request,endpoint,graph_read=True))
         return verify_product_receipt(inputs,response.json())
-    if tool == 'bridge.mapping.publish':
+    if tool in {'bridge.mapping.publish', 'bridge.mapping.publish_automatic'}:
         from .bridge_router import jobs
         preview = await routes._agent_io(jobs.get,inputs.get('preview_id',''))
-        return await routes._agent_io(jobs.reconcile_receipt,preview['publication_job_id'],inputs.get('approved_candidate_ids',[]))
+        approved = inputs.get('approved_candidate_ids',[])
+        if tool == 'bridge.mapping.publish_automatic':
+            decision = await routes._agent_io(jobs.evaluate_policy, inputs['preview_id'])
+            approved = decision['accepted_ids']
+        return await routes._agent_io(jobs.reconcile_receipt,preview['publication_job_id'],approved)
+    if tool in {'ontology.merge.apply', 'ontology.merge.apply_automatic'}:
+        import httpx
+        from .transport_auth import downstream_headers
+        identifier = inputs.get('preview_id')
+        if not isinstance(identifier, str) or not identifier:
+            raise ValueError('No saved merge preview identity is retained')
+        endpoint = routes._base('ontology')+'/ontologies/merges/'+quote(identifier,safe='')+'/receipt'
+        async with httpx.AsyncClient(timeout=15,trust_env=False) as client:
+            response = await routes._bounded_tool_request(client,'GET',endpoint,headers=downstream_headers(request,endpoint,graph_read=True))
+        receipt = response.json()
+        if not isinstance(receipt,dict) or receipt.get('preview_id') != identifier or receipt.get('status') != 'merged' or not (receipt.get('ontology') or {}).get('ontology_id'):
+            raise ValueError('Invalid retained merge receipt')
+        return receipt
     raise HTTPException(409,'This tool has no verifiable receipt adapter; use explicit downstream evidence')
 
 

@@ -293,7 +293,7 @@ export default function AdminPage({ onSchemaCleaned }) {
       {section === 'agents' && agenticConfigured && <AgentProposalPanel />}
       {section === 'agents' && agenticConfigured && <AgentControlPanel />}
 
-      <section className="depo-panel" style={{ marginBottom: 12 }}>
+      <section className="depo-panel depo-agentic-catalog" style={{ marginBottom: 12 }}>
         <div className="depo-panel__header">
           <div>
             <div className="depo-panel__title">Agentic Components</div>
@@ -315,7 +315,7 @@ export default function AdminPage({ onSchemaCleaned }) {
         </div>
         {agenticError && <div className="depo-alert depo-alert--warning">{agenticError}</div>}
         {agenticCatalog && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 0.7fr) minmax(300px, 1.3fr)', gap: 12 }}>
+          <div className="depo-agentic-catalog__grids">
             <RegistryWidget
               title={`Agents (${agenticCatalog.agents.length})`}
               rows={agenticCatalog.agents}

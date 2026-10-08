@@ -26,12 +26,12 @@ test('credential replacement and sign-out clear pending publication recovery', (
   sessionStorage.removeItem('unrelated');
 });
 
-test('credential rotation clears workflow bookmarks even when their pages are unmounted', () => {
+test('credential rotation retains workflow identities while clearing recommendation data', () => {
   const bookmark = JSON.stringify(['depo:task-run', 'old-scope', 'review', {ontology_id:'old'}]);
   sessionStorage.setItem(bookmark, 'old-run');
   sessionStorage.setItem('depo:agent-recommendation', 'old-recommendation');
   setCredentialProfile('GRAPH_READ_TOKEN', 'replacement-read-key');
-  expect(sessionStorage.getItem(bookmark)).toBeNull();
+  expect(sessionStorage.getItem(bookmark)).toBe('old-run');
   expect(sessionStorage.getItem('depo:agent-recommendation')).toBeNull();
 });
 

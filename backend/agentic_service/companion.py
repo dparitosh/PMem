@@ -12,6 +12,20 @@ from typing import Any
 import httpx
 
 
+def descriptive_properties(properties):
+    """Bound descriptive evidence; never forward arbitrary credential properties."""
+    allowed = {'iri', 'definition', 'description', 'comment', 'domain', 'range',
+               'datatype', 'unit', 'units', 'value', 'prefLabel', 'altLabel'}
+    result = {}
+    for key in sorted(allowed):
+        value = properties.get(key)
+        if isinstance(value, (str, int, float, bool)):
+            result[key] = str(value)[:1000]
+        elif isinstance(value, list):
+            result[key] = [str(item)[:250] for item in value[:8] if isinstance(item, (str, int, float, bool))]
+    return result
+
+
 class KnowledgeCompanion:
     max_nodes = 900
     max_evidence = 12
@@ -68,6 +82,7 @@ class KnowledgeCompanion:
                 "label": str((node.get("properties") or {}).get("label") or node.get("elementId") or ""),
                 "kind": str((node.get("properties") or {}).get("kind") or (node.get("labels") or ["resource"])[0]),
                 "ontology_id": (node.get("properties") or {}).get("ontology_id"), "source": endpoint,
+                "properties": descriptive_properties(node.get("properties") or {}),
             }
             for node in selected
         ]

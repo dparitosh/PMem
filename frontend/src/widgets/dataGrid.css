@@ -1,0 +1,51 @@
+.depo-data-grid .ag-paging-panel {
+  height: auto;
+  min-height: var(--ag-pagination-panel-height, 48px);
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px 12px;
+}
+
+.depo-data-grid .ag-paging-panel > * {
+  flex-shrink: 0;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.depo-data-grid .ag-paging-row-summary-panel,
+.depo-data-grid .ag-paging-page-summary-panel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.depo-registry-widget {
+  min-width: 0;
+}
+
+.depo-registry-widget__header {
+  flex-wrap: wrap;
+}
+
+.depo-registry-widget__header input {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.depo-agentic-catalog {
+  container-type: inline-size;
+}
+
+.depo-agentic-catalog__grids {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  gap: 16px;
+  padding: 12px;
+}
+
+@container (max-width: 1100px) {
+  .depo-agentic-catalog__grids {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -60,7 +60,10 @@ async def request_slot(endpoint):
         await asyncio.sleep(.05)
     state, threshold, cooldown, generation, probe = admitted
     try:
-        yield
+        # Convert our own deadline cancellation to TimeoutError before accounting.
+        # Caller cancellations still propagate without penalising the upstream.
+        async with asyncio.timeout(max(0, deadline - time.monotonic())):
+            yield
     except Exception as exc:
         _failure(state, threshold, cooldown, exc, generation)
         raise

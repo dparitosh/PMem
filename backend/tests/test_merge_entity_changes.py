@@ -31,7 +31,8 @@ class MergeEntityChangesTests(unittest.TestCase):
         self.assertEqual(changes['removed'], 0)
         self.assertIn('<urn:ex:Component>', changes['added_sample'][0])
         self.assertNotIn('<urn:ex:Part>', changes['added_sample'][0])
-        self.assertEqual(result['duplicate_triple_count'], 1)
+        self.assertEqual(result['duplicate_triple_count'], 0)
+        self.assertEqual(result['consolidated_triple_count'], 1)
 
     def test_incompatible_entity_kinds_are_rejected(self):
         with self.assertRaisesRegex(ValueError, 'same kind'):

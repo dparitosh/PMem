@@ -31,6 +31,12 @@ AGENT_MEMORY_QUERY_TIMEOUT=5
 AGENT_MEMORY_RETENTION_DAYS=30
 ```
 
+`AGENT_MEMORY_RETENTION_DAYS` also expires completed PostgreSQL companion results
+in `agentic_companion_jobs`. The service runs this cleanup every five minutes,
+including when optional Neo4j memory is disabled. Authenticated owners can read a
+retained result after its conversation session expires; reading does not renew
+the session. Streaming responses include `retained_prompt_job_id` for recovery.
+
 The adapter uses the existing Neo4j connection and official Neo4j driver. It
 creates lightweight constraints/indexes on first use.
 

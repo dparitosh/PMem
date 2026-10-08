@@ -77,7 +77,7 @@ workflow_heartbeats = PostgresRegistry('agentic_workflow_heartbeats')
 _active_workflow_tasks = set()
 
 
-async def _keep_workflow_running(operation):
+async def _keep_workflow_running(operation, accepted=None):
     """A disconnected browser must not cancel an already authorized workflow."""
     task = asyncio.create_task(operation)
     _active_workflow_tasks.add(task)
@@ -88,6 +88,11 @@ async def _keep_workflow_running(operation):
             if failure is not None:
                 logger.warning('Workflow task finished with %s; inspect retained run state', type(failure).__name__)
     task.add_done_callback(finished)
+    if accepted is not None:
+        await asyncio.wait({task, accepted}, return_when=asyncio.FIRST_COMPLETED)
+        if accepted.done():
+            return accepted.result()
+        accepted.cancel()
     return await asyncio.shield(task)
 dt_run_store = PostgresRegistry("dt_agent_runs")
 companion_job_store = PostgresRegistry("agentic_companion_jobs")
@@ -388,7 +393,7 @@ def companion_job_status(job_id: str, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="Chat job not found")
     if record.get('owner') != sessions.owner(request, graph_read_identity(request)):
         raise HTTPException(403, 'Chat job belongs to another identity')
-    sessions.open_session(request, graph_read_identity(request), record['session_id'])
+    # Reading an owned retained result does not reopen its conversation session.
     return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}
 
 
@@ -423,7 +428,8 @@ async def companion_stream(payload: ChatRequest, request: Request) -> StreamingR
             try:
                 result = await _companion_chat(payload, request, on_token=token)
                 await queue.put({'response': result['response'], 'evidence': result['evidence'],
-                    'sources': result['sources'], 'answerable': result['answerable'], 'run_id': result['run_id'], 'generation': result.get('generation')})
+                    'sources': result['sources'], 'answerable': result['answerable'], 'run_id': result['run_id'],
+                    'retained_prompt_job_id': result['retained_prompt_job_id'], 'generation': result.get('generation')})
                 await queue.put({'done': True})
             except Exception:
                 await queue.put({'error': 'Knowledge companion stream failed; no complete answer was retained'})
@@ -454,7 +460,8 @@ async def companion_stream(payload: ChatRequest, request: Request) -> StreamingR
 @router.post('/agents/{agent_id}/suggest', dependencies=[Depends(graph_read_identity)])
 async def suggest_agent_tool(agent_id: str, payload: dict[str, Any], request: Request) -> dict:
     """Use an agent's configured prompt to propose one allowlisted tool; never execute it."""
-    from .local_llm import suggest_tool
+    from .local_llm import suggest_tool, failure_status
+    prompt_details = {}
     try:
         agent = catalog.item('agents', agent_id)
         selected = [catalog.item('tools', identifier) for identifier in agent.get('tools', [])]
@@ -478,7 +485,7 @@ async def suggest_agent_tool(agent_id: str, payload: dict[str, Any], request: Re
             raise ValueError('Invalid page context')
         task = payload.get('task')
         attachment_metadata = {key: attachment.get(key) for key in ('filename', 'content_type')} if attachment else None
-        suggestion = await suggest_tool(agent, selected, task, context=context, attachment_metadata=attachment_metadata)
+        suggestion = await suggest_tool(agent, selected, task, context=context, attachment_metadata=attachment_metadata, prompt_details=prompt_details)
         command = {'agent_id': agent_id, 'tool_id': suggestion['tool_id'], 'inputs': suggestion.get('inputs', {})}
         chosen = next((tool for tool in selected if tool['id'] == command['tool_id']), None)
         if chosen is None: raise ValueError('Tool is not allowlisted')
@@ -493,10 +500,21 @@ async def suggest_agent_tool(agent_id: str, payload: dict[str, Any], request: Re
             raise
         except Exception as exc:
             raise HTTPException(503, 'Recommendation could not be saved; no tool was executed') from exc
-    except (ValueError, KeyError, TypeError) as exc:
-        raise HTTPException(422, 'Agent returned an invalid or incomplete tool proposal') from exc
-    except (httpx.HTTPError, TimeoutError) as exc:
-        raise HTTPException(503, 'Agent model or tool contract is unavailable') from exc
+    except Exception as exc:
+        status = exc.status_code if isinstance(exc, HTTPException) else 422 if isinstance(exc, (ValueError, KeyError, TypeError)) else 503
+        detail = 'Agent recommendation failed; no tool was executed'
+        if prompt_details:
+            try:
+                saved = await _agent_io(recommendations.create, {
+                    'status': 'failed', 'agent_id': agent_id, 'context': payload.get('context'),
+                    'prompt_details': prompt_details, 'failure_status': failure_status(exc),
+                    'execution': 'not_executable'}, sessions.owner(request, graph_read_identity(request)))
+                detail = {'message': detail, 'recommendation_id': saved['recommendation_id']}
+            except Exception:
+                logger.warning('Failed recommendation prompt could not be retained')
+        elif isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(status, detail) from exc
 
 
 @router.get('/agent-recommendations/{recommendation_id}', dependencies=[Depends(graph_read_identity)])
@@ -716,12 +734,18 @@ async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
     if not isinstance(payload.get('inputs', {}), dict):
         raise HTTPException(422, 'inputs must be an object')
     tool, inputs = plan_result["tool"], dict(payload.get("inputs") or {})
-    if tool['id'] in {'bridge.mapping.preview', 'bridge.mapping.publish'}:
+    if tool['id'] in {'bridge.mapping.preview', 'bridge.mapping.publish', 'bridge.mapping.evaluate', 'bridge.mapping.publish_automatic'}:
         # Reuse the durable Bridge job implementation in this service rather
         # than self-HTTP with a supervisor token on a read-authenticated route.
         from .bridge_router import jobs, PreviewInput, ApprovalInput, translate
         from pydantic import ValidationError
         try:
+            if tool['id'] in {'bridge.mapping.evaluate', 'bridge.mapping.publish_automatic'}:
+                if set(inputs) != {'preview_id'} or not isinstance(inputs['preview_id'], str) or not inputs['preview_id'].startswith('bridge-preview-'):
+                    raise HTTPException(422, 'Select a saved bridge preview')
+                action = jobs.evaluate_policy if tool['id'] == 'bridge.mapping.evaluate' else lambda key: jobs.publish_automatic(key, approved_by)
+                result = await _agent_io(translate, lambda: action(inputs['preview_id']))
+                return {'agent_id': plan_result['agent'], 'tool_id': tool['id'], 'approved_by': approved_by, 'result': result}
             command = PreviewInput(**inputs) if tool['id'] == 'bridge.mapping.preview' else ApprovalInput(**{key: value for key, value in inputs.items() if key != 'preview_id'})
         except ValidationError as exc:
             raise HTTPException(422, 'Invalid Bridge inputs; check source IDs and reviewed candidate selection') from exc
@@ -825,7 +849,20 @@ async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
     if execution_mode() == 'worker':
         try: return await enqueue(payload,request)
         except ValueError as exc: raise HTTPException(422,str(exc)) from exc
-    return await _keep_workflow_running(_execute_workflow(payload, request))
+    accepted = asyncio.get_running_loop().create_future()
+    return await _keep_workflow_running(_execute_workflow(payload, request, accepted=accepted), accepted)
+
+
+def _workflow_owner(request, approved_actor):
+    # Use the verified reader principal for status ownership, independently of
+    # the actor who authorized publication.
+    try:
+        actor = graph_read_identity(request)
+    except HTTPException as exc:
+        if exc.status_code not in {401, 403}:
+            raise
+        actor = approved_actor
+    return sessions.owner(request, actor)
 
 
 async def _persist_workflow(record):
@@ -836,7 +873,7 @@ async def _persist_workflow(record):
         raise HTTPException(409, 'Workflow state changed concurrently')
 
 
-async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=None) -> dict:
+async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=None, accepted=None) -> dict:
     """Execute a bounded workflow; uncertain writes require reconciliation."""
     record = observation = None
     dispatched_mutation = False
@@ -867,7 +904,7 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
         run_id = recovery['run_id'] if recovery else f'run-{uuid4()}'
         request_id = getattr(request.state, 'request_id', '')
         observation, observed_at = await _agent_io(telemetry.start, operation='workflow', request_id=request_id, workflow_id=workflow['id'], workflow_run_id=run_id)
-        record = {'owner': sessions.owner(request, actor), 'run_id': run_id, 'telemetry_run_id': observation['run_id'], 'workflow_id': workflow['id'], 'request_id': request_id,
+        record = {'owner': _workflow_owner(request, actor), 'run_id': run_id, 'telemetry_run_id': observation['run_id'], 'workflow_id': workflow['id'], 'request_id': request_id,
                   'status': 'running', 'started_at': _now(), 'updated_at': _now(),
                   'deadline_at': (datetime.now(timezone.utc) + timedelta(seconds=timeout)).isoformat(), 'traces': []}
         from .recovery import execution_payload, fingerprint
@@ -887,6 +924,9 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
                 raise HTTPException(409, 'Recovery was claimed by another execution')
         else:
             await _agent_io(workflow_store.create, run_id, record)
+        if accepted is not None and not accepted.done():
+            accepted.set_result({'run_id':run_id, 'workflow_id':workflow['id'], 'status':'running',
+                                 'deadline_at':record['deadline_at']})
         async with asyncio.timeout(timeout), execution_heartbeat(workflow_heartbeats, f"{run_id}:{record['execution_id']}"):
             for index, step in enumerate(workflow['steps']):
                 if index < len(record['traces']):

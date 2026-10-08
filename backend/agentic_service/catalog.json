@@ -69,7 +69,9 @@
         "ontology.merge.apply",
         "bridge.mapping.preview",
         "bridge.mapping.publish",
-        "engineering.publish"
+        "engineering.publish",
+        "bridge.mapping.publish_automatic",
+        "ontology.merge.apply_automatic"
       ],
       "approval_required": true,
       "system_prompt": "Your role is ontology-governor. Task scope: Review and authorize registration, lifecycle changes, merge and mapping publication. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
@@ -153,6 +155,16 @@
       ],
       "approval_required": false,
       "system_prompt": "Your role is data-quality-monitor. Inspect retained data-job evidence and propose running an approved, enabled data-quality or profiling job through pipeline.run. Use the exact registered job_id and version. Never invent reports, job definitions or business rules. Execution and publication require the existing service approvals."
+    },
+    {
+      "id": "ontology-steward",
+      "name": "Ontology Steward",
+      "tools": [
+        "bridge.mapping.evaluate",
+        "ontology.merge.evaluate"
+      ],
+      "approval_required": false,
+      "system_prompt": "Inspect the saved bridge preview using bridge.mapping.evaluate. Report accepted and held mappings and validation reasons. Do not invent semantic equivalence, approve credentials, or override the validated-only policy."
     }
   ],
   "tools": [
@@ -482,6 +494,38 @@
       "method": "POST",
       "path": "/pipeline/jobs/definitions/{job_id}/{version}/run",
       "mutates": true
+    },
+    {
+      "id": "bridge.mapping.evaluate",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "GET",
+      "path": "/workflows/bridge/previews/{preview_id}/policy",
+      "mutates": false
+    },
+    {
+      "id": "bridge.mapping.publish_automatic",
+      "transport": "openapi",
+      "service": "agentic",
+      "method": "POST",
+      "path": "/workflows/bridge/previews/{preview_id}/publish-automatic",
+      "mutates": true
+    },
+    {
+      "id": "ontology.merge.evaluate",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "GET",
+      "path": "/ontologies/merges/{preview_id}/policy",
+      "mutates": false
+    },
+    {
+      "id": "ontology.merge.apply_automatic",
+      "transport": "openapi",
+      "service": "ontology",
+      "method": "POST",
+      "path": "/ontologies/merges/{preview_id}/apply-automatic",
+      "mutates": true
     }
   ],
   "mcp_servers": [
@@ -568,6 +612,54 @@
           "tool_id": "ontology.agent.bridge-plan",
           "input_bindings": {
             "artifact_digest": "$steps.1.result.artifact_digest"
+          }
+        }
+      ]
+    },
+    {
+      "id": "bridge-validated-automation",
+      "name": "Validated instance mapping and publication",
+      "steps": [
+        {
+          "agent_id": "ontology-governor",
+          "tool_id": "bridge.mapping.preview"
+        },
+        {
+          "agent_id": "ontology-steward",
+          "tool_id": "bridge.mapping.evaluate",
+          "input_bindings": {
+            "preview_id": "$steps.1.result.job_id"
+          }
+        },
+        {
+          "agent_id": "ontology-governor",
+          "tool_id": "bridge.mapping.publish_automatic",
+          "input_bindings": {
+            "preview_id": "$steps.1.result.job_id"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ontology-union-automation",
+      "name": "Conflict-free ontology union draft",
+      "steps": [
+        {
+          "agent_id": "ontology-governor",
+          "tool_id": "ontology.merge.preview"
+        },
+        {
+          "agent_id": "ontology-steward",
+          "tool_id": "ontology.merge.evaluate",
+          "input_bindings": {
+            "preview_id": "$steps.1.result.preview_id"
+          }
+        },
+        {
+          "agent_id": "ontology-governor",
+          "tool_id": "ontology.merge.apply_automatic",
+          "input_bindings": {
+            "preview_id": "$steps.1.result.preview_id"
           }
         }
       ]

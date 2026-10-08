@@ -73,6 +73,12 @@ class WorkflowAuditRegressions(unittest.TestCase):
         self.assertEqual(store.get('publication')['status'], 'published')
         self.assertNotIn('error', store.get('publication'))
         store.put('publication', copy.deepcopy(job))
+        jobs.evaluate_policy = lambda key: {'accepted_ids':['candidate']}
+        automatic = {'pending_step':{'tool_id':'bridge.mapping.publish_automatic','inputs':{'preview_id':'preview'}}}
+        with patch.dict(sys.modules, modules):
+            recovered = asyncio.run(lookup(automatic, object()))
+        self.assertEqual(recovered['status'],'published')
+        store.put('publication', copy.deepcopy(job))
         receipt['request_digest'] = 'different'
         with self.assertRaises(BridgeConflict): jobs.reconcile_receipt('publication', ['candidate'])
         self.assertEqual(store.get('publication'), job)

@@ -2,6 +2,7 @@ import useRuleValidation from '../hooks/useRuleValidation';
 import { requirementsPayload } from '../services/pagePayloads';
 import { dictionaryPayload } from '../services/ontologyPayload';
 import WorkspaceTabs from './WorkspaceTabs';
+import WorkflowTaskPanel from './WorkflowTaskPanel';
 import OntologyPublicationPanel from './OntologyPublicationPanel';
 import { getCredentialProfile } from '../services/serviceAuth';
 import { ontologyMergeAgent } from '../services/ontologyMergeAgent';
@@ -236,8 +237,11 @@ function RelBadge({ type }) {
 }
 
 // Shared UI configuration
-function VocabularyTable({ edges, filter }) {
+export function VocabularyTable({ edges, filter }) {
   const [selectedRow, setSelectedRow] = useState(null);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+  const tableScroll = useRef(null);
   const lc = filter.toLowerCase();
   const visible = useMemo(() => {
     if (!lc) return edges;
@@ -251,6 +255,16 @@ function VocabularyTable({ edges, filter }) {
       );
     });
   }, [edges, lc]);
+
+  const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  const offset = currentPage * pageSize;
+  const pageRows = visible.slice(offset, offset + pageSize);
+  useEffect(() => { setPage(0); setSelectedRow(null); }, [edges, lc, pageSize]);
+  useEffect(() => {
+    setSelectedRow(null);
+    if (tableScroll.current) tableScroll.current.scrollTop = 0;
+  }, [currentPage, edges, lc, pageSize]);
 
   const typeGroups = useMemo(() => {
     const m = {};
@@ -288,7 +302,7 @@ function VocabularyTable({ edges, filter }) {
           ><Download size={12} /> Export CSV</button>
         </div>
       </div>
-      <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'auto', maxHeight: '520px' }}>
+      <div ref={tableScroll} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'auto', maxHeight: '520px' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
           <thead>
             <tr>
@@ -302,7 +316,7 @@ function VocabularyTable({ edges, filter }) {
             {visible.length === 0 && (
               <tr><td colSpan={4} style={{ ...TD(), textAlign: 'center', color: C.textMuted, padding: '32px' }}>No mappings match the filter.</td></tr>
             )}
-            {visible.map((e, i) => {
+            {pageRows.map((e, i) => {
               const rowId = `${e.source_term}__${e.mapping_type}__${e.target_term}`;
               const selected = selectedRow === rowId;
               return (
@@ -313,7 +327,7 @@ function VocabularyTable({ edges, filter }) {
                     onMouseEnter={ev => { if (!selected) ev.currentTarget.style.background = C.primaryLight; }}
                     onMouseLeave={ev => { if (!selected) ev.currentTarget.style.background = i % 2 === 0 ? C.surface : C.bg; }}
                   >
-                    <td style={TD({ textAlign: 'center', color: C.textMuted, fontSize: '11px' })}>{i + 1}</td>
+                    <td style={TD({ textAlign: 'center', color: C.textMuted, fontSize: '11px' })}>{offset + i + 1}</td>
                     <td style={TD()}>
                       <div style={{ fontWeight: 600, fontSize: '13px' }}>{e.source_label || e.source_term.split(':').pop()}</div>
                       <div style={{ fontFamily: 'monospace', fontSize: '10px', color: C.textSec, marginTop: '2px' }}>{e.source_term}</div>
@@ -352,6 +366,19 @@ function VocabularyTable({ edges, filter }) {
           </tbody>
         </table>
       </div>
+      <nav aria-label="Mapping pagination" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', padding: '12px 0' }}>
+        <label>Mappings per page{' '}
+          <select value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>
+            {[25, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}
+          </select>
+        </label>
+        <span role="status">{visible.length ? `${offset + 1}–${Math.min(offset + pageSize, visible.length)} of ${visible.length} mappings` : '0 mappings'}</span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', whiteSpace: 'nowrap' }}>
+          <button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous</button>
+          <span>Page {currentPage + 1} of {pageCount}</span>
+          <button type="button" disabled={currentPage + 1 >= pageCount} onClick={() => setPage(currentPage + 1)}>Next</button>
+        </div>
+      </nav>
     </div>
   );
 }
@@ -1538,6 +1565,7 @@ export default function OntologyMapper() {
   const [selectedMapping, setSelectedMapping] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('target') || '');
   const [selectedMappingType, setSelectedMappingType] = useState('');
   const [selectedOntologyApi, setSelectedOntologyApi] = useState('');
+  const [bridgeMode, setBridgeMode] = useState('instance');
   const [activeView, setActiveView] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] || '').get('view') === 'alignment' ? 'alignment' : 'taxonomy');
   const [filter, setFilter] = useState('');
   const [mappingOptions, setMappingOptions] = useState([]);
@@ -1563,6 +1591,7 @@ export default function OntologyMapper() {
   const [bridgeApproved, setBridgeApproved] = useState(false);
   const [mergeSourceOntologyId, setMergeSourceOntologyId] = useState('');
   const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeAutomationActive, setMergeAutomationActive] = useState(false);
   const mergeGeneration = useRef(0);
   const {validation:swrlValidation,busy:swrlBusy,error:swrlError,validate:validateSwrlExpression} = useRuleValidation(swrlExpression, selectedOntologyApi, activeView);
   const inferenceGeneration = useRef(0);
@@ -2696,6 +2725,12 @@ export default function OntologyMapper() {
             <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '8px', padding: '16px', minHeight: '400px' }}>
 
               {/* Ã¢â€â‚¬Ã¢â€â‚¬ Link Instance to Ontology Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
+              <WorkspaceTabs label="Semantic Bridge task" value={bridgeMode} onChange={setBridgeMode} tabs={[
+                {id:'instance',label:'Map instance to ontology'},
+                {id:'merge',label:'Merge two ontologies'},
+              ]} />
+              <p>{bridgeMode === 'instance' ? 'Select imported data and run the mapping workflow. View published mappings and held exceptions.' : 'Select two ontology sources to create a new merged draft. Entity consolidation is an optional advanced operation.'}</p>
+              {bridgeMode === 'instance' && <>
               <div style={{ marginBottom: '20px', border: `2px solid ${C.primary}`, borderRadius: '8px', padding: '16px', background: C.primaryLight }}>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: C.primaryDark, marginBottom: '4px' }}>Instance-to-ontology bridge</div>
                 <div style={{ fontSize: '12px', color: C.textSec, marginBottom: '14px', lineHeight: 1.45 }}>
@@ -2705,7 +2740,7 @@ export default function OntologyMapper() {
                   {[
                     { title: '1. Instance', text: selectedImportTaskInfo?.filename || 'Choose imported instance' },
                     { title: '2. Active ontology', text: selectedOntologyOption?.label || 'Choose active ontology' },
-                    { title: '3. Review and publish', text: 'Create a saved preview in the jobs panel below' },
+                    { title: '3. Run automation', text: 'Governor proposes, steward validates, governor publishes' },
                   ].map((item) => (
                     <div key={item.title} style={{ border: `1px solid ${C.border}`, borderRadius: '8px', background: C.surface, padding: '8px 10px' }}>
                       <div style={{ fontSize: '10px', fontWeight: 800, color: C.textSec, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{item.title}</div>
@@ -2842,6 +2877,7 @@ export default function OntologyMapper() {
                   </div>
                 )}
                 {bridgeCandidates.length > 0 && (
+                  <details><summary>Advanced candidate inspection and manual edits</summary>
                   <div style={{ marginTop: '12px', border: `1px solid ${C.border}`, borderRadius: '8px', overflow: 'auto', maxHeight: '220px', background: C.surface }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead>
@@ -2939,13 +2975,16 @@ export default function OntologyMapper() {
                       </tbody>
                     </table>
                   </div>
+                  </details>
                 )}
               </div>
 
-              <details className="depo-ontology-merge" style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '14px', marginBottom: '16px', background: C.bg }}>
+              </>}
+              {bridgeMode === 'merge' && <>
+              <details open className="depo-ontology-merge" style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '14px', marginBottom: '16px', background: C.bg }}>
                 <summary>Merge two ontologies</summary>
                 <div style={{ fontSize: '11px', color: C.textSec, marginBottom: '12px', lineHeight: 1.45 }}>
-                  The Ontology Governor combines the selected source and active ontology into a new draft. Review the merge plan, then approve the merge when the overlap report looks right.
+                  Run the governor to combine RDF statements, the steward to check the conflict-free union policy, and the governor to create a new draft. Starting automation authorizes draft creation using your connected governed access. Source ontologies remain unchanged; graph publication is separate.
                 </div>
                 <div className="depo-merge-fields" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px', alignItems: 'start' }}>
                   <div>
@@ -2965,6 +3004,16 @@ export default function OntologyMapper() {
                     <div style={{ fontSize: '11px', fontWeight: 700, color: C.textPrimary, marginBottom: '4px' }}>Second source (active ontology)</div>
                     <div style={{ fontSize: '12px', color: C.textPrimary }}>{selectedOntologyOption?.label || 'Select the active ontology in the header above'}</div>
                   </div>
+                </div>
+                <WorkflowTaskPanel workflowId="ontology-union-automation" inputs={{source_ontology_ids:[mergeSourceOntologyId,selectedMapping]}} stepInputs={[
+                  {source_ontology_ids:[mergeSourceOntologyId,selectedMapping],ontology_name:`Merged ${selectedOntologyOption?.label || selectedMapping}`,prefix:'merged'}, {}, {}
+                ]} governed onActivityChange={setMergeAutomationActive} label="Run automatic merge and create draft" disabled={mergeBusy || !mergeSourceOntologyId || !selectedMapping || mergeSourceOntologyId === selectedMapping} onResult={run => {
+                  const plan = run.traces.find(trace => trace.tool_id === 'ontology.merge.preview')?.result;
+                  const result = run.traces.find(trace => trace.tool_id === 'ontology.merge.apply_automatic')?.result;
+                  setMergeResult({kind:result?.status === 'merged' ? 'success' : 'error',text:result?.status === 'merged' ? 'Merged draft created. Source ontologies are unchanged; graph publication is separate.' : `Merge held: ${(result?.reasons || ['Inspect retained workflow report']).join(', ')}`,agentRunId:run.run_id,governedPreview:plan,report:{governed:result}});
+                }} />
+                <details><summary>Advanced: reviewed entity consolidation and manual merge</summary>
+                <div className="depo-merge-fields" style={{display:'grid',gridTemplateColumns:'repeat(2, minmax(0, 1fr))',gap:16}}>
                   <div>
                     <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Approver</label>
                     <input value={mergeApprover} onChange={(e) => setMergeApprover(e.target.value)} placeholder="name or service principal" style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }} />
@@ -2978,7 +3027,7 @@ export default function OntologyMapper() {
                   <button
                     type="button"
                     onClick={handlePreviewOntologyMerge}
-                    disabled={mergeBusy || !mergeSourceOntologyId || !selectedMapping}
+                    disabled={mergeBusy || mergeAutomationActive || !mergeSourceOntologyId || !selectedMapping}
                     style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: mergeBusy || !mergeSourceOntologyId || !selectedMapping ? C.textMuted : C.primary, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: mergeBusy || !mergeSourceOntologyId || !selectedMapping ? 'not-allowed' : 'pointer' }}
                   >
                     {mergeBusy ? 'Working...' : 'Review merge plan'}
@@ -2986,17 +3035,19 @@ export default function OntologyMapper() {
                   <button
                     type="button"
                     onClick={handleCommitOntologyMerge}
-                    disabled={mergeBusy || !mergePlanReady || !mergeApprover.trim() || !getCredentialProfile('AGENTIC_APPROVAL_TOKEN')}
+                    disabled={mergeBusy || mergeAutomationActive || !mergePlanReady || !mergeApprover.trim() || !getCredentialProfile('AGENTIC_APPROVAL_TOKEN')}
                     title={mergePlanReady ? 'Commit the reviewed conflict-free merge plan' : 'Review a conflict-free merge plan before committing'}
                     style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: mergeBusy || !mergePlanReady ? C.textMuted : C.primaryDark, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: mergeBusy || !mergePlanReady ? 'not-allowed' : 'pointer' }}
                   >
                     Create merged draft
                   </button>
                 </div>
+                </details>
                 {mergeResult && (
                   <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '6px', border: `1px solid ${mergeResult.kind === 'error' ? C.red : C.borderDark}`, background: mergeResult.kind === 'error' ? '#FFE5E5' : C.surface }}>
                     <div style={{ fontSize: '12px', fontWeight: 700, color: mergeResult.kind === 'error' ? C.red : C.textPrimary }}>{mergeResult.text}</div>
                     {mergeResult.agentRunId && <div>Agent run: {mergeResult.agentRunId}</div>}
+                    {mergeResult.report?.governed?.ontology?.ontology_id && <p role="status">New draft: {mergeResult.report.governed.ontology.ontology_id}. Open its record in the ontology registry to inspect or publish it.</p>}
                     {mergeResult.governedPreview && <div>Merged triples: {mergeResult.governedPreview.triple_count} | Duplicate triples: {mergeResult.governedPreview.duplicate_triple_count} | Conflicts: {mergeResult.governedPreview.conflicts?.length || 0}</div>}
                     {mergeResult.governedPreview?.conflicts?.length > 0 && <details open><summary>Conflicts requiring resolution</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(mergeResult.governedPreview.conflicts, null, 2)}</pre></details>}
                     {mergeResult.governedPreview?.changes && <details open><summary>What changes in the new draft?</summary>
@@ -3034,6 +3085,8 @@ export default function OntologyMapper() {
               </details>
 
               {/* Ã¢â€â‚¬Ã¢â€â‚¬ Entity Mapper Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */}
+              </>}
+              {bridgeMode === 'instance' && <details><summary>Advanced manual corrections and existing mappings</summary>
               <div style={{ fontSize: '13px', fontWeight: 600, color: C.textPrimary, marginBottom: '10px' }}>Manual override</div>
               <div style={{ border: `1px solid ${C.border}`, borderRadius: '8px', padding: '12px', marginBottom: '16px', background: C.bg }}>
                 <div style={{ fontSize: '11px', color: C.textSec, marginBottom: '10px', lineHeight: 1.45 }}>
@@ -3305,6 +3358,7 @@ export default function OntologyMapper() {
                   </tbody>
                 </table>
               </div>
+              </details>}
             </div>
             </ErrorBoundary>
           )}

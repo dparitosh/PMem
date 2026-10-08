@@ -207,7 +207,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                         responseSources = Array.isArray(parsed.sources) ? parsed.sources : [];
                         responseAnswerable = parsed.answerable;
                         setChatMessages(prev => prev.map(m =>
-                            m.id === assistantId ? { ...m, text: accumulated, evidence: responseEvidence, sources: responseSources, answerable: responseAnswerable, generation: parsed.generation, runId: parsed.run_id } : m
+                            m.id === assistantId ? { ...m, text: accumulated, evidence: responseEvidence, sources: responseSources, answerable: responseAnswerable, generation: parsed.generation, runId: parsed.run_id, retainedPromptJobId: parsed.retained_prompt_job_id } : m
                         ));
                     } else if (parsed.status) {
                         setStatusLabel(parsed.status);
@@ -521,6 +521,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                                     {msg.generation && <p>Model generation: {msg.generation.status}</p>}
                                     {msg.generation?.prompt_details && <details><summary>Prompt details</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 240, overflow: 'auto' }}>{JSON.stringify(msg.generation.prompt_details, null, 2)}</pre></details>}
                                     {msg.runId && <small>Agent run: {msg.runId}</small>}
+                                    {msg.retainedPromptJobId && <small>Saved conversation result: {msg.retainedPromptJobId}</small>}
                                     {msg.stopped && <p>Stopped — partial text is not a completed answer.</p>}
                                     {msg.streaming && showSpinner && (
                                         <span style={{ display: 'inline-block', marginLeft: 6, fontSize: 10, color: '#888' }}>...</span>

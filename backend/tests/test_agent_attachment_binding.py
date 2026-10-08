@@ -16,13 +16,16 @@ class Failure(Exception):
 
 
 class AttachmentBindingTests(unittest.IsolatedAsyncioTestCase):
-    async def exercise(self, attachment):
+    async def exercise(self, attachment, fail_model=False):
         observed = {}
         tool = {'id':'upload', 'input_kind':'multipart', 'input_schema':{'type':'object','properties':{'file':{'type':'object'},'form':{'type':'object'}},'required':['file']}}
         agent = {'id':'parser','tools':['upload']}
         async def selected(tools, request): return copy.deepcopy(tools)
         async def suggest(agent, tools, task, **kw):
             observed.update(tools=tools, prompt=kw)
+            if fail_model:
+                kw['prompt_details'].update(system_prompt='Review only', user_request=task)
+                raise TimeoutError()
             return {'tool_id':'upload','inputs':{'form':{}}}
         async def preflight(commands, request): observed['command'] = copy.deepcopy(commands[0])
         async def io(fn, *args): return fn(*args)
@@ -32,12 +35,13 @@ class AttachmentBindingTests(unittest.IsolatedAsyncioTestCase):
                  '_proposal_tools':selected,'_preflight_tools':preflight,'_agent_io':io,
                  'plan':lambda command:{'requires_approval':True},'graph_read_identity':lambda req:'actor',
                  'sessions':SimpleNamespace(owner=lambda *args:'owner'),
-                 'recommendations':SimpleNamespace(create=lambda result, owner:result)}
+                 'recommendations':SimpleNamespace(create=lambda result, owner:{**result, 'recommendation_id':'saved-failure'})}
         tree = ast.parse(Path('backend/agentic_service/router.py').read_text(encoding='utf-8'))
         nodes = [node for node in tree.body if getattr(node,'name','') in {'_multipart','suggest_agent_tool'}]
         for node in nodes: node.decorator_list = []
         exec(compile(ast.Module(body=nodes,type_ignores=[]),'<attachment>','exec'),scope)
         model = ModuleType('backend.agentic_service.local_llm'); model.suggest_tool = suggest
+        model.failure_status = lambda exc: 'unavailable'
         with patch.dict(sys.modules, {'backend.agentic_service.local_llm':model}):
             result = await scope['suggest_agent_tool']('parser', {'task':'Import source','context':{'page':'data-flow'},**({'attachment':attachment} if attachment else {})}, object())
         return result, observed
@@ -53,3 +57,10 @@ class AttachmentBindingTests(unittest.IsolatedAsyncioTestCase):
     async def test_upload_only_agent_requires_a_real_attachment(self):
         with self.assertRaises(Failure) as error: await self.exercise(None)
         self.assertEqual(error.exception.status_code, 422)
+
+    async def test_model_failure_returns_saved_prompt_reference(self):
+        attachment = {'filename':'source.ttl','content_base64':base64.b64encode(b'source').decode()}
+        with self.assertRaises(Failure) as error:
+            await self.exercise(attachment, fail_model=True)
+        self.assertEqual(error.exception.status_code, 503)
+        self.assertEqual(error.exception.detail['recommendation_id'], 'saved-failure')

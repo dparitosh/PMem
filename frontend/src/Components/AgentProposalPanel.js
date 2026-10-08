@@ -6,6 +6,7 @@ import { Bot, ListChecks, MessageSquare, ShieldCheck } from 'lucide-react';
 
 const contextIdentity = value => JSON.stringify(value, (key, item) => item && typeof item === 'object' && !Array.isArray(item)
   ? Object.fromEntries(Object.keys(item).sort().map(name => [name, item[name]])) : item);
+const validFailure = value => value?.status === 'failed' && typeof value.agent_id === 'string' && value.execution === 'not_executable' && value.prompt_details && typeof value.prompt_details === 'object' && ['model', 'prompt_version', 'user_request', 'system_prompt', 'user_prompt'].every(key => value.prompt_details[key] === undefined || typeof value.prompt_details[key] === 'string');
 const validProposal = value => value && value.command && typeof value.command.agent_id === 'string' && typeof value.command.tool_id === 'string' &&
   value.command.inputs && typeof value.command.inputs === 'object' && !Array.isArray(value.command.inputs) && typeof value.requires_approval === 'boolean' &&
   (!value.prompt_details || (typeof value.prompt_details === 'object' && ['model', 'prompt_version', 'user_request', 'system_prompt', 'user_prompt'].every(key => value.prompt_details[key] === undefined || typeof value.prompt_details[key] === 'string')));
@@ -58,13 +59,14 @@ export default function AgentProposalPanel({ agentIds, context = null, title = '
         response = await agenticClient.get(url(`agent-recommendations/${encodeURIComponent(savedId.trim())}`), options);
         const value = response.data;
         if (contextIdentity(value.context || null) !== contextIdentity(context || null)) throw new Error('Saved recommendation belongs to a different page or selection. Request a new recommendation.');
-        if (!validProposal(value) || (agentIds && !agentIds.includes(value.command.agent_id))) throw new Error('Invalid saved recommendation for this page.');
+        const selectedAgent = value.status === 'failed' ? value.agent_id : value.command?.agent_id;
+        if (!(validProposal(value) || validFailure(value)) || (agentIds && !agentIds.includes(selectedAgent))) throw new Error('Invalid saved recommendation for this page.');
         if (!controller.signal.aborted) {
-          setProposal(value); setReviewed(false); setAgent(value.command.agent_id);
-          setAgents(current => current.some(item => item.id === value.command.agent_id) ? current : [...current, {id: value.command.agent_id}]);
+          setProposal(value); setReviewed(false); setAgent(selectedAgent);
+          setAgents(current => current.some(item => item.id === selectedAgent) ? current : [...current, {id: selectedAgent}]);
         }
       } else {
-        if (!proposal || !reviewed) throw new Error('Review the proposal first.');
+        if (!proposal || proposal.status === 'failed' || !reviewed) throw new Error('Review the proposal first.');
         const token = getCredentialProfile('AGENTIC_APPROVAL_TOKEN');
         if (proposal.requires_approval && (!actor.trim() || !token)) throw new Error('Enter the steward and connect governed access in Admin.');
         const command = proposal.command;
@@ -75,7 +77,12 @@ export default function AgentProposalPanel({ agentIds, context = null, title = '
     } catch (error) {
       if (!controller.signal.aborted) {
         const runId = error.response?.headers?.get?.('X-DEPO-Run-ID') || error.response?.headers?.['x-depo-run-id'];
-        setMessage((typeof error.response?.data?.detail === 'string' ? error.response.data.detail : error.message) +
+        const detail = error.response?.data?.detail;
+        if (typeof detail?.recommendation_id === 'string') {
+          setSavedId(detail.recommendation_id);
+          try { sessionStorage.setItem('depo:agent-recommendation', detail.recommendation_id); } catch { /* optional bookmark */ }
+        }
+        setMessage((typeof detail === 'string' ? detail : typeof detail?.message === 'string' ? detail.message : error.message) +
           (runId ? ` Agent run: ${runId}. Inspect telemetry before retrying a write.` : ''));
       }
     }
@@ -108,11 +115,11 @@ export default function AgentProposalPanel({ agentIds, context = null, title = '
     <label>Saved recommendation ID <input aria-label="Saved recommendation ID" value={savedId} disabled={busy} onChange={event => { reset(); setSavedId(event.target.value); }} /></label>
     <button disabled={busy || !savedId.trim()} onClick={() => { setProposal(null); setReviewed(false); operate('reload'); }}>Load saved recommendation</button>
     </details>
-    {proposal && <div><strong>Proposed tool: {proposal.command.tool_id}</strong><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify({ ...proposal.command.inputs, ...(proposal.command.inputs?.file ? { file: { filename: proposal.command.inputs.file.filename, content_type: proposal.command.inputs.file.content_type, content: 'User-supplied attachment; binary content hidden' } } : {}) }, null, 2)}</pre>
+    {proposal && <div>{proposal.status === 'failed' ? <p role="alert">Recommendation failed ({proposal.failure_status}). Review the retained prompt below; no action can be executed.</p> : <><strong>Proposed tool: {proposal.command.tool_id}</strong><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify({ ...proposal.command.inputs, ...(proposal.command.inputs?.file ? { file: { filename: proposal.command.inputs.file.filename, content_type: proposal.command.inputs.file.content_type, content: 'User-supplied attachment; binary content hidden' } } : {}) }, null, 2)}</pre></>}
       <details><summary>Prompt details</summary>{proposal.prompt_details ? <><p>Model: {proposal.prompt_details.model} · Prompt version: {proposal.prompt_details.prompt_version}</p><h4>User request</h4><pre style={{ whiteSpace: 'pre-wrap' }}>{proposal.prompt_details.user_request}</pre><h4>System instructions</h4><pre style={{ whiteSpace: 'pre-wrap' }}>{proposal.prompt_details.system_prompt}</pre><details><summary>Full model user prompt and tool context</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{proposal.prompt_details.user_prompt}</pre></details></> : <p>This older recommendation has no retained prompt snapshot.</p>}</details>
-      <label>Approver <input aria-label="Recommendation steward" value={actor} disabled={busy} onChange={event => { setActor(event.target.value); setReviewed(false); }} /></label>
+      {proposal.status !== 'failed' && <><label>Approver <input aria-label="Recommendation steward" value={actor} disabled={busy} onChange={event => { setActor(event.target.value); setReviewed(false); }} /></label>
       <label><input type="checkbox" checked={reviewed} disabled={busy} onChange={event => setReviewed(event.target.checked)} />I reviewed the proposed action and inputs</label>
-      <button disabled={busy || !reviewed || (proposal.requires_approval && !actor.trim())} onClick={() => operate('execute')}>Execute reviewed recommendation</button>
+      <button disabled={busy || !reviewed || (proposal.requires_approval && !actor.trim())} onClick={() => operate('execute')}>Execute reviewed recommendation</button></>}
     </div>}
     {busy && <><button onClick={reset}>Stop waiting</button><p>Stopping the wait does not undo an execution. Inspect agent telemetry before retrying a write.</p></>}
     {message && <p role="status">{message}</p>}

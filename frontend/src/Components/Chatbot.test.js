@@ -40,7 +40,7 @@ test('completed chat shows generation status and the telemetry run', async () =>
     return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, body: { getReader: () => ({ read: async () => {
       if (sent) return { done: true };
       sent = true;
-      return { done: false, value: bytes('data: {"response":"Verified evidence","evidence":[],"sources":[],"answerable":true,"run_id":"chat-run-1","generation":{"status":"unavailable"}}\n\ndata: {"done":true}\n\n') };
+      return { done: false, value: bytes('data: {"response":"Verified evidence","evidence":[],"sources":[],"answerable":true,"run_id":"chat-run-1","retained_prompt_job_id":"saved-chat-1","generation":{"status":"unavailable"}}\n\ndata: {"done":true}\n\n') };
     } }) } });
   });
   render(<Chatbot />);
@@ -48,6 +48,7 @@ test('completed chat shows generation status and the telemetry run', async () =>
   fireEvent.click(screen.getByLabelText('Send chat question'));
   await screen.findByText('Model generation: unavailable');
   expect(screen.getByText('Agent run: chat-run-1')).toBeInTheDocument();
+  expect(screen.getByText('Saved conversation result: saved-chat-1')).toBeInTheDocument();
   expect(screen.getByText('You · Question 1')).toBeVisible();
   expect(screen.getByText('Companion · Response 1')).toBeVisible();
   const history = screen.getByRole('log', { name: 'Conversation history' });

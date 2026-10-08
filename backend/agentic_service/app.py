@@ -4,6 +4,7 @@ from .router import router
 from .configuration import configuration_status
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager, suppress
 from fastapi.concurrency import run_in_threadpool
 from backend.Services.agent_memory_service import AgentMemoryService
@@ -16,6 +17,9 @@ async def lifecycle():
         while True:
             try:
                 await run_in_threadpool(sessions.prune)
+                from .router import companion_job_store
+                await run_in_threadpool(companion_job_store.prune_completed,
+                                       int(os.getenv('AGENT_MEMORY_RETENTION_DAYS', '30')))
                 await run_in_threadpool(AgentMemoryService.prune_expired_sessions)
             except Exception:
                 logging.getLogger(__name__).exception('Agent session/memory maintenance failed')
