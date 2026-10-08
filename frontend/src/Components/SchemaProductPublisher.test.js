@@ -4,11 +4,12 @@ import { vi } from 'vitest';
 import SchemaProductPublisher from './SchemaProductPublisher';
 import { apiClient } from '../services/apiClient';
 vi.mock('../services/apiClient', () => ({ apiClient: { post: vi.fn() } }));
-vi.mock('../services/serviceAuth', () => ({ getCredentialProfile: () => 'test-token' }));
+const recovery = vi.hoisted(() => ({ scope: 'deployment-a' }));
+vi.mock('../services/serviceAuth', () => ({ getCredentialProfile: () => 'test-token', publicationRecoveryScope: () => recovery.scope }));
 vi.mock('../config', () => ({ buildSemanticServiceUrl: (_service, path) => path }));
 vi.mock('../services/analyticsProductDraft', () => ({ publicationFromDraft: () => ({ product_id: 'a' }), isDefinitivePublicationRejection: () => false }));
 vi.mock('@siemens/ix-react', () => ({ IxButton: ({ children, ...props }) => <button {...props}>{children}</button> }));
-beforeEach(() => sessionStorage.clear());
+beforeEach(() => { sessionStorage.clear(); recovery.scope = 'deployment-a'; });
 
 test('uncertain publication survives unmount with the same payload', async () => {
   apiClient.post.mockReset();
@@ -28,6 +29,16 @@ test('uncertain publication survives unmount with the same payload', async () =>
   fireEvent.click(await screen.findByRole('button', { name: 'Retry same publication' }));
   await waitFor(() => expect(apiClient.post.mock.calls.filter(([url]) => url.endsWith('/publish'))).toHaveLength(2));
   expect(apiClient.post.mock.calls.filter(([url]) => url.endsWith('/publish'))[1][1]).toEqual(original);
+});
+
+test('a different deployment cannot recover an old publication', () => {
+  const draft = { name: 'Shared draft' };
+  sessionStorage.setItem(`depo:pending-publication:${JSON.stringify(['deployment-a', draft])}`,
+    JSON.stringify({ scope: 'deployment-a', payload: { product_id: 'a' }, draft, fields: { name: 'Old publication' } }));
+  recovery.scope = 'deployment-b';
+  render(<SchemaProductPublisher draft={draft} />);
+  expect(screen.queryByRole('button', { name: 'Retry same publication' })).toBeNull();
+  expect(screen.getByLabelText('Product name')).toHaveValue('Shared draft');
 });
 
 for (const change of ['root', 'dependencies', 'paths']) {

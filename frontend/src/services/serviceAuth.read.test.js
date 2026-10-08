@@ -14,6 +14,18 @@ const reads = [
 beforeEach(() => { clearServiceAuthToken(); clearServiceContracts(); });
 afterEach(() => { clearServiceAuthToken(); vi.useRealTimers(); });
 
+test('credential replacement and sign-out clear pending publication recovery', () => {
+  sessionStorage.setItem('depo:pending-publication:old', 'old-request');
+  sessionStorage.setItem('unrelated', 'preserved');
+  setCredentialProfile('DATA_PRODUCT_APPROVAL_TOKEN', 'replacement');
+  expect(sessionStorage.getItem('depo:pending-publication:old')).toBeNull();
+  sessionStorage.setItem('depo:pending-publication:new', 'new-request');
+  clearServiceAuthToken();
+  expect(sessionStorage.getItem('depo:pending-publication:new')).toBeNull();
+  expect(sessionStorage.getItem('unrelated')).toBe('preserved');
+  sessionStorage.removeItem('unrelated');
+});
+
 test.each(reads)('%s keeps read authorization after importing a contract without profile metadata', (service, base, path) => {
   setCredentialProfile('GRAPH_READ_TOKEN', 'depo_session_test');
   registerServiceContract(service, base, { openapi: '3.0.3', paths: { [path]: { get: { security: [{ BearerKey: [] }] } } } });

@@ -6,6 +6,8 @@ const profileTokens = new Map();
 export function setCredentialProfile(profile, value) {
   if (!/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile)) throw new Error('Invalid credential profile');
   const token = String(value || '').trim();
+  const previous = profile === 'GRAPH_READ_TOKEN' ? serviceToken : (profileTokens.get(profile) || '');
+  if (previous !== token) clearPendingPublications();
   if (profile === 'GRAPH_READ_TOKEN') {
     if (browserSession && token !== browserSession.token) expireBrowserSession(browserSession.token);
     serviceToken = token; persistBrowserSession(); return;
@@ -22,6 +24,17 @@ let expiryTimer = null;
 const BROWSER_SESSION_STORAGE_KEY = 'depo.browserSession.v1';
 function connectionScope() {
   return JSON.stringify([config.gatewayUrl || '', Object.entries(config.semanticServiceUrls || {}).sort(([a], [b]) => a.localeCompare(b))]);
+}
+export function publicationRecoveryScope() { return connectionScope(); }
+function clearPendingPublications() {
+  try {
+    if (typeof window === 'undefined') return;
+    const storage = window.sessionStorage;
+    for (let index = storage.length - 1; index >= 0; index--) {
+      const key = storage.key(index);
+      if (key?.startsWith('depo:pending-publication:')) storage.removeItem(key);
+    }
+  } catch { /* Restricted storage must not prevent credential revocation. */ }
 }
 function removeStoredSession() {
   try { if (typeof window !== 'undefined') window.sessionStorage?.removeItem(BROWSER_SESSION_STORAGE_KEY); }
@@ -61,6 +74,7 @@ function checkBrowserSessionExpiry() {
 
 export function expireBrowserSession(token) {
   if (!browserSession || browserSession.token !== token) return;
+  clearPendingPublications();
   if (serviceToken === token) serviceToken = '';
   for (const [profile, value] of profileTokens) if (value === token) profileTokens.delete(profile);
   browserSession = null;
@@ -94,6 +108,7 @@ export function setServiceAuthToken(value) {
 }
 
 export function clearServiceAuthToken() {
+  clearPendingPublications();
   clearTimeout(expiryTimer); expiryTimer = null; browserSession = null;
   removeStoredSession();
   serviceToken = '';

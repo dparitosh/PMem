@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { IxButton } from '@siemens/ix-react';
 import { apiClient } from '../services/apiClient';
 import { buildSemanticServiceUrl } from '../config';
-import { getCredentialProfile } from '../services/serviceAuth';
+import { getCredentialProfile, publicationRecoveryScope } from '../services/serviceAuth';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { publicationFromDraft, isDefinitivePublicationRejection } from '../services/analyticsProductDraft';
 import { productChanged } from '../services/productService';
@@ -20,7 +20,9 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
   const pending = useRef(null);
   const pendingDraft = useRef(null);
   const pendingStorageKey = useRef(null);
-  const storageKey = `depo:pending-publication:${JSON.stringify(draft || null)}`;
+  const recoveryScope = publicationRecoveryScope();
+  const initialRecoveryScope = useRef(recoveryScope);
+  const storageKey = `depo:pending-publication:${JSON.stringify([recoveryScope, draft || null])}`;
   const [source, setSource] = useState(null);
   const [dependencies, setDependencies] = useState([]);
   const [paths, setPaths] = useState('');
@@ -30,7 +32,7 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
     if (pending.current) return;
     try {
       const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
-      if (saved?.payload && saved?.draft && saved?.fields) {
+      if (saved?.scope === recoveryScope && saved?.payload && saved?.draft && saved?.fields) {
         pending.current = saved.payload; pendingDraft.current = saved.draft;
         pendingStorageKey.current = storageKey;
         setFields(saved.fields); setPreview({ valid: true }); setReceipt(null);
@@ -47,6 +49,19 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
     setSourceChanged(false); setSource(null); setDependencies([]); setPaths('');
   }, [draft]);
   useEffect(() => () => request.current?.abort(), []);
+  useEffect(() => {
+    const reset = () => {
+      request.current?.abort(); request.current = null;
+      try { if (pendingStorageKey.current) sessionStorage.removeItem(pendingStorageKey.current); } catch { /* Revocation must still reset memory. */ }
+      pending.current = null; pendingDraft.current = null; pendingStorageKey.current = null;
+      setPreview(null); setReceipt(null); setBusy(false);
+      setError('Credentials changed. Check retained product status before starting another publication.');
+    };
+    for (const event of ['depo:credentials-cleared', 'depo:credentials-changed', 'depo:session-expired']) window.addEventListener(event, reset);
+    return () => {
+      for (const event of ['depo:credentials-cleared', 'depo:credentials-changed', 'depo:session-expired']) window.removeEventListener(event, reset);
+    };
+  }, []);
   const activeDraft = pending.current ? pendingDraft.current : converted?.data_product_draft || (sourceChanged ? null : draft);
   function invalidateInspection() {
     setSourceChanged(true); setConverted(null); setPreview(null); setReceipt(null); setError('');
@@ -55,6 +70,7 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
     if (busy || request.current) return;
     const controller = new AbortController(); request.current = controller; setBusy(true); setError('');
     try {
+      if (publicationRecoveryScope() !== initialRecoveryScope.current) throw new Error('Service connection changed. Reopen publication before continuing.');
       const profile = action === 'inspect' ? 'INGESTION_WRITE_TOKEN' : 'DATA_PRODUCT_APPROVAL_TOKEN';
       const token = getCredentialProfile(profile);
       if (!token) throw new Error(`Connect in Admin or test and apply ${profile} before continuing.`);
@@ -77,7 +93,7 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
           if (!preview?.valid) throw new Error('Validate the publication contract before publishing.');
           // Save before sending; credentials are never included in this record.
           sessionStorage.setItem(pendingStorageKey.current || storageKey,
-            JSON.stringify({ payload, draft: activeDraft, fields }));
+            JSON.stringify({ scope: recoveryScope, payload, draft: activeDraft, fields }));
           pendingStorageKey.current = pendingStorageKey.current || storageKey;
           pending.current = payload;
           pendingDraft.current = activeDraft;
