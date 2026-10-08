@@ -250,7 +250,10 @@ export default function MetadataRegistryPage() {
               Governed catalog for definitions, ownership, lifecycle, versions, and physical implementations.
             </div>
           </div>
-          <button type="button" className="depo-button depo-button--secondary" onClick={() => { fetchOntologies(); loadRegistryAssets(); }} disabled={loading || registryLoading || createLoading || transitioningAssetIds.size > 0}>
+          <button type="button" className="depo-button depo-button--secondary" onClick={() => {
+            fetchOntologies(); loadRegistryAssets();
+            if (section === 'dictionary' && selectedOntology) loadDictionary(selectedOntology);
+          }} disabled={loading || registryLoading || dictionaryLoading || createLoading || transitioningAssetIds.size > 0}>
             <RefreshCw size={14} className={loading ? 'depo-spin' : ''} />
             Refresh catalog
           </button>

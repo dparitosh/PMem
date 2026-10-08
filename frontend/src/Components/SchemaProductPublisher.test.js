@@ -8,6 +8,27 @@ vi.mock('../services/serviceAuth', () => ({ getCredentialProfile: () => 'test-to
 vi.mock('../config', () => ({ buildSemanticServiceUrl: (_service, path) => path }));
 vi.mock('../services/analyticsProductDraft', () => ({ publicationFromDraft: () => ({ product_id: 'a' }), isDefinitivePublicationRejection: () => false }));
 vi.mock('@siemens/ix-react', () => ({ IxButton: ({ children, ...props }) => <button {...props}>{children}</button> }));
+beforeEach(() => sessionStorage.clear());
+
+test('uncertain publication survives unmount with the same payload', async () => {
+  apiClient.post.mockReset();
+  apiClient.post.mockImplementation(async url => {
+    if (url.endsWith('/preview')) return { data: { valid: true } };
+    throw new Error('Network interruption');
+  });
+  const draft = { name: 'Recoverable draft' };
+  const view = render(<SchemaProductPublisher draft={draft} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Validate publication contract' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Approve and publish evidence' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Approve and publish evidence' }));
+  await screen.findByText('Network interruption');
+  const original = apiClient.post.mock.calls.find(([url]) => url.endsWith('/publish'))[1];
+  view.unmount();
+  render(<SchemaProductPublisher draft={draft} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Retry same publication' }));
+  await waitFor(() => expect(apiClient.post.mock.calls.filter(([url]) => url.endsWith('/publish'))).toHaveLength(2));
+  expect(apiClient.post.mock.calls.filter(([url]) => url.endsWith('/publish'))[1][1]).toEqual(original);
+});
 
 for (const change of ['root', 'dependencies', 'paths']) {
   test(`changing ${change} prevents publication of the previously inspected draft`, async () => {
@@ -26,3 +47,23 @@ for (const change of ['root', 'dependencies', 'paths']) {
     expect(screen.getByText(/Inspect the schema set again/)).toBeVisible();
   });
 }
+
+test('an uncertain publication retains its original payload across draft refreshes', async () => {
+  apiClient.post.mockReset();
+  apiClient.post.mockImplementation(async url => {
+    if (url.endsWith('/preview')) return {data:{valid:true}};
+    throw Object.assign(new Error('Network interruption'), {code:'ERR_NETWORK'});
+  });
+  const view = render(<SchemaProductPublisher draft={{name:'Original draft'}} />);
+  fireEvent.click(screen.getByRole('button', {name:'Validate publication contract'}));
+  await waitFor(() => expect(screen.getByRole('button', {name:'Approve and publish evidence'})).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', {name:'Approve and publish evidence'}));
+  await screen.findByText(/Publication outcome may be uncertain/);
+  const original = apiClient.post.mock.calls.find(([url]) => url.endsWith('/publish'))[1];
+  view.rerender(<SchemaProductPublisher draft={{name:'Refreshed draft'}} />);
+  fireEvent.click(screen.getByRole('button', {name:'Retry same publication'}));
+  await waitFor(() => expect(apiClient.post.mock.calls.filter(([url]) => url.endsWith('/publish'))).toHaveLength(2));
+  const retry = apiClient.post.mock.calls.filter(([url]) => url.endsWith('/publish'))[1][1];
+  expect(retry).toBe(original);
+  expect(screen.getByLabelText('Product name')).toHaveValue('Original draft');
+});

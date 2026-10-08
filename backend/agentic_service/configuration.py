@@ -94,8 +94,32 @@ def configuration_status():
             errors.append(flag)
     if os.getenv('OLLAMA_DISCOVERY_ENABLED', 'true').strip().lower() not in {'true', 'false'}:
         errors.append('OLLAMA_DISCOVERY_ENABLED')
-    if os.getenv('ONTOLOGY_AGENT_LLM_ENABLED', 'false').lower() not in {'true', 'false'}:
-        errors.append('ONTOLOGY_AGENT_LLM_ENABLED')
+    for flag in ('ONTOLOGY_AGENT_LLM_ENABLED', 'COMPANION_LLM_ENABLED'):
+        if os.getenv(flag, 'false').lower() not in {'true', 'false'}:
+            errors.append(flag)
+    # Validate the same URL and authentication rules used by the clients.
+    # Invalid REST settings should fail readiness rather than the first prompt.
+    if os.getenv('USE_LLM', 'ollama').strip().lower() == 'ollama':
+        from backend.core.ollama_auth import (
+            ollama_base_url, ollama_headers, ollama_tool_chat_root,
+        )
+        try:
+            base = ollama_base_url()
+        except ValueError:
+            errors.append('OLLAMA_API_URL/OLLAMA_BASE_URL')
+        else:
+            try:
+                ollama_headers(base)
+            except ValueError:
+                errors.append('OLLAMA_API_KEY_HEADER/OLLAMA_REQUIRE_HTTPS')
+        if os.getenv('OLLAMA_CHAT_API_URL', '').strip():
+            try:
+                ollama_tool_chat_root()
+            except ValueError:
+                errors.append('OLLAMA_CHAT_API_URL')
+        for key in ('LLM_MODEL_NAME', 'EMBED_MODEL_NAME'):
+            if key in os.environ and not os.environ[key].strip():
+                errors.append(key)
     try:
         ontology_limit = int(os.getenv('ONTOLOGY_AGENT_MAX_BYTES', str(25 * 1024 * 1024)))
         if ontology_limit <= 0:

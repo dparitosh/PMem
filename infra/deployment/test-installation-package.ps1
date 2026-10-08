@@ -20,8 +20,27 @@ foreach ($relative in $requiredFiles) {
   if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) { throw "Missing release file: $relative" }
 }
 
-$powerShellFiles = @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.ps1' -File |
-  Where-Object { $_.FullName -notmatch '[\\/](?:node_modules|\.release-test-tmp|\.git)[\\/]' })
+$excludedDirectories = @('.git', 'node_modules', '.release-test-tmp', '.pytest_cache',
+  '__pycache__', '.venv', 'venv', '.dt_venv', '.mypy_cache', '.ruff_cache',
+  '.pptx-review-build', '.codex-build', '.codex-pptx-build')
+$directories = [Collections.Generic.Stack[string]]::new()
+$directories.Push($root)
+$powerShellFiles = @(
+  while ($directories.Count) {
+    foreach ($entry in Get-ChildItem -LiteralPath $directories.Pop() -Force) {
+      if ($entry.PSIsContainer) {
+        # Exclude before descending: filtering a recursive listing is too late
+        # to avoid inaccessible caches and dependency folders.
+        if ($entry.Name -notin $excludedDirectories -and
+            -not ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+          $directories.Push($entry.FullName)
+        }
+      } elseif ($entry.Extension -eq '.ps1') {
+        $entry
+      }
+    }
+  }
+)
 $parseFailures = @()
 $powerShellFiles | ForEach-Object {
   $tokens = $null; $errors = $null

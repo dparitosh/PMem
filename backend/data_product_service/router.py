@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from datetime import timedelta
@@ -15,7 +16,9 @@ from backend.artifact_store import ArtifactStore
 from backend.mesh_store import PostgresRegistry
 from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from backend.depo_platform.semantic_registry import release_reference, resolve_approved_release
-from .packaging import build_package, publication_digest
+from .packaging import build_package, publication_digest, verify_package
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/data-products", tags=["data-products"])
 root = Path(os.getenv("DATA_PRODUCT_STORAGE", Path(__file__).resolve().parents[2] / "data" / "products"))
@@ -75,7 +78,10 @@ def _key(payload: dict) -> str:
 
 
 def _public_product(record: dict) -> dict:
-    return {key: value for key, value in record.items() if key not in {'package_storage', 'approval_token', 'authorization', 'api_key'}}
+    result = {key: value for key, value in record.items() if key not in {'package_storage', 'approval_token', 'authorization', 'api_key'}}
+    if result.get('catalog_error'):
+        result['catalog_error'] = 'Catalog delivery is unavailable; check service configuration and logs.'
+    return result
 
 
 def _artifact_records(payload: dict) -> tuple[list[tuple[dict, Path]], list[str]]:
@@ -163,7 +169,8 @@ async def _register_catalog(record: dict) -> dict:
             response = await client.put(f"{catalog_url}/catalog/products/{record['product_id']}/versions/{record['version']}", json=_catalog_payload(record), headers={**gateway_subscription_headers(catalog_url), "X-DEPO-Service-Token": catalog_token})
             response.raise_for_status()
     except httpx.HTTPError as exc:
-        return {**record, **retry_metadata, "status": "pending_catalog_registration", "catalog_error": str(exc)}
+        logger.exception('Catalog delivery failed for product %s version %s', record['product_id'], record['version'])
+        return {**record, **retry_metadata, "status": "pending_catalog_registration", "catalog_error": "Catalog delivery is unavailable; retry is scheduled. Check service logs."}
     return {**record, "status": "revoked" if record.get("lifecycle_state") == "revoked" else "published", "catalog_attempts": attempts, "catalog_error": None, "next_catalog_attempt_at": None, "catalog_registered_at": _now()}
 
 
@@ -206,6 +213,11 @@ async def publish(payload: dict, request: Request) -> dict:
         if existing and existing.get("idempotency_key") == idempotency_key and idempotency_key:
             if existing.get('publication_digest') != await _product_io(publication_digest, payload, artifacts):
                 raise HTTPException(409, 'Idempotency key was already used with different or unverified content')
+            try:
+                storage = existing.get('package_storage', {})
+                await _product_io(verify_package, Path(storage.get('package_dir', '')), Path(storage.get('zip_path', '')), existing.get('manifest'))
+            except ValueError as exc:
+                raise HTTPException(409, 'Retained product package failed integrity verification; restore it before retrying') from exc
             return _public_product(existing)
         if existing:
             raise HTTPException(409, "A product version is immutable; retry catalog delivery or publish a new version")
@@ -279,7 +291,7 @@ def list_products(limit: int = 100, offset: int = 0) -> dict:
     if offset < 0:
         raise HTTPException(422, 'offset must be nonnegative')
     total, page = store.page(limit=safe_limit, offset=offset, order_field='published_at')
-    return {"products": [{key: value for key, value in record.items() if key not in {"package_storage", "approval_token", "authorization", "api_key"}} for record in page],
+    return {"products": [_public_product(record) for record in page],
         "limit": safe_limit, 'offset': offset, 'total': total, 'next_offset': offset + safe_limit if offset + safe_limit < total else None}
 
 
@@ -299,6 +311,10 @@ def download(product_version: str) -> FileResponse:
     path = Path(record.get("package_storage", {}).get("zip_path", ""))
     if not path.is_file():
         raise HTTPException(404, "Immutable product package is unavailable")
+    try:
+        verify_package(Path(record.get('package_storage', {}).get('package_dir', '')), path, record.get('manifest'))
+    except ValueError as exc:
+        raise HTTPException(409, 'Retained product package failed integrity verification; restore it before downloading') from exc
     return FileResponse(path, filename=path.name, media_type="application/zip")
 
 
@@ -307,4 +323,4 @@ def get_product(product_version: str) -> dict:
     record = store.get(product_version)
     if not record:
         raise HTTPException(404, "Data product not found")
-    return {key: value for key, value in record.items() if key not in {"package_storage", "approval_token", "authorization", "api_key"}}
+    return _public_product(record)

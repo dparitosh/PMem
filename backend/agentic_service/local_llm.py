@@ -63,7 +63,7 @@ async def _health():
         return {'status': 'authentication_rejected' if code in (401, 403) else 'route_missing' if code == 404 else 'upstream_error',
                 **diagnostic, 'http_status': code,
                 'action': 'Check the configured custom API key and OLLAMA_API_KEY_HEADER. A gateway rejection must be corrected on that route.' if code in (401, 403) else
-                          'Model-list route GET /api/tags returned 404. Generation is unverified; check the configured generation operation separately.' if code == 404 else 'Check the Ollama proxy backend and its logs.'}
+                          'Model-list route GET /api/tags returned 404. If the APIM contract omits discovery, set OLLAMA_DISCOVERY_ENABLED=false and restart services. Generation is unverified; test the configured operation with test-depo-ollama.ps1 -ProbeGeneration.' if code == 404 else 'Check the Ollama proxy backend and its logs.'}
     except (httpx.TimeoutException, TimeoutError):
         return {**diagnostic, 'status': 'timeout', 'action': 'The Ollama model-list probe timed out. Check server load and network reachability from the application VM.'}
     except httpx.ConnectError:

@@ -1,4 +1,5 @@
 import useRuleValidation from '../hooks/useRuleValidation';
+import { requirementsPayload } from '../services/pagePayloads';
 import { dictionaryPayload } from '../services/ontologyPayload';
 import WorkspaceTabs from './WorkspaceTabs';
 import { getCredentialProfile } from '../services/serviceAuth';
@@ -72,7 +73,7 @@ export function RequirementsWorkbench({ filter = "", onNavigate }) {
     try {
       const response = await API_METHODS.requirements.list({ source: sourceFilter, limit: 1000 });
       if (requestId !== requirementRequest.current) return;
-      setGraphRequirements(response?.data?.requirements || []);
+      setGraphRequirements(requirementsPayload(response?.data?.requirements));
     } catch (err) {
       if (requestId !== requirementRequest.current) return;
       setGraphError(apiErrorMessage(err, 'Unable to load graph requirements.'));
@@ -2062,7 +2063,7 @@ export default function OntologyMapper() {
 
   useEffect(() => {
     if (!selectedOntologyApi || !['taxonomy', 'alignment'].includes(activeView)) return;
-    if (taxonomy?.nodes?.length && (activeView === 'taxonomy' || reasoning)) return;
+    if (taxonomy !== null && (activeView === 'taxonomy' || reasoning)) return;
 
     let cancelled = false;
     const controller = new AbortController();
@@ -2073,7 +2074,7 @@ export default function OntologyMapper() {
       try {
         const requests = [];
         const keys = [];
-        if (!taxonomy?.nodes?.length) {
+        if (taxonomy === null) {
           keys.push('taxonomy');
           requests.push(API_METHODS.ontology.getTaxonomy(selectedOntologyApi, options));
         }
@@ -2086,7 +2087,11 @@ export default function OntologyMapper() {
         responses.forEach((res, index) => {
           if (res.status !== 'fulfilled') return;
           if (keys[index] === 'taxonomy') {
-            const taxonomyPayload = res.value?.data || null;
+            const taxonomyPayload = res.value?.data;
+            if (!taxonomyPayload || !Array.isArray(taxonomyPayload.nodes)) {
+              setSemanticDetailsError('The ontology service returned an invalid taxonomy.');
+              return;
+            }
             setTaxonomy(taxonomyPayload);
 
           }
@@ -2094,7 +2099,7 @@ export default function OntologyMapper() {
         });
         const failed = responses.find((res) => res.status === 'rejected');
         if (failed) {
-          setSemanticDetailsError(failed.reason?.response?.data?.detail || failed.reason?.message || 'Some ontology details could not be loaded.');
+          setSemanticDetailsError(apiErrorMessage(failed.reason, 'Some ontology details could not be loaded.'));
         }
       } finally {
         if (!cancelled) setSemanticDetailsLoading(false);

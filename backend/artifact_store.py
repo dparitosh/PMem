@@ -133,19 +133,26 @@ class ArtifactStore:
             raise ValueError("Artifact metadata does not match its content address")
         return metadata, content
 
-    def purge(self, artifact_id: str) -> dict[str, Any]:
+    def purge(self, artifact_id: str, *, recovery_metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         """Delete one verified artifact; callers must retain external audit evidence."""
-        metadata, content = self.resolve(artifact_id)
-        directory = content.parent.resolve()
-        expected = (self.root.resolve() / "sha256" / artifact_id.split(":", 1)[1]).resolve()
-        if directory != expected:
-            raise ValueError("artifact path is outside the content-addressed store")
-        metadata_path = directory / "metadata.json"
-        content.unlink()
-        metadata_path.unlink()
-        (directory / ".write-lock").unlink(missing_ok=True)
-        directory.rmdir()
-        return {"artifact_id": artifact_id, "bytes_deleted": int(metadata.get("size") or 0)}
+        if not artifact_id.startswith('sha256:'):
+            raise ValueError('artifact_id must be a sha256 content address')
+        directory = self._directory(artifact_id.split(':', 1)[1])
+        with self._write_lock(directory):
+            content, metadata_path = directory / 'content', directory / 'metadata.json'
+            if content.is_file() and metadata_path.is_file():
+                metadata, _ = self.resolve(artifact_id)
+            elif recovery_metadata and recovery_metadata.get('artifact_id') == artifact_id:
+                metadata = recovery_metadata
+                if content.is_file() and self._digest(content) != artifact_id.split(':', 1)[1]:
+                    raise ValueError('Artifact content does not match retained purge intent')
+            else:
+                raise ValueError('artifact_id was not found')
+            ensure_execution_allowed()
+            content.unlink(missing_ok=True)
+            metadata_path.unlink(missing_ok=True)
+            # Preserve the lock inode for concurrent writers and crash recovery.
+            return {"artifact_id": artifact_id, "bytes_deleted": int(metadata.get("size") or 0)}
 
 
 artifact_store = ArtifactStore()

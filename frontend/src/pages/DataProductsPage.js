@@ -34,6 +34,7 @@ export default function DataProductsPage({ mode = 'products' }) {
   const [runDraftError, setRunDraftError] = useState('');
   const listRequest = useRef(null);
   const detailRequest = useRef(null);
+  const selectedRef = useRef('');
   const service = catalog ? 'catalog' : 'dataProducts';
   const path = catalog ? '/api/v1/catalog/products' : '/api/v1/data-products';
 
@@ -42,7 +43,7 @@ export default function DataProductsPage({ mode = 'products' }) {
     listRequest.current?.abort();
     if (background !== true) {
     detailRequest.current?.abort();
-    setDetail(null); setDetailError(''); setDetailLoading(false); setSelected('');
+    setDetail(null); setDetailError(''); setDetailLoading(false); setSelected(''); selectedRef.current = '';
     }
     const controller = new AbortController(); listRequest.current = controller;
     let timedOut = false;
@@ -51,15 +52,28 @@ export default function DataProductsPage({ mode = 'products' }) {
     try {
       const collection = await readProductCollection(service, controller.signal);
       if (controller.signal.aborted) return;
+      if (background === true) {
+        const key = selectedRef.current;
+        if (key && collection.rows.some(row => (catalog ? row.product_id : `${row.product_id}:${row.version}`) === key)) {
+          showDetail(key);
+        } else {
+          detailRequest.current?.abort();
+          setDetail(null); setDetailError(''); setDetailLoading(false);
+          setSelected(''); selectedRef.current = '';
+        }
+      }
       setState({ loading: false, rows: collection.rows, total: collection.total, error: '', warning: collection.warning });
     } catch (error) {
       if (listRequest.current !== controller || (controller.signal.aborted && !timedOut)) return;
+      detailRequest.current?.abort();
+      setDetail(null); setDetailError(''); setDetailLoading(false);
+      setSelected(''); selectedRef.current = '';
       setState({ loading: false, rows: [], error: timedOut ? 'Product-list retrieval exceeded one minute. Retry or check service response times.' : apiErrorMessage(error, 'Product service request failed.'), warning: '' });
     } finally {
       clearTimeout(deadline);
       if (listRequest.current === controller) listRequest.current = null;
     }
-  }, [service, path]);
+  }, [service, path, catalog]);
 
   useEffect(() => {
     load();
@@ -104,6 +118,7 @@ export default function DataProductsPage({ mode = 'products' }) {
   }, [catalog]);
 
   async function showDetail(key) {
+    selectedRef.current = key;
     detailRequest.current?.abort(); setSelected(key); setDetail(null); setDetailError('');
     if (!key) { setDetailLoading(false); return; }
     const controller = new AbortController(); detailRequest.current = controller; setDetailLoading(true);

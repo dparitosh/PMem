@@ -26,17 +26,28 @@ class ArtifactRetentionRegistry:
         return f"policy:{artifact_id}"
 
     def register(self, artifact_id: str, payload: dict[str, Any], actor: str) -> dict[str, Any]:
+        with self.store.advisory_lock(self._policy_key(artifact_id)) as acquired:
+            if not acquired:
+                raise ValueError('Retention operation is in progress; retry after it completes')
+            return self._register_locked(artifact_id, payload, actor)
+
+    def _register_locked(self, artifact_id: str, payload: dict[str, Any], actor: str) -> dict[str, Any]:
+        existing = self.store.get(self._policy_key(artifact_id)) or {}
+        if existing.get('status') in {'purging', 'purged'}:
+            raise ValueError('An artifact with purge intent cannot be reactivated')
         metadata, _ = self.artifact_store.resolve(artifact_id)
         days, tier = payload.get("retention_days"), str(payload.get("tier") or "hot").lower()
-        if not isinstance(days, int) or not 1 <= days <= 36_500:
+        if isinstance(days, bool) or not isinstance(days, int) or not 1 <= days <= 36_500:
             raise ValueError("retention_days must be an integer between 1 and 36500")
+        hold = payload.get('legal_hold', False)
+        if not isinstance(hold, bool):
+            raise ValueError('legal_hold must be a boolean')
         if tier not in TIERS:
             raise ValueError(f"tier must be one of: {', '.join(sorted(TIERS))}")
         reason = str(payload.get("reason") or "").strip()
         if not reason:
             raise ValueError("reason is required for retention policy evidence")
         now = self._now()
-        existing = self.store.get(self._policy_key(artifact_id)) or {}
         if existing.get("status") == "purged":
             raise ValueError("A purged artifact retention record cannot be reactivated")
         registered_at = existing.get("registered_at") or now.isoformat()
@@ -46,7 +57,7 @@ class ArtifactRetentionRegistry:
             "size": metadata.get("size"),
             "tier": tier,
             "retention_days": days,
-            "legal_hold": bool(payload.get("legal_hold", False)),
+            "legal_hold": hold,
             "status": "active",
             "registered_at": registered_at,
             "expires_at": (datetime.fromisoformat(registered_at) + timedelta(days=days)).isoformat(),
@@ -79,11 +90,17 @@ class ArtifactRetentionRegistry:
         now = self._now()
         return [
             record for record in self.policies()
-            if record.get("status") == "active" and not record.get("legal_hold")
+            if record.get("status") in {"active", "purging"} and not record.get("legal_hold")
             and datetime.fromisoformat(record["expires_at"]) <= now
         ]
 
     def purge(self, artifact_id: str, actor: str, reason: str) -> dict[str, Any]:
+        with self.store.advisory_lock(self._policy_key(artifact_id)) as acquired:
+            if not acquired:
+                raise ValueError('Retention operation is in progress; retry after it completes')
+            return self._purge_locked(artifact_id, actor, reason)
+
+    def _purge_locked(self, artifact_id: str, actor: str, reason: str) -> dict[str, Any]:
         record = self.store.get(self._policy_key(artifact_id))
         if not record:
             raise LookupError("Artifact retention policy was not found")
@@ -95,11 +112,21 @@ class ArtifactRetentionRegistry:
             raise ValueError("Artifact has not reached its retention expiry")
         if not reason.strip():
             raise ValueError("reason is required for purge evidence")
-        evidence = self.artifact_store.purge(artifact_id)
+        if record.get('status') != 'purging':
+            metadata, _ = self.artifact_store.resolve(artifact_id)
+            intent = {'event_id': str(uuid.uuid4()), 'artifact_id': artifact_id,
+                      'event_type': 'purge_requested', 'occurred_at': self._now().isoformat(),
+                      'actor': actor, 'reason': reason, 'size': metadata.get('size', 0)}
+            record = {**record, 'status': 'purging', 'purge_intent': intent}
+            # A failed commit must prevent any filesystem deletion.
+            self.store.put_many({self._policy_key(artifact_id): record, f"event:{intent['event_id']}": intent})
+        intent = record['purge_intent']
+        evidence = self.artifact_store.purge(artifact_id, recovery_metadata={'artifact_id': artifact_id, 'size': intent['size']})
+        actor, reason = intent['actor'], intent['reason']
         now = self._now().isoformat()
         purged = {**record, "status": "purged", "purged_at": now, "purged_by": actor, "purge_reason": reason, **evidence}
         event = {
-            "event_id": str(uuid.uuid4()), "artifact_id": artifact_id, "event_type": "artifact_purged",
+            "event_id": intent['event_id'] + ':completed', "artifact_id": artifact_id, "event_type": "artifact_purged",
             "occurred_at": now, "actor": actor, "reason": reason, **evidence,
         }
         self.store.put_many({self._policy_key(artifact_id): purged, f"event:{event['event_id']}": event})

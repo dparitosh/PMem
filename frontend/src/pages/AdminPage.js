@@ -1,4 +1,5 @@
 import CredentialSettings from '../Components/CredentialSettings';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 import AgentControlPanel from '../Components/AgentControlPanel';
 import AgentProposalPanel from '../Components/AgentProposalPanel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -92,8 +93,7 @@ export default function AdminPage({ onSchemaCleaned }) {
       setRegistry(response.data);
     } catch (err) {
       if (controller.signal.aborted) return;
-      const detail = err?.response?.data?.detail || err?.message || 'Admin registry is unavailable.';
-      setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+      setError(apiErrorMessage(err, 'Admin registry is unavailable.'));
     } finally {
       if (!controller.signal.aborted) setLoading(false);
       if (registryControllerRef.current === controller) registryControllerRef.current = null;
@@ -134,8 +134,7 @@ export default function AdminPage({ onSchemaCleaned }) {
       });
     } catch (err) {
       if (controller.signal.aborted) return;
-      const detail = err?.response?.data?.detail || err?.message || 'Agentic component catalog is unavailable.';
-      setAgenticError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+      setAgenticError(apiErrorMessage(err, 'Agentic component catalog is unavailable.'));
     } finally {
       if (!controller.signal.aborted) setAgenticLoading(false);
       if (agenticControllerRef.current === controller) agenticControllerRef.current = null;
@@ -170,8 +169,7 @@ export default function AdminPage({ onSchemaCleaned }) {
       const response = await agenticAPI.importOpenApi(document, file.name);
       setOpenApiCatalog(response.data);
     } catch (err) {
-      const detail = err?.response?.data?.detail || err?.message || 'OpenAPI import failed.';
-      setAgenticError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+      setAgenticError(apiErrorMessage(err, 'OpenAPI import failed.'));
     } finally {
       setOpenApiLoading(false);
     }

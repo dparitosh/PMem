@@ -31,6 +31,19 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
+test('catalog refresh reloads the dictionary selected in the active tab', async () => {
+  API_METHODS.metadataRegistry.list.mockResolvedValue({ data: { assets: [] } });
+  API_METHODS.ontology.getDataDictionary.mockResolvedValue({ data: { entities: { Part: {} }, properties: {}, relationships: {} } });
+  render(<MetadataRegistryPage />);
+  await screen.findByText('No governed metadata assets are registered yet.');
+  fireEvent.click(screen.getByRole('tab', { name: 'Data Dictionary' }));
+  fireEvent.change(screen.getByLabelText('Select registry source for Data Dictionary'), { target: { value: 'onto-1' } });
+  await screen.findByText('Part');
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh catalog' }));
+  await waitFor(() => expect(API_METHODS.ontology.getDataDictionary).toHaveBeenCalledTimes(2));
+  expect(API_METHODS.ontology.getDataDictionary).toHaveBeenLastCalledWith('onto-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+});
+
 test('shows a successfully loaded empty governed registry instead of ontology fallback rows', async () => {
   API_METHODS.metadataRegistry.list.mockResolvedValue({ data: { assets: [] } });
 

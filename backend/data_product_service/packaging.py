@@ -25,6 +25,41 @@ def publication_digest(payload: dict, artifacts: list[tuple[dict, Path]]) -> str
     return hashlib.sha256(json.dumps(content, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest()
 
 
+def verify_package(package_dir: Path, zip_path: Path, expected_manifest=None) -> dict:
+    """Verify retained content and ZIP members using bounded streaming reads."""
+    try:
+        manifest_path = package_dir / 'manifest.json'
+        if manifest_path.stat().st_size > 8 * 1024 * 1024:
+            raise ValueError('Retained manifest exceeds the size limit')
+        existing = json.loads(manifest_path.read_text(encoding='utf-8'))
+        if expected_manifest is not None and existing != expected_manifest:
+            raise ValueError('Retained manifest differs from the registered manifest')
+        expected = {'manifest.json'}
+        with zipfile.ZipFile(zip_path) as archive:
+            with archive.open('manifest.json') as stream:
+                content = stream.read(8 * 1024 * 1024 + 1)
+            if len(content) > 8 * 1024 * 1024 or json.loads(content) != existing:
+                raise ValueError('Archive manifest mismatch')
+            for item in existing['artifacts']:
+                name = item['package_path']
+                path = (package_dir / name).resolve()
+                if not path.is_relative_to(package_dir.resolve()) or not path.is_file():
+                    raise ValueError('Package artifact is missing or unsafe')
+                checksum = hashlib.sha256()
+                with archive.open(name) as stream:
+                    for block in iter(lambda: stream.read(1024 * 1024), b''):
+                        checksum.update(block)
+                if _checksum(path) != item['sha256'] or checksum.hexdigest() != item['sha256']:
+                    raise ValueError('Package artifact checksum mismatch')
+                expected.add(name)
+            names = archive.namelist()
+            if len(names) != len(expected) or set(names) != expected:
+                raise ValueError('Unexpected or duplicate archive members')
+        return existing
+    except (OSError, zipfile.BadZipFile, KeyError, TypeError, ValueError, RuntimeError) as exc:
+        raise ValueError('Retained product package failed integrity verification') from exc
+
+
 def build_package(*, output_root: Path, payload: dict, artifacts: list[tuple[dict, Path]]) -> dict:
     digest = publication_digest(payload, artifacts)
     product_id, version = str(payload["product_id"]), str(payload["version"])
@@ -43,24 +78,7 @@ def build_package(*, output_root: Path, payload: dict, artifacts: list[tuple[dic
             existing = json.loads(manifest.read_text(encoding="utf-8"))
             if existing.get('publication_digest') != digest:
                 raise ValueError('Existing product package has different or unverified content; publish a new version')
-            try:
-                expected = {'manifest.json'}
-                with zipfile.ZipFile(zip_path) as archive:
-                    if archive.testzip() is not None or json.loads(archive.read('manifest.json')) != existing:
-                        raise ValueError('Package archive is corrupt or has a different manifest')
-                    for item in existing['artifacts']:
-                        name = item['package_path']
-                        path = (package_dir / name).resolve()
-                        if not path.is_relative_to(package_dir.resolve()) or not path.is_file():
-                            raise ValueError('Package artifact is missing or unsafe')
-                        if _checksum(path) != item['sha256'] or hashlib.sha256(archive.read(name)).hexdigest() != item['sha256']:
-                            raise ValueError('Package artifact checksum does not match')
-                        expected.add(name)
-                    names = archive.namelist()
-                    if len(names) != len(expected) or set(names) != expected:
-                        raise ValueError('Package archive contains unexpected or duplicate members')
-            except (OSError, zipfile.BadZipFile, KeyError, TypeError, ValueError) as exc:
-                raise ValueError('Existing product package failed integrity verification; restore it before retrying') from exc
+            verify_package(package_dir, zip_path, existing)
             return {"manifest": existing, "package_dir": package_dir, "zip_path": zip_path}
         raise ValueError("product version package already exists but is incomplete")
     package_dir.mkdir(parents=True, exist_ok=False)

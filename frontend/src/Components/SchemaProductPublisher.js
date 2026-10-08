@@ -18,19 +18,36 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
   const [receipt, setReceipt] = useState(null);
   const request = useRef(null);
   const pending = useRef(null);
+  const pendingDraft = useRef(null);
+  const pendingStorageKey = useRef(null);
+  const storageKey = `depo:pending-publication:${JSON.stringify(draft || null)}`;
   const [source, setSource] = useState(null);
   const [dependencies, setDependencies] = useState([]);
   const [paths, setPaths] = useState('');
   const [converted, setConverted] = useState(null);
   const [sourceChanged, setSourceChanged] = useState(false);
   useEffect(() => {
+    if (pending.current) return;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+      if (saved?.payload && saved?.draft && saved?.fields) {
+        pending.current = saved.payload; pendingDraft.current = saved.draft;
+        pendingStorageKey.current = storageKey;
+        setFields(saved.fields); setPreview({ valid: true }); setReceipt(null);
+        setError('Recovered an uncertain publication. Retry the same request to reconcile its outcome.');
+        return;
+      }
+    } catch {
+      setError('Pending publication recovery failed. Check the retained product before publishing again.');
+      return;
+    }
     request.current?.abort(); request.current = null; pending.current = null;
     setFields({ name: draft?.name || '', version: '1.0.0', classification: 'internal' });
     setPreview(null); setReceipt(null); setError(''); setConverted(null); setBusy(false);
     setSourceChanged(false); setSource(null); setDependencies([]); setPaths('');
-    return () => request.current?.abort();
   }, [draft]);
-  const activeDraft = converted?.data_product_draft || (sourceChanged ? null : draft);
+  useEffect(() => () => request.current?.abort(), []);
+  const activeDraft = pending.current ? pendingDraft.current : converted?.data_product_draft || (sourceChanged ? null : draft);
   function invalidateInspection() {
     setSourceChanged(true); setConverted(null); setPreview(null); setReceipt(null); setError('');
   }
@@ -58,16 +75,25 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
         const payload = pending.current || publicationFromDraft(activeDraft, fields, `schema-product-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         if (action === 'publish') {
           if (!preview?.valid) throw new Error('Validate the publication contract before publishing.');
+          // Save before sending; credentials are never included in this record.
+          sessionStorage.setItem(pendingStorageKey.current || storageKey,
+            JSON.stringify({ payload, draft: activeDraft, fields }));
+          pendingStorageKey.current = pendingStorageKey.current || storageKey;
           pending.current = payload;
+          pendingDraft.current = activeDraft;
         }
         const response = await apiClient.post(buildSemanticServiceUrl('dataProducts', `/api/v1/data-products/${action === 'publish' ? 'publish' : 'preview'}`), payload,
           { headers, signal: controller.signal, timeout: 60000 });
         if (controller.signal.aborted) return;
-        if (action === 'publish') { setReceipt(response.data); productChanged(); onPublished?.(); }
+        if (action === 'publish') {
+          sessionStorage.removeItem(pendingStorageKey.current); pendingStorageKey.current = null;
+          setReceipt(response.data); productChanged(); onPublished?.();
+        }
         else setPreview(response.data);
       }
     } catch (failure) {
       if (!controller.signal.aborted && action === 'publish' && isDefinitivePublicationRejection(failure)) {
+        sessionStorage.removeItem(pendingStorageKey.current); pendingStorageKey.current = null;
         pending.current = null; setPreview(null);
       }
       if (!controller.signal.aborted) setError(apiErrorMessage(failure, failure.message || 'Request failed.'));

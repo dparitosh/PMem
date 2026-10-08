@@ -1,4 +1,5 @@
 import { apiErrorMessage } from '../utils/apiErrorMessage';
+import WorkspaceTabs from '../Components/WorkspaceTabs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Boxes, Network, GitFork, Layers, RefreshCcw, ZoomIn, ZoomOut, ScanSearch } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
@@ -344,6 +345,9 @@ export default function ModelWorkbenchPage({ onNavigate }) {
     const controller = new AbortController();
     loadAbortControllerRef.current = controller;
     setStatus({ loading: true, error: '' });
+    setDataset({ nodes: [], links: [], message: '', representations: [] });
+    setReactFlowGraph(null);
+    setDecompositionRootId('');
     try {
       const response = activeView === 'architecture'
         ? await graphApi.getArchitectureGraph('archimate', 1800, controller.signal)
@@ -472,9 +476,14 @@ export default function ModelWorkbenchPage({ onNavigate }) {
         <div className="model-viewer-header-main">
           <h2><Layers size={22} /> Modeling Viewer</h2>
           <p>Semantic ArchiMate / MBSE diagram viewer with model tree, drag, pan, and zoom.</p>
-          <div className="model-viewer-tabs compact-header-tabs" role="tablist" aria-label="Model viewer modes">
-            {VIEW_OPTIONS.map((view) => <button key={view.id} type="button" className={activeView === view.id ? 'active' : ''} onClick={() => { setActiveView(view.id); setQuery(''); setSelectedId(''); setActiveTreeItem(null); setActiveRepresentationId(''); }}>{view.label}</button>)}
-          </div>
+          <WorkspaceTabs label="Model viewer modes" tabs={VIEW_OPTIONS} value={activeView} onChange={view => {
+            if (view === activeView) return;
+            loadRequestIdRef.current += 1;
+            loadAbortControllerRef.current?.abort();
+            setDataset({ nodes: [], links: [], message: '', representations: [] });
+            setReactFlowGraph(null); setDecompositionRootId('');
+            setActiveView(view); setQuery(''); setSelectedId(''); setActiveTreeItem(null); setActiveRepresentationId('');
+          }} />
         </div>
         <div className="model-viewer-actions">
           <button type="button" onClick={loadView} disabled={status.loading}><RefreshCcw size={15} /> Refresh</button>

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { dataPipelineAPI } from '../services/apiClient';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { pipelineRunLink } from '../workflows/runTracking';
+import { qualityRunsPayload } from '../services/pagePayloads';
 
 export default function QualityPage() {
   const [runs, setRuns] = useState([]);
@@ -17,8 +18,7 @@ export default function QualityPage() {
       const response = await dataPipelineAPI.runs(100, { signal: controller.signal, timeout: 15000 });
       if (controller.signal.aborted) return;
       const body = response.data?.data || response.data;
-      if (!Array.isArray(body?.runs)) throw new Error('The pipeline returned an invalid run list.');
-      setRuns(body.runs); setUpdated(new Date());
+      setRuns(qualityRunsPayload(body?.runs)); setUpdated(new Date());
     } catch (failure) {
       if (!controller.signal.aborted) setError(apiErrorMessage(failure, 'Quality evidence is unavailable.'));
     } finally { if (!controller.signal.aborted) setLoading(false); }

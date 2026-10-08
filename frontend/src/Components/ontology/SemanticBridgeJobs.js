@@ -2,6 +2,7 @@ import { getCredentialProfile } from '../../services/serviceAuth';
 import React, { useEffect, useRef, useState } from 'react';
 import { bridgeApi } from '../../services/bridgeApi';
 import agenticAPI from '../../services/agenticApi';
+import { bridgeReviewPayload } from '../../services/bridgeReviewPayload';
 
 
 class PreviewInputError extends Error {}
@@ -102,7 +103,10 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
     })}>Create preview</button>
     <button type="button" style={buttonStyle} disabled={busy || !ontologyId || !importTaskId || !agenticAPI.isConfigured()} onClick={() => invoke(async current => {
       const result = await agenticAPI.orchestrateOntology({ workflow_id: 'ontology_review', ontology_id: ontologyId, import_task_id: importTaskId }, authOptions(getCredentialProfile('GRAPH_READ_TOKEN')));
-      if (current()) setAgentReport(result.data);
+      if (current()) {
+        try { setAgentReport(bridgeReviewPayload(result.data)); }
+        catch { throw new PreviewInputError('Ontology agent review returned an invalid response. Refresh before retrying.'); }
+      }
     })}>Run ontology agent review</button>
     {!agenticAPI.isConfigured() && <small>Enable the Agentic service to run ontology intake and review.</small>}
     {agentReport && <div role="status" style={{ marginTop: 8, padding: 8, background: 'var(--ui-surface)', color: 'var(--ui-text)', border: '1px solid var(--ui-border)' }}>
