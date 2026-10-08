@@ -6,6 +6,7 @@ Handles entity deduplication, namespace mapping, and constraint merging
 
 import logging
 import re
+from copy import deepcopy
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
@@ -198,36 +199,21 @@ class OntologyMappingService:
         
         Transforms source OWL to target namespace and applies entity mappings
         """
-        aligned_owl = source_owl_ttl
-        
-        # Step 1: Replace namespace prefix
-        aligned_owl = aligned_owl.replace(f"@prefix ex: <{source_namespace}>", 
-                                         f"@prefix ex: <{target_namespace}>")
-        
-        # Step 2: Apply entity mappings
+        from rdflib import Graph, URIRef
+        source = Graph().parse(data=source_owl_ttl, format='turtle')
+        replacements = {}
         for mapping in entity_mappings:
-            # Map entity class definition
-            pattern = rf"ex:{mapping.source_entity}\s+a\s+owl:Class"
-            replacement = f"ex:{mapping.target_entity} a owl:Class"
-            aligned_owl = re.sub(pattern, replacement, aligned_owl)
-            
-            # Map entity properties
+            replacements[URIRef(source_namespace + mapping.source_entity)] = URIRef(target_namespace + mapping.target_entity)
             for src_prop, tgt_prop in mapping.property_mappings.items():
-                pattern = rf"ex:{mapping.source_entity}_{src_prop}"
-                replacement = f"ex:{mapping.target_entity}_{tgt_prop}"
-                aligned_owl = re.sub(pattern, replacement, aligned_owl)
-            
-            # Add owl:equivalentClass mapping
-            equiv_mapping = (
-                f"\nex:{mapping.source_entity} owl:equivalentClass ex:{mapping.target_entity} ;\n"
-                f"  rdfs:comment \"Mapped from source namespace with {mapping.confidence:.1%} confidence\" ."
-            )
-            aligned_owl += equiv_mapping
-        
-        # Step 3: Preserve unmapped entities with source namespace
-        aligned_owl += "\n\n# Unmapped entities preserved from source schema\n"
-        
-        return aligned_owl
+                replacements[URIRef(source_namespace + mapping.source_entity + '_' + src_prop)] = URIRef(target_namespace + mapping.target_entity + '_' + tgt_prop)
+        result = Graph()
+        for prefix, namespace in source.namespaces():
+            result.bind(prefix, namespace)
+        result.bind('target', target_namespace)
+        for triple in source:
+            result.add(tuple(replacements.get(term, term) for term in triple))
+        # Name similarity alone does not justify owl:equivalentClass assertions.
+        return result.serialize(format='turtle')
     
     @staticmethod
     def merge_constraints(
@@ -235,22 +221,26 @@ class OntologyMappingService:
         target_entity_constraints: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Merge constraints from source mapping to target entity"""
-        merged = dict(target_entity_constraints)
+        merged = deepcopy(target_entity_constraints)
         
         # Add UNIQUE constraints
         if 'unique_constraints' in source_mappings:
             merged.setdefault('unique_constraints', [])
-            merged['unique_constraints'].extend(source_mappings['unique_constraints'])
+            merged['unique_constraints'].extend(deepcopy(source_mappings['unique_constraints']))
         
         # Add cardinality constraints
         if 'cardinality_bounds' in source_mappings:
             merged.setdefault('cardinality_bounds', {})
-            merged['cardinality_bounds'].update(source_mappings['cardinality_bounds'])
+            for key, bounds in source_mappings['cardinality_bounds'].items():
+                existing = merged['cardinality_bounds'].get(key)
+                if existing is not None and existing != bounds:
+                    raise ValueError(f'Conflicting cardinality constraints for {key}; review is required')
+                merged['cardinality_bounds'][key] = deepcopy(bounds)
         
         # Add WHERE rules (as rdfs:comments for now)
         if 'where_rules' in source_mappings:
             merged.setdefault('business_rules', [])
-            merged['business_rules'].extend(source_mappings['where_rules'])
+            merged['business_rules'].extend(deepcopy(source_mappings['where_rules']))
         
         return merged
 
@@ -340,7 +330,9 @@ def map_express_to_ontology(
             source_owl_ttl,
             source_entity
         )
-        target_props = {tgt.lower(): tgt for tgt in target_onto['entities']}
+        # This registry contains classes, not property definitions. Do not
+        # manufacture property mappings from its class names.
+        target_props = {}
         
         prop_mappings = OntologyMappingService.map_properties(
             source_props,
