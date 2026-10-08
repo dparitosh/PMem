@@ -76,3 +76,39 @@ def cancel(task_id: str):
         raise HTTPException(409, 'Graph commit is in progress; cancellation cannot undo writes')
     _service().cancel_import(task_id)
     return _status(task_id)
+
+
+@router.get('/owl/{task_id}/export', dependencies=[Depends(graph_read_identity)])
+def export_ontology(task_id: str, format: str = 'ttl'):
+    """Export retained task ontology content without generating or publishing it."""
+    from fastapi.responses import Response
+    import re
+    formats = {'ttl': ('turtle', 'text/turtle'), 'rdf': ('xml', 'application/rdf+xml'),
+               'owl': ('pretty-xml', 'application/rdf+xml'), 'jsonld': ('json-ld', 'application/ld+json')}
+    if format not in formats: raise HTTPException(422, 'Unsupported ontology export format')
+    state = _status(task_id)
+    content = state.get('owl_ttl')
+    if not content:
+        from backend.Services.workflow_artifact_service import WorkflowArtifactService
+        manifest = WorkflowArtifactService.get_manifest(task_id) or {}
+        for artifact in manifest.get('artifacts', []):
+            name = artifact.get('path', '')
+            if name.startswith('ontology/') and name.endswith('.ttl'):
+                path = WorkflowArtifactService.resolve_artifact_path(task_id, name)
+                if path and path.is_file():
+                    if path.stat().st_size > MAX_UPLOAD_BYTES: raise HTTPException(413, 'Ontology export exceeds configured limit')
+                    content = path.read_text(encoding='utf-8')
+                    break
+    if not isinstance(content, str) or not content.strip(): raise HTTPException(404, 'No retained ontology is available for this task')
+    if len(content.encode('utf-8')) > MAX_UPLOAD_BYTES: raise HTTPException(413, 'Ontology export exceeds configured limit')
+    if format != 'ttl':
+        from rdflib import Graph
+        try:
+            graph = Graph()
+            graph.parse(data=content, format='turtle')
+            content = graph.serialize(format=formats[format][0])
+        except Exception as exc:
+            raise HTTPException(422, 'Retained ontology cannot be serialized in the requested format') from exc
+    filename = re.sub(r'[^A-Za-z0-9_.-]', '_', str(state.get('filename') or task_id))[:150]
+    return Response(content=content, media_type=formats[format][1],
+                    headers={'Content-Disposition': f'attachment; filename="{filename}.{format}"'})

@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 from starlette.concurrency import run_in_threadpool
 from backend.depo_platform.upload_limits import ontology_upload_limit
@@ -6,6 +7,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from backend.depo_platform.authorization import service_write_identity, graph_read_identity
 
 from .neo4j_publisher import publisher
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
@@ -92,7 +95,8 @@ def search(query: str, limit: int = 50, ontology_id: str = '', ontology_prefix: 
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Graph search failed: {type(exc).__name__}: {exc}") from exc
+        logger.exception("Graph search failed")
+        raise HTTPException(status_code=503, detail="Graph search failed; check service logs using X-Request-ID") from exc
 
 
 @router.get("/ontologies/{ontology_id}/projection", dependencies=[Depends(graph_read_identity)], summary="Get an explorer-ready ontology projection")
@@ -100,7 +104,8 @@ def ontology_projection(ontology_id: str, limit: int = 900) -> dict:
     try:
         return publisher.explorer_projection(ontology_id=ontology_id, limit=limit)
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Graph projection failed: {type(exc).__name__}: {exc}") from exc
+        logger.exception("Graph projection failed")
+        raise HTTPException(status_code=503, detail="Graph projection failed; check service logs using X-Request-ID") from exc
 
 
 @router.get("/traversal/{iri:path}", dependencies=[Depends(graph_read_identity)], summary="Get a bounded explorer-ready neighborhood for an RDF resource")
@@ -108,7 +113,8 @@ def traversal(iri: str, depth: int = 1, limit: int = 200) -> dict:
     try:
         return publisher.traversal(iri=iri, depth=depth, limit=limit)
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Graph traversal failed: {type(exc).__name__}: {exc}") from exc
+        logger.exception("Graph traversal failed")
+        raise HTTPException(status_code=503, detail="Graph traversal failed; check service logs using X-Request-ID") from exc
 
 
 @router.get("/ontologies/{ontology_id}/analytics", dependencies=[Depends(graph_read_identity)], summary="Run Semantica analytics on a live Neo4j ontology projection")
@@ -116,7 +122,8 @@ def ontology_analytics(ontology_id: str, limit: int = 3000) -> dict:
     try:
         return publisher.analytics(ontology_id=ontology_id, limit=limit)
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Graph analytics failed: {type(exc).__name__}: {exc}") from exc
+        logger.exception("Graph analytics failed")
+        raise HTTPException(status_code=503, detail="Graph analytics failed; check service logs using X-Request-ID") from exc
 
 
 @router.get("/ontologies/{ontology_id}/neighborhood", dependencies=[Depends(graph_read_identity)], summary="Get bounded semantic distance neighbors from the live ontology graph")
@@ -124,4 +131,5 @@ def ontology_neighborhood(ontology_id: str, iri: str, max_hops: int = 3, limit: 
     try:
         return publisher.neighborhood(ontology_id=ontology_id, iri=iri, max_hops=max_hops, limit=limit)
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Graph neighborhood failed: {type(exc).__name__}: {exc}") from exc
+        logger.exception("Graph neighborhood failed")
+        raise HTTPException(status_code=503, detail="Graph neighborhood failed; check service logs using X-Request-ID") from exc

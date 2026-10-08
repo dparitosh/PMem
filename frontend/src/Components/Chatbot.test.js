@@ -236,3 +236,11 @@ test('the final evidence response replaces provisional streamed model text', asy
   await waitFor(() => expect(results).toHaveBeenCalledWith([expect.objectContaining({ response: 'Verified graph evidence remains available' })]));
   expect(screen.queryByText('Unfinished model suggestion')).not.toBeInTheDocument();
 });
+
+test('malformed sample-query responses retain safe prompts',async()=>{
+ setCredentialProfile('GRAPH_READ_TOKEN','read-fixture');
+ global.fetch=vi.fn().mockResolvedValue({ok:true,headers:{get:()=>null},json:async()=>({queries:'invalid'})});
+ render(<Chatbot />);
+ await waitFor(()=>expect(global.fetch).toHaveBeenCalled());
+ expect(screen.getByRole('button',{name:'Send chat question'})).toBeInTheDocument();
+});

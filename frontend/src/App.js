@@ -1,3 +1,4 @@
+import { configurationWarnings } from './config';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './App.css';
 import './CSS/TCSColors.css';
@@ -217,6 +218,7 @@ function App() {
       <OntologyProvider>
         <SchemaProvider key={`schema-${serviceAuthRevision}`}>
           <div style={{ minHeight: '100dvh' }}>
+            {configurationWarnings.length > 0 && <div role="alert">{configurationWarnings.map(message => <p key={message}>{message}</p>)}</div>}
             <AppShell
             activePage={page === 'home' ? 'home' : activePage}
             onPageChange={handleNavigate}

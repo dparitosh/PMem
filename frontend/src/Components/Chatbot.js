@@ -332,7 +332,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 }
                 if (response.ok) {
                     const data = await response.json();
-                    if (data.queries && data.queries.length > 0) {
+                    if (Array.isArray(data.queries) && data.queries.length > 0 && data.queries.every(query => typeof query === 'string' && query.trim())) {
                         setSampleQueries(data.queries);
                         logger.data('Loaded dynamic sample queries', {
                             count: data.queries.length,

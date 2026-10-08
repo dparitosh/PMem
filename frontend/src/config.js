@@ -79,6 +79,17 @@ const resolveBackendUrl = () => {
   return configuredBackendUrl.replace(/\/$/, '');
 };
 
+export const configurationWarnings = [];
+export function boundedTimeout(value, fallback, name) {
+  if (value === '' || value == null) return fallback;
+  const parsed = Number(value);
+  if (Number.isSafeInteger(parsed) && parsed >= 1000 && parsed <= 1800000) return parsed;
+  const message = `${name} must be an integer from 1000 to 1800000 milliseconds; using ${fallback}.`;
+  configurationWarnings.push(message);
+  console.warn(message);
+  return fallback;
+}
+
 // Base configuration
 const baseConfig = {
   backendUrl: resolveBackendUrl(),
@@ -90,8 +101,8 @@ const baseConfig = {
   environment: setting('ENV') || 'development',
   debug: setting('DEBUG') === 'true',
   logLevel: setting('LOG_LEVEL') || 'info',
-  requestTimeout: parseInt(setting('REQUEST_TIMEOUT') || '300000', 10),
-  chatStreamTimeout: parseInt(setting('CHAT_STREAM_TIMEOUT') || '900000', 10),
+  requestTimeout: boundedTimeout(setting('REQUEST_TIMEOUT'), 300000, 'REQUEST_TIMEOUT'),
+  chatStreamTimeout: boundedTimeout(setting('CHAT_STREAM_TIMEOUT'), 900000, 'CHAT_STREAM_TIMEOUT'),
 };
 
 const gatewayUrl = configuredGatewayUrl ? configuredGatewayUrl.replace(/\/$/, '') : '';

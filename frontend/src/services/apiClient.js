@@ -1,3 +1,4 @@
+import { applyRequestDeadline, abortableDelay, retryFitsDeadline } from './requestPolicy';
 /**
  * Centralized API Client
  * Uses axios with configuration from environment variables
@@ -89,9 +90,6 @@ function adoptServerSession(response) {
   }
 }
 
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function isTransientNetworkError(error) {
   const code = String(error?.code || '').toUpperCase();
@@ -119,6 +117,7 @@ function isStandaloneServiceRequest(url) {
  */
 apiClient.interceptors.request.use(
   (requestConfig) => {
+    applyRequestDeadline(requestConfig);
     prepareMultipartHeaders(requestConfig);
     // Older feature modules pass a relative path directly to Axios.  Resolve
     // it here as well as in buildUrl() so every caller reaches its owning
@@ -186,7 +185,7 @@ apiClient.interceptors.response.use(
     if (/\/api\/v1\/(?:workflow-runs|runs|chat|chat-stream|ontology-agents|integrations\/dt-requirements-design\/runs)(?:[/?]|$)/.test(String(requestConfig.url || ''))) reportRunRecovery(error);
     const method = String(requestConfig.method || 'get').toLowerCase();
     const retryCount = requestConfig.__retryCount || 0;
-    const canRetry = method === 'get' && !error?.response && isTransientNetworkError(error) && retryCount < MAX_GET_RETRIES;
+    const canRetry = method === 'get' && !error?.response && isTransientNetworkError(error) && retryCount < MAX_GET_RETRIES && retryFitsDeadline(requestConfig, RETRY_BASE_DELAY_MS * (retryCount + 1));
 
     if (canRetry) {
       requestConfig.__retryCount = retryCount + 1;
@@ -199,7 +198,7 @@ apiClient.interceptors.response.use(
           message: error.message,
         });
       }
-      await wait(backoff);
+      await abortableDelay(backoff, requestConfig.signal);
       return apiClient(requestConfig);
     }
 
