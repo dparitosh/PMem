@@ -4,6 +4,7 @@ import { dataPipelineAPI, metadataRegistryAPI } from '../services/apiClient';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { readRequestedRunId, requireRunManifest } from '../workflows/runTracking';
 import './DataFlowPage.css';
+import { productDraftFromRun } from '../services/analyticsProductDraft';
 
 const REFRESH_INTERVAL_MS = 15000;
 
@@ -169,9 +170,19 @@ export default function DataFlowPage() {
 
   useEffect(() => {
     load({ initial: true });
-    const interval = window.setInterval(() => load(), REFRESH_INTERVAL_MS);
+    const interval = window.setInterval(() => { if (!document.hidden) load(); }, REFRESH_INTERVAL_MS);
+    const credentialsChanged = () => {
+      loadSequence.current += 1; loadInFlight.current = false;
+      setHealth(null); setTelemetry(null); setRuns([]); setDefinitions([]); setSelectedRun(null);
+      setSemanticReleases([]); setReleaseIndex(''); setReplayError('');
+      load({ initial: true });
+    };
+    window.addEventListener('depo:credentials-changed', credentialsChanged);
+    window.addEventListener('depo:credentials-cleared', credentialsChanged);
     return () => {
       window.clearInterval(interval);
+      window.removeEventListener('depo:credentials-changed', credentialsChanged);
+      window.removeEventListener('depo:credentials-cleared', credentialsChanged);
       loadSequence.current += 1;
       loadInFlight.current = false;
     };
@@ -396,6 +407,7 @@ export default function DataFlowPage() {
               </>}
             </dl>
             <p className="data-flow-help">Replay reuses the retained immutable input; publication still remains subject to the canonical approval boundary.</p>
+            {(() => { try { productDraftFromRun(selectedRun); return <a href={`#/data-products?run_id=${encodeURIComponent(selectedRun.run_id)}`}>Create product from retained run evidence</a>; } catch { return <p>A completed run with retained output artifacts is required to create a product draft.</p>; } })()}
           </> : <div className="data-flow-empty">Select a run to inspect its input, quality, lineage, checkpoint, and output evidence.</div>}
         </aside>
       </div>

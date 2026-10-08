@@ -12,6 +12,7 @@ APPROVAL_TOKENS = {
     'ontology.transition': 'ONTOLOGY_APPROVAL_TOKEN',
     'ontology.merge.apply': 'ONTOLOGY_APPROVAL_TOKEN',
     'data.product.publish': 'DATA_PRODUCT_APPROVAL_TOKEN',
+    'data.product.revoke': 'DATA_PRODUCT_APPROVAL_TOKEN',
     'pipeline.run': 'DATA_JOB_EXECUTION_TOKEN',
     'pipeline.transform': 'DATA_JOB_EXECUTION_TOKEN',
     'engineering.publish': 'AGENTIC_APPROVAL_TOKEN',

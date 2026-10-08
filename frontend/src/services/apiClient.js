@@ -315,24 +315,24 @@ export const ontologyAPI = {
     apiClient.get(buildUrl(replaceParams(API.ontology.get, { ontology: ontologyId }))),
   getDataDictionary: (ontologyId, options = {}) =>
     apiClient.get(buildUrl(replaceParams(API.ontology.dataDictionary, { ontology: ontologyId })), options),
-  getTaxonomy: (ontologyId) =>
-    apiClient.get(buildUrl(replaceParams(API.ontology.taxonomy, { ontology: ontologyId }))),
-  getReasoning: (ontologyId) =>
-    apiClient.get(buildUrl(replaceParams(API.ontology.reason, { ontology: ontologyId }))),
-  previewInference: (ontologyId, payload = {}) =>
-    apiClient.post(buildUrl(replaceParams(API.ontology.inferencePreview, { ontology: ontologyId })), payload),
+  getTaxonomy: (ontologyId, options = {}) =>
+    apiClient.get(buildUrl(replaceParams(API.ontology.taxonomy, { ontology: ontologyId })), options),
+  getReasoning: (ontologyId, options = {}) =>
+    apiClient.get(buildUrl(replaceParams(API.ontology.reason, { ontology: ontologyId })), options),
+  previewInference: (ontologyId, payload = {}, options = {}) =>
+    apiClient.post(buildUrl(replaceParams(API.ontology.inferencePreview, { ontology: ontologyId })), payload, options),
   validateSkos: (payload) => apiClient.post(buildUrl(API.ontology.skosValidate), payload),
   searchSkos: (payload) => apiClient.post(buildUrl(API.ontology.skosSearch), payload),
   traverseSkos: (payload) => apiClient.post(buildUrl(API.ontology.skosTraverse), payload),
   skosStoragePlan: (payload) => apiClient.post(buildUrl(API.ontology.skosStoragePlan), payload),
-  validateRule: (payload) => apiClient.post(buildUrl(API.ontology.ruleValidate), payload),
+  validateRule: (payload, options = {}) => apiClient.post(buildUrl(API.ontology.ruleValidate), payload, options),
   executeRulePreview: (payload) => apiClient.post(buildUrl(API.ontology.ruleExecutePreview), payload),
   ruleMaterializationPlan: (payload) => apiClient.post(buildUrl(API.ontology.ruleMaterializationPlan), payload),
-  getMappings: (ontologyId, mappingType) => 
+  getMappings: (ontologyId, mappingType, options = {}) =>
     apiClient.get(buildUrl(replaceParams(API.ontology.mappings, { 
       ontology: ontologyId, 
       type: mappingType 
-    }))),
+    })), options),
   mapEntity: (ontologyId, mappingData) => 
     apiClient.post(buildUrl(replaceParams(API.ontology.mapEntity, { ontology: ontologyId })), mappingData),
   getAlignmentOptions: (fileType = '') => {
@@ -668,7 +668,7 @@ export const recommendationsAPI = {
       part_name: partName,
       ...(scope?.ontology_id || scope?.ontology_ids || scope?.prefix || scope?.prefixes ? { scope } : {}),
     }),
-  health: () => apiClient.get(buildUrl(API.recommendations.health)),
+  health: (options = {}) => apiClient.get(buildUrl(API.recommendations.health), options),
 };
 
 /**

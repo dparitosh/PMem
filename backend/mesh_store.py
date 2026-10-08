@@ -102,6 +102,23 @@ class PostgresRegistry:
             cursor.execute("SELECT key FROM depo_registry WHERE namespace = %s AND right(key, 7) <> ':latest' ORDER BY key LIMIT %s OFFSET %s", (self.namespace, limit, offset))
             return total, [row[0] for row in cursor.fetchall()]
 
+
+    def execution_candidates(self, limit: int, stale_before: str, heartbeat_namespace: str) -> list[dict[str, Any]]:
+        """Bounded pending work; exclude active executors and uncertain writes."""
+        if not 1 <= limit <= 100: raise ValueError('Execution candidate limit must be between 1 and 100')
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT r.value FROM depo_registry r
+                LEFT JOIN depo_registry h ON h.namespace=%s AND h.key=r.key || ':' || COALESCE(r.value->>'execution_id','')
+                WHERE r.namespace=%s AND r.value->>'execution_mode'='worker'
+                  AND COALESCE(r.value->'pending_step'->>'mutates','false') <> 'true'
+                  AND COALESCE(r.value->>'reconciliation_required','false') <> 'true'
+                  AND (r.value->>'status' IN ('queued','interrupted') OR
+                       (r.value->>'status'='running' AND GREATEST(r.updated_at,COALESCE(h.updated_at,r.updated_at)) <= %s::timestamptz))
+                ORDER BY r.updated_at ASC, r.key ASC LIMIT %s
+            """, (heartbeat_namespace,self.namespace,stale_before,limit))
+            return [row[0] for row in cursor.fetchall()]
+
     def create(self, key: str, value: dict[str, Any]) -> dict[str, Any]:
         """Insert an immutable record atomically; never overwrite a conflict."""
         ensure_execution_allowed()

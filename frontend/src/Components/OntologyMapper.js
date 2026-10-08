@@ -1,3 +1,6 @@
+import useRuleValidation from '../hooks/useRuleValidation';
+import { dictionaryPayload } from '../services/ontologyPayload';
+import WorkspaceTabs from './WorkspaceTabs';
 import { getCredentialProfile } from '../services/serviceAuth';
 import { ontologyMergeAgent } from '../services/ontologyMergeAgent';
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -1522,8 +1525,6 @@ export default function OntologyMapper() {
   const [inferenceBusy, setInferenceBusy] = useState(false);
   const [inferenceError, setInferenceError] = useState(null);
   const [swrlExpression, setSwrlExpression] = useState('satisfies(?requirement, ?function) ^ allocatedTo(?function, ?part) -> impactedBy(?requirement, ?part)');
-  const [swrlValidation, setSwrlValidation] = useState(null);
-  const [swrlBusy, setSwrlBusy] = useState(false);
   const [targetOntologyDictionary, setTargetOntologyDictionary] = useState({ entities: {}, relationships: {}, properties: {} });
   const [semanticDetailsLoading, setSemanticDetailsLoading] = useState(false);
   const [semanticDetailsError, setSemanticDetailsError] = useState(null);
@@ -1561,9 +1562,11 @@ export default function OntologyMapper() {
   const [mergeSourceOntologyId, setMergeSourceOntologyId] = useState('');
   const [mergeBusy, setMergeBusy] = useState(false);
   const mergeGeneration = useRef(0);
+  const {validation:swrlValidation,busy:swrlBusy,error:swrlError,validate:validateSwrlExpression} = useRuleValidation(swrlExpression, selectedOntologyApi, activeView);
   const inferenceGeneration = useRef(0);
+  const inferenceRequest = useRef(null);
   useEffect(() => { mergeGeneration.current += 1; setMergeBusy(false); }, [mergeSourceOntologyId, selectedMapping]);
-  useEffect(() => { inferenceGeneration.current += 1; setInferenceBusy(false); }, [selectedOntologyApi]);
+  useEffect(() => { inferenceGeneration.current += 1; inferenceRequest.current?.abort(); setInferenceResult(null); setInferenceError(null); setInferenceBusy(false); return () => inferenceRequest.current?.abort(); }, [selectedOntologyApi, inferenceRules, inferenceLimit]);
   const [mergeResult, setMergeResult] = useState(null);
   const [mergeApprover, setMergeApprover] = useState('');
   useEffect(() => {
@@ -1890,6 +1893,8 @@ export default function OntologyMapper() {
       return;
     }
     let cancelled = false;
+    const controller = new AbortController();
+    const options = {signal:controller.signal, timeout:30000};
     // Load data dictionary and vocabulary for selected mapping
     const loadMappingData = async () => {
       if (!cancelled) {
@@ -1900,21 +1905,22 @@ export default function OntologyMapper() {
         // Use selectedOntologyApi (the currently selected uploaded ontology prefix).
         // The backend now supports any prefix via generic /{prefix}/data-dictionary routes.
         const [dictRes, mapRes] = await Promise.allSettled([
-          API_METHODS.ontology.getDataDictionary(selectedOntologyApi),
-          API_METHODS.ontology.getMappings(selectedOntologyApi, selectedMappingType),
+          API_METHODS.ontology.getDataDictionary(selectedOntologyApi, options),
+          API_METHODS.ontology.getMappings(selectedOntologyApi, selectedMappingType, options),
         ]);
         const rejectedAccess = [dictRes, mapRes].find(result => result.status === 'rejected' && [401, 403].includes(result.reason?.response?.status));
         if (rejectedAccess) throw rejectedAccess.reason;
         if (mapRes.status === 'rejected') throw mapRes.reason;
 
-        const dictDataRaw = (dictRes.status === 'fulfilled' ? dictRes.value.data.data : null) || {};
-        const hasPrimaryDictionary = Object.keys(dictDataRaw.entities || {}).length > 0;
+        const dictBody = dictRes.status === 'fulfilled' ? dictRes.value.data : null;
+        const dictDataRaw = dictRes.status === 'fulfilled' ? dictionaryPayload(dictBody) : {};
+        const hasPrimaryDictionary = ['entities','properties','relationships'].some(key => Object.keys(dictDataRaw[key] || {}).length > 0);
         let taxonomyData = null;
         let usingFallbackDictionary = false;
         let dictData = dictDataRaw;
 
         if (!hasPrimaryDictionary) {
-          const taxonomyRes = await API_METHODS.ontology.getTaxonomy(selectedOntologyApi).catch(() => null);
+          const taxonomyRes = await API_METHODS.ontology.getTaxonomy(selectedOntologyApi, options);
           taxonomyData = taxonomyRes?.data || null;
           usingFallbackDictionary = Boolean(taxonomyData?.nodes?.length);
           dictData = usingFallbackDictionary ? buildFallbackDictionaryFromTaxonomy(taxonomyData, selectedOntologyApi) : dictDataRaw;
@@ -1987,9 +1993,6 @@ export default function OntologyMapper() {
         setData({ nodes, edges });
         setMappingEdges(edges);
         setVocabEdges(edges.length ? edges : vocabFromDict);
-        setTaxonomy(taxonomyData);
-        setReasoning(null);
-        setSemanticDetailsError(null);
         setStats({
           total_terms: taxonomyData
             ? taxonomyData?.summary?.terms ?? nodes.length
@@ -2014,6 +2017,7 @@ export default function OntologyMapper() {
     loadMappingData();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [activeView, selectedMapping, selectedMappingType, selectedOntologyApi]);
 
@@ -2058,9 +2062,11 @@ export default function OntologyMapper() {
 
   useEffect(() => {
     if (!selectedOntologyApi || !['taxonomy', 'alignment'].includes(activeView)) return;
-    if (taxonomy?.nodes?.length && reasoning) return;
+    if (taxonomy?.nodes?.length && (activeView === 'taxonomy' || reasoning)) return;
 
     let cancelled = false;
+    const controller = new AbortController();
+    const options = {signal:controller.signal, timeout:30000};
     const loadSemanticDetails = async () => {
       setSemanticDetailsLoading(true);
       setSemanticDetailsError(null);
@@ -2069,11 +2075,11 @@ export default function OntologyMapper() {
         const keys = [];
         if (!taxonomy?.nodes?.length) {
           keys.push('taxonomy');
-          requests.push(API_METHODS.ontology.getTaxonomy(selectedOntologyApi));
+          requests.push(API_METHODS.ontology.getTaxonomy(selectedOntologyApi, options));
         }
         if (activeView === 'alignment' && !reasoning) {
           keys.push('reasoning');
-          requests.push(API_METHODS.ontology.getReasoning(selectedOntologyApi));
+          requests.push(API_METHODS.ontology.getReasoning(selectedOntologyApi, options));
         }
         const responses = await Promise.allSettled(requests);
         if (cancelled) return;
@@ -2082,10 +2088,7 @@ export default function OntologyMapper() {
           if (keys[index] === 'taxonomy') {
             const taxonomyPayload = res.value?.data || null;
             setTaxonomy(taxonomyPayload);
-            if (taxonomyPayload?.nodes) {
-              setData({ nodes: taxonomyPayload.nodes, edges: taxonomyPayload.edges || [] });
-              setMappingEdges(taxonomyPayload.edges || []);
-            }
+
           }
           if (keys[index] === 'reasoning') setReasoning(res.value?.data || null);
         });
@@ -2101,6 +2104,7 @@ export default function OntologyMapper() {
     loadSemanticDetails();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [activeView, reasoning, selectedOntologyApi, taxonomy]);
 
@@ -2390,13 +2394,16 @@ export default function OntologyMapper() {
       setInferenceError('Select an active ontology before running inference preview.');
       return;
     }
+    inferenceRequest.current?.abort();
+    const controller = new AbortController(); inferenceRequest.current = controller;
+    setInferenceResult(null);
     setInferenceBusy(true);
     setInferenceError(null);
     try {
       const response = await API_METHODS.ontology.previewInference(selectedOntologyApi, {
         rules: inferenceRules,
-        limit: Number(inferenceLimit) || 250,
-      });
+        limit: Number(inferenceLimit),
+      }, {signal:controller.signal, timeout:60000});
       if (generation === inferenceGeneration.current) setInferenceResult(response.data || null);
     } catch (err) {
       if (generation !== inferenceGeneration.current) return;
@@ -2408,27 +2415,6 @@ export default function OntologyMapper() {
 
   const toggleInferenceRule = (ruleId) => {
     setInferenceRules((prev) => ({ ...prev, [ruleId]: !prev[ruleId] }));
-  };
-
-  const validateSwrlExpression = async () => {
-    setSwrlBusy(true);
-    setInferenceError(null);
-    try {
-      const response = await API_METHODS.ontology.validateRule({
-        rule: {
-          rule_id: 'ui-rule-preview',
-          name: 'UI rule preview',
-          expression: swrlExpression,
-          use_case: 'change_impact',
-        },
-      });
-      setSwrlValidation(response.data?.validation || null);
-    } catch (err) {
-      setSwrlValidation(null);
-      setInferenceError(apiErrorMessage(err, 'SWRL rule validation failed.'));
-    } finally {
-      setSwrlBusy(false);
-    }
   };
 
   const VIEWS = [
@@ -2535,13 +2521,15 @@ export default function OntologyMapper() {
         </div>
       </div>
 
-      {loading ? (
+      <WorkspaceTabs label="Ontology Junction views" tabs={VIEWS} value={activeView} onChange={setActiveView} />
+
+      {loading && ['alignment', 'vocabulary'].includes(activeView) ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: C.textSec }}>
           <div style={{ width: 32, height: 32, border: `3px solid ${C.border}`, borderTop: `3px solid ${C.primary}`, borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
           Loading ontology dataÃ¢â‚¬Â¦
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
-      ) : error ? (
+      ) : error && ['alignment', 'vocabulary'].includes(activeView) ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: '#d32f2f' }}>
 
           <div style={{ fontSize: '15px', fontWeight: 600 }}>Failed to load ontology</div>
@@ -2551,17 +2539,7 @@ export default function OntologyMapper() {
         <>
           {/* Sub-tab selector + search bar */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', background: C.surface, border: `1px solid ${C.border}`, borderRadius: '6px', padding: '2px', gap: '1px' }}>
-              {VIEWS.map(v => {
-                const active = activeView === v.id;
-                return (
-                  <button key={v.id} onClick={() => { setActiveView(v.id); }}
-                    style={{ padding: '5px 10px', border: 'none', borderRadius: '4px', cursor: 'pointer', background: active ? C.primary : 'transparent', color: active ? '#fff' : C.textSec, fontWeight: active ? 700 : 500, fontSize: '11px', transition: 'all .15s' }}>
-                    {v.label}
-                  </button>
-                );
-              })}
-            </div>
+
 
             {/* Search / filter */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flex: '0 1 260px', minWidth: '180px', maxWidth: '260px', background: C.surface, border: `1px solid ${C.borderDark}`, borderRadius: '5px', padding: '5px 8px' }}>
@@ -2668,9 +2646,9 @@ export default function OntologyMapper() {
                 </div>
               )}
               {taxonomy?.view_mode === 'classic' ? (
-                <TaxonomyView nodes={data.nodes} edges={vocabEdges} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
+                <TaxonomyView nodes={taxonomy?.nodes || []} edges={taxonomy?.edges || []} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
               ) : (
-                <ProtegeOntologyBrowser nodes={data.nodes} edges={vocabEdges} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
+                <ProtegeOntologyBrowser nodes={taxonomy?.nodes || []} edges={taxonomy?.edges || []} filter={filter} taxonomy={taxonomy} reasoning={reasoning} />
               )}
             </>
           )}
@@ -2690,14 +2668,13 @@ export default function OntologyMapper() {
               swrlExpression={swrlExpression}
               setSwrlExpression={(value) => {
                 setSwrlExpression(value);
-                setSwrlValidation(null);
               }}
               swrlValidation={swrlValidation}
               swrlBusy={swrlBusy}
               validateSwrlExpression={validateSwrlExpression}
               inferenceLimit={inferenceLimit}
               setInferenceLimit={setInferenceLimit}
-              inferenceError={inferenceError}
+              inferenceError={swrlError || inferenceError}
               inferenceResult={inferenceResult}
               reasoning={reasoning}
               filter={filter}
@@ -3009,6 +2986,7 @@ export default function OntologyMapper() {
                     <div style={{ fontSize: '12px', fontWeight: 700, color: mergeResult.kind === 'error' ? C.red : C.textPrimary }}>{mergeResult.text}</div>
                     {mergeResult.agentRunId && <div>Agent run: {mergeResult.agentRunId}</div>}
                     {mergeResult.governedPreview && <div>Merged triples: {mergeResult.governedPreview.triple_count} | Duplicate triples: {mergeResult.governedPreview.duplicate_triple_count} | Conflicts: {mergeResult.governedPreview.conflicts?.length || 0}</div>}
+                    {mergeResult.governedPreview && <p role="status">Merge combines retained RDF statements. No formal reasoning is performed; differently named entities require reviewed mappings. {mergeResult.governedPreview.validation?.limitations?.join('; ')}</p>}
                     {mergeResult.report?.summary && (
                       <div style={{ fontSize: '11px', color: C.textSec, marginTop: '6px', lineHeight: 1.45 }}>
                         Overlaps {mergeResult.report.summary.overlap_count ?? 0} | Additions {mergeResult.report.summary.addition_count ?? 0} | Conflicts {mergeResult.report.summary.conflict_count ?? mergeResult.report.conflict_count ?? 0} | Subclass gaps {mergeResult.report.summary.subclass_gap_count ?? 0}

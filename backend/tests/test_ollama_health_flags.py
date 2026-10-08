@@ -6,6 +6,40 @@ from pathlib import Path
 from unittest.mock import patch
 
 class OllamaHealthFlags(unittest.TestCase):
+    def test_configuration_check_rejects_whitespace_model_before_transport(self):
+        tree = ast.parse(Path('backend/agentic_service/local_llm.py').read_text())
+        nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                 and n.name in {'settings', '_health'}]
+        ns = {'os': os}
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), '<actual model check>', 'exec'), ns)
+        with patch.dict(os.environ, {'LLM_MODEL_NAME': '   '}, clear=True):
+            result = asyncio.run(ns['_health']())
+        self.assertEqual(result['status'], 'invalid_configuration')
+        self.assertIn('model name', result['action'])
+
+    def test_configuration_check_preserves_exported_http_apim_endpoint(self):
+        tree = ast.parse(Path('backend/agentic_service/local_llm.py').read_text())
+        nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                 and n.name in {'settings', '_health', 'health'}]
+        ns = {'os': os}
+        # No HTTP client is provided: configuration-only checks must not probe.
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), '<actual HTTP health>', 'exec'), ns)
+        with patch.dict(os.environ, {
+            'USE_LLM': 'ollama', 'LLM_MODEL_NAME': 'llama3:latest',
+            'OLLAMA_API_URL': 'http://azdtapimanager.azure-api.net/ollama',
+            'OLLAMA_API_KEY': 'fixture', 'OLLAMA_API_KEY_HEADER': 'api-key',
+            'OLLAMA_DISCOVERY_ENABLED': 'false',
+            'ONTOLOGY_AGENT_LLM_ENABLED': 'true', 'COMPANION_LLM_ENABLED': 'true',
+        }, clear=True):
+            self.assertEqual(ns['settings']()[4], {'api-key': 'fixture'})
+            result = asyncio.run(ns['health']())
+        self.assertEqual(result['status'], 'generation_unverified')
+        self.assertEqual(result['endpoint'], 'http://azdtapimanager.azure-api.net/ollama/api/chat')
+        self.assertTrue(result['ontology_agent_enabled'])
+        self.assertTrue(result['companion_enabled'])
+        self.assertNotIn('headers', result)
+        self.assertNotIn('fixture', str(result))
+
     def test_apim_contract_without_discovery_does_not_call_tags(self):
         tree = ast.parse(Path('backend/agentic_service/local_llm.py').read_text())
         node = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == '_health')

@@ -37,6 +37,20 @@ test('empty registries explain why publication is needed', async () => {
 test('malformed responses cannot appear as zero', async () => {
   apiClient.get.mockImplementation(async url => ({ data: url.includes('oslc') ? { status: 'ok' } : { total: 0 } }));
   render(<ServiceIntegrationPanel />);
-  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('invalid collection'));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('invalid product list'));
   expect(screen.queryByText('0')).not.toBeInTheDocument();
+});
+
+test('unavailable OSLC does not imply an unconfigured provider or hide healthy products', async () => {
+  apiClient.get.mockImplementation(async (url, options) => {
+    expect(options.timeout).toBe(15000);
+    if (url.includes('oslc')) throw new Error('OSLC unavailable');
+    return {data:{total:2,products:[{},{}]}};
+  });
+  render(<ServiceIntegrationPanel />);
+  await waitFor(() => expect(screen.getAllByText('2')).toHaveLength(2));
+  expect(screen.queryByText('Not configured')).toBeNull();
+  expect(screen.getByRole('link', {name:'Open Data Catalog'})).toHaveAttribute('href', '#/catalog');
+  expect(screen.getByRole('link', {name:'Open Data Products'})).toHaveAttribute('href', '#/data-products');
+  expect(screen.getByRole('button', {name:'Refresh integrations'})).toBeEnabled();
 });

@@ -229,7 +229,12 @@ def taxonomy(ontology_id: str) -> dict:
         if dictionary_taxonomy["nodes"]:
             return dictionary_taxonomy
         metadata = OntologyUploadManager.get_ontology(resolved_id).get("metadata") or {}
-        return _taxonomy_from_graph(str(metadata.get("prefix") or ontology_id))
+        prefix = str(metadata.get("prefix") or ontology_id)
+        if resolved_id != prefix:
+            raise HTTPException(409, 'No version-scoped taxonomy is available; a shared-prefix graph cannot represent this retained ontology version')
+        result = _taxonomy_from_graph(prefix)
+        result['scope'] = 'shared-prefix-projection'
+        return result
 
 
 @router.get("/{ontology_id}/retained-inventory")

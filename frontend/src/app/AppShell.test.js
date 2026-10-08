@@ -69,3 +69,11 @@ test('exposes active navigation, backend status, chat drawer state, and persiste
   expect(screen.getByRole('navigation')).toHaveAttribute('data-theme-toggle', 'false');
   expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument();
 });
+
+
+test('session expiry invalidates the application credential context', () => {
+ const changed=vi.fn();
+ render(<AppShell activePage="home" onPageChange={vi.fn()} onHome={vi.fn()} onToggleChat={vi.fn()} onServiceAuthChange={changed}><div>Page</div></AppShell>);
+ fireEvent(window,new Event('depo:session-expired'));
+ expect(changed).toHaveBeenCalledTimes(1);
+});

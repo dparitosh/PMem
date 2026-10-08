@@ -11,8 +11,11 @@ export default function RunRecoveryNotice() {
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     const receive = event => { sequence.current++; setRun(event.detail); setState(null); setError(''); setBusy(false); };
+    const clear = () => { sequence.current++; setRun(null); setState(null); setError(''); setBusy(false); };
+    window.addEventListener('depo:credentials-changed', clear);
+    window.addEventListener('depo:credentials-cleared', clear);
     window.addEventListener('depo:run-recovery', receive);
-    return () => window.removeEventListener('depo:run-recovery', receive);
+    return () => { window.removeEventListener('depo:run-recovery', receive); window.removeEventListener('depo:credentials-changed', clear); window.removeEventListener('depo:credentials-cleared', clear); };
   }, []);
   if (!run) return null;
   return <aside role="alert"><p>Execution needs review. {run.kind} run: {run.runId}. Inspect retained state before retrying.</p>

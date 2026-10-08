@@ -44,7 +44,8 @@ export default function AppShell({
     const changed = () => { setApiAccessConfigured(Boolean(getServiceAuthToken())); onServiceAuthChange?.(); };
     window.addEventListener('depo:credentials-changed', changed);
     window.addEventListener('depo:credentials-cleared', changed);
-    return () => { window.removeEventListener('depo:credentials-changed', changed); window.removeEventListener('depo:credentials-cleared', changed); };
+    window.addEventListener('depo:session-expired', changed);
+    return () => { window.removeEventListener('depo:credentials-changed', changed); window.removeEventListener('depo:credentials-cleared', changed); window.removeEventListener('depo:session-expired', changed); };
   }, [onServiceAuthChange]);
   useEffect(() => {
     document.documentElement.dataset.ixTheme = 'classic';

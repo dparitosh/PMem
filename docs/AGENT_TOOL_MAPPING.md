@@ -1,183 +1,62 @@
-# Agent-to-Tool Mapping Audit
+# Agent architecture and use of the 26 roles
 
-Source registry: `D:\Download\Archimate31\AgentsRegistry`.
+The runtime catalog contains 26 service roles, 44 allowlisted tools and four predefined workflows. These are governed LLM-assisted workflows: the model recommends an action; catalog validation and authorization determine what can execute. A role is not a continuously running model or a separate autonomous worker. The catalog and `dt_bindings.py` are the executable sources of truth.
 
-The registry should own agent specifications and workflow composition. The standalone ontology service should own callable ontology, STEP, ReqIF, OSLC, graph, and data-product tools. Agents should reference stable tool names; they should not contain implementation code or instantiate registries.
+## How roles are used
 
-## Current Registry Mapping
-
-| Agent | Current tools | Status |
-|---|---|---|
-| CSV Data Extractor | `parse_csvs`, `sample_mcp` | Wired; MCP URL is hardcoded |
-| Multi Format Document Processor | `parse_pdfs`, `parse_excels`, `parse_images`, `parse_csvs` | Wired |
-| PDF Content Extractor | `pdfocrextractor` | Wired |
-| PDF Bookmark Identifier | `bookmarkextractorfrompdfs` | Wired |
-| Engg Drawing Image Aligner | `align_images`, `pdf_to_image_extractor` | Wired |
-| Image Differences Detector | `detect_differences` | Wired |
-| Engg Drawing Deviation Analysis | `analyze_deviations_with_llm` | Wired; requires LLM/image dependencies |
-| Engg Drawing Report Generator | `generate_report` | Wired |
-| Entity Extraction | `extract_entities` | Wired |
-| External API Connector | `get_api_response` | Wired; requires endpoint policy |
-| RAG Content Extraction | `get_ingested_data` | Wired |
-| Research Analysis | `search_arxiv` | Wired |
-| Supply Chain Benchmarking | `web_search` | Wired; requires network policy |
-| Response Report Generator | `result_to_docx`, `result_to_excel`, `result_to_pdf` | Wired |
-| MES SDLC Code Generation | agent wrapper | Coupled to recursive registry loading |
-| MES SDLC Code Documentation | agent wrapper | Coupled to recursive registry loading |
-| MES SDLC Test Case Design | agent wrapper | Coupled to recursive registry loading |
-| MES SDLC Test Script Automation | agent wrapper | Coupled to recursive registry loading |
-| Content Summarization | None | Tool-free result interpreter |
-| Human in the Loop | None | Tool-free approval boundary |
-| MES Business Analyst | None | Missing analysis tool |
-| MES Code Implementation | None | Missing approved mutation tool |
-| MES Testcase and Document Generator | None | Missing explicit tool mapping |
-
-## Required Ontology Agent Mapping
-
-| Agent | Tools |
+| Scenario | Handoff and evidence |
 |---|---|
-| Ontology Intake Agent | `inspect_ontology_artifact` |
-| Ontology Structure Review Agent | `review_ontology_structure` |
-| Ontology Alignment Planner | `plan_instance_alignment`, `depo_list_registered_ontologies`, `depo_graph_search` |
-| Ontology Export Agent | `export_ontology`, `depo_export_import_owl` |
-| Ontology Merge Agent | `depo_merge_ontologies` |
-| STEP/AP242 Inspection Agent | `inspect_step_file` |
-| STEP/AP242 Export Agent | `export_step_to_ttl` |
-| ReqIF Inspection Agent | `inspect_reqif_file` |
-| ReqIF Export Agent | `export_reqif_to_ttl` |
-| Requirement Normalization Agent | `normalize_requirement_records`, `requirement_alignment_profile` |
-| Requirement Alignment Export Agent | `export_requirements_alignment_ttl` |
-| Graph Context Agent | `depo_graph_search`, `depo_graph_search_many`, `depo_oslc_query_resources`, `depo_oslc_resource` |
-| OSLC Linked Data Agent | `depo_oslc_catalog`, `depo_oslc_provider`, `depo_oslc_shapes`, `depo_oslc_dictionary`, `depo_oslc_taxonomies`, `depo_oslc_trs` |
-| Data Product Builder Agent | `build_data_product` |
-| Ontology Orchestrator Agent | No domain tool directly; invokes approved agents |
-| Human Approval Agent | No mutation tool; approves proposals and publication |
+| Ontology onboarding | Intake inspects source evidence; structure review checks declarations; bridge planning proposes mappings; governance authorizes registration and publication. |
+| Semantic merge | Entity, property and context conflict reviewers inspect merge preview and graph evidence; governance applies a reviewed merge. Candidate mappings do not prove equivalence. |
+| Data profiling and quality | DT structure/property roles select an existing versioned pipeline job, request an approved run, and inspect its retained evidence. Business rules must exist in the job definition; the LLM does not invent or silently install executable rules. |
+| Data products and catalog | Data-product interaction retrieves jobs and catalog versions; the governor previews and publishes an approved package. Publication and catalog registration must succeed before counts increase. |
+| Graph questions | Graph analyst and DT KG interaction retrieve scoped graph evidence for answers. Missing projection or permission errors must not be interpreted as successful empty evidence. |
+| Learning review | Self-learning review examines retained job evidence for human review. It does not train models, promote mappings or change policy automatically. |
 
-## Recommended YAML Contract
+The UI selects a role and requests a reviewable proposal. Execution retains the catalog allowlist and tool-specific approval checks. Approved mutating single-tool requests now use the persisted workflow executor; reads remain bounded operations. In worker mode, the recommendation UI receives a queued workflow ID and inspects workflow status. Existing service callers may wait for completion. Pausing and cancelling cannot interrupt an active tool or undo completed writes.
 
-Current YAML references arbitrary modules and objects. The target format is name-only:
+## Runtime role mapping
 
-```yaml
-name: Ontology Intake Agent
-description: Inspect an OWL, RDF, or Turtle artifact.
-tools:
-  - inspect_ontology_artifact
-```
+| Role | Purpose | Allowlisted tools |
+|---|---|---|
+| ontology-intake | Inspect retained RDF/OWL or engineering source evidence. | `engineering.inspect`, `ontology.generate`, `ontology.agent.intake` |
+| ontology-structure-review | Review declared classes, properties and observable structural issues. | `ontology.agent.review` |
+| semantic-bridge-planner | Prepare grounded mapping candidates and unresolved validation checks. | `ontology.agent.bridge-plan` |
+| ontology-export | Export an approved ontology through its service contract. | `ontology.export` |
+| ontology-orchestrator | Sequence deterministic intake, structure review and mapping planning. | `ontology.agent.orchestrate` |
+| context-analyst | Search business context and update context objects after approval. | `context.upsert`, `context.search`, `context.where_used` |
+| ontology-governor | Review and authorize registration, lifecycle changes, merge and mapping publication. | `ontology.register`, `ontology.transition`, `ontology.export`, `ontology.merge.preview`, `ontology.merge.apply`, `bridge.mapping.preview`, `bridge.mapping.publish`, `engineering.publish` |
+| engineering-parser | Inspect engineering files and execute bounded source profiles. | `engineering.inspect`, `profile.inspect`, `profile.execute` |
+| graph-analyst | Read ontology analytics, neighborhoods and graph-grounded evidence. | `graph.analytics`, `graph.neighborhood`, `context.search`, `context.where_used`, `oslc.graph_rag` |
+| oslc-link-agent | Read linked resources and synchronize approved remote OSLC data. | `oslc.remote.catalog`, `oslc.remote.query`, `oslc.remote.sync` |
+| schema-set-agent | Inspect schema sets and commit reviewed QIF tasks. | `schema-set.standards`, `schema-set.upload`, `qif.task.status`, `qif.task.commit` |
+| data-product-governor | Preview, publish and revoke approved retained evidence packages. | `data.catalog.products`, `data.product.preview`, `data.product.publish`, `data.product.revoke` |
+| ceim-mapper | Normalize supplied records against the CEIM contract. | `ceim.contract`, `ceim.normalize.batch` |
+| data-quality-monitor | Inspect pipeline telemetry and request approved transformations. | `pipeline.telemetry`, `pipeline.transform` |
+| dt-intake | Inspect engineering inputs, register approved ontologies and discover configured data jobs. | `engineering.inspect`, `ontology.register`, `pipeline.definitions` |
+| dt-domain-identifier | Read domain contracts and business context; produce a reviewable classification. | `ceim.contract`, `context.search` |
+| dt-structure-review | Select approved profiling jobs and inspect their retained evidence. | `pipeline.definitions`, `pipeline.run`, `pipeline.run.evidence` |
+| dt-semantic-bridge-planner | Normalize instance evidence before reviewed semantic alignment. | `ceim.contract`, `ceim.normalize.batch` |
+| dt-entity-conflict-review | Inspect merge conflicts and retained job evidence without applying a merge. | `ontology.merge.preview`, `pipeline.run.evidence` |
+| dt-property-conflict-review | Request approved quality jobs and inspect property-validation evidence. | `pipeline.definitions`, `pipeline.run`, `pipeline.run.evidence` |
+| dt-context-graph-conflict-review | Inspect where-used and neighborhood evidence for relationship conflicts. | `context.where_used`, `graph.neighborhood`, `pipeline.run.evidence` |
+| dt-data-product-interaction | Discover job definitions and catalog versions; inspect retained run evidence. | `data.catalog.products`, `data.catalog.product`, `pipeline.definitions`, `pipeline.run`, `pipeline.run.evidence` |
+| dt-kg-interaction | Retrieve graph analytics and graph-grounded context. | `graph.analytics`, `graph.neighborhood`, `oslc.graph_rag` |
+| dt-export | Export ontology evidence through the existing ingestion service. | `ontology.export` |
+| dt-self-learning-review | Review retained evidence; never automatically promote lessons or change models. | `pipeline.run.evidence` |
+| dt-orchestrator | Discover runs, jobs and catalog evidence for supervised workflow composition. | `pipeline.definitions`, `pipeline.runs`, `pipeline.run.evidence`, `data.catalog.products` |
 
-An allowlisted Tool Registry resolves the name:
+## Customer deployment without Entra
 
-```yaml
-inspect_ontology_artifact:
-  module: ontology_agentic.tools.ontology_tools
-  function: inspect_ontology_artifact
-  capability: ontology.read
-  mutates: false
-```
+The current customer installation uses registered service credentials and token-based sessions. Entra is not required for the 26 local roles or the token-authorized workflow worker. Connect the registered credentials in Admin, provide the required read/workflow scopes, and configure the worker with its approved service profiles. Setting agent flags alone does not create a browser session or grant tool permissions. Entra delegated-worker support is a future deployment concern, not a blocker for this installation.
 
-Tools should be normal functions with validated input and JSON-compatible output. They should not create LLM clients, import the FastAPI application, or write Neo4j without an approved command.
+## Configuration and remaining boundaries
 
-```python
-def inspect_ontology_artifact(request: dict, context: ToolContext) -> ToolResult:
-    ...
-```
+- `DT_AGENT_ENABLED` controls the external DT gateway integration. Local DT roles use the existing PMem data and ontology services independently of this flag.
+- Ontology and companion enablement flags permit their respective entry points; they do not bypass approval or dependency checks. Ollama route configuration must match the deployed APIM OpenAPI contract. Model-list availability does not prove generation, structured output or native tool calling.
+- `AGENTIC_EXECUTION_MODE=worker` uses PostgreSQL queue ownership, retained write intent and reconciliation. The worker deployment currently supports service-token authorization. Entra user execution stays in process mode; delegated identity worker execution and distributed per-user limits remain incomplete.
+- Sync REST, LangChain chat and embedding callers share per-process Ollama concurrency/circuit controls. Limits are not distributed across service processes. Capacity, transient failures and admission deadlines are bounded.
+- MCP proposal schemas can be discovered for explicitly configured and allowlisted bindings. Discovery does not grant execution permission. No live MCP tool binding is assumed merely because a server is registered.
+- Structural review and evidence citations are not formal semantic consistency proofs. Customer-data accuracy benchmarks and live reasoner evaluation remain required before claiming semantic assurance.
 
-Disable the current inline YAML `exec()` path for customer deployments. Arbitrary module imports must also be replaced by an allowlist.
-
-## Ontology Workflows
-
-```text
-Ontology review:
-  Intake -> Structure Review -> Human Approval
-
-Instance alignment:
-  Intake -> Graph Context -> Alignment Planner -> Human Approval
-
-STEP/AP242 traceability:
-  STEP Inspection -> Alignment Planner -> Graph Context -> Human Approval
-
-ReqIF requirements:
-  ReqIF Inspection -> Normalization -> Alignment Export -> Human Approval
-
-Data product publication:
-  Review/Alignment -> Validation -> Data Product Builder -> Human Approval
-```
-
-## Deployment Configuration
-
-Do not deploy customer paths or endpoints from the registry files. Use environment configuration:
-
-```env
-AGENT_REGISTRY_PATH=D:/customer/AgentsRegistry
-AGENT_SPEC_PATH=D:/customer/AgentsRegistry/Agents
-TOOL_MANIFEST_PATH=D:/customer/AgentsRegistry/tool-manifest.yaml
-MCP_CSV_URL=http://customer-mcp:3000/sse
-DEPO_API_BASE_URL=http://192.168.1.4:8000
-OLLAMA_BASE_URL=http://customer-ollama:11434
-AGENT_DATA_DIR=D:/customer/agent-data
-AGENT_OUTPUT_DIR=D:/customer/agent-output
-```
-
-## Audit Conclusion
-
-The external registry currently contains useful generic document, image, and MES agents, but it has no explicit ontology/graph/STEP/ReqIF/OSLC mappings. Add those mappings to the registry while keeping their implementations in the standalone ontology service.
-
-Do not copy every coded tool into the ontology service. Register only approved callable functions and their dependencies. This prevents image-processing, MES, MCP, and ontology concerns from becoming one coupled runtime.
-
-## Low-Code / No-Code Canvas Contract
-
-For the customer application, publish three metadata catalogs to the UI:
-
-1. Agent catalog: `agent_id`, display name, system prompt, allowed tool IDs, input schema, output schema, and approval policy.
-2. Tool catalog: `tool_id`, description, transport, HTTP method or MCP operation, capability, input schema, and mutation flag.
-3. MCP catalog: server ID, endpoint, authentication environment variable, allowed operations, query limits, and timeout.
-
-The canvas node should contain only references and mappings:
-
-```json
-{
-  "id": "node-1",
-  "agent_id": "semantic_bridge_planner_agent",
-  "tool_ids": ["semantic.alignment.plan", "graph.context.search"],
-  "input_mapping": {"ontology_path": "${input.ontology}", "instance_metadata": "${input.metadata}"},
-  "approval_required": true,
-  "position": {"x": 420, "y": 180}
-}
-```
-
-The tool catalog should expose stable functions, not Python imports:
-
-```json
-{
-  "tool_id": "graph.context.search",
-  "transport": "mcp",
-  "server_id": "neo4j",
-  "operation": "contextual_search",
-  "capability": "graph.read",
-  "mutates": false,
-  "input_schema": {"required": ["search"]}
-}
-```
-
-Recommended Neo4j MCP configuration:
-
-```env
-AGENTIC_DEPO_API_BASE_URL=http://192.168.1.4:8000
-AGENTIC_SERVICE_BASE_URL=http://192.168.1.4:8012
-AGENTIC_NEO4J_MCP_URL=http://192.168.1.4:8765/sse
-AGENTIC_OLLAMA_BASE_URL=http://192.168.1.4:11434
-AGENTIC_MCP_AUTH_TOKEN=
-```
-
-The Neo4j MCP server should expose only bounded operations such as `contextual_search`, `expand_one_hop`, `ontology_graph`, `schema_summary`, and `graph_metrics`. Arbitrary Cypher, unrestricted writes, and database selection from the model must be disabled.
-
-The canvas runtime should validate before execution:
-
-- every `agent_id` exists
-- every `tool_id` exists and is allowed for that agent
-- every edge connects existing nodes
-- input mappings satisfy the tool schema
-- cycles are explicitly allowed only for bounded retry loops
-- mutation tools require human approval
-- MCP server health is available before the run starts
-
-This is the deployment boundary for the customer low-code application. The external `AgentsRegistry` supplies prompts and agent metadata; the standalone ontology service supplies the callable implementation and API contracts.
+All 26 roles are registered, but live readiness depends on their services, credentials, retained data and model capabilities. Do not enable every role or run all roles for every request. Select the smallest relevant workflow and keep publication subject to human approval.

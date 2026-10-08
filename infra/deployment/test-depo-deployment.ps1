@@ -11,7 +11,7 @@ if (-not $ManifestPath) { $ManifestPath = Join-Path $PSScriptRoot "services.json
 if (-not (Test-Path $ManifestPath)) { throw "Service manifest is missing: $ManifestPath" }
 $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
 if ($manifest.services.Count -ne 10) { throw "Expected 10 HTTP services in the deployment manifest." }
-if ($manifest.workers.Count -ne 2) { throw "Expected the data-product outbox and data-pipeline workers in the deployment manifest." }
+if ($manifest.workers.Count -ne 3) { throw "Expected the data-product outbox, data-pipeline and agentic workflow workers in the deployment manifest." }
 $ids = @($manifest.services | ForEach-Object { $_.id })
 if (($ids | Sort-Object -Unique).Count -ne $ids.Count) { throw "Service manifest contains duplicate ids." }
 if (($manifest.services | ForEach-Object { $_.port } | Sort-Object -Unique).Count -ne $manifest.services.Count) { throw "Service manifest contains duplicate ports." }

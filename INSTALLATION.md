@@ -1101,7 +1101,7 @@ The Linux sequence is:
 | 3 | Complete root `.env.local` | DEPO, PostgreSQL, Neo4j and Spark configured in one service environment |
 | 4 | Run `install-depo-linux.sh` | Backend virtual environment and frontend production build created |
 | 5 | Run `test-depo-spark.sh` | Spark and enabled connectors execute real read-only jobs |
-| 6 | Run `start-depo-services.sh` | Ten APIs and two durable workers start and pass readiness checks |
+| 6 | Run `start-depo-services.sh` | Ten APIs and three workers start and pass readiness checks |
 
 #### Linux Step A — install operating-system prerequisites
 
@@ -1847,8 +1847,8 @@ failure:
    backing indexes, and verifies TLS, authentication and database access.
 6. When enabled, validates Spark/JDK/Hadoop paths and runs the DataFrame smoke
    job before services are started.
-7. Starts the ten APIs, data-product outbox worker, and durable data-pipeline
-   worker; validates all endpoints; and seeds the
+7. Starts the ten APIs, data-product outbox worker, durable data-pipeline
+   worker and agentic workflow worker; validates all endpoints; and seeds the
    approved baseline assets and data jobs.
 8. Runs release preflight, including schema, Neo4j, Spark, and production
    configuration checks.
@@ -2325,7 +2325,7 @@ Retain all server read/approval keys. If APIM requires a subscription key, set `
 
 3. Ensure APIM can reach `10.0.2.16:8010` through `8019` through customer routing/VNet/VPN or a self-hosted gateway. A cloud gateway cannot reach a private VM merely because a URL is configured. Keep authentication enabled, preserve Authorization, and preserve `X-DEPO-Service-Token` for internal catalog calls. In token mode do not apply JWT validation to DEPO's opaque API keys. Entra mode requires a separate JWT validation/identity forwarding policy; these policies are customer-controlled.
 
-4. Configure API-level CORS from the same exact origins in root `ALLOWED_ORIGINS`. Allow GET, POST, PUT, PATCH, DELETE and OPTIONS, and headers `Authorization`, `Content-Type`, `X-API-Key`, `X-Request-ID`, `X-Session-ID`, and `Ocp-Apim-Subscription-Key` if used. Expose `X-Request-ID`, `X-Session-ID`, `X-Session-Expires-At`, `X-DEPO-Run-ID` and `OData-Version`. Browser preflight does not send the bearer/subscription credentials, so ensure OPTIONS is handled before authentication. Do not add an explicit OPTIONS operation that bypasses the intended APIM CORS policy. Microsoft references: https://learn.microsoft.com/en-us/azure/api-management/cors-policy and https://learn.microsoft.com/en-us/azure/api-management/set-backend-service-policy .
+4. Configure API-level CORS from the same exact origins in root `ALLOWED_ORIGINS`. Allow GET, POST, PUT, PATCH, DELETE and OPTIONS, and headers `Authorization`, `Content-Type`, `X-API-Key`, `X-Request-ID`, `X-Session-ID`, and `Ocp-Apim-Subscription-Key` if used. Expose `X-Request-ID`, `X-Session-ID`, `X-Session-Expires-At`, `X-DEPO-Run-ID`, `X-DEPO-Run-Kind` and `OData-Version`. Browser preflight does not send the bearer/subscription credentials, so ensure OPTIONS is handled before authentication. Do not add an explicit OPTIONS operation that bypasses the intended APIM CORS policy. Microsoft references: https://learn.microsoft.com/en-us/azure/api-management/cors-policy and https://learn.microsoft.com/en-us/azure/api-management/set-backend-service-policy .
 
 5. Deploy all changed source files together, including the runtime helper, frontend configuration and launcher. Rebuild once, then restart services and frontend:
 
@@ -2845,7 +2845,7 @@ The access check explicitly sends the entered read key and does not depend on th
 
 ### Prevent stale frontend and legacy deployment confusion
 
-The supported customer entry point is root `install-depo.ps1`. It orchestrates scripts under `infra/windows` and `infra/deployment`; `infra/windows/install-depo.ps1` installs dependencies only. The service inventory in `infra/deployment/services.json` defines ten APIs and two workers. Root `main.py` and `backend/main.py` are retained compatibility/test hosts, not customer startup targets.
+The supported customer entry point is root `install-depo.ps1`. It orchestrates scripts under `infra/windows` and `infra/deployment`; `infra/windows/install-depo.ps1` installs dependencies only. The service inventory in `infra/deployment/services.json` defines ten APIs and three workers (catalog outbox, data pipeline and agentic workflows). Root `main.py` and `backend/main.py` are retained compatibility/test hosts, not customer startup targets.
 
 The frontend launcher checks source files, public assets, frontend environment files, Vite configuration and dependency manifests against the built index timestamp. Rebuild after changing any of those inputs. This timestamp check detects common stale builds; it is not a content-hash release attestation and preserved file timestamps can defeat it.
 
@@ -3185,15 +3185,22 @@ Then reconnect in Admin using the synchronized ADMIN_API_KEY. Select workflow sc
 
 In the root `.env.local`, configure the API URL, key and model names. Remove OLLAMA_BASE_URL if configuring OLLAMA_API_URL for a different server. The legacy setting remains supported. Keyed Ollama REST APIs default to api-key regardless of hostname. Set OLLAMA_API_KEY_HEADER=Ocp-Apim-Subscription-Key only when the route requires a subscription. Set Authorization for bearer-key authentication. A blank key sends no authentication header.
 
+The supplied `Ollama.openapi.json` declares `http://azdtapimanager.azure-api.net/ollama`, with POST `/api/chat`, `/api/generate`, `/api/embed` and `/v1/chat/completions`; it does not declare GET `/api/tags`. Python clients and the PowerShell diagnostic preserve HTTP or HTTPS as configured. To follow that export, use `OLLAMA_API_URL=http://azdtapimanager.azure-api.net/ollama`, `OLLAMA_CHAT_API_URL=http://azdtapimanager.azure-api.net/ollama/api/chat`, `OLLAMA_API_KEY_HEADER=api-key` and `OLLAMA_DISCOVERY_ENABLED=false`. HTTP sends the configured key without transport encryption. The export documents the contract, not live gateway availability; test POST operations separately. `/ollama-clone` is not the server path in this export.
+
+The supplied `Ollama.openapi.json` declares `http://azdtapimanager.azure-api.net/ollama`, with POST `/api/chat`, `/api/generate`, `/api/embed` and `/v1/chat/completions`; it does not declare GET `/api/tags`. Python clients and the PowerShell diagnostic preserve HTTP or HTTPS as configured. To follow that export, use `OLLAMA_API_URL=http://azdtapimanager.azure-api.net/ollama`, `OLLAMA_CHAT_API_URL=http://azdtapimanager.azure-api.net/ollama/api/chat`, `OLLAMA_API_KEY_HEADER=api-key` and `OLLAMA_DISCOVERY_ENABLED=false`. HTTP sends the configured key without transport encryption. The export documents the contract, not live gateway availability; test POST operations separately. `/ollama-clone` is not the server path in this export.
+
 ```dotenv
 USE_LLM=ollama
 USE_EMBEDDER=ollama
-# Native Ollama root; defaults to POST /api/chat. Use HTTPS for the public gateway.
-OLLAMA_API_URL=https://azdtapimanager.azure-api.net/ollama
+# Server and scheme from the supplied Ollama.openapi.json; POST /api/chat.
+OLLAMA_API_URL=http://azdtapimanager.azure-api.net/ollama
 # To retain a native generate operation instead, replace the preceding entry:
-# OLLAMA_API_URL=https://azdtapimanager.azure-api.net/ollama/api/generate
+# OLLAMA_API_URL=http://azdtapimanager.azure-api.net/ollama/api/generate
+OLLAMA_CHAT_API_URL=http://azdtapimanager.azure-api.net/ollama/api/chat
+OLLAMA_DISCOVERY_ENABLED=false
+OLLAMA_API_KEY_HEADER=api-key
 OLLAMA_API_KEY=<your-current-api-key>
-LLM_MODEL_NAME=llama3.1:8b
+LLM_MODEL_NAME=llama3:latest
 EMBED_MODEL_NAME=nomic-embed-text:latest
 ONTOLOGY_AGENT_LLM_ENABLED=true
 COMPANION_LLM_ENABLED=true
@@ -3218,6 +3225,26 @@ Deploy matching frontend and graph-service files, rebuild the frontend and resta
 An unavailable service or rejected credential displays an error, not zero totals. A registered ontology with no published projection legitimately has no published counts; inspect its publication workflow before treating this as missing registry data. Protégé-style inferred axiom counts are not implemented by this projection endpoint.
 
 ### Registry, catalog and product-list completeness
+
+Agent workflow controls provide a recent-run picker, distinguish standalone executions from multi-step workflows, and refresh the selected workflow every three seconds while visible. Control requests receive a separate acknowledgement when the executor reaches a tool boundary. Pause/resume/cancel availability and write-reconciliation eligibility come from the same backend heartbeat projection. GET `/api/v1/workflow-runs` must be exposed in the gateway for the picker; owner read access sees its recent runs and agent supervision access can inspect all recent workflows.
+
+Set `AGENTIC_EXECUTION_MODE=worker` with `AUTH_MODE=token` for PostgreSQL-backed queued execution. The manifest starts `backend.agentic_service.worker`, and readiness requires its current worker-mode heartbeat. Queue submissions return a run ID immediately. The worker revalidates credential fingerprints, active PostgreSQL profiles and tool contracts, preserves the original deadline and owner, and uses compare-and-put fencing before execution. It automatically recovers stale read-only interruptions; uncertain writes require reconciliation. Browser credentials and bearer tokens are not saved in queued jobs. Restart both the API and worker after changing configuration. `AGENTIC_EXECUTION_MODE=process` retains in-process execution for deployments using gateway Entra delegation; that mode still needs supervised restart recovery.
+
+Set `AGENTIC_WORKER_CONCURRENCY=4` to allow four active workflows per worker (valid range 1–16). A paused workflow occupies one slot; other available slots continue processing queued runs. The `data-product-governed-publication` workflow previews and publishes an approved product through the existing data-product service.
+
+Ollama proposals use live OpenAPI input schemas and remain review-only. `OLLAMA_PROPOSAL_MODE=structured` is the default; `native` requests exactly one native function call for review and never automatically executes it. Agentic POST `/api/v1/llm/probe` requires agent-supervisor approval (`approved_by` and `approval_token`, or the configured gateway identity). It sends up to three small inference requests to test generation, structured JSON and native function calling separately. Its test function is never executed. Expose this route through APIM; a model-list response does not verify these capabilities.
+
+`OLLAMA_MAX_CONCURRENCY=4` limits concurrent Agentic proposal, ontology-review and companion-generation requests per process and operation endpoint. `OLLAMA_FAILURE_THRESHOLD=3` and `OLLAMA_CIRCUIT_COOLDOWN_SECONDS=30` temporarily reject inference after repeated upstream transport, rate-limit or server failures. These limits are local to each process, not a distributed gateway quota. Legacy sync LLM integrations retain their own transport controls. Set `OLLAMA_REQUIRE_HTTPS=true` after verifying the actual HTTPS gateway operation; it blocks HTTP requests including an explicit chat override. The default remains false for compatibility with the supplied HTTP APIM export. Changing this flag does not create an HTTPS operation in APIM.
+
+Ontology recommendations now receive a bounded sample of inspected terms and candidate-validation evidence. Structured review questions must cite supplied IRIs, and unsupported citations or extra approval fields are rejected. These questions do not prove ontology consistency or semantic equivalence; formal reasoning remains a separate validation step. Non-streaming inference logs include model, elapsed time and available token counts without prompts, evidence, answers or credentials. Automated contract checks cover schema validation, grounding, unknown tools, HTTPS policy, concurrency and circuit behavior; customer-data semantic accuracy and live gateway capability must still be evaluated before enabling native proposals.
+
+For uncertain product publication or Semantic Bridge publication, **Verify downstream receipt automatically** performs a read-only receipt lookup and verifies the saved request identity and artifact/selection evidence. A missing or mismatched receipt never authorizes replay. Other tools still require explicit downstream evidence. Terminal workflows can show **Review reversible operations**: completed product-publication steps can be compensated through steward-approved product revocation with a stable request ID and a required reason. This retains packages and audit history and delivers revocation to the catalog through the outbox. Operations without a supported inverse are listed explicitly; graph writes are never deleted speculatively. A compensated workflow cannot resume with obsolete step outputs.
+
+Update APIM from the deployed Agentic OpenAPI so it exposes POST `/api/v1/workflow-runs/{run_id}/reconcile-receipt`, GET `/api/v1/workflow-runs/{run_id}/compensation-plan` and POST `/api/v1/workflow-runs/{run_id}/compensate`, in addition to the existing workflow controls and run-list route. Restart the API and workers after deploying these files; existing processes retain their loaded code and configuration.
+
+Admin, Data Catalog and Data Products use the shared product collection reader, with 15-second visible-page refresh and bounded pagination. Product publication triggers an immediate collection refresh. Catalog headings distinguish the API total from loaded rows; partial retrieval remains visible. Retained packages awaiting catalog registration are identified separately from registered catalog versions.
+
+In Data Flow, select a completed run with retained output artifacts and choose **Create product from retained run evidence**. Data Products reloads that run through the pipeline API, retains its artifact references and run lineage, and uses the same preview/publication service as schema-design drafts. The steward must enter an approved semantic release and validate the publication contract before publishing. This packages review evidence; it does not automatically certify quality or publish graph data. Failed or unfinished runs and runs without retained output references cannot supply this draft.
 
 The landing-page ontology registry merges the native ontology catalog and the ingestion registry by immutable identity. If only one source responds, its rows remain usable and a Partial ontology list warning identifies the unavailable source. Retry registries to verify completeness. If both fail, the UI reports a load error instead of claiming the registry is empty. Schema-design drafts on Data Products show the same ontology-source warning.
 
@@ -3412,3 +3439,8 @@ Companion summaries and ontology review suggestions can use native `/api/generat
 Unstructured Ollama initialization preserves an explicit generation operation, including inherited main configuration. Its model is independent. Image/vision use cases require a compatible multimodal model and request contract; text-generation configuration alone does not verify vision support. Embeddings require their own native embedding route.
 
 Authentication selection: `api-key` is the custom REST default. `Authorization` sends a bearer key. `Ocp-Apim-Subscription-Key` applies only to the optional subscription-authenticated example. Neither a hostname nor the DEPO routing switch selects the Ollama authentication contract. The gateway must accept the selected header.
+
+
+### Agent role architecture
+
+See [Agent architecture and use of the 26 roles](docs/AGENT_TOOL_MAPPING.md) for the runtime role/tool mapping, workflow handoffs, mutation recovery and deployment boundaries. Approved mutating `/runs` requests use retained workflows; `wait_for_completion=false` returns a queued workflow ID in worker mode. Sync REST and LangChain Ollama calls use the shared per-process admission and circuit policy. These controls do not constitute live APIM capability verification.

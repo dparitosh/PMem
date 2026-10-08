@@ -15,7 +15,8 @@
   ],
   "workers": [
     {"id": "data-product-outbox", "module": "backend.data_product_service.worker", "responsibility": "Durable catalog-registration outbox"},
-    {"id": "data-pipeline-worker", "module": "backend.data_pipeline_service.worker", "responsibility": "PostgreSQL-leased Spark and governed data-job execution"}
+    {"id": "data-pipeline-worker", "module": "backend.data_pipeline_service.worker", "responsibility": "PostgreSQL-leased Spark and governed data-job execution"},
+    {"id": "agentic-workflow-worker", "module": "backend.agentic_service.worker", "responsibility": "PostgreSQL-fenced workflow execution and safe restart recovery"}
   ],
   "contract_endpoints": ["/healthz", "/readyz", "/openapi.json", "/odata/$metadata"]
 }

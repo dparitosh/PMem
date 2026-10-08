@@ -96,6 +96,7 @@ export default function OntologyInferenceWorkbench(props) {
           />
         </div>
         <div style={{ minWidth: 0 }}>
+          <p>Structural rule candidates are review evidence, not a full logical consistency proof. This preview does not publish changes.</p>
           {inferenceError && (
             <div style={{ marginBottom: '10px', padding: '8px 10px', borderRadius: '6px', border: `1px solid ${C.red}`, background: 'var(--ui-surface)' , color: C.red, fontSize: '12px', fontWeight: 700 }}>{inferenceError}</div>
           )}

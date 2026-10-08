@@ -5,7 +5,7 @@ from backend.ontology_service.merge_service import GovernedMergeService
 
 
 class IntelligenceStub:
-    def create_version(self, **kwargs):
+    def create_merge_version(self, **kwargs):
         return {"version_id": "approved-version", **kwargs}
 
 

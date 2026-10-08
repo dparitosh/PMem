@@ -3,19 +3,13 @@ import { IxButton } from '@siemens/ix-react';
 import { apiClient } from '../services/apiClient';
 import { buildSemanticServiceUrl } from '../config';
 import FirstProductGuide from './FirstProductGuide';
+import { readProductCollection, PRODUCT_REFRESH_MS, PRODUCT_CHANGED_EVENT } from '../services/productService';
 
 const serviceUrl = (service, path) => buildSemanticServiceUrl(service, path);
 
-function collectionTotal(data) {
-  if (!data || !Array.isArray(data.products)) throw new Error('Product service returned an invalid collection.');
-  const total = data.total ?? (data.next_offset == null ? data.products.length : null);
-  if (!Number.isSafeInteger(total) || total < data.products.length) throw new Error('Product service returned an invalid total.');
-  return total;
-}
-
 function collectionRequest(service, path, signal) {
-  return apiClient.get(serviceUrl(service, path), { signal }).then(response => ({
-    data: { ...response.data, total: collectionTotal(response.data) },
+  return readProductCollection(service, signal).then(collection => ({
+    data: { products: collection.rows, total: collection.total, warning: collection.warning },
   })).catch(error => {
     const status = error.response?.status;
     const name = service === 'catalog' ? 'Data Catalog' : 'Data Products';
@@ -44,7 +38,7 @@ export default function ServiceIntegrationPanel() {
     requestRef.current = controller;
     setState({ loading: true, error: '', oslc: null, catalog: null, products: null });
     const [oslc, catalog, products] = await Promise.allSettled([
-      Promise.resolve().then(() => apiClient.get(serviceUrl('oslc', '/api/v1/oslc/health'), { signal: controller.signal })),
+      Promise.resolve().then(() => apiClient.get(serviceUrl('oslc', '/api/v1/oslc/health'), { signal: controller.signal, timeout: 15000 })),
       Promise.resolve().then(() => collectionRequest('catalog', '/api/v1/catalog/products', controller.signal)),
       Promise.resolve().then(() => collectionRequest('dataProducts', '/api/v1/data-products', controller.signal)),
     ]);
@@ -63,27 +57,36 @@ export default function ServiceIntegrationPanel() {
       catalog: catalog.status === 'fulfilled' ? catalog.value.data : null,
       products: products.status === 'fulfilled' ? products.value.data : null,
     });
+    if (requestRef.current === controller) requestRef.current = null;
   }, []);
 
   useEffect(() => {
     load();
+    const interval = window.setInterval(() => { if (!document.hidden && !requestRef.current) load(); }, PRODUCT_REFRESH_MS);
+    window.addEventListener(PRODUCT_CHANGED_EVENT, load);
     window.addEventListener('depo:credentials-changed', load);
     window.addEventListener('depo:credentials-cleared', load);
     return () => {
       requestRef.current?.abort();
+      window.clearInterval(interval);
+      window.removeEventListener(PRODUCT_CHANGED_EVENT, load);
       window.removeEventListener('depo:credentials-changed', load);
       window.removeEventListener('depo:credentials-cleared', load);
     };
   }, [load]);
 
   return (
-    <section aria-label="Platform service integrations" className="depo-service-integrations">
+    <section aria-label="Platform service integrations" className="depo-panel">
+      <div className="depo-panel__header"><h3>Service integrations</h3>
+        <IxButton variant="tertiary" onClick={load} disabled={state.loading}>{state.loading ? 'Checking integrations…' : 'Refresh integrations'}</IxButton>
+      </div>
+      <div className="depo-panel__body depo-service-integrations" aria-busy={state.loading}>
       <article className="depo-service-card">
         <h3>OSLC integration</h3>
         <div className="depo-service-card__body">
           <Detail label="Service" value={state.oslc?.status || (state.loading ? 'Checking' : 'Unavailable')} />
           <Detail label="Server" value={state.oslc?.server || '—'} />
-          <Detail label="Remote provider" value={state.oslc?.remote_configured ? 'Configured' : 'Not configured'} />
+          <Detail label="Remote provider" value={state.oslc ? (state.oslc.remote_configured ? 'Configured' : 'Not configured') : '—'} />
         </div>
       </article>
       <article className="depo-service-card">
@@ -92,6 +95,8 @@ export default function ServiceIntegrationPanel() {
           <Detail label="Governed product versions" value={state.catalog?.total ?? state.catalog?.count ?? '—'} />
           <Detail label="Endpoint" value="Catalog service" />
           {!state.loading && state.catalog?.total === 0 && <p>No governed product versions are registered in this catalog.</p>}
+          {state.catalog?.warning && <p role="alert">{state.catalog.warning}</p>}
+          <a href="#/catalog" className="depo-service-card__link">Open Data Catalog</a>
         </div>
       </article>
       <article className="depo-service-card">
@@ -100,11 +105,14 @@ export default function ServiceIntegrationPanel() {
           <Detail label="Retained packages" value={state.products?.total ?? state.products?.products?.length ?? '—'} />
           <Detail label="Endpoint" value="Data product service" />
           {!state.loading && state.products?.total === 0 && <p>No packages have been retained. Publish an approved data-product draft to create one.</p>}
-          <IxButton variant="tertiary" onClick={load} disabled={state.loading}>Refresh integrations</IxButton>
+          {state.products?.warning && <p role="alert">{state.products.warning}</p>}
+          {state.products?.products?.some(item => item.status === 'pending_catalog_registration') && <p>Some retained packages are awaiting catalog registration. Open Data Products to inspect delivery status.</p>}
+          <a href="#/data-products" className="depo-service-card__link">Open Data Products</a>
         </div>
       </article>
       {state.error && <div role="status" className="depo-service-integrations__error">{state.error}</div>}
       {!state.loading && state.catalog?.total === 0 && state.products?.total === 0 && <FirstProductGuide />}
+      </div>
     </section>
   );
 }

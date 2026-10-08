@@ -21,6 +21,8 @@ def execution_payload(payload):
 
 
 def prepare_recovery(record, workflow, activity_at=None):
+    if record.get('compensations'):
+        raise ValueError('A compensated workflow cannot resume using its previous step outputs')
     if record.get('status') == 'running':
         age = (datetime.now(timezone.utc) - datetime.fromisoformat(activity_at or record['updated_at'])).total_seconds()
         if age < 60:
@@ -68,4 +70,7 @@ def reconcile(record, outcome, evidence, actor, result=None, executor_stopped=Fa
     updated.setdefault('reconciliations', []).append(dict(outcome=outcome, evidence=evidence,
         actor=actor, sequence=pending['sequence'], recorded_at=datetime.now(timezone.utc).isoformat()))
     updated.update(pending_step=None, reconciliation_required=False, status='recoverable')
+    steps = (record.get('workflow_definition') or {}).get('steps',[])
+    if outcome == 'completed' and steps and len(updated['traces']) == len(steps):
+        updated.update(status='completed',finished_at=datetime.now(timezone.utc).isoformat())
     return updated

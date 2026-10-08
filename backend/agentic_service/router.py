@@ -63,6 +63,9 @@ class Catalog:
             raise ValueError("Catalog must define agents, tools, mcp_servers, and workflows lists")
         return extend_catalog(data)
     def item(self, kind: str, identifier: str) -> dict[str, Any]:
+        if kind == 'workflows' and identifier.startswith('single-tool:'):
+            from .single_tool import definition
+            return definition(self.read(), identifier)
         for value in self.read()[kind]:
             if value.get("id") == identifier: return value
         raise ValueError(f"Unknown {kind[:-1]}: {identifier}")
@@ -71,6 +74,21 @@ catalog = Catalog()
 workflow_store = PostgresRegistry("agentic_workflow_runs")
 workflow_controls = PostgresRegistry("agentic_workflow_controls")
 workflow_heartbeats = PostgresRegistry('agentic_workflow_heartbeats')
+_active_workflow_tasks = set()
+
+
+async def _keep_workflow_running(operation):
+    """A disconnected browser must not cancel an already authorized workflow."""
+    task = asyncio.create_task(operation)
+    _active_workflow_tasks.add(task)
+    def finished(value):
+        _active_workflow_tasks.discard(value)
+        if not value.cancelled():
+            failure = value.exception()
+            if failure is not None:
+                logger.warning('Workflow task finished with %s; inspect retained run state', type(failure).__name__)
+    task.add_done_callback(finished)
+    return await asyncio.shield(task)
 dt_run_store = PostgresRegistry("dt_agent_runs")
 companion_job_store = PostgresRegistry("agentic_companion_jobs")
 _services = {"agentic": "AGENTIC_SERVICE_URL", "ontology": "ONTOLOGY_SERVICE_URL", "graph": "GRAPH_SERVICE_URL", "ingestion": "INGESTION_SERVICE_URL", "oslc": "OSLC_SERVICE_URL", "qif": "QIF_SERVICE_URL", "catalog": "DATA_CATALOG_URL", "data_products": "DATA_PRODUCT_SERVICE_URL", "ceim": "CEIM_SERVICE_URL", "data_pipeline": "DATA_PIPELINE_SERVICE_URL"}
@@ -99,7 +117,15 @@ def _render(path: str, values: dict[str, Any]) -> str:
     return ''.join(result)
 
 @router.get("/agents")
-def agents() -> dict: return {"agents": catalog.read()["agents"]}
+def agents() -> dict:
+    from .agent_usage import describe
+    return {"agents": describe(catalog.read())}
+
+
+@router.get('/agent-architecture', dependencies=[Depends(graph_read_identity)])
+def agent_architecture() -> dict:
+    from .agent_usage import architecture
+    return architecture(catalog.read())
 @router.get("/tools")
 def tools() -> dict: return {"tools": catalog.read()["tools"]}
 @router.get("/mcp-servers")
@@ -421,6 +447,7 @@ async def suggest_agent_tool(agent_id: str, payload: dict[str, Any], request: Re
     try:
         agent = catalog.item('agents', agent_id)
         selected = [catalog.item('tools', identifier) for identifier in agent.get('tools', [])]
+        selected = await _proposal_tools(selected, request)
         suggestion = await suggest_tool(agent, selected, payload.get('task'))
         command = {'agent_id': agent_id, 'tool_id': suggestion['tool_id'], 'inputs': suggestion.get('inputs', {})}
         planned = plan(command)
@@ -530,6 +557,40 @@ async def _bounded_tool_request(client, method, endpoint, **kwargs):
         response.raise_for_status()
         content = await read_bounded_response(response)
         return httpx.Response(response.status_code, headers=response.headers, content=content, request=response.request)
+
+
+async def _proposal_tools(tools, request):
+    from .proposal_contracts import input_schema
+    documents, result = {}, []
+    async with asyncio.timeout(30), httpx.AsyncClient(timeout=10, trust_env=False) as client:
+        for tool in tools:
+            if tool.get('transport') != 'openapi':
+                if tool.get('transport') != 'mcp': raise ValueError('Unsupported proposal tool transport')
+                from .mcp_transport import invoke
+                from .proposal_contracts import expand
+                listed = await invoke(catalog.item('mcp_servers', tool['server_id']), 'tools/list')
+                native = next((item for item in listed.get('tools', []) if isinstance(item, dict) and item.get('name') == tool.get('name')), None)
+                if not native or not isinstance(native.get('inputSchema'), dict): raise ValueError('Configured MCP tool has no discoverable input schema')
+                if (native.get('annotations') or {}).get('readOnlyHint') is False and not tool.get('mutates'):
+                    raise ValueError('MCP mutation classification conflicts with the catalog')
+                schema = native['inputSchema']
+                result.append({**tool, 'input_schema': expand(schema, schema)})
+                continue
+            service = tool['service']
+            if service not in documents:
+                url = _base(service).removesuffix('/api/v1') + '/openapi.json'
+                response = await _bounded_tool_request(client, 'GET', url, headers=downstream_headers(request, url, tool=tool))
+                documents[service] = response.json()
+            result.append({**tool, 'input_schema': input_schema(documents[service], tool)})
+    return result
+
+
+@router.post('/llm/probe')
+async def probe_llm_capabilities(payload: dict[str, Any], request: Request):
+    approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
+    from .local_llm import probe_capabilities
+    try: return await probe_capabilities()
+    except ValueError as exc: raise HTTPException(422, str(exc)) from exc
 
 
 async def _preflight_tools(commands, request, *, deferred=False):
@@ -659,6 +720,9 @@ async def run(payload: dict[str, Any], request: Request) -> dict:
         approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
     else:
         graph_read_identity(request)
+    if planned['tool'].get('mutates'):
+        from .single_tool import execute
+        return await execute(payload, request)
     observation, started = await _agent_io(telemetry.start, operation='tool', request_id=getattr(request.state, 'request_id', ''))
     try:
         async with asyncio.timeout(bounded_timeout_seconds('AGENTIC_RUN_TIMEOUT_SECONDS', default=300)):
@@ -694,7 +758,11 @@ def tool_run(run_id: str) -> dict:
 
 @router.post('/workflow-runs')
 async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
-    return await _execute_workflow(payload, request)
+    from .durable_workflows import execution_mode, enqueue
+    if execution_mode() == 'worker':
+        try: return await enqueue(payload,request)
+        except ValueError as exc: raise HTTPException(422,str(exc)) from exc
+    return await _keep_workflow_running(_execute_workflow(payload, request))
 
 
 async def _persist_workflow(record):
@@ -745,6 +813,8 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
                       workflow_definition=definition, workflow_digest=fingerprint(definition))
         if recovery:
             record.update(owner=recovery.get('owner', record['owner']), traces=recovery['traces'], deadline_at=recovery['deadline_at'], started_at=recovery['started_at'],
+                          execution_mode=recovery.get('execution_mode','process'), credential_fingerprints=recovery.get('credential_fingerprints',{}), approved_actor=recovery.get('approved_actor',actor),
+                          transport_fingerprint=recovery.get('transport_fingerprint',''),
                           reconciliations=recovery.get('reconciliations', []),
                           recovery_history=[*recovery.get('recovery_history', []), {'actor': actor, 'request_id': request_id, 'recovered_at': _now(), 'previous_telemetry_run_id': recovery.get('telemetry_run_id')}])
             timeout = (datetime.fromisoformat(record['deadline_at']) - datetime.now(timezone.utc)).total_seconds()
@@ -760,6 +830,8 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
                     continue
                 active_step, attempt = step, 0
                 inputs = _resolve_inputs({**(requested[index] if requested is not None else payload.get('inputs', {})), **step.get('input_bindings', {})}, record['traces'])
+                if step['tool_id'] == 'data.product.publish' and not inputs.get('idempotency_key'):
+                    inputs['idempotency_key'] = f'workflow:{run_id}:{index+1}'
                 command = {**step, 'approval_required': approved_workflow or step.get('approval_required', False),
                            'inputs': inputs, 'approved_by': payload.get('approved_by'), 'approval_token': payload.get('approval_token')}
                 tool = planned['steps'][index]['tool']
@@ -769,7 +841,8 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
                     tool_started = time.perf_counter()
                     try:
                         dispatched_mutation = bool(tool.get('mutates'))
-                        record.update(pending_step={'sequence': index+1, 'tool_id': step['tool_id'], 'attempt': attempt, 'mutates': dispatched_mutation}, updated_at=_now())
+                        record.update(pending_step={'sequence': index+1, 'tool_id': step['tool_id'], 'attempt': attempt, 'mutates': dispatched_mutation,
+                                                   'inputs': execution_payload({'inputs':inputs})['inputs']}, updated_at=_now())
                         await _persist_workflow(record)
                         result = await _dispatch(command, request)
                         duration = (time.perf_counter() - tool_started)*1000
@@ -790,7 +863,7 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
         record.update(status='completed', finished_at=_now(), updated_at=_now())
         await _persist_workflow(record)
         await _agent_io(_finish_observation, observation, observed_at, status='completed')
-        return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}
+        return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id', 'credential_fingerprints'}}
     except BaseException as exc:
         status = 'cancelled' if isinstance(exc, WorkflowCancelled) else 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
         if record is not None:
@@ -822,7 +895,7 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
             except Exception:
                 logger.exception('Unable to persist terminal workflow telemetry')
         if isinstance(exc, WorkflowCancelled) and record:
-            return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}
+            return {key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id', 'credential_fingerprints'}}
         if isinstance(exc, (KeyError, ValueError, TypeError)):
             raise HTTPException(422, str(exc), headers={'X-DEPO-Run-ID': record['run_id']} if record else None) from exc
         if isinstance(exc, TimeoutError):
@@ -851,6 +924,66 @@ async def reconcile_workflow(run_id: str, payload: dict[str, Any], request: Requ
     return {'run_id': run_id, 'status': updated['status'], 'reconciliation_required': False}
 
 
+@router.post('/workflow-runs/{run_id}/reconcile-receipt')
+async def reconcile_workflow_receipt(run_id: str, payload: dict[str, Any], request: Request) -> dict:
+    from .workflow_receipts import lookup
+    from .recovery import reconcile
+    actor = approval_identity(request,payload,token_env='AGENTIC_APPROVAL_TOKEN')
+    record = await _agent_io(workflow_store.get,run_id)
+    if not record: raise HTTPException(404,'Workflow run not found')
+    heartbeat = await _agent_io(workflow_heartbeats.get,f"{run_id}:{record.get('execution_id','')}")
+    try:
+        result = await lookup(record,request)
+        updated = reconcile(record,'completed','Verified downstream receipt for '+(record.get('pending_step') or {}).get('tool_id',''),actor,result,payload.get('executor_stopped',False),activity_at=last_activity(record,heartbeat))
+    except (ValueError,KeyError) as exc: raise HTTPException(409,str(exc)) from exc
+    except httpx.HTTPError as exc: raise HTTPException(503,'Receipt lookup failed; no workflow mutation was repeated') from exc
+    if not await _agent_io(workflow_store.compare_and_put,run_id,record,updated): raise HTTPException(409,'Workflow changed during receipt verification')
+    return {'run_id':run_id,'status':updated['status'],'reconciliation_required':False}
+
+
+@router.get('/workflow-runs/{run_id}/compensation-plan')
+def workflow_compensation_plan(run_id: str, request: Request) -> dict:
+    from .workflow_receipts import compensation_plan
+    workflow_run(run_id,request)  # Reuse owner/supervisor authorization.
+    try: return compensation_plan(workflow_store.get(run_id))
+    except ValueError as exc: raise HTTPException(409,str(exc)) from exc
+
+
+@router.post('/workflow-runs/{run_id}/compensate')
+async def compensate_workflow(run_id: str, payload: dict[str, Any], request: Request) -> dict:
+    from .workflow_receipts import compensation_plan
+    actor = approval_identity(request,payload,token_env='AGENTIC_APPROVAL_TOKEN')
+    reason = payload.get('reason')
+    if not isinstance(reason,str) or not reason.strip() or len(reason) > 4000: raise HTTPException(422,'A compensation reason is required (maximum 4000 characters)')
+    with workflow_store.advisory_lock('compensate:'+run_id) as acquired:
+        if not acquired: raise HTTPException(409,'Compensation is already in progress')
+        record = await _agent_io(workflow_store.get,run_id)
+        if not record: raise HTTPException(404,'Workflow run not found')
+        try: planned = compensation_plan(record)
+        except ValueError as exc: raise HTTPException(409,str(exc)) from exc
+        action = next((item for item in planned['actions'] if item['sequence'] == payload.get('sequence')),None)
+        if not action: raise HTTPException(409,'No approved reversible operation exists for this step')
+        key = str(action['sequence'])
+        prior = (record.get('compensations') or {}).get(key)
+        if prior and prior.get('status') == 'completed': return prior
+        remaining = [item for item in planned['actions'] if (record.get('compensations') or {}).get(str(item['sequence']),{}).get('status') != 'completed']
+        if remaining and remaining[0]['sequence'] != action['sequence']:
+            raise HTTPException(409,'Compensate later completed steps before earlier dependent steps')
+        if any(item['sequence'] > action['sequence'] for item in planned['unsupported']):
+            raise HTTPException(409,'A later write has no approved inverse; review its downstream state before compensation')
+        if prior and prior.get('reason') != reason.strip(): raise HTTPException(409,'Retry the original compensation reason and identity')
+        intent = prior or {**action,'status':'pending','reason':reason.strip(),'approved_actor':actor,'request_id':f'compensate:{run_id}:{key}'}
+        updated = {**record,'compensations':{**record.get('compensations',{}),key:intent}}
+        if not await _agent_io(workflow_store.compare_and_put,run_id,record,updated): raise HTTPException(409,'Workflow changed before compensation')
+        result = await _dispatch({'agent_id':'data-product-governor','tool_id':'data.product.revoke',
+            'inputs':{'product_version':action['product_version'],'reason':intent['reason'],'idempotency_key':intent['request_id']},
+            'approved_by':payload.get('approved_by'),'approval_token':payload.get('approval_token')},request)
+        completed = {**intent,'status':'completed','result':result.get('result',{}),'completed_at':_now()}
+        final = {**updated,'compensations':{**updated['compensations'],key:completed}}
+        if not await _agent_io(workflow_store.compare_and_put,run_id,updated,final): raise HTTPException(409,'Compensation may have completed; inspect downstream receipt before retrying')
+        return completed
+
+
 @router.post('/workflow-runs/{run_id}/recover')
 async def recover_workflow(run_id: str, payload: dict[str, Any], request: Request) -> dict:
     from .recovery import prepare_recovery
@@ -870,7 +1003,10 @@ async def recover_workflow(run_id: str, payload: dict[str, Any], request: Reques
     if any(step['requires_approval'] for step in workflow_plan(command)['steps']):
         approval_identity(request, command, token_env='AGENTIC_APPROVAL_TOKEN')
     recovery['_expected_record'] = record
-    return await _execute_workflow(command, request, recovery=recovery)
+    from .durable_workflows import execution_mode, enqueue
+    if execution_mode() == 'worker':
+        return await enqueue(command,request,recovery=recovery)
+    return await _keep_workflow_running(_execute_workflow(command, request, recovery=recovery))
 
 
 @router.post("/workflow-runs/{run_id}/control", summary="Pause, resume or cancel at the next tool boundary")
@@ -883,7 +1019,7 @@ def control_workflow(run_id: str, payload: dict[str, Any], request: Request) -> 
     record = workflow_store.get(run_id)
     if not record:
         raise HTTPException(404, "Workflow run not found")
-    if record.get("status") != "running" or datetime.now(timezone.utc) >= datetime.fromisoformat(record["deadline_at"]):
+    if record.get("status") not in {'running','queued'} or datetime.now(timezone.utc) >= datetime.fromisoformat(record["deadline_at"]):
         raise HTTPException(409, "Only an active workflow can be controlled")
     with workflow_controls.advisory_lock(run_id) as acquired:
         if not acquired:
@@ -909,16 +1045,29 @@ def workflow_run(run_id: str, request: Request) -> dict:
         raise HTTPException(404, 'Workflow run not found')
     if actor is not None and (not record.get('owner') or record['owner'] != sessions.owner(request, actor)):
         raise HTTPException(403, 'Workflow belongs to another identity or requires supervisory access')
-    if record.get('status') == 'running' and record.get('deadline_at') and datetime.now(timezone.utc) >= datetime.fromisoformat(record['deadline_at']):
-        # A process may die before writing its terminal state. This projection
-        # does not overwrite a concurrently completing run or repeat its writes.
-        return {**{key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}, 'status': 'interrupted', 'reconciliation_required': True,
-                'error_type': 'ExecutionDeadlineElapsed', 'state_source': 'deadline_projection'}
     heartbeat = workflow_heartbeats.get(f"{run_id}:{record.get('execution_id', '')}") if record.get('status') == 'running' else None
-    if record.get('status') == 'running' and (datetime.now(timezone.utc) - datetime.fromisoformat(last_activity(record, heartbeat))).total_seconds() >= 60 and not (record.get('pending_step') or {}).get('mutates'):
-        return {**{key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}, 'status': 'interrupted', 'state_source': 'inactivity_projection'}
     control = workflow_controls.get(run_id) or {}
-    return {**{key: value for key, value in record.items() if key not in {'owner', 'execution_payload', 'execution_id'}}, 'control': control}
+    from .workflow_control import workflow_snapshot
+    return workflow_snapshot(record, control, heartbeat)
+
+
+@router.get('/workflow-runs')
+def list_workflow_runs(request: Request, limit: int = 50) -> dict:
+    from backend.depo_platform.authorization import service_write_identity
+    owner = None
+    try:
+        service_write_identity(request, token_env='AGENTIC_APPROVAL_TOKEN', default_actor='agent-supervisor')
+    except HTTPException:
+        owner = sessions.owner(request, graph_read_identity(request))
+    bounded = max(1, min(limit, 100))
+    if owner is None:
+        records = workflow_store.recent(bounded)
+    else:
+        _, records = workflow_store.page(limit=bounded, field='owner', value=owner)
+    fields = ('run_id', 'workflow_id', 'status', 'started_at', 'deadline_at')
+    return {'runs': [{**{key: row.get(key) for key in fields}, 'kind': 'workflow'}
+                     for row in records if owner is None or row.get('owner') == owner],
+            'limit': max(1, min(limit, 100))}
 
 
 @router.get("/observability/summary", dependencies=[Depends(graph_read_identity)])

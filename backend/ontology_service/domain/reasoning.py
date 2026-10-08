@@ -118,17 +118,8 @@ class OntologyReasoningService:
     @classmethod
     def preview_inferences(cls, ontology_identifier: str, options: Dict[str, Any] | None = None) -> Dict[str, Any]:
         """Return a non-mutating, user-configurable inference preview."""
-        opts = options or {}
-        if not isinstance(opts, dict):
-            raise ValueError("Inference options must be an object")
-        rules = opts.get("rules") or {}
-        if not isinstance(rules, dict):
-            raise ValueError("Inference rules must be an object")
-        try:
-            max_results = int(opts.get("limit") or 250)
-        except (TypeError, ValueError):
-            max_results = 250
-        max_results = max(25, min(max_results, 1000))
+        from ..inference_options import validate_options
+        rules, max_results = validate_options(options)
 
         context = cls.semantic_context(ontology_identifier)
         reasoning = cls.inspect_context(context)
@@ -277,7 +268,8 @@ class OntologyReasoningService:
             "ontology_id": reasoning.get("ontology_id") or ontology_identifier,
             "ontology_name": reasoning.get("ontology_name"),
             "prefix": reasoning.get("prefix"),
-            "engine": "owlready2-preview",
+            "engine": "structural-rule-preview",
+            "assurance": "Review candidates only; not a full logical consistency proof",
             "rules": {
                 "transitive_subclass": bool(rules.get("transitive_subclass", True)),
                 "domain_range_typing": bool(rules.get("domain_range_typing", True)),

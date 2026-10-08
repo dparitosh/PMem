@@ -27,6 +27,11 @@ def ollama_base_url(value=None):
     return normalize(api or legacy or 'http://127.0.0.1:11434')
 
 def ollama_headers(base_url, api_key=None, *, header_name=None):
+    require_https = os.getenv('OLLAMA_REQUIRE_HTTPS', 'false').strip().lower()
+    if require_https not in {'true', 'false'}:
+        raise ValueError('OLLAMA_REQUIRE_HTTPS must be true or false')
+    if require_https == 'true' and urlsplit(base_url).scheme != 'https':
+        raise ValueError('OLLAMA_REQUIRE_HTTPS requires a verified HTTPS endpoint')
     key = (api_key if api_key is not None else os.getenv('OLLAMA_API_KEY', '')).strip()
     if not key:
         return {}

@@ -64,6 +64,7 @@ class TimingRegressions(unittest.TestCase):
                 def put(self,key,value):values[key]=value
             class Controls:
                 def get(self,key):return {'action':'pause'}
+                def compare_and_put(self,key,expected,value):return True
             with self.assertRaises(TimeoutError):
                 async with asyncio.timeout(.1), execution_heartbeat(Heartbeats(),'run:execution'):
                     await checkpoint(Controls(),'run')

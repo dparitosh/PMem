@@ -98,7 +98,29 @@ html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(
   border: 1px solid var(--ui-border);
   border-radius: 8px;
   color: var(--ui-text);
+  box-sizing: border-box;
+  background: var(--ui-surface);
 }
+
+.depo-service-card__link { display: inline-block; margin-top: 12px; color: var(--ui-accent, var(--depo-blue-600)); font-weight: 600; }
+.depo-agent-recommendations { min-width: 0; }
+.depo-agent-recommendations .depo-panel__header h3 { margin: 0; }
+.depo-agent-recommendations .depo-panel__body { display: grid; gap: 16px; }
+.depo-agent-recommendations label { display: grid; gap: 6px; min-width: 0; color: var(--ui-text); }
+.depo-agent-recommendations input:not([type='checkbox']),
+.depo-agent-recommendations select,
+.depo-agent-recommendations textarea {
+  width: 100%; max-width: 100%; box-sizing: border-box;
+  padding: 10px 12px; border: 1px solid var(--ui-border); border-radius: 6px;
+  background: var(--ui-surface); color: var(--ui-text); font: inherit;
+}
+.depo-agent-recommendations textarea { min-height: 110px; resize: vertical; }
+.depo-agent-recommendations button { justify-self: start; padding: 8px 12px; border: 1px solid var(--ui-border); border-radius: 6px; color: var(--ui-text); background: var(--ui-surface); font: inherit; }
+.depo-agent-recommendations button:disabled { opacity: .55; cursor: not-allowed; }
+.depo-agent-recommendations pre { max-height: 360px; overflow: auto; padding: 12px; background: var(--ui-surface); border: 1px solid var(--ui-border); color: var(--ui-text); }
+.depo-agent-recommendations .depo-panel__body > div { display: grid; gap: 12px; min-width: 0; }
+.depo-agent-recommendations label:has(input[type='checkbox']) { display: flex; align-items: flex-start; gap: 8px; }
+.depo-agent-recommendations p { margin: 0; overflow-wrap: anywhere; }
 
 .depo-service-card h3 { margin: 0 0 12px; }
 
@@ -469,6 +491,11 @@ html[data-ix-color-schema='dark'] .depo-table tbody tr:hover { background: rgba(
 }
 
 .depo-workflow-reconciliation { display: grid; gap: 12px; margin-top: 16px; }
+.depo-workflow-run-picker { display: grid; gap: 12px; margin: 16px 0; }
+.depo-workflow-run-picker label { display: grid; gap: 6px; }
+.depo-workflow-run-picker select { width: 100%; min-width: 0; padding: 10px; color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--ui-border); }
+.depo-workflow-controls p { overflow-wrap: anywhere; }
+.depo-workflow-evidence pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow: auto; color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--ui-border); padding: 12px; }
 .depo-workflow-reconciliation label { display: grid; gap: 6px; }
 .depo-workflow-reconciliation textarea { width: 100%; min-height: 72px; box-sizing: border-box; color: var(--ui-text); background: var(--ui-surface); border: 1px solid var(--ui-border); }
 .depo-workflow-reconciliation ix-button { max-width: 100%; }

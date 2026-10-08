@@ -5,6 +5,7 @@ import { buildSemanticServiceUrl } from '../config';
 import { getCredentialProfile } from '../services/serviceAuth';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { publicationFromDraft, isDefinitivePublicationRejection } from '../services/analyticsProductDraft';
+import { productChanged } from '../services/productService';
 
 const labels = { product_id: 'Product ID', name: 'Product name', version: 'New product version (e.g. 1.0.0)', owner: 'Owner',
   steward: 'Steward', classification: 'Classification', approved_by: 'Approver', asset_id: 'Approved semantic asset ID', release_version: 'Approved semantic release version' };
@@ -62,7 +63,7 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
         const response = await apiClient.post(buildSemanticServiceUrl('dataProducts', `/api/v1/data-products/${action === 'publish' ? 'publish' : 'preview'}`), payload,
           { headers, signal: controller.signal, timeout: 60000 });
         if (controller.signal.aborted) return;
-        if (action === 'publish') { setReceipt(response.data); onPublished?.(); }
+        if (action === 'publish') { setReceipt(response.data); productChanged(); onPublished?.(); }
         else setPreview(response.data);
       }
     } catch (failure) {
@@ -72,16 +73,17 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
       if (!controller.signal.aborted) setError(apiErrorMessage(failure, failure.message || 'Request failed.'));
     } finally { if (request.current === controller) { request.current = null; if (!controller.signal.aborted) setBusy(false); } }
   }
-  return <section aria-label="Schema analytics publication">
-    <h3>Publish schema design evidence</h3>
-    <p>This package contains a review-only schema plan. It does not create warehouse tables or certify business metrics. The service verifies the referenced approved semantic release during publication.</p>
-    <details><summary>Inspect an XSD with dependency files</summary>
+  const pipeline = draft?.product_kind === 'pipeline-evidence';
+  return <section aria-label={pipeline ? 'Pipeline evidence publication' : 'Schema analytics publication'}>
+    <h3>{pipeline ? 'Publish retained pipeline evidence' : 'Publish schema design evidence'}</h3>
+    <p>{pipeline ? 'Package the retained run artifacts for steward review. Job completion does not certify their quality.' : 'This package contains a review-only schema plan. It does not create warehouse tables or certify business metrics.'} The service verifies the referenced approved semantic release during publication.</p>
+    {!pipeline && <details><summary>Inspect an XSD with dependency files</summary>
       <label>Root XSD <input type="file" accept=".xsd" disabled={busy || !!pending.current} onChange={event => { invalidateInspection(); setSource(event.target.files[0] || null); }} /></label>
       <label>Dependency XSD files <input type="file" accept=".xsd" multiple disabled={busy || !!pending.current} onChange={event => { invalidateInspection(); setDependencies(Array.from(event.target.files)); }} /></label>
       <p>Selected dependency order: {dependencies.map(file => file.name).join(', ') || 'None'}</p>
       <label>Relative paths, one per file (e.g. types/Part.xsd)<textarea value={paths} disabled={busy || !!pending.current} onChange={event => { invalidateInspection(); setPaths(event.target.value); }} /></label>
       <IxButton disabled={busy || !!pending.current} onClick={() => perform('inspect')}>Inspect schema set</IxButton>
-    </details>
+    </details>}
     {sourceChanged && !activeDraft && <p role="status">Source selection changed. Inspect the schema set again before validating or publishing.</p>}
     {activeDraft && <>
       <p>Readiness: {activeDraft.analytics_readiness || 'Requires review'}; quality: {activeDraft.quality_status || 'Not assessed'}</p>

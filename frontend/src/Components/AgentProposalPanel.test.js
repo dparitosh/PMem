@@ -37,3 +37,15 @@ test('recommendation requires explicit review and approval before execution', as
   expect(agenticClient.post.mock.calls[1][1]).toEqual(expect.objectContaining({approved_by:'reviewer',approval_token:'supervisor'}));
   expect(screen.queryByText('Execute reviewed recommendation')).toBeNull();
 });
+
+test('malformed recommendations cannot expose executable controls', async () => {
+  agenticClient.get.mockResolvedValue({data:{agents:[{id:'ontology-governor'}]}});
+  agenticClient.post.mockResolvedValue({data:{command:{agent_id:'ontology-governor',tool_id:'bridge.mapping.preview'}}});
+  render(<AgentProposalPanel />);
+  fireEvent.click(screen.getByText('Load agents'));
+  await screen.findByText('ontology-governor');
+  fireEvent.change(screen.getByLabelText('Recommendation task'), {target:{value:'Review mapping'}});
+  fireEvent.click(screen.getByText('Get recommendation'));
+  await screen.findByText('Invalid agent proposal.');
+  expect(screen.queryByText('Execute reviewed recommendation')).toBeNull();
+});

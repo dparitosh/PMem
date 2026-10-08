@@ -118,6 +118,18 @@ class SemanticIntelligence:
         self.registry.put(f"version:{label}", snapshot)
         return snapshot
 
+    def create_merge_version(self, *, ontology: dict[str, Any], author: str) -> dict[str, Any]:
+        """A merge artifact has one immutable identity and one retained snapshot."""
+        identifier = ontology.get('ontology_id')
+        if not isinstance(identifier, str) or not identifier:
+            raise ValueError('Merge version requires an ontology identity')
+        label = 'merge:' + identifier
+        retained = self.registry.get('version:' + label)
+        if retained is not None:
+            return retained
+        return self.create_version(ontology=ontology, label=label, author=author,
+                                   description='Approved ontology merge')
+
     def list_versions(self) -> list[dict[str, Any]]:
         return serialise(self._version_manager().list_versions())
 

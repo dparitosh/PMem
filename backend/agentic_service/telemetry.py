@@ -30,7 +30,7 @@ class AgentTelemetry:
             "status": "running",
             "started_at": _now(),
             'deadline_at': (datetime.now(timezone.utc) + timedelta(seconds=float(os.getenv('AGENTIC_RUN_TIMEOUT_SECONDS', '300')))).isoformat(),
-            "model": os.getenv("LLM_MODEL") or os.getenv("AZURE_OPENAI_DEPLOYMENT") or "deterministic",
+            "model": os.getenv("LLM_MODEL_NAME") or os.getenv("OLLAMA_MODEL") or os.getenv("LLM_MODEL") or os.getenv("AZURE_OPENAI_DEPLOYMENT") or "deterministic",
             "prompt_version": os.getenv("AGENT_PROMPT_VERSION", "1"),
             "tool_spans": [],
             "evidence_count": 0,

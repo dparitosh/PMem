@@ -24,7 +24,7 @@ export default function QualityPage() {
     } finally { if (!controller.signal.aborted) setLoading(false); }
   }, []);
   useEffect(() => {
-    load(); const timer = window.setInterval(load, 30000);
+    load(); const timer = window.setInterval(() => { if (!document.hidden) load(); }, 30000);
     return () => { window.clearInterval(timer); request.current?.abort(); };
   }, [load]);
   return <div className="depo-page" aria-busy={loading}>

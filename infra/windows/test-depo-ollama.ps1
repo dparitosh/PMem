@@ -44,10 +44,9 @@ function Resolve-OllamaRoot([string]$Value) {
 }
 
 function Assert-OllamaTransport([string]$Endpoint) {
-  $uri = [Uri]$Endpoint
-  if ($values['OLLAMA_API_KEY'] -and $uri.Scheme -eq 'http' -and -not $uri.IsLoopback) {
-    throw 'Use HTTPS for a remote keyed Ollama endpoint. No credential was sent.'
-  }
+  # Preserve the scheme supplied by the REST contract, including HTTP APIM
+  # servers. Match Python URL validation instead of imposing an HTTPS override.
+  $null = Resolve-OllamaRoot $Endpoint
 }
 
 $configured = if ($values['OLLAMA_API_URL']) { [string]$values['OLLAMA_API_URL'] }

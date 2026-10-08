@@ -26,16 +26,16 @@ export default function GraphExplorerPage(props) {
     setServiceState({ loading: true, status: '' });
     const controller = new AbortController();
     platformAPI.health('graph', { signal: controller.signal, timeout: 5000 })
-      .then((response) => !controller.signal.aborted && setServiceState({ loading: false, status: String(response?.data?.status || 'ready').toLowerCase() }))
+      .then((response) => !controller.signal.aborted && setServiceState({ loading: false, status: String(response?.data?.status || 'unavailable').toLowerCase() }))
       .catch(() => !controller.signal.aborted && setServiceState({ loading: false, status: 'unavailable' }));
     return () => controller.abort();
   }, [revision]);
 
   if (serviceState.loading) {
-    return <div className="depo-page-loading" role="status">Checking graph serviceâ€¦</div>;
+    return <div className="depo-page-loading" role="status">Checking graph service…</div>;
   }
 
-  if (['not_configured', 'offline', 'unavailable', 'error', 'failed', 'not_ready', 'degraded'].includes(serviceState.status)) {
+  if (!['ok', 'ready', 'healthy'].includes(serviceState.status)) {
     return <div className="depo-page"><GraphServiceState state={serviceState.status} retry={() => setRevision(value => value + 1)} /></div>;
   }
 

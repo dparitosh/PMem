@@ -1,0 +1,31 @@
+import { describe, it, expect, vi } from 'vitest';
+import { loadProductCollection } from './productCollection';
+import { productDraftFromRun, publicationFromDraft } from './analyticsProductDraft';
+
+describe('shared product collection and evidence boundary', () => {
+  it('preserves the declared total and flags partial retrieval', async () => {
+    const result = await loadProductCollection(vi.fn().mockResolvedValue({data:{total:3,products:[{product_id:'a',version:'1'}],next_offset:null}}));
+    expect(result.total).toBe(3);
+    expect(result.rows).toHaveLength(1);
+    expect(result.warning).toMatch(/declared total/);
+  });
+  it('deduplicates overlapping version pages instead of inflating displayed counts', async () => {
+    const request = vi.fn().mockResolvedValueOnce({data:{products:[{product_id:'a',version:'1'}],total:2,next_offset:1}})
+      .mockResolvedValueOnce({data:{products:[{product_id:'a',version:'1'},{product_id:'b',version:'1'}],total:2,next_offset:null}});
+    const result = await loadProductCollection(request);
+    expect(result.rows).toHaveLength(2);
+    expect(result.warning).toMatch(/Duplicate/);
+  });
+  it('uses retained artifacts from a completed run without certifying quality', () => {
+    const draft = productDraftFromRun({run_id:'run-1',status:'completed',job_type:'profile',output_manifest:{partition_artifacts:{accepted:'evidence-1',rejected:'evidence-2'}}});
+    expect(draft.artifacts).toEqual([{artifact_id:'evidence-1'},{artifact_id:'evidence-2'}]);
+    expect(draft.quality_status).toBe('requires_review');
+    const payload = publicationFromDraft(draft, {product_id:'profile',name:'Profile',version:'1.0.0',owner:'owner',steward:'steward',classification:'internal',approved_by:'approver',asset_id:'release',release_version:'1.0.0'}, 'stable-id');
+    expect(payload.sources[0].run_id).toBe('run-1');
+    expect(payload.product_kind).toBe('pipeline-evidence');
+  });
+  it('rejects unfinished runs and evidence without retained references', () => {
+    expect(() => productDraftFromRun({run_id:'run-1',status:'running'})).toThrow(/completed/);
+    expect(() => productDraftFromRun({run_id:'run-1',status:'completed',output_manifest:{}})).toThrow(/retained output artifacts/);
+  });
+});

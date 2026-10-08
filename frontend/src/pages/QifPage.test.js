@@ -15,7 +15,9 @@ const { qifAPI } = vi.hoisted(() => ({ qifAPI: {
   artifactUrl: vi.fn(),
 } }));
 
-vi.mock('../services/apiClient', () => ({ qifAPI }));
+const apiClient = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock('../services/apiClient', () => ({ qifAPI, apiClient }));
+vi.mock('../contexts/OntologyContext', () => ({ useOntologies: () => ({ ontologies: [], loading: false, error: '', fetchOntologies: vi.fn() }) }));
 vi.mock('../widgets/PageHeader', () => ({ default: ({ title }) => <h2>{title}</h2> }));
 vi.mock('../widgets/KpiStrip', () => ({ default: () => null }));
 vi.mock('../ui/IxIcons', () => ({
@@ -90,7 +92,7 @@ test('ignores an older task response after another task is selected', async () =
   expect(b).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('renders task artifact links through the QIF API helper', async () => {
+test('downloads task artifacts through the authenticated QIF API helper', async () => {
   qifAPI.getTask.mockResolvedValue({
     data: {
       ...task,
@@ -104,7 +106,14 @@ test('renders task artifact links through the QIF API helper', async () => {
   const start = await screen.findByRole('button', { name: /start reference task/i });
   await waitFor(() => expect(start).toBeEnabled());
   fireEvent.click(start);
-  const artifact = await screen.findByRole('link', { name: /qif_ontology\.ttl/i });
+  const artifact = await screen.findByRole('button', { name: /qif_ontology\.ttl/i });
+  apiClient.get.mockResolvedValue({ data: new Blob(['ontology']) });
+  const createUrl = vi.fn(() => 'blob:fixture');
+  vi.stubGlobal('URL', Object.assign(URL, {createObjectURL:createUrl, revokeObjectURL:vi.fn()}));
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  fireEvent.click(artifact);
+  await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining('/artifacts/ontology/qif_ontology.ttl'), {responseType:'blob'}));
+  await waitFor(() => expect(createUrl).toHaveBeenCalled());
+  click.mockRestore(); vi.unstubAllGlobals();
   expect(qifAPI.artifactUrl).toHaveBeenCalledWith(task.task_id, 'ontology/qif_ontology.ttl');
-  expect(artifact).toHaveAttribute('href', expect.stringContaining('/artifacts/ontology/qif_ontology.ttl'));
 });

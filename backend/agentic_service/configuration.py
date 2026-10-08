@@ -16,6 +16,10 @@ def configuration_status():
         ('AGENT_SESSION_IDLE_SECONDS', '1800', 60, 86400),
         ('AGENT_SESSION_MAX_SECONDS', '86400', 60, 2592000),
         ('AGENTIC_RUN_TIMEOUT_SECONDS', '300', 1, 3600),
+        ('AGENTIC_WORKER_CONCURRENCY', '4', 1, 16),
+        ('OLLAMA_MAX_CONCURRENCY', '4', 1, 32),
+        ('OLLAMA_FAILURE_THRESHOLD', '3', 1, 20),
+        ('OLLAMA_CIRCUIT_COOLDOWN_SECONDS', '30', 1, 300),
         ('DEPO_REGISTRY_STATEMENT_TIMEOUT_SECONDS', '30', 1, 300),
         ('LLM_REQUEST_TIMEOUT_SECONDS', '30', 1, 120),
         ('AGENT_MEMORY_RETENTION_DAYS', '30', 1, 3650),
@@ -58,6 +62,19 @@ def configuration_status():
     mode = os.getenv('AUTH_MODE', 'token').lower()
     if mode not in {'token', 'entra', 'disabled'}:
         errors.append('AUTH_MODE')
+    execution = os.getenv('AGENTIC_EXECUTION_MODE','process').strip().lower()
+    if execution not in {'process','worker'} or (execution == 'worker' and mode != 'token'):
+        errors.append('AGENTIC_EXECUTION_MODE')
+    if execution == 'worker':
+        try:
+            from datetime import datetime, timezone
+            from backend.mesh_store import PostgresRegistry
+            current = datetime.now(timezone.utc)
+            heartbeats = PostgresRegistry('agentic_workflow_workers').recent(100)
+            if not any(item.get('execution_mode') == 'worker' and (current-datetime.fromisoformat(item['updated_at'])).total_seconds() < 60 for item in heartbeats):
+                errors.append('AGENTIC_WORKFLOW_WORKER')
+        except Exception:
+            errors.append('AGENTIC_WORKFLOW_WORKER')
     for key in SERVICE_KEYS:
         url(key, https=mode == 'entra')
     if mode == 'token':
@@ -70,7 +87,9 @@ def configuration_status():
         require('DEPO_TRUSTED_GATEWAY_IPS')
     if mode == 'disabled' and os.getenv('DEPO_ALLOW_INSECURE_LOCAL_AUTH', '').lower() != 'true':
         errors.append('DEPO_ALLOW_INSECURE_LOCAL_AUTH')
-    for flag in ('DT_AGENT_ENABLED', 'OSLC_REMOTE_ENABLED'):
+    if os.getenv('OLLAMA_PROPOSAL_MODE', 'structured').strip().lower() not in {'structured', 'native'}:
+        errors.append('OLLAMA_PROPOSAL_MODE')
+    for flag in ('DT_AGENT_ENABLED', 'OSLC_REMOTE_ENABLED', 'OLLAMA_REQUIRE_HTTPS'):
         if os.getenv(flag, 'false').lower() not in {'true', 'false'}:
             errors.append(flag)
     if os.getenv('OLLAMA_DISCOVERY_ENABLED', 'true').strip().lower() not in {'true', 'false'}:

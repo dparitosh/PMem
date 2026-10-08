@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from rdflib import Graph, Literal
+from rdflib import Graph, Literal, BNode
 
 
 class GovernedMergeService:
@@ -80,11 +80,12 @@ class GovernedMergeService:
             source = Graph()
             source.parse(data=content, format=parsed['rdf_format'])
             sources.append({"ontology_id": ontology_id, "ontology_name": metadata["ontology_name"]})
-            for triple in source:
-                key = tuple(map(str, triple))
+            for triple in self._scoped_triples(source):
+                key = tuple(term.n3() for term in triple)
                 occurrences[key] = occurrences.get(key, 0) + 1
                 merged.add(triple)
-        conflicts = self._literal_conflicts(merged)
+        from .merge_validation import explicit_conflicts
+        conflicts = self._literal_conflicts(merged) + explicit_conflicts(merged)
         preview_id = uuid.uuid4().hex
         record = {"preview_id": preview_id, "created_at": datetime.now(timezone.utc).isoformat(),
                   "source_ontology_ids": source_ids, "sources": sources,
@@ -93,6 +94,10 @@ class GovernedMergeService:
                   "description": str(payload.get("description") or ""),
                   "triple_count": len(merged), "duplicate_triple_count": sum(value - 1 for value in occurrences.values() if value > 1),
                   "conflicts": conflicts, "publish_recommended": not conflicts,
+                  "validation": {"scope": "RDF union, functional literal conflicts and explicit OWL declaration contradictions",
+                      "formal_reasoning_performed": False,
+                      "limitations": ["Different IRIs are not automatically equivalent",
+                          "Logical consistency and domain/range compatibility require separate validation"]},
                   "turtle": merged.serialize(format="turtle")}
         values = {} if self.registry is not None else self._load()
         values[preview_id] = record
@@ -117,20 +122,36 @@ class GovernedMergeService:
         if not record:
             raise ValueError("Merge preview not found")
         if record["conflicts"]:
-            raise ValueError("Merge preview contains unresolved literal conflicts")
+            raise ValueError("Merge preview contains unresolved RDF/OWL conflicts")
         if record.get('applied_result'):
             return record['applied_result']
+        from .merge_validation import explicit_conflicts
+        retained_graph = Graph()
+        retained_graph.parse(data=record['turtle'], format='turtle')
+        if explicit_conflicts(retained_graph):
+            raise ValueError('Merge contains explicit RDF/OWL contradictions; create and review a new preview')
+        if not record.get('approved_by'):
+            record['approved_by'] = approved_by
+            self._save(values, preview_id)
+        approved_by = record['approved_by']
         artifact = self.catalog.register(
             content=record["turtle"].encode("utf-8"), filename=f"{record['prefix']}_merged.ttl",
             ontology_name=record["ontology_name"], prefix=record["prefix"], description=record["description"],
             source='governed-merge:' + hashlib.sha256(preview_id.encode('utf-8')).hexdigest(), extra_metadata={"status": "merged", "provenance": {"preview_id": preview_id,
             "source_ontology_ids": record["source_ontology_ids"], "approved_by": approved_by}},
         )
-        version = self.intelligence.create_version(ontology={"ontology_id": artifact["ontology_id"], "provenance": artifact["provenance"], "triple_count": record["triple_count"]}, label=f"merge:{artifact['ontology_id']}", author=approved_by, description="Approved ontology merge")
+        version = self.intelligence.create_merge_version(ontology={"ontology_id": artifact["ontology_id"], "provenance": artifact["provenance"], "triple_count": record["triple_count"]}, author=approved_by)
         result = {"status": "merged", "ontology": artifact, "version": version, "preview_id": preview_id}
         record['applied_result'] = result
         self._save(values, preview_id)
         return result
+
+    @staticmethod
+    def _scoped_triples(graph):
+        """Blank nodes have document scope; never join them across source files."""
+        mapping = {}
+        for triple in graph:
+            yield tuple(mapping.setdefault(term, BNode()) if isinstance(term, BNode) else term for term in triple)
 
     @staticmethod
     def _literal_conflicts(graph: Graph) -> list[dict[str, str]]:

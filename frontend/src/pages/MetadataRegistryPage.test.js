@@ -74,3 +74,31 @@ test('uses the valid draft to in-review lifecycle transition and prevents duplic
   resolveTransition({ data: { asset_id: 'asset-1', name: 'Part number', lifecycle_status: 'in_review', version: '1.0.0' } });
   await waitFor(() => expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument());
 });
+
+
+test('tabs stay available during a dictionary read and cleared selection rejects its late response',async()=>{
+ API_METHODS.metadataRegistry.list.mockResolvedValue({data:{assets:[]}});
+ let resolve;
+ API_METHODS.ontology.getDataDictionary.mockReturnValue(new Promise(done=>{resolve=done;}));
+ render(<MetadataRegistryPage/>);
+ fireEvent.click(screen.getByRole('tab',{name:'Data Dictionary'}));
+ fireEvent.change(screen.getByLabelText('Select registry source for Data Dictionary'),{target:{value:'onto-1'}});
+ expect(screen.getByRole('tab',{name:'Registry assets'})).toBeEnabled();
+ fireEvent.change(screen.getByLabelText('Select registry source for Data Dictionary'),{target:{value:''}});
+ resolve({data:{data:{entities:{Old:{definition:'Stale term'}}}}});
+ await waitFor(()=>expect(screen.queryByText('Old')).not.toBeInTheDocument());
+ expect(API_METHODS.ontology.getDataDictionary.mock.calls[0][1].signal.aborted).toBe(true);
+});
+
+test('direct dictionary payload is displayed and malformed payload is reported',async()=>{
+ API_METHODS.metadataRegistry.list.mockResolvedValue({data:{assets:[]}});
+ API_METHODS.ontology.getDataDictionary.mockResolvedValueOnce({data:{entities:{Part:{definition:'A component'}}}}).mockResolvedValueOnce({data:{status:'ok'}});
+ render(<MetadataRegistryPage/>);
+ fireEvent.click(screen.getByRole('tab',{name:'Data Dictionary'}));
+ const select=screen.getByLabelText('Select registry source for Data Dictionary');
+ fireEvent.change(select,{target:{value:'onto-1'}});
+ await screen.findByText('A component');
+ fireEvent.change(select,{target:{value:''}});
+ fireEvent.change(select,{target:{value:'onto-1'}});
+ await screen.findByText(/invalid dictionary/);
+});

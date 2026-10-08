@@ -2,6 +2,7 @@ import { setCredentialProfile, getCredentialProfile } from '../../services/servi
 import React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import SemanticBridgeJobs from './SemanticBridgeJobs';
+import agenticAPI from '../../services/agenticApi';
 
 const preview = { job_id: 'preview-1', publication_job_id: 'publish-1', kind: 'preview', ontology_id: 'ontology', import_task_id: 'import', candidates: [
   { candidate_id: 'valid', source_term: 'part', ontology_term: 'Part', eligible: true },
@@ -147,4 +148,17 @@ test('changing inputs discards old preview and credentials are not persisted', a
   view.rerender(<SemanticBridgeJobs ontologyId="other" importTaskId="import" api={api} />);
   await waitFor(() => expect(screen.queryByLabelText('Approve part to Part')).toBeNull());
   expect(screen.queryByLabelText('Approval token')).toBeNull();
+});
+
+
+test('ontology review displays structured evidence citations and limitations', async () => {
+  const configured=vi.spyOn(agenticAPI,'isConfigured').mockReturnValue(true);
+  const review=vi.spyOn(agenticAPI,'orchestrateOntology').mockResolvedValue({data:{steps:[{result:{llm:{enabled:true,text:'Review only',review:{questions:[{question:'Is the domain compatible?',evidence_iris:['urn:Part']}],limitations:'No formal reasoner was run.'}}}}]}});
+  try {
+    mount();
+    fireEvent.click(screen.getByText('Run ontology agent review'));
+    await screen.findByText('Evidence IRIs: urn:Part');
+    expect(screen.getByText('Limitations: No formal reasoner was run.')).toBeVisible();
+    expect(api.publish).not.toHaveBeenCalled();
+  } finally {configured.mockRestore();review.mockRestore();}
 });

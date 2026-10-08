@@ -19,7 +19,7 @@ export default function AgentProposalPanel() {
   }, []);
   const operate = async action => {
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
-    setBusy(true); setMessage('');
+    setBusy(true); setMessage(''); setExecution(null);
     try {
       const url = path => buildSemanticServiceUrl('agentic', `/api/v1/${path}`);
       const options = { signal: controller.signal };
@@ -31,7 +31,7 @@ export default function AgentProposalPanel() {
       } else if (action === 'suggest') {
         setProposal(null); setReviewed(false);
         response = await agenticClient.post(url(`agents/${encodeURIComponent(agent)}/suggest`), { task: task.trim() }, options);
-        if (!response.data.command || response.data.command.agent_id !== agent || !response.data.command.tool_id) throw new Error('Invalid agent proposal.');
+        if (!response.data.command || response.data.command.agent_id !== agent || !response.data.command.tool_id || typeof response.data.requires_approval !== 'boolean') throw new Error('Invalid agent proposal.');
         if (!controller.signal.aborted) {
           setProposal(response.data); setSavedId(response.data.recommendation_id || '');
           try { if (response.data.recommendation_id) sessionStorage.setItem('depo:agent-recommendation', response.data.recommendation_id); } catch { /* optional bookmark */ }
@@ -50,8 +50,8 @@ export default function AgentProposalPanel() {
         if (proposal.requires_approval && (!actor.trim() || !token)) throw new Error('Enter the steward and connect governed access in Admin.');
         const command = proposal.command;
         setProposal(null); setReviewed(false);
-        response = await agenticClient.post(url('runs'), { ...command, approved_by: actor.trim(), approval_token: token }, options);
-        if (!controller.signal.aborted) { setMessage(`Execution completed. Agent run: ${response.data.run_id}`); setExecution(response.data); setProposal(null); setReviewed(false); }
+        response = await agenticClient.post(url('runs'), { ...command, approved_by: actor.trim(), approval_token: token, wait_for_completion: false }, options);
+        if (!controller.signal.aborted) { setMessage(response.data.status === 'queued' ? `Execution queued. Workflow run: ${response.data.run_id}. Inspect its status before retrying.` : `Execution completed. ${response.data.execution_kind === 'workflow' ? 'Workflow' : 'Agent'} run: ${response.data.run_id}`); setExecution(response.data); setProposal(null); setReviewed(false); }
       }
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -62,10 +62,13 @@ export default function AgentProposalPanel() {
     }
     finally { if (!controller.signal.aborted) setBusy(false); }
   };
-  return <section aria-label="Agent recommendations" className="depo-panel"><h3>Agent recommendations</h3>
+  return <section aria-label="Agent recommendations" className="depo-panel depo-agent-recommendations">
+    <div className="depo-panel__header"><h3>Agent recommendations</h3></div>
+    <div className="depo-panel__body">
     <p>Ask an agent to propose one permitted action. Review its inputs before execution; a recommendation does not grant approval.</p>
     <button disabled={busy} onClick={() => { reset(); operate('load'); }}>Load agents</button>
-    <label>Agent <select aria-label="Recommendation agent" disabled={busy} value={agent} onChange={event => { reset(); setAgent(event.target.value); }}>{agents.map(item => <option key={item.id} value={item.id}>{item.name || item.id}</option>)}</select></label>
+    <label>Agent <select aria-label="Recommendation agent" disabled={busy || !agents.length} value={agent} onChange={event => { reset(); setAgent(event.target.value); }}>{!agents.length && <option value="">Load agents to select an agent</option>}{agents.map(item => <option key={item.id} value={item.id}>{item.name || item.id}</option>)}</select></label>
+    {agent && <p>{agents.find(item => item.id === agent)?.description} {agents.find(item => item.id === agent)?.registration_status}</p>}
     <label>Task <textarea aria-label="Recommendation task" maxLength={8000} disabled={busy} value={task} onChange={event => { reset(); setTask(event.target.value); }} /></label>
     <button disabled={busy || !agent || !task.trim()} onClick={() => operate('suggest')}>Get recommendation</button>
     <label>Saved recommendation ID <input aria-label="Saved recommendation ID" value={savedId} disabled={busy} onChange={event => { reset(); setSavedId(event.target.value); }} /></label>
@@ -77,6 +80,7 @@ export default function AgentProposalPanel() {
     </div>}
     {busy && <><button onClick={reset}>Stop waiting</button><p>Stopping the wait does not undo an execution. Inspect agent telemetry before retrying a write.</p></>}
     {message && <p role="status">{message}</p>}
-    {execution && <details open><summary>Execution result</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(execution.result, null, 2)}</pre></details>}
+    {execution && <><button onClick={() => window.dispatchEvent(new CustomEvent('depo:inspect-agent-run', {detail:execution}))}>{execution.execution_kind === 'workflow' ? 'Inspect workflow execution' : 'Inspect standalone execution'}</button><details open><summary>Execution result</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(execution.result, null, 2)}</pre></details></>}
+    </div>
   </section>;
 }

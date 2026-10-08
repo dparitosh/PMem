@@ -38,7 +38,8 @@ def extend_catalog(source):
         if identifier not in ids:
             catalog["agents"].append(dict(id=identifier, name="DT " + role,
                                          tools=tools, approval_required=False))
-    return catalog
+    from .prompt_policy import attach_policies
+    return attach_policies(catalog)
 
 
 def capabilities():

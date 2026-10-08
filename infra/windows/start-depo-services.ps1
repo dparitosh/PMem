@@ -121,7 +121,7 @@ if (-not (Test-Path $manifestPath)) { throw "Deployment service manifest was not
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $services = @($manifest.services | ForEach-Object { @{ Name=$_.id; Module=$_.module; Port=[int]$_.port } })
 $services += @($manifest.workers | ForEach-Object { @{ Name=$_.id; Module=$_.module; Port=$null } })
-if ($services.Count -ne 12) { throw "Deployment manifest must define ten HTTP services and two workers." }
+if ($services.Count -ne 13) { throw "Deployment manifest must define ten HTTP services and three workers." }
 $startedServices = @()
 try {
 foreach ($service in $services) {

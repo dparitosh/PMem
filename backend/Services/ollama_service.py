@@ -46,15 +46,18 @@ class OllamaService:
             body['prompt'] = full_prompt
         else:
             body['messages'] = [{'role': 'user', 'content': full_prompt}]
-        response = self._session.post(
-            self._native_base_url() + '/api/' + operation,
-            json=body, headers=self._headers(), timeout=ollama_timeout())
-        response.raise_for_status()
-        result = response.json()
-        content = result.get('response') if operation == 'generate' else result.get('message', {}).get('content')
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError('Ollama returned no answer')
-        return content.strip()
+        from backend.core.ollama_limits import request_slot_sync
+        with request_slot_sync(self._native_base_url() + '/api/' + operation):
+            response = self._session.post(
+                self._native_base_url() + '/api/' + operation,
+                json=body, headers=self._headers(), timeout=ollama_timeout())
+            response.raise_for_status()
+            result = response.json()
+            content = result.get('response') if operation == 'generate' else result.get('message', {}).get('content')
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError('Ollama returned no answer')
+            return content.strip()
+
 
     def health_check(self) -> bool:
         """Check that the configured model appears in a valid model list."""

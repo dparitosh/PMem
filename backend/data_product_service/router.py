@@ -209,7 +209,13 @@ async def revoke(product_version: str, payload: dict, request: Request) -> dict:
         if not record:
             raise HTTPException(404, "Data product not found")
         approver = approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
-        revoked = {**record, "status": "revoked", "lifecycle_state": "revoked", "revoked_by": approver, "revoked_at": _now()}
+        request_id = str(payload.get('idempotency_key') or '')
+        if record.get('lifecycle_state') == 'revoked':
+            if request_id and record.get('revocation_request_id') != request_id:
+                raise HTTPException(409,'Product was revoked by a different operation')
+            return _public_product(record)
+        revoked = {**record, "status": "revoked", "lifecycle_state": "revoked", "revoked_by": approver, "revoked_at": _now(),
+                   'revocation_request_id':request_id,'revocation_reason':str(payload.get('reason') or '')}
         # Commit the local revocation before a remote request can block, fail,
         # or be interrupted by process shutdown. Reconciliation delivers it.
         revoked = {**revoked, "status": "pending_catalog_registration", "next_catalog_attempt_at": None}

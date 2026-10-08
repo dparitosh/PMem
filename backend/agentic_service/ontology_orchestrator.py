@@ -259,24 +259,24 @@ def plan_bridge(instance_metadata: dict[str, Any], ontology_path: str | None = N
         "required_validations": ["class_existence_check", "property_type_check", "domain_range_check", "approval_required"],
         "status": "review_required" if any(item["status"] != "candidate" for item in items) or summary.get("term_index_truncated") else "ready_for_mapping",
         "publication": "requires_human_approval",
-        "llm": _llm_suggestion(plan, instance_metadata),
+        "llm": _llm_suggestion(plan, instance_metadata, {"terms": summary.get("term_index", [])[:30], "candidates": candidates[:20],
+            "artifact_digest": summary.get("artifact_digest"), "term_index_truncated": summary.get("term_index_truncated", False)}),
     }
     return result
 
 
-def _llm_suggestion(plan: dict[str, int], instance_metadata: dict[str, Any]) -> dict[str, Any]:
+def _llm_suggestion(plan: dict[str, int], instance_metadata: dict[str, Any], evidence=None) -> dict[str, Any]:
     """Return an optional bounded suggestion; never treat it as approval."""
     if os.getenv("ONTOLOGY_AGENT_LLM_ENABLED", "false").lower() != "true":
         return {"enabled": False, "mode": "deterministic-evidence-only"}
     try:
         import asyncio
-        from .local_llm import summarize
-        content = asyncio.run(summarize(
-            'Provide at most three validation questions about these measured mapping counts. Do not propose writes or approvals.',
-            [{'evidence_type': 'mapping_summary', 'counts': plan, 'metadata_keys': sorted(instance_metadata)}]))
-        return {"enabled": True, "status": "suggestion", "mode": "review-only", "text": str(content)[:4000]}
-    except Exception:
-        return {"enabled": True, "status": "unavailable", "mode": "review-only"}
+        from .local_llm import review_ontology_evidence
+        review = asyncio.run(review_ontology_evidence({**(evidence or {}), 'counts': plan, 'metadata_keys': sorted(instance_metadata)}))
+        text = '\n'.join(item['question'] for item in review['questions']) + '\n' + review['limitations']
+        return {"enabled": True, "status": "suggestion", "mode": "review-only", "text": text, "review": review}
+    except Exception as exc:
+        return {"enabled": True, "status": "unavailable", "mode": "review-only", "error_type": type(exc).__name__}
 
 
 def orchestrate(payload: dict[str, Any]) -> dict[str, Any]:

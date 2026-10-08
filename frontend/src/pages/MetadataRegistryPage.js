@@ -1,3 +1,5 @@
+import { dictionaryPayload } from '../services/ontologyPayload';
+import WorkspaceTabs from '../Components/WorkspaceTabs';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Clock3, Database, RefreshCw, ShieldCheck } from 'lucide-react';
@@ -191,7 +193,7 @@ export default function MetadataRegistryPage() {
     try {
       const response = await API_METHODS.ontology.getDataDictionary(ontologyId, { signal: controller.signal });
       if (controller.signal.aborted || dictionaryControllerRef.current !== controller) return;
-      const payload = response?.data?.data || {};
+      const payload = dictionaryPayload(response?.data);
       const source = ontologies.find((entry) => (entry.ontology_id || entry.value || entry.prefix) === ontologyId);
       const prefix = response?.data?.prefix || source?.prefix || ontologyId;
       const nodes = [
@@ -254,17 +256,7 @@ export default function MetadataRegistryPage() {
           </button>
         </div>
         <div className="depo-panel__body" style={{ display: 'grid', gap: 12 }}>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} role="tablist" aria-label="Metadata registry views">
-            {[
-              ['assets', 'Registry assets'],
-              ['dictionary', 'Data Dictionary'],
-            ].map(([id, label]) => (
-              <button key={id} type="button" role="tab" aria-selected={section === id} onClick={() => setSection(id)}
-                className="depo-button depo-button--secondary" style={section === id ? { background: '#123b67', color: '#fff' } : undefined}>
-                {label}
-              </button>
-            ))}
-          </div>
+          <WorkspaceTabs label="Metadata registry views" tabs={[{id:'assets',label:'Registry assets'},{id:'dictionary',label:'Data Dictionary'}]} value={section} onChange={setSection} />
 
           {section === 'dictionary' && (
             <div style={{ display: 'grid', gap: 10 }}>

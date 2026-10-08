@@ -18,3 +18,11 @@ test('does not mount the legacy graph view when graph storage is not configured'
   expect(await screen.findByText('Graph store setup required')).toBeInTheDocument();
   expect(screen.queryByText('Graph canvas')).not.toBeInTheDocument();
 });
+
+
+test.each([{}, {status:'unknown'}])('rejects malformed or unknown health contracts %s', async data => {
+  health.mockResolvedValueOnce({data});
+  render(<GraphExplorerPage />);
+  expect(await screen.findByText('Graph Explorer is unavailable')).toBeInTheDocument();
+  expect(screen.queryByText('Graph canvas')).not.toBeInTheDocument();
+});

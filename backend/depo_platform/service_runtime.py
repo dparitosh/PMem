@@ -138,7 +138,7 @@ def create_service_app(
         allow_credentials=False,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID", "X-Session-ID", "Ocp-Apim-Subscription-Key"],
-        expose_headers=["X-Request-ID", "X-Session-ID", "X-Session-Expires-At", "X-DEPO-Run-ID", "OData-Version"],
+        expose_headers=["X-Request-ID", "X-Session-ID", "X-Session-Expires-At", "X-DEPO-Run-ID", "X-DEPO-Run-Kind", "OData-Version"],
     )
 
     from .authorization import graph_read_identity

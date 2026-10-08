@@ -119,6 +119,12 @@ export default function SemanticBridgeJobs({ ontologyId, importTaskId, manualMap
       {agentReport.steps?.at(-1)?.result?.candidate_limit_reached && <p>Candidate search was limited. Narrow the ontology or review the full Bridge preview.</p>}
       {agentReport.steps?.at(-1)?.result?.llm && <div>
         <strong>Model recommendation (review only):</strong>
+        {agentReport.steps.at(-1).result.llm.review && <div>
+          {agentReport.steps.at(-1).result.llm.review.questions?.map((question, index) => <div key={index}>
+            <p>{question.question}</p><p>Evidence IRIs: {question.evidence_iris?.join(', ') || 'No citation supplied'}</p>
+          </div>)}
+          <p>Limitations: {agentReport.steps.at(-1).result.llm.review.limitations}</p>
+        </div>}
         <p>{agentReport.steps.at(-1).result.llm.text || (agentReport.steps.at(-1).result.llm.enabled ? 'Model unavailable; deterministic review evidence remains available.' : 'Model recommendations are disabled.')}</p>
       </div>}
     </div>}

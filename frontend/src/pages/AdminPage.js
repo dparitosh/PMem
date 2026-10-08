@@ -1,5 +1,6 @@
 import CredentialSettings from '../Components/CredentialSettings';
 import AgentControlPanel from '../Components/AgentControlPanel';
+import AgentProposalPanel from '../Components/AgentProposalPanel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot } from 'lucide-react';
 import AdminPanel from '../Components/AdminPanel';
@@ -263,6 +264,7 @@ export default function AdminPage({ onSchemaCleaned }) {
 
       <CredentialSettings />
       <ServiceIntegrationPanel />
+      {agenticConfigured && <AgentProposalPanel />}
       {agenticConfigured && <AgentControlPanel />}
 
       <KpiStrip

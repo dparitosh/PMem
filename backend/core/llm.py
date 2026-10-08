@@ -364,3 +364,22 @@ if USE_UNSTRUCTURED_LLM:
 # print("__")
 # embedding = embeddings.embed_query("What is my name?")
 # print(len(embedding))
+
+
+# Export guarded Ollama clients; Azure adapters keep their provider policies.
+if USE_LLM == 'ollama':
+    from backend.core.guarded_ollama import GuardedOllama
+    from backend.core.ollama_auth import ollama_generation_route, ollama_tool_chat_root
+    if LLM_AVAILABLE:
+        llm = GuardedOllama(llm, ollama_generation_route()[0])
+    if TOOL_LLM_AVAILABLE:
+        tool_llm = GuardedOllama(tool_llm, ollama_tool_chat_root() + '/api/chat')
+    if not USE_UNSTRUCTURED_LLM:
+        unstructured_llm = llm
+if USE_UNSTRUCTURED_LLM and UNSTRUCTURED_LLM_TYPE == 'ollama' and not unstructured_llm_error:
+    from backend.core.guarded_ollama import GuardedOllama
+    from backend.core.ollama_auth import ollama_generation_route
+    unstructured_llm = GuardedOllama(unstructured_llm, ollama_generation_route(UNSTRUCTURED_OLLAMA_BASE_URL)[0])
+if USE_EMBEDDER == 'ollama' and EMBEDDER_AVAILABLE:
+    from backend.core.guarded_ollama import GuardedEmbeddings
+    embeddings = GuardedEmbeddings(embeddings, ollama_base_url(OLLAMA_BASE_URL) + '/api/embed')

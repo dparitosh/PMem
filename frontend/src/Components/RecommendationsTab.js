@@ -517,10 +517,11 @@ const RecommendationsTab = () => {
   const [loading, setLoading] = useState(false);
   const [health, setHealth] = useState(null);
   const [healthLoading, setHealthLoading] = useState(true);
+  const [healthRevision, setHealthRevision] = useState(0);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
-  const recommendationReady = health?.status === 'ok' && health?.readiness?.scenario_ready === true;
+  const recommendationReady = !healthLoading && health?.status === 'ok' && health?.readiness?.scenario_ready === true;
   const readinessMessage = health?.readiness?.message || health?.error || (
     healthLoading ? 'Checking recommendation readiness...' : 'Recommendation readiness is unavailable.'
   );
@@ -529,7 +530,8 @@ const RecommendationsTab = () => {
   useEffect(() => {
     let cancelled = false;
     setHealthLoading(true);
-    API_METHODS.recommendations.health()
+    const controller = new AbortController();
+    API_METHODS.recommendations.health({ signal: controller.signal, timeout: 15000 })
       .then(resp => {
         if (!cancelled) setHealth(resp.data);
       })
@@ -547,8 +549,8 @@ const RecommendationsTab = () => {
       .finally(() => {
         if (!cancelled) setHealthLoading(false);
       });
-    return () => { cancelled = true; };
-  }, []);
+    return () => { cancelled = true; controller.abort(); };
+  }, [healthRevision]);
 
   // Listen for prefill events from graph tooltip recommendation buttons
   useEffect(() => {
@@ -579,6 +581,7 @@ const RecommendationsTab = () => {
   const handleAnalyse = useCallback(async () => {
     const generation = ++analysisGeneration.current;
     if (!inputValue.trim() || !activeService) return;
+    if (!recommendationReady) { setLoading(false); setError('Verify recommendation readiness before analysis.'); return; }
     setLoading(true); setError(''); setResult(null);
     try {
       let resp;
@@ -595,7 +598,9 @@ const RecommendationsTab = () => {
     } finally {
       if (generation === analysisGeneration.current) setLoading(false);
     }
-  }, [activeService, inputValue, topN]);
+  }, [activeService, inputValue, topN, recommendationReady]);
+
+  useEffect(() => () => { analysisGeneration.current += 1; }, []);
 
   const handleKeyDown = (e) => { if (e.key === 'Enter') handleAnalyse(); };
 
@@ -658,6 +663,7 @@ const RecommendationsTab = () => {
             </div>
             <div style={{ fontSize: 11, lineHeight: 1.35, color: C.textSec }}>
               {readinessMessage}
+              <button type="button" disabled={healthLoading} onClick={() => setHealthRevision(value => value + 1)}>Retry recommendation readiness</button>
               {health?.readiness && (
                 <span>
                   {' '}Current graph: {health.readiness.individual_count || 0} normalized instances,

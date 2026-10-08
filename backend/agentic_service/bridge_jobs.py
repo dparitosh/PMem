@@ -142,6 +142,19 @@ class BridgeJobs:
                 raise
             return self._completed(job, receipt)
 
+    def reconcile_receipt(self, job_id, approved_ids):
+        """Reconcile a verified graph receipt without dispatching publication."""
+        with self.store.advisory_lock(job_id) as acquired:
+            if not acquired:
+                raise BridgeConflict('Publication is already running. Refresh its status.')
+            job = self.get(job_id)
+            if not approved_ids or set(job.get('approved_ids', [])) != set(approved_ids):
+                raise BridgeConflict('Receipt selection does not match the retained approved candidates')
+            receipt = self.graph.receipt(job_id)
+            if not isinstance(receipt, dict):
+                raise BridgeConflict('No matching graph publication receipt is available')
+            return self._completed(job, receipt)
+
     def _completed(self, job, receipt):
         if (not job.get('request_digest') or
                 receipt.get('request_digest') != job['request_digest'] or

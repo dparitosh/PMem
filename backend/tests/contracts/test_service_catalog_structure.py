@@ -16,7 +16,7 @@ def test_service_entrypoints_and_identifiers():
         module, attribute = item["module"].split(":")
         assert attribute == "app"
         assert (ROOT / (module.replace(".", "/") + ".py")).is_file()
-    assert {item["id"] for item in manifest["workers"]} == {"data-product-outbox", "data-pipeline-worker"}
+    assert {item["id"] for item in manifest["workers"]} == {"data-product-outbox", "data-pipeline-worker", "agentic-workflow-worker"}
     for item in manifest["workers"]:
         assert (ROOT / (item["module"].replace(".", "/") + ".py")).is_file()
 

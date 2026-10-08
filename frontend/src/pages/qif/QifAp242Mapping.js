@@ -19,7 +19,12 @@ export default function QifAp242Mapping() {
   const [evidence, setEvidence] = useState(null); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   const request = useRef(null);
   useEffect(() => { request.current?.abort(); setEvidence(null); setAgentReport(null); setError(''); setBusy(false); }, [qif, ap242]);
-  useEffect(() => () => request.current?.abort(), []);
+  useEffect(() => {
+    const clear = () => { request.current?.abort(); setEvidence(null); setAgentReport(null); setError(''); setBusy(false); };
+    const events = ['depo:credentials-changed', 'depo:credentials-cleared', 'depo:session-expired'];
+    events.forEach(event => window.addEventListener(event, clear));
+    return () => { request.current?.abort(); events.forEach(event => window.removeEventListener(event, clear)); };
+  }, []);
   const selectedAvailable = id => ontologies.some(item => item.value === id && !item.disabled);
   useEffect(() => {
     if (loading) return;

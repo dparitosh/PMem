@@ -39,7 +39,7 @@ foreach ($relative in $documentedPaths) {
 
 $manifest = Get-Content -LiteralPath (Join-Path $root 'infra\deployment\services.json') -Raw | ConvertFrom-Json
 $services = @($manifest.services); $workers = @($manifest.workers)
-if ($services.Count -ne 10 -or $workers.Count -ne 2) { throw 'Service manifest must define ten APIs and two workers.' }
+if ($services.Count -ne 10 -or $workers.Count -ne 3) { throw 'Service manifest must define ten APIs and three workers.' }
 $ids = @($services.id) + @($workers.id)
 if (($ids | Sort-Object -Unique).Count -ne $ids.Count) { throw 'Service manifest contains duplicate component IDs.' }
 $ports = @($services.port | ForEach-Object { [int]$_ })
