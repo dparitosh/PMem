@@ -25,6 +25,8 @@ async def execute(payload, request):
     command = {'workflow_id': workflow_id, 'inputs': payload.get('inputs', {}),
                'approved_by': payload.get('approved_by'), 'approval_token': payload.get('approval_token')}
     mode = execution_mode()
+    if mode != 'worker' and payload.get('wait_for_completion', True) is False:
+        raise HTTPException(422, 'wait_for_completion=false requires AGENTIC_EXECUTION_MODE=worker')
     if mode == 'worker':
         try: result = await enqueue(command, request)
         except ValueError as exc: raise HTTPException(422, str(exc)) from exc

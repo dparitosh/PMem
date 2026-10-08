@@ -1,10 +1,14 @@
 """Read-only OSLC-first retrieval for agentic GraphRAG context."""
 from __future__ import annotations
 import os
+import asyncio
 import re
+import json
 from typing import Any
 from urllib.parse import urlsplit
 import httpx
+from .response_limits import read_bounded_response
+from backend.depo_platform.network import bounded_timeout_seconds
 
 
 class OSLCGraphRAG:
@@ -26,7 +30,8 @@ class OSLCGraphRAG:
             raise ValueError('query is required')
         if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', resource_type):
             raise ValueError('resource_type is invalid')
-        limit = max(1, min(int(limit), self.max_results))
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= self.max_results:
+            raise ValueError('limit must be an integer between 1 and 20')
         base = self._base()
         headers = {'Accept': 'application/json'}
         token = os.getenv('OSLC_REMOTE_TOKEN', '').strip()
@@ -35,14 +40,19 @@ class OSLCGraphRAG:
         params = {'oslc.searchTerms': query, 'oslc.pageSize': limit}
         endpoint = f'{base}/oslc/query/{resource_type}'
         try:
-            async with httpx.AsyncClient(timeout=float(os.getenv('OSLC_CLIENT_TIMEOUT_SECONDS', '20')), follow_redirects=False) as client:
-                response = await client.get(endpoint, params=params, headers=headers)
-                response.raise_for_status()
-                payload = response.json()
-        except httpx.HTTPError as exc:
+            timeout = bounded_timeout_seconds('OSLC_CLIENT_TIMEOUT_SECONDS', default=20)
+            async with asyncio.timeout(timeout), httpx.AsyncClient(timeout=timeout, follow_redirects=False, trust_env=False) as client:
+                async with client.stream('GET', endpoint, params=params, headers=headers) as response:
+                    response.raise_for_status()
+                    payload = json.loads(await read_bounded_response(response))
+            if not isinstance(payload, (dict, list)):
+                raise ValueError('Invalid OSLC response')
+        except (httpx.HTTPError, ValueError, TimeoutError) as exc:
             raise RuntimeError('OSLC retrieval is unavailable') from exc
         raw = payload.get('results') if isinstance(payload, dict) else payload
         raw = raw if isinstance(raw, list) else payload.get('members', []) if isinstance(payload, dict) else []
+        if not isinstance(raw, list):
+            raise RuntimeError('OSLC retrieval returned an invalid member collection')
         evidence = []
         for item in raw[:limit]:
             if not isinstance(item, dict):

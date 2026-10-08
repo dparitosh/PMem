@@ -210,7 +210,7 @@ async def oslc_graph_rag_route(payload: dict[str, Any]) -> dict:
         return await oslc_graph_rag.retrieve(
             str(payload.get("query") or ""),
             str(payload.get("resource_type") or "resources"),
-            int(payload.get("limit") or 10),
+            payload.get("limit", 10),
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

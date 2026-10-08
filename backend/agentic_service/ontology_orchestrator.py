@@ -27,8 +27,12 @@ def _allowed_path(value: str) -> Path:
     configured = os.getenv("ONTOLOGY_AGENT_ALLOWED_ROOTS", "data;ontology;backend/test_data;ontology_uploads")
     roots = []
     for item in configured.split(";"):
+        if not item.strip():
+            continue
         root = Path(item.strip()).expanduser()
         roots.append((root if root.is_absolute() else ROOT / root).resolve())
+    if not roots:
+        raise ValueError("ONTOLOGY_AGENT_ALLOWED_ROOTS must contain an approved directory")
     if not path.is_file() or not any(path == root or root in path.parents for root in roots):
         raise ValueError("ontology_path must name an existing ontology file under an approved ontology data directory")
     max_bytes = int(os.getenv("ONTOLOGY_AGENT_MAX_BYTES", str(25 * 1024 * 1024)))

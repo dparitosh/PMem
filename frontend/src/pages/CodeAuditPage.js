@@ -36,11 +36,13 @@ const itemSummary = (item) => item.files
   : ['class', 'function'].includes(item.type) ? `${item.type} · ${item.qualified_name || item.label}${item.line ? ` · line ${item.line}` : ''}`
   : `${languageLabel(item.language)} · ${item.lines} lines · ${item.architecture_role || (item.test ? 'test' : 'application')} · rank ${Number(item.rank_score || 0).toFixed(1)} · priority ${Number(item.streamline_priority || 0).toFixed(1)}`;
 
-const reviewHeadline = (report) => {
-  const recommendations = report?.graph?.analysis?.recommendations || [];
+export const reviewHeadline = (report) => {
+  const value = report?.graph?.analysis?.recommendations;
+  const recommendations = Array.isArray(value) ? value.filter(item => item && typeof item === 'object') : [];
   if (!recommendations.length) return 'No high-priority structural review item is currently identified.';
   const top = recommendations[0];
-  return `${shortFileName(top.file)} — ${top.reasons.join(', ')}`;
+  const reasons = Array.isArray(top.reasons) ? top.reasons.filter(reason => typeof reason === 'string' && reason.trim()) : [];
+  return `${shortFileName(top.file)} — ${reasons.length ? reasons.join(', ') : 'Review details unavailable'}`;
 };
 
 export default function CodeAuditPage() {
