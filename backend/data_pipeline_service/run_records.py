@@ -189,6 +189,7 @@ def complete(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
         "normalize-ceim": "normalized-ceim-batch-v1",
         "data-quality-assessment": "data-quality-report-v1",
         "schema-analytics-product": "schema-analytics-data-product-draft-v1",
+        "xml-analytics-materialize": "postgres-xml-load-v1",
         "validate-semantic-batch": "semantic-validation-report-v1",
         "normalize-unstructured-ceim": "semantic-validation-report-v1",
         "validate-unstructured-evidence": "validated-unstructured-evidence-v1",
@@ -220,6 +221,7 @@ def complete(record: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
             "artifacts": list(draft.get("artifacts") or []),
             "quality_status": draft.get("quality_status"),
             "publication_requirements": list(draft.get("publication_requirements") or []),
+            "sources": list(draft.get("sources") or []),
         }
     retained_payload = replay_payload(record)
     next_checkpoint = retained_payload.get("next_checkpoint")

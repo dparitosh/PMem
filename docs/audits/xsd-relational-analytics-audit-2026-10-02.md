@@ -1,5 +1,110 @@
 # XSD serialization → relational analytics audit — 2026-10-02
 
+## Implementation update — 2026-10-09
+
+Follow-up regression fixes: schemas without a target namespace now match XML
+roots correctly. Present empty scalar elements use their XSD default; absent
+and explicitly nil elements remain null. Complex nillable roots, including the
+XSD boolean spelling `1`, are blocked before database writes until explicit
+nil-state storage is implemented. Editing XML load dependencies, business views,
+job selection or uploaded artifact invalidates the old UI receipt. Live
+PostgreSQL verification and the specialized mappings listed below remain open.
+
+An opt-in database regression test is available at
+`backend/tests/test_xml_analytics_postgres.py`. Configure `DEPO_TEST_DATABASE_URL`
+through your test environment to an isolated PostgreSQL database whose test role
+can create schemas, then run:
+
+```powershell
+python -m pytest backend/tests/test_xml_analytics_postgres.py -q
+```
+
+The test uses unique schema names inside an outer transaction and rolls back
+all fixtures. It checks persisted XML bytes, row counts, retry idempotency and
+rollback after loss of execution authorization. It never falls back to the
+application database URL. A skipped result means database verification has not
+been performed; it is not a passing live database check.
+
+The historical findings below describe the earlier implementation. A supported
+XML materialization path is now registered as `xml-analytics-materialize` in the
+existing approved Data Flow job registry, with quality profile
+`schema-analytics-v1`. Conversion remains a design operation; publication never
+executes DDL implicitly.
+
+The Data Products page includes **Load validated XML into PostgreSQL analytics**.
+Retain an XML instance through that panel, select an approved job, supply the
+retained root XSD artifact and dependency references, then submit the load.
+Root XSD and dependencies must already be retained by schema inspection.
+
+Example job definition for `POST /api/v1/pipeline/jobs/definitions`:
+
+```json
+{
+  "job_id": "xml-analytics-load",
+  "name": "Validated XML analytics load",
+  "version": "1.0.0",
+  "owner": "data-engineering",
+  "job_type": "xml-analytics-materialize",
+  "quality_profile": "schema-analytics-v1"
+}
+```
+
+Approve that definition through the existing job approval operation. Execution
+uses `DATA_JOB_EXECUTION_TOKEN`; retaining XML uses `INGESTION_WRITE_TOKEN`.
+The load payload accepts `schema_artifact_id`, `xml_artifact_id`,
+`schema_dependencies` (relative path → retained artifact ID), `schema_prefix`
+(default `depo_analytics`) and optional `business_views`.
+
+The worker requires lxml and PostgreSQL. Its database role must have CREATE on
+the database to create the dedicated versioned analytics schema, plus access to
+the configured control-plane registry. Grant this capability to the approved
+analytics worker role deliberately; ordinary API startup does not create or
+alter schemas. Schema names contain the validated prefix and XSD closure digest.
+Existing untracked schemas fail closed; different schema versions create new
+projections without altering or dropping an existing projection.
+
+One transaction creates the supported entity/link tables, validates and loads
+the instance, retains the original bytes in BYTEA and a queryable XML document,
+and commits a load receipt. Every entity row references its source document.
+Repeated inputs reconcile the receipt without inserting rows again. A failed
+write or lost worker lease rolls back the transaction. Raw XML/XSD input is
+bounded to 25 MiB each, schema dependencies to 63 files and loaded entities to
+100,000. XML is validated before any database writes; DTD/entity declarations
+and remote schema dependencies are forbidden.
+
+Business views require explicit entity grain and measures, for example:
+
+```json
+[
+  {
+    "name": "Entity count",
+    "entity_id": "{urn:example}Record",
+    "grain": "entity-instance",
+    "group_by": [],
+    "measures": [{"name": "count", "aggregate": "count"}]
+  }
+]
+```
+
+Use entity IDs and property names from the retained structural model. Supported
+aggregates are count/sum/avg/min/max with datatype checks. A changed business
+definition requires a different schema prefix. Without definitions, readiness
+is **structural data loaded**, not a certified business warehouse. Cross-entity
+joins, units, historical dimensions and KPI policies are not inferred.
+
+XML source profiles now default to one document. Batch profiles must use an
+explicit `records_path` or `mapping.record_mode = "children"`. Set
+`mapping.namespace_mode = "qualified"` and use Clark names such as
+`{urn:example}name` when namespaces share local names. Qualified source trees
+remain in `source_documents`; exact byte recovery uses the retained XML bytes.
+
+PostgreSQL backup now covers loaded XML bytes, entity/link data and receipts.
+Evidence packages and original XSD artifacts still need an artifact-store
+backup. Unsupported XSD choices/groups, identity XPath, facets, temporal rules,
+mixed content and nillable complex entities remain explicit load blockers.
+These restrictions prevent silent semantic loss; specialized mappings remain
+separate work.
+
 ## Conclusion
 
 Entities/properties/cardinality/datatypes can form a structural input contract for relational generation, but the current report is not complete enough to generate production DDL or analytical facts/dimensions automatically. It is explicitly a read-only mapping report. The schema-conversion analytics artifact currently retains ontology statistics and validation metadata, not a complete relational model or dimensional warehouse contract.

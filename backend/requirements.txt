@@ -8,6 +8,7 @@ pydantic>=2.11,<3
 python-multipart>=0.0.20
 httpx>=0.28,<0.29
 defusedxml>=0.7,<1
+lxml>=6.1,<7
 neo4j>=5.28,<6
 # Agent chat, GraphRAG, and Neo4j vector/cypher integrations use the
 # LangChain 0.3 API surface. Keep this family aligned until those modules are

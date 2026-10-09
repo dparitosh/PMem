@@ -4,6 +4,27 @@ from pathlib import Path
 from backend.data_product_service.packaging import build_package
 
 class PackageBoundaries(unittest.TestCase):
+    def test_oversized_manifest_is_rejected_without_visible_package(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); source=root/'source.txt'; source.write_text('evidence')
+            payload={'product_id':'large','version':'1.0.0','name':'Large','domain':'test','owner':'test','description':'x'*(8*1024*1024)}
+            with self.assertRaisesRegex(ValueError,'manifest exceeds'):
+                build_package(output_root=root,payload=payload,artifacts=[({'artifact_id':'sha256:abc'},source)])
+            self.assertFalse((root/'packages/large/1.0.0').exists())
+
+    def test_changed_source_during_copy_is_rejected(self):
+        from unittest.mock import patch
+        import shutil
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); source=root/'source.txt'; source.write_text('original')
+            copy=shutil.copy2
+            def changed(source_path,target):
+                source_path.write_text('changed'); return copy(source_path,target)
+            payload={'product_id':'changed','version':'1.0.0','name':'Changed','domain':'test','owner':'test'}
+            with patch('backend.data_product_service.packaging.shutil.copy2',changed), self.assertRaisesRegex(ValueError,'source changed'):
+                build_package(output_root=root,payload=payload,artifacts=[({'artifact_id':'sha256:abc'},source)])
+            self.assertFalse((root/'packages/changed/1.0.0').exists())
+
     def test_existing_package_rejects_changed_metadata_and_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

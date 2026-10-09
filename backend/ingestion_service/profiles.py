@@ -177,6 +177,7 @@ class SourceProfileStore:
     @staticmethod
     def _value_at(record: dict[str, Any], path: str) -> Any:
         """Read a simple dotted source path without allowing code expressions."""
+        if path in record: return record[path]
         value: Any = record
         for part in str(path or "").replace("/", ".").split("."):
             if not part:
@@ -194,18 +195,24 @@ class SourceProfileStore:
     def _local_name(tag: str) -> str:
         return str(tag).rsplit("}", 1)[-1]
 
-    def _xml_record(self, element: Any) -> dict[str, Any]:
-        record: dict[str, Any] = {self._local_name(key): value for key, value in element.attrib.items()}
+    def _xml_record(self, element: Any, *, qualified: bool = False) -> dict[str, Any]:
+        qualified_names = {}
+        for name in [*element.attrib, *(child.tag for child in element)]:
+            local = self._local_name(name)
+            if not qualified and local in qualified_names and qualified_names[local] != name:
+                raise ValueError('Ambiguous XML local name; use a namespace-qualified source profile: ' + local)
+            qualified_names[local] = name
+        record: dict[str, Any] = {(str(key) if qualified else self._local_name(key)): value for key, value in element.attrib.items()}
         qualified_children = []
         for child in element:
-            child_record = self._xml_record(child)
+            child_record = self._xml_record(child, qualified=qualified)
             qualified_children.append(child_record['_xml'])
-            key = self._local_name(child.tag)
+            key = str(child.tag) if qualified else self._local_name(child.tag)
             value = (child.text or "").strip()
             if len(child):
                 value = child_record
             elif child.attrib:
-                attributes = {self._local_name(name): item for name, item in child.attrib.items()}
+                attributes = {(str(name) if qualified else self._local_name(name)): item for name, item in child.attrib.items()}
                 attribute_key = f"{key}_attributes"
                 record.setdefault(attribute_key, []).append(attributes)
             if key in record:
@@ -263,11 +270,11 @@ class SourceProfileStore:
         root = ET.fromstring(content)
         if record_path:
             selected: Iterable[Any] = root.findall(record_path)
-        elif len(root):
+        elif mapping.get('record_mode') == 'children':
             selected = list(root)
         else:
             selected = [root]
-        return [self._xml_record(element) for element in selected]
+        return [self._xml_record(element, qualified=mapping.get('namespace_mode') == 'qualified') for element in selected]
 
     def normalize_batch(self, *, profile: dict[str, Any], filename: str, content: bytes) -> dict[str, Any]:
         records = self.extract_records(profile=profile, filename=filename, content=content)
@@ -281,6 +288,7 @@ class SourceProfileStore:
             "entities": entities,
             "relationships": relationships,
             "records_processed": len(records),
+            "source_documents": [record['_xml'] for record in records if '_xml' in record],
             "provenance": {"profile_id": profile["profile_id"], "profile_version": profile["version"], "source_filename": filename},
         }
 

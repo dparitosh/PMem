@@ -20,6 +20,16 @@
 .chat-table th, .chat-table td { border: 1px solid #dbe3ec; padding: 5px 6px; text-align: left; vertical-align: top; }
 .chat-table th { background: #eaf2fb; color: #004b87; font-weight: 800; }
 .chat-table code { color: #004b87; background: #f0f5fa; padding: 1px 3px; border-radius: 3px; }
-.chat-message-label { font-size: 12px; font-weight: 700; margin-bottom: 8px; opacity: .85; }
-.chat-latest-button { align-self: center; margin: 8px; padding: 8px 14px; border-radius: 20px; border: 1px solid var(--ui-border, #c2d9f0); color: var(--ui-text, #252a2e); background: var(--ui-surface, #fff); cursor: pointer; }
+.chat-message-label { font-size: 12px; font-weight: 700; margin-bottom: 4px; opacity: .85; }
+.chat-history-region { position: relative; display: flex; flex: 1 1 0; min-height: 0; }
+.chat-latest-button { position: absolute; bottom: 8px; right: 12px; max-width: calc(100% - 24px); padding: 6px 12px; font-size: 12px; border-radius: 20px; border: 1px solid var(--ui-border, #c2d9f0); color: var(--ui-text, #252a2e); background: var(--ui-surface, #fff); box-shadow: 0 2px 8px #0002; cursor: pointer; }
+.chat-toolbar-actions { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.chat-composer { flex: 0 0 auto; padding: 6px 10px; border-top: 1px solid var(--ui-border, #d9e2ec); background: var(--ui-surface, var(--theme-color-std-background, #fff)); }
+.chat-composer-form { display: flex; align-items: flex-end; gap: 8px; }
+.chat-composer-form textarea { box-sizing: border-box; flex: 1; min-width: 0; min-height: 56px; max-height: 100px; resize: none; padding: 8px 10px; border: 1px solid var(--ui-border, #c2d9f0); border-radius: 6px; font: inherit; font-size: 14px; line-height: 1.4; color: var(--ui-text, var(--theme-color-std-text, #252a2e)); background: var(--ui-surface, var(--theme-color-std-background, #fff)); }
+.chat-composer-form textarea:focus-visible { outline: 2px solid var(--ui-accent, #005a9c); outline-offset: 1px; }
+.chat-composer-form button { padding: 8px 12px; border: 0; border-radius: 6px; background: var(--ui-accent, #005a9c); color: #fff; cursor: pointer; }
+.chat-composer-form button:disabled { opacity: .5; cursor: default; }
+.chat-answer-help { margin-top: 4px; font-size: 11px; color: var(--theme-color-soft-text, #66788a); }
+.chat-answer-help summary { cursor: pointer; }
 .chat-messages:focus-visible { outline: 2px solid var(--ui-accent, #005a9c); outline-offset: -2px; }

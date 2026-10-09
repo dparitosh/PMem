@@ -10,7 +10,7 @@
 .ix-landing-page__card, .ix-landing-page__chat { width: 100%; min-height: 0; display: block; align-self: stretch; border-radius: 0; box-shadow: none; }
 .ix-landing-page__registry { height: 270px; }
 .ix-landing-page__registry ix-card-content { overflow: auto; }
-.ix-landing-page__chat { height: 460px; display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--theme-color-weak-bdr, #d9e2ec); }
+.ix-landing-page__chat { height: clamp(600px, 78dvh, 900px); display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--theme-color-weak-bdr, #d9e2ec); }
 .ix-landing-page__card ix-card-content { display: block; }
 .ix-landing-page__profile { overflow: auto; }
 .ix-landing-page__alert { display: flex; align-items: center; gap: 8px; color: var(--theme-color-alarm, #b42318); font-size: 13px; }
@@ -26,7 +26,7 @@
 @media (max-width: 640px) { .ix-landing-page { padding: 16px; } .ix-landing-page__intro { align-items: flex-start; flex-direction: column; } .ix-landing-page__intro-actions { width: 100%; justify-content: space-between; } }
 
 /* Explicit flex sizing avoids IX shadow-content clipping and guessed title heights. */
-.ix-landing-page__chat-title { flex: 0 0 auto; margin: 0; padding: 12px 16px; font-size: 16px; }
+.ix-landing-page__chat-title { flex: 0 0 auto; margin: 0; padding: 8px 12px; font-size: 16px; }
 .ix-landing-page__chat-body { flex: 1 1 0; min-height: 0; min-width: 0; overflow: hidden; }
 .ix-landing-page__chat-body > * { height: 100%; min-height: 0; }
 .ix-landing-page__chat .chat-messages { scrollbar-gutter: stable; overflow-wrap: anywhere; }

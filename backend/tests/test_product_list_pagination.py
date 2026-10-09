@@ -16,7 +16,8 @@ class ProductListPaginationTests(unittest.TestCase):
             rows = sorted(self.records.values(), key=lambda row: (row.get(order_field, ''), row['product_id']), reverse=True)
             return len(rows), rows[offset:offset+limit]
         scope = {'store': SimpleNamespace(page=page), 'HTTPException': Rejected}
-        exec(compile(ast.Module(body=[function], type_ignores=[]), 'products', 'exec'), scope)
+        public = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == '_public_product')
+        exec(compile(ast.Module(body=[public, function], type_ignores=[]), 'products', 'exec'), scope)
         self.list_products = scope['list_products']
 
     def test_pages_include_all_versions_without_exposing_keys(self):

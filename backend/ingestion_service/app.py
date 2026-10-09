@@ -16,6 +16,7 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Health", "/api/v1/ingestion/health", description="Ingestion service health"),
         ServiceCapability("Source profiles", "/api/v1/source-profiles", description="List reusable ingestion profiles"),
         ServiceCapability("Inspect source", "/api/v1/source-profiles/inspect", "POST", "Inspect a source schema or sample"),
+        ServiceCapability("Retain XML analytics instance", "/api/v1/analytics/xml-artifacts", "POST", "Retain a bounded XML source for an approved XSD analytics load job"),
         ServiceCapability("Engineering schema conversion", "/api/v1/schema-conversions/inspect", "POST", "Convert EXPRESS, STEP, XMI, or XSD to Turtle and retain a schema-analytics data-product draft"),
         ServiceCapability("AP242 inspection", "/api/v1/ap242/inspect", "POST", "Classify AP242 XSD ontology schemas, EXPRESS schemas, or STEP instances"),
         ServiceCapability("AP242 reference validation", "/api/v1/ap242/reference/validation", description="Validate configured AP242 EXPRESS and XSD reference assets without publishing"),

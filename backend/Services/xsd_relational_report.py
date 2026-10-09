@@ -118,7 +118,7 @@ def build_xsd_relational_report(xsd_path):
             facets={**result.get('facets',{}),**facets};sql=result['sql_type'];resolved=result['resolved_type']
         else:
             resolved=qname;sql=SQL_TYPES.get(qname.removeprefix('{'+NS+'}')) if qname.startswith('{'+NS+'}') else None
-        if sql=='NUMERIC' and 'totalDigits' in facets:
+        if sql=='NUMERIC' and 'totalDigits' in facets and 'fractionDigits' in facets:
             precision=int(facets['totalDigits'][0]);scale=int(facets.get('fractionDigits',['0'])[0])
             if not 1<=precision<=1000 or not 0<=scale<=precision: raise ValueError('Invalid decimal precision/scale')
             sql=f'NUMERIC({precision},{scale})'
@@ -184,15 +184,24 @@ def build_xsd_relational_report(xsd_path):
                     qtype=expanded(declaration.get('type',''),declaration)
                     inline=declaration.find(X+'complexType');target=definitions['complexType'].get(qtype)
                     if inline is not None or target is not None:
+                        if declaration.get('nillable') in {'true', '1'}: diagnostics.append('Nillable complex entities require explicit nil-state materialization')
                         target_id=identifier+'/'+name if inline is not None else qtype
                         map_type(inline if inline is not None else target,target_id,trail+(identifier,))
-                        owner['relationships'].append({'name':name,'target_entity_id':target_id,'target_table':tables[target_id]['name'],'particle_path':particle_path,**occ})
+                        scope, origin, namespace=contexts[id(declaration)]
+                        schema_root=next(root for path,root,ns in schemas if path==origin)
+                        qualified=declaration in list(schema_root) or declaration.get('form',schema_root.get('elementFormDefault','unqualified'))=='qualified'
+                        owner['relationships'].append({'name':name,'source_qname':('{'+namespace+'}' if qualified and namespace else '')+name,'target_entity_id':target_id,'target_table':tables[target_id]['name'],'particle_path':particle_path,**occ})
                     else:
                         column={'name':name,'nillable':declaration.get('nillable')=='true','nullable':not occ['required'] or declaration.get('nillable')=='true','default':declaration.get('default'),'fixed':declaration.get('fixed'),'sql_name':sql_name(kind+':'+name),'source_kind':kind,'particle_path':particle_path,'choice_branch':choice,**occ,**datatype(declaration)}
+                        scope, origin, namespace=contexts[id(declaration)]
+                        schema_root=next(root for path,root,ns in schemas if path==origin)
+                        form_key='attributeFormDefault' if kind=='attribute' else 'elementFormDefault'
+                        qualified=declaration in list(schema_root) or declaration.get('form',schema_root.get(form_key,'unqualified'))=='qualified'
+                        column['source_qname']=('{'+namespace+'}' if qualified and namespace else '')+name
                         if occ['repeating']:
                             child_table=table(identifier+'/'+kind+':'+name,'repeated scalar')
                             child_table['parent_entity_id']=identifier;child_table['columns'].append({**column,'repeating':False,'name':'value'})
-                            owner['relationships'].append({'name':name,'target_entity_id':child_table['entity_id'],'target_table':child_table['name'],**occ})
+                            owner['relationships'].append({'name':name,'source_qname':column['source_qname'],'target_entity_id':child_table['entity_id'],'target_table':child_table['name'],**occ})
                         else: owner['columns'].append(column)
         walk(node)
     for identifier,node in definitions['complexType'].items(): map_type(node,identifier)
@@ -202,8 +211,11 @@ def build_xsd_relational_report(xsd_path):
         if inline is not None: map_type(inline,identifier)
         elif qtype in definitions['complexType']: identifier=qtype
         else:
-            owner=table(identifier,'scalar root');owner['columns'].append({'name':'value','sql_name':'value','required':True,'nullable':node.get('nillable')=='true','nillable':node.get('nillable')=='true','repeating':False,**datatype(node)})
-        roots.append({'name':node.get('name'),'entity_id':identifier,'source_qname':expanded(node.get('name'),node)})
+            owner=table(identifier,'scalar root');owner['columns'].append({'name':'value','sql_name':'value','required':True,'nullable':node.get('nillable') in {'true', '1'},'nillable':node.get('nillable') in {'true', '1'},'default':node.get('default'),'fixed':node.get('fixed'),'repeating':False,**datatype(node)})
+        if (inline is not None or qtype in definitions['complexType']) and node.get('nillable') in {'true', '1'}:
+            diagnostics.append('Nillable complex entities require explicit nil-state materialization')
+        source_qname=expanded(node.get('name'),node)
+        roots.append({'name':node.get('name'),'entity_id':identifier,'source_qname':source_qname.removeprefix('{}')})
         if node.get('substitutionGroup') or node.get('abstract')=='true': diagnostics.append('Abstract/substitution roots require explicit dispatch mapping')
     for entity in tables.values():
         names=[column.get('sql_name') for column in entity['columns']]

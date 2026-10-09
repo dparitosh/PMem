@@ -9,6 +9,7 @@ import { readProductCollection, PRODUCT_REFRESH_MS, PRODUCT_CHANGED_EVENT } from
 import { productDraftFromRun } from '../services/analyticsProductDraft';
 import SchemaProductPublisher from '../Components/SchemaProductPublisher';
 import FirstProductGuide from '../Components/FirstProductGuide';
+import XmlAnalyticsLoader from '../Components/XmlAnalyticsLoader';
 
 const columns = [
   { field: 'product_id', headerName: 'Product ID', flex: 1.2 },
@@ -55,7 +56,7 @@ export default function DataProductsPage({ mode = 'products' }) {
       if (background === true) {
         const key = selectedRef.current;
         if (key && collection.rows.some(row => (catalog ? row.product_id : `${row.product_id}:${row.version}`) === key)) {
-          showDetail(key);
+          showDetail(key, true);
         } else {
           detailRequest.current?.abort();
           setDetail(null); setDetailError(''); setDetailLoading(false);
@@ -117,16 +118,19 @@ export default function DataProductsPage({ mode = 'products' }) {
     return () => { active = false; request?.abort(); window.removeEventListener('hashchange', refresh); window.removeEventListener('depo:credentials-changed', refresh); window.removeEventListener('depo:credentials-cleared', refresh); };
   }, [catalog]);
 
-  async function showDetail(key) {
+  async function showDetail(key, background = false) {
     selectedRef.current = key;
-    detailRequest.current?.abort(); setSelected(key); setDetail(null); setDetailError('');
+    detailRequest.current?.abort(); setSelected(key); if (!background) setDetail(null); setDetailError('');
     if (!key) { setDetailLoading(false); return; }
     const controller = new AbortController(); detailRequest.current = controller; setDetailLoading(true);
     try {
       const response = await apiClient.get(buildSemanticServiceUrl(service, `${path}/${encodeURIComponent(key)}`), { signal: controller.signal, timeout: 15000 });
       if (!controller.signal.aborted) setDetail(response.data);
     } catch (error) {
-      if (!controller.signal.aborted) setDetailError(apiErrorMessage(error, 'Product details are unavailable.'));
+      if (!controller.signal.aborted) {
+        if ([401, 403].includes(error?.response?.status)) setDetail(null);
+        setDetailError(apiErrorMessage(error, 'Product details are unavailable.'));
+      }
     } finally {
       if (!controller.signal.aborted) setDetailLoading(false);
     }
@@ -141,6 +145,7 @@ export default function DataProductsPage({ mode = 'products' }) {
     {state.error && <div role="alert" className="depo-alert depo-alert--warning">{state.error}</div>}
     {state.warning && <div role="alert" className="depo-alert depo-alert--warning">{state.warning}</div>}
     {!catalog && <section aria-label="Pipeline product evidence">
+      <XmlAnalyticsLoader />
       <h3>Data Flow evidence</h3><p>Select a completed run in <a href="#/data-flow">Data Flow</a> to create a draft from its retained artifacts. Graph publication and product packaging are separate approved operations.</p>
       {runDraftError && <p role="alert">{runDraftError}</p>}
       {runDraft && <SchemaProductPublisher draft={runDraft} />}

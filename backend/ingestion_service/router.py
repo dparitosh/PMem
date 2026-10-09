@@ -303,6 +303,29 @@ async def inspect_source_profile(file: UploadFile = File(...)) -> dict:
         raise HTTPException(status_code=422, detail=f"Source inspection failed: {exc}") from exc
 
 
+@router.post('/analytics/xml-artifacts', summary='Retain a bounded XML instance for an approved analytics job')
+async def retain_analytics_xml(file: UploadFile = File(...)) -> dict:
+    from backend.artifact_store import ArtifactStore
+    content = await _read_bounded_upload(file)
+    filename = file.filename or 'instance.xml'
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(413, 'XML analytics instances must not exceed 25 MiB')
+    if not filename.lower().endswith('.xml') or Path(filename).name != filename or '\\' in filename or ':' in filename:
+        raise HTTPException(422, 'Use a plain .xml filename')
+    try:
+        # Well-formedness is not an XSD conformance assertion.
+        ET.fromstring(content, forbid_dtd=True)
+        artifact = await run_in_threadpool(ArtifactStore().ingest_bytes, content,
+            filename=filename, kind='xml-instance', media_type='application/xml',
+            provenance={'validation': 'well-formed-only; XSD validation occurs in the approved load job'})
+    except Exception as exc:
+        from defusedxml.common import DefusedXmlException
+        if isinstance(exc, (ET.ParseError, DefusedXmlException, ValueError)):
+            raise HTTPException(422, 'XML must be well formed without DTDs or entity declarations') from exc
+        raise
+    return {'artifact': artifact, 'instance_validation': 'not_performed'}
+
+
 @router.get("/source-profiles", summary="List reusable source profiles")
 def list_source_profiles() -> dict:
     entries = profiles.list()

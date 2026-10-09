@@ -39,6 +39,7 @@ app.include_router(create_odata_catalog_router(
         ServiceCapability("Unstructured evidence validation", "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/run", "POST", "Validate content-addressed document evidence before CEIM normalization"),
         ServiceCapability("Distributed RDF statistics", "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/run", "POST", "Run read-only Spark RDF quality statistics over an immutable N-Triples artifact"),
         ServiceCapability("Canonical RDF serialization", "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/run", "POST", "Deduplicate and deterministically serialize an immutable N-Triples artifact with quality evidence"),
+        ServiceCapability("Validated XML analytics load", "/api/v1/pipeline/jobs/definitions/{job_id}/{version}/run", "POST", "Validate retained XSD/XML and transactionally materialize a versioned PostgreSQL projection with original source bytes"),
         ServiceCapability("Data-job run manifests", "/api/v1/pipeline/jobs/runs", description="Read durable input/output manifests and checkpoints for configured job runs"),
         ServiceCapability("Canonical run publication", "/api/v1/pipeline/jobs/runs/{run_id}/publish", "POST", "Publish an accepted semantic partition through CEIM and advance its checkpoint only after success"),
         ServiceCapability("Speed-path sources", "/api/v1/pipeline/speed/sources", description="Register and approve bounded low-latency event sources"),

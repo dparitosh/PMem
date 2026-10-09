@@ -11,6 +11,38 @@ vi.mock('../services/analyticsProductDraft', () => ({ publicationFromDraft: () =
 vi.mock('@siemens/ix-react', () => ({ IxButton: ({ children, ...props }) => <button {...props}>{children}</button> }));
 beforeEach(() => { sessionStorage.clear(); recovery.scope = 'deployment-a'; });
 
+test('session expiry preserves an uncertain publication until reconnection', async () => {
+  apiClient.post.mockReset();
+  apiClient.post.mockImplementation(async url => {
+    if (url.endsWith('/preview')) return { data: { valid: true } };
+    throw new Error('Lost response');
+  });
+  render(<SchemaProductPublisher draft={{ name: 'Pending' }} />);
+  fireEvent.click(screen.getByText('Validate publication contract'));
+  await waitFor(() => expect(screen.getByText('Approve and publish evidence')).toBeEnabled());
+  fireEvent.click(screen.getByText('Approve and publish evidence'));
+  await screen.findByText('Lost response');
+  const original = apiClient.post.mock.calls.find(([url]) => url.endsWith('/publish'))[1];
+  fireEvent(window, new Event('depo:session-expired'));
+  expect(sessionStorage.length).toBe(1);
+  fireEvent.click(screen.getByText('Retry same publication'));
+  await waitFor(() => expect(apiClient.post.mock.calls.filter(([url]) => url.endsWith('/publish'))).toHaveLength(2));
+  expect(apiClient.post.mock.calls.filter(([url]) => url.endsWith('/publish'))[1][1]).toEqual(original);
+});
+
+test('successful publication releases fields and allows the next draft', async () => {
+  apiClient.post.mockReset();
+  apiClient.post.mockImplementation(async url => ({ data: url.endsWith('/preview') ? { valid: true } : { product_id: 'a', version: '1.0.0', status: 'published' } }));
+  const view = render(<SchemaProductPublisher draft={{ name: 'First' }} />);
+  fireEvent.click(screen.getByText('Validate publication contract'));
+  await waitFor(() => expect(screen.getByText('Approve and publish evidence')).toBeEnabled());
+  fireEvent.click(screen.getByText('Approve and publish evidence'));
+  await screen.findByText(/a@1.0.0: published/);
+  view.rerender(<SchemaProductPublisher draft={{ name: 'Second' }} />);
+  await waitFor(() => expect(screen.getByLabelText('Product name')).toHaveValue('Second'));
+  expect(screen.getByLabelText('Product name')).toBeEnabled();
+});
+
 test('uncertain publication survives unmount with the same payload', async () => {
   apiClient.post.mockReset();
   apiClient.post.mockImplementation(async url => {

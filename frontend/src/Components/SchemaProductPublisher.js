@@ -52,10 +52,9 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
   useEffect(() => {
     const reset = () => {
       request.current?.abort(); request.current = null;
-      try { if (pendingStorageKey.current) sessionStorage.removeItem(pendingStorageKey.current); } catch { /* Revocation must still reset memory. */ }
-      pending.current = null; pendingDraft.current = null; pendingStorageKey.current = null;
-      setPreview(null); setReceipt(null); setBusy(false);
-      setError('Credentials changed. Check retained product status before starting another publication.');
+      // Credential expiry does not cancel an already accepted server write.
+      setPreview(pending.current ? { valid: true } : null); setReceipt(null); setBusy(false);
+      setError(pending.current ? 'Reconnect access, then retry the same publication to reconcile its outcome.' : 'Credentials changed. Validate the contract again after reconnecting.');
     };
     for (const event of ['depo:credentials-cleared', 'depo:credentials-changed', 'depo:session-expired']) window.addEventListener(event, reset);
     return () => {
@@ -103,6 +102,7 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
         if (controller.signal.aborted) return;
         if (action === 'publish') {
           sessionStorage.removeItem(pendingStorageKey.current); pendingStorageKey.current = null;
+          pending.current = null; pendingDraft.current = null;
           setReceipt(response.data); productChanged(); onPublished?.();
         }
         else setPreview(response.data);
@@ -132,7 +132,7 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
       {converted?.analytics_schema_plan?.ddl_blockers?.length > 0 && <div role="alert">Schema materialization blockers: {converted.analytics_schema_plan.ddl_blockers.join('; ')}</div>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
         {Object.entries(labels).map(([key, label]) => <label key={key}>{label}<input style={{ width: '100%' }} value={fields[key] || ''} disabled={busy || !!pending.current}
-          onChange={event => { setFields(previous => ({ ...previous, [key]: event.target.value })); setPreview(null); }} /></label>)}
+          onChange={event => { setFields(previous => ({ ...previous, [key]: event.target.value })); setPreview(null); setReceipt(null); }} /></label>)}
       </div>
       <IxButton disabled={busy || !!pending.current} onClick={() => perform('preview')}>Validate publication contract</IxButton>
       <IxButton disabled={busy || !preview?.valid || !!receipt} onClick={() => perform('publish')}>{pending.current ? 'Retry same publication' : 'Approve and publish evidence'}</IxButton>

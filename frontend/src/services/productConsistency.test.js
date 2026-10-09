@@ -3,6 +3,10 @@ import { loadProductCollection } from './productCollection';
 import { productDraftFromRun, publicationFromDraft } from './analyticsProductDraft';
 
 describe('shared product collection and evidence boundary', () => {
+  it('keeps XML load readiness and source lineage in a retained pipeline draft', () => {
+    const retained = { product_kind: 'pipeline-evidence', artifacts: [{artifact_id:'receipt'}], analytics_readiness:'structural-data-loaded; business-metrics-not-defined', sources:[{schema:'depo_analytics_test'}] };
+    expect(productDraftFromRun({run_id:'xml-load',status:'completed',output_manifest:{data_product_draft:retained}})).toEqual(retained);
+  });
   it('preserves the declared total and flags partial retrieval', async () => {
     const result = await loadProductCollection(vi.fn().mockResolvedValue({data:{total:3,products:[{product_id:'a',version:'1'}],next_offset:null}}));
     expect(result.total).toBe(3);

@@ -1,6 +1,4 @@
 from backend.ingestion_service.profiles import SourceProfileStore
-from backend.ontology_service.intelligence import SemanticIntelligence
-from backend.ontology_service.semantica_adapter import SemanticWorkspace
 from backend.mesh_store import InMemoryRegistry
 
 
@@ -31,8 +29,8 @@ def test_json_profile_executes_a_batch_with_dotted_mappings(tmp_path):
 
 def test_xml_profile_executes_child_records_and_versions_updates(tmp_path):
     store = _store(tmp_path)
-    first = store.save({"profile_id": "requirements", "mapping": {"entity": "Requirement", "identifier": "id", "properties": {"title": "title"}}})
-    profile = store.save({"profile_id": "requirements", "mapping": {"entity": "Requirement", "identifier": "id", "properties": {"title": "title"}}})
+    first = store.save({"profile_id": "requirements", "mapping": {"record_mode": "children", "entity": "Requirement", "identifier": "id", "properties": {"title": "title"}}})
+    profile = store.save({"profile_id": "requirements", "mapping": {"record_mode": "children", "entity": "Requirement", "identifier": "id", "properties": {"title": "title"}}})
 
     result = store.normalize_batch(
         profile=profile, filename="requirements.xml",
@@ -70,6 +68,7 @@ def test_xsl_inspection_is_distinguished_from_generic_xml(tmp_path):
 
 
 def test_semantic_workspace_persists_versions_and_alignments(tmp_path):
+    from backend.ontology_service.semantica_adapter import SemanticWorkspace
     registry = InMemoryRegistry()
     workspace = SemanticWorkspace(root=tmp_path, registry=registry)
     version_id = workspace.store({"name": "Parts", "classes": []})
@@ -82,6 +81,7 @@ def test_semantic_workspace_persists_versions_and_alignments(tmp_path):
 
 
 def test_semantica_quality_and_native_version_services(tmp_path):
+    from backend.ontology_service.intelligence import SemanticIntelligence
     registry = InMemoryRegistry()
     intelligence = SemanticIntelligence(tmp_path, registry=registry)
     quality = intelligence.quality_gate(

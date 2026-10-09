@@ -14,16 +14,18 @@ const reads = [
 beforeEach(() => { clearServiceAuthToken(); clearServiceContracts(); });
 afterEach(() => { clearServiceAuthToken(); vi.useRealTimers(); });
 
-test('credential replacement and sign-out clear pending publication recovery', () => {
+  test('credential replacement and sign-out preserve uncertain publication recovery', () => {
   sessionStorage.setItem('depo:pending-publication:old', 'old-request');
   sessionStorage.setItem('unrelated', 'preserved');
   setCredentialProfile('DATA_PRODUCT_APPROVAL_TOKEN', 'replacement');
-  expect(sessionStorage.getItem('depo:pending-publication:old')).toBeNull();
+    expect(sessionStorage.getItem('depo:pending-publication:old')).toBe('old-request');
   sessionStorage.setItem('depo:pending-publication:new', 'new-request');
   clearServiceAuthToken();
-  expect(sessionStorage.getItem('depo:pending-publication:new')).toBeNull();
+    expect(sessionStorage.getItem('depo:pending-publication:new')).toBe('new-request');
   expect(sessionStorage.getItem('unrelated')).toBe('preserved');
-  sessionStorage.removeItem('unrelated');
+    sessionStorage.removeItem('unrelated');
+    sessionStorage.removeItem('depo:pending-publication:old');
+    sessionStorage.removeItem('depo:pending-publication:new');
 });
 
 test('credential rotation retains workflow identities while clearing recommendation data', () => {

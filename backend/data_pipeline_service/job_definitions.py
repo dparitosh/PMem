@@ -23,6 +23,7 @@ SUPPORTED_QUALITY_PROFILES = {"semantic-core-v1", "unstructured-evidence-v1", "d
 REQUIRED_QUALITY_PROFILES = {
     "data-quality-assessment": "data-quality-core-v1",
     "schema-analytics-product": "schema-analytics-v1",
+    "xml-analytics-materialize": "schema-analytics-v1",
 }
 
 

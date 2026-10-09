@@ -44,6 +44,7 @@ for name, input_contract, output_contract, method, options in [
     ("interactive-quality-summary", "quality-records-v1", "quality-summary-v1", "transform_quality_summary", {}),
     ("data-quality-assessment", "quality-records-v1", "data-quality-report-v1", "assess_data_quality", {}),
     ("schema-analytics-product", "engineering-schema-artifact-v1", "schema-analytics-data-product-draft-v1", "build_schema_analytics_product", {}),
+    ("xml-analytics-materialize", "xsd-xml-artifacts-v1", "postgres-xml-load-v1", "materialize_xml_analytics", {}),
     ("normalize-ceim", "source-ceim-batch-v1", "normalized-ceim-batch-v1", "normalize_ceim_batch", {"validate": False}),
     ("validate-semantic-batch", "source-ceim-batch-v1", "semantic-validation-report-v1", "normalize_ceim_batch", {"validate": True}),
     ("validate-unstructured-evidence", "unstructured-evidence-batch-v1", "validated-unstructured-evidence-v1", "validate_unstructured_evidence", {}),

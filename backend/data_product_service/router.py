@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 
 from backend.artifact_store import ArtifactStore
 from backend.mesh_store import PostgresRegistry
-from backend.depo_platform.authorization import approval_identity, graph_read_identity
+from backend.depo_platform.authorization import approval_identity, graph_read_identity, service_write_identity
 from backend.depo_platform.semantic_registry import release_reference, resolve_approved_release
 from .packaging import build_package, publication_digest, verify_package
 
@@ -193,9 +193,21 @@ async def reconcile_pending(limit: int = 100) -> dict:
 
 
 
-@router.post("/preview")
-def preview(payload: dict) -> dict:
-    _, errors = _validate(payload)
+def _preview_identity(request: Request):
+    return service_write_identity(request, token_env='DATA_PRODUCT_APPROVAL_TOKEN', default_actor='product-preview')
+
+
+@router.post("/preview", dependencies=[Depends(_preview_identity)])
+async def preview(payload: dict) -> dict:
+    _, errors = await _product_io(_validate, payload)
+    if not errors:
+        try:
+            for release in payload['semantic_releases']:
+                await resolve_approved_release(release)
+        except ValueError as exc:
+            errors.append(str(exc))
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
     return {"valid": not errors, "errors": errors, "lineage": payload.get("sources", []), "ontologies": payload.get("ontologies", [])}
 
 
@@ -232,6 +244,7 @@ async def publish(payload: dict, request: Request) -> dict:
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         safe_payload = {key: value for key, value in payload.items() if key not in {"approval_token", "authorization", "api_key"}}
+        safe_payload['approved_by'] = approver
         record = {**safe_payload, "semantic_releases": semantic_releases, "artifacts": [metadata for metadata, _ in artifacts], "manifest": package["manifest"], "package_storage": {"zip_path": str(package["zip_path"]), "package_dir": str(package["package_dir"])}, "status": "pending_catalog_registration", "catalog_attempts": 0, "published_at": _now()}
         record['publication_digest'] = package['manifest']['publication_digest']
         await _product_io(store.put_with_related, key, record, related_namespace=approval_store.namespace,

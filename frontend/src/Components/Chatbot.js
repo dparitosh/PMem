@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Sparkles } from 'lucide-react';
-import { IxChatInput } from '@siemens/ix-react';
 import '../CSS/chat.css';
 import { API, buildUrl, config } from '../config';
 import { validateChatInput, ValidationError } from '../utils/validation';
@@ -381,25 +380,26 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             color: 'var(--theme-color-std-text, var(--ui-text, #252a2e))',
             overflow: 'hidden'
         }}>
-            <div style={{ padding: "8px 14px", flexShrink: 0 }}><a href="#/admin">Manage access in Admin → Service credentials</a></div>
             {/* Compact session utility row; the surrounding IX card owns the panel title. */}
             <div style={{
                 background: 'var(--theme-color-std-background, #f4f6f8)',
-                color: 'var(--theme-color-std-text, #252a2e)', padding: '8px 14px',
+                color: 'var(--theme-color-std-text, #252a2e)', padding: '6px 12px',
                 borderBottom: '1px solid var(--theme-color-weak-bdr, #d9e2ec)',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                flexShrink: 0,
+                flexShrink: 0, gap: 8, flexWrap: 'wrap',
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Sparkles size={14} />
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>Evidence-grounded engineering queries</span>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>Evidence-grounded answers</span>
                     {chatMessages.length > 0 && (
                         <span style={{
                             background: 'rgba(255,255,255,0.2)', borderRadius: 10,
                             padding: '1px 8px', fontSize: 11, fontWeight: 600,
-                        }}>{Math.ceil(chatMessages.length / 2)} turns</span>
+                        }}>{Math.ceil(chatMessages.length / 2)} {chatMessages.length <= 2 ? 'turn' : 'turns'}</span>
                     )}
                 </div>
+                <div className="chat-toolbar-actions">
+                <a href="#/admin" title="Manage access in Admin → Service credentials">Manage access</a>
                 {chatMessages.length > 0 && (
                     <button
                         type="button"
@@ -412,6 +412,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                         }}
                     >Clear conversation</button>
                 )}
+                </div>
             </div>
 
             {/* Status bar â€” shown while a tool is executing */}
@@ -430,6 +431,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             {/* Chat body */}
             <div style={{ flex: '1 1 0', minHeight: 0, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--theme-color-std-background, var(--ui-surface, #fff))' }}>
                 {/* Messages Container */}
+                <div className="chat-history-region">
                 <div className='chat-messages' role="log" aria-label="Conversation history" aria-live="off" tabIndex={0}
                     onScroll={event => {
                         const panel = event.currentTarget;
@@ -438,7 +440,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                     }} style={{
                     flex: 1,
                     overflowY: 'auto',
-                    padding: '16px',
+                    padding: '10px 12px',
                     backgroundColor: CHAT_COLORS.surfaceMuted,
                     minHeight: 0
                 }}>
@@ -476,7 +478,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                             <div
                                 key={msg.id}
                                 style={{
-                                    marginBottom: '16px',
+                                    marginBottom: '12px',
                                     display: 'flex',
                                     justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start'
                                 }}
@@ -485,7 +487,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                                     style={{
                                         maxWidth: msg.role === 'user' ? '90%' : '100%',
                                         minWidth: 0,
-                                        padding: '12px 16px',
+                                        padding: '10px 12px',
                                         borderRadius: '10px',
                                         backgroundColor: msg.role === 'user' ? CHAT_COLORS.primary : CHAT_COLORS.assistantBubble,
                                         color: msg.role === 'user' ? '#fff' : 'var(--ui-text, var(--theme-color-std-text, #252a2e))',
@@ -536,6 +538,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                     followLatestRef.current = true; setFollowingLatest(true);
                     messagesEndRef.current?.scrollIntoView?.({ block: 'end' });
                 }}>Jump to latest message</button>}
+                </div>
 
                 {/* Error Display */}
                 {error && (
@@ -552,17 +555,25 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                     </div>
                 )}
 
-                <div style={{ padding: '8px', borderTop: '1px solid var(--theme-color-weak-bdr, #d9e2ec)', background: 'var(--theme-color-std-background, var(--ui-surface, #fff))' }}>
-                    <IxChatInput
-                        value={question}
-                        disabled={requestActive}
-                        state={requestActive ? 'processing' : 'input'}
-                        placeholder="Ask about parts, traceability, CAD structure, or change impact..."
-                        textareaLabel="Chat question"
-                        disclaimer="Ontology search returns matching resources and evidence; comparison and impact analysis are not supported here."
-                        onValueChange={(event) => setQuestion(event.detail)}
-                        onPromptSubmit={(event) => handleAsk(event.detail)}
-                    />
+                <div className="chat-composer">
+                    <form className="chat-composer-form" onSubmit={event => { event.preventDefault(); handleAsk(question); }}>
+                        <textarea
+                            value={question}
+                            disabled={requestActive}
+                            rows={2}
+                            placeholder="Ask about parts, traceability, or ontology resources..."
+                            aria-label="Chat question"
+                            onChange={event => setQuestion(event.target.value)}
+                            onKeyDown={event => {
+                                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
+                                    event.preventDefault();
+                                    if (!requestActive && question.trim()) handleAsk(question);
+                                }
+                            }}
+                        />
+                        <button type="submit" aria-label="Send chat question" disabled={requestActive || !question.trim()}>Send</button>
+                    </form>
+                    <details className="chat-answer-help"><summary>About these answers</summary>Ontology search returns matching resources and evidence; comparison and impact analysis are not supported here. Use Shift+Enter for a new line.</details>
                     {requestActive && <button type="button" onClick={() => {
                         abortRef.current?.abort(); setStatusLabel('Stopped. Partial text is not a completed answer.');
                         setChatMessages(messages => messages.map(message => message.streaming ? { ...message, streaming: false, stopped: true } : message));

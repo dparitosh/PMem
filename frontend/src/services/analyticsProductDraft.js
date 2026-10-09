@@ -19,7 +19,7 @@ export function productDraftFromRun(run) {
   const output = run.output_manifest;
   if (!output || typeof output !== 'object') throw new Error('The run has no retained output manifest.');
   const existing = output.data_product_draft;
-  if (existing?.product_kind === 'schema-design-evidence' && existing.artifacts?.length) return existing;
+  if (['schema-design-evidence', 'pipeline-evidence'].includes(existing?.product_kind) && existing.artifacts?.length) return existing;
   const ids = Object.values(output.partition_artifacts || {}).filter(value => typeof value === 'string' && value.trim());
   if (!ids.length) throw new Error('The run has no retained output artifacts available for packaging.');
   return { product_kind: 'pipeline-evidence', name: `${run.job_id || run.job_type || 'Pipeline'} evidence`,

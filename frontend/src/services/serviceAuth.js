@@ -36,7 +36,7 @@ function clearPendingPublications() {
       const key = storage.key(index);
         // Workflow bookmarks contain no credentials and must survive token
         // refresh: the server may still be executing their authorized writes.
-        if (key?.startsWith('depo:pending-publication:') || key === 'depo:agent-recommendation') storage.removeItem(key);
+        if (key === 'depo:agent-recommendation') storage.removeItem(key);
     }
   } catch { /* Restricted storage must not prevent credential revocation. */ }
 }

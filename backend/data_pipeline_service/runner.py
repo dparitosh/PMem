@@ -392,6 +392,21 @@ class SparkJobRunner:
         self._runs.appendleft(result)
         return result
 
+    def materialize_xml_analytics(self, payload: dict[str, Any], *, correlation_id: str) -> dict[str, Any]:
+        from .xml_analytics import materialize_xml
+        result = materialize_xml(payload, correlation_id=correlation_id)
+        receipt = ArtifactStore().ingest_bytes(json.dumps(result, sort_keys=True).encode('utf-8'),
+            filename='xml-analytics-load-receipt.json', kind='analytics-load-receipt', media_type='application/json')
+        result = {**result, 'partition_artifacts': {'accepted': receipt['artifact_id']},
+            'data_product_draft': {'contract': 'postgres-xml-analytics-product-v1', 'product_kind': 'pipeline-evidence',
+                'name': result['schema'] + ' XML analytics', 'domain': 'data-processing',
+                'quality_status': 'schema-instance-validated', 'analytics_readiness': result['analytics_readiness'],
+                'sources': [{'schema': result['schema'], 'schema_digest': result['schema_digest'], 'xml_digest': result['xml_digest']}],
+                'artifacts': [{'artifact_id': artifact} for artifact in [payload['schema_artifact_id'], payload['xml_artifact_id'], receipt['artifact_id'], *(payload.get('schema_dependencies') or {}).values()]],
+                'publication_requirements': ['Approved semantic release', 'Data-product steward approval']}}
+        self._runs.appendleft(result)
+        return result
+
     def build_schema_analytics_product(self, payload: dict[str, Any], *, correlation_id: str) -> dict[str, Any]:
         """Create a governed analytics-product draft from a retained schema.
 

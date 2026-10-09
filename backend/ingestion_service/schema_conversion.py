@@ -193,7 +193,7 @@ class EngineeringSchemaConverter:
                 "name": f"{stem} schema analytics",
                 "domain": "semantic-engineering",
                 "artifacts": [{"artifact_id": value} for value in [source_artifact["artifact_id"], turtle_artifact["artifact_id"], analytics_artifact["artifact_id"], shapes_artifact["artifact_id"], *structural_artifacts.values()]],
-                "quality_status": "requires_review" if file_type == FileType.XSD else ("validated" if not (schema_validation or {}).get("errors") else "requires_review"),
+                "quality_status": "requires_review",
                 "publication_requirements": ["approved semantic release", "data-product steward approval", "explicit Data Product API publish request"],
             },
             "next_action": "Register the generated Turtle with the ontology service, then use the governed publish workflow.",
