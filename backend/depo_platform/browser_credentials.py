@@ -16,7 +16,7 @@ def identifier(token):
     return hashlib.sha256(token.encode('utf-8')).hexdigest()
 
 
-def create_session(admin_key, include_writes=False):
+def create_session(admin_key, include_writes=False, include_maintenance=False):
     from fastapi import HTTPException
     from .credentials import connection, verify_key
     actor = verify_key('ADMIN_API_KEY', admin_key)
@@ -39,6 +39,8 @@ def create_session(admin_key, include_writes=False):
                     and (include_writes or name == 'GRAPH_READ_TOKEN')}
         if 'GRAPH_READ_TOKEN' not in profiles:
             raise HTTPException(409, 'Register an active GRAPH_READ_TOKEN before connecting')
+        if include_maintenance:
+            profiles['ADMIN_API_KEY'] = admin[2]
         if admin[3]:
             expires = min(expires, admin[3])
         record = {'actor': actor, 'expires_at': expires.isoformat(),
@@ -49,10 +51,10 @@ def create_session(admin_key, include_writes=False):
     return {'token': token, 'expires_at': expires.isoformat(), 'profiles': sorted(profiles)}
 
 
-def verify_session(profile, token, current_digest):
+def verify_session(profile, token, current_digest, *, maintenance=False):
     from fastapi import HTTPException
     from .credentials import connection
-    if profile == 'ADMIN_API_KEY':
+    if profile == 'ADMIN_API_KEY' and not maintenance:
         raise HTTPException(403, 'Browser service sessions cannot administer credentials')
     try:
         with connection() as db, db.cursor() as cursor:
@@ -72,6 +74,10 @@ def verify_session(profile, token, current_digest):
         raise HTTPException(503, 'Central browser session record is invalid; reconnect in Admin') from None
     if expired:
         raise HTTPException(401, 'Browser service session expired; reconnect in Admin')
+    if maintenance:
+        if profile != 'ADMIN_API_KEY':
+            raise HTTPException(403, 'Invalid maintenance scope')
+        current_digest = admin[0] if admin else None
     if (not admin or admin[2] or (admin[1] and admin[1] <= now)
             or admin[0] != record.get('admin_digest')
             or record.get('profiles', {}).get(profile) != current_digest):

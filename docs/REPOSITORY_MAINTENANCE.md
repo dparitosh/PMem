@@ -11,7 +11,8 @@
 | `scripts/` | Format conversion and graph-loading command-line tools |
 | `tools/` | Operator diagnostics, maintenance and manual integration utilities |
 | `docs/` | Maintained documentation and reference material; screenshots in `assets/` |
-| `deliverables/` | Office documents and presentation deliverables |
+| `deliverables/` | Office documents and presentations; historical local test logs are generated evidence |
+| `release-evidence/` | Ignored local validation output, grouped by run date |
 | `data/`, `ontology/`, `mapping/`, `parsers/` | Standards, semantic assets and supporting application modules |
 | `plugins/`, `standalone/` | Optional separately packaged integrations |
 | `external/`, `_restore_ingest/` | Local reference/recovery material; exclude from releases |
@@ -48,6 +49,8 @@ their own documented test suites.
 
 ## Cleanup record
 
+Historical cleanup statements below describe their original validation run. Current validation and acceptance status is maintained in [the audit index](audits/README.md).
+
 The September 2026 cleanup removed the unused backend npm lockfile, obsolete
 frontend launcher, duplicate cleanup wrapper, three legacy environment
 templates and generated verification results. Deployment/Spark templates moved
@@ -78,8 +81,9 @@ them. `test_upload.xsd` remains an input to a manual API smoke test.
 
 ## Remaining release work
 
-- Backend runtime requirements use version ranges; a tested dependency lock and
-  dependency vulnerability review are still needed for reproducible releases.
+- `backend/requirements-lock.txt` now provides the deployment lock. Validate its
+  supported runtime/platform, artifacts and vulnerability/license review for
+  each release; development requirement ranges are not the deployment lock.
 - Historical design documents are reference material, not installation
   authority. Use the deployment guide and service manifest for operations.
 - Manual support scripts still need incremental migration to service APIs and

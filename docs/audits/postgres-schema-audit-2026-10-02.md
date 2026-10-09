@@ -1,5 +1,7 @@
 # PostgreSQL schema audit — 2026-10-02
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Scope: SQL migrations 000–006, schema setup/verification, PostgreSQL registry/runtime/metadata consumers and schema-only PowerShell wrappers. This audits repository code; the customer's live database was not inspected.
 
 ## Confirmed findings

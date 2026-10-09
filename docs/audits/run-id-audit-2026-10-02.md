@@ -1,5 +1,7 @@
 # Run ID lifecycle audit — 2026-10-02
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Scope: pipeline registry/worker, governed imports, SysML import UI, agent tool and
 workflow execution, telemetry, Data Flow navigation/replay and persisted import monitors.
 

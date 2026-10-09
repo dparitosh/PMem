@@ -1,5 +1,9 @@
 # Catalog, data products and analytics warehouse review
 
+## Current correction — 2026-10-09
+
+The sections below retain the original review findings. Product publication now has a cross-process lock, request-digest/idempotency validation and immutable package verification; those statements under Further risks are historical, not unresolved defects. The approved `xml-analytics-materialize` path now creates versioned structural PostgreSQL tables, retains XML bytes, validates XSD/XML and supports explicit business views. See [the current XML analytics audit](xsd-relational-analytics-audit-2026-10-02.md). It does not complete a dimensional business warehouse. Live database, concurrency, revocation and customer acceptance tests remain required.
+
 ## What exists
 
 - Data Catalog (8016): versioned product metadata in PostgreSQL `depo_registry`, namespace `catalog_products`; lifecycle state, ownership, classification, steward, semantic releases, manifests and latest-version pointer. Registration takes a per-product PostgreSQL advisory lock and writes the version and pointer together.

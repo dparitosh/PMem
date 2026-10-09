@@ -774,11 +774,25 @@ class FileParser:
 
             data = file_content or b''
             if data[:2] == b'PK':
+                import os
+                try:
+                    budget = int(os.getenv('DEPO_MAX_INGEST_BYTES', str(500 * 1024 * 1024)))
+                except ValueError:
+                    budget = 500 * 1024 * 1024
+                if budget <= 0:
+                    budget = 500 * 1024 * 1024
+                budget = min(budget, 500 * 1024 * 1024)
                 with zipfile.ZipFile(BytesIO(data)) as archive:
+                    entries = archive.infolist()
+                    if len(entries) > 1000 or sum(entry.file_size for entry in entries) > budget:
+                        raise ValueError('REQIFZ archive exceeds the entry or expanded-byte limit')
                     members = [name for name in archive.namelist() if name.lower().endswith(('.reqif', '.xml'))]
                     if not members:
                         return [], {'error': 'REQIFZ archive does not contain a .reqif or .xml member', 'file_format': 'ReqIF'}
-                    data = archive.read(sorted(members)[0])
+                    with archive.open(sorted(members)[0]) as member:
+                        data = member.read(budget + 1)
+                    if len(data) > budget:
+                        raise ValueError('REQIFZ member exceeds the expanded-byte limit')
 
             def local(tag: str) -> str:
                 raw = str(tag or '')

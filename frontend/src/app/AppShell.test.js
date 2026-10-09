@@ -5,8 +5,8 @@ import AppShell from './AppShell';
 import { graphApi } from '../services/graphApi';
 vi.mock('../services/graphApi', () => ({ graphApi: { verifyAccess: vi.fn() } }));
 import { clearServiceAuthToken, getServiceAuthToken } from '../services/serviceAuth';
-import { verifyStoredReadAccess } from '../services/readAccessVerification';
-vi.mock('../services/readAccessVerification', () => ({ verifyStoredReadAccess: vi.fn() }));
+import { verifyStoredAccess } from '../services/readAccessVerification';
+vi.mock('../services/readAccessVerification', () => ({ verifyStoredAccess: vi.fn() }));
 
 // AppShell verifies our navigation contract, not Siemens IX internals. The
 // real custom elements need browser APIs JSDOM does not faithfully emulate.
@@ -26,7 +26,7 @@ beforeEach(() => {
   graphApi.verifyAccess.mockReset();
   graphApi.verifyAccess.mockResolvedValue({ data: {} });
   clearServiceAuthToken();
-  verifyStoredReadAccess.mockReset();
+  verifyStoredAccess.mockReset();
   sessionStorage.clear();
   window.localStorage.clear();
   document.documentElement.dataset.ixColorSchema = 'light';
@@ -83,17 +83,17 @@ test('session expiry invalidates the application credential context', () => {
 });
 
 test('header revalidates stored access without navigating or executing workflows', async () => {
-  verifyStoredReadAccess.mockResolvedValue({status:'verified',message:'Read access verified.'});
+  verifyStoredAccess.mockResolvedValue({status:'verified',message:'Read access verified.'});
   const navigate = vi.fn();
   render(<AppShell activePage="home" onPageChange={navigate} onHome={vi.fn()} onToggleChat={vi.fn()}>Page</AppShell>);
   fireEvent.click(screen.getByRole('button', {name:'Revalidate or reconnect API access'}));
   await screen.findByText('Read access verified.');
   expect(navigate).not.toHaveBeenCalled();
-  expect(verifyStoredReadAccess).toHaveBeenCalledTimes(1);
+  expect(verifyStoredAccess).toHaveBeenCalledTimes(1);
 });
 
 test('expired access opens the API access tab for reconnection', async () => {
-  verifyStoredReadAccess.mockResolvedValue({status:'reconnect_required',message:'Session expired. Reconnect registered services.'});
+  verifyStoredAccess.mockResolvedValue({status:'reconnect_required',message:'Session expired. Reconnect registered services.'});
   const navigate = vi.fn();
   render(<AppShell activePage="home" onPageChange={navigate} onHome={vi.fn()} onToggleChat={vi.fn()}>Page</AppShell>);
   fireEvent.click(screen.getByRole('button', {name:'Revalidate or reconnect API access'}));

@@ -39,4 +39,14 @@ def convert_rdf(*, filename, content):
                                     media_type='text/turtle', provenance={'source_artifact_id': source['artifact_id']})
     return {'format': 'RDF', 'source_kind': 'schema', 'statistics': {'triples': len(graph)},
             'ontology': {'name': Path(filename).stem, 'prefix': 'ontology', 'turtle': turtle},
-            'artifacts': {'source': source['artifact_id'], 'serialization': serialized['artifact_id']}}
+            'artifacts': {'source': source['artifact_id'], 'serialization': serialized['artifact_id']},
+            'data_product_draft': {
+                'contract': 'ontology-evidence-data-product-v1',
+                'product_kind': 'ontology-evidence',
+                'analytics_readiness': 'semantic_evidence_requires_review',
+                'name': f'{Path(filename).stem} ontology evidence',
+                'domain': 'semantic-engineering',
+                'artifacts': [{'artifact_id': source['artifact_id']}, {'artifact_id': serialized['artifact_id']}],
+                'quality_status': 'requires_review',
+                'publication_requirements': ['approved semantic release', 'data-product steward approval', 'explicit Data Product API publish request'],
+            }}

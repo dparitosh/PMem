@@ -24,6 +24,7 @@ test('only approved XML jobs are selectable and submission uses retained referen
   fireEvent.change(screen.getByLabelText('Execution identity'), { target: { value: 'steward' } });
   fireEvent.click(screen.getByText('Validate and load XML'));
   await screen.findByRole('link', { name: 'View load run and evidence' });
+  expect(screen.getByRole('link', { name: 'View load run and evidence' })).toHaveAttribute('href', '#/data-flow/run-xml');
   expect(dataPipelineAPI.runDefinition).toHaveBeenCalledWith('load', '1.0.0', expect.objectContaining({ schema_artifact_id: 'sha256:xsd', xml_artifact_id: 'sha256:xml', business_views: [] }), { approved_by: 'steward', approval_token: 'test-token' });
   for (const label of ['Schema dependencies (relative path → artifact ID, JSON)', 'Explicit business views (JSON, optional)']) {
     fireEvent.change(screen.getByLabelText(label), { target: { value: label.startsWith('Schema') ? '{"other.xsd":"sha256:dep"}' : '[] ' } });

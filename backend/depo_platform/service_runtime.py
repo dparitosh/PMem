@@ -186,7 +186,10 @@ def create_service_app(
         include_writes = payload.get('include_writes', False)
         if type(include_writes) is not bool:
             raise HTTPException(422, 'include_writes must be a boolean')
-        return JSONResponse(content=create_session(request.headers.get('x-api-key', ''), include_writes), headers={'Cache-Control': 'no-store'})
+        include_maintenance = payload.get('include_maintenance', False)
+        if type(include_maintenance) is not bool:
+            raise HTTPException(422, 'include_maintenance must be a boolean')
+        return JSONResponse(content=create_session(request.headers.get('x-api-key', ''), include_writes, include_maintenance), headers={'Cache-Control': 'no-store'})
 
     @app.delete('/auth/browser-session', summary='Disconnect this browser service session')
     def disconnect_browser_session(request: Request):

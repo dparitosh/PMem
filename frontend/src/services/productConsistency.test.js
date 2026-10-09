@@ -1,8 +1,19 @@
 import { describe, it, expect, vi } from 'vitest';
 import { loadProductCollection } from './productCollection';
-import { productDraftFromRun, publicationFromDraft } from './analyticsProductDraft';
+import { productDraftFromRun, productDraftFromOntology, publicationFromDraft } from './analyticsProductDraft';
 
 describe('shared product collection and evidence boundary', () => {
+  it('accepts RDF evidence while preserving selected ontology lineage and review requirements', () => {
+    const original = { contract: 'ontology-evidence-data-product-v1', product_kind: 'ontology-evidence', quality_status: 'requires_review', artifacts: [{ artifact_id: 'retained-rdf' }] };
+    const draft = productDraftFromOntology({ ontology_id: 'spqm_registered', prefix: 'spqm', artifact_id: 'retained-rdf', data_product_draft: original });
+    const payload = publicationFromDraft(draft, {product_id:'rdf',name:'RDF',version:'1.0.0',owner:'owner',steward:'steward',classification:'internal',approved_by:'approver',asset_id:'approved-release',release_version:'1.0.0'}, 'rdf-request');
+    expect(payload.product_kind).toBe('ontology-evidence');
+    expect(payload.quality_status).toBe('requires_review');
+    expect(payload.ontologies[0].ontology_id).toBe('spqm_registered');
+    expect(payload.sources[0].ontology_id).toBe('spqm_registered');
+    expect(payload.semantic_releases[0].asset_id).toBe('approved-release');
+    expect(original).not.toHaveProperty('ontologies');
+  });
   it('keeps XML load readiness and source lineage in a retained pipeline draft', () => {
     const retained = { product_kind: 'pipeline-evidence', artifacts: [{artifact_id:'receipt'}], analytics_readiness:'structural-data-loaded; business-metrics-not-defined', sources:[{schema:'depo_analytics_test'}] };
     expect(productDraftFromRun({run_id:'xml-load',status:'completed',output_manifest:{data_product_draft:retained}})).toEqual(retained);

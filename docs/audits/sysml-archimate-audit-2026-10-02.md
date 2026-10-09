@@ -1,5 +1,7 @@
 # SysML and ArchiMate correctness audit — 2026-10-02
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 ## Findings
 
 | Priority | Component | Defect and consequence | Required correction |

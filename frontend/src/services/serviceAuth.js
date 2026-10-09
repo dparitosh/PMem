@@ -46,7 +46,7 @@ function removeStoredSession() {
 }
 function persistBrowserSession() {
   if (!browserSession || serviceToken !== browserSession.token) { removeStoredSession(); return; }
-  const profiles = ['GRAPH_READ_TOKEN', ...[...profileTokens].filter(([profile, token]) => profile !== 'ADMIN_API_KEY' && token === browserSession.token).map(([profile]) => profile)];
+  const profiles = ['GRAPH_READ_TOKEN', ...[...profileTokens].filter(([profile, token]) => token === browserSession.token).map(([profile]) => profile)];
   try {
     if (typeof window !== 'undefined') window.sessionStorage?.setItem(BROWSER_SESSION_STORAGE_KEY,
       JSON.stringify({ ...browserSession, profiles, scope: connectionScope() }));
@@ -60,7 +60,7 @@ function restoreBrowserSession() {
     const saved = JSON.parse(raw);
     if (saved.scope !== connectionScope() || typeof saved.token !== 'string' || !saved.token.startsWith('depo_session_') || saved.token.length > 4096 ||
         !Number.isFinite(saved.deadline) || saved.deadline <= Date.now() || saved.deadline > Date.now() + 15 * 60 * 1000 || !Array.isArray(saved.profiles) || saved.profiles.length > 32 ||
-        !saved.profiles.includes('GRAPH_READ_TOKEN') || saved.profiles.some(profile => typeof profile !== 'string' || !/^[A-Z][A-Z0-9_]*_TOKEN$/.test(profile))) throw new Error('Invalid stored session');
+        !saved.profiles.includes('GRAPH_READ_TOKEN') || saved.profiles.some(profile => typeof profile !== 'string' || !/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile))) throw new Error('Invalid stored session');
     serviceToken = saved.token;
     saved.profiles.filter(profile => profile !== 'GRAPH_READ_TOKEN').forEach(profile => profileTokens.set(profile, saved.token));
     setBrowserSessionExpiry(saved.token, new Date(saved.deadline).toISOString());
@@ -71,6 +71,7 @@ export function handleSessionRejection(status, authorization, detail = '') {
   const invalidSession = status === 401 || (status === 403 &&
     /browser session scope is unavailable or credentials changed|invalid or revoked|^revoked [A-Z_]+|expired session/i.test(String(detail)));
   if (invalidSession && value.startsWith('Bearer depo_session_')) expireBrowserSession(value.slice(7));
+  else if (invalidSession && value.startsWith('depo_session_')) expireBrowserSession(value);
 }
 function checkBrowserSessionExpiry() {
   if (browserSession && Date.now() >= browserSession.deadline) expireBrowserSession(browserSession.token);
@@ -133,7 +134,7 @@ export function getServiceAuthToken() {
 export function getBrowserSessionStatus() {
   checkBrowserSessionExpiry();
   if (!browserSession || serviceToken !== browserSession.token) return null;
-  const profiles = ['GRAPH_READ_TOKEN', ...[...profileTokens].filter(([profile, token]) => profile !== 'ADMIN_API_KEY' && token === browserSession.token).map(([profile]) => profile)];
+  const profiles = ['GRAPH_READ_TOKEN', ...[...profileTokens].filter(([profile, token]) => token === browserSession.token).map(([profile]) => profile)];
   return { expiresAt: new Date(browserSession.deadline).toISOString(), profiles };
 }
 

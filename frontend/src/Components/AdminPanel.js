@@ -3,6 +3,7 @@ import { RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import { useOntologies } from '../contexts/OntologyContext';
 import { UI_COLORS } from '../styles/uiTokens';
+import { getCredentialProfile } from '../services/serviceAuth';
 
 const colors = {
   blue: UI_COLORS.primaryText,
@@ -427,7 +428,8 @@ export default function AdminPanel({ onSchemaCleaned }) {
       <ConfirmationDialog confirmation={confirmation} onResolve={resolveConfirmation} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-          <a href="#/admin">Manage ADMIN_API_KEY in Service credentials above</a>
+          <span>{getCredentialProfile('ADMIN_API_KEY') ? 'Admin maintenance access configured' : 'Admin maintenance is not connected; verified read access does not authorize cleanup.'}</span>
+          <a href="#/admin" onClick={() => { try { sessionStorage.setItem('depo:admin-tab', 'access'); } catch {} window.dispatchEvent(new CustomEvent('depo:admin-section', { detail: 'access' })); }}>Manage maintenance access in Service credentials</a>
           <button type="button" onClick={loadAdminState} disabled={loading} style={buttonStyle}>
             <RefreshCw size={11} />
             Refresh

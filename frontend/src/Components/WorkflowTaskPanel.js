@@ -10,6 +10,7 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
   const [submissionUnknown, setSubmissionUnknown] = useState(false);
   const [recoveryId, setRecoveryId] = useState('');
   const resultHandler = useRef(onResult); resultHandler.current = onResult;
+  const notifiedMerge = useRef(null);
   const request = useRef(null);
   useEffect(() => {
     request.current?.abort(); setRun(null); setBusy(false); setError(''); setSubmissionUnknown(false);
@@ -41,7 +42,14 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
             (data.traces !== undefined && (!Array.isArray(data.traces) || data.traces.some(trace => !trace || typeof trace !== 'object' || Array.isArray(trace)))) ||
             (data.allowed_actions !== undefined && (!Array.isArray(data.allowed_actions) || data.allowed_actions.some(action => !['pause', 'resume', 'cancel'].includes(action))))) throw new Error('Invalid workflow status.');
         setRun(data); setError('');
-        if (data.status === 'completed') resultHandler.current?.(data);
+        if (data.status === 'completed') {
+          if (data.workflow_id === 'ontology-union-automation' && notifiedMerge.current !== data.run_id &&
+              data.traces?.some(trace => trace.tool_id === 'ontology.merge.apply_automatic' && trace.result?.status === 'merged')) {
+            notifiedMerge.current = data.run_id;
+            window.dispatchEvent(new Event('depo:ontologies-changed'));
+          }
+          resultHandler.current?.(data);
+        }
         else if (['running', 'queued'].includes(data.status)) timer = setTimeout(refresh, 3000);
       } catch (failure) { if (!controller.signal.aborted) { setError('Could not refresh this run. Status checks will retry; use Refresh status to check now.'); if (![401, 403, 404].includes(failure.response?.status)) timer = setTimeout(refresh, 10000); } }
     };
@@ -78,6 +86,8 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
       <small>Find this task in agent workflow history. Inspect its status before submitting another merge.</small>
     </div>}
     {runId && <p role="status">Workflow {runId}: {run?.execution_state || run?.status || 'checking'}. Results remain retained after leaving this page.</p>}
+    {run?.error_message && <p role="alert">{run.http_status ? `HTTP ${run.http_status}: ` : ''}{run.error_message}</p>}
+    {run?.status === 'failed' && !run.error_message && <p role="alert">This older run retained no failure detail. Inspect service logs using its workflow ID. A new run will retain diagnostic details.</p>}
     {run?.pending_step?.child_run_id && <p>Waiting for dependent data job: {String(run.pending_step.child_run_id)}. Workflow completion requires its result.</p>}
     {run?.allowed_actions?.map(action => <button type="button" key={action} disabled={busy} onClick={async () => {
       const controller = new AbortController(); request.current = controller; setBusy(true);

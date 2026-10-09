@@ -26,10 +26,10 @@ class BrowserCredentialTests(unittest.TestCase):
                      ('INGESTION_WRITE_TOKEN', self.salt, 'upload-digest', None, False),
                      ('DATA_JOB_EXECUTION_TOKEN', self.salt, 'expired-digest', datetime.now(timezone.utc)-timedelta(seconds=1), False)]
 
-    def create(self, writes=False):
+    def create(self, writes=False, maintenance=False):
         self.cursor.fetchall.return_value = self.rows
         with patch.dict(sys.modules, {'fastapi': self.api}), patch.object(credentials, 'verify_key', return_value='admin-actor'), patch.object(credentials, 'connection', return_value=nullcontext(self.db)):
-            result = sessions.create_session(self.admin_key, writes)
+            result = sessions.create_session(self.admin_key, writes, maintenance)
         inserts = [call for call in self.cursor.execute.call_args_list if call.args[0].startswith('INSERT')]
         record = json.loads(inserts[-1].args[1][2])
         self.assertNotIn(self.admin_key, str(self.cursor.execute.call_args_list))
@@ -52,6 +52,27 @@ class BrowserCredentialTests(unittest.TestCase):
         self.assertNotIn('ADMIN_API_KEY', result['profiles'])
         self.assertNotIn('DATA_JOB_EXECUTION_TOKEN', result['profiles'])
         self.assertEqual(self.verify(record, 'INGESTION_WRITE_TOKEN', 'upload-digest'), 'admin-actor')
+
+    def test_maintenance_grant_does_not_allow_credential_administration(self):
+        result, record = self.create(maintenance=True)
+        self.assertIn('ADMIN_API_KEY', result['profiles'])
+        with self.assertRaises(Rejected):
+            self.verify(record, 'ADMIN_API_KEY', self.admin_digest)
+        self.cursor.fetchone.side_effect = [(record,), (self.admin_digest, None, False)]
+        with patch.dict(sys.modules, {'fastapi': self.api}), patch.object(credentials, 'connection', return_value=nullcontext(self.db)):
+            self.assertEqual(sessions.verify_session('ADMIN_API_KEY', result['token'], None, maintenance=True), 'admin-actor')
+
+    def test_read_only_session_cannot_gain_maintenance_access(self):
+        result, record = self.create()
+        self.cursor.fetchone.side_effect = [(record,), (self.admin_digest, None, False)]
+        with patch.dict(sys.modules, {'fastapi': self.api}), patch.object(credentials, 'connection', return_value=nullcontext(self.db)), self.assertRaises(Rejected):
+            sessions.verify_session('ADMIN_API_KEY', result['token'], None, maintenance=True)
+
+    def test_rotated_admin_invalidates_maintenance_access(self):
+        result, record = self.create(maintenance=True)
+        self.cursor.fetchone.side_effect = [(record,), ('changed-digest', None, False)]
+        with patch.dict(sys.modules, {'fastapi': self.api}), patch.object(credentials, 'connection', return_value=nullcontext(self.db)), self.assertRaises(Rejected):
+            sessions.verify_session('ADMIN_API_KEY', result['token'], None, maintenance=True)
 
     def test_scope_escalation_and_rotation_are_rejected(self):
         _, record = self.create()

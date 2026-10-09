@@ -116,10 +116,11 @@ export default function SchemaProductPublisher({ draft, onPublished }) {
     } finally { if (request.current === controller) { request.current = null; if (!controller.signal.aborted) setBusy(false); } }
   }
   const pipeline = draft?.product_kind === 'pipeline-evidence';
+  const ontologyEvidence = draft?.product_kind === 'ontology-evidence';
   return <section aria-label={pipeline ? 'Pipeline evidence publication' : 'Schema analytics publication'}>
-    <h3>{pipeline ? 'Publish retained pipeline evidence' : 'Publish schema design evidence'}</h3>
-    <p>{pipeline ? 'Package the retained run artifacts for steward review. Job completion does not certify their quality.' : 'This package contains a review-only schema plan. It does not create warehouse tables or certify business metrics.'} The service verifies the referenced approved semantic release during publication.</p>
-    {!pipeline && <details><summary>Inspect an XSD with dependency files</summary>
+    <h3>{pipeline ? 'Publish retained pipeline evidence' : ontologyEvidence ? 'Publish ontology evidence' : 'Publish schema design evidence'}</h3>
+    <p>{pipeline ? 'Package the retained run artifacts for steward review. Job completion does not certify their quality.' : ontologyEvidence ? 'Package the retained source and normalized RDF for sharing and review. Product publication does not run Semantic Bridge, merge ontologies or publish the Neo4j graph.' : 'This package contains a review-only schema plan. It does not create warehouse tables or certify business metrics.'} The service verifies the referenced approved semantic release during publication.</p>
+    {!pipeline && !ontologyEvidence && <details><summary>Inspect an XSD with dependency files</summary>
       <label>Root XSD <input type="file" accept=".xsd" disabled={busy || !!pending.current} onChange={event => { invalidateInspection(); setSource(event.target.files[0] || null); }} /></label>
       <label>Dependency XSD files <input type="file" accept=".xsd" multiple disabled={busy || !!pending.current} onChange={event => { invalidateInspection(); setDependencies(Array.from(event.target.files)); }} /></label>
       <p>Selected dependency order: {dependencies.map(file => file.name).join(', ') || 'None'}</p>

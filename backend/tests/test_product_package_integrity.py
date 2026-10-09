@@ -7,6 +7,22 @@ from backend.data_product_service.packaging import build_package, verify_package
 
 
 class ProductPackageIntegrity(unittest.TestCase):
+    def test_rdf_package_retains_ontology_lineage_separately_from_semantic_release(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'ontology.ttl'
+            source.write_text('<urn:a> <urn:b> <urn:c> .')
+            ontology = {'ontology_id': 'selected-ontology', 'prefix': 'spqm'}
+            release = {'asset_id': 'approved-release', 'version': '1.0.0', 'lifecycle_status': 'approved'}
+            payload = {'product_id': 'rdf_product', 'version': '1.0.0', 'name': 'Ontology evidence', 'domain': 'engineering', 'owner': 'owner',
+                       'product_kind': 'ontology-evidence', 'quality_status': 'requires_review',
+                       'ontologies': [ontology], 'sources': [ontology], 'semantic_releases': [release]}
+            package = build_package(output_root=root, payload=payload, artifacts=[({'artifact_id': 'sha256:' + 'a'*64}, source)])
+            manifest = verify_package(package['package_dir'], package['zip_path'], package['manifest'])
+            self.assertEqual(manifest['ontologies'], [ontology])
+            self.assertEqual(manifest['sources'], [ontology])
+            self.assertEqual(manifest['semantic_releases'], [release])
+            self.assertEqual(manifest['product_kind'], 'ontology-evidence')
     def test_public_records_hide_legacy_catalog_exception_details(self):
         tree = ast.parse(Path('backend/data_product_service/router.py').read_text(encoding='utf-8'))
         node = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == '_public_product')

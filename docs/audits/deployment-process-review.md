@@ -1,5 +1,7 @@
 # Deployment process audit — 2026-10-01
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Scope: repository-root lifecycle commands, Windows installer/configuration/startup,
 PostgreSQL schema entry points, Neo4j and optional Spark validation, frontend
 serving, Linux lifecycle/systemd, release-package checks and INSTALLATION.md.

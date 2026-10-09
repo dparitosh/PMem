@@ -93,6 +93,7 @@ export default function DataFlowPage() {
   const [replayError, setReplayError] = useState('');
   const [replayingId, setReplayingId] = useState('');
   const [definitionActionId, setDefinitionActionId] = useState('');
+  const definitionLock = useRef(false);
   const [publishingId, setPublishingId] = useState('');
   const [scheduleInterval, setScheduleInterval] = useState(300);
   const [replayApprover, setReplayApprover] = useState('');
@@ -234,6 +235,8 @@ export default function DataFlowPage() {
   };
 
   const manageDefinition = async (definition, action) => {
+    if (definitionLock.current) return;
+    definitionLock.current = true;
     const key = `${definition.job_id}:${definition.version}:${action}`;
     setDefinitionActionId(key);
     setReplayError('');
@@ -250,7 +253,9 @@ export default function DataFlowPage() {
         }, approval(getCredentialProfile('DATA_JOB_APPROVAL_TOKEN')));
       }
       if (action === 'run') {
-        const result = await dataPipelineAPI.runDefinition(definition.job_id, definition.version, {}, approval());
+        const priorRun = runs.find(run => run.job_id === definition.job_id && run.job_version === definition.version);
+        if (!priorRun) throw new Error('Supply job inputs through the matching import or analytics page first. After that, this action replays retained inputs.');
+        const result = await dataPipelineAPI.replay(priorRun.run_id, approval());
         const run = requireRunManifest(responsePayload(result));
         preferredRunId.current = run.run_id;
         setSelectedRun(run);
@@ -261,6 +266,7 @@ export default function DataFlowPage() {
     } catch (actionFailure) {
       setReplayError(apiErrorMessage(actionFailure, 'Data-job lifecycle action could not be completed.'));
     } finally {
+      definitionLock.current = false;
       setDefinitionActionId('');
     }
   };
@@ -339,7 +345,7 @@ export default function DataFlowPage() {
         <div className="data-flow-table-wrap"><table className="data-flow-table data-flow-definition-table">
           <thead><tr><th>Definition</th><th>Contract</th><th>State</th><th>Schedule</th><th aria-label="Actions" /></tr></thead>
           <tbody>{definitions.map((definition) => {
-            const busy = definitionActionId.startsWith(`${definition.job_id}:${definition.version}:`);
+            const busy = !!definitionActionId;
             const isApproved = definition.lifecycle_state === 'approved' && definition.enabled;
             return <tr key={`${definition.job_id}:${definition.version}`}>
               <td><strong>{definition.name || definition.job_id}</strong><small>{definition.job_id} · {definition.version} · {definition.owner || 'No owner recorded'}</small></td>

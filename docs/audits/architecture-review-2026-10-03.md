@@ -1,5 +1,7 @@
 # Architecture review — 2026-10-03
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 ## Result and evidence
 
 The current design supports a single customer deployment of ten APIs, two durable workers, PostgreSQL control-plane metadata, content-addressed artifacts and Neo4j projections. Local HTTP/token and gateway routing are valid deployment profiles; optional Spark is an execution capability. Recent definition authorization/atomic insertion and authenticated startup fixes are present in commit 85e3eaa.

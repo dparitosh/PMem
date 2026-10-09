@@ -27,6 +27,19 @@ vi.mock('../ui/IxIcons', () => ({
 
 import QifPage from './QifPage';
 
+test('history selection is disabled while a task cancellation is pending', async () => {
+  const other = { ...task, task_id: 'b'.repeat(32), ontology_name: 'Other task' };
+  qifAPI.listTasks.mockResolvedValue({ data: { tasks: [task, other] } });
+  let finish;
+  qifAPI.cancel.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  render(<QifPage workflowMode />);
+  await screen.findByRole('button', { name: /approve and publish ontology/i });
+  fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+  expect(screen.getByRole('button', { name: /open qif task Other task/i })).toBeDisabled();
+  await act(async () => finish({ data: { ...task, status: 'cancelled' } }));
+  await waitFor(() => expect(screen.getByRole('button', { name: /open qif task Other task/i })).toBeEnabled());
+});
+
 const task = {
   task_id: 'a'.repeat(32), source: 'bundled_reference', ontology_name: 'QIF 3.0 Ontology', prefix: 'qif', description: '',
   status: 'awaiting_approval', stage: 'review', progress: 80, created_at: '2026-08-31T00:00:00Z', updated_at: '2026-08-31T00:00:00Z',

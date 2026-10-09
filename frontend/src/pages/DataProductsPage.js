@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { IxButton } from '@siemens/ix-react';
 import RegistryWidget from '../widgets/RegistryWidget';
 import { apiClient, dataPipelineAPI } from '../services/apiClient';
@@ -6,7 +6,7 @@ import { buildSemanticServiceUrl } from '../config';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { useOntologies } from '../contexts/OntologyContext';
 import { readProductCollection, PRODUCT_REFRESH_MS, PRODUCT_CHANGED_EVENT } from '../services/productService';
-import { productDraftFromRun } from '../services/analyticsProductDraft';
+import { productDraftFromRun, productDraftFromOntology } from '../services/analyticsProductDraft';
 import SchemaProductPublisher from '../Components/SchemaProductPublisher';
 import FirstProductGuide from '../Components/FirstProductGuide';
 import XmlAnalyticsLoader from '../Components/XmlAnalyticsLoader';
@@ -26,6 +26,7 @@ export default function DataProductsPage({ mode = 'products' }) {
   const drafts = (ontologies || []).filter(ontology => ontology.data_product_draft?.contract);
   const [selectedDraft, setSelectedDraft] = useState('');
   const draft = drafts.find(ontology => ontology.ontology_id === selectedDraft);
+  const selectedProductDraft = useMemo(() => productDraftFromOntology(draft), [draft]);
   const [state, setState] = useState({ loading: true, rows: [], error: '', warning: '' });
   const [selected, setSelected] = useState('');
   const [detail, setDetail] = useState(null);
@@ -162,7 +163,7 @@ export default function DataProductsPage({ mode = 'products' }) {
         {drafts.map(ontology => <option key={ontology.ontology_id} value={ontology.ontology_id}>{ontology.label}</option>)}
       </select>
       {draft && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 350, overflow: 'auto' }}>{JSON.stringify(draft.data_product_draft, null, 2)}</pre>}
-      <SchemaProductPublisher draft={draft?.data_product_draft} />
+      <SchemaProductPublisher draft={selectedProductDraft} />
       {!ontologyLoading && !ontologyError && !ontologyWarning && !drafts.length && <p>No retained schema-design draft metadata is available. Older imports may need reimporting with this release to retain their evidence references.</p>}
     </section>}
     <RegistryWidget title={`${title} (${state.total ?? '—'} total; ${state.rows.length} loaded)`} rows={state.rows} columns={columns} height={400} />

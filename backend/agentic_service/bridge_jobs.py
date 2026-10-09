@@ -7,7 +7,7 @@ import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from backend.depo_platform.network import bounded_timeout_seconds
+from backend.depo_platform.network import bounded_timeout_seconds, gateway_subscription_headers
 from backend.mesh_store import PostgresRegistry
 
 
@@ -144,7 +144,12 @@ class BridgeJobs:
                     raise BridgeConflict('Publication approval policy changed. Create a new preview.')
                 job['approval_policy'] = copy.deepcopy(approval_policy)
             if job['status'] == 'published':
-                return job
+                receipt = self.graph.receipt(job_id)
+                if receipt:
+                    return self._completed(job, receipt)
+                job.update(status='stale', error='Published graph receipt is missing. Create and approve a new preview.', updated_at=now())
+                self.store.put(job_id, job)
+                raise BridgeConflict(job['error'])
             self.store.put(job_id, job)
             # Reconcile a committed graph transaction before checking staleness.
             # A response may have been lost after the graph committed.
@@ -302,9 +307,10 @@ class GraphBridgeClient:
         # Existing peer configuration ends in /api/v1; graph routes own /graph.
         if base.endswith('/api/v1'):
             base = base[:-7]
+        endpoint = base + '/api/v1/graph/bridge/' + path
         with httpx.Client(timeout=bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180), trust_env=False) as client:
-            response = client.request(method, base + '/api/v1/graph/bridge/' + path,
-                                      headers={'Authorization': 'Bearer ' + token}, **kwargs)
+            response = client.request(method, endpoint,
+                                      headers={**gateway_subscription_headers(endpoint), 'Authorization': 'Bearer ' + token}, **kwargs)
         # A missing receipt is expected only for an idempotency lookup. A POST
         # route mismatch must remain visible instead of being misreported as a
         # recoverable publication response loss.

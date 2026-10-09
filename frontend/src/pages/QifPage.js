@@ -51,13 +51,19 @@ export default function QifPage({ workflowMode = false }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionBusy, setActionBusy] = useState(false);
+  const [mutationBusy, setMutationBusy] = useState(false);
   const [error, setError] = useState('');
   const selectedTask = useRef(null);
   const taskRequest = useRef(0);
-  useEffect(() => () => { selectedTask.current = null; taskRequest.current += 1; }, []);
+  const historyRequest = useRef(0);
+  useEffect(() => () => { selectedTask.current = null; taskRequest.current += 1; historyRequest.current += 1; }, []);
   const writeOptions = () => getCredentialProfile('ONTOLOGY_APPROVAL_TOKEN').trim() ? { headers: { Authorization: `Bearer ${getCredentialProfile('ONTOLOGY_APPROVAL_TOKEN').trim()}` } } : {};
 
-  const refreshHistory = useCallback(() => qifAPI.listTasks().then((response) => setHistory(payloadOf(response).tasks || [])).catch((requestError) => { setError(detailOf(requestError)); }), []);
+  const refreshHistory = useCallback(async () => {
+    const sequence = ++historyRequest.current;
+    try { const response = await qifAPI.listTasks(); if (sequence === historyRequest.current) setHistory(payloadOf(response).tasks || []); }
+    catch (requestError) { if (sequence === historyRequest.current) setError(detailOf(requestError)); }
+  }, []);
   const refreshTask = useCallback(async (taskId) => {
     if (selectedTask.current !== taskId) return null;
     const requestId = ++taskRequest.current;
@@ -132,7 +138,7 @@ export default function QifPage({ workflowMode = false }) {
   const metadata = { ontology_name: name, prefix, description };
   const start = async (source) => {
     selectedTask.current = null; taskRequest.current += 1;
-    setActionBusy(true); setError(''); setTask(null);
+    setMutationBusy(true); setActionBusy(true); setError(''); setTask(null);
     try {
       const response = source === 'reference'
         ? await qifAPI.startReferenceTask(metadata, writeOptions())
@@ -141,25 +147,26 @@ export default function QifPage({ workflowMode = false }) {
       await refreshTask(payloadOf(response).task_id);
       await refreshHistory();
     } catch (requestError) { setError(detailOf(requestError)); }
-    finally { setActionBusy(false); }
+    finally { setMutationBusy(false); setActionBusy(false); }
   };
   const commit = async () => {
-    setActionBusy(true); setError('');
+    setMutationBusy(true); setActionBusy(true); setError('');
     try { await qifAPI.commit(task.task_id, writeOptions()); await refreshTask(task.task_id); await refreshHistory(); }
     catch (requestError) { setError(detailOf(requestError)); }
-    finally { setActionBusy(false); }
+    finally { setMutationBusy(false); setActionBusy(false); }
   };
   const cancel = async () => {
-    setActionBusy(true); setError('');
-    try { const response = await qifAPI.cancel(task.task_id, writeOptions()); taskRequest.current += 1; setTask(payloadOf(response)); await refreshHistory(); }
+    const taskId = task.task_id;
+    setMutationBusy(true); setActionBusy(true); setError('');
+    try { const response = await qifAPI.cancel(taskId, writeOptions()); if (selectedTask.current === taskId) { taskRequest.current += 1; setTask(payloadOf(response)); } await refreshHistory(); }
     catch (requestError) { setError(detailOf(requestError)); }
-    finally { setActionBusy(false); }
+    finally { setMutationBusy(false); setActionBusy(false); }
   };
   const retryGraph = async () => {
-    setActionBusy(true); setError('');
+    setMutationBusy(true); setActionBusy(true); setError('');
     try { await qifAPI.retryGraph(task.task_id, writeOptions()); await refreshTask(task.task_id); await refreshHistory(); }
     catch (requestError) { setError(detailOf(requestError)); }
-    finally { setActionBusy(false); }
+    finally { setMutationBusy(false); setActionBusy(false); }
   };
   const refreshWorkspace = async () => {
     setActionBusy(true); setError('');
@@ -173,8 +180,9 @@ export default function QifPage({ workflowMode = false }) {
     finally { setActionBusy(false); }
   };
   const openTask = async (taskId) => {
+    if (mutationBusy) return;
     selectedTask.current = taskId; taskRequest.current += 1;
-    setActionBusy(true); setError('');
+    setActionBusy(true); setError(''); setTask(null);
     try { await refreshTask(taskId); }
     catch (requestError) { setError(detailOf(requestError)); }
     finally { setActionBusy(false); }
@@ -265,7 +273,7 @@ export default function QifPage({ workflowMode = false }) {
 
       {workflowMode && task?.events?.length > 0 && <section style={{ ...panelStyle, marginTop: 14 }}><div className="depo-panel__title">Task event trail</div>{task.events.map((event, index) => <div key={`${event.at}-${index}`} style={{ display: 'grid', gridTemplateColumns: '120px 105px 1fr', gap: 8, borderTop: index ? '1px solid #edf1f5' : 'none', padding: '7px 0', fontSize: 12 }}><span>{new Date(event.at).toLocaleTimeString()}</span><strong>{event.stage}</strong><span>{event.message}</span></div>)}</section>}
 
-      {workflowMode && <section style={{ ...panelStyle, marginTop: 14 }}><div className="qif-section-heading"><div><div className="depo-panel__title">Recent QIF tasks</div><div className="depo-panel__meta">Select any run to inspect its validation, artifacts, and graph outcome.</div></div><button type="button" className="qif-refresh-button" disabled={actionBusy} onClick={refreshWorkspace}><RefreshCw size={14} /> Refresh</button></div>{history.length > 0 ? <div className="qif-history-list">{history.map((item) => <button type="button" key={item.task_id} aria-pressed={task?.task_id === item.task_id} aria-label={`Open QIF task ${item.ontology_name}, ${statusLabel(item.status)}`} onClick={() => openTask(item.task_id)}><span>{new Date(item.created_at).toLocaleString()}</span><span>{item.ontology_name}</span><strong>{statusLabel(item.status)}</strong></button>)}</div> : <p className="depo-panel__meta qif-empty-state">No QIF tasks yet. Start from the bundled reference or upload a complete related schema set.</p>}</section>}
+      {workflowMode && <section style={{ ...panelStyle, marginTop: 14 }}><div className="qif-section-heading"><div><div className="depo-panel__title">Recent QIF tasks</div><div className="depo-panel__meta">Select any run to inspect its validation, artifacts, and graph outcome.</div></div><button type="button" className="qif-refresh-button" disabled={actionBusy} onClick={refreshWorkspace}><RefreshCw size={14} /> Refresh</button></div>{history.length > 0 ? <div className="qif-history-list">{history.map((item) => <button type="button" key={item.task_id} disabled={mutationBusy} aria-pressed={task?.task_id === item.task_id} aria-label={`Open QIF task ${item.ontology_name}, ${statusLabel(item.status)}`} onClick={() => openTask(item.task_id)}><span>{new Date(item.created_at).toLocaleString()}</span><span>{item.ontology_name}</span><strong>{statusLabel(item.status)}</strong></button>)}</div> : <p className="depo-panel__meta qif-empty-state">No QIF tasks yet. Start from the bundled reference or upload a complete related schema set.</p>}</section>}
 
       {workflowMode && <section style={{ ...panelStyle, marginTop: 14 }}><div className="depo-panel__title">Workflow service</div><p className="depo-panel__meta">The QIF workflow service uses a declarative processing agent and durable task artifacts. It can also run independently at the QIF service entry point.</p>{agents.map((agent) => <div key={agent.name} style={{ marginTop: 8, fontSize: 12, color: '#334e68' }}><CheckCircle2 size={14} /> {agent.name} — {agent.description}</div>)}</section>}
       {error && <div role="alert" className="qif-message qif-message--error qif-page-alert">{error}<button type="button" onClick={() => setError('')} aria-label="Dismiss QIF error">Dismiss</button></div>}

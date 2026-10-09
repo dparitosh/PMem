@@ -151,10 +151,12 @@ class OntologyTaxonomyService:
         source_path = meta.get("file_path") or meta.get("artifact_path") or ""
         source_file_path = Path(source_path)
         semantic_file_path = Path(meta.get("owl_file_path") or meta.get("artifact_path") or source_path)
-        if not str(source_path).strip() or not source_file_path.is_file():
+        if not semantic_file_path.is_file() and (not str(source_path).strip() or not source_file_path.is_file()):
             raise ValueError(f"Ontology file is missing: {ontology_identifier}")
         if not semantic_file_path.is_file():
             semantic_file_path = source_file_path
+        if not source_file_path.is_file():
+            source_file_path = semantic_file_path
 
         prefix = str(meta.get("prefix") or meta.get("ontology_prefix") or meta.get("ontology_id") or "").strip()
         return {

@@ -1,5 +1,7 @@
 # Domain and functional audit — 2026-10-02
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Scope: static code tracing across navigation, ingestion profiles, CEIM, ontology agents, Semantic Bridge, job handlers, product/catalog workflows, reports and PostgreSQL migrations. Focused reproductions executed actual isolated functions with mocked RDF primitives or controlled XML. No live customer workflow certification is claimed.
 
 ## Domain coverage

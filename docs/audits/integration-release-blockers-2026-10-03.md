@@ -1,5 +1,7 @@
 # Integration and release audit — 2026-10-03
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 This audit does not assume a target bug count. Severity follows demonstrated impact. Code traces verify mounted router dependencies, not just endpoint decorators. No live customer VM, PostgreSQL, Neo4j, APIM or browser workflow was exercised.
 
 ## Confirmed findings

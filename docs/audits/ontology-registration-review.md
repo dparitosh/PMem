@@ -1,5 +1,7 @@
 # Ontology registration review
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Native registration: POST /api/v1/ontologies/register on the ontology service (8011); multipart artifact, ontology_name, prefix, optional description/source. Router dependencies require ONTOLOGY_APPROVAL_TOKEN for writes. A successful registration creates a syntax-validated draft, not graph publication. The frontend context reads the native catalog first and uses the historical ingestion registry only as a compatibility fallback.
 
 Fixed defects:

@@ -22,9 +22,12 @@ def run() -> None:
             signal.signal(event, lambda *_: stop.set())
         except (ValueError, OSError):
             pass
-    worker_status.put(worker_id, status="idle", execution_mode="native-windows-worker")
+    registered = False
     while not stop.is_set():
         try:
+            if not registered:
+                worker_status.put(worker_id, status="idle", execution_mode="native-windows-worker")
+                registered = True
             record = run_records.claim_next(worker_id=worker_id, lease_seconds=lease_seconds)
         except Exception as exc:
             logging.getLogger(__name__).warning("Pipeline control plane unavailable: %s", type(exc).__name__)
@@ -96,7 +99,10 @@ def run() -> None:
             except Exception as status_error:
                 logging.getLogger(__name__).warning("Worker status deferred: %s", type(status_error).__name__)
     runner.shutdown()
-    worker_status.put(worker_id, status="stopped", run_id=None, spark=runner.health())
+    try:
+        worker_status.put(worker_id, status="stopped", run_id=None, spark=runner.health())
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Worker shutdown telemetry deferred: %s", type(exc).__name__)
 
 
 if __name__ == "__main__":

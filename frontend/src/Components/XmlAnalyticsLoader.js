@@ -3,6 +3,7 @@ import { apiClient, dataPipelineAPI } from '../services/apiClient';
 import { buildSemanticServiceUrl } from '../config';
 import { getCredentialProfile } from '../services/serviceAuth';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
+import { pipelineRunLink } from '../workflows/runTracking';
 
 export default function XmlAnalyticsLoader() {
   const [jobs, setJobs] = useState([]);
@@ -72,6 +73,6 @@ export default function XmlAnalyticsLoader() {
     <button type="button" disabled={busy || !job} onClick={() => perform(true)}>Validate and load XML</button>
     {busy && <p role="status">Processing XML analytics request…</p>}
     {error && <p role="alert">{error}</p>}
-    {receipt && <><p role="status">Job response: {receipt.status || 'received'}</p>{runId && <a href={`#/data-flow?run_id=${encodeURIComponent(runId)}`}>View load run and evidence</a>}<pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 250, overflow: 'auto' }}>{JSON.stringify(receipt, null, 2)}</pre></>}
+    {receipt && <><p role="status">Job response: {receipt.status || 'received'}</p>{runId && <a href={pipelineRunLink(runId)}>View load run and evidence</a>}<pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 250, overflow: 'auto' }}>{JSON.stringify(receipt, null, 2)}</pre></>}
   </details>;
 }

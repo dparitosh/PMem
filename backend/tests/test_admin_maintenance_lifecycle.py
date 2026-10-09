@@ -7,6 +7,24 @@ from unittest.mock import MagicMock
 import pytest
 
 
+def test_admin_cleanup_accepts_only_the_dedicated_maintenance_session_verifier():
+    import asyncio
+    from unittest.mock import patch, AsyncMock
+    from backend.depo_platform import credentials, browser_credentials
+    source = Path(__file__).parents[1] / 'routes' / 'admin_routes.py'
+    tree = ast.parse(source.read_text(encoding='utf-8'))
+    node = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'require_admin_api_key')
+    module = ast.parse('from __future__ import annotations')
+    module.body.append(node)
+    worker = AsyncMock()
+    namespace = {'run_in_threadpool': worker}
+    exec(compile(module, str(source), 'exec'), namespace)
+    with patch.object(credentials, 'uses_postgres', return_value=True), patch.object(credentials, 'verify_key') as raw, patch.object(browser_credentials, 'verify_session') as maintenance:
+        asyncio.run(namespace['require_admin_api_key'](SimpleNamespace(headers={'X-API-Key':'depo_session_maintenance'})))
+        worker.assert_awaited_once_with(maintenance, 'ADMIN_API_KEY', 'depo_session_maintenance', None, maintenance=True)
+        raw.assert_not_called()
+
+
 def cleaner_class(shared, owned):
     source = Path(__file__).parents[1] / 'Services' / 'neo4j_schema_cleaner.py'
     tree = ast.parse(source.read_text(encoding='utf-8'))

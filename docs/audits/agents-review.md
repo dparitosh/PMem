@@ -1,5 +1,7 @@
 # Application agents audit — 2026-10-01
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Scope: standalone agent control-plane routing, tool manifest, transport credentials,
 workflow execution, companion retrieval, ontology orchestration, graph memory and
 frontend agent client. This is a code audit, not a certification of all agents or a

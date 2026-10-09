@@ -1,5 +1,7 @@
 # Knowledge Companion audit — 2026-10-05
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 ## Remediation
 
 Read-only dispatch now preserves the verified caller key across rotation. Chat requests use bounded strict-text models; selected ontology identifiers parameterize server graph retrieval, while client node text is ignored as evidence. Chat sessions reset on read-key changes/clearing and abort pending requests. A stream requires both evidence and completion before publishing success. Chat surfaces and Clear use theme tokens. Sample data availability is unknown rather than asserted, and prompts/capabilities explicitly describe ontology search. Instance comparison and impact analysis remain unsupported; the UI no longer advertises them.

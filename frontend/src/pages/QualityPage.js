@@ -25,7 +25,12 @@ export default function QualityPage() {
   }, []);
   useEffect(() => {
     load(); const timer = window.setInterval(() => { if (!document.hidden) load(); }, 30000);
-    return () => { window.clearInterval(timer); request.current?.abort(); };
+    const clear = () => { request.current?.abort(); setRuns([]); setUpdated(null); setError(''); setLoading(false); };
+    const reconnect = () => { clear(); load(); };
+    window.addEventListener('depo:credentials-changed', reconnect);
+    window.addEventListener('depo:credentials-cleared', clear);
+    window.addEventListener('depo:session-expired', clear);
+    return () => { window.clearInterval(timer); request.current?.abort(); window.removeEventListener('depo:credentials-changed', reconnect); window.removeEventListener('depo:credentials-cleared', clear); window.removeEventListener('depo:session-expired', clear); };
   }, [load]);
   return <div className="depo-page" aria-busy={loading}>
     <section className="depo-panel">

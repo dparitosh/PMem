@@ -122,6 +122,7 @@ class EngineeringWorkflow:
             if (not isinstance(receipt, dict)
                     or receipt.get("status") != "success"
                     or receipt.get("ontology_id") != registration["ontology_id"]
+                    or any(type(receipt.get(field)) is not int or receipt[field] < 0 for field in ('resources', 'relationships'))
                     or receipt.get("publication_id") != data["source"].split(":", 1)[1]):
                 raise RuntimeError("Graph publication outcome is unverified: receipt identity did not match. Reconcile publication before retrying.")
             result["status"] = "published"

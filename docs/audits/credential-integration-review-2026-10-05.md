@@ -1,5 +1,7 @@
 # Credential integration audit — 2026-10-05
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Scope: local source, PostgreSQL migrations, shared authorization, Admin credential entry, OpenAPI discovery, workflow consumers, chat and graph. No customer VM/database or live gateway was available. Changes are not deployed.
 
 ## Storage and service trace

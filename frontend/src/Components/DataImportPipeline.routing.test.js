@@ -4,6 +4,7 @@ import { act } from 'react';
 import { vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import DataImportPipeline from './DataImportPipeline';
+import { apiClient } from '../services/apiClient';
 
 const mockOntologyContextValue = {
   ontologies: [],
@@ -156,6 +157,8 @@ describe('DataImportPipeline workflow routing', () => {
     });
 
     await renderPipeline();
+    // This case intentionally tests source-only SHACL registration.
+    fireEvent.click(screen.getByLabelText(/Register and publish XSD/));
 
     const input = document.querySelector('input[type="file"]');
     const file = new File(['schema'], 'bom.xsd', { type: 'application/xml' });
@@ -205,8 +208,44 @@ describe('DataImportPipeline workflow routing', () => {
     );
   });
 
+  it('defaults to Neo4j publication and makes register-only behavior explicit', async () => {
+    await renderPipeline();
+    const publication = screen.getByLabelText(/Register and publish XSD/);
+    expect(publication).toBeChecked();
+    expect(screen.getByText(/Publication is confirmed only by a graph receipt/)).toBeInTheDocument();
+    fireEvent.click(publication);
+    expect(publication).not.toBeChecked();
+    expect(screen.getByText(/Register only: the source is retained, but Neo4j is not updated/)).toBeInTheDocument();
+  });
+
+  it('offers only OWL generation when schema publication is enabled', async () => {
+    await renderPipeline();
+    const input = document.querySelector('input[type="file"]');
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [new File(['schema'], 'demo.xsd', { type: 'application/xml' })] } });
+      await flushAsyncEffects();
+    });
+    const select = document.getElementById('ontology-generation-select');
+    expect(select).toHaveValue('owl');
+    expect(Array.from(select.options).map(option => option.value)).not.toContain('shacl');
+    expect(Array.from(select.options).map(option => option.value)).not.toContain('both');
+    apiClient.post.mockResolvedValueOnce({ data: {
+      status: 'published', ontology_registration: { ontology_id: 'published-schema' },
+      graph_publication: { status: 'success', resources: 123, relationships: 45 },
+    } });
+    fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Published schema' } });
+    fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'published_schema' } });
+    fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
+    setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
+    fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
+    expect(apiClient.post.mock.calls.at(-1)[1].get('publish')).toBe('true');
+    await waitFor(() => expect(screen.getByText('123')).toBeInTheDocument());
+  });
+
   it('queues multiple ontology files and advances the metadata popup file-by-file', async () => {
     await renderPipeline();
+    fireEvent.click(screen.getByLabelText(/Register and publish XSD/));
 
     const input = document.querySelector('input[type="file"]');
     const fileOne = new File(['schema-one'], 'bom.xsd', { type: 'application/xml' });
@@ -249,5 +288,28 @@ describe('DataImportPipeline workflow routing', () => {
     expect(screen.getAllByRole('button', { name: /^Start$/i }).length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText('bom.xsd').length).toBeGreaterThan(0);
     expect(screen.getAllByText('assembly.xsd').length).toBeGreaterThan(0);
+  });
+
+  it('register-only RDF uses the retained draft workflow without requesting graph publication', async () => {
+    await renderPipeline();
+    fireEvent.click(screen.getByLabelText(/Register and publish XSD/));
+    apiClient.post.mockClear();
+    apiClient.post.mockResolvedValueOnce({ data: {
+      status: 'registered', ontology_registration: { ontology_id: 'rdf-source' },
+    } });
+    await act(async () => {
+      fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['<urn:a> <urn:b> <urn:c> .'], 'evidence.ttl')] } });
+      await flushAsyncEffects();
+    });
+    fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'RDF evidence' } });
+    fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'evidence' } });
+    fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
+    setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
+    fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(1));
+    const [url, form] = apiClient.post.mock.calls[0];
+    expect(url).toBe('/api/v1/engineering-workflows');
+    expect(form.get('publish')).toBe('false');
+    await screen.findByText(/registered; graph publication has not run/);
   });
 });

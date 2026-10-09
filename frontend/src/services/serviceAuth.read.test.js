@@ -14,6 +14,19 @@ const reads = [
 beforeEach(() => { clearServiceAuthToken(); clearServiceContracts(); });
 afterEach(() => { clearServiceAuthToken(); vi.useRealTimers(); });
 
+test('opaque maintenance scope survives reload and clears with session expiry', async () => {
+  setCredentialProfile('GRAPH_READ_TOKEN', 'depo_session_maintenance');
+  setCredentialProfile('ADMIN_API_KEY', 'depo_session_maintenance');
+  setBrowserSessionExpiry('depo_session_maintenance', new Date(Date.now() + 600000).toISOString());
+  vi.resetModules();
+  const restored = await import('./serviceAuth');
+  expect(restored.getCredentialProfile('ADMIN_API_KEY')).toBe('depo_session_maintenance');
+  restored.handleSessionRejection(401, 'depo_session_maintenance', 'Browser service session expired');
+  expect(restored.getCredentialProfile('ADMIN_API_KEY')).toBe('');
+  expect(restored.getCredentialProfile('GRAPH_READ_TOKEN')).toBe('');
+  restored.clearServiceAuthToken();
+});
+
   test('credential replacement and sign-out preserve uncertain publication recovery', () => {
   sessionStorage.setItem('depo:pending-publication:old', 'old-request');
   sessionStorage.setItem('unrelated', 'preserved');

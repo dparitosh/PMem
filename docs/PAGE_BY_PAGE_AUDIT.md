@@ -1,5 +1,7 @@
 # Page-by-page audit — 8 October 2026
 
+> Review history: see [current validation](audits/README.md) for the latest test counts, correction records and pending acceptance. Earlier counts and findings below belong to their original review.
+
 Scope: all 17 sidebar routes and their primary components, API wiring, asynchronous state and credential handling. This is source review with existing regression/browser evidence. No new live customer browser or service run was performed. Previous complete frontend suite: 42 files, 185 tests passed. Existing all-page Chromium evidence uses mocked service responses at desktop/mobile widths; it does not prove backend integration or current dark-mode rendering.
 
 ## Every page

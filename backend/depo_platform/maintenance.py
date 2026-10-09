@@ -39,5 +39,11 @@ def reconcile_graph_reset():
                                'invalidated_at': datetime.now(timezone.utc).isoformat(),
                                'invalidation_reason': 'admin graph reset'}), 'ontology_graph_publications_v1'))
         count = cursor.rowcount
+        cursor.execute('UPDATE depo_registry SET value=value || %s, updated_at=now() WHERE namespace=%s AND value->>\'kind\'=\'publication\'',
+                       (Jsonb({'status': 'stale', 'receipt': None,
+                               'error': 'Graph reset removed publication evidence. Create and approve a new preview.',
+                               'invalidated_at': datetime.now(timezone.utc).isoformat()}), 'semantic_bridge_jobs_v1'))
+        bridge_count = cursor.rowcount
     return {'status': 'success', 'invalidated_publications': count,
+            'invalidated_bridge_publications': bridge_count,
             'governed_artifacts_retained': True}

@@ -1,5 +1,7 @@
 # OSLC audit — 2026-10-02
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Scope: standalone service on port 8015, graph-backed server routes, lifecycle access, remote client/snapshot synchronization, query parsing and TRS. Source review and dependency-free reproductions; not an OSLC standards certification or live database/gateway test.
 
 ## Confirmed findings

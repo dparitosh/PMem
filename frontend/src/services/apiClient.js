@@ -141,13 +141,14 @@ apiClient.interceptors.request.use(
       requestConfig.headers = requestConfig.headers || {};
       const explicit = requestConfig.headers.get?.('Authorization') || requestConfig.headers.Authorization;
       const credentials = serviceAuthHeaders(requestConfig.url, requestConfig.method);
-      if (explicit || requestConfig.headers.get?.('X-API-Key') || requestConfig.headers['X-API-Key']) { delete credentials.Authorization; delete credentials['X-API-Key']; }
+      if (explicit || requestConfig.headers.get?.('X-API-Key') || Object.entries(requestConfig.headers).some(([name, value]) => name.toLowerCase() === 'x-api-key' && value)) { delete credentials.Authorization; delete credentials['X-API-Key']; }
       Object.assign(requestConfig.headers, credentials);
       requireServiceReadAccess(requestConfig);
     }
     if (getCredentialProfile('ADMIN_API_KEY') && isStandaloneServiceRequest(requestConfig.url) && String(requestConfig.url || '').includes('/api/v1/admin/')) {
       requestConfig.headers = requestConfig.headers || {};
-      requestConfig.headers['X-API-Key'] = getCredentialProfile('ADMIN_API_KEY');
+      const explicitKey = requestConfig.headers.get?.('X-API-Key') || Object.entries(requestConfig.headers).find(([name]) => name.toLowerCase() === 'x-api-key')?.[1];
+      if (!explicitKey) requestConfig.headers['X-API-Key'] = getCredentialProfile('ADMIN_API_KEY');
     }
     if (config.debug) {
       // eslint-disable-next-line no-console
@@ -228,7 +229,8 @@ apiClient.interceptors.response.use(
 
     // Handle specific status codes
     const authorization = requestConfig.headers?.get?.('Authorization') || requestConfig.headers?.Authorization || requestConfig.headers?.authorization || '';
-    handleSessionRejection(error.response?.status, authorization, errorInfo.detail);
+    const adminAuthorization = requestConfig.headers?.get?.('X-API-Key') || requestConfig.headers?.['X-API-Key'] || '';
+    handleSessionRejection(error.response?.status, String(adminAuthorization).startsWith('depo_session_') ? adminAuthorization : authorization, errorInfo.detail);
     if (error.response?.status === 401) {
     } else if (error.response?.status === 403) {
       logger.warn('[API] Access forbidden');

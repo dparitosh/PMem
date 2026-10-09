@@ -1,5 +1,7 @@
 # Ollama REST and UI integration audit â€” 2026-10-07
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 ## Scope and result
 
 Reviewed Chatbot, AgentControlPanel, SemanticBridgeJobs, frontend API adapters,

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Depends
+from .workflow_errors import workflow_error
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response, StreamingResponse
 from backend.depo_platform.authorization import approval_identity, graph_read_identity
@@ -816,7 +817,8 @@ async def run(payload: dict[str, Any], request: Request) -> dict:
             result = await _dispatch(payload, request)
         await _agent_io(_tool_span, observation, tool_id=result['tool_id'], attempt=1, status='completed', duration_ms=(time.perf_counter()-started)*1000)
         await _agent_io(_finish_observation, observation, started, status='completed')
-        return {**result, 'run_id': observation['run_id'], 'telemetry_run_id': observation['run_id']}
+        return {**result, 'status': 'completed', 'execution_kind': 'agent',
+                'run_id': observation['run_id'], 'telemetry_run_id': observation['run_id']}
     except BaseException as exc:
         status = 'interrupted' if isinstance(exc, asyncio.CancelledError) else 'timed_out' if isinstance(exc, TimeoutError) else 'failed'
         try:
@@ -987,7 +989,9 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
                     record['traces'] = retained['traces']
             record.update(status=status, finished_at=_now(), updated_at=_now(), error_type=type(exc).__name__, reconciliation_required=dispatched_mutation)
             if active_step:
-                record['traces'].append({'sequence': len(record['traces'])+1, 'tool_id': active_step['tool_id'], 'attempt': attempt, 'status': status, 'error_type': type(exc).__name__})
+                diagnostics = workflow_error(exc, active_step['tool_id'])
+                record.update(diagnostics)
+                record['traces'].append({'sequence': len(record['traces'])+1, 'tool_id': active_step['tool_id'], 'attempt': attempt, 'status': status, 'error_type': type(exc).__name__, **diagnostics})
             # Persist state and telemetry independently. A DB outage must not
             # replace the original exception; deadline-based reads expose an
             # interrupted process even if final persistence could not succeed.

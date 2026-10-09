@@ -17,8 +17,12 @@ export default function CredentialSettings() {
   const [checkingSession, setCheckingSession] = useState(false);
   const [actor, setActor] = useState('');
   const [expiry, setExpiry] = useState('');
-  const [sessionAdminKey, setSessionAdminKey] = useState(() => getCredentialProfile('ADMIN_API_KEY'));
-  const [includeWrites, setIncludeWrites] = useState(() => (getBrowserSessionStatus()?.profiles.length || 0) > 1);
+  const [sessionAdminKey, setSessionAdminKey] = useState(() => getCredentialProfile('ADMIN_API_KEY').startsWith('depo_session_') ? '' : getCredentialProfile('ADMIN_API_KEY'));
+  const [includeMaintenance, setIncludeMaintenance] = useState(() => {
+    const session = getBrowserSessionStatus();
+    return session ? session.profiles.includes('ADMIN_API_KEY') : true;
+  });
+  const [includeWrites, setIncludeWrites] = useState(() => (getBrowserSessionStatus()?.profiles || []).some(profile => !['GRAPH_READ_TOKEN', 'ADMIN_API_KEY'].includes(profile)));
   const [sessionStatus, setSessionStatus] = useState(() => {
     const session = getBrowserSessionStatus();
     return session ? `Session restored: ${session.profiles.length} delegated scopes. Expires ${new Date(session.expiresAt).toLocaleTimeString()}. Services verify access on each request.` : '';
@@ -58,7 +62,7 @@ export default function CredentialSettings() {
       sessionUrl = url;
       const headers = { ...serviceAuthHeaders(url, 'post', subscription), 'Content-Type': 'application/json', 'X-API-Key': sessionAdminKey.trim() };
       delete headers.Authorization;
-      const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ include_writes: includeWrites }), signal: controller.signal, credentials: 'omit', redirect: 'error' });
+      const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ include_writes: includeWrites, include_maintenance: includeMaintenance }), signal: controller.signal, credentials: 'omit', redirect: 'error' });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `Connection failed (${response.status})`);
       if (!body.token?.startsWith('depo_session_') || !Array.isArray(body.profiles) || !body.profiles.includes('GRAPH_READ_TOKEN') || !body.expires_at) throw new Error('Invalid central session response');
@@ -77,13 +81,13 @@ export default function CredentialSettings() {
       if (failures.length) throw new Error(`Connection checks failed: ${failures.join('; ')}. Previous browser access was preserved. Check service listeners, routing and credential-store configuration.`);
       clearServiceAuthToken();
       setGatewaySubscriptionKey(subscription);
-      body.profiles.filter(profile => profiles.includes(profile) && profile !== 'ADMIN_API_KEY').forEach(profile => setCredentialProfile(profile, body.token));
+      body.profiles.filter(profile => profiles.includes(profile)).forEach(profile => setCredentialProfile(profile, body.token));
       setBrowserSessionExpiry(body.token, body.expires_at);
       pendingSession = null;
       setValues(Object.fromEntries(profiles.map(profile => [profile, ''])));
       setResults(Object.fromEntries(body.profiles.map(profile => [profile, `Connected via central session until ${new Date(body.expires_at).toLocaleTimeString()}`])));
       setSessionAdminKey('');
-      setSessionStatus(`Connected ${body.profiles.length} registered scopes. Session expires ${new Date(body.expires_at).toLocaleTimeString()}. Credential administration still requires the separate admin key.`);
+      setSessionStatus(`Connected ${body.profiles.length} registered scopes. Session expires ${new Date(body.expires_at).toLocaleTimeString()}. Maintenance ${body.profiles.includes('ADMIN_API_KEY') ? 'enabled' : 'not enabled'}. Credential rotation still requires the separate admin key.`);
       window.dispatchEvent(new Event('depo:credentials-changed'));
     } catch (error) {
       if (pendingSession && sessionUrl) {
@@ -176,6 +180,7 @@ export default function CredentialSettings() {
       <p>After the PowerShell import succeeds, enter ADMIN_API_KEY once here. A fifteen-minute delegated session authorizes registered scopes without copying their keys into this browser. The session survives refresh in this tab when browser session storage is available. Clear, rotation, revocation or expiry invalidates access. Raw API keys remain memory-only.</p>
       <label>Administrator key for connection<input aria-label="Administrator key for connection" type="password" autoComplete="off" disabled={busy} value={sessionAdminKey} onChange={event => setSessionAdminKey(event.target.value)} /></label>
       <label><input type="checkbox" disabled={busy} checked={includeWrites} onChange={event => setIncludeWrites(event.target.checked)} /> Enable registered upload, execution and approval scopes for this session</label>
+      <label><input type="checkbox" disabled={busy} checked={includeMaintenance} onChange={event => setIncludeMaintenance(event.target.checked)} /> Enable Admin maintenance for this session (cleanup and cache controls; credential rotation excluded)</label>
       <button type="button" disabled={busy || checkingSession || !sessionAdminKey.trim()} onClick={connectCentralSession}>Connect registered services</button>
       <button type="button" disabled={busy || checkingSession || !getBrowserSessionStatus()} onClick={() => { setResults({}); setVerificationVersion(value => value + 1); }}>Verify current read session</button>
       <p role="status">{sessionStatus || 'Read-only by default. Enable workflow scopes only when required. No jobs run during connection.'}</p>
@@ -194,8 +199,8 @@ export default function CredentialSettings() {
       <input aria-label={profile} type="password" autoComplete="off" placeholder={getCredentialProfile(profile).startsWith('depo_session_') ? 'Using central session — key not displayed' : 'Enter individual key (optional)'} disabled={busy} value={values[profile]} onChange={e => { setValues(prev => ({ ...prev, [profile]: e.target.value })); setResults(prev => ({ ...prev, [profile]: '' })); }} /></td>
       <td><div className="depo-credential-actions">
       <button type="button" disabled={busy || !values[profile].trim()} onClick={() => validate(profile)}>Test and apply</button>
-      <button type="button" disabled={busy || values[profile].trim().length < 32 || !actor.trim() || !getCredentialProfile('ADMIN_API_KEY')} onClick={() => register(profile)}>Register / rotate in database</button>
-      {profile !== 'ADMIN_API_KEY' && <button type="button" disabled={busy || !getCredentialProfile('ADMIN_API_KEY')} onClick={() => revoke(profile)}>Revoke in database</button>}
+      <button type="button" disabled={busy || values[profile].trim().length < 32 || !actor.trim() || (!getCredentialProfile('ADMIN_API_KEY') || getCredentialProfile('ADMIN_API_KEY').startsWith('depo_session_'))} onClick={() => register(profile)}>Register / rotate in database</button>
+      {profile !== 'ADMIN_API_KEY' && <button type="button" disabled={busy || (!getCredentialProfile('ADMIN_API_KEY') || getCredentialProfile('ADMIN_API_KEY').startsWith('depo_session_'))} onClick={() => revoke(profile)}>Revoke in database</button>}
       </div></td><td><span role="status">{results[profile] || (getCredentialProfile(profile)?.startsWith('depo_session_') ? 'Delegated scope stored; server validates each operation' : getCredentialProfile(profile) ? 'Key stored; test to verify' : 'Not connected')}</span></td>
     </tr>)}</tbody></table></div>
     <button type="button" disabled={busy} onClick={async () => {

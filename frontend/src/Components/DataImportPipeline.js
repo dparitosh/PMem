@@ -72,7 +72,7 @@ export default function DataImportPipeline() {
   const [preCheck, setPreCheck] = useState(null); // { loading, ready, checks, reason }
   const ingestionWriteToken = '';
   const executionToken = '';
-  const [publishOntology, setPublishOntology] = useState(false);
+  const [publishOntology, setPublishOntology] = useState(true);
   const [commitApprover, setCommitApprover] = useState('');
   const fileInputRef = useRef(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState('instance.import');
@@ -554,6 +554,11 @@ export default function DataImportPipeline() {
     }
 
     const shouldPublish = publishOntology && ['xsd', 'xmi', 'ontology', 'owl', 'rdf', 'ttl'].includes(file.fileType);
+    const useEngineeringWorkflow = shouldPublish || (file.generationType === 'as_is' && ['ontology', 'owl', 'rdf', 'ttl'].includes(file.fileType));
+    if (shouldPublish && !['owl', 'as_is'].includes(file.generationType)) {
+      setError('Graph publication supports OWL or existing RDF. Reopen ontology details and choose OWL, or disable publication to retain the selected SHACL/Both generation mode.');
+      return;
+    }
     try {
       setStartedFiles(prev => new Set([...prev, fileId]));
       setPipelineStatus(prev => ({
@@ -570,18 +575,21 @@ export default function DataImportPipeline() {
       }));
 
       let uploadData;
-      if (shouldPublish) {
+      if (useEngineeringWorkflow) {
         const form = new FormData();
         form.append('file', file.fileObj);
         form.append('ontology_name', file.ontologyName);
         form.append('prefix', file.prefix);
         form.append('description', file.description || '');
-        form.append('publish', 'true');
+        form.append('publish', String(shouldPublish));
         uploadData = await apiClient.post(buildSemanticServiceUrl('ingestion', '/api/v1/engineering-workflows'), form, {
           headers: { Authorization: `Bearer ${ingestionWriteToken.trim() || getCredentialProfile('INGESTION_WRITE_TOKEN')}` }, timeout: 300000,
         });
-        if (uploadData.data.status !== 'published' || !uploadData.data.graph_publication) {
+        if (shouldPublish && (uploadData.data.status !== 'published' || !uploadData.data.graph_publication)) {
           throw new Error(uploadData.data.message || 'Policy or quality checks blocked graph publication.');
+        }
+        if (!shouldPublish && (uploadData.data.status !== 'registered' || !uploadData.data.ontology_registration?.ontology_id)) {
+          throw new Error('Ontology registration was not confirmed.');
         }
       } else uploadData = await API_METHODS.ontology.upload(file.fileObj, {
         ontologyName: file.ontologyName,
@@ -592,7 +600,7 @@ export default function DataImportPipeline() {
         fileType: file.fileType,
       }, ingestionWriteToken || getCredentialProfile('INGESTION_WRITE_TOKEN'));
       const responseBody = uploadData.data || uploadData;
-      const uploadDataBody = shouldPublish ? {
+      const uploadDataBody = useEngineeringWorkflow ? {
         ...responseBody.ontology_registration,
         task_id: responseBody.ontology_registration.ontology_id,
       } : responseBody;
@@ -622,8 +630,8 @@ export default function DataImportPipeline() {
           published: shouldPublish,
           message: shouldPublish ? `Ontology '${file.ontologyName}' published to Neo4j` : `Ontology '${file.ontologyName}' registered; graph publication has not run.`,
           stats: {
-            entities_found: uploadDataBody.nodes_merged ?? null,
-            relationships_found: null,
+            entities_found: shouldPublish ? responseBody.graph_publication.resources : uploadDataBody.nodes_merged ?? null,
+            relationships_found: shouldPublish ? responseBody.graph_publication.relationships : null,
           },
           error: false,
           completedAt: new Date().toLocaleTimeString(),
@@ -1841,11 +1849,12 @@ export default function DataImportPipeline() {
         <legend>Workflow access</legend>
         <p>Manage and validate keys in <a href="#/admin">Admin → Service credentials</a> before starting uploads or jobs.</p>
         <label><input type="checkbox" checked={publishOntology} onChange={event => setPublishOntology(event.target.checked)} /> Register and publish XSD/XMI or OWL/RDF/TTL to Neo4j after policy and quality checks</label>
-        <p>Leave unchecked to retain the source using the selected generation type. For a restored failed job, remove the row and select the original source file again.</p>
+        <p>{publishOntology ? 'Create ontology publishes OWL or existing RDF to Neo4j after policy and quality checks. SHACL/Both generation is available in register-only mode. Publication is confirmed only by a graph receipt.' : 'Register only: the source is retained, but Neo4j is not updated. Enable publication above to create the graph projection.'} For a restored failed job, remove the row and select the original source file again.</p>
       </fieldset>
       {/* Ontology Metadata Form Modal */}
       {showMetadataForm && (
         <OntologyMetadataForm
+          publicationMode={publishOntology}
           selectedFile={pendingFileForMetadata}
           onSubmit={handleMetadataSubmit}
           onCancel={() => {

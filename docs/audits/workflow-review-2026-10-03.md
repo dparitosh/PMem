@@ -1,5 +1,7 @@
 # Workflow correctness audit — 2026-10-03
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Reviewed commit: `77f5fdd99f923350b345a1fd53526c501a8f8a05`. This review confirms two P1 findings and seven P2 findings; it does not establish twenty P1 bugs. Related missing routes and state-update races are grouped by root cause, rather than counted individually. No application fixes were made in this review.
 
 ## P1 findings

@@ -1,5 +1,7 @@
 # Agentic execution and UI audit — 8 October 2026
 
+> Review history: see [current validation](audits/README.md) for the latest test counts, correction records and pending acceptance. Earlier counts and findings below belong to their original review.
+
 Scope: single-customer deployment using registered service credentials and token-based sessions. Multi-user project ownership remains deferred. This report is a code audit and targeted regression verification, not live customer deployment certification.
 
 ## Findings fixed

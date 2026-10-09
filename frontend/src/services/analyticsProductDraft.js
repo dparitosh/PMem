@@ -1,5 +1,5 @@
 export function publicationFromDraft(draft, fields, idempotencyKey) {
-  if (!draft || !['schema-design-evidence', 'pipeline-evidence'].includes(draft.product_kind)) throw new Error('Select a retained product evidence draft.');
+  if (!draft || !['schema-design-evidence', 'pipeline-evidence', 'ontology-evidence'].includes(draft.product_kind)) throw new Error('Select a retained product evidence draft.');
   const required = ['product_id', 'name', 'version', 'owner', 'steward', 'classification', 'approved_by', 'asset_id', 'release_version'];
   for (const field of required) if (!String(fields[field] || '').trim()) throw new Error(`${field} is required.`);
   if (!/^[A-Za-z][A-Za-z0-9._-]{0,127}$/.test(fields.product_id)) throw new Error('Product ID must start with a letter and contain only letters, numbers, dots, underscores or hyphens.');
@@ -9,9 +9,19 @@ export function publicationFromDraft(draft, fields, idempotencyKey) {
     domain: draft.domain || 'semantic-engineering', owner: fields.owner.trim(), steward: fields.steward.trim(),
     classification: fields.classification.trim(), lifecycle_state: 'published', approved_by: fields.approved_by.trim(),
     product_kind: draft.product_kind, analytics_readiness: draft.analytics_readiness,
-    quality_status: draft.quality_status || 'requires_review', artifacts, sources: draft.sources || [],
+    quality_status: draft.quality_status || 'requires_review', artifacts, sources: draft.sources || [], ontologies: draft.ontologies || [],
     semantic_releases: [{ asset_id: fields.asset_id.trim(), version: fields.release_version.trim(), lifecycle_status: 'approved' }],
     idempotency_key: idempotencyKey };
+}
+
+export function productDraftFromOntology(ontology) {
+  if (!ontology?.data_product_draft || !ontology.ontology_id) return null;
+  const draft = ontology.data_product_draft;
+  const reference = { ontology_id: ontology.ontology_id, prefix: ontology.prefix || '', artifact_id: ontology.artifact_id || null };
+  return { ...draft,
+    ontologies: [...(draft.ontologies || []).filter(item => item?.ontology_id !== ontology.ontology_id), reference],
+    sources: [...(draft.sources || []).filter(item => item?.ontology_id !== ontology.ontology_id), { ...reference, source_kind: 'registered-ontology' }],
+  };
 }
 
 export function productDraftFromRun(run) {

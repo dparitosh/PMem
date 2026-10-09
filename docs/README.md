@@ -1,5 +1,9 @@
 # Documentation map
 
+- [Complete document index](DOCUMENT_INDEX.md) — purpose and ownership of repository Markdown files.
+- [Current validation and open acceptance work](audits/README.md) — start here for audit status and test evidence.
+- [Test suites, reports and logs](TESTING_AND_EVIDENCE.md) — distinguishes executable tests from generated output.
+
 - [Repository structure and maintenance](REPOSITORY_MAINTENANCE.md)
 - [Environment configuration](../config/README.md)
 - [Support tools](../tools/README.md)

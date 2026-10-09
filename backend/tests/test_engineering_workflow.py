@@ -37,9 +37,11 @@ async def test_engineering_publication_uses_the_private_graph_credential(monkeyp
             if url.endswith("/policies/evaluate"): return Response({"compliant": True})
             if url.endswith("/quality-gate"): return Response({"publish_recommended": True})
             if url.endswith("/register"): return Response({"ontology_id": "demo"})
-            return Response({"status": "published"})
+            return Response({"status": "success", "ontology_id": kwargs['data']['ontology_id'],
+                             "publication_id": kwargs['data']['publication_id'], "resources": 1, "relationships": 0})
 
     monkeypatch.setenv("GRAPH_PUBLICATION_TOKEN", "private-graph-token")
+    monkeypatch.setenv("ONTOLOGY_APPROVAL_TOKEN", "private-ontology-token")
     monkeypatch.setattr("backend.ingestion_service.engineering_workflow.httpx.AsyncClient", lambda **kwargs: Client())
     workflow = EngineeringWorkflow(StubConverter())
     workflow.ontology_url = "http://ontology/api/v1"

@@ -7,6 +7,22 @@ vi.mock('../services/agenticApi', () => ({ agenticClient: { get: vi.fn(), post: 
 vi.mock('../services/serviceAuth', () => ({ getCredentialProfile: () => 'supervisor' }));
 beforeEach(() => vi.clearAllMocks());
 
+test('running execution is not called completed and inspection navigates with a minimal bookmark', async () => {
+  agenticClient.get.mockResolvedValue({data:{command:{agent_id:'ontology-governor',tool_id:'ontology.register',inputs:{}},requires_approval:false}});
+  agenticClient.post.mockResolvedValue({data:{run_id:'running-one',status:'running',execution_kind:'workflow',result:{private:'not persisted'}}});
+  render(<AgentProposalPanel />);
+  fireEvent.change(screen.getByLabelText('Saved recommendation ID'), {target:{value:'saved-running'}});
+  fireEvent.click(screen.getByText('Load saved recommendation'));
+  await screen.findByText('Proposed tool: ontology.register');
+  fireEvent.click(screen.getByRole('checkbox'));
+  fireEvent.click(screen.getByText('Execute reviewed recommendation'));
+  await screen.findByText(/Execution running\. Workflow run: running-one/);
+  fireEvent.click(screen.getByText('Inspect workflow execution'));
+  expect(window.location.hash).toBe('#/admin');
+  expect(JSON.parse(sessionStorage.getItem('depo:inspect-agent-run'))).toEqual({run_id:'running-one',status:'running',execution_kind:'workflow'});
+  sessionStorage.removeItem('depo:inspect-agent-run');
+});
+
 test('failed suggestion exposes its saved prompt for reload', async () => {
   agenticClient.get.mockResolvedValue({data:{agents:[{id:'ontology-governor'}]}});
   agenticClient.post.mockRejectedValue({response:{data:{detail:{message:'Recommendation failed',recommendation_id:'failed-prompt-1'}}}});
@@ -55,7 +71,7 @@ test('recommendation requires explicit review and approval before execution', as
   expect(agenticClient.post).toHaveBeenCalledTimes(1);
   fireEvent.change(screen.getByLabelText('Recommendation steward'),{target:{value:'reviewer'}});
   fireEvent.click(screen.getByRole('checkbox'));
-  agenticClient.post.mockResolvedValueOnce({data:{run_id:'executed-run'}});
+  agenticClient.post.mockResolvedValueOnce({data:{run_id:'executed-run',status:'completed'}});
   fireEvent.click(screen.getByText('Execute reviewed recommendation'));
   await screen.findByText('Execution completed. Agent run: executed-run');
   expect(agenticClient.post.mock.calls[1][1]).toEqual(expect.objectContaining({approved_by:'reviewer',approval_token:'supervisor'}));

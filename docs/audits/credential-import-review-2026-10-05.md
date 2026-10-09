@@ -1,5 +1,7 @@
 # Credential import and Admin table audit — 2026-10-05
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Scope: apply-depo-service-credentials.ps1, credential_import.py, shared register_key, Admin table/CSS and package validation. No customer VM, live PostgreSQL or browser renderer was available.
 
 ## Findings fixed

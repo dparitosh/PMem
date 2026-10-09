@@ -1,5 +1,7 @@
 # All-service integration review
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Reviewed the ten HTTP services and two workers declared in `infra/deployment/services.json`: schema-sets, ontology, agentic, graph, ingestion, OSLC, catalog, data-products, CEIM, data-pipeline, catalog-outbox worker and pipeline worker.
 
 ## Corrected defects

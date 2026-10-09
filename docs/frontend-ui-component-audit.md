@@ -1,5 +1,7 @@
 # Frontend UI Component Audit
 
+> Review history: see [current validation](audits/README.md) for the latest test counts, correction records and pending acceptance. Earlier counts and findings below belong to their original review.
+
 Date: 2026-07-05
 
 Historical audit. Findings below describe the July snapshot unless explicitly updated. The active route registry is frontend/src/app/pageRegistry.js; consult it for the current page inventory.

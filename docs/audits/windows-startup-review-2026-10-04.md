@@ -1,5 +1,7 @@
 # Windows backend and frontend startup audit — 2026-10-04
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Reviewed release: `4be05ec3f7a3e26de2c98c3b7b67bc2de163fb4e`. Scope: backend/frontend start and stop scripts, shared configuration loading, build receipts, and installation commands. No new P1 was confirmed. Nine P2 findings require fixes. Related frontend stop/timeout cleanup failures are grouped by root cause.
 
 | ID | Severity | Location | Trigger and consequence | Recommended fix |

@@ -30,6 +30,7 @@ test('restored central session is checked without displaying individual keys', a
   expect(screen.getByLabelText('GRAPH_READ_TOKEN')).toHaveAttribute('placeholder', 'Using central session — key not displayed');
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer depo_session_restored');
+  expect(screen.getByLabelText(/Enable Admin maintenance/)).not.toBeChecked();
 });
 
 test('restored session rejection reports the actual service detail and clears invalid access', async () => {
@@ -42,7 +43,7 @@ test('restored session rejection reports the actual service detail and clears in
 });
 
 test('one admin connection applies registered scopes without exposing their keys', async () => {
-  fetch.mockResolvedValueOnce(response(200, { token: 'depo_session_opaque', expires_at: new Date(Date.now() + 600000).toISOString(), profiles: ['GRAPH_READ_TOKEN', 'INGESTION_WRITE_TOKEN'] }))
+  fetch.mockResolvedValueOnce(response(200, { token: 'depo_session_opaque', expires_at: new Date(Date.now() + 600000).toISOString(), profiles: ['GRAPH_READ_TOKEN', 'INGESTION_WRITE_TOKEN', 'ADMIN_API_KEY'] }))
     .mockResolvedValue(response(200, { status: 'authorized' }));
   render(<CredentialSettings />);
   fireEvent.change(screen.getByLabelText('Administrator key for connection'), { target: { value: 'admin-fixture' } });
@@ -50,13 +51,18 @@ test('one admin connection applies registered scopes without exposing their keys
   fireEvent.click(screen.getByRole('button', { name: 'Connect registered services' }));
   await waitFor(() => expect(getCredentialProfile('INGESTION_WRITE_TOKEN')).toBe('depo_session_opaque'));
   expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_opaque');
-  expect(getCredentialProfile('ADMIN_API_KEY')).toBe('');
+  expect(getCredentialProfile('ADMIN_API_KEY')).toBe('depo_session_opaque');
+  expect(screen.getByLabelText(/Enable Admin maintenance/)).toBeChecked();
   expect(screen.getByLabelText('Administrator key for connection')).toHaveValue('');
   expect(screen.getByLabelText('GRAPH_READ_TOKEN')).toHaveValue('');
   const [url, options] = fetch.mock.calls[0];
   expect(url).toBe('http://ontology/auth/browser-session');
   expect(options.headers['X-API-Key']).toBe('admin-fixture');
-  expect(JSON.parse(options.body)).toEqual({ include_writes: true });
+  expect(JSON.parse(options.body)).toEqual({ include_writes: true, include_maintenance: true });
+  const saved = sessionStorage.getItem('depo.browserSession.v1');
+  expect(JSON.parse(saved).profiles).toContain('ADMIN_API_KEY');
+  expect(saved).not.toContain('admin-fixture');
+  expect(screen.getAllByRole('button', {name:'Register / rotate in database'}).every(button => button.disabled)).toBe(true);
 });
 
 test('read key is applied only after every configured service accepts it', async () => {

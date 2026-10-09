@@ -32,6 +32,11 @@ export default function AgentControlPanel() {
     window.addEventListener('depo:inspect-agent-run', inspectAgent);
     window.addEventListener('depo:credentials-changed', clear);
     window.addEventListener('depo:credentials-cleared', clear);
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('depo:inspect-agent-run') || 'null');
+      sessionStorage.removeItem('depo:inspect-agent-run');
+      if (saved && typeof saved.run_id === 'string') inspectAgent({ detail: saved });
+    } catch { /* optional navigation bookmark */ }
     return () => { listRequest.current?.abort(); llmRequest.current?.abort(); request.current?.abort(); window.removeEventListener('depo:inspect-agent-run', inspectAgent); window.removeEventListener('depo:credentials-changed', clear); window.removeEventListener('depo:credentials-cleared', clear); };
   }, []);
   useEffect(() => {

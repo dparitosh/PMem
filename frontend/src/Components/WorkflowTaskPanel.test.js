@@ -7,6 +7,36 @@ import { setCredentialProfile } from '../services/serviceAuth';
 beforeEach(() => setCredentialProfile('GRAPH_READ_TOKEN', 'reader'));
 
 afterEach(() => { vi.restoreAllMocks(); sessionStorage.clear(); });
+test('completed automatic merge refreshes ontology context once across status refreshes', async () => {
+  setCredentialProfile('AGENTIC_APPROVAL_TOKEN', 'approval');
+  const changed = vi.fn();
+  window.addEventListener('depo:ontologies-changed', changed);
+  try {
+    vi.spyOn(agenticAPI, 'runWorkflow').mockResolvedValue({ data: { run_id: 'merged-run' } });
+    vi.spyOn(agenticAPI, 'getRun').mockResolvedValue({ data: {
+      run_id: 'merged-run', workflow_id: 'ontology-union-automation', status: 'completed',
+      traces: [{ tool_id: 'ontology.merge.apply_automatic', result: { status: 'merged' } }],
+    } });
+    render(<WorkflowTaskPanel workflowId="ontology-union-automation" inputs={{}} governed label="Merge" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Merge' }));
+    await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh status' }));
+    await waitFor(() => expect(agenticAPI.getRun).toHaveBeenCalledTimes(2));
+    expect(changed).toHaveBeenCalledTimes(1);
+  } finally { window.removeEventListener('depo:ontologies-changed', changed); }
+});
+test('retained failure displays actionable diagnostics outside the raw report', async () => {
+  vi.spyOn(agenticAPI, 'runWorkflow').mockResolvedValue({ data: { run_id: 'failed-run' } });
+  vi.spyOn(agenticAPI, 'getRun').mockResolvedValue({ data: {
+    run_id: 'failed-run', workflow_id: 'merge', status: 'failed', http_status: 422,
+    error_message: 'Restore or re-register the retained RDF source before merging.',
+    traces: [{ tool_id: 'ontology.merge.preview', status: 'failed' }],
+  } });
+  render(<WorkflowTaskPanel workflowId="merge" inputs={{}} label="Merge" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Merge' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('HTTP 422: Restore or re-register');
+  expect(screen.getByRole('button', { name: 'Prepare a new task' })).toBeEnabled();
+});
 test('restores a retained workflow without submitting another execution', async () => {
   const start = vi.spyOn(agenticAPI, 'runWorkflow').mockResolvedValue({ data: { run_id: 'run-1' } });
   vi.spyOn(agenticAPI, 'getRun').mockResolvedValue({ data: { run_id: 'run-1', workflow_id: 'review', status: 'completed', traces: [{ result: { evidence: 'retained' } }] } });

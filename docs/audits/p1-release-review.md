@@ -1,5 +1,7 @@
 # Confirmed high-priority release defects
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 This review confirms ten distinct high-priority defects. It does not claim twenty P1 defects without evidence. Priority reflects the documented worker, gateway and passwordless Neo4j deployment requirements.
 
 | # | Defect and failure trigger | Correction | Source |

@@ -1,5 +1,7 @@
 # Python–UI integration audit — 2026-10-08
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Audited commit: 93ad996. Audit-only artifacts; application code was not changed.
 
 ## Coverage and evidence

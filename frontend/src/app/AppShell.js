@@ -13,7 +13,7 @@ import {
 import { navigationItems, pageLabel } from './navigation';
 import { getServiceAuthToken, wasBrowserSessionExpired } from '../services/serviceAuth';
 import RunRecoveryNotice from './RunRecoveryNotice';
-import { verifyStoredReadAccess } from '../services/readAccessVerification';
+import { verifyStoredAccess } from '../services/readAccessVerification';
 import './AppShell.css';
 
 const THEME_STORAGE_KEY = 'depo.colorSchema';
@@ -57,7 +57,7 @@ export default function AppShell({
     const timeout = setTimeout(() => controller.abort(), 15000);
     setVerifyingAccess(true); setAccessMessage('Checking stored API access…');
     try {
-      const result = await verifyStoredReadAccess({ signal: controller.signal });
+      const result = await verifyStoredAccess({ signal: controller.signal });
       if (!controller.signal.aborted) {
         setAccessMessage(result.message);
       }

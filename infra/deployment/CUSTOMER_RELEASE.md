@@ -1,5 +1,7 @@
 # Customer setup and release acceptance
 
+Latest local checks and pending integration work are recorded in [the current audit index](../../docs/audits/README.md). Passing local tests do not satisfy the target-server gates below.
+
 This is the release handoff record. Do not mark a delivery accepted until its
 checks have run on the target Windows server. Repository syntax tests and
 configuration mocks are not production certification.

@@ -41,6 +41,7 @@ export default function OntologyMetadataForm({
   selectedFile,
   isLoading = false,
   initialValues = null,
+  publicationMode = false,
   formTitle = 'Ontology Metadata',
   ontologyNamePlaceholder = 'e.g., Product Model',
   prefixPlaceholder = 'e.g., myprefix'
@@ -64,11 +65,14 @@ export default function OntologyMetadataForm({
 
   // Check if generation options are empty due to unrecognized file type
   const fileType = getFileType();
-  const generationOptions = useMemo(() => getGenerationOptionsForFileType(fileType), [fileType]);
+  const generationOptions = useMemo(() => {
+    const options = getGenerationOptionsForFileType(fileType);
+    return publicationMode ? options.filter(option => ['owl', 'as_is'].includes(option.value)) : options;
+  }, [fileType, publicationMode]);
   const showFileTypeError = fileType && generationOptions.length === 0;
 
   useEffect(() => {
-    if (!formData.generationType && generationOptions.length > 0) {
+    if (!generationOptions.some(option => option.value === formData.generationType) && generationOptions.length > 0) {
       setFormData(prev => ({
         ...prev,
         generationType: generationOptions[0].value,
@@ -87,7 +91,7 @@ export default function OntologyMetadataForm({
       errors.prefix = 'Prefix must start with a lowercase letter and contain only lowercase letters, numbers, or underscores';
     }
     
-    if (!formData.generationType) {
+    if (!generationOptions.some(option => option.value === formData.generationType)) {
       errors.generationType = 'Please select generation type';
     }
     

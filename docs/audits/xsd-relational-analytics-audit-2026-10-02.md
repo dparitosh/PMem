@@ -1,5 +1,7 @@
 # XSD serialization → relational analytics audit — 2026-10-02
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 ## Implementation update — 2026-10-09
 
 Follow-up regression fixes: schemas without a target namespace now match XML

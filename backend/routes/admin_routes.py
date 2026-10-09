@@ -61,7 +61,12 @@ async def require_admin_api_key(request: Request) -> None:
     """Require a key in production; allow local development without one."""
     from backend.depo_platform.credentials import uses_postgres, verify_key
     if uses_postgres():
-        await run_in_threadpool(verify_key, 'ADMIN_API_KEY', request.headers.get('X-API-Key', ''))
+        supplied = request.headers.get('X-API-Key', '')
+        if supplied.startswith('depo_session_'):
+            from backend.depo_platform.browser_credentials import verify_session
+            await run_in_threadpool(verify_session, 'ADMIN_API_KEY', supplied, None, maintenance=True)
+        else:
+            await run_in_threadpool(verify_key, 'ADMIN_API_KEY', supplied)
         return
     expected = os.getenv("ADMIN_API_KEY", "").strip()
     if not _is_production_environment() and not expected:

@@ -72,7 +72,12 @@ export default function AgentProposalPanel({ agentIds, context = null, title = '
         const command = proposal.command;
         setProposal(null); setReviewed(false);
         response = await agenticClient.post(url('runs'), { ...command, approved_by: actor.trim(), approval_token: token, wait_for_completion: true }, options);
-        if (!controller.signal.aborted) { setMessage(response.data.status === 'queued' ? `Execution queued. Workflow run: ${response.data.run_id}. Inspect its status before retrying.` : `Execution completed. ${response.data.execution_kind === 'workflow' ? 'Workflow' : 'Agent'} run: ${response.data.run_id}`); setExecution(response.data); setProposal(null); setReviewed(false); }
+        if (!controller.signal.aborted) {
+          const status = response.data.status;
+          if (!['queued', 'running', 'dispatching', 'paused', 'completed', 'failed', 'timed_out', 'cancelled', 'interrupted', 'reconciliation_required'].includes(status) || typeof response.data.run_id !== 'string') throw new Error('Invalid execution response. Inspect telemetry before retrying.');
+          setMessage(`Execution ${status}. ${response.data.execution_kind === 'workflow' ? 'Workflow' : 'Agent'} run: ${response.data.run_id}${status === 'completed' ? '' : '. Inspect its status before retrying.'}`);
+          setExecution(response.data); setProposal(null); setReviewed(false);
+        }
       }
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -123,7 +128,11 @@ export default function AgentProposalPanel({ agentIds, context = null, title = '
     </div>}
     {busy && <><button onClick={reset}>Stop waiting</button><p>Stopping the wait does not undo an execution. Inspect agent telemetry before retrying a write.</p></>}
     {message && <p role="status">{message}</p>}
-    {execution && <><button onClick={() => window.dispatchEvent(new CustomEvent('depo:inspect-agent-run', {detail:execution}))}>{execution.execution_kind === 'workflow' ? 'Inspect workflow execution' : 'Inspect standalone execution'}</button><details open><summary>Execution result</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(execution.result, null, 2)}</pre></details></>}
+    {execution && <><button onClick={() => {
+      try { sessionStorage.setItem('depo:admin-tab', 'agents'); sessionStorage.setItem('depo:inspect-agent-run', JSON.stringify({ run_id: execution.run_id, execution_kind: execution.execution_kind, status: execution.status })); } catch { /* navigation remains available */ }
+      window.dispatchEvent(new CustomEvent('depo:inspect-agent-run', {detail:execution}));
+      window.location.hash = '#/admin';
+    }}>{execution.execution_kind === 'workflow' ? 'Inspect workflow execution' : 'Inspect standalone execution'}</button><details open><summary>Execution result</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(execution.result, null, 2)}</pre></details></>}
     </div>
   </section>;
 }

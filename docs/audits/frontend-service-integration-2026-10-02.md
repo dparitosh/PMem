@@ -1,5 +1,7 @@
 # Frontend and all-service integration audit — 2026-10-02
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Scope: frontend URL ownership, shared and dedicated client authentication, source imports, service manifest, release configuration and simulated gateway diagnostics.
 
 ## Confirmed defects corrected

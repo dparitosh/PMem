@@ -1,5 +1,7 @@
 # Legacy and current implementation review — 2026-10-03
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Scope: repository entry points, deployment manifest, Windows frontend startup, browser configuration, frontend authentication/contract discovery, and installation/architecture references. This is a cross-component review of coexistence risks, not a line-by-line certification of every file or a customer-VM test.
 
 ## Corrected findings

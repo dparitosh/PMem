@@ -1,5 +1,7 @@
 # Agent code audit — 2026-10-02
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Scope: agentic control-plane execution, ontology review, companion sessions, transport authorization, telemetry, DT integration, configuration and recovery. This is a source audit with focused regressions, not live customer-environment certification.
 
 ## Confirmed defects

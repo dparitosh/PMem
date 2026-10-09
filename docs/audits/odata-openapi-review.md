@@ -1,5 +1,7 @@
 # OData and OpenAPI review — 2026-10-01
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Reviewed shared contract generation, all ten service entry points and capability
 lists, authorization helpers, agent catalog validation, deployment checks and
 existing contract tests. OData currently exposes operation discovery only;

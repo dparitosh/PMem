@@ -1,5 +1,7 @@
 # Gateway integration and installation audit
 
+> Dated audit record: use [the current audit index](README.md) for latest validation and acceptance status. Findings and test counts below belong to their recorded review; they are not a current release certificate.
+
 Scope: routing and credential flow across the ten-service manifest, frontend configuration/API clients, Windows install/start scripts, root configuration validation, service publication/control-plane clients and gateway diagnostics. This is not a certification of every application feature or of customer Azure resources.
 
 ## Corrected defects

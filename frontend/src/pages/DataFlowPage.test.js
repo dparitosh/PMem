@@ -36,6 +36,15 @@ test('marks quality unknown when the run evidence endpoint fails', async () => {
   expect(screen.getByText('unknown')).toBeInTheDocument();
 });
 
+test('Run now reuses the retained input instead of submitting an empty payload', async () => {
+  const { dataPipelineAPI } = await import('../services/apiClient');
+  dataPipelineAPI.definitions.mockResolvedValueOnce({data:{definitions:[{job_id:'test',version:'1',lifecycle_state:'approved',enabled:true}]}});
+  dataPipelineAPI.runs.mockResolvedValueOnce({data:{runs:[{run_id:'retained-input',job_id:'test',job_version:'1',status:'completed'}]}});
+  render(<DataFlowPage />);
+  fireEvent.click(await screen.findByRole('button', {name:'Run now'}));
+  await waitFor(() => expect(dataPipelineAPI.replay).toHaveBeenCalledWith('retained-input', expect.any(Object)));
+});
+
 test('sends explicit in-memory approval data for a direct replay', async () => {
   const { dataPipelineAPI } = await import('../services/apiClient');
   render(<DataFlowPage />);
