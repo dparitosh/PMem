@@ -1,0 +1,69 @@
+Semantic Bridge backend tests
+============================
+Keep this entire folder in <repository>\infra\windows\semantic-bridge.
+It uses ../runtime-config.ps1 and the repository service manifest and tests.
+
+Requirements
+------------
+Start DEPO services first. Integration checks need ontology, ingestion, agentic
+and graph APIs, PostgreSQL/Neo4j, and the configured LLM recommendation endpoint.
+Worker execution mode also needs the agentic workflow worker. No frontend needed.
+Use AUTH_MODE=token and DEPO_CREDENTIAL_STORE=postgres. Credentials are read from
+the selected server environment file, not entered into the prompt or output.
+For executed merge exports, use application Python with rdflib installed.
+
+Two XSD files -> registered ontologies -> governed merge draft -> TTL/OWL
+-----------------------------------------------------------------------
+From E:\App\PMem\infra\windows\semantic-bridge:
+
+.\test-depo-semantic-bridge.ps1 -Mode Integration -XsdInputs -ExecuteAutomation -EnvFile 'E:\App\PMem\.env.local' -OutputDirectory 'E:\App\PMem\logs\bridge-results'
+
+You will be asked for source/target XSD file paths and a task prompt.
+Alternatively supply -SourceXsdPath, -TargetXsdPath and -TaskPrompt.
+Each XSD must be self-contained, nonempty, and at most 25 MiB. Multi-file
+include/import/redefine bundles are rejected before any upload is performed.
+Uploads create retained ontology records even when the later merge fails.
+
+Existing registered inputs
+--------------------------
+.\test-depo-semantic-bridge.ps1 -Mode Integration -Interactive -ExecuteAutomation
+
+Choose OntologyMerge or InstanceMapping, then source and target from API lists.
+Use -Gateway to exercise DEPO_ROUTING_MODE=gateway / DEPO_API_GATEWAY_URL routes.
+Without -Gateway, the script targets local service listeners on DEPO_SERVICE_HOST.
+
+Outputs and validation
+----------------------
+Every run creates its own unique subfolder under OutputDirectory. Existing report
+files are rejected. The report lists artifact paths, sizes and SHA-256 checksums.
+Mapping publication exports join approved_ids to retained preview candidates;
+CSV includes both approved and held candidates with explicit approval flags.
+Merge execution exports TTL and RDF/XML (.owl), checks RDF syntax, graph
+isomorphism (including blank nodes), and the merge preview's triple count.
+The JSON preview, Steward policy, workflow results and receipts are also saved.
+No full execution payload or credentials are written to the report.
+
+Scope and side effects
+----------------------
+Without -ExecuteAutomation, application/publication is skipped, but source upload,
+recommendation and preview records are retained. With it, the backend's Governor
+and Steward workflow may publish mappings or register a merged draft. Policy-held
+work is not applied and returns a nonzero acceptance result. Writes are not retried,
+deleted, or rolled back. Sessions are disconnected on success/failure.
+Expiry is checked before operations: an insufficient session window stops the
+test rather than silently changing workflow ownership or retrying writes.
+The task prompt tests a recommendation; execution uses selected, validated IDs.
+Ontology union preserves identities; it does not infer entity equivalence or
+automatically consolidate entities/properties. Merged draft creation does not
+publish that RDF ontology to Neo4j. This is not an audit of every backend feature:
+streaming, worker restart recovery, and multi-file XSD support remain outside scope.
+
+Local tests
+-----------
+.\test-depo-semantic-bridge.ps1 -Suite Backend
+.\test-depo-semantic-bridge.ps1 -Suite Frontend
+.\test-semantic-bridge-runner.ps1 -PythonPath 'E:\App\PMem\backend\.dt_venv\Scripts\python.exe'
+
+The first two commands use mocked unit/component tests, not deployed services.
+The runner contract tests cover previews, merge/mapping artifacts, XSD uploads,
+LLM failure, receipt mismatch, workflow tool mismatch, export mismatch and expiry.
