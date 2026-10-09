@@ -39,6 +39,7 @@ class OntologyUploadManager:
     _LIST_CACHE_ENABLED = os.getenv('ONTOLOGY_LIST_CACHE_ENABLED', 'false').lower() == 'true'
     _list_cache: Optional[Dict[str, Any]] = None
     _list_cache_ts: float = 0.0
+    _list_cache_generation = None
     _metadata_lock = threading.RLock()
 
     @classmethod
@@ -473,6 +474,12 @@ class OntologyUploadManager:
         try:
             cls.initialize()
             now = time.time()
+            generation = None
+            if cls._LIST_CACHE_ENABLED:
+                from backend.depo_platform.maintenance import cache_generation
+                generation = cache_generation()
+                if generation is None or generation != cls._list_cache_generation:
+                    cls._invalidate_list_cache()
             if cls._LIST_CACHE_ENABLED and cls._list_cache is not None and (now - cls._list_cache_ts) < cls._LIST_CACHE_TTL_SEC:
                 return copy.deepcopy(cls._list_cache)
             
@@ -503,6 +510,7 @@ class OntologyUploadManager:
             if cls._LIST_CACHE_ENABLED:
                 cls._list_cache = copy.deepcopy(result)
                 cls._list_cache_ts = now
+                cls._list_cache_generation = generation
             return copy.deepcopy(result)
         except Exception as e:
             logger.exception("Error listing ontologies")
@@ -697,19 +705,24 @@ class OntologyUploadManager:
         try:
             cls.initialize()
             deleted_dirs = 0
+            failed = []
+            boundary = cls.ONTOLOGY_STORAGE_DIR.resolve()
             # Remove entire ontology subdirectories to avoid leaving orphaned files
             if cls.ONTOLOGY_STORAGE_DIR.exists():
                 for ontology_dir in list(cls.ONTOLOGY_STORAGE_DIR.iterdir()):
                     if ontology_dir.is_dir():
                         try:
+                            if ontology_dir.is_symlink() or not ontology_dir.resolve().is_relative_to(boundary):
+                                raise ValueError('Ontology directory is outside the storage boundary')
                             shutil.rmtree(ontology_dir)
                             deleted_dirs += 1
                         except Exception as e:
+                            failed.append(ontology_dir.name)
                             logger.warning(f"Could not remove ontology directory {ontology_dir}: {e}")
             
             cls._invalidate_list_cache()
             logger.info(f"Removed {deleted_dirs} ontology directories from storage")
-            return {'status': 'success', 'cleared': deleted_dirs}
+            return {'status': 'partial' if failed else 'success', 'cleared': deleted_dirs, 'failed': failed}
         except Exception as e:
             logger.exception("Error clearing metadata")
             return {'status': 'error', 'error': str(e)}

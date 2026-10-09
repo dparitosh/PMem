@@ -592,7 +592,7 @@ export const adminAPI = {
   health: (options = {}) => apiClient.get(buildUrl(API.admin.health), options),
   registry: (options = {}) => apiClient.get(buildUrl(API.admin.registry), options),
   cleanSchema: () =>
-    apiClient.post(buildUrl(API.admin.cleanSchema), { confirm: 'CLEAN_NEO4J_SCHEMA' }),
+    apiClient.post(buildUrl(API.admin.cleanSchema), { confirm: 'CLEAN_NEO4J_SCHEMA' }, { timeout: 300000 }),
   clearCache: () => apiClient.post(buildUrl(API.admin.clearCache)),
   deleteData: ({ label, prefix, property, value, batchSize = 10000, dryRun = false }) =>
     apiClient.post(buildUrl(API.admin.deleteData), {
@@ -608,7 +608,7 @@ export const adminAPI = {
     }),
   schemaStats: (options = {}) => apiClient.get(buildUrl(API.admin.schemaStats), options),
   resetDatabase: (recreateIndexes = true) =>
-    apiClient.post(buildUrl(API.admin.resetDatabase), null, { params: { recreate_indexes: recreateIndexes } }),
+    apiClient.post(buildUrl(API.admin.resetDatabase), null, { params: { recreate_indexes: recreateIndexes }, timeout: 300000 }),
 };
 
 export const metadataRegistryAPI = {

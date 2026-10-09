@@ -110,9 +110,10 @@ class Neo4jSchemaCleaner:
             database: Neo4j database name (default: from centralized config or NEO4J_DATABASE env)
         """
         self.driver: Driver = None
+        self._owns_driver = False
         
         # Try to use centralized configuration first
-        if CENTRALIZED_CONFIG_AVAILABLE and uri is None:
+        if CENTRALIZED_CONFIG_AVAILABLE and all(value is None for value in (uri, username, password, database)):
             try:
                 config = get_config()
                 self.uri = config.uri
@@ -139,15 +140,17 @@ class Neo4jSchemaCleaner:
         
         try:
             # Try to use centralized driver if available
-            if CENTRALIZED_CONFIG_AVAILABLE:
+            if CENTRALIZED_CONFIG_AVAILABLE and all(value is None for value in (uri, username, password, database)):
                 try:
                     self.driver = get_driver()
                     logger.info("[OK] Using centralized Neo4j driver")
                 except Exception as e:
                     logger.warning(f"Failed to use centralized driver: {e}. Creating new driver.")
                     self.driver = GraphDatabase.driver(self.uri, auth=(self.username, self.password))
+                    self._owns_driver = True
             else:
                 self.driver = GraphDatabase.driver(self.uri, auth=(self.username, self.password))
+                self._owns_driver = True
             
             # Test connection
             with self.driver.session(database=self.database) as session:
@@ -155,6 +158,7 @@ class Neo4jSchemaCleaner:
                 _ = result.single()
             logger.info("[OK] Neo4j connection established")
         except Exception as e:
+            self.close()
             logger.error(f"[ERROR] Neo4j connection failed: {str(e)}")
             raise RuntimeError(f"Neo4j connection failed: {e}") from e
     
@@ -520,14 +524,18 @@ class Neo4jSchemaCleaner:
         ]
         
         try:
+            failures = []
             with self.driver.session(database=self.database) as session:
                 for index_query in indexes_to_create:
                     try:
-                        session.run(index_query)
+                        session.run(index_query).consume()
                     except Exception as idx_err:
-                        # Log but don't fail - indexes may not be necessary
+                        # Keep trying all indexes, then report any failures.
                         logger.warning(f"[WARN] Could not create index: {str(idx_err)[:100]}")
+                        failures.append(index_query)
                         continue
+            if failures:
+                return False, f'{len(failures)} operational indexes could not be created; check server logs'
             logger.info("[OK] Index creation completed")
             return True, "Indexes created successfully"
         except Exception as e:
@@ -601,6 +609,7 @@ class Neo4jSchemaCleaner:
             return {
                 "status": "FAIL",
                 "message": f"Failed to drop constraints: {msg}",
+                "data_deleted": True,
                 "before": stats_before.__dict__ if stats_before else {}
             }
 
@@ -609,12 +618,16 @@ class Neo4jSchemaCleaner:
             return {
                 "status": "FAIL",
                 "message": f"Failed to drop indexes: {msg}",
+                "data_deleted": True,
                 "before": stats_before.__dict__ if stats_before else {}
             }
         
         # Recreate indexes
         if recreate_indexes:
             success, msg = self.create_indexes()
+            if not success:
+                return {'status': 'FAIL', 'message': 'Data was deleted, but index recreation failed: ' + msg,
+                        'data_deleted': True, 'before': stats_before.__dict__}
         
         stats_after = self.get_schema_stats()
         
@@ -664,10 +677,11 @@ class Neo4jSchemaCleaner:
         logger.info("%s", "="*80)
     
     def close(self):
-        """Close database connection"""
-        if self.driver:
+        """Release this cleaner without shutting down the shared service pool."""
+        if self.driver and self._owns_driver:
             self.driver.close()
             logger.info("[OK] Neo4j connection closed")
+        self.driver = None
 
 
 if __name__ == "__main__":

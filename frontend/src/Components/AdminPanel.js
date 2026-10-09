@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
-import { API_METHODS, setAdminApiKey } from '../services/apiClient';
+import { API_METHODS } from '../services/apiClient';
 import { useOntologies } from '../contexts/OntologyContext';
 import { UI_COLORS } from '../styles/uiTokens';
 
@@ -201,10 +201,12 @@ export default function AdminPanel({ onSchemaCleaned }) {
       const metadataCleared = res.data?.metadata_cleared ?? 0;
       const graphMessage = res.data?.message || 'Neo4j graph reset completed.';
       setMessage(`Graph reset: ${graphMessage} Ontology metadata files cleared: ${metadataCleared}. Caches and ontology registry were refreshed.`);
+      const cleanupWarning = res.data?.status === 'partial' ? res.data?.metadata_cleanup_message || res.data?.registry_reconciliation?.message || 'Graph reset completed, but cleanup is incomplete.' : '';
       await fetchOntologies();
       window.dispatchEvent(new Event('dt-schema-cleaned'));
       if (typeof onSchemaCleaned === 'function') onSchemaCleaned();
       await loadAdminState();
+      if (cleanupWarning) setError(cleanupWarning);
     } catch (err) {
       const detail = err?.response?.data?.detail || err?.message || 'Schema cleanup failed.';
       setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
@@ -230,6 +232,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
     setError('');
     try {
       const res = await API_METHODS.admin.resetDatabase(true);
+      if (String(res.data?.status || '').toUpperCase() !== 'SUCCESS') throw new Error(res.data?.message || 'Graph reset did not complete.');
       setMessage(`Graph reset completed. ${res.data?.message || 'Neo4j data was cleared and indexes were recreated.'} Uploaded ontology metadata was not deleted.`);
       window.dispatchEvent(new Event('dt-schema-cleaned'));
       if (typeof onSchemaCleaned === 'function') onSchemaCleaned();
@@ -253,18 +256,23 @@ export default function AdminPanel({ onSchemaCleaned }) {
         cleared.graph_cache ? 'graph cache' : null,
         cleared.ontology_list_cache ? 'ontology list cache' : null,
         cleared.config_cache ? 'config cache' : null,
+        cleared.shared_cache_generation ? 'shared cache invalidation' : null,
       ].filter(Boolean);
+      const cacheWarning = res.data?.status === 'partial' || parts.length === 0 ? res.data?.message || 'Some caches could not be cleared.' : '';
       setMessage(parts.length > 0
         ? `Cache cleanup completed: ${parts.join(', ')}. No Neo4j graph data or ontology files were deleted.`
         : res.data?.message || 'Application caches cleared. No Neo4j graph data or ontology files were deleted.');
       await loadAdminState();
+      await fetchOntologies();
+      window.dispatchEvent(new Event('depo:ontologies-changed'));
+      if (cacheWarning) setError(cacheWarning);
     } catch (err) {
       const detail = err?.response?.data?.detail || err?.message || 'Cache clear failed.';
       setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
     } finally {
       setLoading(false);
     }
-  }, [loadAdminState]);
+  }, [loadAdminState, fetchOntologies]);
 
   const deleteOldXsdSchemas = useCallback(async () => {
     setLoading(true);
@@ -367,6 +375,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       const matched = result?.data?.matched_before ?? deleted;
       setMessage(`Scoped graph cleanup completed. Deleted ${deleted} of ${matched} matched ${scope.target} node(s) using batched transactions. Ontology files and registry metadata were not deleted.`);
       setDeletePreview(null);
+      window.dispatchEvent(new Event('depo:ontologies-changed'));
       await loadAdminState();
     } catch (err) {
       const detail = err?.response?.data?.detail || err?.message || 'Batched delete failed.';
@@ -584,7 +593,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
             Destructive Reset Actions
           </div>
           <div style={{ fontSize: 11, color: colors.danger, lineHeight: 1.4, marginBottom: 8 }}>
-            Use Graph Reset to clear Neo4j data while keeping uploaded ontology metadata. Use Full Schema Cleanup only when you intentionally want graph data, indexes/constraints, and ontology registry metadata cleared together.
+            Graph Reset clears Neo4j and invalidates publication records while retaining uploaded files. Full Schema Cleanup also removes legacy upload directories. Governed PostgreSQL catalog artifacts and audit history remain retained.
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <button type="button" onClick={resetGraphDatabase} disabled={loading} style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}>

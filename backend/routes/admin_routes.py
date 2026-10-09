@@ -12,6 +12,8 @@ import os
 import re
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
+from functools import wraps
+from starlette.concurrency import run_in_threadpool
 
 try:
     from ..Services.oslc_trs_service import OSLCTRSService
@@ -21,6 +23,27 @@ except ImportError:
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["Admin"])
 CLEAN_SCHEMA_CONFIRM_TOKEN = "CLEAN_NEO4J_SCHEMA"
+
+
+def _maintenance_worker(handler):
+    """Keep blocking graph/database/filesystem operations off the event loop."""
+    @wraps(handler)
+    async def run(*args, **kwargs):
+        return await run_in_threadpool(handler, *args, **kwargs)
+    return run
+
+
+def _reconcile_reset():
+    from backend.depo_platform.maintenance import reconcile_graph_reset, invalidate_shared_caches
+    try:
+        result = reconcile_graph_reset()
+        invalidate_shared_caches()
+        from backend.core.graphvis_cache import invalidate_graphvis_cache
+        invalidate_graphvis_cache('admin graph reset')
+        return result
+    except Exception:
+        logger.exception('Graph reset succeeded but registry reconciliation failed')
+        return {'status': 'partial', 'message': 'Graph data was deleted, but registry/cache reconciliation failed. Check PostgreSQL connectivity and retry reconciliation.'}
 
 
 def _is_production_environment() -> bool:
@@ -38,7 +61,7 @@ async def require_admin_api_key(request: Request) -> None:
     """Require a key in production; allow local development without one."""
     from backend.depo_platform.credentials import uses_postgres, verify_key
     if uses_postgres():
-        verify_key('ADMIN_API_KEY', request.headers.get('X-API-Key', ''))
+        await run_in_threadpool(verify_key, 'ADMIN_API_KEY', request.headers.get('X-API-Key', ''))
         return
     expected = os.getenv("ADMIN_API_KEY", "").strip()
     if not _is_production_environment() and not expected:
@@ -601,7 +624,8 @@ except Exception as e:
 
 
 @router.post("/clean-schema", dependencies=[Depends(require_admin_api_key)])
-async def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
+@_maintenance_worker
+def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
     """
     Clean Neo4j database: delete all nodes, relationships, AND ontology metadata
     ✅ UPDATED: Also clears orphaned ontology metadata from filesystem
@@ -626,9 +650,13 @@ async def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             cleaner.close()
 
         if result.get("status") != "SUCCESS":
+            if result.get('data_deleted'):
+                _reconcile_reset()
             raise HTTPException(status_code=500, detail=result.get("message", "Schema cleanup failed"))
+        reconciliation = _reconcile_reset()
         
         # 2. ✅ FIXED: Also clear ontology metadata so names don't persist
+        metadata_result = {'status': 'error', 'cleared': 0}
         try:
             # Import using absolute path to avoid relative-import failures in tests
             try:
@@ -640,6 +668,13 @@ async def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
         except Exception as e:
             logger.warning(f"Could not clear metadata: {e}")
             metadata_cleared = 0
+        # Publish again after file deletion so peers cannot retain a list cached
+        # between graph reset and the filesystem cleanup.
+        try:
+            from backend.depo_platform.maintenance import invalidate_shared_caches
+            invalidate_shared_caches()
+        except Exception:
+            reconciliation = {'status': 'partial', 'message': 'Files were processed, but shared cache invalidation failed; check PostgreSQL connectivity.'}
         
         try:
             OSLCTRSService.publish_event(
@@ -652,12 +687,16 @@ async def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             logger.warning("OSLC TRS publish skipped for clean-schema: %s", exc)
 
         return {
-            "success": True,
-            "status": result.get("status"),
+            "success": metadata_result.get('status') == 'success' and reconciliation['status'] != 'partial',
+            "status": result.get("status") if metadata_result.get('status') == 'success' and reconciliation['status'] != 'partial' else 'partial',
+            "registry_reconciliation": reconciliation,
             "message": result.get("message") + f" [Metadata files cleared: {metadata_cleared}]",
             "before": result.get("before"),
             "after": result.get("after"),
-            "metadata_cleared": metadata_cleared
+            "metadata_cleared": metadata_cleared,
+            "metadata_cleanup_status": metadata_result.get('status'),
+            "metadata_failed": metadata_result.get('failed', []),
+            "metadata_cleanup_message": 'Some ontology files could not be removed; check storage permissions and server logs.' if metadata_result.get('status') != 'success' else None,
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -669,7 +708,8 @@ async def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
 
 
 @router.post("/delete-data", dependencies=[Depends(require_admin_api_key)])
-async def delete_data_by_label(body: DeleteDataRequest):
+@_maintenance_worker
+def delete_data_by_label(body: DeleteDataRequest):
     """
     Delete large Neo4j node sets in batches.
 
@@ -755,7 +795,8 @@ async def delete_data_by_label(body: DeleteDataRequest):
 
 
 @router.get("/schema-stats")
-async def get_schema_stats():
+@_maintenance_worker
+def get_schema_stats():
     """Get current Neo4j schema statistics"""
     if not SCHEMA_CLEANER_AVAILABLE or not Neo4jSchemaCleaner:
         raise HTTPException(status_code=503, detail="Schema cleaner not available")
@@ -807,7 +848,8 @@ async def get_schema_stats():
 
 
 @router.get("/ontology-duplicate-audit")
-async def ontology_duplicate_audit(limit: int = 100):
+@_maintenance_worker
+def ontology_duplicate_audit(limit: int = 100):
     """Read-only audit for duplicate ontology schema nodes that block uniqueness constraints."""
     try:
         try:
@@ -870,7 +912,8 @@ async def ontology_duplicate_audit(limit: int = 100):
 
 
 @router.post("/reset-database", dependencies=[Depends(require_admin_api_key)])
-async def reset_database(recreate_indexes: bool = True):
+@_maintenance_worker
+def reset_database(recreate_indexes: bool = True):
     """
     Complete database reset with optional index recreation
     """
@@ -879,8 +922,19 @@ async def reset_database(recreate_indexes: bool = True):
     
     try:
         cleaner = Neo4jSchemaCleaner()
-        result = cleaner.reset_database(recreate_indexes=recreate_indexes)
-        cleaner.close()
+        try:
+            result = cleaner.reset_database(recreate_indexes=recreate_indexes)
+        finally:
+            cleaner.close()
+        if result.get('status') != 'SUCCESS':
+            if result.get('data_deleted'):
+                _reconcile_reset()
+            raise HTTPException(500, detail=result.get('message') or 'Graph reset failed; inspect server logs before retrying')
+        reconciliation = _reconcile_reset()
+        result['registry_reconciliation'] = reconciliation
+        if reconciliation['status'] == 'partial':
+            result['status'] = 'partial'
+            result['message'] = reconciliation['message']
         
         try:
             OSLCTRSService.publish_event(
@@ -902,7 +956,8 @@ async def reset_database(recreate_indexes: bool = True):
 
 
 @router.post("/clear-cache", dependencies=[Depends(require_admin_api_key)])
-async def clear_cache():
+@_maintenance_worker
+def clear_cache():
     """
     Clear non-destructive application caches used by admin and graph views.
     This does not delete Neo4j data.
@@ -911,7 +966,13 @@ async def clear_cache():
         "graph_cache": False,
         "ontology_list_cache": False,
         "config_cache": False,
+        "shared_cache_generation": False,
     }
+    try:
+        from backend.depo_platform.maintenance import invalidate_shared_caches
+        cleared['shared_cache_generation'] = invalidate_shared_caches()
+    except Exception:
+        logger.exception('Shared cache invalidation failed')
     try:
         try:
             from backend.core.graphvis_cache import invalidate_graphvis_cache
@@ -941,7 +1002,7 @@ async def clear_cache():
         logger.warning("Could not clear config cache: %s", exc)
 
     return {
-        "status": "success",
-        "message": "Application caches cleared.",
+        "status": "success" if all(cleared.values()) else "partial",
+        "message": "Local caches cleared and shared cache invalidation published." if all(cleared.values()) else "Some caches could not be cleared; check server logs.",
         "cleared": cleared,
     }
