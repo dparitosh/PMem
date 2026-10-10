@@ -1,6 +1,6 @@
 // Raw API keys are memory-only. Only bounded, revocable delegated sessions
 // survive same-tab refresh; no credentials come from Vite build variables.
-import { config } from '../config';
+import { config, buildSemanticServiceUrl } from '../config';
 import { operationForUrl } from './serviceContractRegistry';
 const profileTokens = new Map();
 let browserAccessExpired = false;
@@ -23,6 +23,20 @@ let serviceToken = '';
 let gatewaySubscriptionKey = '';
 let browserSession = null;
 let expiryTimer = null;
+let renewalTimer = null;
+let renewalInFlight = null;
+let lastActivity = Date.now();
+let lastRenewalAttempt = 0;
+if (typeof window !== 'undefined') {
+  const activity = () => {
+    lastActivity = Date.now();
+    if (browserSession && browserSession.deadline - Date.now() < 60000 && Date.now() - lastRenewalAttempt >= 10000) {
+      renewBrowserSession().catch(() => {});
+    }
+  };
+  window.addEventListener('pointerdown', activity, { passive: true });
+  window.addEventListener('keydown', activity, { passive: true });
+}
 const BROWSER_SESSION_STORAGE_KEY = 'depo.browserSession.v1';
 function connectionScope() {
   return JSON.stringify([config.gatewayUrl || '', Object.entries(config.semanticServiceUrls || {}).sort(([a], [b]) => a.localeCompare(b))]);
@@ -61,9 +75,10 @@ function restoreBrowserSession() {
     if (saved.scope !== connectionScope() || typeof saved.token !== 'string' || !saved.token.startsWith('depo_session_') || saved.token.length > 4096 ||
         !Number.isFinite(saved.deadline) || saved.deadline <= Date.now() || saved.deadline > Date.now() + 15 * 60 * 1000 || !Array.isArray(saved.profiles) || saved.profiles.length > 32 ||
         !saved.profiles.includes('GRAPH_READ_TOKEN') || saved.profiles.some(profile => typeof profile !== 'string' || !/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile))) throw new Error('Invalid stored session');
+    setBrowserSessionExpiry(saved.token, new Date(saved.deadline).toISOString(), saved.absoluteDeadline ? new Date(saved.absoluteDeadline).toISOString() : null);
     serviceToken = saved.token;
     saved.profiles.filter(profile => profile !== 'GRAPH_READ_TOKEN').forEach(profile => profileTokens.set(profile, saved.token));
-    setBrowserSessionExpiry(saved.token, new Date(saved.deadline).toISOString());
+    persistBrowserSession();
   } catch { removeStoredSession(); }
 }
 export function handleSessionRejection(status, authorization, detail = '') {
@@ -86,19 +101,78 @@ export function expireBrowserSession(token) {
   browserSession = null;
   removeStoredSession();
   clearTimeout(expiryTimer); expiryTimer = null;
+  clearTimeout(renewalTimer); renewalTimer = null;
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('depo:session-expired'));
     window.dispatchEvent(new Event('depo:credentials-changed'));
   }
 }
 
-export function setBrowserSessionExpiry(token, expiresAt) {
+function validateSessionExpiry(token, expiresAt, absoluteExpiresAt = null) {
   const deadline = Date.parse(expiresAt);
   if (!token?.startsWith('depo_session_') || !Number.isFinite(deadline) || deadline <= Date.now() || deadline > Date.now() + 15 * 60 * 1000) throw new Error('Central session expiry must be within the next fifteen minutes.');
-  clearTimeout(expiryTimer);
-  browserSession = { token, deadline };
-  expiryTimer = setTimeout(() => expireBrowserSession(token), Math.min(deadline - Date.now(), 2147483647));
+  const absoluteDeadline = absoluteExpiresAt ? Date.parse(absoluteExpiresAt) : null;
+  if (absoluteExpiresAt && (!Number.isFinite(absoluteDeadline) || absoluteDeadline < deadline)) throw new Error('Invalid absolute session expiry');
+  return { token, deadline, absoluteDeadline };
+}
+
+export function installBrowserSession(body, subscription = '') {
+  validateSessionExpiry(body.token, body.expires_at, body.absolute_expires_at);
+  if (!Array.isArray(body.profiles) || body.profiles.length > 32 || !body.profiles.includes('GRAPH_READ_TOKEN') ||
+      body.profiles.some(profile => !/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile))) throw new Error('Invalid delegated scopes');
+  setBrowserSessionExpiry(body.token, body.expires_at, body.absolute_expires_at);
+  serviceToken = body.token;
+  profileTokens.clear();
+  body.profiles.filter(profile => profile !== 'GRAPH_READ_TOKEN').forEach(profile => profileTokens.set(profile, body.token));
+  gatewaySubscriptionKey = String(subscription || '').trim();
+  browserAccessExpired = false;
+  lastActivity = Date.now();
   persistBrowserSession();
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('depo:session-replaced'));
+}
+
+export function setBrowserSessionExpiry(token, expiresAt, absoluteExpiresAt = null) {
+  const { deadline, absoluteDeadline } = validateSessionExpiry(token, expiresAt, absoluteExpiresAt);
+  clearTimeout(expiryTimer);
+  browserSession = { token, deadline, absoluteDeadline };
+  expiryTimer = setTimeout(() => expireBrowserSession(token), Math.min(deadline - Date.now(), 2147483647));
+  clearTimeout(renewalTimer);
+  if (absoluteDeadline && absoluteDeadline > deadline) {
+    renewalTimer = setTimeout(() => {
+      // Passive/background tabs do not keep an authentication session alive.
+      if (Date.now() - lastActivity < 10 * 60 * 1000) renewBrowserSession().catch(() => {});
+    }, Math.max(1000, (deadline - Date.now()) - Math.min(60000, (deadline - Date.now()) / 3)));
+  }
+  persistBrowserSession();
+}
+
+export async function renewBrowserSession() {
+  if (renewalInFlight) return renewalInFlight;
+  checkBrowserSessionExpiry();
+  const current = browserSession;
+  if (!current?.absoluteDeadline || Date.now() >= current.absoluteDeadline) return null;
+  lastRenewalAttempt = Date.now();
+  renewalInFlight = (async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      const url = buildSemanticServiceUrl('ontology', '/auth/browser-session/renew');
+      const response = await fetch(url, { method: 'POST', credentials: 'omit', redirect: 'error',
+        headers: { ...serviceAuthHeaders(url, 'post'), Authorization: `Bearer ${current.token}` }, signal: controller.signal });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        handleSessionRejection(response.status, `Bearer ${current.token}`, body.detail);
+        throw new Error(`Session renewal failed (${response.status})`);
+      }
+      // A concurrent logout or reconnect must never be undone by a late reply.
+      if (browserSession?.token !== current.token) return null;
+      if (body.token !== current.token) throw new Error('Invalid renewed session');
+      setBrowserSessionExpiry(body.token, body.expires_at, body.absolute_expires_at);
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('depo:session-renewed'));
+      return getBrowserSessionStatus();
+    } finally { clearTimeout(timer); }
+  })();
+  try { return await renewalInFlight; } finally { renewalInFlight = null; }
 }
 
 export function setGatewaySubscriptionKey(value) {
@@ -117,6 +191,7 @@ export function clearServiceAuthToken() {
   browserAccessExpired = false;
   clearPendingPublications();
   clearTimeout(expiryTimer); expiryTimer = null; browserSession = null;
+  clearTimeout(renewalTimer); renewalTimer = null;
   removeStoredSession();
   serviceToken = '';
   profileTokens.clear();

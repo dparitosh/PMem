@@ -32,3 +32,9 @@ test('chat sessions are server-issued and can be explicitly cleared', () => {
   clearClientSessionId();
   expect(getClientSessionId()).toBeNull();
 });
+
+test('conversation bookmarks cannot cross deployment scopes', () => {
+  setClientSessionId('private-conversation');
+  sessionStorage.setItem('depo.sessionScope.v1', 'different-deployment');
+  expect(getClientSessionId()).toBeNull();
+});

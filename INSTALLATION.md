@@ -1,5 +1,38 @@
 # DEPO installation and release guide
 
+## Which Windows installer should I run?
+
+**Run one complete installer, not both scripts in `infra\windows`.** The scripts have different responsibilities:
+
+| Script | Purpose | Run directly? |
+| --- | --- | --- |
+| Root `install-depo.ps1` | Supported customer entry point; forwards parameters to `infra\windows\install-depo-windows.ps1` | Recommended for a complete installation |
+| `infra\windows\install-depo-windows.ps1` | Validates deployment settings, calls the dependency installer, builds the frontend, migrates PostgreSQL, applies credential profiles, provisions Neo4j schema, starts backend services and runs readiness/release checks | Alternative to the root installer; do not run both |
+| `infra\windows\install-depo.ps1` | Checks prerequisites, installs application dependencies and builds the frontend | Called automatically by the complete installer; use directly only for dependency setup |
+
+The execution chain is `install-depo.ps1` (root) → `infra\windows\install-depo-windows.ps1` → `infra\windows\install-depo.ps1`. The last step is skipped with `-SkipDependencyInstall`; the complete installer still rebuilds the frontend using installed dependencies unless `-SkipFrontend` is supplied.
+
+Before a first installation, prepare the reviewed root `.env.local`, the PostgreSQL database/schema and reachable Neo4j runtime. The installer does not generate secrets or create the PostgreSQL database. From the repository root, run:
+
+```powershell
+Set-Location 'E:\App\PMem'
+.\install-depo.ps1 -EnvFile '.env.local' -Profile Production
+if (-not $?) { throw 'Installation failed. Correct the reported stage before starting the frontend.' }
+.\infra\windows\start-depo-frontend.ps1 -EnvFile '.env.local'
+```
+
+The complete installer **starts backend services and builds the frontend, but does not serve the frontend**. The final command serves it separately. For customer web hosting, publish `frontend\dist` through the configured web server instead.
+
+If PowerShell is already in `E:\App\PMem\infra\windows`, the equivalent complete installer command is:
+
+```powershell
+.\install-depo-windows.ps1 -EnvFile 'E:\App\PMem\.env.local' -Profile Production
+```
+
+Do not run `.\install-depo.ps1` from `infra\windows` expecting a complete installation: that resolves to the dependency-only script. It does not accept `-Profile Production`.
+
+For later routine backend startup, use `start-depo-services.ps1` or the root `manage-depo.ps1` lifecycle wrapper. A normal restart does not require reinstalling dependencies.
+
 ## After installation: synchronize application API keys
 
 The exact script is **`infra\windows\apply-depo-service-credentials.ps1`**. There is no script named `app credential`. Run these commands in Windows PowerShell on the application VM. `Set-Location` makes the paths valid even if your terminal previously opened in `infra\windows`.
@@ -3442,5 +3475,63 @@ Authentication selection: `api-key` is the custom REST default. `Authorization` 
 
 
 ### Agent role architecture
+
+### Session persistence and lifecycle
+
+#### Browser access and durable Companion conversations
+
+Access delegation and conversation persistence have separate lifetimes. In Admin, select the required scopes and use **Connect registered services** once. The browser receives an opaque delegated session; raw administrator and service keys are not saved in browser storage. Same-tab refresh restores that delegation and the Companion conversation ID. The Companion restores the latest 20 completed turns from PostgreSQL after verifying conversation ownership. Neo4j agent memory is optional for this history restoration.
+
+Add these optional settings to the repository-root `.env.local`, then restart backend services and rebuild the frontend:
+
+```dotenv
+# Access expires after at most 15 minutes without renewal.
+DEPO_BROWSER_SESSION_IDLE_SECONDS=900
+# Active users can renew until this fixed sign-in deadline (8 hours).
+DEPO_BROWSER_SESSION_MAX_SECONDS=28800
+AGENTIC_MAX_PROMPT_BYTES=262144
+# A conversation becomes idle after 30 minutes; its owner can resume it.
+AGENT_SESSION_IDLE_SECONDS=1800
+# Conversation identity remains resumable for 24 hours from creation.
+AGENT_SESSION_MAX_SECONDS=86400
+# Completed turn retention is independent of access-token expiry.
+AGENT_MEMORY_RETENTION_DAYS=30
+```
+
+The browser attempts renewal shortly before access expiry only when recent keyboard or pointer activity occurred. Activity near expiry also retries a skipped or failed renewal, with a ten-second minimum between attempts. Background polling alone does not extend sign-in. Renewal uses `POST /auth/browser-session/renew`, validates current PostgreSQL credential snapshots, preserves the originally granted scopes and never moves the absolute sign-in deadline. Logout, revocation, key rotation and expiry prevent further use. A failed network renewal never automatically retries a write. Admin reconnect replaces delegated access without firing sign-out or deleting the conversation bookmark; the server verifies ownership again before restoring history.
+
+`AGENTIC_MAX_PROMPT_BYTES` bounds UTF-8 prompt payloads sent to the model (default 256 KiB; accepted range 16 KiB–1 MiB). Oversized evidence is rejected rather than silently truncated. Companion streaming honors the validated frontend `VITE_CHAT_STREAM_TIMEOUT` setting, in milliseconds, including values above five minutes. Configure gateway timeouts to accommodate the chosen request budget.
+
+On access expiry, reconnect in Admin to resume the bookmarked conversation. On explicit sign-out, browser credentials and conversation bookmarks are cleared; retained server history remains subject to retention. Closing the tab clears same-tab persistence. Existing delegations created before this release require one new Admin connection to obtain renewable-session metadata.
+
+If Azure API Management is enabled, import the updated OpenAPI contracts and expose `POST /auth/browser-session/renew` on the ontology API. Forward the bearer Authorization header. The agentic API also exposes `GET /api/v1/chat/sessions/{session_id}/history`; it verifies the requesting owner before returning completed turns. No PostgreSQL migration is required for these additions: they use the existing registry and retained Companion job records.
+
+#### Runtime cleanup settings
+
+After deploying these lifecycle changes, stop and start the backend services once to activate the cooperative Windows runtime:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\stop-depo-services.ps1
+.\infra\windows\start-depo-services.ps1 -EnvFile .\.env.local
+```
+
+Workers stop before APIs. Newly launched processes receive a local stop request and drain through their existing SIGINT handlers. The stop helper waits 60 seconds before forced termination; old processes without the cooperative runtime retain the force-stop behavior. A forced stop cannot undo writes: reconcile interrupted runs before retrying mutations.
+
+Optional settings in the repository-root `.env.local` (restart services after changing them):
+
+```dotenv
+DEPO_AGENT_MAINTENANCE_SECONDS=300
+DEPO_AGENT_SHUTDOWN_SECONDS=30
+DEPO_SCHEDULER_POLL_SECONDS=10
+DEPO_SCHEDULER_SHUTDOWN_SECONDS=30
+DEPO_READINESS_TIMEOUT_SECONDS=3
+GRAPHVIS_CACHE_TTL_SECONDS=60
+CHAT_CONTEXT_MESSAGE_LIMIT=5
+```
+
+The scheduler retains tracking if it cannot finish within its shutdown timeout and does not stop Spark beneath an active scheduler. Maintenance failures are isolated by cleanup operation. Browser delegation renewal preserves Companion ownership for the same server-assigned actor; different actors remain isolated. Legacy chat context defaults to five messages and can be increased up to `CHAT_SESSION_MESSAGE_LIMIT`.
+
+For long-running jobs, set `$env:DEPO_SHUTDOWN_GRACE_SECONDS = '120'` in the PowerShell session before running the stop script (accepted range: 5–600 seconds). Set a value longer than the application drain time. Do not share actors between users who require separate conversation histories.
 
 See [Agent architecture and use of the 26 roles](docs/AGENT_TOOL_MAPPING.md) for the runtime role/tool mapping, workflow handoffs, mutation recovery and deployment boundaries. Approved mutating `/runs` requests use retained workflows; `wait_for_completion=false` returns a queued workflow ID in worker mode. Sync REST and LangChain Ollama calls use the shared per-process admission and circuit policy. These controls do not constitute live APIM capability verification.

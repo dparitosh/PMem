@@ -9,25 +9,35 @@ from contextlib import asynccontextmanager, suppress
 from fastapi.concurrency import run_in_threadpool
 from backend.Services.agent_memory_service import AgentMemoryService
 from . import sessions
+from backend.depo_platform.network import bounded_timeout_seconds
 
 
 @asynccontextmanager
 async def lifecycle():
     async def maintenance():
         while True:
-            try:
-                await run_in_threadpool(sessions.prune)
-                from .router import companion_job_store
-                await run_in_threadpool(companion_job_store.prune_completed,
-                                       int(os.getenv('AGENT_MEMORY_RETENTION_DAYS', '30')))
-                await run_in_threadpool(AgentMemoryService.prune_expired_sessions)
-            except Exception:
-                logging.getLogger(__name__).exception('Agent session/memory maintenance failed')
-            await asyncio.sleep(300)
+            from .router import companion_job_store
+            retention = int(bounded_timeout_seconds('AGENT_MEMORY_RETENTION_DAYS', default=30, maximum=3650))
+            for cleanup, args in ((sessions.prune, ()),
+                                  (companion_job_store.prune_completed, (retention,)),
+                                  (AgentMemoryService.prune_expired_sessions, ())):
+                try:
+                    await run_in_threadpool(cleanup, *args)
+                except Exception:
+                    logging.getLogger(__name__).exception('Agent maintenance failed: %s', cleanup.__name__)
+            await asyncio.sleep(bounded_timeout_seconds('DEPO_AGENT_MAINTENANCE_SECONDS', default=300, maximum=3600))
     task = asyncio.create_task(maintenance())
     try:
         yield
     finally:
+        from .router import _active_workflow_tasks
+        pending = set(_active_workflow_tasks)
+        if pending:
+            _, pending = await asyncio.wait(pending, timeout=bounded_timeout_seconds('DEPO_AGENT_SHUTDOWN_SECONDS', default=30, maximum=300))
+            for workflow in pending:
+                workflow.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task

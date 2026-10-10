@@ -142,6 +142,11 @@ def configuration_status(*, check_workers=True):
                 raise ValueError()
         except ValueError:
             errors.append(key)
+    try:
+        from .prompt_limits import bounded_prompt_json
+        bounded_prompt_json({})
+    except (ValueError, TypeError):
+        errors.append('AGENTIC_MAX_PROMPT_BYTES')
     return {'configuration': {'status': 'unavailable' if errors else 'ready', 'invalid_settings': sorted(set(errors))}}
 
 

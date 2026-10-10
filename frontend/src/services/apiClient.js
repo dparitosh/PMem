@@ -11,7 +11,7 @@ import logger from '../utils/logger';
 import agenticAPI from './agenticApi';
 import { reportRunRecovery } from './runRecovery';
 import { notifyOntologyChange } from '../utils/ontologyEvents';
-import { serviceAuthHeaders, getCredentialProfile, setCredentialProfile, handleSessionRejection, requireServiceReadAccess } from './serviceAuth';
+import { serviceAuthHeaders, getCredentialProfile, setCredentialProfile, handleSessionRejection, requireServiceReadAccess, publicationRecoveryScope } from './serviceAuth';
 
 /**
  * Create axios instance with base configuration
@@ -41,6 +41,7 @@ export function prepareMultipartHeaders(requestConfig) {
 const MAX_GET_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 700;
 const SESSION_STORAGE_KEY = 'depo.sessionId.v1';
+const SESSION_SCOPE_KEY = 'depo.sessionScope.v1';
 if (typeof window !== 'undefined') {
   window.addEventListener('depo:credentials-cleared', () => {
     clearClientSessionId();
@@ -56,7 +57,13 @@ export function setAdminApiKey(value) {
 export function getClientSessionId() {
   if (typeof window === 'undefined') return null;
   try {
-    return window.sessionStorage.getItem(SESSION_STORAGE_KEY) || null;
+    if (window.sessionStorage.getItem(SESSION_SCOPE_KEY) !== publicationRecoveryScope()) {
+      clearClientSessionId();
+      return null;
+    }
+    const value = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (value && (value.length > 128 || /[\x00-\x1f]/.test(value))) { clearClientSessionId(); return null; }
+    return value || null;
   } catch (_error) {
     return null;
   }
@@ -66,6 +73,7 @@ export function clearClientSessionId() {
   if (typeof window === 'undefined') return;
   try {
     window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    window.sessionStorage.removeItem(SESSION_SCOPE_KEY);
   } catch (_error) {
     // Restricted browser storage should not break conversation reset.
   }
@@ -73,8 +81,10 @@ export function clearClientSessionId() {
 
 export function setClientSessionId(sessionId) {
   if (!sessionId || typeof window === 'undefined') return;
+  if (String(sessionId).length > 128 || /[\x00-\x1f]/.test(String(sessionId))) return;
   try {
     window.sessionStorage.setItem(SESSION_STORAGE_KEY, String(sessionId));
+    window.sessionStorage.setItem(SESSION_SCOPE_KEY, publicationRecoveryScope());
   } catch (_error) {
     // Restricted browser storage should not break API requests.
   }

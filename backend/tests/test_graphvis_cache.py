@@ -8,9 +8,10 @@ from backend.core.graphvis_cache import (
 
 def test_graphvis_cache_invalidation_clears_shared_state(monkeypatch):
     monkeypatch.setattr("backend.core.graphvis_cache.GRAPHVIS_CACHE_ENABLED", True)
+    monkeypatch.setattr("backend.depo_platform.maintenance.cache_generation", lambda: 'test-generation')
     store_cached_graph({"results": [1]})
     assert get_cached_graph() == {"results": [1]}
 
     invalidate_graphvis_cache("test")
 
-    assert graphvis_cache == {"data": None, "ts": 0.0}
+    assert graphvis_cache == {"data": None, "ts": 0.0, "generation": None}

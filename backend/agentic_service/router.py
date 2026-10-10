@@ -311,6 +311,22 @@ async def companion_chat(payload: ChatRequest, request: Request) -> dict:
     return await _companion_chat(payload, request)
 
 
+def _session_turns(session, limit=20):
+    """Bounded PostgreSQL history; never return another principal's turns."""
+    _, items = companion_job_store.page(limit=limit, field='session_id', value=session['session_id'], order_field='finished_at')
+    return [item for item in items if item.get('owner') == session['owner'] and item.get('status') == 'completed']
+
+
+@router.get('/chat/sessions/{session_id}/history', dependencies=[Depends(graph_read_identity)])
+async def companion_history(session_id: str, request: Request):
+    actor = graph_read_identity(request)
+    session = await run_in_threadpool(sessions.open_session, request, actor, session_id)
+    turns = await run_in_threadpool(_session_turns, session)
+    return {'session_id': session_id, 'turns': [
+        {key: item.get(key) for key in ('job_id', 'user_request', 'response', 'evidence', 'sources', 'generation', 'finished_at')}
+        for item in reversed(turns)]}
+
+
 async def _companion_chat(payload: ChatRequest, request: Request, on_token=None) -> dict:
     payload = payload.model_dump()
     message = " ".join(str(payload.get("message") or "").split())
@@ -327,6 +343,9 @@ async def _companion_chat(payload: ChatRequest, request: Request, on_token=None)
         headers = downstream_headers(request, companion._graph_root(), graph_read=True)
         memory_key = sessions.memory_id(session)
         context = await run_in_threadpool(AgentMemoryService.recent_context, memory_key, 6)
+        if not context.get('messages'):
+            turns = await run_in_threadpool(_session_turns, session, 6)
+            context = {'messages': [{'role': 'user', 'text': turn.get('user_request', '')} for turn in turns]}
         # History supports follow-up retrieval only; graph evidence remains the
         # answer authority and memory text cannot authorize tools or writes.
         query = message

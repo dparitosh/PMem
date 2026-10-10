@@ -1,5 +1,6 @@
 """Run with: python -m uvicorn backend.data_pipeline_service.app:app --port 8019."""
 from contextlib import asynccontextmanager
+from fastapi.concurrency import run_in_threadpool
 
 from backend.depo_platform.odata import ServiceCapability, create_odata_catalog_router
 from backend.depo_platform.service_runtime import create_service_app
@@ -15,9 +16,12 @@ supervisor = ScheduledJobSupervisor(execute_configured_job)
 @asynccontextmanager
 async def lifespan():
     supervisor.start()
-    yield
-    supervisor.stop()
-    runner.shutdown()
+    try:
+        yield
+    finally:
+        # Do not release Spark underneath a scheduler that failed to drain.
+        await run_in_threadpool(supervisor.stop)
+        await run_in_threadpool(runner.shutdown)
 
 
 app = create_service_app(

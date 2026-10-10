@@ -24,6 +24,25 @@ function Get-DepoProcessTree([int]$ProcessId, [string]$ExpectedPython, [string]$
 
 function Test-DepoListener([int]$ProcessId, [string]$ExpectedPython, [string]$Module, [int]$Port, [string]$BindHost) {
   $tree = @(Get-DepoProcessTree $ProcessId $ExpectedPython $Module)
+  $rootNode = $tree | Where-Object { $_.Depth -eq 0 } | Select-Object -First 1
+  if ($rootNode -and $rootNode.Process.CommandLine -match 'backend\.depo_platform\.windows_runtime') {
+    $repository = Split-Path (Split-Path (Split-Path $ExpectedPython -Parent) -Parent) -Parent
+    $repository = Split-Path $repository -Parent
+    $requestPath = Join-Path $repository "logs\windows-services\stop-$ProcessId.request"
+    $graceSeconds = 60
+    $configuredGrace = 0
+    if ([int]::TryParse($env:DEPO_SHUTDOWN_GRACE_SECONDS, [ref]$configuredGrace)) {
+      $graceSeconds = [Math]::Max(5, [Math]::Min(600, $configuredGrace))
+    }
+    Set-Content -LiteralPath $requestPath -Value 'stop' -NoNewline
+    $graceDeadline = (Get-Date).AddSeconds($graceSeconds)
+    do {
+      $liveRoot = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction Stop
+      if (-not $liveRoot -or $liveRoot.CreationDate -ne $rootNode.Process.CreationDate) { break }
+      Start-Sleep -Milliseconds 250
+    } while ((Get-Date) -lt $graceDeadline)
+    Remove-Item -LiteralPath $requestPath -Force -ErrorAction SilentlyContinue
+  }
   $owners = @($tree | ForEach-Object { [int]$_.Process.ProcessId })
   $addresses = if ($BindHost -in @('0.0.0.0','::')) { @($BindHost) } else {
     @([Net.Dns]::GetHostAddresses($BindHost) | ForEach-Object { $_.ToString() })

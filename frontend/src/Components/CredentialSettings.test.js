@@ -43,6 +43,7 @@ test('restored session rejection reports the actual service detail and clears in
 });
 
 test('one admin connection applies registered scopes without exposing their keys', async () => {
+  sessionStorage.setItem('depo.sessionId.v1', 'retained-conversation');
   fetch.mockResolvedValueOnce(response(200, { token: 'depo_session_opaque', expires_at: new Date(Date.now() + 600000).toISOString(), profiles: ['GRAPH_READ_TOKEN', 'INGESTION_WRITE_TOKEN', 'ADMIN_API_KEY'] }))
     .mockResolvedValue(response(200, { status: 'authorized' }));
   render(<CredentialSettings />);
@@ -51,6 +52,7 @@ test('one admin connection applies registered scopes without exposing their keys
   fireEvent.click(screen.getByRole('button', { name: 'Connect registered services' }));
   await waitFor(() => expect(getCredentialProfile('INGESTION_WRITE_TOKEN')).toBe('depo_session_opaque'));
   expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_opaque');
+  expect(sessionStorage.getItem('depo.sessionId.v1')).toBe('retained-conversation');
   expect(getCredentialProfile('ADMIN_API_KEY')).toBe('depo_session_opaque');
   expect(screen.getByLabelText(/Enable Admin maintenance/)).toBeChecked();
   expect(screen.getByLabelText('Administrator key for connection')).toHaveValue('');

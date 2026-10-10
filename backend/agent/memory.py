@@ -20,9 +20,11 @@ except ImportError:
 # A global in-memory session store
 chat_sessions: Dict[str, List[BaseMessage]] = {}
 chat_session_timestamps: Dict[str, float] = {}
-CHAT_SESSION_MESSAGE_LIMIT = max(6, int(os.getenv("CHAT_SESSION_MESSAGE_LIMIT", "40")))
-CHAT_SESSION_MAX_COUNT = max(10, int(os.getenv("CHAT_SESSION_MAX_COUNT", "200")))
-CHAT_SESSION_TTL_SECONDS = max(300, int(os.getenv("CHAT_SESSION_TTL_SECONDS", "21600")))
+from backend.depo_platform.network import bounded_timeout_seconds
+CHAT_SESSION_MESSAGE_LIMIT = int(bounded_timeout_seconds('CHAT_SESSION_MESSAGE_LIMIT', default=40, minimum=6, maximum=1000))
+CHAT_SESSION_MAX_COUNT = int(bounded_timeout_seconds('CHAT_SESSION_MAX_COUNT', default=200, minimum=10, maximum=10000))
+CHAT_SESSION_TTL_SECONDS = bounded_timeout_seconds('CHAT_SESSION_TTL_SECONDS', default=21600, minimum=300, maximum=2592000)
+CHAT_CONTEXT_MESSAGE_LIMIT = int(bounded_timeout_seconds('CHAT_CONTEXT_MESSAGE_LIMIT', default=5, maximum=CHAT_SESSION_MESSAGE_LIMIT))
 
 
 def _prune_sessions() -> None:
@@ -97,7 +99,7 @@ class InMemorySessionHistory(BaseChatMessageHistory):
 
     def get_messages(self) -> List[BaseMessage]:
         _touch_session(self.session_id)
-        return self.messages[-5:] if len(self.messages) > 5 else self.messages
+        return self.messages[-CHAT_CONTEXT_MESSAGE_LIMIT:]
 
 def get_memory(session_id: str) -> InMemorySessionHistory:
     return InMemorySessionHistory(session_id)

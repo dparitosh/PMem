@@ -118,9 +118,10 @@ def test_session_stable_owned_and_expires(client, monkeypatch):
         sessions.open_session(SimpleNamespace(headers=Headers({'Authorization': 'Bearer other'})), 'reader', record['session_id'])
     assert mismatch.value.status_code == 403
     clock += timedelta(seconds=1801)
-    with pytest.raises(HTTPException) as expired:
-        sessions.open_session(request, 'reader', record['session_id'])
-    assert expired.value.status_code == 410
+    resumed = sessions.open_session(request, 'reader', record['session_id'])
+    assert resumed['session_id'] == record['session_id']
+    assert resumed['status'] == 'active'
+    assert resumed['expires_at'] == record['expires_at']
 
 
 def test_session_absolute_expiry_with_recent_activity(client, monkeypatch):

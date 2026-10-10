@@ -13,7 +13,7 @@ $manifestPath = Join-Path $root "infra\deployment\services.json"
 . (Join-Path $PSScriptRoot 'process-control.ps1')
 if (-not (Test-Path -LiteralPath $manifestPath)) { throw 'Service manifest is required for safe shutdown.' }
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$entries = @($manifest.services) + @($manifest.workers)
+$entries = @($manifest.workers) + @($manifest.services)
 # Discover verified launchers even if tracking was lost. Shared tree control
 # checks creation times, stops children first, and verifies listener cleanup.
 $snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop)

@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from . import job_definitions, run_records
+from backend.depo_platform.network import bounded_timeout_seconds
 
 
 class ScheduledJobSupervisor:
@@ -49,11 +50,13 @@ class ScheduledJobSupervisor:
     def stop(self) -> None:
         self._stop.set()
         if self._thread:
-            self._thread.join(timeout=5)
+            self._thread.join(timeout=bounded_timeout_seconds('DEPO_SCHEDULER_SHUTDOWN_SECONDS', default=30, maximum=300))
+            if self._thread.is_alive():
+                raise RuntimeError('Scheduler is still running; retain its resources until execution finishes')
         self._thread = None
 
     def _loop(self) -> None:
-        while not self._stop.wait(10):
+        while not self._stop.wait(bounded_timeout_seconds('DEPO_SCHEDULER_POLL_SECONDS', default=10, maximum=300)):
             try:
                 self.scan_once()
             except Exception as exc:  # supervisor must not take down the API
@@ -61,6 +64,8 @@ class ScheduledJobSupervisor:
 
     def scan_once(self) -> None:
         for definition in job_definitions.all_definitions():
+            if self._stop.is_set():
+                return
             schedule = definition.get("schedule") or {}
             if definition.get("lifecycle_state") != "approved" or not definition.get("enabled") or not schedule:
                 continue
@@ -83,6 +88,8 @@ class ScheduledJobSupervisor:
                     continue
                 retry = definition.get("retry_policy") or {"max_attempts": 1, "backoff_seconds": 30}
                 for attempt in range(int(retry["max_attempts"])):
+                    if self._stop.is_set():
+                        return
                     try:
                         self._execute(definition, payload, f"scheduled:{definition['job_id']}:{int(time.time())}")
                         self._runs_started += 1

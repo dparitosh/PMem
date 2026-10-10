@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Sparkles } from 'lucide-react';
 import '../CSS/chat.css';
-import { API, buildUrl, config } from '../config';
+import { API, buildUrl, buildSemanticServiceUrl, config } from '../config';
 import { validateChatInput, ValidationError } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { formatChatMarkdown } from '../utils/chatMarkdown';
 import { clearClientSessionId, getClientSessionId, setClientSessionId } from '../services/apiClient';
-import { serviceAuthHeaders, getCredentialProfile, handleSessionRejection } from '../services/serviceAuth';
+import { serviceAuthHeaders, getCredentialProfile, handleSessionRejection, wasBrowserSessionExpired } from '../services/serviceAuth';
 import { createChatFrameParser } from '../services/chatStreamFrames';
 
 const CHAT_COLORS = {
@@ -28,6 +28,7 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
     const [requestActive, setRequestActive] = useState(false);
     const [error, setError] = useState(null);
     const [statusLabel, setStatusLabel] = useState(null);
+    const [historyVersion, setHistoryVersion] = useState(0);
     const abortRef = useRef(null);
     const requestActiveRef = useRef(false);
     const messageSequenceRef = useRef(0);
@@ -65,16 +66,65 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
         const reset = () => {
             const nextKey = getCredentialProfile('GRAPH_READ_TOKEN');
             if (nextKey === readKey) return;
+            const previousKey = readKey;
             readKey = nextKey;
+            if (!nextKey && wasBrowserSessionExpired()) {
+                abortRef.current?.abort();
+                setError('Access expired. Reconnect in Admin to resume this conversation.');
+                return;
+            }
+            if (!previousKey && sessionIdRef.current) {
+                setChatMessages([]);
+                setHistoryVersion(value => value + 1);
+                return;
+            }
             resetConversation();
         };
+        const replaced = () => {
+            readKey = getCredentialProfile('GRAPH_READ_TOKEN');
+            abortRef.current?.abort();
+            setChatMessages([]);
+            setChatResults?.([]);
+            setError(null);
+            setHistoryVersion(value => value + 1);
+        };
+        window.addEventListener('depo:session-replaced', replaced);
         window.addEventListener('depo:credentials-changed', reset);
-        window.addEventListener('depo:credentials-cleared', reset);
+        window.addEventListener('depo:credentials-cleared', resetConversation);
         return () => {
+            window.removeEventListener('depo:session-replaced', replaced);
             window.removeEventListener('depo:credentials-changed', reset);
-            window.removeEventListener('depo:credentials-cleared', reset);
+            window.removeEventListener('depo:credentials-cleared', resetConversation);
         };
     }, [resetConversation]);
+
+    useEffect(() => {
+        const identifier = sessionIdRef.current;
+        const credential = getCredentialProfile('GRAPH_READ_TOKEN');
+        if (!identifier || !credential) return undefined;
+        const controller = new AbortController();
+        let active = true;
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        const url = buildSemanticServiceUrl('agentic', `/api/v1/chat/sessions/${encodeURIComponent(identifier)}/history`);
+        fetch(url, { headers: serviceAuthHeaders(url), signal: controller.signal, credentials: 'omit', redirect: 'error' })
+            .then(async response => {
+                if ([404, 410].includes(response.status)) {
+                    if (active && !requestActiveRef.current) { clearClientSessionId(); sessionIdRef.current = null; }
+                    return null;
+                }
+                if (!response.ok) throw new Error(`Conversation restore failed (${response.status})`);
+                return response.json();
+            }).then(body => {
+                if (!active || credential !== getCredentialProfile('GRAPH_READ_TOKEN') || requestActiveRef.current || !Array.isArray(body?.turns)) return;
+                const restored = body.turns.flatMap(turn => [
+                    { id: `${turn.job_id}-user`, role: 'user', text: turn.user_request || '' },
+                    { id: `${turn.job_id}-assistant`, role: 'assistant', text: turn.response || '', evidence: turn.evidence, generation: turn.generation, retainedPromptJobId: turn.job_id },
+                ]);
+                setChatMessages(current => current.length ? current : restored);
+            }).catch(error => { if (active && error.name !== 'AbortError') setError(error.message); })
+            .finally(() => clearTimeout(timeout));
+        return () => { active = false; clearTimeout(timeout); controller.abort(); };
+    }, [scopeId, scopePrefix, historyVersion]);
 
     const [sampleQueries, setSampleQueries] = useState([
         'Find ontology resources matching product',
@@ -106,7 +156,8 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
             abortRef.current = controller;
             requestActiveRef.current = true;
             setRequestActive(true);
-            const timeoutMs = Math.min(300000, Math.max(1000, Number(config.chatStreamTimeout) || 180000));
+            // config validates the shared 1-second to 30-minute range.
+            const timeoutMs = Number(config.chatStreamTimeout) || 900000;
             timeoutId = window.setTimeout(() => {
                 timedOut = true;
                 controller.abort();

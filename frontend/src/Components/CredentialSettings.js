@@ -5,6 +5,7 @@ import { getCredentialProfile, setCredentialProfile, clearServiceAuthToken, getG
 import ServiceAccessDiscovery from '../app/ServiceAccessDiscovery';
 import { verifyStoredReadAccess } from '../services/readAccessVerification';
 import './CredentialSettings.css';
+import { installBrowserSession } from '../services/serviceAuth';
 
 const profiles = Object.keys(credentialServices);
 export default function CredentialSettings() {
@@ -29,8 +30,10 @@ export default function CredentialSettings() {
   });
   useEffect(() => {
     const expired = () => { setSessionStatus('Central session expired or was rejected. Reconnect here; no operation was automatically retried.'); setResults({}); };
+    const renewed = () => { const session = getBrowserSessionStatus(); if (session) setSessionStatus(`Session renewed. Access expires ${new Date(session.expiresAt).toLocaleTimeString()}. Conversation history is retained separately.`); };
     window.addEventListener('depo:session-expired', expired);
-    return () => window.removeEventListener('depo:session-expired', expired);
+    window.addEventListener('depo:session-renewed', renewed);
+    return () => { window.removeEventListener('depo:session-expired', expired); window.removeEventListener('depo:session-renewed', renewed); };
   }, []);
   useEffect(() => {
     const token = getCredentialProfile('GRAPH_READ_TOKEN');
@@ -79,10 +82,7 @@ export default function CredentialSettings() {
       if (!checks.length) throw new Error('No service endpoints are configured');
       const failures = checks.flatMap((check, index) => check.status === 'rejected' ? [`${services[index]}: ${check.reason?.name === 'AbortError' ? 'timed out' : check.reason?.message || 'transport failure'}`] : []);
       if (failures.length) throw new Error(`Connection checks failed: ${failures.join('; ')}. Previous browser access was preserved. Check service listeners, routing and credential-store configuration.`);
-      clearServiceAuthToken();
-      setGatewaySubscriptionKey(subscription);
-      body.profiles.filter(profile => profiles.includes(profile)).forEach(profile => setCredentialProfile(profile, body.token));
-      setBrowserSessionExpiry(body.token, body.expires_at);
+      installBrowserSession(body, subscription);
       pendingSession = null;
       setValues(Object.fromEntries(profiles.map(profile => [profile, ''])));
       setResults(Object.fromEntries(body.profiles.map(profile => [profile, `Connected via central session until ${new Date(body.expires_at).toLocaleTimeString()}`])));

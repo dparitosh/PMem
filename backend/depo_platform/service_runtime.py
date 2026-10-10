@@ -63,7 +63,8 @@ def configured_dependency_status(dependencies: Collection[str] = ("postgres", "n
     if "postgres" in dependencies and database_url:
         try:
             import psycopg
-            with psycopg.connect(database_url, connect_timeout=3) as connection:
+            from .postgres_schema import connect_timeout_seconds, statement_options
+            with psycopg.connect(database_url, connect_timeout=connect_timeout_seconds(), options=statement_options()) as connection:
                 with connection.cursor() as cursor:
                     cursor.execute("SELECT 1")
             status["postgres"] = {"status": "ready"}
@@ -73,18 +74,21 @@ def configured_dependency_status(dependencies: Collection[str] = ("postgres", "n
     if "neo4j" in dependencies and neo4j_uri:
         try:
             from neo4j import GraphDatabase, Query
-            auth = None if os.getenv("NEO4J_AUTH_MODE", "token").lower() == "none" else (
-                os.getenv("NEO4J_USER") or os.getenv("NEO4J_USERNAME", ""), os.getenv("NEO4J_PASS") or os.getenv("NEO4J_PASSWORD", "")
-            )
+            from backend.core.db_config import get_config, _driver_kwargs
+            from .network import bounded_timeout_seconds
+            config = get_config()
+            probe_timeout = bounded_timeout_seconds('DEPO_READINESS_TIMEOUT_SECONDS', default=3, maximum=30)
+            options = _driver_kwargs(config)
+            options.update(connection_timeout=probe_timeout, connection_acquisition_timeout=probe_timeout, max_transaction_retry_time=0)
+            auth = None if config.auth_mode == 'none' else (config.username, config.password)
             with GraphDatabase.driver(
                 neo4j_uri,
                 auth=auth,
-                connection_timeout=3,
-                max_transaction_retry_time=0,
+                **options,
             ) as driver:
                 driver.verify_connectivity()
-                with driver.session(database=os.getenv("NEO4J_DATABASE", "neo4j")) as session:
-                    session.run(Query("RETURN 1", timeout=3)).consume()
+                with driver.session(database=config.database) as session:
+                    session.run(Query("RETURN 1", timeout=probe_timeout)).consume()
             status["neo4j"] = {"status": "ready"}
         except Exception as exc:
             status["neo4j"] = {"status": "unavailable", "reason": type(exc).__name__}
@@ -129,6 +133,10 @@ def create_service_app(
             if operation is not None:
                 operation['security'] = [{'ApiKey': []}]
                 operation['x-depo-authorization'] = {'credential_profiles': ['ADMIN_API_KEY'], 'resolution': 'explicit'}
+        renewal = app.openapi_schema.get('paths', {}).get('/auth/browser-session/renew', {}).get('post')
+        if renewal is not None:
+            renewal['security'] = [{'BearerKey': []}]
+            renewal['x-depo-authorization'] = {'credential_profiles': ['GRAPH_READ_TOKEN'], 'resolution': 'explicit', 'browser_session_only': True}
         return app.openapi_schema
     app.openapi = compatible_openapi
     app.add_middleware(RequestIdMiddleware)
@@ -197,6 +205,17 @@ def create_service_app(
         header = request.headers.get('authorization', '')
         delete_session(header[7:].strip() if header.lower().startswith('bearer ') else '')
         return {'status': 'disconnected'}
+
+    @app.post('/auth/browser-session/renew', summary='Renew an active browser session within its absolute lifetime')
+    def renew_browser_session(request: Request):
+        from fastapi import HTTPException
+        from .credentials import uses_postgres
+        from .browser_credentials import renew_session
+        if os.getenv('AUTH_MODE', 'token').lower() != 'token' or not uses_postgres():
+            raise HTTPException(409, 'Renewal requires token authentication and PostgreSQL credential storage')
+        header = request.headers.get('authorization', '')
+        token = header[7:].strip() if header.lower().startswith('bearer ') else ''
+        return JSONResponse(content=renew_session(token), headers={'Cache-Control': 'no-store'})
 
     @app.get('/auth/credentials')
     def credential_status(request: Request):

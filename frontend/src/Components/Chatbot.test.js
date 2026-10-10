@@ -4,6 +4,7 @@ import { vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TextDecoder } from 'util';
 import Chatbot from './Chatbot';
+import { setClientSessionId } from '../services/apiClient';
 
 global.TextDecoder = TextDecoder;
 
@@ -115,7 +116,7 @@ test('a truncated response is not published as a successful answer', async () =>
 });
 
 test('read-key rotation discards the old credential-owned session', async () => {
-  window.sessionStorage.setItem('depo.sessionId.v1', 'old-session');
+  setClientSessionId('old-session');
   setCredentialProfile('GRAPH_READ_TOKEN', 'old-key');
   global.fetch = jest.fn(() => Promise.resolve({ ok: true, headers: { get: () => null }, json: async () => ({ queries: [] }) }));
   const results = jest.fn();
@@ -128,7 +129,7 @@ test('read-key rotation discards the old credential-owned session', async () => 
 
 test('expired chat session retries retrieval once without its old identifier', async () => {
   window.sessionStorage.clear();
-  window.sessionStorage.setItem('depo.sessionId.v1', 'expired-session');
+  setClientSessionId('expired-session');
   let submissions = 0;
   global.fetch = jest.fn((_url, options = {}) => {
     if (options.method !== 'POST') return Promise.resolve({ ok: true, headers: { get: () => null }, json: async () => ({ queries: [] }) });

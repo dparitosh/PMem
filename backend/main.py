@@ -1878,8 +1878,9 @@ async def check_neo4j_health():
 async def get_entire_graph():
     import asyncio, time
     now = time.monotonic()
-    if _GRAPHVIS_CACHE_ENABLED and _graphvis_cache["data"] is not None and (now - _graphvis_cache["ts"]) < _GRAPHVIS_CACHE_TTL:
-        cached = _graphvis_cache["data"]
+    from backend.core.graphvis_cache import get_cached_graph, store_cached_graph
+    cached = get_cached_graph()
+    if cached is not None:
         has_edges = any(isinstance(row, dict) and row.get("r") for row in cached)
         if has_edges:
             return {"results": cached}
@@ -1918,8 +1919,7 @@ async def get_entire_graph():
         except Exception:
             pass
         if results and _GRAPHVIS_CACHE_ENABLED:
-            _graphvis_cache["data"] = results
-            _graphvis_cache["ts"] = time.monotonic()
+            store_cached_graph(results)
         return {"results": results}
     except asyncio.TimeoutError:
         logger.warning("/graphvis timed out — clearing cache and returning empty graph")

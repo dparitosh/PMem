@@ -115,6 +115,39 @@ class BrowserCredentialTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             credentials.validate_registration('GRAPH_READ_TOKEN', 'depo_session_' + 'x' * 40, 'actor')
 
+    def renew(self, record, rows=None):
+        self.cursor.fetchone.side_effect = [(record,)]
+        self.cursor.fetchall.return_value = rows or [(row[0], row[2], row[3], row[4]) for row in self.rows]
+        with patch.dict(sys.modules, {'fastapi': self.api}), patch.object(credentials, 'connection', return_value=nullcontext(self.db)):
+            return sessions.renew_session('depo_session_fixture')
+
+    def test_renewal_preserves_scopes_and_absolute_deadline(self):
+        _, record = self.create()
+        record['expires_at'] = (datetime.now(timezone.utc)+timedelta(seconds=90)).isoformat()
+        original_absolute = record['absolute_expires_at']
+        result = self.renew(record)
+        self.assertEqual(result['profiles'], ['GRAPH_READ_TOKEN'])
+        self.assertEqual(result['absolute_expires_at'], original_absolute)
+        self.assertGreater(datetime.fromisoformat(result['expires_at']), datetime.now(timezone.utc)+timedelta(seconds=90))
+        self.assertTrue(any('FOR UPDATE' in call.args[0] for call in self.cursor.execute.call_args_list))
+
+    def test_renewal_database_failure_has_safe_retryable_response(self):
+        with patch.dict(sys.modules, {'fastapi': self.api}), patch.object(credentials, 'connection', side_effect=RuntimeError('private-dsn')):
+            with self.assertRaises(Rejected) as error:
+                sessions.renew_session('depo_session_fixture')
+        self.assertEqual(error.exception.status_code, 503)
+        self.assertNotIn('private-dsn', error.exception.detail)
+
+    def test_renewal_rejects_expiry_revocation_and_key_rotation(self):
+        _, record = self.create()
+        for changes, rows in [
+                ({'absolute_expires_at': (datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat()}, None),
+                ({'expires_at': (datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat()}, None),
+                ({}, [('ADMIN_API_KEY', self.admin_digest, None, False), ('GRAPH_READ_TOKEN', 'rotated', None, False)]),
+                ({}, [('ADMIN_API_KEY', self.admin_digest, None, True), ('GRAPH_READ_TOKEN', 'read-digest', None, False)])]:
+            with self.subTest(changes=changes, rows=rows), self.assertRaises(Rejected):
+                self.renew({**record, **changes}, rows)
+
 
 if __name__ == '__main__':
     unittest.main()
