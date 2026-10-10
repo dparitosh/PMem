@@ -102,9 +102,11 @@ export default function AdminPage({ onSchemaCleaned }) {
     setError('');
     try {
       const response = await API_METHODS.admin.registry({ signal: controller.signal });
+      if (controller.signal.aborted) return;
       setRegistry(response.data);
     } catch (err) {
       if (controller.signal.aborted) return;
+      setRegistry(null);
       setError(apiErrorMessage(err, 'Admin registry is unavailable.'));
     } finally {
       if (!controller.signal.aborted) setLoading(false);
@@ -146,6 +148,7 @@ export default function AdminPage({ onSchemaCleaned }) {
       });
     } catch (err) {
       if (controller.signal.aborted) return;
+      setAgenticCatalog(null);
       setAgenticError(apiErrorMessage(err, 'Agentic component catalog is unavailable.'));
     } finally {
       if (!controller.signal.aborted) setAgenticLoading(false);
@@ -186,14 +189,14 @@ export default function AdminPage({ onSchemaCleaned }) {
   }, []);
 
   const counts = useMemo(() => ({
-    services: registry?.services?.length || 0,
-    routes: registry?.api_routes?.length || 0,
-    sources: registry?.data_sources?.length || 0,
-    agents: registry?.agents?.length || 0,
-    packages: registry?.packages?.length || 0,
-    workflows: registry?.workflows?.length || 0,
-    config: registry?.configuration?.length || 0,
-  }), [registry]);
+    services: !loading && !error ? registry?.services?.length ?? null : null,
+    routes: !loading && !error ? registry?.api_routes?.length ?? null : null,
+    sources: !loading && !error ? registry?.data_sources?.length ?? null : null,
+    agents: agenticEnabled ? (!agenticLoading && !agenticError ? agenticCatalog?.agents?.length ?? null : null) : registry?.agents?.length ?? null,
+    packages: !loading && !error ? registry?.packages?.length ?? null : null,
+    workflows: !loading && !error ? registry?.workflows?.length ?? null : null,
+    config: !loading && !error ? registry?.configuration?.length ?? null : null,
+  }), [registry, loading, error, agenticEnabled, agenticLoading, agenticError, agenticCatalog]);
   const secondaryCatalogs = [
     {
       title: 'Agents',

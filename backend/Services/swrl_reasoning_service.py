@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import hashlib
 import json
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -93,6 +94,8 @@ class SwrlRuleService:
 
     @classmethod
     def parse_rule(cls, payload: Mapping[str, Any]) -> SwrlRule:
+        if not isinstance(payload.get("enabled", True), bool):
+            raise ValueError("Rule enabled must be a boolean")
         expression = str(payload.get("expression") or payload.get("rule") or "").strip()
         if expression:
             if "->" in expression:
@@ -185,7 +188,7 @@ class SwrlRuleService:
                     "message": f"Unsupported SWRL built-in: {atom.predicate}",
                     "predicate": atom.predicate,
                 })
-            if len(atom.arguments) not in (1, 2):
+            if len(atom.arguments) not in (1, 2) or (atom.is_builtin and len(atom.arguments) != 2):
                 issues.append({
                     "severity": "error",
                     "code": "invalid_arity",
@@ -297,7 +300,9 @@ class ApplicationRuleExecutor:
     @staticmethod
     def _match_body(body: Sequence[SwrlAtom], facts: Sequence[SemanticFact]) -> List[Tuple[Dict[str, str], List[str]]]:
         bindings: List[Tuple[Dict[str, str], List[str]]] = [({}, [])]
-        for atom in body:
+        # Comparison built-ins consume bindings; conjunction order must not
+        # change the result when a built-in precedes its binding fact atom.
+        for atom in sorted(body, key=lambda item: item.is_builtin):
             if atom.is_builtin:
                 bindings = [
                     (binding, fact_ids)
@@ -354,14 +359,16 @@ class ApplicationRuleExecutor:
         if atom.predicate == "swrlb:notEqual":
             return left != right
         if atom.predicate == "swrlb:contains":
-            return right.casefold() in left.casefold()
+            return right in left
         if atom.predicate == "swrlb:startsWith":
-            return left.casefold().startswith(right.casefold())
+            return left.startswith(right)
         if atom.predicate in {"swrlb:greaterThan", "swrlb:lessThan"}:
             try:
                 left_num = float(left)
                 right_num = float(right)
             except ValueError:
+                return False
+            if not math.isfinite(left_num) or not math.isfinite(right_num):
                 return False
             return left_num > right_num if atom.predicate == "swrlb:greaterThan" else left_num < right_num
         return False

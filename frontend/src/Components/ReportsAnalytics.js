@@ -86,7 +86,8 @@ export default function ReportsAnalytics({ entityTypes, relationships, ontologie
     (relationships || []).map((row) => ({ name: row.type, count: row.count }))
   ), [relationships]);
   const ontologyOption = useMemo(() => barOption(
-    (ontologies || []).map((row) => ({ name: row.ontology || row.prefix || 'Unidentified', count: Number(row.nodes || 0) }))
+    (ontologies || []).filter(row => row.nodes != null && row.nodes !== '' && Number.isFinite(Number(row.nodes)))
+      .map((row) => ({ name: row.ontology || row.prefix || 'Unidentified', count: Number(row.nodes) }))
       .sort((a, b) => b.count - a.count), '#005a9c'
   ), [ontologies]);
   const executionOption = useMemo(() => statusOption(telemetry), [telemetry]);
@@ -104,7 +105,7 @@ export default function ReportsAnalytics({ entityTypes, relationships, ontologie
       <div className="reports-chart-grid">
         <EChartPanel title="Entity distribution" description="Top entity types in the current report scope." option={entityOption} />
         <EChartPanel title="Relationship distribution" description="Top relationship types in the current graph scope." option={relationshipOption} />
-        <EChartPanel title="Ontology coverage" description="Published graph nodes by registered ontology." option={ontologyOption} />
+        <EChartPanel title="Ontology coverage" description="Published RDF resource totals from the full graph aggregation; unavailable counts are excluded." option={ontologyOption} />
         <EChartPanel title="Data-job status" description="Durable pipeline runs by current status." option={executionOption} emptyMessage={telemetryError || 'No pipeline runs are available.'} />
         <EChartPanel title="Data-quality outcome" description="Accepted and rejected records from recent durable runs." option={dataQualityOption} emptyMessage={telemetryError || 'No quality counts are available.'} />
       </div>

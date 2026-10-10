@@ -90,6 +90,13 @@ class OntologyReasoningService:
         meta = context["meta"]
         cache_key = cls._cache_key_for_path(context["file_path"])
         result = copy.deepcopy(cls._cached_reasoning(cache_key[0], cache_key[1], cache_key[2], context["prefix"]))
+        # Loading asserted OWL semantics is inspection, not a HermiT/Pellet
+        # classification or consistency proof. Expose that distinction to clients.
+        result.update({
+            "reasoning_mode": "asserted_semantic_inspection",
+            "deductive_reasoner_executed": False,
+            "consistency_verified": False,
+        })
         result.update({
             "ontology_id": meta.get("ontology_id"),
             "ontology_name": meta.get("ontology_name"),

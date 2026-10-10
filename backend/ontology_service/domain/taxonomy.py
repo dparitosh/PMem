@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from xml.etree import ElementTree as ET
 
-from rdflib import Graph, URIRef
+from rdflib import BNode, Graph, Literal, URIRef
 from rdflib.namespace import OWL, RDF, RDFS, SKOS
 
 from backend.Services.owlready_runtime import OwlreadyOntologyRuntime
@@ -296,6 +296,19 @@ class OntologyTaxonomyService:
                 class_uris.add(parent)
                 hierarchy_edges.append((subject, parent, "narrower"))
 
+        # Retain named OWL axiom relationships beyond domain/range and hierarchy.
+        for predicate, edge_type in ((OWL.equivalentClass, 'equivalentClass'), (OWL.disjointWith, 'disjointWith')):
+            for subject, target in graph.subject_objects(predicate):
+                if isinstance(subject, URIRef) and isinstance(target, URIRef):
+                    class_uris.update((subject, target))
+                    hierarchy_edges.append((subject, target, edge_type))
+        for predicate, edge_type in ((RDFS.subPropertyOf, 'subPropertyOf'), (OWL.equivalentProperty, 'equivalentProperty'), (OWL.inverseOf, 'inverseOf')):
+            for subject, target in graph.subject_objects(predicate):
+                if isinstance(subject, URIRef) and isinstance(target, URIRef):
+                    property_uris.setdefault(subject, 'rdf-property')
+                    property_uris.setdefault(target, 'rdf-property')
+                    property_edges.append((subject, target, edge_type))
+
         node_uris = set(class_uris) | set(property_uris)
         base_id_counts = Counter(_term_id(prefix, uri) for uri in node_uris)
         duplicate_ids = {term_id for term_id, count in base_id_counts.items() if count > 1}
@@ -333,6 +346,44 @@ class OntologyTaxonomyService:
             for subject, target, edge_type in property_edges
             if str(subject) in node_by_uri and str(target) in node_by_uri
         )
+
+        # Keep anonymous OWL expressions visible without pretending they are
+        # named classes. Cardinality values are expression terms, not entities.
+        expression_edges = []
+        pending = []
+        for predicate, relation in ((RDFS.subClassOf, 'subClassOf'), (OWL.equivalentClass, 'equivalentClass'), (OWL.disjointWith, 'disjointWith')):
+            for subject, target in graph.subject_objects(predicate):
+                if isinstance(subject, URIRef) and isinstance(target, BNode):
+                    expression_edges.append((subject, target, relation))
+                    pending.append(target)
+        visited = set()
+        while pending:
+            expression = pending.pop()
+            if expression in visited:
+                continue
+            visited.add(expression)
+            for predicate, target in graph.predicate_objects(expression):
+                if predicate == RDF.type:
+                    continue
+                if not (str(predicate).startswith(str(OWL)) or predicate in {RDF.first, RDF.rest}):
+                    continue
+                expression_edges.append((expression, target, _local_name(predicate)))
+                if isinstance(target, BNode):
+                    pending.append(target)
+        def expression_node(value):
+            key = str(value) if not isinstance(value, Literal) else 'literal:' + value.n3()
+            if key not in node_by_uri:
+                identifier = '_:' + str(value) if isinstance(value, BNode) else key
+                label = 'OWL restriction' if (value, RDF.type, OWL.Restriction) in graph else 'OWL expression' if isinstance(value, BNode) else str(value)
+                row = {'term_id': identifier, 'uri': key, 'label': label, 'ontology_prefix': prefix,
+                       'source': 'rdf-expression', 'definition': ''}
+                node_by_uri[key] = row
+                nodes.append(row)
+            return node_by_uri[key]
+        for subject, target, relation in expression_edges:
+            left, right = expression_node(subject), expression_node(target)
+            edges.append({'source_term': left['term_id'], 'source_label': left['label'],
+                          'target_term': right['term_id'], 'target_label': right['label'], 'mapping_type': relation})
 
         return {
             "source": "rdf",

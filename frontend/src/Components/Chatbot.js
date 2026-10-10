@@ -194,6 +194,8 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                 requestAuthorization = authHeaders.Authorization || '';
                 return fetch(buildUrl(API.chat.chatStream), {
                 method: 'POST',
+                credentials: 'omit',
+                redirect: 'error',
                 headers: {
                     'Content-Type': 'application/json',
                     ...authHeaders,
@@ -281,13 +283,15 @@ const Chatbot = ({ setChatResults, graphData, ontologyId = '', ontologyPrefix = 
                     } else if (parsed.error) {
                         streamCompleted = true;
                         streamFailed = true;
-                        const errMsg = typeof parsed.error === 'string' ? parsed.error : 'An error occurred.';
+                        const errMsg = (typeof parsed.error === 'string' ? parsed.error : 'An error occurred.') +
+                            (typeof parsed.action === 'string' ? ` ${parsed.action}` : '') +
+                            (typeof parsed.request_id === 'string' && parsed.request_id ? ` Request ID: ${parsed.request_id}` : '');
                         setError(errMsg);
                         setQuestion(messageText);
                         setStatusLabel(null);
                         setShowSpinner(false);
                         setChatMessages(prev => prev.map(m =>
-                            m.id === assistantId ? { ...m, text: errMsg, streaming: false } : m
+                            m.id === assistantId ? { ...m, text: errMsg, streaming: false, runId: parsed.run_id, requestId: parsed.request_id, failureCategory: parsed.category } : m
                         ));
                     }
             };

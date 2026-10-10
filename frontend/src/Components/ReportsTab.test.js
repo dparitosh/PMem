@@ -24,7 +24,10 @@ test('CSV quotes fields using doubled quotes and preserves real newlines', () =>
   expect(escapeCsv(null)).toBe('""');
 });
 
-vi.mock('../services/graphApi', () => ({ graphApi: { getOverview: vi.fn(async () => ({ data: { nodes: [], links: [] } })) } }));
+vi.mock('../services/graphApi', () => ({ graphApi: {
+  getOverview: vi.fn(async () => ({ data: { nodes: [], links: [] } })),
+  getMetrics: vi.fn(async () => ({ data: { resources: 1700, relationships: 2400, classes: 25, scope: { sampled: false, type: 'published_rdf_projection', ontology_id: null } } })),
+} }));
 
 vi.mock('../services/apiClient', () => ({
   apiClient: { get: vi.fn(async () => ({ data: {} })) },
@@ -52,6 +55,8 @@ test('ReportsTab does not substitute canvas data for an empty report projection'
   );
 
   await waitFor(() => expect(graphApi.getOverview).toHaveBeenCalled());
+  expect(await screen.findByText('1700')).toBeVisible();
+  expect(graphApi.getMetrics).toHaveBeenCalledWith('', expect.any(AbortSignal), '');
   expect(screen.queryByText('Rotor')).toBeNull();
   expect(screen.getByText('Analytics overview')).toBeInTheDocument();
   expect(screen.getByText('Entity distribution')).toBeInTheDocument();

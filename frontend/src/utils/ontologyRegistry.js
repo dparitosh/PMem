@@ -1,4 +1,9 @@
 // Preserve immutable identities across native and legacy registry views.
+export function registryCount(value) {
+  if (value == null || value === '' || typeof value === 'boolean') return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= 0 ? number : null;
+}
 export function mergeOntologyMetadata(existing, incoming) {
   const merged = { ...existing };
   for (const field of ['prefix', 'ontology_prefix', 'namespace', 'source_namespace', 'target_namespace', 'data_product_draft']) {
@@ -29,12 +34,12 @@ export function normalizeOntologyRows(rows = []) {
         target_namespace: o.target_namespace || o.namespace || '',
         status: o.status || o.availability,
         availability: o.availability || o.status,
-        node_count: Number(o.node_count || o.neo4j_nodes_merged || 0),
-        relationship_count: Number(o.relationship_count || o.neo4j_relationships_merged || 0),
+        node_count: registryCount(o.node_count),
+        relationship_count: registryCount(o.relationship_count),
         graph_available:
           Boolean(o.graph_available) ||
-          Number(o.node_count || o.neo4j_nodes_merged || 0) > 0 ||
-          Number(o.relationship_count || o.neo4j_relationships_merged || 0) > 0 ||
+          registryCount(o.node_count) > 0 ||
+          registryCount(o.relationship_count) > 0 ||
           String(o.status || o.availability || '').toLowerCase() === 'uploaded',
         disabled: Boolean(o.disabled),
         raw: o,

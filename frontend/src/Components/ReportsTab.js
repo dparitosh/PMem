@@ -327,6 +327,8 @@ const ReportsTab = ({ searchResults, graphData }) => {
   const [graphError, setGraphError] = useState('');
   const [selectedXsdOntology, setSelectedXsdOntology] = useState('');
   const [reportOntology, setReportOntology] = useState('');
+  const [fullMetrics, setFullMetrics] = useState(null);
+  const [fullMetricsError, setFullMetricsError] = useState('');
   const [xsdReport, setXsdReport] = useState(null);
   const [xsdReportLoading, setXsdReportLoading] = useState(false);
   const [xsdReportError, setXsdReportError] = useState('');
@@ -347,6 +349,25 @@ const ReportsTab = ({ searchResults, graphData }) => {
       window.removeEventListener('depo:ontologies-changed', refresh);
     };
   }, []);
+
+  const reportPrefix = ontologies.find(row => (row.ontology_id || row.id) === reportOntology)?.prefix || '';
+  useEffect(() => {
+    const controller = new AbortController();
+    setFullMetrics(null); setFullMetricsError('');
+    (async () => {
+      try {
+        const response = await graphApi.getMetrics(reportOntology, controller.signal, reportPrefix);
+        const value = response?.data?.data || response?.data;
+        if (controller.signal.aborted) return;
+        if (value?.scope?.sampled !== false || value?.scope?.type !== 'published_rdf_projection' ||
+            (value.scope.ontology_id || '') !== reportOntology) throw new Error('Graph service returned an incompatible metrics scope.');
+        setFullMetrics(value);
+      } catch (error) {
+        if (!controller.signal.aborted) setFullMetricsError(apiErrorMessage(error, 'Full graph totals are unavailable.'));
+      }
+    })();
+    return () => controller.abort();
+  }, [reportOntology, reportPrefix, contentRevision]);
 
   useEffect(() => {
     let cancelled = false;
@@ -423,8 +444,8 @@ const ReportsTab = ({ searchResults, graphData }) => {
     availability: ontology.graph_available === false ? 'registered only' : (ontology.availability || 'available'),
     type: ontology.type || '',
     namespace: ontology.namespace || ontology.target_namespace || ontology.source_namespace || '',
-    nodes: ontology.node_count || 0,
-    relationships: ontology.relationship_count || 0,
+    nodes: ontology.node_count ?? '—',
+    relationships: ontology.relationship_count ?? '—',
   })), [ontologies]);
 
   const processedResults = useMemo(() => buildNodeReportRows(effectiveGraphData, []), [effectiveGraphData, searchResults, reportOntology]);
@@ -636,6 +657,18 @@ const ReportsTab = ({ searchResults, graphData }) => {
       </select></label>
       <button type="button" onClick={() => { setContentRevision(value => value + 1); setTelemetryRevision(value => value + 1); }}>Refresh reports</button>
       <p>Graph reports use a bounded service projection (up to 1,200 nodes); they are not full warehouse totals. Pipeline/job telemetry remains system-wide.</p>
+      <section aria-label="Full graph totals">
+        <h3>Full graph totals for selected ontology scope</h3>
+        {fullMetricsError && <p role="alert">{fullMetricsError}</p>}
+        <KpiStrip items={[
+          { label: 'Published RDF resources', value: fullMetrics?.resources },
+          { label: 'Published RDF relationships', value: fullMetrics?.relationships },
+          { label: 'Declared RDF classes', value: fullMetrics?.classes },
+          { label: 'Existing ontology records', value: fullMetrics?.existing_ontology?.resources },
+          { label: 'Existing record relationships', value: fullMetrics?.existing_ontology?.relationships },
+        ]} />
+        <p>These use the same full aggregation as Landing. Published RDF and existing ontology records are separate populations; the charts below use sampled rows.</p>
+      </section>
       <div
         style={{
           display: 'grid',
@@ -861,7 +894,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
           <ReportsAnalytics
             entityTypes={availableTypes}
             relationships={relTypesSummary}
-            ontologies={ontologyRows}
+            ontologies={(fullMetrics?.ontology_breakdown || []).map(row => ({ ontology: row.ontology, nodes: row.node_count ?? row.count }))}
             telemetry={pipelineTelemetry?.durable_job_telemetry || pipelineTelemetry?.totals || pipelineTelemetry}
             telemetryError={pipelineTelemetryError}
           />

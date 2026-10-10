@@ -123,8 +123,8 @@ test('uses the valid draft to in-review lifecycle transition and prevents duplic
 
   render(<MetadataRegistryPage />);
   const action = await screen.findByRole('button', { name: 'Submit for review' });
-  expect(screen.getByText('Published / available').parentElement).toHaveTextContent('0');
-  expect(screen.getByText('Review required').parentElement).toHaveTextContent('1');
+  expect(screen.getByText('Approved assets on this page').parentElement).toHaveTextContent('0');
+  expect(screen.getByText('Review required on this page').parentElement).toHaveTextContent('1');
   fireEvent.click(action);
   fireEvent.click(action);
 

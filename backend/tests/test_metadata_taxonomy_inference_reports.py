@@ -28,6 +28,32 @@ class _RecordingGraph:
         return []
 
 
+def test_taxonomy_retains_named_owl_axiom_relationships(tmp_path):
+    source = tmp_path / 'axioms.ttl'
+    source.write_text('''@prefix ex: <urn:example:> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:A owl:equivalentClass ex:B ; owl:disjointWith ex:C .
+ex:p owl:inverseOf ex:q ; owl:equivalentProperty ex:r ; rdfs:subPropertyOf ex:s .
+''', encoding='utf-8')
+    result = OntologyTaxonomyService._parse_rdf({'prefix': 'ex'}, source)
+    assert {edge['mapping_type'] for edge in result['edges']} == {
+        'equivalentClass', 'disjointWith', 'inverseOf', 'equivalentProperty', 'subPropertyOf'}
+
+
+def test_taxonomy_exposes_anonymous_cardinality_expression(tmp_path):
+    source = tmp_path / 'restriction.ttl'
+    source.write_text('''@prefix ex: <urn:example:> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:A a owl:Class ; rdfs:subClassOf [ a owl:Restriction ; owl:onProperty ex:p ; owl:maxCardinality 2 ] .
+ex:p a owl:ObjectProperty .
+''', encoding='utf-8')
+    result = OntologyTaxonomyService._parse_rdf({'prefix': 'ex'}, source)
+    assert any(edge['mapping_type'] == 'maxCardinality' and edge['target_label'] == '2' for edge in result['edges'])
+    assert any(node['source'] == 'rdf-expression' for node in result['nodes'])
+
+
 def test_metadata_create_uses_unique_create_and_patch_is_partial(monkeypatch):
     recorder = _RecordingGraph()
     monkeypatch.setattr(metadata_registry_routes, "graph", recorder)

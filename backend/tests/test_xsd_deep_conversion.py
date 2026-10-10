@@ -68,3 +68,23 @@ def test_relational_projection_uses_child_and_junction_tables(tmp_path):
     assert tables["Node/children"]["columns"]
     assert any(col["name"] == "revision" and col["required"]
                for col in tables["Node"]["columns"])
+
+
+def test_choice_prohibition_and_inheritance_shapes(tmp_path):
+    from rdflib.namespace import XSD as DATATYPES
+    from rdflib import Literal
+    SH = Namespace('http://www.w3.org/ns/shacl#')
+    source = tmp_path / 'model.xsd'
+    source.write_text('''<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+      <xs:complexType name="Base"><xs:attribute name="id" type="xs:string"/></xs:complexType>
+      <xs:complexType name="Child"><xs:complexContent><xs:extension base="Base">
+        <xs:choice><xs:element name="a" type="xs:string"/><xs:element name="b" type="xs:string"/></xs:choice>
+        <xs:attribute name="forbidden" type="xs:string" use="prohibited"/>
+      </xs:extension></xs:complexContent></xs:complexType>
+    </xs:schema>''', encoding='utf-8')
+    output = tmp_path / 'model.ttl'
+    convert_xsd_to_owl(OntologyConfig(base_uri='urn:model:', prefix='m', schema_dir=str(tmp_path), output_ttl=str(output)))
+    graph = Graph().parse(output, format='turtle')
+    assert list(graph.triples((None, SH.xone, None)))
+    assert not list(graph.triples((None, SH.closed, Literal(True))))
+    assert list(graph.triples((None, OWL.maxCardinality, Literal(0, datatype=DATATYPES.nonNegativeInteger))))

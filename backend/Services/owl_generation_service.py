@@ -57,7 +57,9 @@ def _read_and_validate(ttl_path: Path) -> Tuple[str, Dict[str, Any]]:
         result = validator.validate_file(str(ttl_path))
         report = result.to_dict() if hasattr(result, "to_dict") else {}
     except Exception as val_err:
-        logger.debug(f"Ontology validation skipped: {val_err}")
+        raise ValueError('Generated ontology validation could not be completed') from val_err
+    if report.get('valid') is not True:
+        raise ValueError('Generated ontology failed validation; inspect ontology validator diagnostics')
     return ttl_str, report
 
 
@@ -309,6 +311,8 @@ class OWLGenerationService:
             cfg.target_files = [Path(filename).stem]
             cfg.source_ns = target_namespace
             cfg.source_standard = target_namespace or "XML Schema"
+            from .xsd_semantics import inspect_conversion_schemas
+            conversion_limitations = inspect_conversion_schemas([xsd_path, *[tmp_dir / name for name in dependencies]])
             result_path = convert_xsd_to_owl(cfg)
             ttl_str, report = _read_and_validate(result_path)
             metadata = {
@@ -321,6 +325,8 @@ class OWLGenerationService:
                 "base_uri": base_uri,
                 "ttl_lines": ttl_str.count("\n"),
                 "validation": report,
+                "conversion_limitations": conversion_limitations,
+                "constraint_profile": "OWL property/cardinality semantics and open SHACL shapes; full XSD conformance remains source-schema validation",
                 "owlready2": _inspect_with_owlready(ttl_str, f"xsd_{stem}"),
             }
             return ttl_str, metadata

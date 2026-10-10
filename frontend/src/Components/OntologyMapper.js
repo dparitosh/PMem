@@ -11,6 +11,7 @@ import { Search, Upload, FileText, Download, Network } from 'lucide-react';
 import { API_METHODS } from '../services/apiClient';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import { hierarchyEdge } from '../utils/taxonomyHierarchy';
+import { normalizeAxiomEdges, mergePropertyAxiomRows } from '../utils/ontologyAxioms';
 import { useOntologies } from '../contexts/OntologyContext';
 import DataGridWidget from '../widgets/DataGridWidget';
 import ErrorBoundary from './ErrorBoundary';
@@ -442,7 +443,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
 
   const taxonomyEdges = useMemo(() => {
     const rawEdges = taxonomy?.edges?.length ? taxonomy.edges : edges;
-    const normalized = Array.isArray(rawEdges) ? [...rawEdges] : [];
+    const normalized = normalizeAxiomEdges(rawEdges, taxonomyNodes);
 
     (reasoning?.subclass_edges || []).forEach((edge) => {
       normalized.push({
@@ -480,7 +481,7 @@ function TaxonomyView({ nodes, edges, filter, taxonomy, reasoning }) {
       const key = `${edge.source_term}|${edge.mapping_type}|${edge.target_term}`;
       return edge.source_term && edge.target_term && list.findIndex((item) => `${item.source_term}|${item.mapping_type}|${item.target_term}` === key) === index;
     });
-  }, [edges, reasoning, refLabel, taxonomy, termIdFromRef]);
+  }, [edges, reasoning, refLabel, taxonomy, taxonomyNodes, termIdFromRef]);
 
   const taxonomySummary = taxonomy?.summary || null;
   const visibleNodes = useMemo(() => {
@@ -848,7 +849,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
 
   const taxonomyEdges = useMemo(() => {
     const rawEdges = taxonomy?.edges?.length ? taxonomy.edges : edges;
-    const normalized = Array.isArray(rawEdges) ? [...rawEdges] : [];
+    const normalized = normalizeAxiomEdges(rawEdges, taxonomyNodes);
 
     (reasoning?.subclass_edges || []).forEach((edge) => {
       normalized.push({
@@ -886,7 +887,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
       const key = `${edge.source_term}|${edge.mapping_type}|${edge.target_term}`;
       return edge.source_term && edge.target_term && list.findIndex((item) => `${item.source_term}|${item.mapping_type}|${item.target_term}` === key) === index;
     });
-  }, [edges, reasoning, refLabel, taxonomy, termIdFromRef]);
+  }, [edges, reasoning, refLabel, taxonomy, taxonomyNodes, termIdFromRef]);
 
   const visibleNodes = useMemo(() => {
     if (!lc) return taxonomyNodes;
@@ -973,7 +974,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
   }), [taxonomyEdges, nodeById]);
 
   const classRows = useMemo(() => {
-    const classNodes = visibleNodes.filter((node) => !String(node.source || '').includes('property'));
+    const classNodes = visibleNodes.filter((node) => !String(node.source || '').includes('property') && node.source !== 'rdf-expression');
     const labelCounts = new Map();
     classNodes.forEach((node) => {
       const label = node.label || String(node.term_id || '').split(':').pop();
@@ -1060,8 +1061,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
         range: row.range.join(', ') || 'Not declared',
       });
     });
-    if (reasoningPropertyRows.length) return reasoningPropertyRows;
-    return Array.from(declaredById.values());
+    return mergePropertyAxiomRows(Array.from(declaredById.values()), reasoningPropertyRows);
   }, [edgeRows, reasoningPropertyRows, visibleNodes]);
 
   const selectedPropertyRow = useMemo(() => {
@@ -1158,7 +1158,7 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
     { headerName: 'Kind', field: 'kind', width: 124, cellStyle: gridTextCell },
     { headerName: 'Domain', field: 'domain', flex: 1, minWidth: 148, tooltipField: 'domain', cellStyle: gridTextCell },
     { headerName: 'Range', field: 'range', flex: 1, minWidth: 148, tooltipField: 'range', cellStyle: gridTextCell },
-    { headerName: 'Axioms', field: 'axiomCount', width: 88, type: 'numericColumn', cellStyle: gridTextCell },
+    { headerName: 'Domain/range axioms', field: 'axiomCount', width: 155, type: 'numericColumn', cellStyle: gridTextCell },
   ], [gridTextCell]);
 
   const axiomColumns = useMemo(() => [
@@ -1173,13 +1173,13 @@ function ProtegeOntologyBrowser({ nodes, edges, filter, taxonomy, reasoning }) {
   const activeTitle = tableMode === 'properties'
     ? `Object/Data Properties (${objectPropertyRows.length})`
     : tableMode === 'axioms'
-      ? `OWL Axioms (${edgeRows.length})`
+      ? `Axiom relationships in loaded slice (${edgeRows.length})`
       : `Classes (${classRows.length})`;
 
   const browserStats = [
     { label: 'Classes', value: hierarchy.rows.length },
     { label: 'Properties', value: objectPropertyRows.length },
-    { label: 'Axioms', value: edgeRows.length },
+    { label: 'Axiom relationships in slice', value: edgeRows.length },
     { label: 'Terms', value: visibleNodes.length },
   ];
 

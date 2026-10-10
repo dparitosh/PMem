@@ -32,7 +32,7 @@ export async function loadProductCollection(request, signal) {
       if (expectedTotal != null && rows.length !== expectedTotal) warning = 'Product pagination did not return the declared total. Refresh and check matching service versions.';
       if (!Object.prototype.hasOwnProperty.call(data, 'next_offset') && Number(data.limit) > 0 && data.products.length >= Number(data.limit))
         warning = 'This service returned a capped list without pagination metadata. Update the data-product service to verify completeness.';
-      return { rows, warning, total: expectedTotal ?? rows.length };
+      return { rows, warning, total: expectedTotal ?? (Object.prototype.hasOwnProperty.call(data, 'next_offset') ? rows.length : null) };
     }
     if (!Number.isSafeInteger(data.next_offset) || data.next_offset <= offset || !data.products.length)
       throw new Error('Service returned invalid product pagination.');

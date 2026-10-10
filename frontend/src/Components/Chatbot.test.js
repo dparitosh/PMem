@@ -25,6 +25,8 @@ test('completed chat shows generation status and the telemetry run', async () =>
   fireEvent.change(screen.getByLabelText('Chat question'), { target: { value: 'Find product' } });
   fireEvent.click(screen.getByLabelText('Send chat question'));
   await screen.findByText('Model generation: unavailable');
+  const post = global.fetch.mock.calls.find(([, options]) => options?.method === 'POST');
+  expect(post[1]).toMatchObject({ credentials: 'omit', redirect: 'error' });
   expect(screen.getByText('Agent run: chat-run-1')).toBeInTheDocument();
   expect(screen.getByText('Saved conversation result: saved-chat-1')).toBeInTheDocument();
   expect(screen.getByText('You · Question 1')).toBeVisible();

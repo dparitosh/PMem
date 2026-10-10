@@ -330,8 +330,8 @@ export default function MetadataRegistryPage() {
             <>
               <RegistrySummaryCards items={[
                 { icon: <Database size={15} />, label: 'Governed assets on this page', value: registryLoaded ? registryAssets.length : '—' },
-                { icon: <ShieldCheck size={15} />, label: 'Published / available', value: registryLoaded ? publishedCount : '—' },
-                { icon: <Clock3 size={15} />, label: 'Review required', value: registryLoaded ? reviewCount : '—' },
+                { icon: <ShieldCheck size={15} />, label: 'Approved assets on this page', value: registryLoaded ? publishedCount : '—' },
+                { icon: <Clock3 size={15} />, label: 'Review required on this page', value: registryLoaded ? reviewCount : '—' },
               ]} />
               <RegistryAssetsSection
                 newAsset={newAsset}

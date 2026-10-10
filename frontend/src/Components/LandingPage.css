@@ -12,7 +12,10 @@
 .ix-landing-page__registry ix-card-content { overflow: auto; }
 .ix-landing-page__chat { height: clamp(600px, 78dvh, 900px); display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--theme-color-weak-bdr, #d9e2ec); }
 .ix-landing-page__card ix-card-content { display: block; }
-.ix-landing-page__profile { overflow: auto; }
+.ix-landing-page__profile { height: clamp(400px, 58dvh, 680px); overflow: hidden; }
+.ix-landing-page__profile ix-card-content { height: calc(100% - 80px); min-height: 0; box-sizing: border-box; }
+.ix-landing-page__profile-scroll { width: 100%; flex: 1 1 0; height: 100%; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding-right: 8px; overflow-wrap: anywhere; }
+.ix-landing-page__profile-scroll .ix-landing-page__scope { position: sticky; top: 0; z-index: 1; padding-bottom: 8px; background: var(--theme-color-component-1, #fff); }
 .ix-landing-page__alert { display: flex; align-items: center; gap: 8px; color: var(--theme-color-alarm, #b42318); font-size: 13px; }
 .ix-landing-page__empty { color: var(--theme-color-soft-text, #5a6772); font-size: 13px; }
 .ix-landing-page__empty-state { display: grid; gap: 4px; padding: 8px 0; color: var(--theme-color-soft-text, #5a6772); font-size: 13px; }

@@ -24,6 +24,7 @@ from .workflow_control import checkpoint as workflow_checkpoint, WorkflowCancell
 from backend.depo_platform.network import bounded_timeout_seconds
 from .companion import companion
 from .chat_request import ChatRequest
+from .stream_errors import stream_failure
 from .transport_auth import APPROVAL_TOKENS, downstream_headers, downstream_inputs, tool_retry_allowed
 from .oslc_graph_rag import oslc_graph_rag
 from .dt_requirements_adapter import assess_manifest
@@ -454,8 +455,8 @@ async def companion_stream(payload: ChatRequest, request: Request) -> StreamingR
                     'sources': result['sources'], 'answerable': result['answerable'], 'run_id': result['run_id'],
                     'retained_prompt_job_id': result['retained_prompt_job_id'], 'generation': result.get('generation')})
                 await queue.put({'done': True})
-            except Exception:
-                await queue.put({'error': 'Knowledge companion stream failed; no complete answer was retained'})
+            except Exception as exc:
+                await queue.put(stream_failure(exc, getattr(request.state, 'request_id', '')))
         task = asyncio.create_task(produce())
         try:
             yield 'data: {"status": "Retrieving graph evidence"}\n\n'

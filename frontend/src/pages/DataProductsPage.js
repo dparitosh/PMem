@@ -142,6 +142,7 @@ export default function DataProductsPage({ mode = 'products' }) {
     <AgentProposalPanel title="Product governance recommendations" agentIds={['data-product-governor']} context={{ page: catalog ? 'data-catalog' : 'data-products', product_ids: state.rows.map(row => row.product_id).slice(0, 20) }} />
     <div className="depo-panel__header"><h2>{title}</h2><IxButton onClick={load} disabled={state.loading}>Refresh</IxButton></div>
     <p>{catalog ? 'Browse governed product versions, ownership and lifecycle.' : 'Browse retained product packages and their catalog delivery status.'}</p>
+    <p>Totals count product versions. Catalog entries and retained packages are separate records; pending delivery can make their totals differ.</p>
     {state.loading && <p role="status">Loading products…</p>}
     {state.error && <div role="alert" className="depo-alert depo-alert--warning">{state.error}</div>}
     {state.warning && <div role="alert" className="depo-alert depo-alert--warning">{state.warning}</div>}

@@ -21,7 +21,8 @@ def _summarize_shapes_graph(shacl_graph: Optional[rdflib.Graph]) -> Dict[str, in
         }
     try:
         node_shape_nodes = set(shacl_graph.subjects(RDF.type, SH.NodeShape))
-        property_shape_nodes = set(shacl_graph.subjects(RDF.type, SH.PropertyShape))
+        property_shape_nodes = (set(shacl_graph.subjects(RDF.type, SH.PropertyShape))
+                                | set(shacl_graph.subjects(SH.path, None)))
         node_shapes = len(node_shape_nodes)
         property_shapes = len(property_shape_nodes)
         shape_nodes = len(node_shape_nodes | property_shape_nodes)
@@ -53,7 +54,7 @@ def _summarize_report_graph(report_graph: Optional[Graph]) -> Dict[str, int]:
         warning_count = 0
         info_count = 0
         for node in result_nodes:
-            severity = next(report_graph.objects(node, SH.resultSeverity), None)
+            severity = next(report_graph.objects(node, SH.resultSeverity), SH.Violation)
             if severity == SH.Violation:
                 violation_count += 1
             elif severity == SH.Warning:
@@ -96,7 +97,7 @@ class ShaclValidationService:
         Returns a dictionary with validation results.
         """
         if not validate:
-            return {"conforms": False, "error": "pyshacl library missing"}
+            return {"conforms": False, "status": "unavailable", "error": "pyshacl library missing"}
 
         try:
             # Prepare SHACL graph
@@ -106,7 +107,7 @@ class ShaclValidationService:
             if shacl_graph is None:
                 shacl_graph = rdflib.Graph().parse(data=self.create_default_shapes(), format="turtle")
             if len(shacl_graph) == 0:
-                return {"conforms": False, "error": "SHACL shapes graph is empty", "validation_engine": "pyshacl"}
+                return {"conforms": False, "status": "validation_error", "error": "SHACL shapes graph is empty", "validation_engine": "pyshacl"}
 
             conforms, report_graph, report_text = validate(
                 data_graph,
@@ -118,6 +119,7 @@ class ShaclValidationService:
 
             report: Dict[str, Any] = {
                 "conforms": conforms,
+                "status": "conformant" if conforms else "nonconformant",
                 "report_text": report_text,
                 "report_graph": report_graph.serialize(format="turtle") if report_graph is not None else "",
                 "validation_engine": "pyshacl",
@@ -130,7 +132,7 @@ class ShaclValidationService:
 
         except Exception as e:
             logger.error(f"SHACL Validation error: {e}")
-            return {"conforms": False, "error": str(e)}
+            return {"conforms": False, "status": "validation_error", "error": "SHACL validation could not be completed", "validation_engine": "pyshacl"}
 
     def create_default_shapes(self) -> str:
         """

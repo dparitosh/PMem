@@ -52,6 +52,10 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
+if __package__:
+    from .xsd_semantics import inspect_conversion_schemas, element_particles
+else:
+    from xsd_semantics import inspect_conversion_schemas, element_particles
 
 from rdflib import BNode, Graph, Literal, Namespace, URIRef
 from rdflib.namespace import DC, DCTERMS, OWL, RDF, RDFS, SKOS, XSD
@@ -622,12 +626,11 @@ def _anonymous_type_name(parent_name: str, element_name: str) -> str:
 def _add_shacl_property_shape(g: Graph, cfg: OntologyConfig, class_uri: URIRef,
                               prop_uri: URIRef, min_occurs: str, max_occurs: str,
                               datatype=None, value_class=None) -> None:
-    """Mirror XSD closed-world cardinality in a small per-class SHACL shape."""
+    """Mirror property cardinality without rejecting inherited properties."""
     shape = cfg.ns[f"shape_{_safe_uri_name(str(class_uri).split('#')[-1])}"]
     g.add((shape, RDF.type, SH.NodeShape))
     g.add((shape, SH.targetClass, class_uri))
-    g.add((shape, SH.closed, Literal(True, datatype=XSD.boolean)))
-    g.add((shape, SH.ignoredProperties, _rdf_list(g, [RDF.type])))
+    g.add((shape, SH.closed, Literal(False, datatype=XSD.boolean)))
     property_shape = BNode()
     g.add((shape, SH.property, property_shape))
     g.add((property_shape, SH.path, prop_uri))
@@ -653,6 +656,48 @@ def _rdf_list(g: Graph, values: list) -> BNode:
             g.add((current, RDF.rest, nxt))
             current = nxt
     return head
+
+
+def _add_choice_constraints(g, cfg, type_node, class_uri, type_name):
+    """Preserve simple exclusive choices; reject unrepresentable repeated groups."""
+    def visit(node, ancestors=()):
+        for child in node:
+            if child.tag == XSD_PRE + 'complexType':
+                continue
+            if child.tag == XSD_PRE + 'choice':
+                yield child, ancestors
+            yield from visit(child, (*ancestors, child))
+    for choice, ancestors in visit(type_node):
+        branches = [child for child in choice if child.tag != XSD_PRE + 'annotation']
+        if (choice.get('maxOccurs', '1') != '1' or choice.get('minOccurs', '1') not in {'0', '1'}
+                or not branches or any(child.tag != XSD_PRE + 'element' for child in branches)
+                or any(child.get('minOccurs', '1') != '1' for child in branches)
+                or any(parent.get('maxOccurs', '1') != '1' for parent in ancestors)):
+            raise ValueError('Nested or repeating XSD choice cannot be faithfully converted by this profile')
+        names = [child.get('name') or _local(child.get('ref', '')) for child in branches]
+        if any(not name for name in names) or len(set(names)) != len(names):
+            raise ValueError('Choice branches require distinct property identities')
+        properties = [cfg.prop_uri(type_name, name) for name in names]
+        if len(set(properties)) != len(properties):
+            raise ValueError('Choice branches collapse to the same configured property identity')
+        optional = choice.get('minOccurs', '1') == '0' or any(parent.get('minOccurs') == '0' for parent in ancestors)
+        alternatives = []
+        for selected in [*range(len(properties)), *([None] if optional else [])]:
+            alternative = BNode()
+            alternatives.append(alternative)
+            for index, prop in enumerate(properties):
+                constraint = BNode()
+                g.add((alternative, SH.property, constraint))
+                g.add((constraint, SH.path, prop))
+                if index == selected:
+                    g.add((constraint, SH.minCount, Literal(1, datatype=XSD.nonNegativeInteger)))
+                else:
+                    g.add((constraint, SH.maxCount, Literal(0, datatype=XSD.nonNegativeInteger)))
+        shape = BNode()
+        g.add((shape, RDF.type, SH.NodeShape))
+        g.add((shape, SH.targetClass, class_uri))
+        g.add((shape, SH.xone, _rdf_list(g, alternatives)))
+        g.add((class_uri, RDFS.comment, Literal('Exclusive XSD choice is enforced by the generated SHACL xone shape.')))
 
 
 def _ensure_class_stub(g: Graph, cfg: OntologyConfig, type_local: str, source_tag: str) -> URIRef:
@@ -799,11 +844,9 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         return
 
     # sequence / choice / all children → properties
-    for seq_elem in _owned_declarations(ct_element, f"{XSD_PRE}element"):
+    for seq_elem, min_occurs, max_occurs in element_particles(ct_element):
         elem_name  = seq_elem.get("name", "")
         elem_type  = seq_elem.get("type", "")
-        min_occurs = seq_elem.get("minOccurs", "1")
-        max_occurs = seq_elem.get("maxOccurs", "1")
         ref        = seq_elem.get("ref", "")
 
         prop_name = elem_name or _local(ref)
@@ -913,7 +956,7 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         g.add((prop_uri, RDFS.label,   Literal(prop_name)))
         _add_shacl_property_shape(
             g, cfg, class_uri, prop_uri, min_occurs, max_occurs,
-            datatype=XSD_TYPE_MAP.get(range_local) if prop_kinds.get(prop_uri) == "datatype" else None,
+            datatype=(XSD_TYPE_MAP.get(range_local) or simple_types.get(range_local)) if prop_kinds.get(prop_uri) == "datatype" else None,
             value_class=range_class_uri if prop_kinds.get(prop_uri) == "object" else None,
         )
 
@@ -954,6 +997,7 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         g.add((oslc_prop, OSLC.occurs, _get_oslc_occurs(min_occurs, max_occurs)))
 
     # xs:attribute elements → properties
+    _add_choice_constraints(g, cfg, ct_element, class_uri, type_name)
     for attr_elem in _owned_declarations(ct_element, f"{XSD_PRE}attribute"):
         attr_name  = attr_elem.get("name", "")
         attr_type  = attr_elem.get("type", "")
@@ -965,6 +1009,14 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
             continue
 
         prop_uri    = cfg.prop_uri(type_name, prop_name)
+        if attr_use == 'prohibited':
+            _add_shacl_property_shape(g, cfg, class_uri, prop_uri, '0', '0')
+            restriction = BNode()
+            g.add((restriction, RDF.type, OWL.Restriction))
+            g.add((restriction, OWL.onProperty, prop_uri))
+            g.add((restriction, OWL.maxCardinality, Literal(0, datatype=XSD.nonNegativeInteger)))
+            g.add((class_uri, RDFS.subClassOf, restriction))
+            continue
         shared_property = cfg.is_shared_property(prop_name)
         range_local = _local(attr_type) if attr_type else _extract_inline_simple_base(attr_elem)
 
@@ -1015,7 +1067,7 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         g.add((prop_uri, RDFS.label,   Literal(prop_name)))
         _add_shacl_property_shape(
             g, cfg, class_uri, prop_uri, min_occurs, max_occurs,
-            datatype=XSD_TYPE_MAP.get(range_local) if prop_kinds.get(prop_uri) == "datatype" else None,
+            datatype=(XSD_TYPE_MAP.get(range_local) or simple_types.get(range_local)) if prop_kinds.get(prop_uri) == "datatype" else None,
             value_class=range_class_uri if prop_kinds.get(prop_uri) == "object" else None,
         )
 
@@ -1220,14 +1272,16 @@ def _discover_related_xsds(paths: list[Path]) -> list[Path]:
     pending = list(paths)
     while pending:
         path = Path(pending.pop(0)).resolve()
-        if path in seen or not path.exists():
+        if path in seen:
             continue
+        if not path.is_file():
+            raise ValueError(f'Missing XSD dependency: {path.name}')
         seen.add(path)
         result.append(path)
         try:
             root = ET.parse(path).getroot()
-        except ET.ParseError:
-            continue
+        except ET.ParseError as exc:
+            raise ValueError(f'Malformed XSD dependency: {path.name}') from exc
         for link in list(root):
             if link.tag in {f"{XSD_PRE}include", f"{XSD_PRE}import", f"{XSD_PRE}redefine"}:
                 location = link.get("schemaLocation")
@@ -1334,13 +1388,17 @@ def convert_xsd_to_owl(cfg: OntologyConfig) -> Path:
             xsd_paths.append(xf)
 
     xsd_paths = _discover_related_xsds(xsd_paths)
+    if missing or not xsd_paths:
+        raise ValueError('Missing conversion targets: ' + ', '.join(missing or ['no XSD files']))
+    conversion_diagnostics = inspect_conversion_schemas(xsd_paths, XSD_TYPE_MAP)
+    for message in conversion_diagnostics:
+        g.add((URIRef(cfg.base_uri), DCTERMS.description, Literal('Conversion limitation: ' + message)))
 
-    # ── Pass 1: collect ALL simpleType/simpleContent wrappers across the entire
-    # schema directory (not just the target files).  Many standards keep shared
-    # primitive-wrapper types in a Common/CommonComponents file that is not
-    # itself a conversion target but whose type definitions ARE needed for
-    # correct DatatypeProperty vs ObjectProperty classification.
-    all_schema_xsd = _discover_related_xsds(sorted(schema_path.glob("*.xsd")))
+    # Pass 1: collect simpleType/simpleContent wrappers from selected targets
+    # and their dependencies for datatype versus object classification.
+    # Resolve wrappers from the selected dependency closure, not unrelated
+    # sibling schemas whose local names could overwrite selected definitions.
+    all_schema_xsd = list(xsd_paths)
     strict_semantics = os.getenv("XSD_STRICT_SEMANTICS", "true").strip().lower() in {
         "1", "true", "yes", "on"
     }

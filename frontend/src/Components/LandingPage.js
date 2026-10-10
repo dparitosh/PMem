@@ -168,7 +168,8 @@ export default function LandingPage({ setChatResults, onNavigate }) {
   const [metricsError, setMetricsError] = useState('');
   const [lastRefreshed, setLastRefreshed] = useState(null);
   const metricsRequest = useRef(null);
-  const selectedPrefix = ontologies.find(o => (o.ontology_id || o.id) === selectedOntology)?.prefix || '';
+  const selectedRow = ontologies.find(o => (o.ontology_id || o.id) === selectedOntology);
+  const selectedPrefix = selectedRow?.prefix || selectedRow?.ontology_prefix || '';
 
   const loadMetrics = useCallback(async () => {
     metricsRequest.current?.abort();
@@ -238,6 +239,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
           <IxCard variant="outline" className="ix-landing-page__card ix-landing-page__profile">
             <IxCardTitle>Graph profile</IxCardTitle>
             <IxCardContent>
+              <div className="ix-landing-page__profile-scroll" role="region" aria-label="Graph profile metrics" tabIndex={0}>
               <label className="ix-landing-page__scope">Ontology scope
                 <select value={selectedOntology} onChange={event => setSelectedOntology(event.target.value)}>
                   <option value="">All ontologies</option>
@@ -247,6 +249,7 @@ export default function LandingPage({ setChatResults, onNavigate }) {
               {metricsError ? <div role="alert" className="ix-landing-page__alert">{metricsError}<IxButton type="button" variant="tertiary" onClick={loadMetrics}>Retry</IxButton></div> : metricsLoading ? <div className="ix-landing-page__empty">Loading graph metrics…</div> : <>
                 <GraphProfileMetrics metrics={metrics} />
               </>}
+              </div>
             </IxCardContent>
           </IxCard>
           </div>

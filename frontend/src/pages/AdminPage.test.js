@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import AdminPage from './AdminPage';
+import { API_METHODS } from '../services/apiClient';
 
 vi.mock('../Components/CredentialSettings', () => ({ default: () => <label>Administrator key<input aria-label="Administrator key" /></label> }));
 vi.mock('../Components/AdminPanel', () => ({ default: () => <div>Cleanup controls</div> }));
@@ -9,7 +10,7 @@ vi.mock('../Components/AgentControlPanel', () => ({ default: () => <div>Workflow
 vi.mock('../Components/AgentProposalPanel', () => ({ default: () => <div>Agent recommendations</div> }));
 vi.mock('../Components/ServiceIntegrationPanel', () => ({ default: () => <div>Integration health</div> }));
 vi.mock('../widgets/RegistryWidget', () => ({ default: ({ title }) => <div>{title}</div> }));
-vi.mock('../widgets/KpiStrip', () => ({ default: () => <div>Summary counts</div> }));
+vi.mock('../widgets/KpiStrip', () => ({ default: ({ items }) => <div>{items.map(item => <span key={item.label} data-testid={`count-${item.label}`}>{item.value ?? '—'}</span>)}</div> }));
 vi.mock('../services/apiClient', () => ({ API_METHODS: {admin:{registry:vi.fn(async () => ({data:{}}))}} }));
 vi.mock('../services/agenticApi', () => ({default:{isEnabled:()=>true,isConfigured:()=>true,listAgents:async()=>({data:{agents:[]}}),listTools:async()=>({data:{tools:[]}})}}));
 beforeEach(() => sessionStorage.clear());
@@ -32,4 +33,12 @@ test('header access navigation selects credentials in an already mounted Admin p
   fireEvent(window, new CustomEvent('depo:admin-section', {detail:'access'}));
   expect(screen.getByRole('tab', {name:'API access'})).toHaveAttribute('aria-selected','true');
   expect(screen.getByRole('tabpanel', {name:'API access'})).toBeVisible();
+});
+
+test('failed registry shows unavailable counts and agent summary uses the agent table catalog', async () => {
+  API_METHODS.admin.registry.mockRejectedValueOnce(new Error('Registry unavailable'));
+  render(<AdminPage />);
+  await screen.findByText('Registry unavailable');
+  expect(screen.getByTestId('count-Services')).toHaveTextContent('—');
+  await waitFor(() => expect(screen.getByTestId('count-Agents')).toHaveTextContent('0'));
 });
