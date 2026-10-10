@@ -1,5 +1,6 @@
 """Isolated lifecycle regressions; no live model or database is required."""
 import ast
+from backend.agentic_service.prompt_limits import bounded_prompt_json
 import asyncio
 import json
 import os
@@ -43,6 +44,7 @@ class InferenceDeadlineTests(unittest.IsolatedAsyncioTestCase):
         async def post(*args): raise TimeoutError()
         scope = functions('backend/agentic_service/local_llm.py', {'suggest_tool'}, {
             '__package__': 'backend.agentic_service', 'os': os,
+            'bounded_prompt_json': bounded_prompt_json,
             'settings': lambda: ('ollama', 'fixture-model', 'http://host', 30, {}),
             'httpx': SimpleNamespace(AsyncClient=Client), '_post_json': post})
         snapshot = {}

@@ -1,22 +1,164 @@
 {
-  "id": "ap242-core", "version": "0.1.0", "ceim_version": "0.1.0",
+  "id": "ap242-core",
+  "version": "0.2.0",
+  "ceim_version": "0.1.0",
   "entities": {
-    "product_definition": {"ceim_type": "Product", "properties": {"name": "name", "description": "description", "$source_id": "external_id"}},
-    "product_definition_formation": {"ceim_type": "ProductRevision", "properties": {"$source_id": "external_id", "description": "description"}},
-    "shape_aspect": {"ceim_type": "Part", "properties": {"name": "name", "description": "description"}},
-    "next_assembly_usage_occurrence": {"ceim_type": "Assembly", "properties": {"$source_id": "external_id", "name": "name"}},
-    "shape_representation": {"ceim_type": "GeometryBody", "properties": {"$source_id": "external_id", "name": "name", "description": "description"}},
-    "topology_entity": {"ceim_type": "GeometryBody", "properties": {"$source_id": "external_id", "name": "name"}},
-    "geometry_body": {"ceim_type": "GeometryBody", "properties": {"$source_id": "external_id", "name": "name"}},
-    "geometric_tolerance": {"ceim_type": "Characteristic", "properties": {"$source_id": "external_id", "name": "name", "description": "description", "tolerance_value": "tolerance_value", "unit": "unit", "datum_references": "datum_references", "toleranced_feature_references": "toleranced_feature_references"}},
-    "datum": {"ceim_type": "Datum", "properties": {"$source_id": "external_id", "name": "name"}},
-    "dimension": {"ceim_type": "Characteristic", "properties": {"$source_id": "external_id", "name": "name", "description": "description", "nominal_value": "nominal_value", "lower_limit": "lower_limit", "upper_limit": "upper_limit", "unit": "unit", "toleranced_feature_references": "toleranced_feature_references"}},
-    "annotation": {"ceim_type": "PMIAnnotation", "properties": {"$source_id": "external_id", "name": "name", "description": "description"}},
-    "graphic_presentation": {"ceim_type": "PMIAnnotation", "properties": {"$source_id": "external_id"}},
-    "saved_view": {"ceim_type": "PMIAnnotation", "properties": {"$source_id": "external_id", "name": "name"}}
+    "product_definition": {
+      "ceim_type": "Product",
+      "properties": {
+        "name": "name",
+        "description": "description",
+        "$source_id": "external_id",
+        "external_id": "external_id",
+        "source_entity": "source_entity"
+      }
+    },
+    "product_definition_formation": {
+      "ceim_type": "ProductRevision",
+      "properties": {
+        "$source_id": "external_id",
+        "description": "description",
+        "external_id": "external_id",
+        "source_entity": "source_entity"
+      }
+    },
+    "shape_aspect": {
+      "ceim_type": "Part",
+      "properties": {
+        "name": "name",
+        "description": "description",
+        "external_id": "external_id",
+        "source_entity": "source_entity"
+      }
+    },
+    "next_assembly_usage_occurrence": {
+      "ceim_type": "Assembly",
+      "properties": {
+        "$source_id": "external_id",
+        "name": "name",
+        "external_id": "external_id",
+        "source_entity": "source_entity"
+      }
+    },
+    "shape_representation": {
+      "ceim_type": "GeometryBody",
+      "properties": {
+        "$source_id": "external_id",
+        "name": "name",
+        "description": "description",
+        "external_id": "external_id",
+        "source_entity": "source_entity"
+      }
+    },
+    "topology_entity": {
+      "ceim_type": "GeometryBody",
+      "properties": {
+        "$source_id": "external_id",
+        "name": "name",
+        "external_id": "external_id",
+        "source_entity": "source_entity"
+      }
+    },
+    "geometry_body": {
+      "ceim_type": "GeometryBody",
+      "properties": {
+        "$source_id": "external_id",
+        "name": "name",
+        "external_id": "external_id",
+        "source_entity": "source_entity"
+      }
+    },
+    "geometric_tolerance": {
+      "ceim_type": "Characteristic",
+      "properties": {
+        "$source_id": "external_id",
+        "name": "name",
+        "description": "description",
+        "tolerance_value": "tolerance_value",
+        "unit": "unit",
+        "datum_references": "datum_references",
+        "toleranced_feature_references": "toleranced_feature_references",
+        "external_id": "external_id",
+        "source_entity": "source_entity"
+      }
+    },
+    "datum": {
+      "ceim_type": "Datum",
+      "properties": {
+        "$source_id": "external_id",
+        "name": "name",
+        "external_id": "external_id",
+        "source_entity": "source_entity"
+      }
+    },
+    "dimension": {
+      "ceim_type": "Characteristic",
+      "properties": {
+        "$source_id": "external_id",
+        "name": "name",
+        "description": "description",
+        "nominal_value": "nominal_value",
+        "unit": "unit",
+        "toleranced_feature_references": "toleranced_feature_references",
+        "external_id": "external_id",
+        "source_entity": "source_entity",
+        "lower_tolerance": "lower_tolerance",
+        "upper_tolerance": "upper_tolerance"
+      }
+    },
+    "annotation": {
+      "ceim_type": "PMIAnnotation",
+      "properties": {
+        "$source_id": "external_id",
+        "name": "name",
+        "description": "description",
+        "external_id": "external_id",
+        "source_entity": "source_entity",
+        "text": "text"
+      }
+    },
+    "graphic_presentation": {
+      "ceim_type": "PMIAnnotation",
+      "properties": {
+        "$source_id": "external_id",
+        "external_id": "external_id",
+        "source_entity": "source_entity"
+      }
+    },
+    "saved_view": {
+      "ceim_type": "PMIAnnotation",
+      "properties": {
+        "$source_id": "external_id",
+        "name": "name",
+        "external_id": "external_id",
+        "source_entity": "source_entity"
+      }
+    },
+    "surface_finish": {
+      "ceim_type": "Characteristic",
+      "properties": {
+        "roughness_average": "roughness_average",
+        "unit": "unit",
+        "toleranced_feature_references": "toleranced_feature_references",
+        "source_entity": "source_entity"
+      }
+    },
+    "feature": {
+      "ceim_type": "Feature",
+      "properties": {
+        "external_id": "external_id",
+        "name": "name",
+        "description": "description",
+        "source_entity": "source_entity"
+      }
+    }
   },
   "relationships": {
-    "next_assembly_usage_occurrence": {"relationship": "HAS_PART"},
-    "product_definition_relationship": {"relationship": "DERIVED_FROM"}
+    "next_assembly_usage_occurrence": {
+      "relationship": "HAS_PART"
+    },
+    "product_definition_relationship": {
+      "relationship": "DERIVED_FROM"
+    }
   }
 }

@@ -6,7 +6,7 @@ PURPOSES = {
     'ontology-export': 'Export an approved ontology through its service contract.',
     'ontology-orchestrator': 'Sequence deterministic intake, structure review and mapping planning.',
     'context-analyst': 'Search business context and update context objects after approval.',
-    'ontology-governor': 'Review and authorize registration, lifecycle changes, merge and mapping publication.',
+    'ontology-governor': 'Propose registration, lifecycle changes, merge and mapping publication for server-authorized review; never grant approval.',
     'engineering-parser': 'Inspect engineering files and execute bounded source profiles.',
     'graph-analyst': 'Read ontology analytics, neighborhoods and graph-grounded evidence.',
     'oslc-link-agent': 'Read linked resources and synchronize approved remote OSLC data.',

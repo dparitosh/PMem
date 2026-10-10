@@ -12,6 +12,7 @@ import re
 import uuid
 import threading
 import logging
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -147,12 +148,24 @@ class OntologyCatalog:
         return prefix, safe_filename, parse_result
 
     def register(self, **kwargs) -> dict[str, Any]:
+        started = time.monotonic()
+        logging.getLogger(__name__).warning('Ontology registration started; bytes=%s', len(kwargs['content']))
+        outcome = 'failed'
+        try:
+            result = self._register_workflow(**kwargs)
+            outcome = 'completed'
+            return result
+        finally:
+            logging.getLogger(__name__).warning('Ontology registration finished; outcome=%s elapsed_seconds=%.3f', outcome, time.monotonic() - started)
+
+    def _register_workflow(self, **kwargs) -> dict[str, Any]:
         prefix, safe_filename, parsed = self._validate_registration(
             content=kwargs["content"], filename=kwargs["filename"], prefix=kwargs["prefix"],
             extra_metadata=kwargs.get("extra_metadata"))
         kwargs["prefix"] = prefix
         kwargs["filename"] = safe_filename
         kwargs["_validated"] = (prefix, safe_filename, parsed)
+        logging.getLogger(__name__).warning('Ontology registration syntax validation completed; triples=%s', parsed['triple_count'])
         source = str(kwargs.get("source") or "api")
         # Governed operation identities opt into artifact retry deduplication.
         if not re.fullmatch(r"(?:(?:engineering|source-profile)-workflow|governed-merge):[0-9a-f]{64}", source):
@@ -162,7 +175,16 @@ class OntologyCatalog:
             with lock as acquired:
                 if not acquired:
                     raise ValueError("This engineering registration is in progress; retry the same upload")
-                for existing in self.list():
+                # PostgreSQL is authoritative: do not load every catalog record
+                # and scan/migrate filesystem mirrors during a registration.
+                if self._postgres_enabled:
+                    candidates = self.registry.find_by_field('source', source, limit=2)
+                    if len(candidates) > 1:
+                        raise ValueError('Multiple ontology registrations share this workflow identity; reconcile the catalog')
+                else:
+                    candidates = self.list()
+                logging.getLogger(__name__).warning('Ontology registration identity lookup completed')
+                for existing in candidates:
                     if existing.get("source") == source:
                         if existing.get("lifecycle_status") in {"deprecated", "retired"} or existing.get("status") == "superseded":
                             raise ValueError("This ontology is retired, deprecated or superseded; create a reviewed replacement")
@@ -172,10 +194,14 @@ class OntologyCatalog:
                             raise ValueError("Workflow registration identity conflicts with its metadata")
                         from rdflib.compare import isomorphic
                         _, retained = self.read_artifact(existing["ontology_id"])
-                        current = Graph().parse(data=retained, format=existing["validation"]["rdf_format"])
-                        proposed = Graph().parse(data=kwargs["content"], format=parsed["rdf_format"])
-                        if not isomorphic(current, proposed):
-                            raise ValueError("Workflow registration identity conflicts with its artifact")
+                        # Identical uploads need no additional parsing or costly
+                        # blank-node graph canonicalization. Keep semantic comparison
+                        # for equivalent artifacts with different serialization.
+                        if retained != kwargs['content']:
+                            current = Graph().parse(data=retained, format=existing["validation"]["rdf_format"])
+                            proposed = Graph().parse(data=kwargs["content"], format=parsed["rdf_format"])
+                            if not isomorphic(current, proposed):
+                                raise ValueError("Workflow registration identity conflicts with its artifact")
                         additions = {key: value for key, value in (kwargs.get('extra_metadata') or {}).items()
                                      if key in {'engineering_artifacts', 'data_product_draft', 'source_filename'} and key not in existing}
                         if additions:
@@ -197,6 +223,7 @@ class OntologyCatalog:
             media_type="text/turtle" if artifact_path.suffix.lower() == ".ttl" else "application/octet-stream",
             provenance={"ontology_id": ontology_id, "source": source},
         )
+        logging.getLogger(__name__).warning('Ontology registration artifact retention completed')
         metadata = {
             "ontology_id": ontology_id,
             "ontology_name": str(ontology_name or prefix),
@@ -213,7 +240,9 @@ class OntologyCatalog:
             "lifecycle_events": [{"at": _now(), "actor": source, "from": None, "to": "draft", "reason": "artifact registered and syntax validated"}],
         }
         metadata.update(extra_metadata or {})
-        return self._save_metadata(metadata)
+        result = self._save_metadata(metadata)
+        logging.getLogger(__name__).warning('Ontology registration metadata persistence completed')
+        return result
 
     def adopt_legacy(
         self,

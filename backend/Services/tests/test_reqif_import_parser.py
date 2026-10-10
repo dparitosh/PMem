@@ -30,7 +30,7 @@ def test_reqif_parser_extracts_requirements_specifications_and_relations():
           <SPEC-RELATIONS>
             <SPEC-RELATION IDENTIFIER='REL-001' LONG-NAME='satisfies'>
               <SOURCE><SPEC-OBJECT-REF>REQ-001</SPEC-OBJECT-REF></SOURCE>
-              <TARGET><SPEC-OBJECT-REF>REQ-002</SPEC-OBJECT-REF></TARGET>
+              <TARGET><SPEC-OBJECT-REF>REQ-001</SPEC-OBJECT-REF></TARGET>
             </SPEC-RELATION>
           </SPEC-RELATIONS>
         </REQ-IF-CONTENT>
@@ -54,10 +54,10 @@ def test_reqif_parser_extracts_requirements_specifications_and_relations():
     assert by_role["requirement"]["attributes"][0]["definition"] == "LifeTarget"
     assert by_role["requirement"]["attributes"][0]["value"] == "40k hours"
     assert by_role["relation"]["source_ref"] == "REQ-001"
-    assert by_role["relation"]["target_ref"] == "REQ-002"
+    assert by_role["relation"]["target_ref"] == "REQ-001"
 
 
-def test_reqif_parser_sniffs_reqif_xml_and_tracks_duplicate_ids():
+def test_reqif_parser_rejects_duplicate_ids():
     content = b"""<?xml version='1.0' encoding='UTF-8'?>
     <REQ-IF xmlns='http://www.omg.org/spec/ReqIF/20110401/reqif.xsd'>
       <CORE-CONTENT><REQ-IF-CONTENT><SPEC-OBJECTS>
@@ -70,7 +70,5 @@ def test_reqif_parser_sniffs_reqif_xml_and_tracks_duplicate_ids():
     rows, stats = FileParser.parse(content, FileType.XML)
 
     assert stats["file_format"] == "ReqIF"
-    assert stats["requirements"] == 2
-    assert stats["duplicate_ids"] == 1
-    assert [row["id"] for row in rows] == ["REQ-001", "REQ-001#2"]
-    assert [row["original_id"] for row in rows] == ["REQ-001", "REQ-001"]
+    assert rows == []
+    assert 'duplicate IDENTIFIER' in stats['error']

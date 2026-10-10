@@ -14,9 +14,11 @@ Updated 2026-10-09. Baseline: `cea9484` on `codex/semantic-bridge-release`. The 
 
 Vitest JSON reports 71 suites because nested suites are counted separately; there are 61 result files. The earlier 261-test run preceded four new UI regressions and is superseded by this 265-test run. Focused runs overlap the full run and must not be added to its count.
 
-Machine evidence is local and ignored under `release-evidence/2026-10-09/`: `frontend-tests.json`, `frontend-tests.log`, `backend-focused.xml`, `backend-focused.log`, and `run-metadata.json`. [Testing and evidence guidance](../TESTING_AND_EVIDENCE.md) explains older deliverables and executable test cases.
+The generated machine reports for 2026-10-09 were removed on 2026-10-10 at the user's request. The counts above are historical summaries and cannot be independently reproduced from retained run artifacts. [Testing and evidence guidance](../TESTING_AND_EVIDENCE.md) explains older deliverables and executable test cases.
 
 ## Current correction records
+
+- [Recursive folder structure review](folder-structure-review-2026-10-10.md): first-party folder inventory, tracked TTL cache and reference duplicate findings; vendor/runtime boundaries excluded. This does not supersede the dated functional test results above.
 
 - [Admin session handling review](admin-session-handling-review-2026-10-09.md): three remaining P2 request/revalidation/preference gaps; no P1 bypass confirmed in the audited paths.
 

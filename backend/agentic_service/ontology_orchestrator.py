@@ -289,13 +289,17 @@ def orchestrate(payload: dict[str, Any]) -> dict[str, Any]:
         return review_qif_ap242(payload)
     if workflow_id not in {"ontology_review", "semantic_bridge_plan"}:
         raise ValueError(f"Unknown ontology agent workflow: {workflow_id}")
+    if workflow_id == 'semantic_bridge_plan':
+        result = bridge_plan(payload)
+        return {"workflow_id": workflow_id, "steps": [{"agent": "semantic_bridge_planner_agent", "status": "completed", "result": result}],
+                "status": "completed", "publication": "requires_human_approval"}
     ontology_path = _resolve_ontology_path(str(payload.get("ontology_path") or ""), str(payload.get("ontology_id") or "") or None)
     metadata = _instance_metadata(str(payload.get("import_task_id") or "") or None, payload.get("instance_metadata"))
     summary = inspect_ontology(ontology_path)
     steps = [{"agent": "ontology_intake_agent", "status": "completed", "result": summary}]
     if workflow_id == "ontology_review":
         steps.append({"agent": "ontology_structure_review_agent", "status": "completed", "result": _review_summary(summary)})
-    steps.append({"agent": "semantic_bridge_planner_agent", "status": "completed", "result": plan_bridge(metadata, ontology_summary=summary)})
+    steps.append({"agent": "semantic_bridge_planner_agent", "status": "completed", "result": bridge_plan({**payload, "instance_metadata": metadata})})
     return {"workflow_id": workflow_id, "steps": steps, "status": "completed", "publication": "requires_human_approval"}
 
 
@@ -312,12 +316,45 @@ def structure_review(payload: dict[str, Any]) -> dict[str, Any]:
     return _review_summary(summary)
 
 
+def graph_planning_summary(ontology_id: str) -> dict[str, Any]:
+    """Use current graph terms for operational mapping, never imply RDF reasoning."""
+    from backend.depo_platform.graph_data_client import graph_data_client
+    terms = graph_data_client.mapping_terms(ontology_id)
+    if not terms:
+        raise ValueError('No published graph terms exist for this ontology; publish it before graph-backed planning')
+    indexed = [{"kind": term['kind'], "iri": term.get('iri') or '',
+                "label": term['name'], "domains": term.get('domains') or [],
+                "ranges": term.get('ranges') or [], "graph_element_id": term['element_id']}
+               for term in terms if term.get('iri')]
+    indexed.sort(key=lambda term: (term['kind'], term['iri'], term['graph_element_id']))
+    if not indexed:
+        raise ValueError('Published graph terms have no semantic IRIs; repair the projection before planning')
+    import hashlib, json
+    return {"engine": "neo4j", "data_source": "graph-service", "ontology_id": ontology_id,
+            "graph_digest": hashlib.sha256(json.dumps(indexed, sort_keys=True).encode()).hexdigest(),
+            "term_index": indexed[:2000], "term_index_truncated": len(indexed) > 2000,
+            "ontology_iris": [], "warnings": ['Graph projection is not a complete RDF/OWL reasoning model'],
+            "formal_reasoning_performed": False}
+
+
 def bridge_plan(payload: dict[str, Any]) -> dict[str, Any]:
-    path = _resolve_ontology_path(str(payload.get("ontology_path") or ""), str(payload.get("ontology_id") or "") or None)
     metadata = _instance_metadata(str(payload.get("import_task_id") or "") or None, payload.get("instance_metadata"))
-    summary = inspect_ontology(path)
-    if payload.get('artifact_digest') and payload['artifact_digest'] != summary['artifact_digest']:
-        raise ValueError('Ontology artifact changed after intake')
+    ontology_id = str(payload.get('ontology_id') or '').strip()
+    source = payload.get('data_source') or ('neo4j' if ontology_id else 'artifact')
+    if source not in {'neo4j', 'artifact'}:
+        raise ValueError('data_source must be neo4j or artifact')
+    if source == 'neo4j':
+        if not ontology_id:
+            raise ValueError('ontology_id is required for graph-backed planning')
+        summary = graph_planning_summary(ontology_id)
+        if payload.get('graph_digest') and payload['graph_digest'] != summary['graph_digest']:
+            raise ValueError('Graph terms changed after intake; review the current graph again')
+    else:
+        path = _resolve_ontology_path(str(payload.get("ontology_path") or ""), ontology_id or None)
+        summary = inspect_ontology(path)
+        summary['data_source'] = 'retained-rdf-artifact'
+        if payload.get('artifact_digest') and payload['artifact_digest'] != summary['artifact_digest']:
+            raise ValueError('Ontology artifact changed after intake')
     return plan_bridge(metadata, ontology_summary=summary)
 
 

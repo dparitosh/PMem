@@ -50,6 +50,15 @@ async def lookup(record, request):
         receipt = response.json()
         if not isinstance(receipt,dict) or receipt.get('preview_id') != identifier or receipt.get('status') != 'merged' or not (receipt.get('ontology') or {}).get('ontology_id'):
             raise ValueError('Invalid retained merge receipt')
+        if inputs.get('publish') is True:
+            ontology_id = receipt['ontology']['ontology_id']
+            publication_endpoint = routes._base('ontology')+'/ontologies/'+quote(ontology_id,safe='')+'/publication'
+            async with httpx.AsyncClient(timeout=15,trust_env=False) as client:
+                response = await routes._bounded_tool_request(client,'GET',publication_endpoint,headers=downstream_headers(request,publication_endpoint,graph_read=True))
+            publication = response.json()
+            if not isinstance(publication, dict) or publication.get('status') != 'published' or publication.get('ontology_id') != ontology_id:
+                raise ValueError('Merged artifact exists but Neo4j publication is not verified; retry the reviewed merge')
+            return {**receipt, 'publication_status': 'published', 'publication': publication}
         return receipt
     raise HTTPException(409,'This tool has no verifiable receipt adapter; use explicit downstream evidence')
 

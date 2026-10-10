@@ -12,7 +12,7 @@ class ExistingSearchTests(unittest.TestCase):
         path = Path(__file__).resolve().parents[1] / 'graph_service/neo4j_publisher.py'
         tree = ast.parse(path.read_text(encoding='utf-8'))
         cls = next(n for n in tree.body if isinstance(n, ast.ClassDef))
-        methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in ('search', '_explorer_payload', '_read_edges', '_legacy_traversal')]
+        methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in ('search', '_explorer_payload', '_read_edges', '_legacy_traversal', '_bounded_walk')]
         cls.body = methods
         scope = {'re': re, 'Any': Any, 'cypher': cypher}
         exec(compile(ast.Module(body=[cls], type_ignores=[]), str(path), 'exec'), scope)
@@ -26,6 +26,7 @@ class ExistingSearchTests(unittest.TestCase):
         self.calls.append((query, params))
         if query == cypher.ONTOLOGY_SEARCH_NODES: return self.canonical
         if query == cypher.LEGACY_SEARCH: return self.legacy
+        if params.get('id') == 'record-1': return [{'id':'record-1'}]
         return []
 
     def test_legacy_only_database_returns_chat_evidence_and_parameterized_scope(self):
@@ -54,13 +55,18 @@ class ExistingSearchTests(unittest.TestCase):
 
     def test_existing_traversal_excludes_internal_nodes_and_other_ontology_scopes(self):
         self.publisher._legacy_traversal(node_id='record-1', depth=2, limit=50)
-        query, params = self.calls[0]
-        self.assertIn('NOT root:OntologyResource', query)
-        self.assertIn('all(n IN nodes(path)', query)
-        self.assertIn('n:OntologyClass', query)
-        self.assertIn('coalesce(root.ontology_id, root.source_ontology, root.prefix)', query)
-        self.assertIn('[*0..2]', query)
-        self.assertEqual(params['node_id'], 'record-1')
+        root_query, params = self.calls[0]
+        self.assertIn('NOT n:OntologyResource', root_query)
+        self.assertIn('n:OntologyClass', root_query)
+        self.assertEqual(params['id'], 'record-1')
+        query, params = self.calls[1]
+        self.assertNotIn('nodes(path)', query)
+        self.assertIn('neighbor:OntologyClass', query)
+        self.assertIn('coalesce(root.ontology_id,root.source_ontology,root.prefix)', query)
+        self.assertEqual(params['root'], 'record-1')
+        self.assertEqual(params['frontier'], ['record-1'])
+        self.assertEqual(params['limit'], 49)
+
 
 
 if __name__ == '__main__': unittest.main()

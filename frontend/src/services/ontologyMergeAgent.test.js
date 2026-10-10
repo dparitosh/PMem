@@ -13,10 +13,10 @@ test('bridge preview uses the governor and unwraps its tool result and telemetry
   expect(preview.result.preview_id).toBe('reviewed');
   expect(preview.runId).toBe('run-preview');
 });
-test('commit sends only the reviewed preview identity through the governor', async () => {
+test('commit requests graph publication of the reviewed merge through the governor', async () => {
   agenticAPI.runAgent.mockResolvedValue({ data: { agent_id: 'ontology-governor', tool_id: 'ontology.merge.apply', run_id: 'run-apply', result: { status: 'merged' } } });
   await ontologyMergeAgent.apply('reviewed', 'steward');
-  expect(agenticAPI.runAgent).toHaveBeenCalledWith('ontology-governor', 'ontology.merge.apply', { preview_id: 'reviewed' }, { approved_by: 'steward', approval_token: 'agent-approval' });
+  expect(agenticAPI.runAgent).toHaveBeenCalledWith('ontology-governor', 'ontology.merge.apply', { preview_id: 'reviewed', publish: true }, { approved_by: 'steward', approval_token: 'agent-approval' });
 });
 test('missing approval prevents dispatch', async () => {
   getCredentialProfile.mockReturnValue('');

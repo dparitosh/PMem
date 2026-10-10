@@ -1,4 +1,5 @@
 import React from 'react';
+import { UI_COLORS } from '../styles/uiTokens';
 
 const isDevelopment = Boolean(import.meta.env?.DEV);
 
@@ -55,7 +56,8 @@ class ErrorBoundary extends React.Component {
             alignItems: 'center',
             justifyContent: 'center',
             minHeight: '100dvh',
-            backgroundColor: '#f8f9fa',
+            backgroundColor: UI_COLORS.bg,
+            color: UI_COLORS.textPrimary,
             padding: '20px',
             fontFamily: 'system-ui, -apple-system, sans-serif',
           }}
@@ -64,7 +66,7 @@ class ErrorBoundary extends React.Component {
             style={{
               maxWidth: '500px',
               padding: '40px',
-              backgroundColor: 'white',
+              backgroundColor: UI_COLORS.surface,
               borderRadius: '8px',
               boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
               textAlign: 'center',
@@ -73,7 +75,7 @@ class ErrorBoundary extends React.Component {
             <h1 style={{ color: '#dc3545', marginBottom: '16px' }}>
               Warning: Something went wrong
             </h1>
-            <p style={{ color: '#666', marginBottom: '24px', lineHeight: '1.6' }}>
+            <p style={{ color: UI_COLORS.textSec, marginBottom: '24px', lineHeight: '1.6' }}>
               The application encountered an unexpected error. Please try refreshing the page or contact support if the problem persists.
             </p>
 
@@ -83,9 +85,9 @@ class ErrorBoundary extends React.Component {
                   textAlign: 'left',
                   marginBottom: '24px',
                   padding: '12px',
-                  backgroundColor: '#f8f9fa',
+                  backgroundColor: UI_COLORS.bg,
                   borderRadius: '4px',
-                  border: '1px solid #dee2e6',
+                  border: `1px solid ${UI_COLORS.border}`,
                 }}
               >
                 <summary style={{ cursor: 'pointer', fontWeight: 'bold', marginBottom: '8px' }}>
@@ -95,10 +97,10 @@ class ErrorBoundary extends React.Component {
                   style={{
                     fontSize: '12px',
                     overflow: 'auto',
-                    backgroundColor: '#fff',
+                    backgroundColor: UI_COLORS.surface,
                     padding: '8px',
                     borderRadius: '4px',
-                    border: '1px solid #dee2e6',
+                    border: `1px solid ${UI_COLORS.border}`,
                   }}
                 >
                   {this.state.error.toString()}

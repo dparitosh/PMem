@@ -512,7 +512,8 @@ const RecommendationsTab = () => {
   const [activeService, setActiveService] = useState(null);
   const [inputValue, setInputValue] = useState('');
   const analysisGeneration = useRef(0);
-  useEffect(() => { analysisGeneration.current += 1; setResult(null); setLoading(false); }, [activeService, inputValue]);
+  const analysisController = useRef(null);
+  useEffect(() => { analysisController.current?.abort(); analysisGeneration.current += 1; setResult(null); setLoading(false); }, [activeService, inputValue]);
   const [topN, setTopN] = useState(10);
   const [loading, setLoading] = useState(false);
   const [health, setHealth] = useState(null);
@@ -552,6 +553,27 @@ const RecommendationsTab = () => {
     return () => { cancelled = true; controller.abort(); };
   }, [healthRevision]);
 
+  useEffect(() => {
+    const resetSession = () => {
+      analysisController.current?.abort();
+      analysisGeneration.current += 1;
+      setResult(null);
+      setError('');
+      setLoading(false);
+      setHealth(null);
+      setHealthLoading(true);
+      setHealthRevision(value => value + 1);
+    };
+    window.addEventListener('depo:credentials-changed', resetSession);
+    window.addEventListener('depo:credentials-cleared', resetSession);
+    return () => {
+      window.removeEventListener('depo:credentials-changed', resetSession);
+      window.removeEventListener('depo:credentials-cleared', resetSession);
+      analysisController.current?.abort();
+      analysisGeneration.current += 1;
+    };
+  }, []);
+
   // Listen for prefill events from graph tooltip recommendation buttons
   useEffect(() => {
     const applyPrefill = (detail = {}) => {
@@ -582,15 +604,18 @@ const RecommendationsTab = () => {
     const generation = ++analysisGeneration.current;
     if (!inputValue.trim() || !activeService) return;
     if (!recommendationReady) { setLoading(false); setError('Verify recommendation readiness before analysis.'); return; }
+    analysisController.current?.abort();
+    const controller = new AbortController();
+    analysisController.current = controller;
     setLoading(true); setError(''); setResult(null);
     try {
       let resp;
       if (activeService === 'change-impact') {
-        resp = await API_METHODS.recommendations.changeImpact(inputValue.trim(), {});
+        resp = await API_METHODS.recommendations.changeImpact(inputValue.trim(), {}, { signal: controller.signal });
       } else if (activeService === 'similar-parts') {
-        resp = await API_METHODS.recommendations.similarParts(inputValue.trim(), topN, {});
+        resp = await API_METHODS.recommendations.similarParts(inputValue.trim(), topN, {}, { signal: controller.signal });
       } else if (activeService === 'manufacturing') {
-        resp = await API_METHODS.recommendations.manufacturing(inputValue.trim(), {});
+        resp = await API_METHODS.recommendations.manufacturing(inputValue.trim(), {}, { signal: controller.signal });
       }
       if (generation === analysisGeneration.current) setResult(normalizeRecommendationResult(activeService, resp.data));
     } catch (err) {

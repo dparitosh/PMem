@@ -7,10 +7,12 @@ from backend.agentic_service.prompt_policy import proposal_instructions
 class PromptPolicyTests(unittest.TestCase):
     def test_all_roles_have_task_scope_and_shared_constraints(self):
         source=extend_catalog(json.loads(Path('backend/agentic_service/catalog.json').read_text()))
-        self.assertEqual(len(source['agents']),26)
+        identifiers = [agent['id'] for agent in source['agents']]
+        self.assertTrue(identifiers)
+        self.assertEqual(len(identifiers), len(set(identifiers)))
         for agent in source['agents']:
             self.assertIn(agent['id'],agent['system_prompt'])
-            self.assertEqual(agent['prompt_policy_version'],'proposal-v1')
+            self.assertEqual(agent['prompt_policy_version'],'proposal-v2')
             for mode in ('native','structured'):
                 text=proposal_instructions(agent,mode)
                 self.assertIn(agent['system_prompt'],text)

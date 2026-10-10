@@ -44,6 +44,7 @@ EXPECTED_INDEXES = {
     'idx_depo_pipeline_runnable', 'idx_depo_registry_recent',
     'idx_depo_product_published', 'idx_depo_job_started', 'idx_depo_catalog_updated',
 }
+EXPECTED_CONSTRAINTS.update({'depo_api_credentials_actor_nonempty', 'depo_api_credentials_digest_lengths', 'depo_api_credential_events_action_valid'})
 
 
 def _connection_context() -> dict[str, str]:

@@ -2,5 +2,6 @@
 
 
 def is_ap242(file_schema: str | None, namespace: str | None, content: bytes) -> bool:
-    marker = (file_schema or "").lower() + " " + (namespace or "").lower() + " " + content[:32_768].decode("utf-8", errors="ignore").lower()
+    # Parser metadata identifies the representation; comments and labels do not.
+    marker = (file_schema or "").lower() + " " + (namespace or "").lower()
     return any(value in marker for value in ("ap242", "managed_model_based_3d_engineering", "10303/-4442"))

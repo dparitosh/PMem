@@ -53,7 +53,9 @@ def _semantic_summary(turtle: str) -> dict[str, int]:
 class AP242ReferenceValidator:
     def __init__(self, root: Path | None = None, converter: EngineeringSchemaConverter | None = None) -> None:
         configured = os.getenv("AP242_REFERENCE_ROOT", "")
-        self.root = root or (Path(configured) if configured else Path("D:/Githuv_repo/smrlv12"))
+        if root is None and not configured.strip():
+            raise ValueError('Configure AP242_REFERENCE_ROOT with the customer-managed AP242 reference repository')
+        self.root = root or Path(configured)
         self.converter = converter or EngineeringSchemaConverter()
 
     def validate(self, *, convert_mim: bool = True, convert_xsd: bool = True) -> dict:

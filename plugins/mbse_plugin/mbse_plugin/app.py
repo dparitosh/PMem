@@ -8,6 +8,7 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
+from .upstream import configuration, require_durable_run
 
 
 def authorize(request: Request):
@@ -54,21 +55,20 @@ async def import_model(payload: ImportRequest):
         raise HTTPException(422, 'Invalid base64') from exc
     if not content or len(content) > 10000000:
         raise HTTPException(413, 'Model must contain 1 to 10000000 bytes')
-    base = os.getenv('DEPO_INGESTION_URL', '').rstrip('/')
-    token = os.getenv('DEPO_INGESTION_TOKEN', '')
-    if not base:
-        raise HTTPException(503, 'DEPO_INGESTION_URL is not configured')
-    headers = {'Authorization': 'Bearer ' + token} if token else {}
+    try:
+        base, headers = configuration()
+    except ValueError as exc:
+        raise HTTPException(503, str(exc)) from exc
     data = payload.model_dump(exclude={'content_base64', 'filename'})
     try:
-        async with httpx.AsyncClient(timeout=120, follow_redirects=False) as client:
+        async with httpx.AsyncClient(timeout=120, follow_redirects=False, trust_env=False) as client:
             response = await client.post(base + '/governed-import', headers=headers, data=data,
                 files={'file': (Path(payload.filename).name, content, 'application/json' if payload.profile == 'sysml-v2' else 'application/xml')})
         if response.status_code >= 300:
             status = response.status_code if 400 <= response.status_code < 500 else 502
             raise HTTPException(status, f'Governed ingestion returned HTTP {response.status_code}')
         try:
-            result = response.json()
+            result = require_durable_run(response.json())
         except ValueError as exc:
             raise HTTPException(502, 'Invalid ingestion response') from exc
         if not isinstance(result, dict):
@@ -76,6 +76,27 @@ async def import_model(payload: ImportRequest):
         return result
     except httpx.HTTPError as exc:
         raise HTTPException(503, 'Governed ingestion unavailable') from exc
+
+
+@app.get('/upstream-check', dependencies=[Depends(authorize)])
+async def upstream_check():
+    """Check execution credentials without importing or submitting a job."""
+    try:
+        base, headers = configuration()
+    except ValueError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False) as client:
+            response = await client.get(base[:-len('/api/v1')] + '/auth/credential-check',
+                                        params={'profile': 'DATA_JOB_EXECUTION_TOKEN'}, headers=headers)
+        if response.status_code != 200:
+            raise HTTPException(502, f'Ingestion credential check returned HTTP {response.status_code}')
+        result = response.json()
+        if not isinstance(result, dict) or result.get('profile') != 'DATA_JOB_EXECUTION_TOKEN' or result.get('status') != 'authorized':
+            raise HTTPException(502, 'Invalid ingestion credential-check response')
+        return {'status': 'ready', 'credential_profile': 'DATA_JOB_EXECUTION_TOKEN', 'job_executed': False}
+    except (httpx.HTTPError, ValueError) as exc:
+        raise HTTPException(503, 'Ingestion credential check unavailable') from exc
 
 
 class Entity(BaseModel):

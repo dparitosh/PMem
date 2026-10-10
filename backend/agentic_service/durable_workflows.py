@@ -14,12 +14,37 @@ def execution_mode():
     return value
 
 
-def credential_snapshot():
+def credential_snapshot(names=None):
     # Only fingerprints are persisted; worker obtains current keys from its environment.
-    names = ('GRAPH_READ_TOKEN', 'AGENTIC_APPROVAL_TOKEN', 'ONTOLOGY_APPROVAL_TOKEN',
+    names = names if names is not None else ('GRAPH_READ_TOKEN', 'AGENTIC_APPROVAL_TOKEN', 'ONTOLOGY_APPROVAL_TOKEN',
              'INGESTION_WRITE_TOKEN', 'DATA_PRODUCT_APPROVAL_TOKEN', 'DATA_JOB_EXECUTION_TOKEN', 'GRAPH_PUBLICATION_TOKEN')
     return {name: hashlib.sha256(os.environ[name].strip().encode()).hexdigest()
             for name in names if os.getenv(name, '').strip()}
+
+
+def workflow_credentials(steps):
+    """Retain only the authorization profiles used by this approved plan."""
+    names = {'GRAPH_READ_TOKEN'}
+    if any(step['requires_approval'] for step in steps):
+        names.add('AGENTIC_APPROVAL_TOKEN')
+    for step in steps:
+        tool = step['tool']
+        service = tool.get('service')
+        if str(tool.get('method', 'GET')).upper() not in {'GET', 'HEAD', 'OPTIONS'}:
+            if service in {'ontology', 'qif'}:
+                names.add('ONTOLOGY_APPROVAL_TOKEN')
+            elif service == 'ingestion':
+                names.add('INGESTION_WRITE_TOKEN')
+        if tool.get('mutates'):
+            from .transport_auth import APPROVAL_TOKENS
+            profile = APPROVAL_TOKENS.get(tool['id'])
+            if not profile:
+                raise ValueError('Mutating workflow tool has no approval contract')
+            names.add(profile)
+        # Engineering publication delegates registration and graph publication.
+        if tool.get('id') == 'engineering.publish':
+            names.update({'ONTOLOGY_APPROVAL_TOKEN', 'GRAPH_PUBLICATION_TOKEN'})
+    return names
 
 
 def transport_snapshot():
@@ -60,7 +85,10 @@ async def enqueue(payload, request, recovery=None):
     if not isinstance(command.get('inputs',{}),dict): raise ValueError('inputs must be an object')
     commands = [{**step,'inputs':{**(requested[index] if requested is not None else command.get('inputs',{})),**step.get('input_bindings',{})}} for index,step in enumerate(workflow['steps'])]
     await routes._preflight_tools(commands, request, deferred=True)
-    credentials = credential_snapshot()
+    required_credentials = workflow_credentials(plan['steps'])
+    credentials = credential_snapshot(required_credentials)
+    if set(credentials) != required_credentials:
+        raise HTTPException(503, 'Configure all required workflow credential profiles before queueing')
     if 'GRAPH_READ_TOKEN' not in credentials or (any(step['requires_approval'] for step in plan['steps']) and 'AGENTIC_APPROVAL_TOKEN' not in credentials):
         raise HTTPException(503,'Configure current server read and approval profiles before queueing workflows')
     now = datetime.now(timezone.utc)
@@ -106,7 +134,7 @@ async def execute_candidate(record):
         except ValueError: return  # Active, expired or uncertain mutations are never replayed.
     else: recovery = dict(record)
     def verify_grant():
-        if record.get('credential_fingerprints') != credential_snapshot() or record.get('workflow_digest') != fingerprint(definition) or record.get('transport_fingerprint') != transport_snapshot():
+        if record.get('credential_fingerprints') != credential_snapshot(record.get('credential_fingerprints', {}).keys()) or record.get('workflow_digest') != fingerprint(definition) or record.get('transport_fingerprint') != transport_snapshot():
             raise ValueError('Authorization or tool contracts changed')
         for name in record['credential_fingerprints']:
             require_active_token(name)

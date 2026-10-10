@@ -27,8 +27,8 @@ def profile_for_filename(filename: str) -> str:
     suffix = Path(filename).suffix.lower()
     profiles = {
         ".stp": "ap242-step-mbd", ".step": "ap242-step-mbd", ".stpx": "ap242-step-mbd",
-        ".reqif": "reqif", ".qif": "qif", ".plmxml": "plmxml",
-        ".xmi": "sysml-v1",
+        ".reqif": "reqif", ".reqifz": "reqif", ".qif": "qif", ".plmxml": "plmxml",
+        ".xmi": "sysml-v1", ".mdxml": "sysml-v1",
     }
     if suffix not in profiles:
         raise ValueError("No governed instance profile is registered for this extension; select a declared source profile for XML, JSON, XMI, XSD, or EXPRESS")
@@ -58,7 +58,9 @@ class GovernedImportService:
         batch = adapter()
         source = ArtifactStore().ingest_bytes(
             content, filename=filename, kind=f"source-{batch['standard']}",
-            media_type="application/json" if selected == "sysml-v2" else "application/xml", provenance={"profile": selected, "source_system": source_system},
+            media_type=('application/json' if selected == 'sysml-v2' else
+                        'text/plain' if selected == 'ap242-step-mbd' and Path(filename).suffix.lower() in {'.stp', '.step'}
+                        else 'application/xml'), provenance={"profile": selected, "source_system": source_system},
         )
         return {
             **batch, "profile": selected, "source_artifact_id": source["artifact_id"],

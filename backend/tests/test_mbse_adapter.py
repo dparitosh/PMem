@@ -21,5 +21,5 @@ def test_v2_preserves_containment_and_rejects_missing_owner():
 
 
 def test_reqif_nested_references():
-    batch = reqif_to_ceim_batch(b'<REQ-IF><SPEC-OBJECT IDENTIFIER="a"/><SPEC-OBJECT IDENTIFIER="b"/><SPEC-RELATION><SOURCE><SPEC-OBJECT-REF>a</SPEC-OBJECT-REF></SOURCE><TARGET><SPEC-OBJECT-REF>b</SPEC-OBJECT-REF></TARGET></SPEC-RELATION></REQ-IF>')
+    batch = reqif_to_ceim_batch(b'<REQ-IF><SPEC-OBJECT IDENTIFIER="a"/><SPEC-OBJECT IDENTIFIER="b"/><SPEC-RELATION IDENTIFIER="relation-ab"><SOURCE><SPEC-OBJECT-REF>a</SPEC-OBJECT-REF></SOURCE><TARGET><SPEC-OBJECT-REF>b</SPEC-OBJECT-REF></TARGET></SPEC-RELATION></REQ-IF>')
     assert len(batch['relationships']) == 1

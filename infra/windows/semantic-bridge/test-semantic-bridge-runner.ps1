@@ -61,6 +61,8 @@ function Invoke-RestMethod {
 function Invoke-WebRequest {
     param([switch]$UseBasicParsing,$Uri,$Headers,$TimeoutSec,$MaximumRedirection,$OutFile,[switch]$PassThru,$ErrorAction,$Method,$ContentType,$Body)
     if (([Uri]$Uri).AbsolutePath -eq '/api/v1/engineering-workflows') {
+        if ($global:bridgeFixtureFailure -eq 'upload-timeout') { throw [Net.WebException]::new('fixture timeout',$null,[Net.WebExceptionStatus]::Timeout,$null) }
+        if ($global:bridgeFixtureFailure -eq 'upload-json') { return @{StatusCode=200;Headers=@{'Content-Type'='text/html'};Content='<html>fixture error</html>'} }
         $multipart=[Text.Encoding]::UTF8.GetString($Body)
         if ($ContentType -notlike 'multipart/form-data*' -or $multipart -notmatch 'name="file"' -or $multipart -notmatch 'name="publish"\r\n\r\nfalse') { throw 'Incorrect XSD multipart payload.' }
         $id=if ($multipart -match 'bridge_source') {'source'} else {'target'}
@@ -74,25 +76,29 @@ function Invoke-WebRequest {
     return @{StatusCode=200;Headers=@{'Content-Type'=$media}}
 }
 $runner=Join-Path $PSScriptRoot 'test-depo-semantic-bridge.ps1'
-foreach ($case in @('preview','merge','mapping','llm','receipt','xsd','sequence','exports','expiry')) {
-    $global:bridgeFixtureFailure=if ($case -in @('llm','receipt','sequence','exports','expiry')) {$case} else {''}
+foreach ($case in @('preview','merge','mapping','llm','receipt','xsd','xsd-bundle','sequence','exports','expiry','upload-timeout','upload-json')) {
+    $global:bridgeFixtureFailure=if ($case -in @('llm','receipt','sequence','exports','expiry','upload-timeout','upload-json')) {$case} else {''}
     $global:bridgeFixtureScenario=if ($case -in @('mapping','receipt')) {'InstanceMapping'} else {'OntologyMerge'}
     $reportFile=Join-Path $testRoot ($case+'.json')
     $artifactParent=Join-Path $testRoot $case
     $previousPosts=$global:bridgeFixturePosts
     $caught=$false
     $inputOptions=@{SourceId='source';TargetOntologyId='target'}
-    if ($case -eq 'xsd') {
+    if ($case -in @('xsd','xsd-bundle','upload-timeout','upload-json')) {
         $sourceXsd=Join-Path $testRoot 'source.xsd'; $targetXsd=Join-Path $testRoot 'target.xsd'
         '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:source" />' | Set-Content $sourceXsd
         '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:target" />' | Set-Content $targetXsd
         $inputOptions=@{SourceXsdPath=$sourceXsd;TargetXsdPath=$targetXsd}
+        if ($case -eq 'xsd-bundle') {
+            '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:include schemaLocation="part.xsd" /></xs:schema>' | Set-Content $sourceXsd
+            '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" />' | Set-Content (Join-Path $testRoot 'part.xsd')
+        }
     }
     try {
         & $runner -Mode Integration -EnvFile $envFile -Scenario $global:bridgeFixtureScenario @inputOptions `
             -TaskPrompt 'Map the selected sources using validation policy' -ReportPath $reportFile -OutputDirectory $artifactParent -PythonPath $PythonPath -ExecuteAutomation:($case -ne 'preview')
     } catch { $caught=$true }
-    $expectedFailure=$case -in @('llm','receipt','sequence','exports','expiry')
+    $expectedFailure=$case -in @('llm','receipt','sequence','exports','expiry','upload-timeout','upload-json')
     if ($caught -ne $expectedFailure) { throw "Unexpected exit outcome: $case" }
     $report=Get-Content $reportFile -Raw | ConvertFrom-Json
     $artifactDirectory=@(Get-ChildItem $artifactParent -Directory)[0].FullName
@@ -109,9 +115,13 @@ foreach ($case in @('preview','merge','mapping','llm','receipt','xsd','sequence'
         $csv=@(Import-Csv (Join-Path $artifactDirectory 'mapping-published.csv'))
         if ($csv.Count -ne 2 -or $csv[0].approved -ne 'True' -or $csv[1].approved -ne 'False') { throw 'Published mapping approval flags or rows are wrong.' }
     }
+    if ($case -in @('upload-timeout','upload-json')) {
+        $expectedKind=if ($case -eq 'upload-timeout') {'request_timeout'} else {'invalid_json'}
+        if ($expectedKind -notin @($report.checks | ForEach-Object {$_.evidence.failure_kind})) { throw 'Upload failure cause was not retained.' }
+    }
     foreach ($artifact in $report.artifacts) {
         if ((Get-FileHash $artifact.path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $artifact.sha256) { throw 'Artifact checksum mismatch.' }
     }
 }
-if ($global:bridgeFixtureDisconnects -ne 9) { throw 'Temporary sessions were not disconnected on every exit path.' }
-Write-Host "PASS: 9 runner contract cases; fixture reports retained at $testRoot"
+if ($global:bridgeFixtureDisconnects -ne 12) { throw 'Temporary sessions were not disconnected on every exit path.' }
+Write-Host "PASS: 12 runner contract cases; fixture reports retained at $testRoot"

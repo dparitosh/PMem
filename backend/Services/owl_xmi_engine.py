@@ -439,7 +439,7 @@ def _convert_xmi_nodes(
             continue
             
         # Create URI for the node
-        safe_id = _safe_uri_name(node_id)
+        safe_id = _xmi_identity_name(node_id)
         node_uri = ont_ns[safe_id]
         
         semantic_kind = _node_semantic_kind(node_type, label, node_name, props)
@@ -593,8 +593,8 @@ def _convert_xmi_relationships(
             continue
             
         # Create URIs
-        from_uri = ont_ns[_safe_uri_name(from_id)]
-        to_uri = ont_ns[_safe_uri_name(to_id)]
+        from_uri = ont_ns[_xmi_identity_name(from_id)]
+        to_uri = ont_ns[_xmi_identity_name(to_id)]
 
         if _matches_any(rel_type, _REL_GENERALIZATION_HINTS):
             if strict_semantics and not (_is_class_like(g, from_uri) and _is_class_like(g, to_uri)):
@@ -1034,7 +1034,7 @@ def _ensure_vocab_concept(
     definition_text: str,
 ) -> URIRef:
     """Create an explicit SKOS concept for the vocabulary layer."""
-    concept_uri = ont_ns[f"{_safe_uri_name(raw_id)}_Concept"]
+    concept_uri = ont_ns[f"{_xmi_identity_name(raw_id)}_Concept"]
     if (concept_uri, RDF.type, SKOS.Concept) not in g:
         g.add((concept_uri, RDF.type, SKOS.Concept))
         g.add((concept_uri, RDFS.label, Literal(display_label)))
@@ -1052,7 +1052,7 @@ def _ensure_vocab_concept(
 
 def _ensure_xmi_class(g: Graph, ont_ns: Namespace, raw_id: str, source_tag: str, scheme_uri: URIRef) -> URIRef:
     """Ensure an auto-created XMI target resource exists as a labeled class/concept."""
-    class_uri = ont_ns[_safe_uri_name(raw_id)]
+    class_uri = ont_ns[_xmi_identity_name(raw_id)]
     if (class_uri, RDF.type, OWL.Class) not in g:
         label = _humanize_xmi_identifier(raw_id, "class")
         g.add((class_uri, RDF.type, OWL.Class))
@@ -1224,6 +1224,15 @@ def _contains_any(value_norm: str, patterns: List[str]) -> bool:
 
 def _normalize_token(value: str) -> str:
     return str(value or "").lower().replace(" ", "").replace("-", "").replace("_", "")
+
+def _xmi_identity_name(identifier: str) -> str:
+    """Encode source identity without merging punctuation-distinct IDs."""
+    from urllib.parse import quote
+    value = str(identifier)
+    if not value:
+        raise ValueError('XMI identity must not be empty')
+    return quote(value, safe='')
+
 
 def _safe_uri_name(name: str) -> str:
     """Convert string to safe URI local name."""

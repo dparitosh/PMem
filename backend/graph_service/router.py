@@ -112,6 +112,8 @@ def ontology_projection(ontology_id: str, limit: int = 900) -> dict:
 def traversal(iri: str, depth: int = 1, limit: int = 200) -> dict:
     try:
         return publisher.traversal(iri=iri, depth=depth, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Traversal identity is ambiguous or invalid; select a graph node from the current ontology view") from exc
     except Exception as exc:
         logger.exception("Graph traversal failed")
         raise HTTPException(status_code=503, detail="Graph traversal failed; check service logs using X-Request-ID") from exc

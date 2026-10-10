@@ -4,6 +4,12 @@ import { buildSemanticServiceUrl } from '../config';
 
 afterEach(() => clearServiceAuthToken());
 
+test('Admin OpenAPI import method returns a local metadata preview', async () => {
+  const result = await agenticAPI.importOpenApi({openapi:'3.0.3',paths:{'/health':{get:{summary:'Health'}}}}, 'service.json');
+  expect(result.data.title).toBe('service.json');
+  expect(result.data.summary.operations).toBe(1);
+});
+
 test('a scoped ontology-agent token takes precedence over the app token', () => {
   setServiceAuthToken('app-token');
   const request = { headers: { Authorization: 'Bearer ontology-read-token' } };

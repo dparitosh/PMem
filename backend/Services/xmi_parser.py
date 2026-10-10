@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import logging
+from .xmi_validation import validate_xmi_root, local_reference
 
 logger = logging.getLogger(__name__)
 
@@ -84,9 +85,14 @@ class XMIParser:
                 no_network=True,
                 load_dtd=False,
                 huge_tree=False,
+                remove_comments=True,
+                remove_pis=True,
             )
             tree = etree.parse(str(file_path), _safe)
             root = tree.getroot()
+            if tree.docinfo.doctype:
+                raise ValueError('XMI DTD declarations are not supported')
+            validate_xmi_root(root)
 
             # Extract nodes and relationships
             nodes = self._extract_nodes(root)
@@ -420,6 +426,10 @@ class XMIParser:
 
         # Extract properties
         properties = {"id": xmi_id, "type": xmi_type, "name": name}
+        for field, child_name in [('lower', 'lowerValue'), ('upper', 'upperValue')]:
+            child = next((item for item in element if self._local_name(item) == child_name), None)
+            if child is not None and child.get('value') is not None:
+                properties[field] = child.get('value')
 
         owner = element.getparent()
         owner_id = self._attr(owner, "id") if owner is not None else ""
@@ -964,12 +974,7 @@ class XMIParser:
         return ""
 
     def _normalize_ref(self, value: str) -> str:
-        raw = str(value or "").strip()
-        if not raw:
-            return ""
-        if "#" in raw:
-            raw = raw.split("#")[-1]
-        return raw.strip()
+        return local_reference(value)
 
     def _first_child_ref(self, element, child_name: str) -> str:
         """Read first referenced id from a child element like <type xmi:idref='...'>."""

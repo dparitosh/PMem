@@ -4,6 +4,7 @@ export const COMMON_GRAPH_SCHEMA = {
 };
 
 export function normalizeCommonNode(raw = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const properties = raw.properties && typeof raw.properties === 'object' ? raw.properties : {};
   const metadata = raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : {};
   const style = raw.style && typeof raw.style === 'object' ? raw.style : {};
@@ -20,6 +21,7 @@ function endpointId(value) {
 }
 
 export function normalizeCommonLink(raw = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const properties = raw.properties && typeof raw.properties === 'object' ? raw.properties : {};
   const metadata = raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : {};
   const source = endpointId(raw.source ?? raw.start ?? properties.source);
@@ -31,13 +33,14 @@ export function normalizeCommonLink(raw = {}) {
 }
 
 export function normalizeCommonGraph(input = {}) {
+  if (!input || typeof input !== 'object') return { nodes: [], links: [] };
   const nodesById = new Map();
   const linksById = new Map();
-  (input.nodes || []).forEach((item) => {
+  (Array.isArray(input.nodes) ? input.nodes : []).forEach((item) => {
     const node = normalizeCommonNode(item);
     if (node) nodesById.set(node.id, node);
   });
-  (input.links || input.relationships || []).forEach((item) => {
+  (Array.isArray(input.links) ? input.links : Array.isArray(input.relationships) ? input.relationships : []).forEach((item) => {
     const link = normalizeCommonLink(item);
     if (link && nodesById.has(link.source) && nodesById.has(link.target)) linksById.set(link.id, link);
   });

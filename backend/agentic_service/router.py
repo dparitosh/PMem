@@ -59,10 +59,8 @@ class Catalog:
         configured = os.getenv("AGENTIC_CATALOG_PATH", "")
         self.path = Path(configured) if configured else Path(__file__).with_name("catalog.json")
     def read(self) -> dict[str, Any]:
-        data = json.loads(self.path.read_text(encoding="utf-8"))
-        if not all(isinstance(data.get(key), list) for key in ("agents", "tools", "mcp_servers", "workflows")):
-            raise ValueError("Catalog must define agents, tools, mcp_servers, and workflows lists")
-        return extend_catalog(data)
+        from .catalog_loader import load_catalog
+        return load_catalog(self.path)
     def item(self, kind: str, identifier: str) -> dict[str, Any]:
         if kind == 'workflows' and identifier.startswith('single-tool:'):
             from .single_tool import definition
@@ -299,7 +297,8 @@ def companion_sample_queries() -> dict:
 
 @router.post("/chat/validate", dependencies=[Depends(graph_read_identity)])
 def companion_validate(payload: ChatRequest) -> dict:
-    payload = payload.model_dump()
+    from .prompt_security import protect
+    payload = protect(payload.model_dump())
     message = " ".join(str(payload.get("message") or "").split())
     if not message:
         raise HTTPException(status_code=422, detail="message is required")
@@ -420,7 +419,7 @@ def companion_job_status(job_id: str, request: Request) -> dict:
 @router.get("/chat/health")
 @router.get("/chat/status")
 def companion_health() -> dict:
-    return {"status": "ok", "service": "knowledge-companion", "mode": "ontology-search", "streaming": True, 'incremental_generation': os.getenv('COMPANION_LLM_ENABLED', 'false').lower() == 'true' and os.getenv('OLLAMA_STREAMING_ENABLED', 'false').strip().lower() == 'true', 'job_execution': 'synchronous', "fail_closed": True}
+    return {"status": "ok", "service": "knowledge-companion", "mode": "ontology-search", "streaming": True, 'incremental_generation': False, 'generation_delivery': 'buffered-until-citations-validated', 'job_execution': 'synchronous', "fail_closed": True}
 
 
 @router.get('/llm/health', dependencies=[Depends(graph_read_identity)])
@@ -1226,7 +1225,8 @@ async def validate_openapi_catalog() -> dict:
     from backend.depo_platform.openapi_contract import contract_errors
     unavailable = set()
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        from backend.depo_platform.network import gateway_subscription_headers
+        async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
             for tool in catalog.read()["tools"]:
                 if tool.get("transport") != "openapi": continue
                 service = str(tool["service"])
@@ -1234,7 +1234,8 @@ async def validate_openapi_catalog() -> dict:
                     continue
                 if service not in documents:
                     try:
-                        response = await client.get(_base(service).removesuffix("/api/v1") + "/openapi.json")
+                        endpoint = _base(service).removesuffix("/api/v1") + "/openapi.json"
+                        response = await client.get(endpoint, headers=gateway_subscription_headers(endpoint))
                         response.raise_for_status()
                         document = response.json()
                         if not isinstance(document, dict):

@@ -98,22 +98,40 @@ def _validate_variables(variables: Any) -> dict[str, Any] | None:
     if not isinstance(variables, dict):
         raise HTTPException(422, "variables must be an object")
 
+    consumed = 0
+    items = 0
+
     def inspect(value: Any, depth: int = 0) -> int:
+        nonlocal consumed, items
+        items += 1
+        if items > 5000:
+            raise HTTPException(422, "variables have too many total values")
         if depth > 6:
             raise HTTPException(422, "variables nesting must not exceed 6 levels")
         if isinstance(value, dict):
             if len(value) > MAX_VARIABLE_ITEMS:
                 raise HTTPException(422, "variables object has too many fields")
-            return sum(len(str(key)) + inspect(child, depth + 1) for key, child in value.items())
+            return sum(inspect(str(key), depth + 1) + inspect(child, depth + 1) for key, child in value.items())
         if isinstance(value, list):
             if len(value) > MAX_VARIABLE_ITEMS:
                 raise HTTPException(422, "variables list has too many items")
             return sum(inspect(child, depth + 1) for child in value)
         if isinstance(value, str) and len(value) > 10_000:
             raise HTTPException(422, "variable string must not exceed 10000 characters")
-        return len(str(value))
+        import json
+        try:
+            size = len(json.dumps(value, ensure_ascii=False, allow_nan=False).encode('utf-8'))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(422, "variables must contain finite JSON values") from exc
+        consumed += size
+        if consumed > MAX_VARIABLE_BYTES:
+            raise HTTPException(422, "variables must not exceed 128 KB")
+        return size
 
     if inspect(variables) > MAX_VARIABLE_BYTES:
+        raise HTTPException(422, "variables must not exceed 128 KB")
+    import json
+    if len(json.dumps(variables, ensure_ascii=False, allow_nan=False).encode('utf-8')) > MAX_VARIABLE_BYTES:
         raise HTTPException(422, "variables must not exceed 128 KB")
     return variables
 

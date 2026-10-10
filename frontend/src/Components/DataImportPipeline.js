@@ -55,6 +55,9 @@ function governedSourceProfile(filename) {
     '.step': { profile: 'ap242-step-mbd', sourceSystem: 'CAD' },
     '.stpx': { profile: 'ap242-step-mbd', sourceSystem: 'CAD' },
     '.reqif': { profile: 'reqif', sourceSystem: 'Requirements management' },
+    '.reqifz': { profile: 'reqif', sourceSystem: 'Requirements management' },
+    '.xmi': { profile: 'sysml-v1', sourceSystem: 'MBSE' },
+    '.mdxml': { profile: 'sysml-v1', sourceSystem: 'MBSE' },
     '.qif': { profile: 'qif', sourceSystem: 'Quality management' },
     '.plmxml': { profile: 'plmxml', sourceSystem: 'PLM' },
   };

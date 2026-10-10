@@ -2,11 +2,11 @@
 
 ## Windows setup (both components)
 
-From `D:\Githuv_repo\PMem\plugins\mbse_plugin` in PowerShell:
+From `E:\App\PMem\plugins\mbse_plugin` in PowerShell (replace the repository path if different):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Install
-powershell -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Configure
+powershell -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Configure -EnvFile E:\App\PMem\.env.local -IngestionUrl http://10.0.2.16:8014/api/v1
 powershell -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Start
 powershell -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Verify
 powershell -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Stop
@@ -26,13 +26,27 @@ main lifecycle; start DEPO first when imports are needed.
 
 Use the same `-InstallDir` on every command to select another runtime location.
 Configure creates `.runtime/config.json` with a generated plugin token, ingestion
-URL and optional ingestion token. Edit it before Start. The file contains plaintext
+URL and the central `DATA_JOB_EXECUTION_TOKEN` as its outbound ingestion token.
+Replace the example IP with the ingestion service's reachable address. The file contains plaintext
 credentials: restrict its Windows ACL to the service user and do not commit/share it.
 No encryption or certificate provisioning is performed. The service binds to
 loopback HTTP; remote deployment requires your gateway setup. Bypass applies to
 the invoked PowerShell process only.
 
-Start writes PID/stdout/stderr files; Verify checks authenticated endpoints.
+Start waits for authenticated local readiness and writes PID/stdout/stderr files.
+Verify also checks the upstream execution credential without submitting a job.
+After a deliberate central key rotation, stop the plugin, synchronize, start and verify:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Stop
+powershell -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action SyncCredentials -EnvFile E:\App\PMem\.env.local
+powershell -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Start
+powershell -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Verify
+```
+
+SyncCredentials copies the execution key and optional `DEPO_APIM_SUBSCRIPTION_KEY`
+into plugin configuration; it does not rotate PostgreSQL credentials. The selected
+file must already match the central credential store. The plugin access token is preserved.
 This is a managed child process, not a Windows SCM service. Stop checks ownership.
 For upgrade: Stop, back up configuration and retain the previous wheel, install the
 new wheel into the same venv using `venv\Scripts\python.exe -m pip install <wheel>`,
@@ -69,7 +83,7 @@ in `D:/Githuv_repo/iif_pdf_to_nx_delivery`. No PMem Python imports are required.
 
 Install from this directory with `python -m pip install .`, then set
 `MBSE_PLUGIN_TOKEN`, `DEPO_INGESTION_URL` (including `/api/v1`) and, where required,
-`DEPO_INGESTION_TOKEN`. Start using
+`DEPO_INGESTION_TOKEN` from the central `DATA_JOB_EXECUTION_TOKEN`. Start using
 `python -m uvicorn mbse_plugin.app:app --host 127.0.0.1 --port 8020`.
 Open port 8020 for visualization and `/docs` for API documentation.
 

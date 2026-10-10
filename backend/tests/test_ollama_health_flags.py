@@ -81,18 +81,19 @@ class OllamaGenerationContract(unittest.TestCase):
             async def __aexit__(self, *args): pass
             async def post(self, endpoint, **kwargs):
                 observed.update(endpoint=endpoint, **kwargs)
-                return SimpleNamespace(raise_for_status=lambda:None, json=lambda:{'response':'Evidence summary'})
-        reply = {'response': 'Evidence summary', 'done': True}
+                return SimpleNamespace(raise_for_status=lambda:None, json=lambda:{'response':'Evidence summary [evidence:urn:Part]'})
+        reply = {'response': 'Evidence summary [evidence:urn:Part]', 'done': True}
         async def post_json(client, endpoint, headers, body):
             observed.update(endpoint=endpoint, headers=headers, json=body)
             return reply
-        ns = {'asyncio':asyncio, '_post_json':post_json, 'httpx':SimpleNamespace(AsyncClient=Client),
+        from backend.agentic_service.prompt_limits import bounded_prompt_json
+        ns = {'bounded_prompt_json':bounded_prompt_json, 'asyncio':asyncio, '_post_json':post_json, 'httpx':SimpleNamespace(AsyncClient=Client),
               'settings':lambda:('ollama','llama3:latest','http://custom.azure-api.net/ollama',30,{'api-key':'fixture'})}
         content = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_content')
         exec(compile(ast.Module(body=[content,node],type_ignores=[]),'<actual summary>','exec'),ns)
         with patch.dict(os.environ, {'OLLAMA_API_URL':'http://custom.azure-api.net/ollama/api/generate'}, clear=True):
-            result = asyncio.run(ns['summarize']('question',{'source':'evidence'}))
-        self.assertEqual(result,'Evidence summary')
+            result = asyncio.run(ns['summarize']('question',{'source':'evidence','iri':'urn:Part'}))
+        self.assertEqual(result,'Evidence summary [evidence:urn:Part]')
         self.assertTrue(observed['endpoint'].endswith('/api/generate'))
         self.assertEqual(observed['headers'],{'api-key':'fixture'})
         self.assertIn('prompt',observed['json'])
@@ -102,6 +103,6 @@ class OllamaGenerationContract(unittest.TestCase):
         reply['done'] = False
         with patch.dict(os.environ, {'OLLAMA_API_URL':'http://custom.azure-api.net/ollama/api/generate'}, clear=True):
             with self.assertRaisesRegex(ValueError, 'incomplete summary'):
-                asyncio.run(ns['summarize']('question', {'source':'evidence'}))
+                asyncio.run(ns['summarize']('question', {'source':'evidence','iri':'urn:Part'}))
 
 if __name__ == '__main__': unittest.main()

@@ -20,5 +20,5 @@ async function execute(tool, inputs, approvedBy) {
 
 export const ontologyMergeAgent = {
   preview: (sources, options, actor) => execute('ontology.merge.preview', { source_ontology_ids: sources, ...options }, actor),
-  apply: (previewId, actor) => execute('ontology.merge.apply', { preview_id: previewId }, actor),
+  apply: (previewId, actor) => execute('ontology.merge.apply', { preview_id: previewId, publish: true }, actor),
 };

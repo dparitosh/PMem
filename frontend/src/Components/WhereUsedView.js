@@ -191,29 +191,32 @@ const WhereUsedView = ({
     const [fallbackGraphData, setFallbackGraphData] = useState({ nodes: [], links: [] });
     const [graphLoading, setGraphLoading] = useState(false);
     const [graphError, setGraphError] = useState('');
+    const [sessionRevision, setSessionRevision] = useState(0);
     const searchAbortRef = useRef(null);
     const expansionAbortRef = useRef(null);
+    const overviewAbortRef = useRef(null);
     // Schema-driven display
     const { getDisplayName: schemaDisplayName } = useSchema() || {};
 
     const effectiveGraphData = useMemo(() => {
         const hasPrimaryGraph = (data?.nodes || []).length > 0 || (data?.links || []).length > 0;
-        return hasPrimaryGraph ? data : fallbackGraphData;
-    }, [data, fallbackGraphData]);
+        return hasPrimaryGraph && sessionRevision === 0 ? data : fallbackGraphData;
+    }, [data, fallbackGraphData, sessionRevision]);
 
     useEffect(() => {
         const hasPrimaryGraph = (data?.nodes || []).length > 0 || (data?.links || []).length > 0;
-        if (hasPrimaryGraph || (fallbackGraphData.nodes || []).length > 0) return undefined;
+        if ((hasPrimaryGraph && sessionRevision === 0) || (fallbackGraphData.nodes || []).length > 0) return undefined;
 
         let cancelled = false;
         const controller = new AbortController();
+        overviewAbortRef.current = controller;
         const loadGraph = async () => {
             setGraphLoading(true);
             setGraphError('');
             try {
                 const response = await graphApi.getOverview(1200, controller.signal);
                 const normalized = normalizeGraphDatasetShared(response.data);
-                if (!cancelled) setFallbackGraphData(normalized);
+                if (!cancelled && !controller.signal.aborted) setFallbackGraphData(normalized);
             } catch (error) {
                 if (controller.signal.aborted) return;
                 if (!cancelled) setGraphError(error?.response?.data?.detail || error.message || 'Failed to load graph data for Where Used.');
@@ -224,11 +227,35 @@ const WhereUsedView = ({
 
         loadGraph();
         return () => { cancelled = true; controller.abort(); };
-    }, [data, fallbackGraphData.nodes]);
+    }, [data, fallbackGraphData.nodes, sessionRevision]);
 
-    useEffect(() => () => {
-        searchAbortRef.current?.abort();
-        expansionAbortRef.current?.abort();
+    useEffect(() => {
+        const reset = () => {
+            overviewAbortRef.current?.abort();
+            searchAbortRef.current?.abort();
+            expansionAbortRef.current?.abort();
+            expansionAbortRef.current = null;
+            setHierarchySearchResults([]);
+            setSelectedNode(null);
+            setTreeData(null);
+            setLevels([]);
+            setAutoExpanded(false);
+            setIsSearching(false);
+            setIsExpandingUpwards(false);
+            setSearchError(null);
+            setExpansionError(null);
+            setFallbackGraphData({ nodes: [], links: [] });
+            setSessionRevision(value => value + 1);
+        };
+        window.addEventListener('depo:credentials-changed', reset);
+        window.addEventListener('depo:credentials-cleared', reset);
+        return () => {
+            window.removeEventListener('depo:credentials-changed', reset);
+            window.removeEventListener('depo:credentials-cleared', reset);
+            overviewAbortRef.current?.abort();
+            searchAbortRef.current?.abort();
+            expansionAbortRef.current?.abort();
+        };
     }, []);
     
     // Search the bounded standalone graph projection used by Graph Explorer.
@@ -302,22 +329,30 @@ const WhereUsedView = ({
         expansionAbortRef.current = controller;
         setIsExpandingUpwards(true);
         setExpansionError(null);
+        let timedOut = false;
+        const deadlineTimer = setTimeout(() => { timedOut = true; controller.abort(); }, 30000);
         try {
             const ancestorMap = new Map([[startNode.elementId, startNode]]);
             const linkSet = new Map();
             const visited = new Set();
             let failedBranches = 0;
             const queue = [startNode.elementId];
+            const depths = new Map([[startNode.elementId, 0]]);
+            let bounded = false;
+
 
             while (queue.length > 0) {
+                if (controller.signal.aborted) return;
+                if (visited.size >= 100 || ancestorMap.size >= 1000) { bounded = true; break; }
                 const currentNodeId = queue.shift();
+                if ((depths.get(currentNodeId) || 0) >= 10) { bounded = true; continue; }
                 if (!currentNodeId || visited.has(currentNodeId)) continue;
                 visited.add(currentNodeId);
 
                 try {
                     const resp = await graphApi.getTraversal(currentNodeId, 1, controller.signal);
                     if (controller.signal.aborted) return;
-                    const records = resp.data?.results || [];
+                    const records = Array.isArray(resp.data?.results) ? resp.data.results.filter(record => record && typeof record === 'object') : [];
                     const normalizedTraversal = records.length ? null : normalizeGraphDatasetShared(resp.data);
 
                     const relationships = records.length
@@ -327,17 +362,17 @@ const WhereUsedView = ({
                     relationships.forEach(({ relationship, nodes }) => {
                         if (!relationship) return;
 
-                        nodes.forEach((node) => {
-                            if (node?.elementId && !ancestorMap.has(node.elementId)) {
-                                ancestorMap.set(node.elementId, node);
-                            }
-                        });
-
                         const sourceId = getLinkEndpointId(relationship.start ?? relationship.source);
                         const targetId = getLinkEndpointId(relationship.end ?? relationship.target);
                         if (!sourceId || !targetId) return;
 
                         if (targetId === currentNodeId) {
+                            const parent = nodes.find(node => node?.elementId === sourceId);
+                            if (!ancestorMap.has(sourceId)) {
+                                if (!parent) return;
+                                if (ancestorMap.size >= 1000) { bounded = true; return; }
+                                ancestorMap.set(sourceId, parent);
+                            }
                             const key = buildRelationshipKey({ ...relationship, source: sourceId, target: targetId });
                             if (!linkSet.has(key)) {
                                 linkSet.set(key, {
@@ -348,7 +383,8 @@ const WhereUsedView = ({
                                     properties: relationship.properties || {},
                                 });
                             }
-                            if (!visited.has(sourceId)) {
+                            if (!depths.has(sourceId)) {
+                                depths.set(sourceId, (depths.get(currentNodeId) || 0) + 1);
                                 queue.push(sourceId);
                             }
                         }
@@ -400,14 +436,19 @@ const WhereUsedView = ({
                 links: parentLinks,
                 root: startNode
             });
-            setAutoExpanded(failedBranches === 0);
-            if (failedBranches) setExpansionError(`Partial hierarchy: ${failedBranches} parent branch request(s) failed. Retry expansion to complete the evidence.`);
+            setAutoExpanded(failedBranches === 0 && !bounded);
+            if (bounded) setExpansionError('Partial hierarchy: reached the safety limit of 10 hops, 1,000 nodes or 100 requests. Select a parent to explore further.');
+            else if (failedBranches) setExpansionError(`Partial hierarchy: ${failedBranches} parent branch request(s) failed. Retry expansion to complete the evidence.`);
         } catch (err) {
             if (controller.signal.aborted || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED' || err?.name === 'AbortError') return;
             setExpansionError(err.message);
         } finally {
-            if (!controller.signal.aborted) setIsExpandingUpwards(false);
-            if (expansionAbortRef.current === controller) expansionAbortRef.current = null;
+            clearTimeout(deadlineTimer);
+            if (expansionAbortRef.current === controller) {
+                setIsExpandingUpwards(false);
+                if (timedOut) setExpansionError('Hierarchy request exceeded 30 seconds. Select a narrower root and retry.');
+                expansionAbortRef.current = null;
+            }
         }
     }, []);
 

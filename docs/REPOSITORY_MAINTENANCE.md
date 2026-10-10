@@ -79,6 +79,27 @@ Active compatibility code remains: `main.py`, `backend/main.py`,
 Follow the [retirement boundary](../backend/legacy/README.md) before removing
 them. `test_upload.xsd` remains an input to a manual API smoke test.
 
+## Reviewed cleanup — 2026-10-10
+
+Removed an exact duplicate readiness test, a superseded service-start copy that
+bypassed the current Windows runtime wrapper, and the unreachable SVG diagram
+component/barrel. The active React Flow diagram remains in use and is retained.
+The follow-up trace removed two unreferenced one-off Neo4j probes superseded by
+the maintained infrastructure diagnostic, and four intermediate architecture
+decks superseded by the consolidated 31-slide analytics release. Their slide
+content differences were inspected before removal.
+Removed reviewed presentation intermediates, superseded patch ZIPs and their
+old patch deployment instructions, plus generated browser/build review outputs.
+The [cleanup manifest](repository-cleanup-2026-10-10.json) records every deleted
+file's SHA-256 and size; it is an inventory, not a backup. Current installation
+authority remains INSTALLATION.md and the maintained infrastructure scripts.
+
+Retained customer configuration, engineering inputs, ontology caches, standards,
+final presentations, document-generation sources, optional integrations and
+compatibility modules with active consumers. An old filename or lack of a static
+Python import alone is insufficient evidence to remove dynamically loaded code,
+operator tools or customer data.
+
 ## Remaining release work
 
 - `backend/requirements-lock.txt` now provides the deployment lock. Validate its
@@ -92,3 +113,21 @@ them. `test_upload.xsd` remains an input to a manual API smoke test.
   gateway and endpoint validation; static checks alone do not certify a release.
 - Establish a signed or tagged production baseline only after customer
   acceptance evidence is attached to the version-controlled release commit.
+
+## Customer vanilla release cleanup (2026-10-10)
+
+Removed unused backend/STP and backend/Data demonstration inputs, the local
+_restore_ingest recovery copies, temporary review dependencies/test output,
+root Vite cache and Python bytecode caches. Removed the five reviewed cached
+TTL outputs after the user requested a vanilla customer installation. Their
+previous hash verification and cleanup manifest retain provenance; manifests
+are not backups. Current regression test source and production semantic assets
+remain. Persisted content-addressed artifacts and uploads were not erased:
+they can have live database references and are excluded from customer packaging.
+
+The cleanup recorded 4,104 files and 215,224,275 bytes in
+customer-release-cleanup-2026-10-10.json. Every recorded path was verified absent.
+Windows denied access to .pytest_cache; it remains locally and is excluded from
+the release. tools/build_customer_release.py creates an installation source ZIP
+with a file hash manifest and without local credentials, runtime data or test
+outputs. Test source remains in the repository for maintenance.

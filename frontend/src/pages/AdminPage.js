@@ -164,28 +164,26 @@ export default function AdminPage({ onSchemaCleaned }) {
     };
   }, [loadAgenticCatalog]);
 
+  const importGeneration = useRef(0);
+  useEffect(() => () => { importGeneration.current += 1; }, []);
   const importOpenApi = useCallback(async (event) => {
+    const generation = ++importGeneration.current;
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    if (!agenticConfigured) {
-      setAgenticError(agenticEnabled
-        ? 'Agentic component adapter is not configured.'
-        : 'Agentic components are disabled by configuration.');
-      return;
-    }
     setOpenApiLoading(true);
     setAgenticError('');
     try {
+      if (file.size > 5 * 1024 * 1024) throw new Error('OpenAPI JSON must be at most 5 MiB.');
       const document = JSON.parse(await file.text());
       const response = await agenticAPI.importOpenApi(document, file.name);
-      setOpenApiCatalog(response.data);
+      if (generation === importGeneration.current) setOpenApiCatalog(response.data);
     } catch (err) {
-      setAgenticError(apiErrorMessage(err, 'OpenAPI import failed.'));
+      if (generation === importGeneration.current) setAgenticError(apiErrorMessage(err, 'OpenAPI import failed.'));
     } finally {
-      setOpenApiLoading(false);
+      if (generation === importGeneration.current) setOpenApiLoading(false);
     }
-  }, [agenticConfigured, agenticEnabled]);
+  }, []);
 
   const counts = useMemo(() => ({
     services: registry?.services?.length || 0,
@@ -205,10 +203,10 @@ export default function AdminPage({ onSchemaCleaned }) {
       columns: [
         { field: 'id', flex: 1 },
         { field: 'name', flex: 1.4 },
-        { field: 'provider' },
-        { field: 'model', flex: 1.2 },
+        { field: 'family', flex: 1 },
+        { field: 'description', flex: 2 },
         { field: 'status' },
-        { field: 'health_endpoint', flex: 1.4 },
+        { field: 'execution_boundary', flex: 1.4 },
         { field: 'config_source', flex: 1 },
       ],
     },
@@ -304,9 +302,9 @@ export default function AdminPage({ onSchemaCleaned }) {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <label className="depo-button depo-button--secondary" style={{ cursor: openApiLoading ? 'wait' : 'pointer', opacity: agenticConfigured ? 1 : 0.55 }}>
+            <label className="depo-button depo-button--secondary" style={{ cursor: openApiLoading ? 'wait' : 'pointer' }}>
               {openApiLoading ? 'Importing OpenAPI...' : 'Import OpenAPI JSON'}
-              <input type="file" accept="application/json,.json" onChange={importOpenApi} disabled={openApiLoading || !agenticConfigured} style={{ display: 'none' }} />
+              <input type="file" accept="application/json,.json" onChange={importOpenApi} disabled={openApiLoading} style={{ display: 'none' }} />
             </label>
             <button type="button" className="depo-button depo-button--secondary" onClick={loadAgenticCatalog} disabled={agenticLoading || !agenticConfigured}>
               {agenticLoading ? 'Loading...' : 'Refresh'}
@@ -333,7 +331,7 @@ export default function AdminPage({ onSchemaCleaned }) {
         {openApiCatalog && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
             <span className="depo-badge">
-              {openApiCatalog.title} · {openApiCatalog.summary?.operations || 0} operations · {openApiCatalog.summary?.schemas || 0} schemas
+              {openApiCatalog.title} · {openApiCatalog.summary?.operations || 0} operations · {openApiCatalog.summary?.schemas || 0} schemas · metadata preview; routes and keys unchanged
             </span>
           </div>
         )}

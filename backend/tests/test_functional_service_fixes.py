@@ -119,7 +119,7 @@ class LocalLlmTests(unittest.IsolatedAsyncioTestCase):
         owner = self
         class HttpError(Exception): pass
         class Client:
-            def __init__(self, timeout): owner.timeout = timeout
+            def __init__(self, timeout, **kwargs): owner.timeout = timeout
             async def __aenter__(self): return self
             async def __aexit__(self, *args): pass
             async def get(self, url, **kwargs):
@@ -143,7 +143,15 @@ class LocalLlmTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.scope['health']())['status'], 'unavailable')
 
     async def test_summary_is_bounded_and_nonstreaming(self):
-        self.assertEqual(await self.scope['summarize']('question', [{'resource_id': '1'}]), 'Bounded summary')
+        from backend.agentic_service.prompt_limits import bounded_prompt_json
+        self.scope['bounded_prompt_json'] = bounded_prompt_json
+        from backend.agentic_service.prompt_security import protect, prompt_identity, evidence_ids, validate_summary
+        self.scope.update(protect=protect, prompt_identity=prompt_identity, evidence_ids=evidence_ids, validate_summary=validate_summary)
+        async def post(client, endpoint, headers, body):
+            self.request = body
+            return {'done':True, 'message':{'content':'Bounded summary [evidence:1]'}}
+        self.scope['_post_json'] = post
+        self.assertEqual(await self.scope['summarize']('question', [{'resource_id': '1'}]), 'Bounded summary [evidence:1]')
         self.assertFalse(self.request['stream'])
         self.assertEqual(self.request['options']['num_predict'], 256)
 

@@ -116,3 +116,10 @@ backend/tests/cat_test_results/
 backend/test_data/integration_test_results.json
 .mypy_cache/
 .ruff_cache/
+
+# Local presentation review intermediates and accidental editor copies
+.pptx-review-build/
+**/* - Copy.*
+backend/ttl_cache/
+deliverables/.env-reference-review/
+release-dist/

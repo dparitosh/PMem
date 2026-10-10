@@ -59,9 +59,7 @@ if ($useXsd) {
             if ($document.DocumentElement.LocalName -ne 'schema' -or $document.DocumentElement.NamespaceURI -ne 'http://www.w3.org/2001/XMLSchema') { throw 'Input XML root must be xsd:schema.' }
             $namespaces=New-Object Xml.XmlNamespaceManager($document.NameTable)
             $namespaces.AddNamespace('xs','http://www.w3.org/2001/XMLSchema')
-            if ($document.SelectNodes('/xs:schema/xs:include | /xs:schema/xs:import | /xs:schema/xs:redefine',$namespaces).Count) {
-                throw 'This engineering-workflow API accepts one XSD per source. Use a self-contained XSD; multi-file include/import/redefine bundles are not supported by this runner.'
-            }
+            # Dependency closure is collected below before either source is uploaded.
         } finally { $reader.Dispose() }
     }
     $SourceXsdPath=(Resolve-Path -LiteralPath $SourceXsdPath).Path
@@ -148,7 +146,10 @@ function Register-Xsd([string]$Path, [string]$Role) {
     $encoding=New-Object Text.UTF8Encoding($false)
     try {
         $fields=@{ontology_name=([IO.Path]::GetFileNameWithoutExtension($Path)+' '+$Role);prefix=('bridge_'+$Role);
-            description=('Semantic Bridge test '+$Role+' XSD');register_ontology='true';publish='false';enforce_quality='true'}
+            description=('Semantic Bridge test '+$Role+' XSD');register_ontology='true';publish='false';enforce_quality='true';include_conversion='false'}
+        $bundle=$xsdBundles[$Role]
+        $dependencyNames=@($bundle.Dependencies.Keys | Sort-Object)
+        $fields['dependency_paths']=ConvertTo-Json -InputObject $dependencyNames -Compress
         foreach ($key in $fields.Keys) {
             $bytes=$encoding.GetBytes("--$boundary`r`nContent-Disposition: form-data; name=`"$key`"`r`n`r`n$($fields[$key])`r`n")
             $stream.Write($bytes,0,$bytes.Length)
@@ -157,18 +158,89 @@ function Register-Xsd([string]$Path, [string]$Role) {
         $bytes=$encoding.GetBytes("--$boundary`r`nContent-Disposition: form-data; name=`"file`"; filename=`"$filename`"`r`nContent-Type: application/xml`r`n`r`n")
         $stream.Write($bytes,0,$bytes.Length)
         $content=[IO.File]::ReadAllBytes($Path); $stream.Write($content,0,$content.Length)
+        foreach ($relative in $dependencyNames) {
+            $bytes=$encoding.GetBytes("`r`n--$boundary`r`nContent-Disposition: form-data; name=`"dependencies`"; filename=`"dependency.xsd`"`r`nContent-Type: application/xml`r`n`r`n")
+            $stream.Write($bytes,0,$bytes.Length)
+            $data=$bundle.Dependencies[$relative]; $stream.Write($data,0,$data.Length)
+        }
         $bytes=$encoding.GetBytes("`r`n--$boundary--`r`n"); $stream.Write($bytes,0,$bytes.Length)
+        $timer=[Diagnostics.Stopwatch]::StartNew()
         try {
             $response=Invoke-WebRequest -UseBasicParsing -Uri ($bases['ingestion']+'/api/v1/engineering-workflows') `
                 -Method Post -Headers $headers -ContentType "multipart/form-data; boundary=$boundary" -Body $stream.ToArray() `
                 -TimeoutSec $TimeoutSeconds -MaximumRedirection 0 -ErrorAction Stop
-            $result=$response.Content | ConvertFrom-Json
-        } catch { throw "$Role XSD conversion/registration failed. Check ingestion logs, ontology credentials, and XSD dependencies. No upload was retried." }
+        } catch {
+            $httpStatus=$null
+            if ($_.Exception.Response) { try { $httpStatus=[int]$_.Exception.Response.StatusCode } catch {} }
+            $failureKind='transport_failure'
+            $cause=$_.Exception
+            while ($cause) {
+                if ($cause -is [Net.WebException] -and $cause.Status -eq [Net.WebExceptionStatus]::Timeout) { $failureKind='request_timeout' }
+                if ($cause -is [TimeoutException] -or $cause -is [Threading.Tasks.TaskCanceledException]) { $failureKind='request_timeout' }
+                $cause=$cause.InnerException
+            }
+            if ($null -ne $httpStatus) { $failureKind='http_error' }
+            $diagnostics=@{failure_kind=$failureKind;http_status=$httpStatus;elapsed_seconds=[Math]::Round($timer.Elapsed.TotalSeconds,2);request_timeout_seconds=$TimeoutSeconds;endpoint='/api/v1/engineering-workflows'}
+            # Read only allowlisted diagnostic fields from our own API contract.
+            # Never expose arbitrary upstream messages, bodies, URLs or secrets.
+            try {
+                $detail=($_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction Stop).detail
+                if ($detail.code -eq 'engineering_dependency_failure' -and
+                    $detail.stage -in @('conversion','ontology_credentials','policy_evaluation','quality_gate','ontology_registration','graph_publication') -and
+                    $detail.failure_kind -in @('upstream_timeout','upstream_http_error','dependency_unavailable')) {
+                    $diagnostics['backend_stage']=$detail.stage
+                    $diagnostics['backend_failure_kind']=$detail.failure_kind
+                    if ($detail.upstream_status -is [int] -and $detail.upstream_status -ge 100 -and $detail.upstream_status -le 599) { $diagnostics['upstream_status']=$detail.upstream_status }
+                }
+            } catch {}
+            Record-Check "$Role XSD conversion/registration request" 'FAIL' $diagnostics
+            $label=if ($null -ne $httpStatus) {"HTTP $httpStatus"} else {$failureKind}
+            $stageHint=if ($diagnostics.backend_stage) {" Backend stage: $($diagnostics.backend_stage); cause: $($diagnostics.backend_failure_kind)."} else {''}
+            throw "$Role XSD request failed ($label), after $($diagnostics.elapsed_seconds)s; client deadline ${TimeoutSeconds}s.$stageHint Check ingestion logs and whether registration completed. No upload was retried."
+        } finally { $timer.Stop() }
+        try { $result=$response.Content | ConvertFrom-Json -ErrorAction Stop }
+        catch {
+            Record-Check "$Role XSD response JSON" 'FAIL' @{failure_kind='invalid_json';http_status=$response.StatusCode;content_type=[string]$response.Headers['Content-Type']}
+            throw "$Role XSD request returned an invalid JSON response. Check gateway response transformations and ingestion logs. Registration may already have completed; no upload was retried."
+        }
         if ($result.status -ne 'registered' -or -not $result.ontology_registration.ontology_id) { throw "$Role XSD did not produce a registered ontology." }
         Save-Json ($Role+'-registration.json') $result
-        Record-Check "$Role XSD converted and registered" 'PASS' @{ontology_id=$result.ontology_registration.ontology_id;source_sha256=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant();graph_published=$false}
+        Record-Check "$Role XSD converted and registered" 'PASS' @{ontology_id=$result.ontology_registration.ontology_id;source_sha256=(Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant();graph_published=$false;dependency_count=$dependencyNames.Count}
         return [string]$result.ontology_registration.ontology_id
     } finally { $stream.Dispose() }
+}
+function Collect-XsdBundle([string]$Path) {
+    $directory=[IO.Path]::GetDirectoryName($Path)+[IO.Path]::DirectorySeparatorChar
+    $queue=New-Object System.Collections.Generic.Queue[string]
+    $queue.Enqueue($Path)
+    $seen=@{}; $dependencies=@{}; $total=0
+    while ($queue.Count) {
+        $current=$queue.Dequeue()
+        if ($seen.ContainsKey($current)) { continue }
+        if (-not $current.StartsWith($directory,[StringComparison]::OrdinalIgnoreCase)) { throw 'XSD dependency escapes the selected source directory. Place the complete schema set beneath the primary XSD directory.' }
+        if (-not (Test-Path -LiteralPath $current -PathType Leaf) -or [IO.Path]::GetExtension($current) -ne '.xsd') { throw 'A referenced local XSD is missing or has an unsupported extension. Retain the complete schema directory structure.' }
+        if ((Get-Item -LiteralPath $current).LinkType) { throw 'Linked XSD dependency paths are unsupported.' }
+        $seen[$current]=$true
+        if ($seen.Count -gt 64) { throw 'XSD dependency closure exceeds 63 supporting files.' }
+        $data=[IO.File]::ReadAllBytes($current); $total+=$data.Length
+        if ($total -gt 26214400) { throw 'XSD dependency closure exceeds 25 MiB.' }
+        if ($current -ne $Path) { $dependencies[$current.Substring($directory.Length).Replace('\','/')]=$data }
+        $settings=New-Object Xml.XmlReaderSettings
+        $settings.DtdProcessing=[Xml.DtdProcessing]::Prohibit; $settings.XmlResolver=$null
+        $reader=[Xml.XmlReader]::Create($current,$settings)
+        try {
+            $document=New-Object Xml.XmlDocument; $document.XmlResolver=$null; $document.Load($reader)
+            if ($document.DocumentElement.LocalName -ne 'schema' -or $document.DocumentElement.NamespaceURI -ne 'http://www.w3.org/2001/XMLSchema') { throw 'An XSD dependency has an invalid schema root.' }
+            $ns=New-Object Xml.XmlNamespaceManager($document.NameTable); $ns.AddNamespace('xs','http://www.w3.org/2001/XMLSchema')
+            foreach ($link in $document.SelectNodes('/xs:schema/xs:include | /xs:schema/xs:import | /xs:schema/xs:redefine',$ns)) {
+                $location=$link.GetAttribute('schemaLocation')
+                if (-not $location) { continue }
+                if ($location -match '[:\\?#]' -or $location.StartsWith('/')) { throw 'XSD schemaLocation must be a relative local path. Remote schemas are not fetched.' }
+                $queue.Enqueue([IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetDirectoryName($current)) $location)))
+            }
+        } finally { $reader.Dispose() }
+    }
+    return @{Dependencies=$dependencies;Bytes=$total}
 }
 function Call-Api([string]$Service, [string]$Path, [string]$Method = 'GET', $Body = $null) {
     if ($session -and $Method -ne 'DELETE') { Assert-SessionLifetime $TimeoutSeconds }
@@ -216,6 +288,12 @@ function Run-Agent([string]$Agent, [string]$Tool, $Inputs) {
 }
 
 try {
+    $xsdBundles=@{}
+    if ($useXsd) {
+        # Validate both closures before the first upload or registration write.
+        $xsdBundles['source']=Collect-XsdBundle $SourceXsdPath
+        $xsdBundles['target']=Collect-XsdBundle $TargetXsdPath
+    }
     if ($values['AUTH_MODE'] -ne 'token' -or $values['DEPO_CREDENTIAL_STORE'] -ne 'postgres' -or -not $values['ADMIN_API_KEY']) {
         throw 'Requires AUTH_MODE=token, DEPO_CREDENTIAL_STORE=postgres and ADMIN_API_KEY in the selected server environment file.'
     }

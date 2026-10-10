@@ -12,7 +12,23 @@ from .neo4j_publisher import publisher
 
 
 def _serialize_json(value: Any) -> Any:
-    return value
+    from datetime import date, datetime
+    import math
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise GraphQLError('Non-finite number in graph result')
+        return value
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(key): _serialize_json(child) for key, child in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_serialize_json(child) for child in value]
+    if hasattr(value, 'iso_format'):
+        return value.iso_format()
+    raise GraphQLError('Unsupported value in graph JSON result')
 
 
 JSON = GraphQLScalarType(name="JSON", serialize=_serialize_json)
@@ -22,7 +38,7 @@ GraphNode = GraphQLObjectType(
     name="GraphNode",
     fields=lambda: {
         "elementId": GraphQLField(GraphQLNonNull(GraphQLString), resolve=lambda node, _info: str(node.get("elementId") or node.get("id") or "")),
-        "label": GraphQLField(GraphQLString, resolve=lambda node, _info: str(node.get("label") or node.get("name") or (node.get("properties") or {}).get("name") or "")),
+        "label": GraphQLField(GraphQLString, resolve=lambda node, _info: str(node.get("label") or node.get("name") or (node.get("properties") or {}).get("name") or (node.get("properties") or {}).get("label") or "")),
         "type": GraphQLField(GraphQLString, resolve=lambda node, _info: str(node.get("type") or (node.get("labels") or [""])[0] or "")),
         "labels": GraphQLField(GraphQLList(GraphQLNonNull(GraphQLString)), resolve=lambda node, _info: [str(value) for value in (node.get("labels") or [])]),
         "properties": GraphQLField(JSON, resolve=lambda node, _info: node.get("properties") or {}),
@@ -116,7 +132,9 @@ def execute(query: str, variables: dict[str, Any] | None = None, operation_name:
     if result.errors:
         errors = []
         for error in result.errors:
-            if error.original_error and not isinstance(error.original_error, GraphQLError):
+            if isinstance(error.original_error, ValueError):
+                errors.append({"message": "Graph query input is invalid or ambiguous; select a scoped graph node", "extensions": {"code": "BAD_USER_INPUT"}})
+            elif error.original_error and not isinstance(error.original_error, GraphQLError):
                 request_id = uuid4().hex
                 logging.getLogger(__name__).error("GraphQL resolver failed [%s]", request_id,
                     exc_info=(type(error.original_error), error.original_error, error.original_error.__traceback__))

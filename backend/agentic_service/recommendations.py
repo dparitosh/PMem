@@ -21,6 +21,8 @@ class RecommendationStore:
                 for item in value:
                     check(item)
         check(recommendation.get('command', {}).get('inputs', {}))
+        from .prompt_security import protect
+        recommendation = protect(recommendation)
         identifier = 'recommendation-' + uuid4().hex
         record = {**copy.deepcopy(recommendation), 'recommendation_id': identifier,
                   'created_at': datetime.now(timezone.utc).isoformat(), 'owner': owner}
@@ -33,7 +35,8 @@ class RecommendationStore:
             raise KeyError(identifier)
         if record.get('owner') != owner:
             raise PermissionError('Recommendation belongs to another identity')
-        return copy.deepcopy({key: value for key, value in record.items() if key != 'owner'})
+        from .prompt_security import protect
+        return protect(copy.deepcopy({key: value for key, value in record.items() if key != 'owner'}))
 
 
 recommendations = RecommendationStore()

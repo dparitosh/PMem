@@ -21,7 +21,8 @@ from .packaging import build_package, publication_digest, verify_package
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/data-products", tags=["data-products"])
-root = Path(os.getenv("DATA_PRODUCT_STORAGE", Path(__file__).resolve().parents[2] / "data" / "products"))
+from .storage import product_storage_root
+root = product_storage_root()
 store = PostgresRegistry("data_products")
 approval_store = PostgresRegistry("data_product_approvals")
 artifact_store = ArtifactStore()

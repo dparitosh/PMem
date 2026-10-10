@@ -88,19 +88,27 @@ def _kind(row: dict[str, Any]) -> str:
 
 
 @router.get("/api/v1/requirements", summary="List normalized requirement resources from the context graph")
-def list_requirements(source: str = Query(default="all"), limit: int = Query(default=1000, ge=1, le=5000)) -> dict:
+def list_requirements(source: str = Query(default="all"), limit: int = Query(default=1000, ge=1, le=5000), offset: int = Query(default=0, ge=0)) -> dict:
+    selected_source = source.strip().lower()
+    source_expression = "coalesce(n.source, n.source_format, n.source_ontology, CASE WHEN n.iri CONTAINS '/entity/reqif%3A' THEN 'ReqIF' ELSE 'Graph' END)"
     rows = publisher._session_rows(
-        "MATCH (n) WHERE n:Requirement OR any(label IN labels(n) WHERE toLower(label) CONTAINS 'requirement') "
+        "MATCH (n) WHERE (n:Requirement OR any(label IN labels(n) WHERE toLower(label) CONTAINS 'requirement') "
+        "OR EXISTS { MATCH (n)-[type_edge]->(t) WHERE type_edge.predicate = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type' "
+        "AND t.iri = 'https://depo.example.org/ceim/0.1/Requirement' }) "
+        f"AND ($source = 'all' OR toLower({source_expression}) = $source "
+        f"OR ($source = 'mbse' AND toLower({source_expression}) IN ['sysml-v1', 'sysml-v2'])) "
+        "WITH n ORDER BY coalesce(n.name, n.title, n.label, n.uri), elementId(n) SKIP $offset LIMIT $limit "
+        "OPTIONAL MATCH (n)-[r]-() "
         "RETURN elementId(n) AS requirement_id, coalesce(n.name, n.title, n.label, n.uri) AS title, "
         "coalesce(n.text, n.description, n.comment, '') AS text, labels(n) AS labels, "
-        "coalesce(n.source, n.source_ontology, 'Graph') AS source ORDER BY title LIMIT $limit",
-        limit=limit,
+        f"{source_expression} AS source, count(DISTINCT r) AS relationship_count "
+        "ORDER BY title, requirement_id",
+        limit=limit + 1,
+        offset=offset,
+        source=selected_source,
     )
-    if source.strip().lower() != "all":
-        rows = [row for row in rows if str(row.get("source", "")).lower() == source.strip().lower()]
-    for row in rows:
-        row["relationship_count"] = 0
-    return {"requirements": rows, "count": len(rows), "source": source}
+    return {"requirements": rows[:limit], "count": len(rows[:limit]), "source": source,
+            "offset": offset, "limit": limit, "has_more": len(rows) > limit}
 
 
 @router.get("/recommendations/health", summary="Check graph-backed recommendation readiness")

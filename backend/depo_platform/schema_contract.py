@@ -3,6 +3,9 @@ import re
 from backend.postgres_migrations import MIGRATIONS_DIR
 
 CONSTRAINTS = {
+ 'depo_api_credentials_actor_nonempty': ('depo_api_credentials', 'CHECK(length(actor)>0)'),
+ 'depo_api_credentials_digest_lengths': ('depo_api_credentials', 'CHECK(length(salt)=64 AND length(digest)=64)'),
+ 'depo_api_credential_events_action_valid': ('depo_api_credential_events', "CHECK(action=ANY(ARRAY['bootstrap','rotate','revoke']))"),
  'depo_api_credentials_pkey': ('depo_api_credentials','PRIMARY KEY(profile)'),
  'depo_api_credential_events_pkey': ('depo_api_credential_events','PRIMARY KEY(event_id)'),
  'depo_schema_migrations_pkey': ('depo_schema_migrations','PRIMARY KEY(version)'),
@@ -43,7 +46,9 @@ def normalize(sql, schema):
 def verify_structure(cursor, schema, columns):
     cursor.execute("SELECT table_name,column_name,is_nullable,column_default FROM information_schema.columns WHERE table_schema=%s", (schema,))
     attributes = {(table,column):(nullable,default) for table,column,nullable,default in cursor.fetchall()}
-    defaults = {('depo_schema_migrations','applied_at'):'now()', ('depo_registry','updated_at'):'now()',
+    defaults = {('depo_api_credentials','revoked'):'false', ('depo_api_credentials','updated_at'):'now()',
+                ('depo_api_credential_events','created_at'):'now()',
+                ('depo_schema_migrations','applied_at'):'now()', ('depo_registry','updated_at'):'now()',
                 ('depo_metadata_assets','updated_at'):'now()', ('depo_metadata_events','created_at'):'now()',
                 ('depo_metadata_outbox','created_at'):'now()', ('depo_metadata_outbox','status'):"'pending'::text"}
     for table, names in columns.items():
@@ -58,6 +63,10 @@ def verify_structure(cursor, schema, columns):
                 raise RuntimeError(f'Required column must be NOT NULL: {table}.{column}')
             if (table,column) in defaults and normalize(str(default),schema) != normalize(defaults[(table,column)],schema):
                 raise RuntimeError(f'Invalid column default: {table}.{column}')
+    cursor.execute("SELECT a.attidentity,pg_get_serial_sequence(format('%I.%I',n.nspname,c.relname),'event_id') FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=%s AND c.relname='depo_api_credential_events' AND a.attname='event_id'", (schema,))
+    identity = cursor.fetchone()
+    if not identity or identity[0] != 'a' or not identity[1]:
+        raise RuntimeError('Credential events must use an owned GENERATED ALWAYS identity sequence')
     cursor.execute("SELECT pg_get_serial_sequence(%s, 'message_id')", (f'"{schema}".depo_chat_messages',))
     row = cursor.fetchone()
     default = attributes.get(('depo_chat_messages','message_id'), (None,None))[1]

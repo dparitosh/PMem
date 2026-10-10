@@ -5,10 +5,11 @@ import os
 import json
 from datetime import datetime, timezone
 import re
+import threading
 from typing import Any
 
 from neo4j import GraphDatabase, Query
-from rdflib import Graph, Literal
+from rdflib import Graph, Literal, URIRef
 from rdflib.compare import to_canonical_graph
 from rdflib.namespace import OWL, RDF, RDFS
 from semantica.kg import GraphAnalyzer
@@ -22,6 +23,8 @@ class Neo4jPublisher:
         self.password = os.getenv("NEO4J_PASS") or os.getenv("NEO4J_PASSWORD", "")
         self.auth_mode = os.getenv("NEO4J_AUTH_MODE", "token").strip().lower()
         self.database = os.getenv("NEO4J_DATABASE", "ontology")
+        self._read_driver = None
+        self._driver_lock = threading.Lock()
 
     def _driver(self):
         if self.auth_mode not in {"token", "none"}:
@@ -68,6 +71,9 @@ class Neo4jPublisher:
                 })
         resources = [
             {"iri": iri, "label": labels.get(iri, iri.rsplit("/", 1)[-1].rsplit("#", 1)[-1]),
+             "requirement": (URIRef(iri), RDF.type, URIRef('https://depo.example.org/ceim/0.1/Requirement')) in rdf_graph,
+             "source": next((str(value) for value in rdf_graph.objects(URIRef(iri), URIRef('https://depo.example.org/ceim/0.1/sourceStandard'))), None),
+             "description": next((str(value) for value in rdf_graph.objects(URIRef(iri), RDFS.comment)), None),
              "kind": "class" if iri in class_iris else "property" if iri in property_iris else "resource",
              "rdf_properties": json.dumps(literal_properties.get(iri, {}), sort_keys=True)}
             for iri in resource_iris
@@ -103,7 +109,9 @@ class Neo4jPublisher:
         UNWIND $rows AS row
         MERGE (node:OntologyResource {ontology_id: $ontology_id, iri: row.iri})
         SET node.prefix = $prefix, node.label = row.label, node.kind = row.kind,
-            node.rdf_properties = row.rdf_properties, node.updated_at = $updated_at
+            node.rdf_properties = row.rdf_properties, node.updated_at = $updated_at,
+            node.source = row.source, node.description = row.description
+        FOREACH (_ IN CASE WHEN row.requirement THEN [1] ELSE [] END | SET node:Requirement)
         """
         relation_queries = {
             "SUBCLASS_OF": "MERGE (source)-[edge:SUBCLASS_OF {ontology_id: $ontology_id}]->(target) SET edge.predicate = row.predicate",
@@ -180,14 +188,23 @@ class Neo4jPublisher:
         )
         return dict(rows[0]["receipt"]) if rows else None
 
+    def close(self):
+        with self._driver_lock:
+            if self._read_driver is not None:
+                self._read_driver.close()
+                self._read_driver = None
+
     def _session_rows(self, query: str, **parameters: Any) -> list[dict[str, Any]]:
         if self.auth_mode != "none" and not self.password:
             raise RuntimeError("NEO4J_PASS is not configured")
-        with self._driver() as driver:
-            with driver.session(database=self.database) as session:
-                from backend.depo_platform.network import bounded_timeout_seconds
-                timeout = bounded_timeout_seconds("GRAPH_QUERY_TIMEOUT_SECONDS", default=30, maximum=300)
-                return session.run(Query(query, timeout=timeout), parameters).data()
+        with self._driver_lock:
+            if self._read_driver is None:
+                self._read_driver = self._driver()
+            driver = self._read_driver
+        with driver.session(database=self.database) as session:
+            from backend.depo_platform.network import bounded_timeout_seconds
+            timeout = bounded_timeout_seconds("GRAPH_QUERY_TIMEOUT_SECONDS", default=30, maximum=300)
+            return session.run(Query(query, timeout=timeout), parameters).data()
 
     def mapping_terms(self, scope: str) -> dict[str, Any]:
         if not isinstance(scope, str) or not scope.strip() or len(scope) > 256:
@@ -211,7 +228,7 @@ class Neo4jPublisher:
         )
         edges = self._session_rows(
             cypher.ONTOLOGY_PROJECTION_EDGES,
-            ontology_id=ontology_id, limit=safe_limit * 4,
+            ontology_id=ontology_id, ids=[node["id"] for node in nodes], limit=safe_limit * 4,
         )
         return {"nodes": nodes, "edges": edges, "ontology_id": ontology_id, "truncated": len(nodes) >= safe_limit}
 
@@ -225,10 +242,10 @@ class Neo4jPublisher:
         """
         explorer_nodes = [
             {
-                "elementId": str(node["id"]),
+                "elementId": str(node.get("graph_id") or node["id"]),
                 "labels": [str(node.get("type") or "resource")],
                 "properties": {
-                    "iri": str(node["id"]),
+                    "iri": str(node.get("iri") or node["id"]),
                     "label": str(node.get("label") or node["id"]),
                     "kind": str(node.get("type") or "resource"),
                     **({"ontology_id": node["ontology_id"]} if node.get("ontology_id") else {}),
@@ -238,15 +255,16 @@ class Neo4jPublisher:
             }
             for node in nodes
         ]
+        selected_ids = {node["elementId"] for node in explorer_nodes}
         explorer_edges = [
             {
-                "elementId": f"{edge['source']}::{edge.get('type') or 'RELATED_TO'}::{edge['target']}",
-                "start": str(edge["source"]),
-                "end": str(edge["target"]),
+                "elementId": str(edge.get("edge_id") or f"{edge.get('graph_source') or edge['source']}::{edge.get('predicate') or edge.get('type') or 'RELATED_TO'}::{edge.get('graph_target') or edge['target']}"),
+                "start": str(edge.get("graph_source") or edge["source"]),
+                "end": str(edge.get("graph_target") or edge["target"]),
                 "type": str(edge.get("type") or "RELATED_TO"),
-                "properties": {"raw_type": str(edge.get("type") or "RELATED_TO")},
+                "properties": {"raw_type": str(edge.get("type") or "RELATED_TO"), **({"predicate": edge["predicate"]} if edge.get("predicate") else {})},
             }
-            for edge in edges
+            for edge in edges if str(edge.get("graph_source") or edge["source"]) in selected_ids and str(edge.get("graph_target") or edge["target"]) in selected_ids
         ]
         return {
             "nodes": explorer_nodes,
@@ -315,7 +333,7 @@ class Neo4jPublisher:
     def overview(self, *, limit: int = 900) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 10_000))
         nodes = self._session_rows(
-            "MATCH (n:OntologyResource) RETURN n.iri AS id, n.label AS label, n.kind AS type, n.ontology_id AS ontology_id "
+            "MATCH (n:OntologyResource) RETURN elementId(n) AS id, n.iri AS iri, n.label AS label, n.kind AS type, n.ontology_id AS ontology_id "
             "ORDER BY n.ontology_id, n.label LIMIT $limit",
             limit=safe_limit,
         )
@@ -326,12 +344,7 @@ class Neo4jPublisher:
         # already-ingested ontology.
         if not nodes:
             return self._legacy_overview(limit=safe_limit)
-        edges = self._session_rows(
-            "MATCH (a:OntologyResource)-[r]->(b:OntologyResource) "
-            "WHERE a.ontology_id = b.ontology_id "
-            "RETURN a.iri AS source, b.iri AS target, type(r) AS type LIMIT $limit",
-            limit=safe_limit * 4,
-        )
+        edges = self._read_edges([node["id"] for node in nodes], limit=safe_limit * 4)
         return self._explorer_payload(
             nodes=nodes,
             edges=edges,
@@ -387,36 +400,51 @@ class Neo4jPublisher:
             view={"type": "ontology", "ontology_id": ontology_id, "limit": min(max(int(limit), 1), 10_000), "truncated": projection["truncated"]},
         )
 
+    def _bounded_walk(self, root_id: str, depth: int, limit: int, *, existing: bool = False):
+        """Expand one hop at a time; never enumerate every multi-hop path."""
+        condition = cypher.LEGACY_NODE_FILTER.replace('n:', 'neighbor:') if existing else 'neighbor:OntologyResource'
+        scope = "coalesce(neighbor.ontology_id,neighbor.source_ontology,neighbor.prefix) = coalesce(root.ontology_id,root.source_ontology,root.prefix)" if existing else 'neighbor.ontology_id = root.ontology_id'
+        roots = self._session_rows("MATCH (n) WHERE elementId(n)=$id AND " + condition.replace("neighbor:", "n:") + " RETURN elementId(n) AS id, coalesce(n.iri,n.uri) AS iri, coalesce(n.label,n.name,n.iri,n.uri) AS label, coalesce(n.kind,head(labels(n))) AS type, n.ontology_id AS ontology_id", id=root_id)
+        if not roots:
+            return []
+        selected = {root_id: roots[0]}
+        frontier = [root_id]
+        for _ in range(depth):
+            remaining = limit - len(selected)
+            if not frontier or remaining <= 0:
+                break
+            rows = self._session_rows(
+                "MATCH (root), (n) WHERE elementId(root)=$root AND elementId(n) IN $frontier "
+                "MATCH (n)--(neighbor) WHERE " + condition + " AND " + scope + " AND NOT elementId(neighbor) IN $seen "
+                "RETURN DISTINCT elementId(neighbor) AS id, coalesce(neighbor.iri,neighbor.uri) AS iri, coalesce(neighbor.label,neighbor.name,neighbor.iri,neighbor.uri) AS label, coalesce(neighbor.kind,head(labels(neighbor))) AS type, neighbor.ontology_id AS ontology_id LIMIT $limit",
+                root=root_id, frontier=frontier, seen=list(selected), limit=remaining)
+            frontier = []
+            for row in rows:
+                if row['id'] not in selected and len(selected) < limit:
+                    selected[row['id']] = row
+                    frontier.append(row['id'])
+        return list(selected.values())
+
     def traversal(self, *, iri: str, depth: int = 1, limit: int = 200) -> dict[str, Any]:
         hops, safe_limit = max(1, min(int(depth), 5)), max(1, min(int(limit), 1_000))
-        nodes = self._session_rows(
-            cypher.ONTOLOGY_TRAVERSAL_NODES.replace('*0..5', f'*0..{hops}'),
-            iri=iri, hops=hops, limit=safe_limit,
-        )
-        if not nodes:
+        roots = self._session_rows("MATCH (n:OntologyResource) WHERE elementId(n) = $identity OR n.iri = $identity RETURN elementId(n) AS id LIMIT 2", identity=iri)
+        if len(roots) > 1:
+            raise ValueError('Resource IRI is shared by multiple ontologies; select a scoped graph node ID')
+        if not roots:
             return self._legacy_traversal(node_id=iri, depth=hops, limit=safe_limit)
-        ids = [node["id"] for node in nodes]
-        edges = self._read_edges(ids, limit=safe_limit * 4)
-        return self._explorer_payload(
-            nodes=nodes,
-            edges=edges,
-            view={"type": "traversal", "root_node_id": iri, "depth": hops, "limit": safe_limit},
-        )
+        root_id = roots[0]['id']
+        nodes = self._bounded_walk(root_id, hops, safe_limit)
+        edges = self._read_edges([node['id'] for node in nodes], limit=safe_limit * 4)
+        return self._explorer_payload(nodes=nodes, edges=edges,
+            view={"type": "traversal", "root_node_id": root_id, "depth": hops, "limit": safe_limit,
+                  "truncated": len(nodes) >= safe_limit})
 
     def _legacy_traversal(self, *, node_id: str, depth: int, limit: int) -> dict[str, Any]:
-        depth = max(1, min(int(depth), 5))
-        limit = max(1, min(int(limit), 1_000))
-        nodes = self._session_rows(
-            cypher.LEGACY_TRAVERSAL_NODES.replace('*0..5', f'*0..{depth}'),
-            node_id=node_id, depth=depth, limit=limit,
-        )
-        ids = [node["id"] for node in nodes]
-        edges = self._read_edges(ids, limit=limit * 4, existing=True)
-        return self._explorer_payload(
-            nodes=nodes,
-            edges=edges,
-            view={"type": "traversal", "source": "existing_ontology", "root_node_id": node_id, "depth": depth, "limit": limit},
-        )
+        nodes = self._bounded_walk(node_id, depth, limit, existing=True)
+        edges = self._read_edges([node['id'] for node in nodes], limit=limit * 4, existing=True)
+        return self._explorer_payload(nodes=nodes, edges=edges,
+            view={"type": "traversal", "source": "existing_ontology", "root_node_id": node_id,
+                  "depth": depth, "limit": limit, "truncated": len(nodes) >= limit})
 
     def analytics(self, *, ontology_id: str, limit: int = 3000) -> dict[str, Any]:
         projection = self.projection(ontology_id=ontology_id, limit=limit)
@@ -430,7 +458,7 @@ class Neo4jPublisher:
         hops, safe_limit = max(1, min(int(max_hops), 5)), max(1, min(int(limit), 1000))
         rows = self._session_rows(
             "MATCH (root:OntologyResource {ontology_id: $ontology_id, iri: $iri}) "
-            "MATCH path=(root)-[*1..5]-(neighbor:OntologyResource {ontology_id: $ontology_id}) "
+            f"MATCH path=(root)-[*1..{hops}]-(neighbor:OntologyResource {{ontology_id: $ontology_id}}) "
             "WHERE length(path) <= $hops "
             "RETURN neighbor.iri AS iri, neighbor.label AS label, neighbor.kind AS kind, min(length(path)) AS distance "
             "ORDER BY distance, label LIMIT $limit",

@@ -41,3 +41,7 @@ app.include_router(federation_router)
 
 from .bridge_router import router as bridge_router
 app.include_router(bridge_router, prefix="/api/v1")
+
+# Release the shared read pool when the service shuts down.
+from .neo4j_publisher import publisher
+app.add_event_handler("shutdown", publisher.close)

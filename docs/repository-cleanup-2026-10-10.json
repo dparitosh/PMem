@@ -1,0 +1,377 @@
+{
+  "date": "2026-10-10",
+  "scope": "Reviewed duplicate files, unreachable SVG component, superseded patch packages and generated review evidence",
+  "files": [
+    {
+      "path": "backend/tests/test_llm_readiness_configuration - Copy.py",
+      "sha256": "3f56fa4cd9663333441361791d2659acb630add86f2a27f71b4214aa29795bab",
+      "bytes": 2441
+    },
+    {
+      "path": "infra/windows/start-depo-services - Copy.ps1",
+      "sha256": "9b3e37c7bfcca10ecd994c839994c0a493886a4cbc1b6f3d11504cccbaadcd4b",
+      "bytes": 17315
+    },
+    {
+      "path": "frontend/src/Components/DiagramCanvas/DiagramCanvas.js",
+      "sha256": "22b97b2dcd227f2f31f4f1c1f8aadfac98eba8408bfb6aea869ac57e4fd6d8c0",
+      "bytes": 932
+    },
+    {
+      "path": "frontend/src/Components/DiagramCanvas/index.js",
+      "sha256": "e233f1c1e92ca1378404afa991a3c3f5918053a7aba64d84ea4a4fe9809f69bf",
+      "bytes": 115
+    },
+    {
+      "path": "excluded-review/-files --others --exclude-standard",
+      "sha256": "01d42d70779cdceca00640305084ec99f6263f4d913120a1a951493989083fe8",
+      "bytes": 3857
+    },
+    {
+      "path": "excluded-review/move-manifest.json",
+      "sha256": "d7d2152cfb45fc830a67d99f2647f368d942353ab4eb4addb3d646e140fab44b",
+      "bytes": 883
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/analytics-21.png",
+      "sha256": "cf7e07c649ccc73727d0dfdebc0c50ebe94290ffef899fc1eb3a1e06d2d9ff6e",
+      "bytes": 93834
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/analytics-30.png",
+      "sha256": "4242c99854eb09abfb7f4d444f00b15a8388c9724454f4c431fcecd2ce7f574f",
+      "bytes": 106519
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/analytics-31.png",
+      "sha256": "a4a94d3d2f8d5dcb1646a23ecb5d1301514f192a74a673e74424b14c12ab4b8d",
+      "bytes": 110933
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/analytics-candidate.pptx",
+      "sha256": "689f194fc4e6a80f166ac347164dbb6c2877886961d4948368c57e97279bdbb0",
+      "bytes": 125695
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/analytics-candidate.pptx.inspect.ndjson",
+      "sha256": "aaace5ec99de151a6097ac4ba4f6a19a256c3b860b79bec7cb658a5e6dfd059f",
+      "bytes": 112837
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/analytics.mjs",
+      "sha256": "0989d9a3dc6ee9ae67332c22c27cd45f6a057721b39b8a7639e38c3a5bea5353",
+      "bytes": 4981
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/candidate.pptx",
+      "sha256": "b56f5761d503b362689650ec160fb4ca5667b4ce82831f2dc8b3bb201515022a",
+      "bytes": 105434
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/candidate.pptx.inspect.ndjson",
+      "sha256": "b5f01088da0bcf668adff11b79b45bff2da828475f5f008b1edd6f85a3e568d6",
+      "bytes": 90194
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/finalize-analytics.mjs",
+      "sha256": "6c829c1bf2fb0ece3e4d2574cdfb3524a23c76245793fda4f83896a066abef44",
+      "bytes": 1390
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/finalize-interactions.mjs",
+      "sha256": "5730c186250e5cf13ef47c9a43ac2b8d29a706ce96532129917257b2d4030252",
+      "bytes": 1393
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/finalize.log",
+      "sha256": "7d03133efa6bfdf253ff226949352c525f11b394aaab44824f08627a886daf1d",
+      "bytes": 3246
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/finalize.mjs",
+      "sha256": "960807235f2b06ae53f4f98ad1befee8a5e3cba79552fa351ce8701d89d6aab4",
+      "bytes": 1350
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/inspect.log",
+      "sha256": "55a0f1b96635bfc81f3be99baa4a47b8f09dbbd7a8049a2952b73630069cd653",
+      "bytes": 9060
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/inspect.mjs",
+      "sha256": "49876d9ba9c48813fe0b411b9ce848ecf482c82c3fda89d8cfb063b8c7b47e37",
+      "bytes": 663
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/interaction-27.png",
+      "sha256": "1978253dcc075b0f20afbc2d806b990f0091d23d805ac1e3ce6035ca1583927c",
+      "bytes": 85284
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/interaction-28.png",
+      "sha256": "8437e01150e4c281ce5fdb5d93061420239ca309c1bc76f3b7b44a24cfdab5a1",
+      "bytes": 86977
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/interaction-29.png",
+      "sha256": "aaa4e2b8192c7582c6a0ee8328df5b1ec6c91b44334a1a014f487b3604fd054c",
+      "bytes": 114250
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/interactions-candidate.pptx",
+      "sha256": "9919c44879c0fc5f3874222d2aa4edc68592fbedc0c697cdfcb6faa71bcf5500",
+      "bytes": 118466
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/interactions-candidate.pptx.inspect.ndjson",
+      "sha256": "078633b5013bead74a51bceb6fc8f7d9d6c6216dd088950d94657131c12298f8",
+      "bytes": 105008
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/interactions.mjs",
+      "sha256": "a07c6c463824954a760ad9117ff31ef6acb6e80ba9205a51fa1ee6bae454dcc5",
+      "bytes": 6133
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/probe.mjs",
+      "sha256": "c6feacf3252267eaac5c2e887619e82873d1dc49c6e1f9813b5f996b235645a3",
+      "bytes": 715
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/slide-1.png",
+      "sha256": "66ac65ad2e6ce1fb88036eb8285c3cd75c524952c556f30dff5df131f5bc9a57",
+      "bytes": 42392
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/slide-14.png",
+      "sha256": "7132c5f686b83050d8f4fd211ed8989469c263efec7226f6da8149c82dcce67d",
+      "bytes": 88658
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/slide-16.png",
+      "sha256": "44c709ea93496b453a11f04152a0db6262c9645728233f3fa08d918536844d74",
+      "bytes": 104803
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/slide-17.png",
+      "sha256": "5a9a1a79fe9eb32ab6e52922eeadcc5784b941de919dbfbc587094296e0a7cf7",
+      "bytes": 83178
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/slide-20.png",
+      "sha256": "e2def3ce4d77d9a630fabe6cbec4c6268e088b4c1ca9e82b2b90005378ac2464",
+      "bytes": 102029
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/slide-21.png",
+      "sha256": "6d07c23765faf88fe5273e108bdd0bff9bfbca5e5e9442e682d0b0a1d3c0fe80",
+      "bytes": 92157
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/slide-22.png",
+      "sha256": "44523ba8afbcb84fb49e3da1ced6f00b133b217716b2ff8753ebab6b2cc01375",
+      "bytes": 76167
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/slide-23.png",
+      "sha256": "313f01e034b04bc671d6be8a5ecbf1cd432d0978e7c3605b18c76d3303360e4c",
+      "bytes": 76947
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/slide-24.png",
+      "sha256": "68f39a2d0bf3d67c62f7f42cf7da6bcadffaee6856b18c1672052c898acddda0",
+      "bytes": 78143
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/slide-25.png",
+      "sha256": "4294c15f1160d24ed8ad37c1d9575e53f89121945a0d96b526283ce49e89cecd",
+      "bytes": 92858
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/slide-26.png",
+      "sha256": "69d5a287498ca732888f1a65f98a843d375db57ed0bbcb20a4a9656237d65eca",
+      "bytes": 101130
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/source-montage.webp",
+      "sha256": "4c114d16604c6d7605dec0920c231af70e560662d7928cb4d2df067785cfe22c",
+      "bytes": 16236
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/source14.png",
+      "sha256": "ee2e8e4676dd962ffbb8005aabaca976941d72225b19daaa2cc08acfc93b3700",
+      "bytes": 82267
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/update.log",
+      "sha256": "5c698229ba3cb5218eccd296ae1e573c20d9617c40274d095012abe101143acf",
+      "bytes": 137
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/update.mjs",
+      "sha256": "3c66ba128adbfaab5f60411d86aba89bfe7dd85e53714766626874b33918d4e0",
+      "bytes": 11501
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/updated-montage.webp",
+      "sha256": "ecf4073b643051ff6b5168e7614b2f807beaf2d7ca62ee03b3bfe1a0c8cab14f",
+      "bytes": 24094
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/validation-analytics-release.json",
+      "sha256": "829a2ab98a22cae4af9ea77c97c0e7f6db6b8068102a38fdf63c442c0f457e42",
+      "bytes": 5419
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/validation-final.json",
+      "sha256": "d7809902493cba12ee6ebbef446834256cf2867bcdcde8d776d332949aa226b3",
+      "bytes": 5065
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/validation-interactions-final.json",
+      "sha256": "cc7b5afd3f6ee6f0782dbb2ee43c1b794706edf98208ac3b3b8c05a33e3ef009",
+      "bytes": 5419
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/validation-interactions.json",
+      "sha256": "ae2ec1def38787bf266bf1fba8e8959db942ca26340ecaa28e6ae3f1b6569d42",
+      "bytes": 5419
+    },
+    {
+      "path": "excluded-review/.pptx-review-build/validation.json",
+      "sha256": "f55176ff91c40de499a262a0ccc97a43dccf3e01a4b472deb6a8c43d2335c892",
+      "bytes": 5416
+    },
+    {
+      "path": "excluded-review/deliverables/depo-gateway-update.zip",
+      "sha256": "8c03aaa09637d9e1fefddaacb5bb7a1042db9f0c54a655b900af3dfb861bd334",
+      "bytes": 206599
+    },
+    {
+      "path": "excluded-review/deliverables/depo-missing-release-files.zip",
+      "sha256": "73268fe1cb1912811701ae5f5f2a8e82f3e642af5813e7f7c5539c8fd78555e4",
+      "bytes": 2153
+    },
+    {
+      "path": "excluded-review/deliverables/depo-services-audit-fix.zip",
+      "sha256": "87c124154c1ffac19933c4cc0422c5d510a6c2191356eb3a1fe9ba156958d245",
+      "bytes": 1902203
+    },
+    {
+      "path": "excluded-review/deliverables/depo-session-access-fix.zip",
+      "sha256": "4231dd69fcd8c688c011af3ca17984d69bad97f9a3a064a135b2ab40d33e9323",
+      "bytes": 1075963
+    },
+    {
+      "path": "deliverables/depo-services-fix-deployment.txt",
+      "sha256": "9d7ae78bc66ac54afc845757241d50533a470747c981fc1bdda4ff34c15f751c",
+      "bytes": 4478
+    },
+    {
+      "path": "deliverables/orchestration-completion.txt",
+      "sha256": "d37f5b992f35bffeb730789082ae7e19960bac4a0854095556dcc2919763284b",
+      "bytes": 5570
+    },
+    {
+      "path": "deliverables/all-pages-navigation-results.json",
+      "sha256": "5db54b049eb2cb6ced92fde8c7bbf0fd5d7d5dcc33db78240ec7439cc89c0964",
+      "bytes": 1703
+    },
+    {
+      "path": "deliverables/dark-pages-navigation-results.json",
+      "sha256": "5db54b049eb2cb6ced92fde8c7bbf0fd5d7d5dcc33db78240ec7439cc89c0964",
+      "bytes": 1703
+    },
+    {
+      "path": "deliverables/service-layout-review/admin-1440.png",
+      "sha256": "5e3d7c758ba9a4517232b5b71a6a39e5ad5d1bdd253ef704a8dd96ebfea95477",
+      "bytes": 84055
+    },
+    {
+      "path": "deliverables/service-layout-review/admin-390.png",
+      "sha256": "7833465cd52656ecc225623678a8dcae1c90df5821e994743c66a4b4be6a77ba",
+      "bytes": 35253
+    },
+    {
+      "path": "deliverables/service-layout-review/integrations-1440.png",
+      "sha256": "8de4c658ab471b413a6119d58ab39d430251dcba9331d491a43716102922c432",
+      "bytes": 12817
+    },
+    {
+      "path": "deliverables/service-layout-review/integrations-390.png",
+      "sha256": "e5f52847fd2421067733c2ecaccf18feea2d9f80a2599abcfc5624ce4e2da296",
+      "bytes": 16525
+    },
+    {
+      "path": "deliverables/frontend-inference-build.log",
+      "sha256": "d0f5a06885c6a97e9df297c0bab110d9b467ce439807f3edbbdc5aca707f7d93",
+      "bytes": 4254
+    },
+    {
+      "path": "deliverables/frontend-page-cleanup-build.log",
+      "sha256": "1456038acd80af57f93f83df38537a8ffca702d7f8c23539f5b20ca6b7ae5db6",
+      "bytes": 4176
+    },
+    {
+      "path": "deliverables/frontend-page-cleanup-tests.log",
+      "sha256": "5c985a8aec76f485eace4496f2797bd170ad8abdcf5f075845cccdc6eb0327be",
+      "bytes": 11206
+    },
+    {
+      "path": "deliverables/frontend-stabilization-build.log",
+      "sha256": "e9f8e0d593450524fe0f684355484ef6455a175870ce6b75457e2037967c2123",
+      "bytes": 4176
+    },
+    {
+      "path": "deliverables/frontend-stabilization-tests.log",
+      "sha256": "03f465bf69f337a7056ae2f5407544b243e3dc59e1fa989998aa248e2f001c5a",
+      "bytes": 10834
+    },
+    {
+      "path": "deliverables/frontend-tabs-build.log",
+      "sha256": "33679e414f4655692973d481cfca038c87526568efefaa36ad663738f72c1adf",
+      "bytes": 4254
+    },
+    {
+      "path": "deliverables/frontend-taxonomy-build.log",
+      "sha256": "4479eed46149f0fe8018b949cac8bb38e7658402bd177fe64fdbc79459c1d6f8",
+      "bytes": 4254
+    },
+    {
+      "path": "backend/tools/test_db_config_import.py",
+      "sha256": "01cc5b00bbbd3da0d1d3580414f7197a88da86bbfef1a50ec7df63c4721d88e0",
+      "bytes": 202,
+      "reason": "Unreferenced one-off Neo4j probe superseded by infra/windows/test-depo-neo4j.ps1"
+    },
+    {
+      "path": "backend/tools/test_driver_connect.py",
+      "sha256": "a544057bd6dfe71a5b29742eb55484809f0cc121567e3dd3f004d750c7e8843a",
+      "bytes": 429,
+      "reason": "Unreferenced one-off Neo4j probe superseded by infra/windows/test-depo-neo4j.ps1"
+    },
+    {
+      "path": "deliverables/DEPO_Functional_Architecture_and_Deployment_2026-10-06.pptx",
+      "sha256": "9f26df9f06fcd1300c73d8ac0eef6790bb0e6a6af0da057aaff49a219abccaf0",
+      "bytes": 105480,
+      "reason": "Draft presentation superseded by the 31-slide analytics release; differences reviewed"
+    },
+    {
+      "path": "deliverables/DEPO_Functional_Architecture_and_Deployment_2026-10-06_final.pptx",
+      "sha256": "b56f5761d503b362689650ec160fb4ca5667b4ce82831f2dc8b3bb201515022a",
+      "bytes": 105434,
+      "reason": "Draft presentation superseded by the 31-slide analytics release; differences reviewed"
+    },
+    {
+      "path": "deliverables/DEPO_Functional_Architecture_and_Deployment_2026-10-06_interactions.pptx",
+      "sha256": "df1f1e65e64633982d73c0127a6a415f65dc338926b263a4435807d3af832545",
+      "bytes": 118539,
+      "reason": "Draft presentation superseded by the 31-slide analytics release; differences reviewed"
+    },
+    {
+      "path": "deliverables/DEPO_Functional_Architecture_and_Deployment_2026-10-06_interactions_final.pptx",
+      "sha256": "9919c44879c0fc5f3874222d2aa4edc68592fbedc0c697cdfcb6faa71bcf5500",
+      "bytes": 118466,
+      "reason": "Draft presentation superseded by the 31-slide analytics release; differences reviewed"
+    }
+  ]
+}

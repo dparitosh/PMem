@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from rdflib import Graph, Literal, Namespace, RDF, URIRef
+from rdflib import Graph, Literal, Namespace, RDF, RDFS, URIRef
 
 from backend.Services.shacl_service import ShaclValidationService
 from backend.ceim.normalization import normalize_record
@@ -170,6 +170,11 @@ class CEIMContract:
             entity_uris[entity_id] = uri
             graph.add((uri, RDF.type, ceim[entity_type]))
             source_standard = str(provenance.get("source_standard") or "").lower()
+            graph.add((uri, ceim.sourceStandard, Literal(source_standard)))
+            if entity.get('properties', {}).get('name'):
+                graph.add((uri, RDFS.label, Literal(entity['properties']['name'])))
+            if entity.get('properties', {}).get('description'):
+                graph.add((uri, RDFS.comment, Literal(entity['properties']['description'])))
             source_type = str(provenance.get("source_type") or "")
             boc_type = {
                 ("qif", "CharacteristicDefinition"): boc.Characteristic,

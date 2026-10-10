@@ -17,7 +17,7 @@ def invoke(tool, payload):
         raise ValueError('Unknown MBSE tool')
     method, path = TOOLS[tool]
     response = httpx.request(method, os.environ['MBSE_PLUGIN_URL'].rstrip('/') + path,
-        **({'json': payload} if method == 'POST' else {}), headers={'Authorization': 'Bearer ' + os.environ['MBSE_PLUGIN_TOKEN']}, timeout=130)
+        **({'json': payload} if method == 'POST' else {}), headers={'Authorization': 'Bearer ' + os.environ['MBSE_PLUGIN_TOKEN']}, timeout=130, follow_redirects=False, trust_env=False)
     response.raise_for_status()
     return response.json()
 

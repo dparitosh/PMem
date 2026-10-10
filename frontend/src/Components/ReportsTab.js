@@ -114,11 +114,11 @@ const buildPresetVisibility = (headers, presetId) => {
   return visible;
 };
 
-const escapeCsv = (value) => JSON.stringify(value == null ? '' : String(value));
+export const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
 const downloadCsv = (filename, headers, rows) => {
   const csv = [
-    headers.join(','),
+    headers.map(escapeCsv).join(','),
     ...rows.map((row) => headers.map((header) => escapeCsv(row[header])).join(',')),
   ].join('\n');
 
@@ -335,7 +335,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
   const [telemetryRevision, setTelemetryRevision] = useState(0);
   const [contentRevision, setContentRevision] = useState(0);
   useEffect(() => {
-    const refresh = () => { setContentRevision(value => value + 1); setTelemetryRevision(value => value + 1); };
+    const refresh = () => { setFallbackGraphData({ nodes: [], links: [] }); setXsdReport(null); setPipelineTelemetry(null); setContentRevision(value => value + 1); setTelemetryRevision(value => value + 1); };
     const timer = window.setInterval(() => { if (!document.hidden) setTelemetryRevision(value => value + 1); }, 15000);
     window.addEventListener('depo:credentials-changed', refresh);
     window.addEventListener('depo:credentials-cleared', refresh);
@@ -355,6 +355,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
       .then((response) => { if (!cancelled) { setPipelineTelemetry(response?.data || null); setPipelineTelemetryError(''); } })
       .catch((error) => {
         if (!cancelled && !controller.signal.aborted) {
+          setPipelineTelemetry(null);
           setPipelineTelemetryError(apiErrorMessage(error, 'Pipeline telemetry is unavailable.'));
         }
       });
@@ -383,10 +384,8 @@ const ReportsTab = ({ searchResults, graphData }) => {
   }, [activeReport, selectedXsdOntology, contentRevision]);
 
   const effectiveGraphData = useMemo(() => {
-    const hasPrimaryGraph = (graphData?.nodes || []).length > 0 || (graphData?.links || []).length > 0;
-    if (reportOntology) return fallbackGraphData;
-    return fallbackGraphData.nodes.length ? fallbackGraphData : (hasPrimaryGraph ? graphData : fallbackGraphData);
-  }, [fallbackGraphData, graphData, reportOntology]);
+    return fallbackGraphData;
+  }, [fallbackGraphData]);
 
   useEffect(() => {
     const hasPrimaryGraph = (graphData?.nodes || []).length > 0 || (graphData?.links || []).length > 0;
@@ -455,15 +454,11 @@ const ReportsTab = ({ searchResults, graphData }) => {
   }, [activeReport, ontologyRows, processedResults, reportOntology]);
 
   const relationshipScopeLabel = useMemo(() => {
-    const searchCount = Array.isArray(searchResults) ? searchResults.length : 0;
-    if (searchCount > 0) {
-      return `Relationship rows are derived from the current graph canvas while node rows are filtered to ${searchCount} selected search result(s).`;
-    }
     const graphNodeCount = (effectiveGraphData?.nodes || []).length;
     return graphNodeCount > 0
-      ? `Relationship rows are derived from the current graph canvas (${graphNodeCount} visible node(s)).`
-      : 'Relationship rows are derived from the current graph canvas.';
-  }, [effectiveGraphData, searchResults]);
+      ? `Node and relationship rows use the selected bounded report projection (${graphNodeCount} visible nodes); search results do not filter this report.`
+      : 'No graph projection is available for this report scope.';
+  }, [effectiveGraphData]);
 
   const filterableHeaders = useMemo(() => {
     const headers = getHeaders(nodeRows);

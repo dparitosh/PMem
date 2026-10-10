@@ -5,6 +5,9 @@ import os
 import hashlib
 import json
 import asyncio
+import logging
+import time
+from contextlib import contextmanager
 from starlette.concurrency import run_in_threadpool
 from backend.depo_platform.service_urls import service_url
 from typing import Any
@@ -13,6 +16,32 @@ import httpx
 
 from backend.depo_platform.network import service_bearer_headers
 from .schema_conversion import EngineeringSchemaConverter
+
+logger = logging.getLogger(__name__)
+
+
+class EngineeringDependencyFailure(RuntimeError):
+    def __init__(self, stage, failure_kind, upstream_status=None):
+        super().__init__('Engineering workflow dependency failed')
+        self.stage = stage
+        self.failure_kind = failure_kind
+        self.upstream_status = upstream_status
+
+
+@contextmanager
+def dependency_stage(stage, request_id=None):
+    started = time.perf_counter()
+    try:
+        yield
+    except (httpx.HTTPError, RuntimeError) as exc:
+        status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+        kind = 'upstream_timeout' if isinstance(exc, httpx.TimeoutException) else 'upstream_http_error' if status else 'dependency_unavailable'
+        logger.error('Engineering workflow failure stage=%s kind=%s upstream_status=%s elapsed_seconds=%.2f request_id=%s',
+                     stage, kind, status, time.perf_counter()-started, request_id or '')
+        raise EngineeringDependencyFailure(stage, kind, status) from exc
+    else:
+        logger.info('Engineering workflow stage=%s elapsed_seconds=%.2f request_id=%s',
+                    stage, time.perf_counter()-started, request_id or '')
 
 
 class EngineeringWorkflow:
@@ -43,19 +72,23 @@ class EngineeringWorkflow:
         description: str = "", register: bool = True, publish: bool = False,
         enforce_quality: bool = True, policy_exception_ids: list[str] | None = None,
         request_id: str | None = None,
+        schema_files: dict[str, bytes] | None = None,
     ) -> dict[str, Any]:
         from pathlib import Path
-        if Path(filename).suffix.lower() in {'.ttl', '.rdf', '.owl'}:
-            from .rdf_conversion import convert_rdf
-            conversion = await run_in_threadpool(convert_rdf, filename=filename, content=content)
-        else:
-            conversion = await run_in_threadpool(self.converter.convert, filename=filename, content=content)
+        with dependency_stage('conversion', request_id):
+            if Path(filename).suffix.lower() in {'.ttl', '.rdf', '.owl'}:
+                from .rdf_conversion import convert_rdf
+                conversion = await run_in_threadpool(convert_rdf, filename=filename, content=content)
+            else:
+                conversion = await run_in_threadpool(self.converter.convert, filename=filename, content=content,
+                    **({'schema_files': schema_files} if schema_files else {}))
         if publish and not register:
             raise ValueError("Graph publication requires ontology registration")
         if not register:
             return {"status": "converted", "conversion": conversion}
         ontology = conversion["ontology"]
-        headers = service_bearer_headers('ONTOLOGY_APPROVAL_TOKEN', service_name='the ontology workflow API', endpoint=self.ontology_url)
+        with dependency_stage('ontology_credentials', request_id):
+            headers = service_bearer_headers('ONTOLOGY_APPROVAL_TOKEN', service_name='the ontology workflow API', endpoint=self.ontology_url)
         if request_id:
             headers['X-Request-ID'] = request_id
         data = {
@@ -69,10 +102,11 @@ class EngineeringWorkflow:
             }),
             "source": "engineering-workflow:" + hashlib.sha256(
                 json.dumps([filename, ontology_name, prefix, description], ensure_ascii=False).encode("utf-8") + b"\0" + content
+                + (json.dumps([(path, hashlib.sha256(data).hexdigest()) for path, data in sorted(schema_files.items())]).encode('utf-8') if schema_files else b'')
             ).hexdigest(),
         }
         async with httpx.AsyncClient(timeout=self.timeout, headers=headers, trust_env=False) as client:
-            policy_response = await client.post(
+            policy_response = await self._request(client, 'policy_evaluation', request_id,
                 f"{self.ontology_url}/ontologies/policies/evaluate",
                 json={"decision": {"outcome": "approved", "confidence": 1.0,
                       "decision_maker": "engineering-ingestion",
@@ -84,7 +118,7 @@ class EngineeringWorkflow:
             if publish and not policy.get("compliant", False):
                 return {"status": "policy_blocked", "conversion": conversion, "policy": policy,
                         "message": "Publication was blocked by policy checks."}
-            quality_response = await client.post(
+            quality_response = await self._request(client, 'quality_gate', request_id,
                 f"{self.ontology_url}/ontologies/quality-gate",
                 json={"entities": await run_in_threadpool(self._governance_entities, ontology["turtle"]), "deduplicate": True},
             )
@@ -93,7 +127,7 @@ class EngineeringWorkflow:
             if publish and not quality.get("publish_recommended", False):
                 return {"status": "quality_blocked", "conversion": conversion, "policy": policy,
                         "quality": quality, "message": "Publication was blocked by quality checks."}
-            response = await client.post(
+            response = await self._request(client, 'ontology_registration', request_id,
                 f"{self.ontology_url}/ontologies/register",
                 data=data,
                 files={"artifact": (f"{PathName.safe_stem(filename)}.ttl", ontology["turtle"].encode("utf-8"), "text/turtle")},
@@ -110,7 +144,7 @@ class EngineeringWorkflow:
             current = await client.get(f"{self.ontology_url}/ontologies/{registration['ontology_id']}")
             current.raise_for_status()
             self._require_publishable(current.json())
-            published = await client.post(
+            published = await self._request(client, 'graph_publication', request_id,
                 f"{self.graph_url}/graph/ontologies/publish",
                 data={"ontology_id": registration["ontology_id"], "prefix": data["prefix"],
                       "publication_id": data["source"].split(":", 1)[1]},
@@ -128,6 +162,13 @@ class EngineeringWorkflow:
             result["status"] = "published"
             result["graph_publication"] = receipt
             return result
+
+    @staticmethod
+    async def _request(client, stage, request_id, url, **kwargs):
+        with dependency_stage(stage, request_id):
+            response = await client.post(url, **kwargs)
+            response.raise_for_status()
+            return response
 
     @staticmethod
     def _require_publishable(metadata: dict[str, Any]) -> None:

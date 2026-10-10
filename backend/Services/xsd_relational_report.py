@@ -192,7 +192,7 @@ def build_xsd_relational_report(xsd_path):
                         qualified=declaration in list(schema_root) or declaration.get('form',schema_root.get('elementFormDefault','unqualified'))=='qualified'
                         owner['relationships'].append({'name':name,'source_qname':('{'+namespace+'}' if qualified and namespace else '')+name,'target_entity_id':target_id,'target_table':tables[target_id]['name'],'particle_path':particle_path,**occ})
                     else:
-                        column={'name':name,'nillable':declaration.get('nillable')=='true','nullable':not occ['required'] or declaration.get('nillable')=='true','default':declaration.get('default'),'fixed':declaration.get('fixed'),'sql_name':sql_name(kind+':'+name),'source_kind':kind,'particle_path':particle_path,'choice_branch':choice,**occ,**datatype(declaration)}
+                        column={'name':name,'nillable':declaration.get('nillable') in {'true', '1'},'nullable':not occ['required'] or declaration.get('nillable') in {'true', '1'},'default':declaration.get('default'),'fixed':declaration.get('fixed'),'sql_name':sql_name(kind+':'+name),'source_kind':kind,'particle_path':particle_path,'choice_branch':choice,**occ,**datatype(declaration)}
                         scope, origin, namespace=contexts[id(declaration)]
                         schema_root=next(root for path,root,ns in schemas if path==origin)
                         form_key='attributeFormDefault' if kind=='attribute' else 'elementFormDefault'

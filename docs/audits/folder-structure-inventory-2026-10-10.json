@@ -1,0 +1,6252 @@
+{
+  "date": "2026-10-10",
+  "scope": "All first-party folders recursively; excluded runtime/vendor boundaries listed without reading their contents",
+  "folders": [
+    {
+      "path": ".",
+      "direct_files": 15,
+      "direct_bytes": 263826,
+      "tracked_files": 14
+    },
+    {
+      "path": "backend",
+      "direct_files": 11,
+      "direct_bytes": 945317,
+      "tracked_files": 11
+    },
+    {
+      "path": "backend/agent",
+      "direct_files": 4,
+      "direct_bytes": 48787,
+      "tracked_files": 4
+    },
+    {
+      "path": "backend/agentic_service",
+      "direct_files": 35,
+      "direct_bytes": 279372,
+      "tracked_files": 35
+    },
+    {
+      "path": "backend/ceim",
+      "direct_files": 10,
+      "direct_bytes": 71234,
+      "tracked_files": 10
+    },
+    {
+      "path": "backend/ceim_service",
+      "direct_files": 3,
+      "direct_bytes": 19794,
+      "tracked_files": 3
+    },
+    {
+      "path": "backend/chains",
+      "direct_files": 3,
+      "direct_bytes": 19413,
+      "tracked_files": 3
+    },
+    {
+      "path": "backend/config",
+      "direct_files": 1,
+      "direct_bytes": 1482,
+      "tracked_files": 1
+    },
+    {
+      "path": "backend/core",
+      "direct_files": 9,
+      "direct_bytes": 68517,
+      "tracked_files": 9
+    },
+    {
+      "path": "backend/Data",
+      "direct_files": 3,
+      "direct_bytes": 8959595,
+      "tracked_files": 3
+    },
+    {
+      "path": "backend/data_catalog_service",
+      "direct_files": 5,
+      "direct_bytes": 16874,
+      "tracked_files": 5
+    },
+    {
+      "path": "backend/data_pipeline_service",
+      "direct_files": 16,
+      "direct_bytes": 164795,
+      "tracked_files": 16
+    },
+    {
+      "path": "backend/data_product_service",
+      "direct_files": 5,
+      "direct_bytes": 28205,
+      "tracked_files": 5
+    },
+    {
+      "path": "backend/depo_platform",
+      "direct_files": 21,
+      "direct_bytes": 104109,
+      "tracked_files": 21
+    },
+    {
+      "path": "backend/graph_service",
+      "direct_files": 15,
+      "direct_bytes": 93282,
+      "tracked_files": 15
+    },
+    {
+      "path": "backend/ingestion_service",
+      "direct_files": 16,
+      "direct_bytes": 117682,
+      "tracked_files": 16
+    },
+    {
+      "path": "backend/ingestion_service/api",
+      "direct_files": 2,
+      "direct_bytes": 14360,
+      "tracked_files": 2
+    },
+    {
+      "path": "backend/legacy",
+      "direct_files": 1,
+      "direct_bytes": 626,
+      "tracked_files": 1
+    },
+    {
+      "path": "backend/models",
+      "direct_files": 2,
+      "direct_bytes": 2904,
+      "tracked_files": 2
+    },
+    {
+      "path": "backend/ontology_service",
+      "direct_files": 12,
+      "direct_bytes": 118234,
+      "tracked_files": 12
+    },
+    {
+      "path": "backend/ontology_service/domain",
+      "direct_files": 3,
+      "direct_bytes": 40390,
+      "tracked_files": 3
+    },
+    {
+      "path": "backend/oslc_service",
+      "direct_files": 9,
+      "direct_bytes": 22695,
+      "tracked_files": 9
+    },
+    {
+      "path": "backend/parsers",
+      "direct_files": 3,
+      "direct_bytes": 18174,
+      "tracked_files": 3
+    },
+    {
+      "path": "backend/qif",
+      "direct_files": 10,
+      "direct_bytes": 44582,
+      "tracked_files": 10
+    },
+    {
+      "path": "backend/qif/agents",
+      "direct_files": 1,
+      "direct_bytes": 757,
+      "tracked_files": 1
+    },
+    {
+      "path": "backend/routes",
+      "direct_files": 7,
+      "direct_bytes": 118128,
+      "tracked_files": 7
+    },
+    {
+      "path": "backend/scripts",
+      "direct_files": 2,
+      "direct_bytes": 7908,
+      "tracked_files": 2
+    },
+    {
+      "path": "backend/Services",
+      "direct_files": 73,
+      "direct_bytes": 1677228,
+      "tracked_files": 71
+    },
+    {
+      "path": "backend/Services/tests",
+      "direct_files": 9,
+      "direct_bytes": 39858,
+      "tracked_files": 9
+    },
+    {
+      "path": "backend/STP",
+      "direct_files": 19,
+      "direct_bytes": 108600750,
+      "tracked_files": 19
+    },
+    {
+      "path": "backend/tests",
+      "direct_files": 226,
+      "direct_bytes": 1075021,
+      "tracked_files": 221
+    },
+    {
+      "path": "backend/tests/cat_test_results",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "backend/tests/contracts",
+      "direct_files": 7,
+      "direct_bytes": 9794,
+      "tracked_files": 7
+    },
+    {
+      "path": "backend/test_data",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "backend/tools",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "backend/ttl_cache",
+      "direct_files": 5,
+      "direct_bytes": 24922060,
+      "tracked_files": 5
+    },
+    {
+      "path": "config",
+      "direct_files": 3,
+      "direct_bytes": 14384,
+      "tracked_files": 3
+    },
+    {
+      "path": "data",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/0207d66dc5ed5f4d27439481fabfa37d53fcca0732ba05d06a6e731ab099bd2e",
+      "direct_files": 2,
+      "direct_bytes": 1313409,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/0390d2b481355d1fa0f6dde65d0f38393ccbc3b9112337bd1070d1424bd58e32",
+      "direct_files": 3,
+      "direct_bytes": 3648,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/0529461b4fa96a68bf52f690bb260777f52ee26662c6156eb9ca35edd2cff712",
+      "direct_files": 3,
+      "direct_bytes": 1244,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/0e0cb521fe80c729924043eb1d8e07d0cd789ae384df2dcecfd18393179fff06",
+      "direct_files": 2,
+      "direct_bytes": 3389116,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/0fb59b539d616338df024211311a82d2ae2e77740b0405182e8c93c544c7bf08",
+      "direct_files": 2,
+      "direct_bytes": 889756,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/12cec6e74dc6e7a425348d6ffccfb36ecb9e3cb24fe6c93dd91e4f998742aece",
+      "direct_files": 3,
+      "direct_bytes": 1244,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/1b7d0456d25fdcd5ad5fc0b27739d9614dcd716a0763b580d8eaae20e247b49e",
+      "direct_files": 3,
+      "direct_bytes": 7188,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/1cd73ca130988081f1e5e24d58af1b67a8254a7a837568e07a9ff0741b61af1f",
+      "direct_files": 3,
+      "direct_bytes": 9906,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/231f08cc04384fbb6da70d1d9a53bd1e3f3411a77c69c934fd776bb601b31572",
+      "direct_files": 3,
+      "direct_bytes": 3647,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/23685031b614e045d6058d8f5b9c92593925fcaff0421a00b75e3f16d3590de2",
+      "direct_files": 2,
+      "direct_bytes": 7187,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/25597d77de8cf2167c87649c3820305a9ef65659b24818f4eecb1ac0b6dcff82",
+      "direct_files": 2,
+      "direct_bytes": 3327,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/2805e90d41a055f45b9dd9bfefb3965453735cded2e28738f45f137c46b208ed",
+      "direct_files": 3,
+      "direct_bytes": 7188,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/2948f4de2af3fc94e25e6ad5f6dea5f44d043d5c0b69dfd8e8b90734d7c40ffc",
+      "direct_files": 2,
+      "direct_bytes": 1612,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/2996f713fd29e73a31b63f4754de9729b8e4f2de60f06b4b7e215fa24efd66f1",
+      "direct_files": 3,
+      "direct_bytes": 7186,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/2fef082652b3bec173ad563a674d3039a4032a2faa68b3faee6001d5286d4dbd",
+      "direct_files": 2,
+      "direct_bytes": 7185,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/3378fe8139e0aae84f8c78cd047a246688740839eef78735695569a41d429331",
+      "direct_files": 2,
+      "direct_bytes": 3563,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/363416de5bfd46e8a4eb91bdf205bb8867bdf4850256dc40bc85267822290e14",
+      "direct_files": 3,
+      "direct_bytes": 1698,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/36b154252910b5c8209d4e7b415327a9718a19d6ba2695025e55c173af279d50",
+      "direct_files": 3,
+      "direct_bytes": 7186,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/38a32b4cd8678687d5e4accb9259af1c8b72212fc0ff41e9a579ccf375251940",
+      "direct_files": 2,
+      "direct_bytes": 7185,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/47dd1b591fded8afce7ab4529deb9da1484d6c140d24c17694f50bbbb7499710",
+      "direct_files": 2,
+      "direct_bytes": 3389116,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/4a378f53920231ce00f3256eb64df6e35cf706a32a3b44e08611cf88d9d43bf8",
+      "direct_files": 2,
+      "direct_bytes": 10498938,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/4a97fe8e4fbe24895930a623b29a2a31acffe82d96a0b6b48b52d3eff181a561",
+      "direct_files": 3,
+      "direct_bytes": 3648,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/4ec6b8752792828e378e337104ace46883d9dbf6199f7c11cc057c0212d79ac7",
+      "direct_files": 2,
+      "direct_bytes": 7187,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/4ed4f285cd736416fb9a360e7121b739cdf5a796dcc49f5a7d763f840a988cd2",
+      "direct_files": 3,
+      "direct_bytes": 7186,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/50dfb1da8782c68791663b54d6003ac9aead2540b761275227dd3a591598333b",
+      "direct_files": 2,
+      "direct_bytes": 7185,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/530aa9a3231fc5113c0ae7ccb6b8d7c3077392701685830f7b8819c1b7333b7a",
+      "direct_files": 2,
+      "direct_bytes": 3482,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/56a979265e24e5192b677cf394194f495b52bcde6173b827501aadf356627134",
+      "direct_files": 2,
+      "direct_bytes": 73781,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/59fbb7764cf7daf8cbf7aeeeccfd7f4f04dfa32010c7c95db68b22294cc001ff",
+      "direct_files": 3,
+      "direct_bytes": 433,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/5a29e40663df86759bc6c8faa04b60467e027704e01c2fd2a71ca1d2d0f98e17",
+      "direct_files": 2,
+      "direct_bytes": 3482,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/5d151d94e53700ad54387481d70231b09b71f058ac9b3f517c5113434a0f367f",
+      "direct_files": 3,
+      "direct_bytes": 531,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/6285b25f69f9dc30c8c88f2ea3d16738b2d2fb5fd4455fefb6d6b3e1e0b6439b",
+      "direct_files": 3,
+      "direct_bytes": 7186,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/6437e4c43853bbc56fa3214b156a0884a8b5c1b46bbd3e685880238b28121aab",
+      "direct_files": 2,
+      "direct_bytes": 3562,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/65035254726b4b53941f55f583f69f5a157a10a861dcb9765f137bbd41406c22",
+      "direct_files": 2,
+      "direct_bytes": 642,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/6574a47ec35496fcc64e3eb3c2044c56e0ad799ce967b2266496dd8929d030e4",
+      "direct_files": 3,
+      "direct_bytes": 7186,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/6c0d7019bbeba88068928188d577402e909cfcf16062b516ef6dadd5b98f085d",
+      "direct_files": 3,
+      "direct_bytes": 1244,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/6ec2153b4b46b2550aac787147ce88b8dd5d0390976b1370de6aaf5dec94e142",
+      "direct_files": 2,
+      "direct_bytes": 8080530,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/700023f9627bb96e94d66cc619d83758568a30edfea994415b2ff7a71d115989",
+      "direct_files": 2,
+      "direct_bytes": 1612,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/70abe382fdc8da90902a1927634285f2be66fa7b4b8a788b0f99790042a436ab",
+      "direct_files": 3,
+      "direct_bytes": 531,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/7420c1ef3a81d03c34ffa96c1add3a62ea5ce08451021195fa3ad307d2890015",
+      "direct_files": 3,
+      "direct_bytes": 482,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/748305f329c9aa4780bf26c7c11166a434c2e56081cf5c8e29a774a52ab8db5a",
+      "direct_files": 2,
+      "direct_bytes": 1243,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/810bd7a3b2b070ca922c107ef86dc28a161df35b7bb35d5ee6b842e166a91941",
+      "direct_files": 2,
+      "direct_bytes": 948,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/8d5d2e12a4cb708b4702448d231734715863ae0f714f80c3c7e814aa9ab602b9",
+      "direct_files": 2,
+      "direct_bytes": 7185,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/91bc17d9a820f701872f3ec2c8bddfb4a24087a301c32b42974be9c9d59e31bb",
+      "direct_files": 2,
+      "direct_bytes": 3562,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/94160858ff84a5e94ea0f0c94ed5e3a9d75ddcf7ee081cfa8104d808a3759892",
+      "direct_files": 2,
+      "direct_bytes": 621,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/9913537fbc5580359364f1d625590f38974c2eb278e5b5735a203ad0a8988270",
+      "direct_files": 3,
+      "direct_bytes": 3648,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/999bcf626cad07f1cfc3e14df6567d8353de01824e3047b251784296a7b719f2",
+      "direct_files": 2,
+      "direct_bytes": 73781,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/9bc84527451fdc76d678c3d2484a881cfc8b0b7ce3259d41776aa536328a2211",
+      "direct_files": 2,
+      "direct_bytes": 3327,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/9cd7f39450b1ff889a2f6c1cd0332e680b9c556415670d4e5d05480f9878c0e1",
+      "direct_files": 2,
+      "direct_bytes": 7185,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/a2b7dfc25c4d0697a72719da01767c0f0d94e1a5f0ea06dcaf248aa7ac750ec5",
+      "direct_files": 2,
+      "direct_bytes": 73781,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/a2e1f956bd24a0d695a055ab04e8aae0ed8d8abb2d58534ee6def3976ac64835",
+      "direct_files": 3,
+      "direct_bytes": 7186,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/a5d05a4224b013eacdf9d661cb484e95859ab976fba1bd2eee57ef20e55ce1cf",
+      "direct_files": 3,
+      "direct_bytes": 474,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/a9410a66f3bda738d2a0651f08f39cb9aab1dc9a72957791dfabb5502f939cc8",
+      "direct_files": 3,
+      "direct_bytes": 7186,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/abeb766e16ce49a6ebc7c75c47dd2644c6f99031d6295d397727aeca1d251ef6",
+      "direct_files": 3,
+      "direct_bytes": 1698,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/abf73919e04877fa7acd298b083a7d2bdfee19a2881284d789cc17e3d755a065",
+      "direct_files": 2,
+      "direct_bytes": 3562,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/adbe17da92f34d9bf8e1a0332c1a2e756740e2ee12d792b3e41f813576b73306",
+      "direct_files": 3,
+      "direct_bytes": 3648,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/ae38815b5ac4394cb2ea8a2e820812b2a0d1262ca3d7677439240b76d06e55ff",
+      "direct_files": 3,
+      "direct_bytes": 3648,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/afae5ad8d444db7a3504de9809b408b69f80b7463ee0b4e8e540f6f282b47591",
+      "direct_files": 3,
+      "direct_bytes": 565,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/b0f9cd7812f1b32f29523c1dbb387a3b277c1b312cebafacf5a1f501e0be1095",
+      "direct_files": 3,
+      "direct_bytes": 1698,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/b5f901f8537ac743d1b1f939f2321f9ee56a64643d09f361e08e35703b572e52",
+      "direct_files": 3,
+      "direct_bytes": 582,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/b754bd77e9a2bd8dae4417ec9b3e6ec81d9a24d05f3759e0f5c35b37476c4c47",
+      "direct_files": 3,
+      "direct_bytes": 7188,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/bb951aa1455780d85049471f01818e1b2b843d7708b44320ac3a58b9acc370a9",
+      "direct_files": 3,
+      "direct_bytes": 474,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/bd7dfdae1e66ef6deaf16d80fa53f35132193a9503dabbe5e3ca3cd850e0594d",
+      "direct_files": 3,
+      "direct_bytes": 3648,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/be1a1f8066d6c6d68aa3e0cc1d330315b9ee0e08a9c8393e4c73d0dbf466d3a9",
+      "direct_files": 3,
+      "direct_bytes": 3647,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/bf6bc9bd344f5042e1cff577cb0770324969e435d08bb075734ac32fa18f03c0",
+      "direct_files": 2,
+      "direct_bytes": 8080530,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/c66cadbd01866cfb694dbf9a31dcbb84ffb616a1d7c0c2c15cfcd1bf400bba48",
+      "direct_files": 3,
+      "direct_bytes": 7186,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/c975e3c33f5efe3cd5b167c857e640445436733aa6a463ed8bf104fb6ae7a15a",
+      "direct_files": 3,
+      "direct_bytes": 494,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/cba29f2d6980a48f98b28dcdca9d39658ba9fb7d2377973784286d63ca064889",
+      "direct_files": 2,
+      "direct_bytes": 3389116,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/cc37881fc9aa7b1f5e832de3ee529be4136c322c558af7a58a0feabe733a27f7",
+      "direct_files": 2,
+      "direct_bytes": 73781,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/ccccebcd0e3db936aa09ea3c3b2d48494bea8d69e6d7f14d8142a9eac968cb54",
+      "direct_files": 3,
+      "direct_bytes": 7186,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/ce6e325dc23e5913368fe3fc750ae55eacfdc165660088195e7f04e49af150e6",
+      "direct_files": 2,
+      "direct_bytes": 1243,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/d8943ec4c811b6e6aa377a45be3eb99dc0dd292502133f3137f70ebc69dd8348",
+      "direct_files": 2,
+      "direct_bytes": 3562,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/d94f84dfaf785a3535b5127c5ac62b6e89dbd1008b259f1a8f905cf343a4e0e0",
+      "direct_files": 2,
+      "direct_bytes": 3562,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/dd2729321e776490967b44fe2f27f17aefedcd48f536380be34c526a395148e5",
+      "direct_files": 2,
+      "direct_bytes": 2349,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/de3cbde398697633151c555ed418c287ad4fe6cc3baafa6da388de910dd5d526",
+      "direct_files": 3,
+      "direct_bytes": 3648,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/e7b2d83a86b2458e895c3b7a7ba8381240e4599b9184b3c787a36823376f9df3",
+      "direct_files": 2,
+      "direct_bytes": 3562,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/e7e93cf97880fd87d634e4b9ee58400da0a1be6c06a1de76ec13807ecdc15ccb",
+      "direct_files": 2,
+      "direct_bytes": 2530413,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/e81f8cb662420afedfcba6c938d33cea7a4049308d8301beeb72299f9f26eae1",
+      "direct_files": 2,
+      "direct_bytes": 3562,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/e8386a85bd6a74cb6fd9e56635f3546aa4fac71ff1f7a9cf0b300fcc365f583c",
+      "direct_files": 2,
+      "direct_bytes": 10498938,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/ec6418928ca727478c310920545e3f3b3beca8c994db6ab4d8f49e2a806c7062",
+      "direct_files": 3,
+      "direct_bytes": 3648,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/efcd249f36718a3512926905eabe38ebc73a0d8a3ab29797e65911b5771a124e",
+      "direct_files": 2,
+      "direct_bytes": 3389116,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/f294c29c45aca2d45730afe9e015d7e9031a2e728a3d187177f72d96f7d334fe",
+      "direct_files": 3,
+      "direct_bytes": 3648,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/f3ba58328fb817ab23807bf21500f454c9fb9289bcdeb84ab34532945d229bb5",
+      "direct_files": 2,
+      "direct_bytes": 7185,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/artifacts/sha256/f6bf5aec39cd330a0da3fe01a48e992425513af175f2fca829896937ebcdbcaf",
+      "direct_files": 3,
+      "direct_bytes": 3648,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/business_object_models",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/business_object_models/managed_model_based_3d_engineering",
+      "direct_files": 2,
+      "direct_bytes": 1455476,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/ceim",
+      "direct_files": 2,
+      "direct_bytes": 2992,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/ceim/fixtures",
+      "direct_files": 2,
+      "direct_bytes": 807,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/ceim/mapping-packs",
+      "direct_files": 7,
+      "direct_bytes": 11922,
+      "tracked_files": 7
+    },
+    {
+      "path": "data/code_audit",
+      "direct_files": 1,
+      "direct_bytes": 69048,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/core_model",
+      "direct_files": 5,
+      "direct_bytes": 19678104,
+      "tracked_files": 5
+    },
+    {
+      "path": "data/domain_models",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain",
+      "direct_files": 4,
+      "direct_bytes": 16162593,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model",
+      "direct_files": 3,
+      "direct_bytes": 21967888,
+      "tracked_files": 3
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/Activity",
+      "direct_files": 2,
+      "direct_bytes": 1967330,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/AnalysisManagement",
+      "direct_files": 2,
+      "direct_bytes": 1029981,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/AnnotatedModelPresentation",
+      "direct_files": 2,
+      "direct_bytes": 680597,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/Breakdown",
+      "direct_files": 2,
+      "direct_bytes": 3279334,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/CommonResources",
+      "direct_files": 2,
+      "direct_bytes": 12031361,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/CompositeStructuralShapeAndStructure",
+      "direct_files": 2,
+      "direct_bytes": 2311710,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/DeltaChange",
+      "direct_files": 2,
+      "direct_bytes": 712260,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/DocumentManagement",
+      "direct_files": 2,
+      "direct_bytes": 2795637,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/ElectricalHarness",
+      "direct_files": 2,
+      "direct_bytes": 1262274,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/GeometricDimensioningAndTolerancing",
+      "direct_files": 2,
+      "direct_bytes": 1354406,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/IndividualPart",
+      "direct_files": 2,
+      "direct_bytes": 1748313,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/Interface",
+      "direct_files": 2,
+      "direct_bytes": 1254203,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/Kinematics",
+      "direct_files": 2,
+      "direct_bytes": 2506284,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/ManagementResources",
+      "direct_files": 2,
+      "direct_bytes": 5134888,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/Material",
+      "direct_files": 2,
+      "direct_bytes": 632041,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/Mating",
+      "direct_files": 2,
+      "direct_bytes": 441717,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/Message",
+      "direct_files": 2,
+      "direct_bytes": 596918,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/PlannedAndEvaluatedCharacteristics",
+      "direct_files": 2,
+      "direct_bytes": 458845,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/ProcessPlan",
+      "direct_files": 2,
+      "direct_bytes": 1625288,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/ProductDataManagement",
+      "direct_files": 2,
+      "direct_bytes": 3899257,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/ProductSpecificationAndConfiguration",
+      "direct_files": 2,
+      "direct_bytes": 2419079,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/RepresentationAndExternalElementReference",
+      "direct_files": 2,
+      "direct_bytes": 2026363,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/RequirementManagementAndVAndV",
+      "direct_files": 2,
+      "direct_bytes": 2357932,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/ShapeAssociationAndStructure",
+      "direct_files": 2,
+      "direct_bytes": 1140327,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/Topology",
+      "direct_files": 2,
+      "direct_bytes": 193722,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/managed_model_based_3d_engineering_domain/Domain_model/Domain_model/WorkManagement",
+      "direct_files": 2,
+      "direct_bytes": 627704,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/mossec",
+      "direct_files": 2,
+      "direct_bytes": 2769980,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/product_life_cycle_support",
+      "direct_files": 6,
+      "direct_bytes": 7843821,
+      "tracked_files": 6
+    },
+    {
+      "path": "data/domain_models/product_life_cycle_support/Domain_model_4439_XMI",
+      "direct_files": 1,
+      "direct_bytes": 2461,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/domain_models/product_life_cycle_support/Domain_model_4439_XMI/STEPlib",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/domain_models/product_life_cycle_support/Domain_model_4439_XMI/STEPlib/Application_protocols",
+      "direct_files": 2,
+      "direct_bytes": 1120,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/product_life_cycle_support/Domain_model_4439_XMI/STEPlib/Application_protocols/AP239",
+      "direct_files": 2,
+      "direct_bytes": 1130,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/domain_models/product_life_cycle_support/Domain_model_4439_XMI/STEPlib/Application_protocols/AP239/Domain_model",
+      "direct_files": 2,
+      "direct_bytes": 42705885,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/modules/activity",
+      "direct_files": 2,
+      "direct_bytes": 1574,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/activity_as_realized",
+      "direct_files": 3,
+      "direct_bytes": 4625,
+      "tracked_files": 3
+    },
+    {
+      "path": "data/modules/activity_characterized",
+      "direct_files": 2,
+      "direct_bytes": 5516,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/activity_method",
+      "direct_files": 2,
+      "direct_bytes": 637,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/activity_method_assignment",
+      "direct_files": 2,
+      "direct_bytes": 1426,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/activity_method_characterized",
+      "direct_files": 2,
+      "direct_bytes": 3671,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/activity_method_implementation",
+      "direct_files": 2,
+      "direct_bytes": 2247,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/activity_structure_and_classification",
+      "direct_files": 2,
+      "direct_bytes": 2591,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/additive_manufacturing_part_and_build_information",
+      "direct_files": 2,
+      "direct_bytes": 7970,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/advanced_boundary_representation",
+      "direct_files": 2,
+      "direct_bytes": 2524,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/alias_identification",
+      "direct_files": 2,
+      "direct_bytes": 831,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/altered_package",
+      "direct_files": 2,
+      "direct_bytes": 3261,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/altered_part",
+      "direct_files": 2,
+      "direct_bytes": 1210,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/alternative_solution",
+      "direct_files": 2,
+      "direct_bytes": 5936,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/analysis",
+      "direct_files": 2,
+      "direct_bytes": 2195,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/analysis_assignment",
+      "direct_files": 2,
+      "direct_bytes": 1646,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/analysis_characterized",
+      "direct_files": 2,
+      "direct_bytes": 3301,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/analysis_identification",
+      "direct_files": 2,
+      "direct_bytes": 2602,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/analysis_product_relationships",
+      "direct_files": 2,
+      "direct_bytes": 1044,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/analysis_representation",
+      "direct_files": 2,
+      "direct_bytes": 1093,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/analysis_shape",
+      "direct_files": 2,
+      "direct_bytes": 1116,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/analytical_model",
+      "direct_files": 4,
+      "direct_bytes": 951959,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/annotated_3d_model_data_quality_criteria",
+      "direct_files": 2,
+      "direct_bytes": 5738,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/annotated_3d_model_data_quality_inspection_result",
+      "direct_files": 2,
+      "direct_bytes": 4098,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/annotated_3d_model_equivalence_assembly",
+      "direct_files": 2,
+      "direct_bytes": 64765,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/annotated_3d_model_equivalence_criteria",
+      "direct_files": 2,
+      "direct_bytes": 8444,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/annotated_3d_model_equivalence_inspection_result",
+      "direct_files": 2,
+      "direct_bytes": 8385,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/annotated_3d_model_equivalence_shape",
+      "direct_files": 2,
+      "direct_bytes": 99870,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/ap203_configuration_controlled_3d_design_of_mechanical_parts_and_assemblies",
+      "direct_files": 6,
+      "direct_bytes": 2434782,
+      "tracked_files": 6
+    },
+    {
+      "path": "data/modules/ap209_multidisciplinary_analysis_and_design",
+      "direct_files": 6,
+      "direct_bytes": 7868482,
+      "tracked_files": 6
+    },
+    {
+      "path": "data/modules/ap210_assembly_functional_interface_requirements",
+      "direct_files": 4,
+      "direct_bytes": 504313,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_assembly_functional_requirements",
+      "direct_files": 4,
+      "direct_bytes": 639436,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_assembly_physical_design",
+      "direct_files": 4,
+      "direct_bytes": 906415,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_assembly_physical_interface_requirements",
+      "direct_files": 4,
+      "direct_bytes": 739805,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_assembly_physical_requirements",
+      "direct_files": 4,
+      "direct_bytes": 499101,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_assembly_requirement_allocation",
+      "direct_files": 4,
+      "direct_bytes": 748175,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_assembly_technology_constraints",
+      "direct_files": 4,
+      "direct_bytes": 268672,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_connection_zone_based_model_extraction",
+      "direct_files": 4,
+      "direct_bytes": 292728,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_datum_difference_based_model_definition",
+      "direct_files": 4,
+      "direct_bytes": 471466,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_device_functional_and_physical_characterization",
+      "direct_files": 4,
+      "direct_bytes": 513911,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_electronic_assembly_interconnect_and_packaging_design",
+      "direct_files": 6,
+      "direct_bytes": 8742692,
+      "tracked_files": 6
+    },
+    {
+      "path": "data/modules/ap210_functional_decomposition",
+      "direct_files": 4,
+      "direct_bytes": 297723,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_functional_requirement_allocation",
+      "direct_files": 4,
+      "direct_bytes": 300594,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_functional_specification",
+      "direct_files": 4,
+      "direct_bytes": 300531,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_interconnect_design",
+      "direct_files": 4,
+      "direct_bytes": 910264,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_interconnect_design_for_microwave",
+      "direct_files": 4,
+      "direct_bytes": 926998,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_interconnect_functional_requirements",
+      "direct_files": 4,
+      "direct_bytes": 855479,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_interconnect_physical_requirements",
+      "direct_files": 4,
+      "direct_bytes": 857080,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_interconnect_requirement_allocation",
+      "direct_files": 4,
+      "direct_bytes": 868281,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_interconnect_technology_constraints",
+      "direct_files": 4,
+      "direct_bytes": 508394,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_laminate_assembly_design",
+      "direct_files": 4,
+      "direct_bytes": 839978,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_packaged_part_white_box_model",
+      "direct_files": 4,
+      "direct_bytes": 527050,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_package_functional_and_physical_characterization",
+      "direct_files": 4,
+      "direct_bytes": 507951,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_physical_unit_physical_characterization",
+      "direct_files": 4,
+      "direct_bytes": 366978,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_printed_part_functional_and_physical_characterization",
+      "direct_files": 4,
+      "direct_bytes": 611501,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap210_production_rule",
+      "direct_files": 4,
+      "direct_bytes": 279547,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap233_systems_engineering",
+      "direct_files": 4,
+      "direct_bytes": 679221,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap236_furniture_catalog_and_interior_design",
+      "direct_files": 4,
+      "direct_bytes": 665776,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/ap239_activity_recording",
+      "direct_files": 2,
+      "direct_bytes": 5531,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/ap239_document_management",
+      "direct_files": 2,
+      "direct_bytes": 11004,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/ap239_management_resource_information",
+      "direct_files": 2,
+      "direct_bytes": 13461,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/ap239_part_definition_information",
+      "direct_files": 2,
+      "direct_bytes": 38047,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/ap239_product_definition_information",
+      "direct_files": 2,
+      "direct_bytes": 32805,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/ap239_product_life_cycle_support",
+      "direct_files": 6,
+      "direct_bytes": 3880914,
+      "tracked_files": 6
+    },
+    {
+      "path": "data/modules/ap239_product_status_recording",
+      "direct_files": 2,
+      "direct_bytes": 3617,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/ap239_properties",
+      "direct_files": 2,
+      "direct_bytes": 7298,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/ap239_task_specification_resourced",
+      "direct_files": 2,
+      "direct_bytes": 37810,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/ap239_work_definition",
+      "direct_files": 2,
+      "direct_bytes": 17470,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/ap242_managed_model_based_3d_engineering",
+      "direct_files": 6,
+      "direct_bytes": 8161131,
+      "tracked_files": 6
+    },
+    {
+      "path": "data/modules/appearance_assignment",
+      "direct_files": 2,
+      "direct_bytes": 4579,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/approval",
+      "direct_files": 2,
+      "direct_bytes": 2635,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/area_2d",
+      "direct_files": 2,
+      "direct_bytes": 1739,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_2d_shape",
+      "direct_files": 2,
+      "direct_bytes": 3603,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_3d_shape",
+      "direct_files": 2,
+      "direct_bytes": 1070,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_component",
+      "direct_files": 2,
+      "direct_bytes": 7013,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_component_placement_requirements",
+      "direct_files": 2,
+      "direct_bytes": 9801,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_constraints",
+      "direct_files": 2,
+      "direct_bytes": 4312,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_feature_definition",
+      "direct_files": 2,
+      "direct_bytes": 4386,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_feature_relationship",
+      "direct_files": 2,
+      "direct_bytes": 2524,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_functional_interface_requirement",
+      "direct_files": 2,
+      "direct_bytes": 3360,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_module_design",
+      "direct_files": 2,
+      "direct_bytes": 2888,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_module_macro_definition",
+      "direct_files": 2,
+      "direct_bytes": 2558,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_module_usage_view",
+      "direct_files": 2,
+      "direct_bytes": 2606,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_module_with_cable_component",
+      "direct_files": 2,
+      "direct_bytes": 1423,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_module_with_cable_component_2d",
+      "direct_files": 2,
+      "direct_bytes": 1619,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_module_with_cable_component_3d",
+      "direct_files": 2,
+      "direct_bytes": 1627,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_module_with_interconnect_component",
+      "direct_files": 2,
+      "direct_bytes": 8038,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_module_with_macro_component",
+      "direct_files": 2,
+      "direct_bytes": 2005,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_module_with_packaged_component",
+      "direct_files": 2,
+      "direct_bytes": 1583,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_module_with_packaged_connector_component",
+      "direct_files": 2,
+      "direct_bytes": 2311,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_module_with_subassembly",
+      "direct_files": 2,
+      "direct_bytes": 2002,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_physical_interface_requirement",
+      "direct_files": 2,
+      "direct_bytes": 4725,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_physical_requirement_allocation",
+      "direct_files": 2,
+      "direct_bytes": 3512,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_shape",
+      "direct_files": 2,
+      "direct_bytes": 1567,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_structure",
+      "direct_files": 2,
+      "direct_bytes": 4610,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assembly_technology",
+      "direct_files": 2,
+      "direct_bytes": 5302,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/assignment_object_relationship",
+      "direct_files": 2,
+      "direct_bytes": 843,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/associative_draughting_elements",
+      "direct_files": 2,
+      "direct_bytes": 2999,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/associative_text",
+      "direct_files": 2,
+      "direct_bytes": 3257,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/attachment_slot",
+      "direct_files": 2,
+      "direct_bytes": 5274,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/attribute_classification",
+      "direct_files": 2,
+      "direct_bytes": 1406,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/bare_die",
+      "direct_files": 2,
+      "direct_bytes": 7345,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/basic_curve",
+      "direct_files": 2,
+      "direct_bytes": 1851,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/basic_data_representation",
+      "direct_files": 2,
+      "direct_bytes": 3900,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/basic_geometric_topology",
+      "direct_files": 2,
+      "direct_bytes": 1436,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/basic_geometry",
+      "direct_files": 2,
+      "direct_bytes": 5428,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/behaviour_description_assignment",
+      "direct_files": 2,
+      "direct_bytes": 1464,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/behaviour_identification_and_version",
+      "direct_files": 2,
+      "direct_bytes": 1504,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/behaviour_view_definition",
+      "direct_files": 2,
+      "direct_bytes": 1156,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/binary_representation",
+      "direct_files": 2,
+      "direct_bytes": 891,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/building_component",
+      "direct_files": 2,
+      "direct_bytes": 2569,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/building_item",
+      "direct_files": 2,
+      "direct_bytes": 5538,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/building_structure",
+      "direct_files": 2,
+      "direct_bytes": 5335,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/b_spline_geometry",
+      "direct_files": 2,
+      "direct_bytes": 4163,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/cable",
+      "direct_files": 2,
+      "direct_bytes": 1410,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/camera_view_3d",
+      "direct_files": 2,
+      "direct_bytes": 3508,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/cardinality_of_relationship",
+      "direct_files": 2,
+      "direct_bytes": 1374,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/catalog_data_information",
+      "direct_files": 4,
+      "direct_bytes": 496279,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/catalog_data_information_and_shape_representation",
+      "direct_files": 4,
+      "direct_bytes": 576765,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/certification",
+      "direct_files": 2,
+      "direct_bytes": 1195,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/cfd_conditions",
+      "direct_files": 2,
+      "direct_bytes": 4351,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/cfd_equations",
+      "direct_files": 2,
+      "direct_bytes": 5825,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/cfd_model",
+      "direct_files": 2,
+      "direct_bytes": 3742,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/cfd_results",
+      "direct_files": 2,
+      "direct_bytes": 3128,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/cfd_specified_general_property",
+      "direct_files": 2,
+      "direct_bytes": 5506,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/change_management",
+      "direct_files": 2,
+      "direct_bytes": 5864,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/characteristic",
+      "direct_files": 2,
+      "direct_bytes": 14063,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/characterizable_object",
+      "direct_files": 2,
+      "direct_bytes": 1752,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/characterized_representation",
+      "direct_files": 2,
+      "direct_bytes": 2494,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/chemical_substance",
+      "direct_files": 2,
+      "direct_bytes": 7137,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class",
+      "direct_files": 2,
+      "direct_bytes": 940,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/classification",
+      "direct_files": 2,
+      "direct_bytes": 1062,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/classification_assignment",
+      "direct_files": 2,
+      "direct_bytes": 1932,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/classification_with_attributes",
+      "direct_files": 2,
+      "direct_bytes": 6614,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class_of_activity",
+      "direct_files": 2,
+      "direct_bytes": 773,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class_of_activity_library",
+      "direct_files": 2,
+      "direct_bytes": 1256,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class_of_activity_structure",
+      "direct_files": 2,
+      "direct_bytes": 1020,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class_of_composition_of_activity",
+      "direct_files": 2,
+      "direct_bytes": 1254,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class_of_composition_of_product",
+      "direct_files": 2,
+      "direct_bytes": 1417,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class_of_connection_of_activity",
+      "direct_files": 2,
+      "direct_bytes": 1248,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class_of_connection_of_product",
+      "direct_files": 2,
+      "direct_bytes": 1411,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class_of_containment_of_product",
+      "direct_files": 2,
+      "direct_bytes": 1416,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class_of_involvement_in_activity",
+      "direct_files": 2,
+      "direct_bytes": 1488,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class_of_involvement_of_product_in_connection",
+      "direct_files": 2,
+      "direct_bytes": 1973,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class_of_person",
+      "direct_files": 2,
+      "direct_bytes": 726,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class_of_product",
+      "direct_files": 2,
+      "direct_bytes": 931,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class_of_product_library",
+      "direct_files": 2,
+      "direct_bytes": 1351,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/class_of_product_structure",
+      "direct_files": 2,
+      "direct_bytes": 1186,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/collection_identification_and_version",
+      "direct_files": 2,
+      "direct_bytes": 4698,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/colour",
+      "direct_files": 2,
+      "direct_bytes": 1436,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/component_feature",
+      "direct_files": 2,
+      "direct_bytes": 3814,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/component_grouping",
+      "direct_files": 2,
+      "direct_bytes": 7846,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/composite_constituent_shape",
+      "direct_files": 2,
+      "direct_bytes": 7671,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/composite_material_aspects",
+      "direct_files": 2,
+      "direct_bytes": 1207,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/composite_surface",
+      "direct_files": 2,
+      "direct_bytes": 1931,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/composition_of_individual_activity",
+      "direct_files": 2,
+      "direct_bytes": 1176,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/composition_of_individual_product",
+      "direct_files": 2,
+      "direct_bytes": 1388,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/compound_shape_representation",
+      "direct_files": 2,
+      "direct_bytes": 2148,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/condition",
+      "direct_files": 2,
+      "direct_bytes": 2540,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/conditional_effectivity",
+      "direct_files": 2,
+      "direct_bytes": 1267,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/condition_characterized",
+      "direct_files": 2,
+      "direct_bytes": 4542,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/condition_evaluation",
+      "direct_files": 2,
+      "direct_bytes": 2584,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/condition_evaluation_characterized",
+      "direct_files": 2,
+      "direct_bytes": 4724,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/conductivity_material_aspects",
+      "direct_files": 2,
+      "direct_bytes": 5799,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/configuration_effectivity",
+      "direct_files": 2,
+      "direct_bytes": 1607,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/configuration_item",
+      "direct_files": 2,
+      "direct_bytes": 2778,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/connection_of_individual_activity",
+      "direct_files": 2,
+      "direct_bytes": 1170,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/connection_of_individual_product",
+      "direct_files": 2,
+      "direct_bytes": 1382,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/connectivity_allocation_to_physical_network",
+      "direct_files": 2,
+      "direct_bytes": 1159,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/construction_geometry",
+      "direct_files": 2,
+      "direct_bytes": 8577,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/constructive_solid_geometry_2d",
+      "direct_files": 2,
+      "direct_bytes": 10380,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/constructive_solid_geometry_3d",
+      "direct_files": 2,
+      "direct_bytes": 1544,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/containment_of_individual_product",
+      "direct_files": 2,
+      "direct_bytes": 1387,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/contextual_shape_positioning",
+      "direct_files": 2,
+      "direct_bytes": 3596,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/contract",
+      "direct_files": 2,
+      "direct_bytes": 1210,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/currency",
+      "direct_files": 2,
+      "direct_bytes": 1653,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/curve_appearance",
+      "direct_files": 2,
+      "direct_bytes": 3315,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/curve_swept_solid",
+      "direct_files": 2,
+      "direct_bytes": 690,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/date_time",
+      "direct_files": 2,
+      "direct_bytes": 1919,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/date_time_assignment",
+      "direct_files": 2,
+      "direct_bytes": 1398,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/datum_and_datum_systems",
+      "direct_files": 2,
+      "direct_bytes": 17771,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/datum_difference_based_model",
+      "direct_files": 2,
+      "direct_bytes": 2883,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/decision_support",
+      "direct_files": 4,
+      "direct_bytes": 258523,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/default_setting_association",
+      "direct_files": 2,
+      "direct_bytes": 2228,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/default_tolerance",
+      "direct_files": 2,
+      "direct_bytes": 6128,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/derived_shape_element",
+      "direct_files": 2,
+      "direct_bytes": 3824,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/description_assignment",
+      "direct_files": 2,
+      "direct_bytes": 1828,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/design_management",
+      "direct_files": 2,
+      "direct_bytes": 3787,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/design_material_aspects",
+      "direct_files": 2,
+      "direct_bytes": 902,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/design_product_data_management",
+      "direct_files": 2,
+      "direct_bytes": 17208,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/design_specific_assignment_to_assembly_usage_view",
+      "direct_files": 2,
+      "direct_bytes": 2903,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/design_specific_assignment_to_interconnect_usage_view",
+      "direct_files": 2,
+      "direct_bytes": 2853,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/device_marking",
+      "direct_files": 2,
+      "direct_bytes": 3681,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/dimension_and_tolerance_callouts",
+      "direct_files": 2,
+      "direct_bytes": 9589,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/dimension_tolerance",
+      "direct_files": 2,
+      "direct_bytes": 10274,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/discrete_shield",
+      "direct_files": 2,
+      "direct_bytes": 1398,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/disposition",
+      "direct_files": 2,
+      "direct_bytes": 1414,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/document_and_version_identification",
+      "direct_files": 2,
+      "direct_bytes": 1493,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/document_assignment",
+      "direct_files": 2,
+      "direct_bytes": 3733,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/document_definition",
+      "direct_files": 2,
+      "direct_bytes": 2525,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/document_management",
+      "direct_files": 2,
+      "direct_bytes": 5373,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/document_properties",
+      "direct_files": 2,
+      "direct_bytes": 2890,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/document_structure",
+      "direct_files": 2,
+      "direct_bytes": 1284,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/draughting_annotation",
+      "direct_files": 2,
+      "direct_bytes": 3219,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/draughting_element",
+      "direct_files": 2,
+      "direct_bytes": 4325,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/draughting_element_specialisations",
+      "direct_files": 2,
+      "direct_bytes": 4629,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/drawing_definition",
+      "direct_files": 2,
+      "direct_bytes": 3487,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/drawing_structure_and_administration",
+      "direct_files": 2,
+      "direct_bytes": 1682,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/edge_based_topological_representation_with_length_constraint",
+      "direct_files": 2,
+      "direct_bytes": 7747,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/edge_based_wireframe",
+      "direct_files": 2,
+      "direct_bytes": 606,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/edge_shape_feature",
+      "direct_files": 2,
+      "direct_bytes": 2203,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/effectivity",
+      "direct_files": 2,
+      "direct_bytes": 1862,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/effectivity_application",
+      "direct_files": 2,
+      "direct_bytes": 1866,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/electrical_network_definition",
+      "direct_files": 2,
+      "direct_bytes": 824,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/elemental_geometric_shape",
+      "direct_files": 2,
+      "direct_bytes": 6810,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/elemental_topology",
+      "direct_files": 2,
+      "direct_bytes": 4400,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/elementary_boundary_representation",
+      "direct_files": 2,
+      "direct_bytes": 2246,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/elementary_function",
+      "direct_files": 2,
+      "direct_bytes": 3128,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/envelope",
+      "direct_files": 2,
+      "direct_bytes": 2228,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/event",
+      "direct_files": 2,
+      "direct_bytes": 1678,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/event_assignment",
+      "direct_files": 2,
+      "direct_bytes": 995,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/experience",
+      "direct_files": 2,
+      "direct_bytes": 4773,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/explicit_constraints",
+      "direct_files": 2,
+      "direct_bytes": 3019,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/expression",
+      "direct_files": 2,
+      "direct_bytes": 4015,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/expression_assignment",
+      "direct_files": 2,
+      "direct_bytes": 1117,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/extended_basic_geometry",
+      "direct_files": 2,
+      "direct_bytes": 2703,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/extended_date",
+      "direct_files": 2,
+      "direct_bytes": 2349,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/extended_geometric_tolerance",
+      "direct_files": 2,
+      "direct_bytes": 28338,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/extended_measure_representation",
+      "direct_files": 2,
+      "direct_bytes": 4662,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/extended_person_organization",
+      "direct_files": 2,
+      "direct_bytes": 5403,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/extended_task_element",
+      "direct_files": 2,
+      "direct_bytes": 1506,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/externally_conditioned_data_quality_criteria",
+      "direct_files": 2,
+      "direct_bytes": 17166,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/externally_conditioned_data_quality_inspection_result",
+      "direct_files": 2,
+      "direct_bytes": 5123,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/external_analysis_representation",
+      "direct_files": 2,
+      "direct_bytes": 1106,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/external_class",
+      "direct_files": 2,
+      "direct_bytes": 1696,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/external_currency",
+      "direct_files": 2,
+      "direct_bytes": 1157,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/external_functional_model",
+      "direct_files": 2,
+      "direct_bytes": 1122,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/external_item_identification_assignment",
+      "direct_files": 2,
+      "direct_bytes": 2081,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/external_library",
+      "direct_files": 2,
+      "direct_bytes": 1955,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/external_model",
+      "direct_files": 2,
+      "direct_bytes": 1145,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/external_properties",
+      "direct_files": 2,
+      "direct_bytes": 4778,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/external_representation_item",
+      "direct_files": 2,
+      "direct_bytes": 1850,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/external_source",
+      "direct_files": 2,
+      "direct_bytes": 592,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/external_state_based_behaviour_model",
+      "direct_files": 2,
+      "direct_bytes": 1313,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/external_unit",
+      "direct_files": 2,
+      "direct_bytes": 1552,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/extruded_structure_cross_section",
+      "direct_files": 2,
+      "direct_bytes": 4497,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/fabrication_joint",
+      "direct_files": 2,
+      "direct_bytes": 4634,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/fabrication_requirement",
+      "direct_files": 2,
+      "direct_bytes": 2834,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/fabrication_technology",
+      "direct_files": 2,
+      "direct_bytes": 37359,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/faceted_boundary_representation",
+      "direct_files": 2,
+      "direct_bytes": 771,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/feature_and_connection_zone",
+      "direct_files": 2,
+      "direct_bytes": 1656,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/fea_definition_relationships",
+      "direct_files": 2,
+      "direct_bytes": 4873,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/fea_material_aspects",
+      "direct_files": 2,
+      "direct_bytes": 1638,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/file_identification",
+      "direct_files": 2,
+      "direct_bytes": 2358,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/fill_area_style",
+      "direct_files": 2,
+      "direct_bytes": 2645,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/finite_elements",
+      "direct_files": 2,
+      "direct_bytes": 4486,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/finite_element_analysis",
+      "direct_files": 2,
+      "direct_bytes": 5217,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/finite_element_shape",
+      "direct_files": 2,
+      "direct_bytes": 1623,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/footprint_definition",
+      "direct_files": 2,
+      "direct_bytes": 17798,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/form_feature_in_panel",
+      "direct_files": 2,
+      "direct_bytes": 36994,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/foundation_representation",
+      "direct_files": 2,
+      "direct_bytes": 7420,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/foundation_state_definition",
+      "direct_files": 2,
+      "direct_bytes": 2099,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/functional_assignment_to_part",
+      "direct_files": 2,
+      "direct_bytes": 6919,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/functional_breakdown",
+      "direct_files": 2,
+      "direct_bytes": 1909,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/functional_data",
+      "direct_files": 4,
+      "direct_bytes": 457149,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/functional_data_and_schematic_representation",
+      "direct_files": 4,
+      "direct_bytes": 484682,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/functional_decomposition_to_assembly_design",
+      "direct_files": 2,
+      "direct_bytes": 1082,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/functional_decomposition_to_design",
+      "direct_files": 2,
+      "direct_bytes": 4945,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/functional_decomposition_to_interconnect_design",
+      "direct_files": 2,
+      "direct_bytes": 1830,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/functional_decomposition_with_nodal_representation_to_packaged_mapping",
+      "direct_files": 2,
+      "direct_bytes": 1553,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/functional_specification",
+      "direct_files": 2,
+      "direct_bytes": 3249,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/functional_unit_requirement_allocation",
+      "direct_files": 2,
+      "direct_bytes": 1238,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/functional_usage_view",
+      "direct_files": 2,
+      "direct_bytes": 11567,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/function_based_behaviour",
+      "direct_files": 4,
+      "direct_bytes": 184352,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/function_based_behaviour_representation",
+      "direct_files": 2,
+      "direct_bytes": 1534,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/furniture_interior_decoration",
+      "direct_files": 4,
+      "direct_bytes": 578656,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/general_design_connectivity",
+      "direct_files": 2,
+      "direct_bytes": 18963,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/general_model_parameter",
+      "direct_files": 2,
+      "direct_bytes": 4094,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/general_surface_appearance",
+      "direct_files": 2,
+      "direct_bytes": 2749,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/generic_expression",
+      "direct_files": 2,
+      "direct_bytes": 4222,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/generic_material_aspects",
+      "direct_files": 2,
+      "direct_bytes": 3438,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/generic_product_occurrence",
+      "direct_files": 2,
+      "direct_bytes": 3142,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/geometrically_bounded_surface",
+      "direct_files": 2,
+      "direct_bytes": 1705,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/geometrically_bounded_wireframe",
+      "direct_files": 2,
+      "direct_bytes": 669,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/geometric_constraints",
+      "direct_files": 2,
+      "direct_bytes": 15075,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/geometric_model_2d_3d_relationship",
+      "direct_files": 2,
+      "direct_bytes": 2241,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/geometric_model_relationship",
+      "direct_files": 2,
+      "direct_bytes": 2289,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/geometric_tolerance",
+      "direct_files": 2,
+      "direct_bytes": 27482,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/geometric_validation_property_representation",
+      "direct_files": 2,
+      "direct_bytes": 1640,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/group",
+      "direct_files": 2,
+      "direct_bytes": 1366,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/hybrid_boundary_representation",
+      "direct_files": 2,
+      "direct_bytes": 730,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/identification_assignment",
+      "direct_files": 2,
+      "direct_bytes": 1126,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/identification_relationship",
+      "direct_files": 2,
+      "direct_bytes": 946,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/incomplete_data_reference_mechanism",
+      "direct_files": 2,
+      "direct_bytes": 1585,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/independent_property",
+      "direct_files": 2,
+      "direct_bytes": 803,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/independent_property_definition",
+      "direct_files": 2,
+      "direct_bytes": 3514,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/independent_property_representation",
+      "direct_files": 2,
+      "direct_bytes": 885,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/individual_activity",
+      "direct_files": 2,
+      "direct_bytes": 683,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/individual_activity_structure",
+      "direct_files": 2,
+      "direct_bytes": 1044,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/individual_involvement_in_activity",
+      "direct_files": 2,
+      "direct_bytes": 1382,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/individual_product_structure",
+      "direct_files": 2,
+      "direct_bytes": 1353,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/inertia_characteristics",
+      "direct_files": 2,
+      "direct_bytes": 3644,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/information_product",
+      "direct_files": 2,
+      "direct_bytes": 1535,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/information_rights",
+      "direct_files": 2,
+      "direct_bytes": 4007,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/integral_shield",
+      "direct_files": 2,
+      "direct_bytes": 2146,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/interconnect_2d_shape",
+      "direct_files": 2,
+      "direct_bytes": 3748,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/interconnect_module_connection_routing",
+      "direct_files": 2,
+      "direct_bytes": 3619,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/interconnect_module_to_assembly_module_relationship",
+      "direct_files": 2,
+      "direct_bytes": 3829,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/interconnect_module_usage_view",
+      "direct_files": 2,
+      "direct_bytes": 8041,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/interconnect_module_with_macros",
+      "direct_files": 2,
+      "direct_bytes": 2096,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/interconnect_non_planar_shape",
+      "direct_files": 2,
+      "direct_bytes": 1779,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/interconnect_physical_requirement_allocation",
+      "direct_files": 2,
+      "direct_bytes": 5359,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/interconnect_placement_requirements",
+      "direct_files": 2,
+      "direct_bytes": 14761,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/interface",
+      "direct_files": 2,
+      "direct_bytes": 4854,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/interface_component",
+      "direct_files": 2,
+      "direct_bytes": 1632,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/interface_lifecycle",
+      "direct_files": 2,
+      "direct_bytes": 3384,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/involvement_of_individual_product_in_connection",
+      "direct_files": 2,
+      "direct_bytes": 1960,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/issue",
+      "direct_files": 2,
+      "direct_bytes": 1023,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/issue_management",
+      "direct_files": 4,
+      "direct_bytes": 175815,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/item_definition_structure",
+      "direct_files": 2,
+      "direct_bytes": 4305,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/justification",
+      "direct_files": 2,
+      "direct_bytes": 4645,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/kinematic_analysis_control_and_result",
+      "direct_files": 2,
+      "direct_bytes": 2488,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/kinematic_motion_representation",
+      "direct_files": 2,
+      "direct_bytes": 8200,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/kinematic_state",
+      "direct_files": 2,
+      "direct_bytes": 7528,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/kinematic_structure",
+      "direct_files": 2,
+      "direct_bytes": 29670,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/kinematic_topology",
+      "direct_files": 2,
+      "direct_bytes": 5549,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/land",
+      "direct_files": 2,
+      "direct_bytes": 18057,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/layered_2d_shape",
+      "direct_files": 2,
+      "direct_bytes": 1215,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/layered_3d_shape",
+      "direct_files": 2,
+      "direct_bytes": 3807,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/layered_interconnect_complex_template",
+      "direct_files": 2,
+      "direct_bytes": 25758,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/layered_interconnect_module_2d_design",
+      "direct_files": 2,
+      "direct_bytes": 1860,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/layered_interconnect_module_3d_design",
+      "direct_files": 2,
+      "direct_bytes": 4528,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/layered_interconnect_module_design",
+      "direct_files": 2,
+      "direct_bytes": 89466,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/layered_interconnect_module_with_printed_component_design",
+      "direct_files": 2,
+      "direct_bytes": 18287,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/layered_interconnect_simple_template",
+      "direct_files": 2,
+      "direct_bytes": 27374,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/layer_assignment",
+      "direct_files": 2,
+      "direct_bytes": 2124,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/layout_macro_definition",
+      "direct_files": 2,
+      "direct_bytes": 3129,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/limited_length_or_area_indicator_assignment",
+      "direct_files": 3,
+      "direct_bytes": 1065015,
+      "tracked_files": 3
+    },
+    {
+      "path": "data/modules/location",
+      "direct_files": 2,
+      "direct_bytes": 4819,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/location_assignment",
+      "direct_files": 2,
+      "direct_bytes": 1143,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/location_assignment_characterized",
+      "direct_files": 2,
+      "direct_bytes": 4119,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/location_in_building",
+      "direct_files": 2,
+      "direct_bytes": 12311,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/machining_features",
+      "direct_files": 2,
+      "direct_bytes": 31089,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/management_resource_information",
+      "direct_files": 2,
+      "direct_bytes": 5100,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/manifold_subsurface",
+      "direct_files": 2,
+      "direct_bytes": 1887,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/manifold_surface",
+      "direct_files": 2,
+      "direct_bytes": 2211,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/manufacturing_configuration_effectivity",
+      "direct_files": 2,
+      "direct_bytes": 2207,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/maths_space",
+      "direct_files": 2,
+      "direct_bytes": 955,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/maths_value",
+      "direct_files": 2,
+      "direct_bytes": 1287,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/mating_structure",
+      "direct_files": 2,
+      "direct_bytes": 2583,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/measure_representation",
+      "direct_files": 2,
+      "direct_bytes": 1650,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/mechanical_design_features_and_requirements",
+      "direct_files": 2,
+      "direct_bytes": 13974,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/mechanical_design_geometric_presentation",
+      "direct_files": 2,
+      "direct_bytes": 1108,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/mechanical_design_presentation_representation_with_draughting",
+      "direct_files": 2,
+      "direct_bytes": 8297,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/mechanical_design_shaded_presentation",
+      "direct_files": 2,
+      "direct_bytes": 1297,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/mesh_connectivity",
+      "direct_files": 2,
+      "direct_bytes": 3016,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/mesh_function",
+      "direct_files": 2,
+      "direct_bytes": 884,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/mesh_topology",
+      "direct_files": 2,
+      "direct_bytes": 10778,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/message",
+      "direct_files": 2,
+      "direct_bytes": 4512,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/model_based_3d_geometrical_dimensioning_and_tolerancing_representation",
+      "direct_files": 2,
+      "direct_bytes": 9530,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/model_parameter",
+      "direct_files": 2,
+      "direct_bytes": 6146,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/modified_swept_solid",
+      "direct_files": 2,
+      "direct_bytes": 2381,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/multi_linguism",
+      "direct_files": 2,
+      "direct_bytes": 3889,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/name_assignment",
+      "direct_files": 2,
+      "direct_bytes": 902,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/network_functional_design_view",
+      "direct_files": 2,
+      "direct_bytes": 7790,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/non_feature_shape_element",
+      "direct_files": 2,
+      "direct_bytes": 5040,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/non_manifold_surface",
+      "direct_files": 2,
+      "direct_bytes": 1855,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/numerical_interface",
+      "direct_files": 2,
+      "direct_bytes": 1976,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/numeric_expression",
+      "direct_files": 2,
+      "direct_bytes": 17482,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/numeric_function",
+      "direct_files": 2,
+      "direct_bytes": 1544,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/observation",
+      "direct_files": 2,
+      "direct_bytes": 4655,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/organization_structure",
+      "direct_files": 2,
+      "direct_bytes": 13523,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/organization_type",
+      "direct_files": 2,
+      "direct_bytes": 1269,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/package",
+      "direct_files": 2,
+      "direct_bytes": 17697,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/packaged_connector_model",
+      "direct_files": 2,
+      "direct_bytes": 2291,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/packaged_part_black_box_model",
+      "direct_files": 2,
+      "direct_bytes": 3763,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/packaged_part_white_box_model",
+      "direct_files": 2,
+      "direct_bytes": 3512,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/parameterization_and_variational_representation",
+      "direct_files": 2,
+      "direct_bytes": 9123,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/parameterized_catalog_data_and_shape_representation",
+      "direct_files": 4,
+      "direct_bytes": 643063,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/parameterized_catalog_data_information",
+      "direct_files": 4,
+      "direct_bytes": 497998,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/parameter_value_specification",
+      "direct_files": 2,
+      "direct_bytes": 2070,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/parametric_representation",
+      "direct_files": 2,
+      "direct_bytes": 1038,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_and_version_identification",
+      "direct_files": 2,
+      "direct_bytes": 1149,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_and_zone_laminate_tables",
+      "direct_files": 2,
+      "direct_bytes": 16081,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_collection",
+      "direct_files": 2,
+      "direct_bytes": 2335,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_definition_relationship",
+      "direct_files": 2,
+      "direct_bytes": 3267,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_external_reference",
+      "direct_files": 2,
+      "direct_bytes": 1529,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_feature_function",
+      "direct_files": 2,
+      "direct_bytes": 3509,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_feature_grouping",
+      "direct_files": 2,
+      "direct_bytes": 6342,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_feature_location",
+      "direct_files": 2,
+      "direct_bytes": 2505,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_occurrence",
+      "direct_files": 2,
+      "direct_bytes": 8599,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_shape",
+      "direct_files": 2,
+      "direct_bytes": 2125,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_template",
+      "direct_files": 2,
+      "direct_bytes": 2522,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_template_2d_shape",
+      "direct_files": 2,
+      "direct_bytes": 22367,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_template_3d_shape",
+      "direct_files": 2,
+      "direct_bytes": 3481,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_template_extension",
+      "direct_files": 2,
+      "direct_bytes": 10210,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_template_non_planar_shape",
+      "direct_files": 2,
+      "direct_bytes": 1355,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_template_shape_with_parameters",
+      "direct_files": 2,
+      "direct_bytes": 5077,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/part_view_definition",
+      "direct_files": 2,
+      "direct_bytes": 2046,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/pdm_material_aspects",
+      "direct_files": 2,
+      "direct_bytes": 1016,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/person_organization",
+      "direct_files": 2,
+      "direct_bytes": 2956,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/person_organization_assignment",
+      "direct_files": 2,
+      "direct_bytes": 1697,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_breakdown",
+      "direct_files": 2,
+      "direct_bytes": 1881,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_component_feature",
+      "direct_files": 2,
+      "direct_bytes": 1021,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_connectivity_definition",
+      "direct_files": 2,
+      "direct_bytes": 9290,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_connectivity_layout_topology_requirement",
+      "direct_files": 2,
+      "direct_bytes": 3332,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_layout_template",
+      "direct_files": 2,
+      "direct_bytes": 3467,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_node_requirement_to_implementing_component_allocation",
+      "direct_files": 2,
+      "direct_bytes": 7559,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_unit_2d_design_view",
+      "direct_files": 2,
+      "direct_bytes": 7207,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_unit_2d_shape",
+      "direct_files": 2,
+      "direct_bytes": 6012,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_unit_3d_design_view",
+      "direct_files": 2,
+      "direct_bytes": 5685,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_unit_3d_shape",
+      "direct_files": 2,
+      "direct_bytes": 4688,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_unit_design_view",
+      "direct_files": 2,
+      "direct_bytes": 8520,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_unit_interconnect_definition",
+      "direct_files": 2,
+      "direct_bytes": 4576,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_unit_non_planar_design_view",
+      "direct_files": 2,
+      "direct_bytes": 1930,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_unit_shape_with_parameters",
+      "direct_files": 2,
+      "direct_bytes": 4576,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/physical_unit_usage_view",
+      "direct_files": 2,
+      "direct_bytes": 10121,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/picture_representation",
+      "direct_files": 2,
+      "direct_bytes": 4548,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/planned_characteristic",
+      "direct_files": 2,
+      "direct_bytes": 3663,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/plib_class_reference",
+      "direct_files": 2,
+      "direct_bytes": 1430,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/ply_orientation_specification",
+      "direct_files": 2,
+      "direct_bytes": 6469,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/pmi_data_quality",
+      "direct_files": 2,
+      "direct_bytes": 41911,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/point_direction_model",
+      "direct_files": 2,
+      "direct_bytes": 2146,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/position_in_organization",
+      "direct_files": 2,
+      "direct_bytes": 6146,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/possession_of_property",
+      "direct_files": 2,
+      "direct_bytes": 2285,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/presentation_hierarchy",
+      "direct_files": 2,
+      "direct_bytes": 3469,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/pre_defined_datum_2d_symbol",
+      "direct_files": 2,
+      "direct_bytes": 1522,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/pre_defined_datum_3d_symbol",
+      "direct_files": 2,
+      "direct_bytes": 1541,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/pre_defined_datum_symbol",
+      "direct_files": 2,
+      "direct_bytes": 3116,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/pre_defined_product_data_management_specializations",
+      "direct_files": 2,
+      "direct_bytes": 10113,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/primitive_solids",
+      "direct_files": 2,
+      "direct_bytes": 3360,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/printed_physical_layout_template",
+      "direct_files": 2,
+      "direct_bytes": 21873,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/probability",
+      "direct_files": 2,
+      "direct_bytes": 1163,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/probability_distribution",
+      "direct_files": 2,
+      "direct_bytes": 1774,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/procedural_shape_model",
+      "direct_files": 2,
+      "direct_bytes": 2896,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/procedural_solid_model",
+      "direct_files": 3,
+      "direct_bytes": 1919,
+      "tracked_files": 3
+    },
+    {
+      "path": "data/modules/process_plan",
+      "direct_files": 2,
+      "direct_bytes": 9651,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/process_property_assignment",
+      "direct_files": 2,
+      "direct_bytes": 1895,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/production_rule",
+      "direct_files": 2,
+      "direct_bytes": 15288,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_analysis",
+      "direct_files": 2,
+      "direct_bytes": 1721,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_and_manufacturing_annotation_presentation",
+      "direct_files": 2,
+      "direct_bytes": 1863,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_and_manufacturing_information_view_context",
+      "direct_files": 2,
+      "direct_bytes": 13918,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_and_manufacturing_information_with_nominal_3d_models",
+      "direct_files": 2,
+      "direct_bytes": 3765,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_as_individual",
+      "direct_files": 2,
+      "direct_bytes": 4390,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_as_individual_assembly_and_test",
+      "direct_files": 2,
+      "direct_bytes": 2434,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_breakdown",
+      "direct_files": 2,
+      "direct_bytes": 4830,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_categorization",
+      "direct_files": 2,
+      "direct_bytes": 1824,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_class",
+      "direct_files": 2,
+      "direct_bytes": 9276,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_concept_identification",
+      "direct_files": 2,
+      "direct_bytes": 924,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_data_equivalence_definition",
+      "direct_files": 2,
+      "direct_bytes": 3368,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_data_management",
+      "direct_files": 2,
+      "direct_bytes": 13313,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_data_quality_criteria",
+      "direct_files": 2,
+      "direct_bytes": 4106,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_data_quality_definition",
+      "direct_files": 2,
+      "direct_bytes": 3121,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_data_quality_inspection_result",
+      "direct_files": 2,
+      "direct_bytes": 6499,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_environment_definition",
+      "direct_files": 2,
+      "direct_bytes": 4006,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_environment_observed",
+      "direct_files": 2,
+      "direct_bytes": 5278,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_group",
+      "direct_files": 2,
+      "direct_bytes": 5003,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_identification",
+      "direct_files": 2,
+      "direct_bytes": 736,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_identification_extension",
+      "direct_files": 2,
+      "direct_bytes": 1949,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_occurrence",
+      "direct_files": 2,
+      "direct_bytes": 11029,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_placement",
+      "direct_files": 2,
+      "direct_bytes": 1436,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_property_feature_definition",
+      "direct_files": 2,
+      "direct_bytes": 858,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_relationship",
+      "direct_files": 2,
+      "direct_bytes": 764,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_replacement",
+      "direct_files": 2,
+      "direct_bytes": 1653,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_structure",
+      "direct_files": 2,
+      "direct_bytes": 2054,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_structure_and_classification",
+      "direct_files": 2,
+      "direct_bytes": 2902,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_version",
+      "direct_files": 2,
+      "direct_bytes": 809,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_version_relationship",
+      "direct_files": 2,
+      "direct_bytes": 1271,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_view_definition",
+      "direct_files": 2,
+      "direct_bytes": 4441,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_view_definition_properties",
+      "direct_files": 2,
+      "direct_bytes": 1443,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_view_definition_reference",
+      "direct_files": 2,
+      "direct_bytes": 2236,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/product_view_definition_relationship",
+      "direct_files": 2,
+      "direct_bytes": 1902,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/program_management",
+      "direct_files": 4,
+      "direct_bytes": 415877,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/project",
+      "direct_files": 2,
+      "direct_bytes": 2567,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/project_breakdown",
+      "direct_files": 2,
+      "direct_bytes": 20239,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/project_management",
+      "direct_files": 4,
+      "direct_bytes": 446846,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/project_management_resource_information",
+      "direct_files": 2,
+      "direct_bytes": 27645,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/property_and_property_assignment",
+      "direct_files": 2,
+      "direct_bytes": 1119,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/property_assignment",
+      "direct_files": 2,
+      "direct_bytes": 3060,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/property_as_definition",
+      "direct_files": 2,
+      "direct_bytes": 1088,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/property_condition",
+      "direct_files": 2,
+      "direct_bytes": 1870,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/property_identification",
+      "direct_files": 2,
+      "direct_bytes": 1600,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/property_space",
+      "direct_files": 2,
+      "direct_bytes": 4598,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/qualifications",
+      "direct_files": 2,
+      "direct_bytes": 3664,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/qualified_measure",
+      "direct_files": 2,
+      "direct_bytes": 5325,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/reference_data_library",
+      "direct_files": 4,
+      "direct_bytes": 448746,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/reference_schema_for_sysml_mapping",
+      "direct_files": 3,
+      "direct_bytes": 2881333,
+      "tracked_files": 3
+    },
+    {
+      "path": "data/modules/representation_with_uncertainty",
+      "direct_files": 2,
+      "direct_bytes": 2323,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/required_resource",
+      "direct_files": 2,
+      "direct_bytes": 3264,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/required_resource_characterized",
+      "direct_files": 2,
+      "direct_bytes": 6806,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/requirement_assignment",
+      "direct_files": 2,
+      "direct_bytes": 3514,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/requirement_decomposition",
+      "direct_files": 2,
+      "direct_bytes": 7863,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/requirement_identification_and_version",
+      "direct_files": 2,
+      "direct_bytes": 1866,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/requirement_management",
+      "direct_files": 2,
+      "direct_bytes": 32890,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/requirement_view_definition",
+      "direct_files": 2,
+      "direct_bytes": 1352,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/requirement_view_definition_relationship",
+      "direct_files": 2,
+      "direct_bytes": 2356,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/resource_as_realized",
+      "direct_files": 2,
+      "direct_bytes": 2669,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/resource_as_realized_characterized",
+      "direct_files": 2,
+      "direct_bytes": 5776,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/resource_item",
+      "direct_files": 2,
+      "direct_bytes": 2620,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/resource_item_characterized",
+      "direct_files": 2,
+      "direct_bytes": 8092,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/resource_management",
+      "direct_files": 2,
+      "direct_bytes": 3627,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/resource_management_characterized",
+      "direct_files": 2,
+      "direct_bytes": 8787,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/resource_property_assignment",
+      "direct_files": 2,
+      "direct_bytes": 1758,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/retention_period",
+      "direct_files": 2,
+      "direct_bytes": 3473,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/risk_definition",
+      "direct_files": 2,
+      "direct_bytes": 5165,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/risk_management",
+      "direct_files": 2,
+      "direct_bytes": 49727,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/same_as_external_item",
+      "direct_files": 2,
+      "direct_bytes": 1225,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/scan_data_3d_shape",
+      "direct_files": 2,
+      "direct_bytes": 3941,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/schedule",
+      "direct_files": 2,
+      "direct_bytes": 45855,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/schematic_and_symbolization",
+      "direct_files": 2,
+      "direct_bytes": 2234,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/schematic_drawing",
+      "direct_files": 2,
+      "direct_bytes": 2068,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/schematic_element",
+      "direct_files": 2,
+      "direct_bytes": 9617,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/schematic_element_library",
+      "direct_files": 2,
+      "direct_bytes": 838,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/scheme",
+      "direct_files": 2,
+      "direct_bytes": 4575,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/security_classification",
+      "direct_files": 2,
+      "direct_bytes": 1243,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/selected_item",
+      "direct_files": 2,
+      "direct_bytes": 2205,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/sequential_laminate_assembly_design",
+      "direct_files": 2,
+      "direct_bytes": 6184,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/set_theory",
+      "direct_files": 2,
+      "direct_bytes": 1670,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/shape_appearance_layers",
+      "direct_files": 2,
+      "direct_bytes": 1475,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/shape_composition",
+      "direct_files": 2,
+      "direct_bytes": 1141,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/shape_data_quality_criteria",
+      "direct_files": 2,
+      "direct_bytes": 114914,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/shape_data_quality_inspection_result",
+      "direct_files": 2,
+      "direct_bytes": 12903,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/shape_feature",
+      "direct_files": 2,
+      "direct_bytes": 8774,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/shape_parameters",
+      "direct_files": 2,
+      "direct_bytes": 2330,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/shape_property_assignment",
+      "direct_files": 2,
+      "direct_bytes": 5913,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/shell_based_wireframe",
+      "direct_files": 2,
+      "direct_bytes": 648,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/signal",
+      "direct_files": 2,
+      "direct_bytes": 2570,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/single_part_representation",
+      "direct_files": 2,
+      "direct_bytes": 2478,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/sketch",
+      "direct_files": 2,
+      "direct_bytes": 4193,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/software",
+      "direct_files": 2,
+      "direct_bytes": 1822,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/solid_model",
+      "direct_files": 2,
+      "direct_bytes": 661,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/solid_with_local_modification",
+      "direct_files": 3,
+      "direct_bytes": 18052,
+      "tracked_files": 3
+    },
+    {
+      "path": "data/modules/specification_based_configuration",
+      "direct_files": 2,
+      "direct_bytes": 5295,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/specification_control",
+      "direct_files": 2,
+      "direct_bytes": 10075,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/specification_document",
+      "direct_files": 2,
+      "direct_bytes": 5678,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/specified_product",
+      "direct_files": 2,
+      "direct_bytes": 2823,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/state_based_behaviour",
+      "direct_files": 4,
+      "direct_bytes": 176765,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/state_based_behaviour_representation",
+      "direct_files": 2,
+      "direct_bytes": 1678,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/state_characterized",
+      "direct_files": 2,
+      "direct_bytes": 6733,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/state_definition",
+      "direct_files": 2,
+      "direct_bytes": 4126,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/state_observed",
+      "direct_files": 2,
+      "direct_bytes": 4552,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/stock_material",
+      "direct_files": 2,
+      "direct_bytes": 4585,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/stratum_non_planar_shape",
+      "direct_files": 2,
+      "direct_bytes": 2113,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/styled_curve",
+      "direct_files": 2,
+      "direct_bytes": 2304,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/support_resource",
+      "direct_files": 2,
+      "direct_bytes": 1525,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/surface_conditions",
+      "direct_files": 2,
+      "direct_bytes": 20141,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/surface_visual_texture",
+      "direct_files": 2,
+      "direct_bytes": 2457,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/swept_solid",
+      "direct_files": 2,
+      "direct_bytes": 1432,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/symbolization_by_schematic_element",
+      "direct_files": 2,
+      "direct_bytes": 2128,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/system_behaviour",
+      "direct_files": 4,
+      "direct_bytes": 177202,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/system_breakdown",
+      "direct_files": 2,
+      "direct_bytes": 1792,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/system_identification_and_version",
+      "direct_files": 2,
+      "direct_bytes": 2305,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/system_modelling",
+      "direct_files": 4,
+      "direct_bytes": 529983,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/system_structure",
+      "direct_files": 4,
+      "direct_bytes": 329704,
+      "tracked_files": 4
+    },
+    {
+      "path": "data/modules/system_view_definition",
+      "direct_files": 2,
+      "direct_bytes": 1182,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/tagged_text_representation",
+      "direct_files": 2,
+      "direct_bytes": 3344,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/task_element",
+      "direct_files": 2,
+      "direct_bytes": 3874,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/task_specification",
+      "direct_files": 2,
+      "direct_bytes": 6775,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/tessellated_boundary_representation",
+      "direct_files": 2,
+      "direct_bytes": 821,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/tessellated_geometry",
+      "direct_files": 2,
+      "direct_bytes": 11186,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/tessellated_manifold_subsurface_shape_representation",
+      "direct_files": 2,
+      "direct_bytes": 1014,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/tessellated_manifold_surface_shape_representation",
+      "direct_files": 2,
+      "direct_bytes": 1069,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/test_requirement_allocation",
+      "direct_files": 2,
+      "direct_bytes": 2567,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/test_select_product",
+      "direct_files": 2,
+      "direct_bytes": 741,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/textual_expression_representation",
+      "direct_files": 2,
+      "direct_bytes": 3383,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/text_appearance",
+      "direct_files": 2,
+      "direct_bytes": 4112,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/text_representation",
+      "direct_files": 2,
+      "direct_bytes": 2623,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/thermal_network_definition",
+      "direct_files": 2,
+      "direct_bytes": 2651,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/thickened_face_solid",
+      "direct_files": 2,
+      "direct_bytes": 1362,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/time_interval",
+      "direct_files": 2,
+      "direct_bytes": 1359,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/time_interval_assignment",
+      "direct_files": 2,
+      "direct_bytes": 1220,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/topologically_bounded_surface",
+      "direct_files": 2,
+      "direct_bytes": 936,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/triangulated_shape_data_quality",
+      "direct_files": 2,
+      "direct_bytes": 85897,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/type_of_person",
+      "direct_files": 2,
+      "direct_bytes": 3799,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/universally_unique_identification_assignment",
+      "direct_files": 2,
+      "direct_bytes": 2769,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/value_with_unit",
+      "direct_files": 2,
+      "direct_bytes": 3800,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/value_with_unit_extension",
+      "direct_files": 2,
+      "direct_bytes": 7024,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/verification_and_validation",
+      "direct_files": 2,
+      "direct_bytes": 2463,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/vertex_colours_for_tessellated_geometry",
+      "direct_files": 2,
+      "direct_bytes": 2115,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/via_component",
+      "direct_files": 2,
+      "direct_bytes": 2034,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/wireframe_2d",
+      "direct_files": 2,
+      "direct_bytes": 668,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/wire_and_cable_design_connectivity",
+      "direct_files": 2,
+      "direct_bytes": 4740,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/wiring_harness_assembly_design",
+      "direct_files": 2,
+      "direct_bytes": 14238,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/work_order",
+      "direct_files": 2,
+      "direct_bytes": 1567,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/work_order_characterized",
+      "direct_files": 2,
+      "direct_bytes": 4229,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/work_output",
+      "direct_files": 2,
+      "direct_bytes": 2342,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/work_output_characterized",
+      "direct_files": 2,
+      "direct_bytes": 4994,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/work_request",
+      "direct_files": 2,
+      "direct_bytes": 1819,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/work_request_characterized",
+      "direct_files": 2,
+      "direct_bytes": 5126,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/work_structure",
+      "direct_files": 2,
+      "direct_bytes": 11941,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/modules/zonal_breakdown",
+      "direct_files": 2,
+      "direct_bytes": 2480,
+      "tracked_files": 2
+    },
+    {
+      "path": "data/ontology_service",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/parser_outputs",
+      "direct_files": 6,
+      "direct_bytes": 11341098,
+      "tracked_files": 6
+    },
+    {
+      "path": "data/resources",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/resources/action_and_model_relationships_schema",
+      "direct_files": 1,
+      "direct_bytes": 2872,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/action_schema",
+      "direct_files": 1,
+      "direct_bytes": 9549,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_advanced_brep",
+      "direct_files": 1,
+      "direct_bytes": 3553,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_associative_draughting_elements",
+      "direct_files": 1,
+      "direct_bytes": 8119,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_csg",
+      "direct_files": 1,
+      "direct_bytes": 3122,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_curve_swept_solid",
+      "direct_files": 1,
+      "direct_bytes": 4856,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_draughting_annotation",
+      "direct_files": 1,
+      "direct_bytes": 16952,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_draughting_elements",
+      "direct_files": 1,
+      "direct_bytes": 11201,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_drawing_structure_and_administration",
+      "direct_files": 1,
+      "direct_bytes": 14490,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_edge_based_wireframe",
+      "direct_files": 1,
+      "direct_bytes": 6109,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_elementary_brep",
+      "direct_files": 1,
+      "direct_bytes": 9269,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_faceted_brep",
+      "direct_files": 1,
+      "direct_bytes": 4106,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_geometrically_bounded_2d_wireframe",
+      "direct_files": 1,
+      "direct_bytes": 7698,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_geometrically_bounded_surface",
+      "direct_files": 1,
+      "direct_bytes": 11541,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_geometrically_bounded_wireframe",
+      "direct_files": 1,
+      "direct_bytes": 6603,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_geometric_tolerances",
+      "direct_files": 1,
+      "direct_bytes": 4514,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_machining_feature",
+      "direct_files": 1,
+      "direct_bytes": 301729,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_manifold_subsurface",
+      "direct_files": 1,
+      "direct_bytes": 9661,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_manifold_surface",
+      "direct_files": 1,
+      "direct_bytes": 16913,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_mechanical_design_geometric_presentation",
+      "direct_files": 1,
+      "direct_bytes": 20546,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_mechanical_design_shaded_presentation",
+      "direct_files": 1,
+      "direct_bytes": 31309,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_non_manifold_surface",
+      "direct_files": 1,
+      "direct_bytes": 17610,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_shell_based_wireframe",
+      "direct_files": 1,
+      "direct_bytes": 9354,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/aic_topologically_bounded_surface",
+      "direct_files": 1,
+      "direct_bytes": 6686,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/analysis_product_relationships_schema",
+      "direct_files": 1,
+      "direct_bytes": 2426,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/analysis_schema",
+      "direct_files": 1,
+      "direct_bytes": 4987,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/annotated_3d_model_data_quality_criteria_schema",
+      "direct_files": 1,
+      "direct_bytes": 4776,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/annotated_3d_model_data_quality_inspection_result_schema",
+      "direct_files": 1,
+      "direct_bytes": 6123,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/annotated_3d_model_equivalence_criteria_schema",
+      "direct_files": 1,
+      "direct_bytes": 7034,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/annotated_3d_model_equivalence_inspection_result_schema",
+      "direct_files": 1,
+      "direct_bytes": 4530,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/application_context_schema",
+      "direct_files": 1,
+      "direct_bytes": 5002,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/approval_schema",
+      "direct_files": 1,
+      "direct_bytes": 3983,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/assembly_constraint_schema",
+      "direct_files": 1,
+      "direct_bytes": 7671,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/assembly_feature_relationship_schema",
+      "direct_files": 1,
+      "direct_bytes": 20582,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/automotive_design",
+      "direct_files": 1,
+      "direct_bytes": 492570,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/basic_attribute_schema",
+      "direct_files": 1,
+      "direct_bytes": 5141,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/basis_schema",
+      "direct_files": 1,
+      "direct_bytes": 5932,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/certification_schema",
+      "direct_files": 1,
+      "direct_bytes": 1887,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/classification_schema",
+      "direct_files": 1,
+      "direct_bytes": 2873,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/conditions_schema",
+      "direct_files": 1,
+      "direct_bytes": 6186,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/configuration_management_schema",
+      "direct_files": 1,
+      "direct_bytes": 4447,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/contract_schema",
+      "direct_files": 1,
+      "direct_bytes": 2769,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/counterbore_countersink_schema",
+      "direct_files": 1,
+      "direct_bytes": 21521,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/date_time_schema",
+      "direct_files": 1,
+      "direct_bytes": 10413,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/document_schema",
+      "direct_files": 1,
+      "direct_bytes": 3658,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/domain_schema",
+      "direct_files": 1,
+      "direct_bytes": 3583,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/draughting_dimension_schema",
+      "direct_files": 1,
+      "direct_bytes": 3801,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/draughting_element_schema",
+      "direct_files": 1,
+      "direct_bytes": 16149,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/drawing_definition_schema",
+      "direct_files": 1,
+      "direct_bytes": 4384,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/effectivity_schema",
+      "direct_files": 1,
+      "direct_bytes": 4967,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/equations_schema",
+      "direct_files": 1,
+      "direct_bytes": 7623,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/experience_schema",
+      "direct_files": 1,
+      "direct_bytes": 3868,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/explicit_constraint_schema",
+      "direct_files": 1,
+      "direct_bytes": 6056,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/explicit_geometric_constraint_schema",
+      "direct_files": 1,
+      "direct_bytes": 17492,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/external_reference_schema",
+      "direct_files": 1,
+      "direct_bytes": 4768,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/fea_definition_relationships_schema",
+      "direct_files": 1,
+      "direct_bytes": 5721,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/fea_scalar_vector_tensor_schema",
+      "direct_files": 1,
+      "direct_bytes": 4671,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/finite_element_analysis_control_and_result_schema",
+      "direct_files": 1,
+      "direct_bytes": 92432,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/geometric_model_schema",
+      "direct_files": 1,
+      "direct_bytes": 89961,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/geometry_schema",
+      "direct_files": 1,
+      "direct_bytes": 69348,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/group_schema",
+      "direct_files": 1,
+      "direct_bytes": 2995,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/hierarchy_schema",
+      "direct_files": 1,
+      "direct_bytes": 4195,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/iso13584_expressions_schema",
+      "direct_files": 1,
+      "direct_bytes": 27433,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/iso13584_generic_expressions_schema",
+      "direct_files": 1,
+      "direct_bytes": 5099,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/kinematic_analysis_control_and_result_schema",
+      "direct_files": 1,
+      "direct_bytes": 4048,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/kinematic_motion_representation_schema",
+      "direct_files": 1,
+      "direct_bytes": 9109,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/kinematic_property_schema",
+      "direct_files": 1,
+      "direct_bytes": 4216,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/kinematic_state_schema",
+      "direct_files": 1,
+      "direct_bytes": 16279,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/kinematic_structure_schema",
+      "direct_files": 1,
+      "direct_bytes": 33200,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/kinematic_topology_schema",
+      "direct_files": 1,
+      "direct_bytes": 5116,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/language_schema",
+      "direct_files": 1,
+      "direct_bytes": 1966,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/location_schema",
+      "direct_files": 1,
+      "direct_bytes": 2708,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/machining_feature_schema",
+      "direct_files": 1,
+      "direct_bytes": 304497,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/management_resources_schema",
+      "direct_files": 1,
+      "direct_bytes": 18423,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/material_property_definition_schema",
+      "direct_files": 1,
+      "direct_bytes": 6947,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/material_property_representation_schema",
+      "direct_files": 1,
+      "direct_bytes": 3095,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/mathematical_context_schema",
+      "direct_files": 1,
+      "direct_bytes": 4242,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/mathematical_description_of_distribution_schema",
+      "direct_files": 1,
+      "direct_bytes": 3534,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/mathematical_functions_schema",
+      "direct_files": 1,
+      "direct_bytes": 286269,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/measure_schema",
+      "direct_files": 1,
+      "direct_bytes": 42934,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/mechanical_design_schema",
+      "direct_files": 1,
+      "direct_bytes": 21623,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/mesh_connectivity_schema",
+      "direct_files": 1,
+      "direct_bytes": 4576,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/mesh_function_schema",
+      "direct_files": 1,
+      "direct_bytes": 3242,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/mesh_topology_schema",
+      "direct_files": 1,
+      "direct_bytes": 12128,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/method_definition_schema",
+      "direct_files": 1,
+      "direct_bytes": 4593,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/parameterization_schema",
+      "direct_files": 1,
+      "direct_bytes": 6606,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/person_organization_schema",
+      "direct_files": 1,
+      "direct_bytes": 12367,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/presentation_appearance_schema",
+      "direct_files": 1,
+      "direct_bytes": 37454,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/presentation_definition_schema",
+      "direct_files": 1,
+      "direct_bytes": 25627,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/presentation_organization_schema",
+      "direct_files": 1,
+      "direct_bytes": 27785,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/presentation_resource_schema",
+      "direct_files": 1,
+      "direct_bytes": 6096,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/procedural_model_schema",
+      "direct_files": 1,
+      "direct_bytes": 4006,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/procedural_shape_model_schema",
+      "direct_files": 1,
+      "direct_bytes": 5037,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/procedural_sketch_schema",
+      "direct_files": 1,
+      "direct_bytes": 19033,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/process_property_representation_schema",
+      "direct_files": 1,
+      "direct_bytes": 2331,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/process_property_schema",
+      "direct_files": 1,
+      "direct_bytes": 5534,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/product_analysis_schema",
+      "direct_files": 1,
+      "direct_bytes": 4843,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/product_and_model_relationships_schema",
+      "direct_files": 1,
+      "direct_bytes": 2547,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/product_concept_schema",
+      "direct_files": 1,
+      "direct_bytes": 3232,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/product_data_equivalence_criteria_schema",
+      "direct_files": 1,
+      "direct_bytes": 5656,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/product_data_equivalence_definition_schema",
+      "direct_files": 1,
+      "direct_bytes": 3881,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/product_data_equivalence_inspection_result_schema",
+      "direct_files": 1,
+      "direct_bytes": 7458,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/product_data_quality_criteria_schema",
+      "direct_files": 1,
+      "direct_bytes": 5422,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/product_data_quality_definition_schema",
+      "direct_files": 1,
+      "direct_bytes": 3172,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/product_data_quality_inspection_result_schema",
+      "direct_files": 1,
+      "direct_bytes": 7774,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/product_definition_schema",
+      "direct_files": 1,
+      "direct_bytes": 13102,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/product_property_definition_schema",
+      "direct_files": 1,
+      "direct_bytes": 11548,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/product_property_representation_schema",
+      "direct_files": 1,
+      "direct_bytes": 15040,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/product_structure_schema",
+      "direct_files": 1,
+      "direct_bytes": 16152,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/property_distribution_and_model_relationships_schema",
+      "direct_files": 1,
+      "direct_bytes": 3077,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/qualifications_schema",
+      "direct_files": 1,
+      "direct_bytes": 3992,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/qualified_measure_schema",
+      "direct_files": 1,
+      "direct_bytes": 5090,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/representation_schema",
+      "direct_files": 1,
+      "direct_bytes": 15794,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/results_schema",
+      "direct_files": 1,
+      "direct_bytes": 4642,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/risk_schema",
+      "direct_files": 1,
+      "direct_bytes": 8213,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/scan_data_3d_shape_model_schema",
+      "direct_files": 1,
+      "direct_bytes": 5484,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/security_classification_schema",
+      "direct_files": 1,
+      "direct_bytes": 1973,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/set_theory_schema",
+      "direct_files": 1,
+      "direct_bytes": 5344,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/shape_aspect_definition_schema",
+      "direct_files": 1,
+      "direct_bytes": 15537,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/shape_data_quality_criteria_schema",
+      "direct_files": 1,
+      "direct_bytes": 116758,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/shape_data_quality_inspection_result_schema",
+      "direct_files": 1,
+      "direct_bytes": 15001,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/shape_dimension_schema",
+      "direct_files": 1,
+      "direct_bytes": 7665,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/shape_tolerance_schema",
+      "direct_files": 1,
+      "direct_bytes": 28164,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/sketch_schema",
+      "direct_files": 1,
+      "direct_bytes": 12769,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/solid_shape_element_schema",
+      "direct_files": 1,
+      "direct_bytes": 27269,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/state_and_model_relationships_schema",
+      "direct_files": 1,
+      "direct_bytes": 2864,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/state_observed_schema",
+      "direct_files": 1,
+      "direct_bytes": 5863,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/state_type_schema",
+      "direct_files": 1,
+      "direct_bytes": 2149,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/structural_response_definition_schema",
+      "direct_files": 1,
+      "direct_bytes": 2137,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/structural_response_representation_schema",
+      "direct_files": 1,
+      "direct_bytes": 81436,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/support_resource_schema",
+      "direct_files": 1,
+      "direct_bytes": 2678,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/systems_engineering_representation_schema",
+      "direct_files": 1,
+      "direct_bytes": 6442,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/topology_based_identification_schema",
+      "direct_files": 1,
+      "direct_bytes": 10527,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/topology_schema",
+      "direct_files": 1,
+      "direct_bytes": 28634,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/uuid_attribute_schema",
+      "direct_files": 1,
+      "direct_bytes": 5030,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resources/variational_representation_schema",
+      "direct_files": 1,
+      "direct_bytes": 7389,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resource_docs",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "data/resource_docs/classification_and_set_theory",
+      "direct_files": 1,
+      "direct_bytes": 5451,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resource_docs/curve_swept_solid",
+      "direct_files": 1,
+      "direct_bytes": 3472,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resource_docs/draughting_annotation",
+      "direct_files": 1,
+      "direct_bytes": 15551,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resource_docs/equivalence_validation_of_product_data",
+      "direct_files": 1,
+      "direct_bytes": 28559,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resource_docs/geometrically_bounded_2d_wireframe",
+      "direct_files": 1,
+      "direct_bytes": 6246,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resource_docs/machining_features",
+      "direct_files": 1,
+      "direct_bytes": 301743,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resource_docs/manifold_subsurface",
+      "direct_files": 1,
+      "direct_bytes": 8270,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resource_docs/mathematical_representation",
+      "direct_files": 1,
+      "direct_bytes": 4907,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resource_docs/mechanical_design_shaded_presentation",
+      "direct_files": 1,
+      "direct_bytes": 31323,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resource_docs/mesh-based_computational_fluid_dynamics",
+      "direct_files": 1,
+      "direct_bytes": 22406,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resource_docs/numerical_analysis",
+      "direct_files": 1,
+      "direct_bytes": 8057,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resource_docs/persistent_identification_of_elements_in_procedural_shape_modelling",
+      "direct_files": 1,
+      "direct_bytes": 10527,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resource_docs/quality_of_product_shape_data",
+      "direct_files": 1,
+      "direct_bytes": 159026,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/resource_docs/risk",
+      "direct_files": 1,
+      "direct_bytes": 6873,
+      "tracked_files": 1
+    },
+    {
+      "path": "data/source_profiles",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "deliverables",
+      "direct_files": 13,
+      "direct_bytes": 1134565,
+      "tracked_files": 10
+    },
+    {
+      "path": "deliverables/.env-reference-review",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "docs",
+      "direct_files": 44,
+      "direct_bytes": 15323578,
+      "tracked_files": 43
+    },
+    {
+      "path": "docs/architecture",
+      "direct_files": 4,
+      "direct_bytes": 10642,
+      "tracked_files": 4
+    },
+    {
+      "path": "docs/assets",
+      "direct_files": 3,
+      "direct_bytes": 173232,
+      "tracked_files": 3
+    },
+    {
+      "path": "docs/audits",
+      "direct_files": 39,
+      "direct_bytes": 378000,
+      "tracked_files": 39
+    },
+    {
+      "path": "docs/demo-narratives",
+      "direct_files": 1,
+      "direct_bytes": 1637,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/demo-narratives/admin",
+      "direct_files": 1,
+      "direct_bytes": 1027,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/demo-narratives/code-audit",
+      "direct_files": 1,
+      "direct_bytes": 913,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/demo-narratives/data-flow",
+      "direct_files": 1,
+      "direct_bytes": 1080,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/demo-narratives/graph",
+      "direct_files": 1,
+      "direct_bytes": 987,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/demo-narratives/home",
+      "direct_files": 1,
+      "direct_bytes": 1077,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/demo-narratives/import",
+      "direct_files": 1,
+      "direct_bytes": 1024,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/demo-narratives/modeling",
+      "direct_files": 1,
+      "direct_bytes": 866,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/demo-narratives/ontology",
+      "direct_files": 1,
+      "direct_bytes": 1127,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/demo-narratives/qif",
+      "direct_files": 1,
+      "direct_bytes": 934,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/demo-narratives/quality",
+      "direct_files": 1,
+      "direct_bytes": 834,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/demo-narratives/registry",
+      "direct_files": 1,
+      "direct_bytes": 907,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/demo-narratives/reports",
+      "direct_files": 1,
+      "direct_bytes": 1150,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/demo-narratives/requirements",
+      "direct_files": 1,
+      "direct_bytes": 894,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/demo-narratives/whereused",
+      "direct_files": 1,
+      "direct_bytes": 875,
+      "tracked_files": 1
+    },
+    {
+      "path": "docs/xsd",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "docs/xsd/Check",
+      "direct_files": 7,
+      "direct_bytes": 456564,
+      "tracked_files": 7
+    },
+    {
+      "path": "docs/xsd/QIFApplications",
+      "direct_files": 7,
+      "direct_bytes": 1037730,
+      "tracked_files": 7
+    },
+    {
+      "path": "docs/xsd/QIFLibrary",
+      "direct_files": 16,
+      "direct_bytes": 2677959,
+      "tracked_files": 16
+    },
+    {
+      "path": "frontend",
+      "direct_files": 12,
+      "direct_bytes": 256609,
+      "tracked_files": 12
+    },
+    {
+      "path": "frontend/public",
+      "direct_files": 3,
+      "direct_bytes": 4046,
+      "tracked_files": 3
+    },
+    {
+      "path": "frontend/public/Ontology",
+      "direct_files": 5,
+      "direct_bytes": 132590,
+      "tracked_files": 5
+    },
+    {
+      "path": "frontend/scripts",
+      "direct_files": 2,
+      "direct_bytes": 6422,
+      "tracked_files": 2
+    },
+    {
+      "path": "frontend/src",
+      "direct_files": 9,
+      "direct_bytes": 65687,
+      "tracked_files": 9
+    },
+    {
+      "path": "frontend/src/adapters",
+      "direct_files": 1,
+      "direct_bytes": 3625,
+      "tracked_files": 1
+    },
+    {
+      "path": "frontend/src/app",
+      "direct_files": 10,
+      "direct_bytes": 50363,
+      "tracked_files": 10
+    },
+    {
+      "path": "frontend/src/Components",
+      "direct_files": 52,
+      "direct_bytes": 1162713,
+      "tracked_files": 51
+    },
+    {
+      "path": "frontend/src/Components/DiagramCanvas",
+      "direct_files": 1,
+      "direct_bytes": 9805,
+      "tracked_files": 1
+    },
+    {
+      "path": "frontend/src/Components/GraphMiner",
+      "direct_files": 2,
+      "direct_bytes": 5632,
+      "tracked_files": 2
+    },
+    {
+      "path": "frontend/src/Components/ontology",
+      "direct_files": 3,
+      "direct_bytes": 48563,
+      "tracked_files": 3
+    },
+    {
+      "path": "frontend/src/Components/registry",
+      "direct_files": 2,
+      "direct_bytes": 6740,
+      "tracked_files": 2
+    },
+    {
+      "path": "frontend/src/config",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "frontend/src/config/diagramTypes",
+      "direct_files": 1,
+      "direct_bytes": 1696,
+      "tracked_files": 1
+    },
+    {
+      "path": "frontend/src/contexts",
+      "direct_files": 1,
+      "direct_bytes": 7801,
+      "tracked_files": 1
+    },
+    {
+      "path": "frontend/src/CSS",
+      "direct_files": 4,
+      "direct_bytes": 26862,
+      "tracked_files": 4
+    },
+    {
+      "path": "frontend/src/diagram",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "frontend/src/diagram/engine",
+      "direct_files": 1,
+      "direct_bytes": 1297,
+      "tracked_files": 1
+    },
+    {
+      "path": "frontend/src/diagram/layouts",
+      "direct_files": 1,
+      "direct_bytes": 3725,
+      "tracked_files": 1
+    },
+    {
+      "path": "frontend/src/diagram/registry",
+      "direct_files": 1,
+      "direct_bytes": 521,
+      "tracked_files": 1
+    },
+    {
+      "path": "frontend/src/graphMiner",
+      "direct_files": 2,
+      "direct_bytes": 4970,
+      "tracked_files": 2
+    },
+    {
+      "path": "frontend/src/hooks",
+      "direct_files": 4,
+      "direct_bytes": 5290,
+      "tracked_files": 4
+    },
+    {
+      "path": "frontend/src/pages",
+      "direct_files": 32,
+      "direct_bytes": 236513,
+      "tracked_files": 31
+    },
+    {
+      "path": "frontend/src/pages/qif",
+      "direct_files": 3,
+      "direct_bytes": 13413,
+      "tracked_files": 3
+    },
+    {
+      "path": "frontend/src/services",
+      "direct_files": 34,
+      "direct_bytes": 121680,
+      "tracked_files": 34
+    },
+    {
+      "path": "frontend/src/styles",
+      "direct_files": 1,
+      "direct_bytes": 1038,
+      "tracked_files": 1
+    },
+    {
+      "path": "frontend/src/types",
+      "direct_files": 1,
+      "direct_bytes": 2408,
+      "tracked_files": 1
+    },
+    {
+      "path": "frontend/src/ui",
+      "direct_files": 2,
+      "direct_bytes": 5375,
+      "tracked_files": 2
+    },
+    {
+      "path": "frontend/src/utils",
+      "direct_files": 18,
+      "direct_bytes": 69363,
+      "tracked_files": 18
+    },
+    {
+      "path": "frontend/src/validation",
+      "direct_files": 1,
+      "direct_bytes": 1970,
+      "tracked_files": 1
+    },
+    {
+      "path": "frontend/src/widgets",
+      "direct_files": 6,
+      "direct_bytes": 7902,
+      "tracked_files": 6
+    },
+    {
+      "path": "frontend/src/workflows",
+      "direct_files": 3,
+      "direct_bytes": 20506,
+      "tracked_files": 3
+    },
+    {
+      "path": "frontend/tests",
+      "direct_files": 15,
+      "direct_bytes": 61610,
+      "tracked_files": 15
+    },
+    {
+      "path": "frontend/tools",
+      "direct_files": 3,
+      "direct_bytes": 9593,
+      "tracked_files": 3
+    },
+    {
+      "path": "infra",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "infra/azure-apim",
+      "direct_files": 5,
+      "direct_bytes": 20135,
+      "tracked_files": 5
+    },
+    {
+      "path": "infra/deployment",
+      "direct_files": 28,
+      "direct_bytes": 87725,
+      "tracked_files": 28
+    },
+    {
+      "path": "infra/linux",
+      "direct_files": 10,
+      "direct_bytes": 26208,
+      "tracked_files": 10
+    },
+    {
+      "path": "infra/linux/systemd",
+      "direct_files": 1,
+      "direct_bytes": 636,
+      "tracked_files": 1
+    },
+    {
+      "path": "infra/mcp",
+      "direct_files": 2,
+      "direct_bytes": 679,
+      "tracked_files": 2
+    },
+    {
+      "path": "infra/neo4j",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "infra/postgres",
+      "direct_files": 6,
+      "direct_bytes": 12750,
+      "tracked_files": 6
+    },
+    {
+      "path": "infra/postgres/migrations",
+      "direct_files": 10,
+      "direct_bytes": 5534,
+      "tracked_files": 10
+    },
+    {
+      "path": "infra/spark",
+      "direct_files": 4,
+      "direct_bytes": 3797,
+      "tracked_files": 4
+    },
+    {
+      "path": "infra/windows",
+      "direct_files": 28,
+      "direct_bytes": 137733,
+      "tracked_files": 28
+    },
+    {
+      "path": "infra/windows/semantic-bridge",
+      "direct_files": 5,
+      "direct_bytes": 59757,
+      "tracked_files": 5
+    },
+    {
+      "path": "mapping",
+      "direct_files": 2,
+      "direct_bytes": 1441,
+      "tracked_files": 2
+    },
+    {
+      "path": "ontology",
+      "direct_files": 6,
+      "direct_bytes": 6863,
+      "tracked_files": 6
+    },
+    {
+      "path": "parsers",
+      "direct_files": 2,
+      "direct_bytes": 5142,
+      "tracked_files": 2
+    },
+    {
+      "path": "plugins",
+      "direct_files": 1,
+      "direct_bytes": 897,
+      "tracked_files": 1
+    },
+    {
+      "path": "plugins/mbse_plugin",
+      "direct_files": 4,
+      "direct_bytes": 10025,
+      "tracked_files": 4
+    },
+    {
+      "path": "plugins/mbse_plugin/agents",
+      "direct_files": 1,
+      "direct_bytes": 388,
+      "tracked_files": 1
+    },
+    {
+      "path": "plugins/mbse_plugin/AgentsRegistry",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "plugins/mbse_plugin/AgentsRegistry/CodedTools",
+      "direct_files": 1,
+      "direct_bytes": 200,
+      "tracked_files": 1
+    },
+    {
+      "path": "plugins/mbse_plugin/mbse_plugin",
+      "direct_files": 5,
+      "direct_bytes": 13644,
+      "tracked_files": 4
+    },
+    {
+      "path": "plugins/mbse_plugin/mbse_plugin/cameo_mdk",
+      "direct_files": 4,
+      "direct_bytes": 2988,
+      "tracked_files": 4
+    },
+    {
+      "path": "plugins/mbse_plugin/mbse_plugin/teamcenter_smw",
+      "direct_files": 4,
+      "direct_bytes": 6702,
+      "tracked_files": 4
+    },
+    {
+      "path": "plugins/mbse_plugin/scripts",
+      "direct_files": 1,
+      "direct_bytes": 7645,
+      "tracked_files": 1
+    },
+    {
+      "path": "plugins/mbse_plugin/tests",
+      "direct_files": 4,
+      "direct_bytes": 9073,
+      "tracked_files": 3
+    },
+    {
+      "path": "scripts",
+      "direct_files": 8,
+      "direct_bytes": 73369,
+      "tracked_files": 8
+    },
+    {
+      "path": "scripts/presentations",
+      "direct_files": 1,
+      "direct_bytes": 23699,
+      "tracked_files": 1
+    },
+    {
+      "path": "standalone",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "standalone/data_product_package",
+      "direct_files": 3,
+      "direct_bytes": 2921,
+      "tracked_files": 3
+    },
+    {
+      "path": "standalone/data_product_package/data_product_package",
+      "direct_files": 6,
+      "direct_bytes": 13223,
+      "tracked_files": 6
+    },
+    {
+      "path": "standalone/data_product_package/examples",
+      "direct_files": 1,
+      "direct_bytes": 433,
+      "tracked_files": 1
+    },
+    {
+      "path": "standalone/data_product_package/tests",
+      "direct_files": 2,
+      "direct_bytes": 2969,
+      "tracked_files": 2
+    },
+    {
+      "path": "standalone/ontology_agentic_service",
+      "direct_files": 4,
+      "direct_bytes": 14619,
+      "tracked_files": 4
+    },
+    {
+      "path": "standalone/ontology_agentic_service/AgentsRegistry",
+      "direct_files": 0,
+      "direct_bytes": 0,
+      "tracked_files": 0
+    },
+    {
+      "path": "standalone/ontology_agentic_service/AgentsRegistry/Agents",
+      "direct_files": 4,
+      "direct_bytes": 3996,
+      "tracked_files": 4
+    },
+    {
+      "path": "standalone/ontology_agentic_service/AgentsRegistry/CodedTools",
+      "direct_files": 7,
+      "direct_bytes": 20940,
+      "tracked_files": 7
+    },
+    {
+      "path": "standalone/ontology_agentic_service/AgentsRegistry/MCPTools",
+      "direct_files": 1,
+      "direct_bytes": 2765,
+      "tracked_files": 1
+    },
+    {
+      "path": "standalone/ontology_agentic_service/FastAPIAdapter",
+      "direct_files": 2,
+      "direct_bytes": 14663,
+      "tracked_files": 2
+    },
+    {
+      "path": "standalone/ontology_agentic_service/tests",
+      "direct_files": 6,
+      "direct_bytes": 15240,
+      "tracked_files": 6
+    },
+    {
+      "path": "tools",
+      "direct_files": 2,
+      "direct_bytes": 33174,
+      "tracked_files": 2
+    },
+    {
+      "path": "tools/admin",
+      "direct_files": 1,
+      "direct_bytes": 3991,
+      "tracked_files": 1
+    },
+    {
+      "path": "tools/diagnostics",
+      "direct_files": 7,
+      "direct_bytes": 18427,
+      "tracked_files": 7
+    },
+    {
+      "path": "tools/import",
+      "direct_files": 11,
+      "direct_bytes": 22537,
+      "tracked_files": 11
+    },
+    {
+      "path": "tools/tests",
+      "direct_files": 4,
+      "direct_bytes": 3815,
+      "tracked_files": 4
+    }
+  ],
+  "excluded_boundaries": [
+    ".codex",
+    ".git",
+    ".pytest_cache",
+    ".release-test-tmp",
+    "external",
+    "logs",
+    "node_modules",
+    "ontology_uploads",
+    "release-evidence",
+    "uploads",
+    "_restore_ingest",
+    "backend/__pycache__",
+    "backend/agent/__pycache__",
+    "backend/agentic_service/__pycache__",
+    "backend/ceim/__pycache__",
+    "backend/ceim_service/__pycache__",
+    "backend/chains/__pycache__",
+    "backend/core/__pycache__",
+    "backend/data_catalog_service/__pycache__",
+    "backend/data_pipeline_service/__pycache__",
+    "backend/data_product_service/__pycache__",
+    "backend/depo_platform/__pycache__",
+    "backend/graph_service/__pycache__",
+    "backend/ingestion_service/__pycache__",
+    "backend/ingestion_service/api/__pycache__",
+    "backend/models/__pycache__",
+    "backend/ontology_service/__pycache__",
+    "backend/ontology_service/domain/__pycache__",
+    "backend/oslc_service/__pycache__",
+    "backend/parsers/__pycache__",
+    "backend/qif/__pycache__",
+    "backend/routes/__pycache__",
+    "backend/scripts/__pycache__",
+    "backend/Services/__pycache__",
+    "backend/Services/tests/__pycache__",
+    "backend/tests/__pycache__",
+    "backend/tests/contracts/__pycache__",
+    "backend/tools/__pycache__",
+    "frontend/dist",
+    "frontend/node_modules",
+    "frontend/test-results",
+    "infra/spark/__pycache__",
+    "mapping/__pycache__",
+    "parsers/__pycache__",
+    "plugins/mbse_plugin/mbse_plugin/__pycache__",
+    "plugins/mbse_plugin/mbse_plugin/teamcenter_smw/__pycache__",
+    "plugins/mbse_plugin/tests/__pycache__",
+    "scripts/__pycache__"
+  ],
+  "exact_duplicate_groups": [
+    {
+      "bytes_each": 439680,
+      "paths": [
+        "backend/STP/000678_A;1-SKF_6306-2Z7097_Prt2 (2022_12_17 03_45_52 UTC).stp",
+        "backend/STP/000678_A;1-SKF_6306-2Z7097_Prt2 (2023_02_05 08_36_29 UTC).stp"
+      ]
+    },
+    {
+      "bytes_each": 775464,
+      "paths": [
+        "backend/STP/000679_A;1-End Bell_Machined (2022_12_17 03_45_52 UTC).stp",
+        "backend/STP/000679_A;1-End Bell_Machined (2023_02_05 08_36_29 UTC).stp"
+      ]
+    },
+    {
+      "bytes_each": 49824,
+      "paths": [
+        "backend/STP/000680_A;1-SKF_6306-2Z7097_Prt3 (2022_12_17 03_45_52 UTC).stp",
+        "backend/STP/000680_A;1-SKF_6306-2Z7097_Prt3 (2023_02_05 08_36_29 UTC).stp"
+      ]
+    },
+    {
+      "bytes_each": 62976,
+      "paths": [
+        "backend/STP/000681_A;1-External Circlip (2022_12_17 03_45_52 UTC).stp",
+        "backend/STP/000681_A;1-External Circlip (2023_02_05 08_36_29 UTC).stp"
+      ]
+    },
+    {
+      "bytes_each": 812718,
+      "paths": [
+        "backend/STP/000682_A;1-Laminated Stator Core (2022_12_17 03_45_52 UTC).stp",
+        "backend/STP/000682_A;1-Laminated Stator Core (2023_02_05 08_36_29 UTC).stp"
+      ]
+    },
+    {
+      "bytes_each": 3384029,
+      "paths": [
+        "backend/STP/000683_A;1-Centrifugal Fan (2022_12_17 03_45_52 UTC).stp",
+        "backend/STP/000683_A;1-Centrifugal Fan (2023_02_05 08_36_29 UTC).stp"
+      ]
+    },
+    {
+      "bytes_each": 781890,
+      "paths": [
+        "backend/STP/000684_B;1-Rotor Shaft Machined (2022_12_17 03_45_52 UTC).stp",
+        "backend/STP/000684_B;1-Rotor Shaft Machined (2023_02_05 08_36_29 UTC).stp"
+      ]
+    },
+    {
+      "bytes_each": 47851247,
+      "paths": [
+        "backend/STP/000685_A;1-Coil for Three Phase Winding (2022_12_17 01_44_39 UTC).stp",
+        "backend/STP/000685_A;1-Coil for Three Phase Winding (2023_02_05 08_36_29 UTC).stp"
+      ]
+    },
+    {
+      "bytes_each": 110389,
+      "paths": [
+        "backend/STP/000686_A;1-Terminal Box_Machined (2022_12_17 01_44_39 UTC).stp",
+        "backend/STP/000686_A;1-Terminal Box_Machined (2023_02_05 08_36_29 UTC).stp"
+      ]
+    },
+    {
+      "bytes_each": 893533,
+      "paths": [
+        "data/core_model/core.owl",
+        "data/core_model/core_v4.owl"
+      ]
+    },
+    {
+      "bytes_each": 3539,
+      "paths": [
+        "data/domain_models/product_life_cycle_support/4439_rd.owl",
+        "data/domain_models/product_life_cycle_support/4439_rd_v2.owl"
+      ]
+    },
+    {
+      "bytes_each": 10527,
+      "paths": [
+        "data/resources/topology_based_identification_schema/topology_based_identification_schema.exp",
+        "data/resource_docs/persistent_identification_of_elements_in_procedural_shape_modelling/wg12n9990.exp"
+      ]
+    }
+  ],
+  "missing_relative_markdown_links": [],
+  "tracked_runtime_files": [
+    "backend/ttl_cache/03d67b64-1b37-4ea5-9b62-3999f931535f.ttl",
+    "backend/ttl_cache/3f4cbceb-fb1c-4073-b08c-7a3ff7f348ea.ttl",
+    "backend/ttl_cache/521a6857-46fa-449b-a3e6-c01a65e7d04b.ttl",
+    "backend/ttl_cache/59cfdc34-a124-4e08-a91a-dd6e3abffd15.ttl",
+    "backend/ttl_cache/a9723141-a45a-4eae-ab24-d3256044df5d.ttl"
+  ]
+}

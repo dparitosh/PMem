@@ -296,7 +296,7 @@ class StreamingTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             async for _ in _stream_frames(Response()):pass
 
-    async def test_ollama_chunks_arrive_before_stream_completion(self):
+    async def test_ollama_summary_is_validated_before_emission(self):
         from backend.agentic_service import local_llm
         chunks=[]
         class Body(httpx.AsyncByteStream):
@@ -304,15 +304,16 @@ class StreamingTests(unittest.IsolatedAsyncioTestCase):
                 yield b'{"message":{"content":"first "},"done":false}\n'
                 await asyncio.sleep(0)
                 self.assert_streamed()
-                yield b'{"message":{"content":"second"},"done":true}\n'
+                yield b'{"message":{"content":"second [evidence:evidence]"},"done":true}\n'
             def assert_streamed(self):
-                if chunks != ['first ']: raise AssertionError('First token was buffered')
+                if chunks: raise AssertionError('Unvalidated tokens were emitted')
         real_client=httpx.AsyncClient
         transport=httpx.MockTransport(lambda request:httpx.Response(200,stream=Body()))
         async def emit(token):chunks.append(token)
         with patch.dict(os.environ,{'USE_LLM':'ollama','OLLAMA_API_URL':'http://fixture/api/chat','OLLAMA_BASE_URL':''}), patch.object(local_llm.httpx,'AsyncClient',lambda **kw:real_client(transport=transport,**kw)):
             result=await local_llm.summarize('question',[{'id':'evidence'}],on_token=emit)
-        self.assertEqual(result,'first second')
+        self.assertEqual(result,'first second [evidence:evidence]')
+        self.assertEqual(chunks,[result])
 
     async def test_agent_prompt_and_allowlist_are_enforced(self):
         from backend.agentic_service import local_llm

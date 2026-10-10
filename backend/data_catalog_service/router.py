@@ -11,7 +11,7 @@ from fastapi import Header
 from backend.mesh_store import PostgresRegistry
 from backend.depo_platform.authorization import approval_identity, graph_read_identity, _request_api_key
 from .artifact_retention import retention
-from .product_contract import validate_revision, validate_registration
+from .product_contract import validate_revision, validate_registration, public_record
 
 router = APIRouter(prefix="/catalog", tags=["data-catalog"])
 store = PostgresRegistry("catalog_products")
@@ -50,7 +50,7 @@ def products(domain: str = "", limit: int = 100, offset: int = 0) -> dict:
     bounded = max(1, min(limit, 500))
     total, values = store.page(limit=bounded, offset=offset, exclude_latest=True,
         field='domain' if domain else None, value=domain, order_field='updated_at')
-    return {'products': values, 'count': len(values), 'total': total, 'limit': bounded, 'offset': offset,
+    return {'products': [public_record(value) for value in values], 'count': len(values), 'total': total, 'limit': bounded, 'offset': offset,
         'next_offset': offset + bounded if offset + bounded < total else None}
 
 
@@ -61,7 +61,7 @@ def product(product_id: str) -> dict:
     if not versions:
         raise HTTPException(404, "Data product not found")
     latest = values.get(f"{product_id}:latest", {}).get("latest_version")
-    return {"product_id": product_id, "latest_version": latest, "versions": sorted(versions, key=lambda value: (str(value.get('updated_at') or ''), str(value.get('version') or '')), reverse=True)}
+    return {"product_id": product_id, "latest_version": latest, "versions": [public_record(value) for value in sorted(versions, key=lambda value: (str(value.get('updated_at') or ''), str(value.get('version') or '')), reverse=True)]}
 
 
 @router.put("/products/{product_id}/versions/{version}")

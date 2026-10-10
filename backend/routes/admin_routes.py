@@ -482,25 +482,11 @@ def _standalone_service_registry() -> list[dict]:
     except (OSError, ValueError) as exc:
         logger.warning("Standalone service manifest unavailable: %s", exc)
         return []
-    rows = []
-    for service in manifest.get("services", []):
-        port = service.get("port")
-        if not service.get("id") or not port:
-            continue
-        rows.append({
-            "id": service["id"],
-            "name": service.get("display_name") or service["id"],
-            "type": "standalone_api",
-            "status": "configured",
-            "owner": "Digital Engineering",
-            "endpoint": f"http://127.0.0.1:{port}",
-            "health_endpoint": f"http://127.0.0.1:{port}/readyz",
-            "config_source": "infra/deployment/services.json",
-            "route_count": 0,
-            "frontend_mapped_count": 0,
-            "port": port,
-        })
-    return rows
+    from backend.depo_platform.service_catalog import service_rows
+    try:
+        return service_rows(manifest)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(503, 'Service catalog configuration is invalid; verify central routing settings') from exc
 
 
 def _route_available(api_routes: list[dict], path: str) -> str:
@@ -544,6 +530,12 @@ async def get_admin_registry(request: Request):
     backend_health = _route_available(api_routes, "/health")
     llm_health = _route_available(api_routes, "/api/v1/import/ollama/health")
     chat_health = _route_available(api_routes, "/chat/health")
+    from backend.agentic_service.catalog_loader import load_catalog
+    from backend.agentic_service.agent_usage import describe
+    try:
+        registered_agents = describe(load_catalog())
+    except (ValueError, OSError, KeyError) as exc:
+        raise HTTPException(503, 'Agent catalog configuration is invalid; verify AGENTIC_CATALOG_PATH') from exc
 
     return {
         "services": [
@@ -567,7 +559,7 @@ async def get_admin_registry(request: Request):
                 "owner": "Digital Engineering",
                 "endpoint": backend_endpoint,
                 "health_endpoint": backend_health,
-                "config_source": "backend/.env",
+                "config_source": "root .env.local / process environment",
                 "route_count": len(api_routes),
                 "frontend_mapped_count": sum(1 for route in api_routes if route.get("frontend_mapped")),
             },
@@ -590,26 +582,7 @@ async def get_admin_registry(request: Request):
             neo4j,
         ],
         "configuration": _configuration_registry(neo4j, llm),
-        "agents": [
-            {
-                "id": "semantic-chat",
-                "name": "Semantic Chat Agent",
-                "provider": llm["provider"],
-                "model": llm["model"],
-                "status": llm["status"],
-                "health_endpoint": chat_health,
-                "config_source": llm.get("model_source", ""),
-            },
-            {
-                "id": "workflow-advisor",
-                "name": "Workflow Advisor",
-                "provider": llm["provider"],
-                "model": llm["model"],
-                "status": llm["status"],
-                "health_endpoint": llm_health,
-                "config_source": llm.get("model_source", ""),
-            },
-        ],
+        "agents": [{**agent, 'status': agent['registration_status'], 'config_source': 'AGENTIC_CATALOG_PATH / backend/agentic_service/catalog.json'} for agent in registered_agents],
         "workflows": _workflow_registry(),
         "packages": _package_registry(),
     }

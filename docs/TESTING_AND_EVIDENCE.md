@@ -6,13 +6,13 @@ Executable tests are source code. Generated results are evidence of a particular
 | --- | --- | --- |
 | `backend/tests/` | Python unit, contract and integration regressions | Retain and maintain; consult conftest before running manual/live scripts |
 | `frontend/src/**/*.test.js` | UI behavior and API-boundary regressions | Retain; run with Vitest |
-| Frontend Playwright specifications | Browser workflow checks | Inspect setup for mocked versus live services before interpreting results |
+| Browser/RPA automation | Removed on 2026-10-10 at the user's request | Playwright configs, audit specifications and screenshot helper are no longer shipped or maintained |
 | `docs/audits/` | Findings, correction history and acceptance limitations | Dated evidence; use the current index rather than adding historical counts |
-| `release-evidence/YYYY-MM-DD/` | Fresh machine reports and logs | Local, ignored; associate with revision and dirty-tree state |
-| `deliverables/*-results.json` | Earlier browser navigation results | Historical; current files identify mocked service responses, not live acceptance |
-| `deliverables/*.log` | Earlier build/test output | Historical, ignored; old pass counts are not current totals |
+| `release-evidence/YYYY-MM-DD/` | Generated reports removed on 2026-10-10 | Not required in the customer package; historical summaries are not retained machine evidence |
+| `deliverables/*-results.json` | Generated browser navigation results | Earlier local outputs removed in the reviewed 2026-10-10 cleanup; keep new evidence in release-evidence |
+| `deliverables/*.log` | Generated build/test output | Earlier local outputs removed; logs are ignored and old pass counts are not current totals |
 | `logs/`, `.pytest_cache/`, `frontend/test-results/`, `frontend/playwright-report/` | Runtime/generated data | Ignored; review for secrets before sharing |
-| `excluded-review/` | Previously excluded material awaiting review | Preserve; do not restore or delete based solely on filename |
+| `excluded-review/` | Previously excluded material awaiting review | Reviewed presentation intermediates and superseded patch packages removed on 2026-10-10; future material requires content/reference review |
 
 Run tests using the environment installed for the project. The isolated dependency directory used in this workspace is a local convenience, not a customer installation procedure. Do not sum overlapping focused runs or equate mocked tests with live integration tests. A changed working tree is not the same version as its HEAD commit.
 

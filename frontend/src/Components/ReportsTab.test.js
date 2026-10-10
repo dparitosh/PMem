@@ -1,6 +1,6 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import ReportsTab from './ReportsTab';
+import { render, screen, waitFor } from '@testing-library/react';
+import ReportsTab, { escapeCsv } from './ReportsTab';
 
 jest.mock('../contexts/OntologyContext', () => ({
   OntologyProvider: ({ children }) => children,
@@ -17,7 +17,14 @@ jest.mock('../contexts/OntologyContext', () => ({
 
 import { OntologyProvider } from '../contexts/OntologyContext';
 
-test('ReportsTab falls back to graph nodes when search results are empty', () => {
+test('CSV quotes fields using doubled quotes and preserves real newlines', () => {
+  expect(escapeCsv('Part "A", revision\n2')).toBe('"Part ""A"", revision\n2"');
+  expect(escapeCsv(null)).toBe('""');
+});
+
+jest.mock('../services/graphApi', () => ({ graphApi: { getOverview: jest.fn(async () => ({ data: { nodes: [], links: [] } })) } }));
+
+test('ReportsTab does not substitute canvas data for an empty report projection', async () => {
   render(
     <OntologyProvider>
       <ReportsTab
@@ -37,8 +44,7 @@ test('ReportsTab falls back to graph nodes when search results are empty', () =>
     </OntologyProvider>
   );
 
-  expect(screen.getByText('Rotor')).toBeInTheDocument();
-  expect(screen.getAllByText('Part').length).toBeGreaterThan(0);
+  await waitFor(() => expect(screen.queryByText('Rotor')).toBeNull());
   expect(screen.getByText('Analytics overview')).toBeInTheDocument();
   expect(screen.getByText('Entity distribution')).toBeInTheDocument();
   expect(screen.getByText('Relationship distribution')).toBeInTheDocument();

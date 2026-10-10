@@ -147,6 +147,11 @@ def configuration_status(*, check_workers=True):
         bounded_prompt_json({})
     except (ValueError, TypeError):
         errors.append('AGENTIC_MAX_PROMPT_BYTES')
+    try:
+        from .catalog_loader import load_catalog
+        load_catalog()
+    except (ValueError, OSError, KeyError, TypeError):
+        errors.append('AGENTIC_CATALOG_PATH')
     return {'configuration': {'status': 'unavailable' if errors else 'ready', 'invalid_settings': sorted(set(errors))}}
 
 

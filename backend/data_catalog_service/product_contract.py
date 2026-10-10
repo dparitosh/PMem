@@ -4,7 +4,41 @@ SERVER_FIELDS = {"product_id", "version", "updated_at"}
 MUTABLE_FIELDS = {"lifecycle_state"}
 
 
+def reject_secrets(value):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            name = str(key).lower().replace('-', '_')
+            if name in {'headers', 'credentials', 'authorization', 'api_key', 'password', 'secret', 'token', 'ocp_apim_subscription_key'} or name.endswith(('_token', '_api_key', '_password', '_secret')):
+                raise ValueError('Catalog metadata cannot contain credentials or arbitrary headers')
+            reject_secrets(item)
+    elif isinstance(value, list):
+        for item in value:
+            reject_secrets(item)
+
+
+def public_record(record):
+    # Allowlisted reader contract also protects legacy credential-bearing records.
+    fields = {'product_id', 'version', 'updated_at', 'name', 'domain', 'owner', 'classification', 'steward',
+              'lifecycle_state', 'sla', 'quality_status', 'sources', 'ontologies', 'semantic_releases',
+              'manifest', 'product_kind', 'analytics_readiness', 'product_url', 'description'}
+    def clean(value):
+        if isinstance(value, dict):
+            result = {}
+            for key, item in value.items():
+                try:
+                    reject_secrets({key: None})
+                except ValueError:
+                    continue
+                result[key] = clean(item)
+            return result
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        return value
+    return clean({key: value for key, value in record.items() if key in fields})
+
+
 def validate_registration(payload: dict) -> None:
+    reject_secrets(payload)
     for name in ("name", "domain", "owner", "classification", "steward"):
         if not isinstance(payload.get(name), str) or not payload[name].strip():
             raise ValueError(f"{name} must be a non-empty string")

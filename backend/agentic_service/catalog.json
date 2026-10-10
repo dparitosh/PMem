@@ -74,7 +74,7 @@
         "ontology.merge.apply_automatic"
       ],
       "approval_required": true,
-      "system_prompt": "Your role is ontology-governor. Task scope: Review and authorize registration, lifecycle changes, merge and mapping publication. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
+      "system_prompt": "Your role is ontology-governor. Task scope: Propose registration, lifecycle changes, merge and mapping publication for server-authorized review; never grant approval. Select the next relevant allowlisted tool for review; the service performs the task. Do not return task results, invent evidence, establish semantic equivalence, or claim model training."
     },
     {
       "id": "engineering-parser",
@@ -164,7 +164,7 @@
         "ontology.merge.evaluate"
       ],
       "approval_required": false,
-      "system_prompt": "Inspect the saved bridge preview using bridge.mapping.evaluate. Report accepted and held mappings and validation reasons. Do not invent semantic equivalence, approve credentials, or override the validated-only policy."
+      "system_prompt": "Your role is ontology-steward. Inspect the saved bridge preview using bridge.mapping.evaluate. Select the evaluation tool to retrieve accepted and held mappings and validation reasons; do not produce a report in a tool proposal. Do not invent semantic equivalence, approve credentials, or override the validated-only policy."
     }
   ],
   "tools": [

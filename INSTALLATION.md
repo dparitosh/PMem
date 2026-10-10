@@ -1,5 +1,11 @@
 # DEPO installation and release guide
 
+## Metadata Registry page update
+
+Deploy the matching frontend and ontology service together for registry pagination. Rebuild the frontend and restart the ontology service after replacing these files; no database migration is needed for this change. Registry reads now require `GRAPH_READ_TOKEN` or a central browser session with that scope. In Admin, connect registered services before opening Metadata Registry. Writes continue to require `ONTOLOGY_APPROVAL_TOKEN`.
+
+The assets API accepts `offset` and `limit` and returns `has_more`. Use **Next asset page** and **Previous asset page** to browse additional assets. Filters and summary cards apply to the current page; they are not full registry totals. Refresh returns to the first page. If an older service returns 1,000 assets without pagination metadata, the UI displays an update warning rather than implying the list is complete.
+
 ## Which Windows installer should I run?
 
 **Run one complete installer, not both scripts in `infra\windows`.** The scripts have different responsibilities:
@@ -26,7 +32,7 @@ The complete installer **starts backend services and builds the frontend, but do
 If PowerShell is already in `E:\App\PMem\infra\windows`, the equivalent complete installer command is:
 
 ```powershell
-.\install-depo-windows.ps1 -EnvFile 'E:\App\PMem\.env.local' -Profile Production
+& 'E:\App\PMem\infra\windows\install-depo-windows.ps1' -EnvFile 'E:\App\PMem\.env.local' -Profile Production
 ```
 
 Do not run `.\install-depo.ps1` from `infra\windows` expecting a complete installation: that resolves to the dependency-only script. It does not accept `-Profile Production`.
@@ -3535,3 +3541,167 @@ The scheduler retains tracking if it cannot finish within its shutdown timeout a
 For long-running jobs, set `$env:DEPO_SHUTDOWN_GRACE_SECONDS = '120'` in the PowerShell session before running the stop script (accepted range: 5–600 seconds). Set a value longer than the application drain time. Do not share actors between users who require separate conversation histories.
 
 See [Agent architecture and use of the 26 roles](docs/AGENT_TOOL_MAPPING.md) for the runtime role/tool mapping, workflow handoffs, mutation recovery and deployment boundaries. Approved mutating `/runs` requests use retained workflows; `wait_for_completion=false` returns a queued workflow ID in worker mode. Sync REST and LangChain Ollama calls use the shared per-process admission and circuit policy. These controls do not constitute live APIM capability verification.
+
+
+### ReqIF update and verification
+
+Deploy the ingestion, CEIM and graph backend files together with the rebuilt frontend. Restart the services after deploying. No PostgreSQL migration is introduced by this ReqIF update.
+
+In Admin, connect service credentials. Open Import, select Import instance graph, then attach a `.reqif` or `.reqifz` source. ReqIFZ must contain exactly one ReqIF document; attachments are retained in the original archive. Multiple ReqIF documents must be imported separately. The governed import requires an approved and enabled data-job definition. Completion of normalization or validation alone does not publish the graph: complete the governed publication step before checking the ReqIF page.
+
+The ReqIF page provides Previous and Next controls. Search and CSV export apply to the displayed page. Invalid identifiers, duplicate identifiers, unresolved requirement references, DTD/entity declarations and oversized archives stop import with an error. Full requirement text is preserved. Validation currently covers XML structure, identifiers and references; it does not certify compliance against the complete ReqIF XSD. Source files remain retained evidence; CSV is not a round-trip ReqIF export.
+
+
+### XMI and SysML update checkpoints
+
+Deploy ingestion, ontology conversion and graph service updates together with the rebuilt frontend, then restart the services. No PostgreSQL migration is introduced by these parser fixes.
+
+For model instances, open Import, explicitly select Import instance graph and attach `.xmi` or `.mdxml`. These files use the governed SysML v1 adapter and require an approved data job. For ontology creation, select Create ontology instead; do not treat ontology conversion as instance-job execution. SysML v2 repository import continues to use the configured project and immutable commit.
+
+Verify comments are accepted, duplicate IDs and unresolved cross-file references show errors, and the MBSE filter on the ReqIF page includes published SysML v1/v2 requirements. Cross-file references require a model resolver, which standalone import does not provide; they are rejected instead of being linked to a same-named local ID. Multiplicity values are preserved as source evidence; full SysML/KerML semantic compilation is not provided. Native `.sysml`/`.kerml` text parsing remains unsupported.
+
+
+XMI ontology identity update: generated node and reference URIs now encode the original identifier instead of replacing punctuation with underscores. This prevents distinct model IDs from merging. Existing retained ontologies are not rewritten automatically. Generate and review a new ontology version from the original XMI source, then publish it through the normal approval flow. References to changed generated URIs must be reviewed when switching versions.
+# Optional MBSE plugin: execution credentials and readiness
+
+Install this optional component after the main DEPO services are ready and the
+root `.env.local` keys match the PostgreSQL credential store. It uses a separate
+runtime. From PowerShell, replace the example ingestion IP with your actual service:
+
+```powershell
+Set-Location E:\App\PMem
+powershell -NoProfile -ExecutionPolicy Bypass -File .\plugins\mbse_plugin\scripts\manage-plugin.ps1 -Action Install
+powershell -NoProfile -ExecutionPolicy Bypass -File .\plugins\mbse_plugin\scripts\manage-plugin.ps1 -Action Configure -EnvFile E:\App\PMem\.env.local -IngestionUrl http://10.0.2.16:8014/api/v1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\plugins\mbse_plugin\scripts\manage-plugin.ps1 -Action Start
+powershell -NoProfile -ExecutionPolicy Bypass -File .\plugins\mbse_plugin\scripts\manage-plugin.ps1 -Action Verify
+```
+
+Stop at the first failure. Start confirms local authenticated readiness; Verify
+checks the upstream `DATA_JOB_EXECUTION_TOKEN` without submitting a job. Governed
+imports still require an approved job/version and return a durable run ID.
+After central key rotation, use Stop, then `-Action SyncCredentials -EnvFile
+E:\App\PMem\.env.local`, then Start and Verify. SyncCredentials does not change
+PostgreSQL keys. Protect `plugins/mbse_plugin/.runtime/config.json`, which holds
+plaintext service credentials. The plugin binds to loopback; gateway exposure is
+configured separately. See `plugins/mbse_plugin/README.md` for exact sync commands
+and the offline SMW/Cameo capability boundaries.
+
+
+### AP242 mapping upgrade checkpoint
+
+The AP242 CEIM mapping pack is version `0.2.0`. After deploying this release, review and approve the AP242 data-job definition against the new mapping version/digest before importing again. Existing normalized batches retain their old mapping evidence; regenerate them from the retained source rather than editing provenance or bypassing approval. No PostgreSQL schema migration is required for this mapping-pack change.
+
+Dimensions now retain `lower_tolerance` and `upper_tolerance` as offsets; these are not absolute `lower_limit`/`upper_limit` values. Consumers must use a resolved nominal value and compatible units before calculating absolute limits. Supported referenced SI and conversion-based units are retained; an empty unit means unresolved, not an implicit millimetre. Assembly HAS_PART relationships follow the relating product definition to the related product definition, with occurrence evidence retained.
+
+Malformed records, duplicate identifiers, non-finite numbers, unresolved Part-28 references and empty governed semantic imports are rejected. Full XSD/Schematron/CAD conformance validation and Part-21-to-Part-28 conversion remain outside the implemented extraction boundary. Set `AP242_REFERENCE_ROOT` explicitly when using reference-repository diagnostics; there is no developer-machine path fallback.
+
+### Generated Turtle cache on installation and upgrade
+
+Generated OWL/Turtle cache files are stored under `ARTIFACT_STORAGE\ttl_cache`.
+For `ARTIFACT_STORAGE=C:\DEPO\data\artifacts`, this is
+`C:\DEPO\data\artifacts\ttl_cache`. All services must use the same durable
+storage configuration and their service account needs read/write permission.
+The local development default is `data\artifacts\ttl_cache` under the repository.
+
+Older releases wrote to `backend\ttl_cache`. The new service can read that
+location when the durable cache has no matching task. Before replacing an old
+installation, retain its TTL files. Copy them on the application VM without
+replacing newer durable files (example from the repository root):
+
+```powershell
+$source = 'E:\App\PMem\backend\ttl_cache'
+$destination = 'C:\DEPO\data\artifacts\ttl_cache'
+New-Item -ItemType Directory -Path $destination -Force | Out-Null
+if (Test-Path -LiteralPath $source) {
+    Get-ChildItem -LiteralPath $source -Filter '*.ttl' -File | ForEach-Object {
+        $target = Join-Path $destination $_.Name
+        if (-not (Test-Path -LiteralPath $target)) {
+            Copy-Item -LiteralPath $_.FullName -Destination $target
+        }
+    }
+}
+```
+
+Use the destination matching your actual `ARTIFACT_STORAGE`; restart services
+with that configuration. Verify retrieval of an existing generated ontology
+before removing legacy copies. No PostgreSQL migration is required for this
+cache-path change. Cache write failures now fail the operation rather than
+reporting success while losing its generated output.
+
+## Build a clean customer source installation package
+
+Release maintainers run this from the repository root with Python installed:
+
+```powershell
+Set-Location E:\App\PMem
+python -B .\tools\build_customer_release.py --output .\release-dist\DEPO-customer-source.zip
+```
+
+Choose a new filename for each build; the builder refuses to overwrite an
+existing ZIP. This is a source package: frontend and Python dependencies are
+installed by the normal installer. It is not an offline dependency bundle.
+The builder includes installation scripts, migrations, configuration examples,
+service source, frontend source and semantic assets. It excludes private
+`.env` files, dependency folders, caches, build output, uploaded/processed data,
+developer tests and audit output. Each included file has a SHA-256 record in
+`release-file-manifest.json`; the ZIP CRC integrity is checked before completion.
+
+Extract the ZIP to the application directory, create customer-specific
+configuration from the supplied examples, and follow the installation sequence
+above. Run `infra/deployment/test-installation-package.ps1` on the extracted
+package before installation. Reinstalling services does not erase an existing
+customer database or artifact storage. Do not delete those stores to obtain a
+clean installation; use a fresh database and storage location for a new customer.
+
+## Registry and data-product upgrade sequence
+
+New installations apply migration `010_credential_integrity.sql` automatically
+through the installer. Existing installations must apply it before starting this
+release. Migrations 001-009 have not been changed. Migration 010 adds validated,
+named credential checks and restores credential defaults. Invalid existing rows
+cause the migration to roll back; review the reported constraint with your DBA
+rather than deleting credential records or bypassing validation.
+
+For an existing Windows installation, after placing the new release files:
+
+1. Back up the database and package storage according to your customer procedure.
+2. In root `.env.local`, preserve any existing `DATA_PRODUCT_STORAGE`. If the old
+   release used its default package directory, set this explicitly before restart:
+
+```dotenv
+DATA_PRODUCT_STORAGE=E:\App\PMem\data\products
+```
+
+Do not move retained packages without a coordinated update to their PostgreSQL
+storage references. Existing product records keep their stored download paths.
+For a new customer, the default is `ARTIFACT_STORAGE\products`; for example,
+`ARTIFACT_STORAGE=C:\DEPO\data\artifacts` creates packages under
+`C:\DEPO\data\artifacts\products\packages`. The service account needs read/write
+access and this directory must survive application redeployment. Alternatively,
+set `DATA_PRODUCT_STORAGE=C:\DEPO\data\products` to select a separate durable root.
+
+3. From the application VM, run the following commands in order. Stop at any error:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\stop-depo-frontend.ps1
+.\infra\windows\stop-depo-services.ps1 -EnvFile .\.env.local
+.\infra\postgres\update-postgres-schema.ps1 -EnvFile .\.env.local
+.\infra\postgres\test-postgres-schema.ps1 -EnvFile .\.env.local
+.\infra\windows\build-depo-frontend.ps1 -EnvFile .\.env.local
+.\infra\windows\start-depo-services.ps1 -EnvFile .\.env.local
+.\infra\windows\start-depo-frontend.ps1 -EnvFile .\.env.local
+```
+
+4. Reconnect in Admin. Check **Services & catalogs** against your configured
+   local VM or gateway URLs. A configured row is not proof of a healthy service.
+   **Agents & workflows** and the registry summary now use the same validated
+   agent definitions as execution. Invalid catalogs fail agent readiness.
+5. Use **Import OpenAPI JSON** for a local metadata preview (OpenAPI 3.0/3.1,
+   maximum 5 MiB). It does not execute operations, trust imported server URLs,
+   install tools or import secrets. Use the existing service-contract import in
+   **API access** to discover credential profiles for configured service roots.
+6. Open a retained data product and verify its package download. New catalog
+   registrations reject credential fields; existing nested credential fields
+   are omitted from read responses. This redaction does not erase old database
+   contents: a DBA must review any previously stored sensitive metadata.

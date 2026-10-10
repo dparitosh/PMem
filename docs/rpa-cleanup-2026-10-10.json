@@ -1,0 +1,96 @@
+{
+  "date": "2026-10-10",
+  "reason": "User-requested removal of RPA browser tests and generated evidence",
+  "files": [
+    {
+      "path": "frontend/playwright.config.js",
+      "bytes": 1079,
+      "sha256": "a0432cac3ee81e281ae96f20a6325970415b2440b3e93798355eaf7f16cb798c"
+    },
+    {
+      "path": "frontend/playwright.navigation.config.mjs",
+      "bytes": 676,
+      "sha256": "52ad22c48e37f1c74f625bee1b6c37c14a88307e2018a2e331f8453f3a2249bb"
+    },
+    {
+      "path": "frontend/tools/capture_tooltip.js",
+      "bytes": 8528,
+      "sha256": "83e0fb35dc4d440d99d5732e675db9d73ebedfc7036511242dfc588a36d70341"
+    },
+    {
+      "path": "release-evidence/2026-10-09/backend-focused.log",
+      "bytes": 664,
+      "sha256": "7f35a153953c8a743b06b84128b7df491df494d8a98ab836cf1634bf792eac16"
+    },
+    {
+      "path": "release-evidence/2026-10-09/backend-focused.xml",
+      "bytes": 5939,
+      "sha256": "c78d86e42423dad70d435740a9ec443dd8e9fb9df2d5b53fd37b58c4d29e564d"
+    },
+    {
+      "path": "release-evidence/2026-10-09/frontend-maintenance-build.log",
+      "bytes": 4566,
+      "sha256": "72e1a21eb042a819820e7fc9e8852c35d4d378868971a6196ffb27ab7e2aae5d"
+    },
+    {
+      "path": "release-evidence/2026-10-09/frontend-tests.json",
+      "bytes": 82890,
+      "sha256": "1cc124e4a30d78fba1e4a01039567b6827e197bc08eb38c720b5d6bdc78f8cde"
+    },
+    {
+      "path": "release-evidence/2026-10-09/frontend-tests.log",
+      "bytes": 107,
+      "sha256": "a6adfbc38af99d586d20a3183b5ef0b6f6b7321960730eb468171641107457fa"
+    },
+    {
+      "path": "release-evidence/2026-10-09/run-metadata.json",
+      "bytes": 1516,
+      "sha256": "eb047c98c4bad26591e7dac62f3a35a67c34db788a43bc2268084c0998e0b071"
+    },
+    {
+      "path": "frontend/tests/all-pages-navigation-smoke.mjs",
+      "bytes": 5219,
+      "sha256": "350eaa767c0d32e807ddb6993b381c400a5e0bd43027a1aea7e4f7b42d8cdee1"
+    },
+    {
+      "path": "frontend/tests/dark-pages-navigation-smoke.mjs",
+      "bytes": 7225,
+      "sha256": "5e583a509bbf4cf9c4d7815c3ac40c8f466122c22607d812c8b592f71a6ec550"
+    },
+    {
+      "path": "frontend/tests/e2e-pipeline.spec.js",
+      "bytes": 10337,
+      "sha256": "57369b593f146341652a16e6665018dc7f12dbaa83637211e66febfaa20c08f3"
+    },
+    {
+      "path": "frontend/tests/graph-explorer-audit.e2e.spec.js",
+      "bytes": 1879,
+      "sha256": "ba25c74795ea5961c3c2ec3544e5089ac7972e1fa8543dd8f76b50055bde66d3"
+    },
+    {
+      "path": "frontend/tests/graph-explorer-nav-audit.e2e.spec.js",
+      "bytes": 2086,
+      "sha256": "8df56906f428b828906fb9e7bda44a79528a997bb8dc9ba337ab267290dd321a"
+    },
+    {
+      "path": "frontend/tests/graph-explorer-wait-audit.e2e.spec.js",
+      "bytes": 1117,
+      "sha256": "63969f5ed39199492c5bed4593abf3b95522374f2f1b322b3d7850c9ee7d31ee"
+    },
+    {
+      "path": "frontend/tests/ops-tabs-audit.e2e.spec.js",
+      "bytes": 2950,
+      "sha256": "ab471b82e8a4ac2055ac0367dd6ff8ccd2657bde891c940f4a5f755dc1bfddb1"
+    },
+    {
+      "path": "frontend/tests/page-navigation-smoke.e2e.spec.js",
+      "bytes": 6894,
+      "sha256": "b41ea7189ff2f30a9b74bc2a1c0241754714f10e7723f52e59b929e5ecc101af"
+    },
+    {
+      "path": "frontend/tests/service-layout-smoke.mjs",
+      "bytes": 4638,
+      "sha256": "5d84a504219b9a1f6213f9b48f47afb78b1921fcc3d9a8a5238f39314b7d88ad"
+    }
+  ]
+}

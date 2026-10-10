@@ -11,7 +11,7 @@ from .profiles import profiles
 from .workflow import workflow
 from .neo4j_writer import writer
 from .schema_conversion import converter
-from .engineering_workflow import workflow as engineering_workflow
+from .engineering_workflow import workflow as engineering_workflow, EngineeringDependencyFailure
 from .ap242_mbd import ap242_mbd
 from .ap242_reference import AP242ReferenceValidator
 from .governed_import import governed_import, profile_for_filename
@@ -276,14 +276,47 @@ async def run_engineering_workflow(
     publish: bool = Form(False),
     enforce_quality: bool = Form(True),
     policy_exception_ids: list[str] = Form([]),
+    dependencies: list[UploadFile] = File(default=[]),
+    dependency_paths: str = Form('[]'),
+    include_conversion: bool = Form(True),
 ) -> dict:
     content = await _read_bounded_upload(file)
     try:
-        return await engineering_workflow.run(
+        paths = json.loads(dependency_paths)
+        if (not isinstance(paths, list) or len(paths) != len(dependencies) or len(paths) > 63
+                or any(not isinstance(path, str) or not path.strip() for path in paths)
+                or len(set(paths)) != len(paths)):
+            raise ValueError('dependency_paths must match at most 63 distinct relative XSD uploads')
+        if dependencies and Path(file.filename or '').suffix.lower() != '.xsd':
+            raise ValueError('Dependency uploads are supported only for XSD workflows')
+        schema_files = {}
+        total = len(content)
+        for path, dependency in zip(paths, dependencies):
+            data = await dependency.read(max(0, 25 * 1024 * 1024 - total) + 1)
+            total += len(data)
+            if total > 25 * 1024 * 1024:
+                raise HTTPException(413, 'Schema dependency closure exceeds 25 MiB')
+            schema_files[path] = data
+        result = await engineering_workflow.run(
             filename=file.filename or "source", content=content, ontology_name=ontology_name, prefix=prefix,
             description=description, register=register_ontology, request_id=getattr(request.state, "request_id", None),
             publish=publish, enforce_quality=enforce_quality, policy_exception_ids=policy_exception_ids,
+            **({'schema_files': schema_files} if schema_files else {}),
         )
+        if not include_conversion:
+            conversion = result.get('conversion') or {}
+            result = {**result, 'conversion_summary': {
+                'format': conversion.get('format'), 'statistics': conversion.get('statistics'),
+                'artifacts': conversion.get('artifacts'),
+            }}
+            result.pop('conversion', None)
+        return result
+    except EngineeringDependencyFailure as exc:
+        raise HTTPException(status_code=503, detail={
+            'code': 'engineering_dependency_failure', 'stage': exc.stage,
+            'failure_kind': exc.failure_kind, 'upstream_status': exc.upstream_status,
+            'message': 'A workflow dependency failed. Check ingestion logs and retained registration state before retrying.',
+        }) from exc
     except TimeoutError as exc:
         raise HTTPException(status_code=504, detail='Engineering workflow deadline exceeded. Publication outcome may be uncertain; retry the same source and metadata to reconcile it.') from exc
     except (httpx.HTTPError, RuntimeError) as exc:

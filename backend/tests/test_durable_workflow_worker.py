@@ -90,6 +90,17 @@ class DurableWorkerTests(unittest.TestCase):
         routes._execute_workflow.assert_not_awaited()
         self.assertEqual(store.record['error_type'],'WorkerAuthorizationChanged')
 
+    def test_unrelated_rotation_does_not_block_scoped_read_grant(self):
+        with patch.dict(os.environ, {'GRAPH_READ_TOKEN':'read', 'DATA_PRODUCT_APPROVAL_TOKEN':'old'}, clear=True):
+            record,store,routes,modules=self.fixture(credential_fingerprints=credential_snapshot({'GRAPH_READ_TOKEN'}))
+            os.environ['DATA_PRODUCT_APPROVAL_TOKEN']='new'
+            self.run_candidate(record,modules)
+        routes._execute_workflow.assert_awaited_once()
+
+    def test_submission_scopes_read_grant(self):
+        from backend.agentic_service.durable_workflows import workflow_credentials
+        self.assertEqual(workflow_credentials([{'requires_approval':False, 'tool':{'id':'read','mutates':False}}]), {'GRAPH_READ_TOKEN'})
+
     def test_changed_service_destination_blocks_existing_grant(self):
         with patch.dict(os.environ,{'GRAPH_READ_TOKEN':'fixture-read','GRAPH_SERVICE_URL':'http://original'},clear=True):
             record,store,routes,modules=self.fixture()

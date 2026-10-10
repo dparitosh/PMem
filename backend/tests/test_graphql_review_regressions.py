@@ -86,4 +86,98 @@ class GraphqlReviewTests(unittest.TestCase):
         self.assertEqual(result['view']['import_id'], 'import-1')
 
 
+class GraphResponseSafetyTests(unittest.TestCase):
+    def test_scoped_identity_and_orphan_edges(self):
+        tree = ast.parse((ROOT / 'graph_service/neo4j_publisher.py').read_text(encoding='utf-8'))
+        method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_explorer_payload')
+        method.decorator_list = []
+        scope = {'Any': Any}
+        exec(compile(ast.Module(body=[method], type_ignores=[]), 'publisher', 'exec'), scope)
+        result = scope['_explorer_payload'](nodes=[{'id':'urn:Part','graph_id':'first'}, {'id':'urn:Part','graph_id':'second'}],
+            edges=[{'source':'urn:Part','target':'urn:Part','graph_source':'first','graph_target':'second'}, {'source':'missing','target':'urn:Part'}], view={})
+        self.assertEqual([n['elementId'] for n in result['nodes']], ['first','second'])
+        self.assertEqual(result['nodes'][0]['properties']['iri'], 'urn:Part')
+        self.assertEqual(len(result['relationships']), 1)
+        self.assertEqual(result['relationships'][0]['start'], 'first')
+
+    def test_json_scalar_dates_and_finite_values(self):
+        from datetime import datetime
+        scope = {'Any': Any, 'GraphQLError': ValueError}
+        serialize = load('graph_service/graphql_schema.py', '_serialize_json', scope)
+        self.assertEqual(serialize({'at': datetime(2026,1,1), 'values': (1,2)}), {'at':'2026-01-01T00:00:00','values':[1,2]})
+        with self.assertRaisesRegex(ValueError, 'Non-finite'): serialize(float('nan'))
+        with self.assertRaisesRegex(ValueError, 'Unsupported'): serialize(object())
+
+    def test_variable_budget_uses_utf8_bytes_and_rejects_nan(self):
+        scope = {'Any': Any, 'HTTPException': Rejected, 'MAX_VARIABLE_BYTES':128000, 'MAX_VARIABLE_ITEMS':500}
+        validate = load('graph_service/graphql_router.py', '_validate_variables', scope)
+        with self.assertRaises(Rejected): validate({'values':['漢'*9000]*5})
+        with self.assertRaises(Rejected): validate({'value':float('nan')})
+        self.assertEqual(validate({'safe':[1,2]}), {'safe':[1,2]})
+
+    def test_walk_stops_at_node_budget_and_does_not_enumerate_paths(self):
+        from backend.graph_service import query_repository
+        scope = {'cypher':query_repository}
+        tree = ast.parse((ROOT / 'graph_service/neo4j_publisher.py').read_text(encoding='utf-8'))
+        method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_bounded_walk')
+        exec(compile(ast.Module(body=[method], type_ignores=[]), 'publisher', 'exec'), scope)
+        calls = []
+        def rows(query, **params):
+            calls.append((query,params))
+            return [{'id':'root'}] if 'frontier' not in params else [{'id':'child'}]
+        owner = NS(_session_rows=rows)
+        result = scope['_bounded_walk'](owner,'root',5,2)
+        self.assertEqual(len(result),2)
+        self.assertEqual(len(calls),2)
+        self.assertNotIn('*',calls[-1][0])
+        self.assertEqual(calls[-1][1]['limit'],1)
+
+
+    def test_read_driver_reused_and_closed(self):
+        import sys, threading, types
+        from unittest.mock import Mock, patch
+        owner = NS(auth_mode='none', database='ontology', _read_driver=None, _driver_lock=threading.Lock())
+        from unittest.mock import MagicMock
+        driver = MagicMock()
+        owner._driver = Mock(return_value=driver)
+        scope = {'Any':Any,'Query':lambda query,timeout:query}
+        tree = ast.parse((ROOT / 'graph_service/neo4j_publisher.py').read_text(encoding='utf-8'))
+        for name in ['_session_rows','close']:
+            method = next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name==name)
+            exec(compile(ast.Module(body=[method],type_ignores=[]),'publisher','exec'),scope)
+        module = types.ModuleType('backend.depo_platform.network')
+        module.bounded_timeout_seconds = lambda *a,**k:30
+        with patch.dict(sys.modules, {'backend.depo_platform.network':module}):
+            scope['_session_rows'](owner,'RETURN 1')
+            scope['_session_rows'](owner,'RETURN 2')
+        owner._driver.assert_called_once()
+        scope['close'](owner)
+        driver.close.assert_called_once()
+        self.assertIsNone(owner._read_driver)
+
+
+    def test_projection_keeps_rdf_iris_and_limits_edges_to_selected_nodes(self):
+        from backend.graph_service import query_repository
+        scope = {'Any':Any,'cypher':query_repository}
+        tree = ast.parse((ROOT / 'graph_service/neo4j_publisher.py').read_text(encoding='utf-8'))
+        method = next(n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name=='projection')
+        exec(compile(ast.Module(body=[method],type_ignores=[]),'publisher','exec'),scope)
+        calls = []
+        def rows(query,**params):
+            calls.append(params)
+            return [{'id':'urn:Part','graph_id':'node-1'}] if len(calls)==1 else []
+        result = scope['projection'](NS(_session_rows=rows),ontology_id='one',limit=1)
+        self.assertEqual(result['nodes'][0]['id'],'urn:Part')
+        self.assertEqual(calls[1]['ids'],['urn:Part'])
+
+    def test_ambiguous_input_is_not_reported_as_service_outage(self):
+        class GraphQLError(Exception): pass
+        error = NS(original_error=ValueError('private details'),message='private details',extensions={})
+        scope = {'Any':Any,'schema':object(),'graphql_sync':lambda *a,**k:NS(data=None,errors=[error]),
+                 'GraphQLError':GraphQLError,'logging':logging,'uuid4':uuid4,'__name__':__name__}
+        result = load('graph_service/graphql_schema.py','execute',scope)('{ traversal }')
+        self.assertEqual(result['errors'][0]['extensions']['code'],'BAD_USER_INPUT')
+        self.assertNotIn('private details',str(result))
+
+
 if __name__ == '__main__': unittest.main()

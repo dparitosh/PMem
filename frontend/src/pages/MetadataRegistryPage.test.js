@@ -31,6 +31,33 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
+test('metadata asset pagination requests the next offset and describes page-local counts', async () => {
+  API_METHODS.metadataRegistry.list.mockResolvedValueOnce({ data: { assets: [], has_more: true } })
+    .mockResolvedValueOnce({ data: { assets: [], has_more: false } });
+  render(<MetadataRegistryPage />);
+  const next = await screen.findByRole('button', { name: 'Next asset page' });
+  await waitFor(() => expect(next).toBeEnabled());
+  fireEvent.click(next);
+  await waitFor(() => expect(API_METHODS.metadataRegistry.list).toHaveBeenLastCalledWith(
+    { limit: 1000, offset: 1000 }, expect.objectContaining({ signal: expect.any(AbortSignal) })));
+  await screen.findByText(/Page 2\. Filters and counts apply to this page/);
+  expect(next).toBeDisabled();
+});
+
+test('dictionary preserves a supplied IRI in draft registration', async () => {
+  API_METHODS.metadataRegistry.list.mockResolvedValue({ data: { assets: [] } });
+  API_METHODS.metadataRegistry.create.mockResolvedValue({ data: { asset_id: 'retained-term', name: 'Part', lifecycle_status: 'draft' } });
+  API_METHODS.ontology.getDataDictionary.mockResolvedValue({ data: { entities: { Part: { iri: 'urn:engineering:Part' } } } });
+  render(<MetadataRegistryPage />);
+  fireEvent.click(screen.getByRole('tab', { name: 'Data Dictionary' }));
+  fireEvent.change(screen.getByLabelText('Select registry source for Data Dictionary'), { target: { value: 'onto-1' } });
+  expect(await screen.findByText('urn:engineering:Part')).toBeVisible();
+  fireEvent.click(await screen.findByRole('button', { name: 'Prepare draft registration' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Register', exact: true }));
+  await waitFor(() => expect(API_METHODS.metadataRegistry.create).toHaveBeenCalledWith(
+    expect.objectContaining({ implementation_ref: 'urn:engineering:Part' }), expect.anything()));
+});
+
 test('malformed registry response is not reported as an empty governed registry', async () => {
   API_METHODS.metadataRegistry.list.mockResolvedValue({ data: {} });
   render(<MetadataRegistryPage />);
@@ -138,4 +165,19 @@ test('direct dictionary payload is displayed and malformed payload is reported',
  fireEvent.change(select,{target:{value:''}});
  fireEvent.change(select,{target:{value:'onto-1'}});
  await screen.findByText(/invalid dictionary/);
+});
+
+
+test('credential changes abort the old registry request and reload without stale rows', async () => {
+  let finishOld;
+  API_METHODS.metadataRegistry.list.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }))
+    .mockResolvedValue({ data: { assets: [] } });
+  render(<MetadataRegistryPage />);
+  await waitFor(() => expect(API_METHODS.metadataRegistry.list).toHaveBeenCalledTimes(1));
+  const oldSignal = API_METHODS.metadataRegistry.list.mock.calls[0][1].signal;
+  fireEvent(window, new Event('depo:credentials-changed'));
+  await waitFor(() => expect(API_METHODS.metadataRegistry.list).toHaveBeenCalledTimes(2));
+  expect(oldSignal.aborted).toBe(true);
+  finishOld({ data: { assets: [{ asset_id: 'old', name: 'Previous session asset' }] } });
+  await waitFor(() => expect(screen.queryByText('Previous session asset')).toBeNull());
 });

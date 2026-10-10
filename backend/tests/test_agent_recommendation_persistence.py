@@ -29,3 +29,11 @@ class RecommendationPersistenceTests(unittest.TestCase):
         self.proposal['prompt_details']['system_prompt'] = 'changed later'
         restored = self.records.get(saved['recommendation_id'], 'owner')
         self.assertEqual(restored['prompt_details']['system_prompt'], 'Review only')
+
+    def test_context_and_snapshot_credentials_are_redacted_before_storage(self):
+        self.proposal['context'] = {'api_key':'private-context'}
+        self.proposal['prompt_details'] = {'user_request':'Bearer private.jwt'}
+        saved = self.records.create(self.proposal,'owner')
+        raw = self.records.store.get(saved['recommendation_id'])
+        self.assertNotIn('private-context',str(raw))
+        self.assertNotIn('private.jwt',str(raw))

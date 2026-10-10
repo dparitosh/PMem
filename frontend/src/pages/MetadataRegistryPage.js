@@ -81,6 +81,8 @@ export default function MetadataRegistryPage() {
   const [dictionaryFilter, setDictionaryFilter] = useState('');
   const [prefixFilter, setPrefixFilter] = useState(null);
   const [registryAssets, setRegistryAssets] = useState([]);
+  const [registryOffset, setRegistryOffset] = useState(0);
+  const [registryHasMore, setRegistryHasMore] = useState(false);
   const [registryLoaded, setRegistryLoaded] = useState(false);
   const [registryStale, setRegistryStale] = useState(false);
   const [registryLoading, setRegistryLoading] = useState(false);
@@ -92,18 +94,21 @@ export default function MetadataRegistryPage() {
   const dictionaryControllerRef = useRef(null);
   const mutationControllersRef = useRef(new Set());
 
-  const loadRegistryAssets = async () => {
+  const loadRegistryAssets = async (offset = 0) => {
     registryControllerRef.current?.abort();
     const controller = new AbortController();
     registryControllerRef.current = controller;
     setRegistryLoading(true);
     try {
-      const response = await API_METHODS.metadataRegistry.list({ limit: 1000 }, { signal: controller.signal });
+      const response = await API_METHODS.metadataRegistry.list({ limit: 1000, offset }, { signal: controller.signal });
       if (controller.signal.aborted || registryControllerRef.current !== controller) return;
       setRegistryAssets(metadataAssetsPayload(response?.data));
+      setRegistryOffset(offset);
+      setRegistryHasMore(response?.data?.has_more === true);
       setRegistryLoaded(true);
       setRegistryStale(false);
-      setRegistryMessage(null);
+      setRegistryMessage(response?.data?.has_more === undefined && response?.data?.assets?.length === 1000
+        ? { kind: 'warning', text: 'This service returned the maximum 1,000 assets without pagination metadata. Update the ontology service to browse remaining assets.' } : null);
     } catch (err) {
       if (controller.signal.aborted) return;
       setRegistryLoaded(false);
@@ -117,8 +122,33 @@ export default function MetadataRegistryPage() {
 
   useEffect(() => {
     const mutationControllers = mutationControllersRef.current;
+    const resetSession = () => {
+      registryControllerRef.current?.abort();
+      dictionaryControllerRef.current?.abort();
+      mutationControllers.forEach(controller => controller.abort());
+      mutationControllers.clear();
+      setRegistryAssets([]);
+      setRegistryLoaded(false);
+      setRegistryStale(false);
+      setRegistryOffset(0);
+      setRegistryHasMore(false);
+      setRegistryMessage(null);
+      setSelectedOntology('');
+      setDictionary([]);
+      setDictionaryLoading(false);
+      setDictionaryError(null);
+      setPrefixFilter(null);
+      setCreateLoading(false);
+      setTransitioningAssetIds(new Set());
+      setNewAsset({ name: '', definition: '', asset_type: 'DataElement', owner: '', steward: '', domain: '' });
+      loadRegistryAssets();
+    };
+    window.addEventListener('depo:credentials-changed', resetSession);
+    window.addEventListener('depo:credentials-cleared', resetSession);
     loadRegistryAssets();
     return () => {
+      window.removeEventListener('depo:credentials-changed', resetSession);
+      window.removeEventListener('depo:credentials-cleared', resetSession);
       registryControllerRef.current?.abort();
       dictionaryControllerRef.current?.abort();
       mutationControllers.forEach((controller) => controller.abort());
@@ -203,9 +233,9 @@ export default function MetadataRegistryPage() {
       const source = ontologies.find((entry) => (entry.ontology_id || entry.value || entry.prefix) === ontologyId);
       const prefix = response?.data?.prefix || source?.prefix || ontologyId;
       const nodes = [
-        ...Object.entries(payload.entities || {}).map(([name, value]) => ({ term_id: `${prefix}:${name}`, label: name, ontology_prefix: prefix, source: 'class', definition: value?.definition || '' })),
-        ...Object.entries(payload.properties || {}).map(([name, value]) => ({ term_id: `${prefix}:${name}`, label: name, ontology_prefix: prefix, source: 'data-property', definition: value?.definition || '' })),
-        ...Object.entries(payload.relationships || {}).map(([name, value]) => ({ term_id: `${prefix}:${name}`, label: name, ontology_prefix: prefix, source: 'object-property', definition: value?.definition || '' })),
+        ...Object.entries(payload.entities || {}).map(([name, value]) => ({ term_id: value?.iri || `${prefix}:${name}`, label: name, ontology_prefix: prefix, source: 'class', definition: value?.definition || '' })),
+        ...Object.entries(payload.properties || {}).map(([name, value]) => ({ term_id: value?.iri || `${prefix}:${name}`, label: name, ontology_prefix: prefix, source: 'data-property', definition: value?.definition || '' })),
+        ...Object.entries(payload.relationships || {}).map(([name, value]) => ({ term_id: value?.iri || `${prefix}:${name}`, label: name, ontology_prefix: prefix, source: 'object-property', definition: value?.definition || '' })),
       ];
       setDictionary(nodes);
     } catch (err) {
@@ -299,7 +329,7 @@ export default function MetadataRegistryPage() {
           {section === 'assets' && (
             <>
               <RegistrySummaryCards items={[
-                { icon: <Database size={15} />, label: 'Governed assets', value: registryLoaded ? registryAssets.length : '—' },
+                { icon: <Database size={15} />, label: 'Governed assets on this page', value: registryLoaded ? registryAssets.length : '—' },
                 { icon: <ShieldCheck size={15} />, label: 'Published / available', value: registryLoaded ? publishedCount : '—' },
                 { icon: <Clock3 size={15} />, label: 'Review required', value: registryLoaded ? reviewCount : '—' },
               ]} />
@@ -321,6 +351,11 @@ export default function MetadataRegistryPage() {
                 transitioningAssetIds={transitioningAssetIds}
                 lastUpdated={lastUpdated}
               />
+              <nav aria-label="Metadata asset pages">
+                <p>Page {Math.floor(registryOffset / 1000) + 1}. Filters and counts apply to this page.</p>
+                <button type="button" disabled={registryLoading || registryOffset === 0} onClick={() => loadRegistryAssets(Math.max(0, registryOffset - 1000))}>Previous asset page</button>
+                <button type="button" disabled={registryLoading || !registryHasMore} onClick={() => loadRegistryAssets(registryOffset + 1000)}>Next asset page</button>
+              </nav>
             </>
           )}
         </div>

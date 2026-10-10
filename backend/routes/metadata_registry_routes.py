@@ -13,12 +13,12 @@ try:
 except ImportError:
     from core.graph import graph
 
-from backend.depo_platform.authorization import service_write_identity
+from backend.depo_platform.authorization import service_write_identity, graph_read_identity
 
 
 def _metadata_registry_identity(request: Request) -> str:
     if request.method in {"GET", "HEAD", "OPTIONS"}:
-        return "public-read"
+        return graph_read_identity(request)
     return service_write_identity(request, token_env="ONTOLOGY_APPROVAL_TOKEN", default_actor="metadata-steward")
 
 
@@ -230,6 +230,7 @@ def list_metadata_assets(
     status: Optional[str] = Query(default=None, max_length=50),
     domain: Optional[str] = Query(default=None, max_length=200),
     limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
 ):
     try:
         rows = graph.query(
@@ -238,14 +239,16 @@ def list_metadata_assets(
             WHERE ($status IS NULL OR a.lifecycle_status = $status)
               AND ($domain IS NULL OR a.domain = $domain)
             RETURN properties(a) AS asset
-            ORDER BY a.name, a.version DESC
+            ORDER BY a.name, a.version DESC, a.asset_id
+            SKIP $offset
             LIMIT $limit
             """,
-            params={"status": status, "domain": domain, "limit": limit},
+            params={"status": status, "domain": domain, "limit": limit + 1, "offset": offset},
         ) or []
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Metadata registry is unavailable. Please try again later.") from exc
-    return {"assets": [_row_asset(row) for row in rows], "count": len(rows)}
+    return {"assets": [_row_asset(row) for row in rows[:limit]], "count": len(rows[:limit]),
+            "offset": offset, "limit": limit, "has_more": len(rows) > limit}
 
 
 @router.get("/assets/{asset_id}")

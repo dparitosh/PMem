@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { openApiPreview } from './openApiPreview';
 import { reportRunRecovery } from './runRecovery';
 import { config, API, buildSemanticServiceUrl } from '../config';
 import { serviceAuthHeaders, handleSessionRejection, requireServiceReadAccess } from './serviceAuth';
@@ -33,6 +34,7 @@ function agenticUrl(endpoint) {
 }
 
 export const agenticAPI = {
+  importOpenApi: async (document, filename) => ({ data: openApiPreview(document, filename) }),
   controlWorkflow: (id, action, options = {}) => agenticClient.post(agenticUrl(`/api/v1/workflow-runs/${encodeURIComponent(id)}/control`), { action }, options),
   getRun: (id, kind = 'workflow', options = {}) => agenticClient.get(agenticUrl(`/api/v1/${kind === 'dt' ? 'integrations/dt-requirements-design/runs' : kind === 'workflow' ? 'workflow-runs' : 'runs'}/${encodeURIComponent(id)}`), options),
   isEnabled: () => true,

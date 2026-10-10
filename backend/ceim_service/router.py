@@ -121,16 +121,17 @@ def validate_batch(payload: dict[str, Any]) -> dict[str, Any]:
 
 @router.post("/adapters/reqif/normalize", summary="Extract a ReqIF instance into a non-persisted CEIM batch")
 async def normalize_reqif(file: UploadFile = File(...)) -> dict[str, Any]:
-    content = await file.read()
+    content = await file.read(MAX_SOURCE_BYTES + 1)
     if len(content) > MAX_SOURCE_BYTES:
         raise HTTPException(status_code=413, detail="ReqIF upload exceeds the 25 MiB limit")
     try:
+        batch = reqif_to_ceim_batch(content)
         source = ArtifactStore().ingest_bytes(
             content, filename=file.filename or "source.reqif", kind="source-reqif",
             media_type=file.content_type or "application/xml", provenance={"adapter": "reqif-ceim-v1"},
         )
         return {
-            **reqif_to_ceim_batch(content), "source_artifact_id": source["artifact_id"],
+            **batch, "source_artifact_id": source["artifact_id"],
             "representation": "normalized-ceim-v1", "ceim_version": contract.version,
         }
     except ValueError as exc:

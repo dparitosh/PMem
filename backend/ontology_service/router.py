@@ -262,10 +262,27 @@ def preview_merge(payload: dict[str, Any]) -> dict:
 
 
 @router.post("/merges/{preview_id}/apply", summary="Apply an approved, conflict-free ontology merge")
-def apply_merge(preview_id: str, payload: dict[str, Any], request: Request) -> dict:
+async def apply_merge(preview_id: str, payload: dict[str, Any], request: Request) -> dict:
     try:
         approver = approval_identity(request, payload, token_env="ONTOLOGY_APPROVAL_TOKEN")
-        return merges.apply(preview_id, approver)
+        publish = payload.get('publish', False)
+        if type(publish) is not bool:
+            raise ValueError('publish must be a boolean')
+        result = await run_in_threadpool(merges.apply, preview_id, approver)
+        ontology_id = result['ontology']['ontology_id']
+        if not publish:
+            return {**result, 'publication_status': 'not_requested'}
+        metadata = await run_in_threadpool(catalog.get, ontology_id)
+        # Explicit reviewed application authorizes the resulting merge, while
+        # preserving the catalog's normal transition and syntax checks.
+        if metadata.get('lifecycle_status') == 'draft':
+            await run_in_threadpool(catalog.transition, ontology_id=ontology_id, target='in_review', actor=approver, reason=f'Reviewed merge {preview_id}')
+            metadata = await run_in_threadpool(catalog.get, ontology_id)
+        if metadata.get('lifecycle_status') == 'in_review':
+            await run_in_threadpool(catalog.transition, ontology_id=ontology_id, target='approved', actor=approver, reason=f'Approved merge {preview_id}')
+        publication = await publish_registered_ontology(ontology_id, payload, request)
+        return {**result, 'ontology': await run_in_threadpool(catalog.get, ontology_id),
+                'publication_status': publication['status'], 'publication': publication}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

@@ -80,15 +80,39 @@ export default function CodeAuditPage() {
       retryRef.current.delayMs = 30000;
     } catch (requestError) {
       if (controller.signal.aborted) return;
+      setReport(null);
+      setSelected(null);
+      setTooltip(null);
       setError(apiErrorMessage(requestError, 'Unable to load code network'));
       retryRef.current.delayMs = Math.min(retryRef.current.delayMs * 2, 300000);
     } finally {
-      loadInFlight.current = false;
-      if (!controller.signal.aborted) setLoading(false);
+      if (requestController.current === controller) {
+        loadInFlight.current = false;
+        if (!controller.signal.aborted) setLoading(false);
+      }
     }
   }, []);
 
-  useEffect(() => { load(false); }, [load]);
+  useEffect(() => {
+    const resetSession = () => {
+      requestController.current?.abort();
+      loadInFlight.current = false;
+      setReport(null);
+      setSelected(null);
+      setTooltip(null);
+      setExpandedNodes(new Set());
+      retryRef.current.delayMs = 30000;
+      load(false);
+    };
+    window.addEventListener('depo:credentials-changed', resetSession);
+    window.addEventListener('depo:credentials-cleared', resetSession);
+    load(false);
+    return () => {
+      window.removeEventListener('depo:credentials-changed', resetSession);
+      window.removeEventListener('depo:credentials-cleared', resetSession);
+      requestController.current?.abort();
+    };
+  }, [load]);
   useEffect(() => {
     if (!live) return undefined;
     let active = true;

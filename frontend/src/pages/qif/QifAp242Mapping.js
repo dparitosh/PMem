@@ -46,9 +46,10 @@ export default function QifAp242Mapping() {
         }
         if (!data.nodes.length) throw new Error('The selected retained ontology contains no inspectable terms.');
         return {
-          entities: data.nodes.filter(node => node.kind === 'Class'),
-          properties: data.nodes.filter(node => node.kind === 'DatatypeProperty'),
-          relationships: data.nodes.filter(node => node.kind === 'ObjectProperty'),
+          entities: data.nodes.filter(node => node.kind === 'Class' || node.source === 'rdf-class'),
+          properties: data.nodes.filter(node => node.kind === 'DatatypeProperty' || node.source === 'rdf-datatype-property'),
+          relationships: data.nodes.filter(node => node.kind === 'ObjectProperty' || node.source === 'rdf-object-property'),
+          truncated: Boolean(data.summary?.truncated),
         };
       });
       setEvidence({ qif_ontology_id: qif, ap242_ontology_id: ap242, inventories, status: 'review_required', scope: 'Structural inventories only; no engineering equivalence or instance links have been established.' });
@@ -86,6 +87,7 @@ export default function QifAp242Mapping() {
     {qif && qif === ap242 && <p role="alert">Select two different ontology versions.</p>}
     {error && <p role="alert">{error}</p>}
     {evidence && <div role="status"><p>{evidence.scope}</p>{evidence.inventories.map((item, index) => <p key={index}>{index ? 'AP242' : 'QIF'}: {item.entities.length} entities, {item.properties.length} properties, {item.relationships.length} relationships.</p>)}</div>}
+    {evidence?.inventories.some(item => item.truncated) && <p>Inventory is bounded; these counts do not cover the complete ontology.</p>}
     <div style={{ overflowX: 'auto' }}><table style={{ width: '100%' }}><caption>Conceptual mapping checklist — not schema-field equivalences</caption><thead><tr><th scope="col">AP242 context</th><th scope="col">QIF context</th><th scope="col">Required evidence</th></tr></thead><tbody>{contexts.map(row => <tr key={row[0]}>{row.map(cell => <td key={cell}>{cell}</td>)}</tr>)}</tbody></table></div>
     <p>For instance linking, import QIF instance evidence first, then open Semantic Bridge in Ontology Junction, select AP242 as target and the corresponding import run. Review identity, units, revision, domain/range and provenance before approval. A verified AP242–QIF mapping profile is still required.</p>
     <a className="depo-button" href={`#/ontology?target=${encodeURIComponent(ap242)}&qif=${encodeURIComponent(qif)}&view=alignment`}>Open Ontology Junction / Semantic Bridge</a>

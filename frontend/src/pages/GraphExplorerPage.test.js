@@ -26,3 +26,11 @@ test.each([{}, {status:'unknown'}])('rejects malformed or unknown health contrac
   expect(await screen.findByText('Graph Explorer is unavailable')).toBeInTheDocument();
   expect(screen.queryByText('Graph canvas')).not.toBeInTheDocument();
 });
+
+
+test.each([401, 403])('explains credential failures for HTTP %s', async status => {
+  health.mockRejectedValueOnce({response: {status}});
+  render(<GraphExplorerPage />);
+  expect(await screen.findByText('Graph access required')).toBeInTheDocument();
+  expect(screen.getByText('Connect or validate graph read access in Admin, then retry.')).toBeInTheDocument();
+});

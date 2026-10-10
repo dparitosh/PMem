@@ -663,22 +663,22 @@ export const modelingAPI = {
 
 // ========== RECOMMENDATION ENDPOINTS ==========
 export const recommendationsAPI = {
-  changeImpact: (changeName, scope = {}) =>
+  changeImpact: (changeName, scope = {}, options = {}) =>
     apiClient.post(buildUrl(API.recommendations.changeImpact), {
       change_name: changeName,
       ...(scope?.ontology_id || scope?.ontology_ids || scope?.prefix || scope?.prefixes ? { scope } : {}),
-    }),
-  similarParts: (partName, topN = 10, scope = {}) =>
+    }, options),
+  similarParts: (partName, topN = 10, scope = {}, options = {}) =>
     apiClient.post(buildUrl(API.recommendations.similarParts), {
       part_name: partName,
       top_n: topN,
       ...(scope?.ontology_id || scope?.ontology_ids || scope?.prefix || scope?.prefixes ? { scope } : {}),
-    }),
-  manufacturing: (partName, scope = {}) =>
+    }, options),
+  manufacturing: (partName, scope = {}, options = {}) =>
     apiClient.post(buildUrl(API.recommendations.manufacturing), {
       part_name: partName,
       ...(scope?.ontology_id || scope?.ontology_ids || scope?.prefix || scope?.prefixes ? { scope } : {}),
-    }),
+    }, options),
   health: (options = {}) => apiClient.get(buildUrl(API.recommendations.health), options),
 };
 

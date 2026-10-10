@@ -5,6 +5,26 @@ import pytest
 from backend.ontology_service.catalog import OntologyCatalog
 
 
+def test_workflow_retry_uses_filtered_lookup_and_skips_identical_graph_comparison(tmp_path, monkeypatch):
+    from backend.mesh_store import InMemoryRegistry
+    import rdflib.compare
+    monkeypatch.setenv('DEPO_DATABASE_URL', 'postgresql://unused/test')
+    registry = InMemoryRegistry()
+    catalog = OntologyCatalog(root=tmp_path, registry=registry)
+    content = b'<https://example.test/a> <https://example.test/p> "value" .'
+    source = 'engineering-workflow:' + 'a' * 64
+    existing = {'ontology_id': 'example_abc', 'source': source, 'prefix': 'example',
+                'ontology_name': 'Example', 'description': '', 'lifecycle_status': 'draft',
+                'validation': {'rdf_format': 'turtle'}}
+    registry.put('example_abc', existing)
+    monkeypatch.setattr(catalog, 'list', lambda: pytest.fail('Full catalog scan must not run'))
+    monkeypatch.setattr(catalog, 'read_artifact', lambda _: (existing, content))
+    monkeypatch.setattr(rdflib.compare, 'isomorphic', lambda *_: pytest.fail('Identical bytes need no graph comparison'))
+    result = catalog.register(content=content, filename='example.ttl', prefix='example',
+                              ontology_name='Example', source=source)
+    assert result['ontology_id'] == 'example_abc'
+
+
 def test_catalog_validates_rdf_and_records_review_lifecycle(tmp_path):
     catalog = OntologyCatalog(root=tmp_path / "catalog")
     record = catalog.register(
@@ -18,6 +38,37 @@ def test_catalog_validates_rdf_and_records_review_lifecycle(tmp_path):
     approved = catalog.transition(ontology_id=record["ontology_id"], target="approved", actor="steward")
     assert review["lifecycle_status"] == "in_review"
     assert approved["lifecycle_status"] == "approved"
+
+
+@pytest.mark.parametrize('case', ['equivalent', 'conflict', 'duplicate', 'retired'])
+def test_filtered_workflow_retry_preserves_governance_checks(tmp_path, monkeypatch, case):
+    from backend.mesh_store import InMemoryRegistry
+    monkeypatch.setenv('DEPO_DATABASE_URL', 'postgresql://unused/test')
+    registry = InMemoryRegistry()
+    catalog = OntologyCatalog(root=tmp_path, registry=registry)
+    source = 'engineering-workflow:' + 'b' * 64
+    retained = b'<https://example.test/a> <https://example.test/p> "value" .'
+    incoming = b'@prefix ex: <https://example.test/> . ex:a ex:p "value" .'
+    existing = {'ontology_id': 'example_one', 'source': source, 'prefix': 'example',
+                'ontology_name': 'Example', 'description': '', 'lifecycle_status': 'draft',
+                'validation': {'rdf_format': 'turtle'}}
+    if case == 'retired':
+        existing['lifecycle_status'] = 'retired'
+    registry.put('example_one', existing)
+    if case == 'duplicate':
+        registry.put('example_two', {**existing, 'ontology_id': 'example_two'})
+    if case == 'conflict':
+        incoming = b'<https://example.test/a> <https://example.test/p> "different" .'
+    monkeypatch.setattr(catalog, 'read_artifact', lambda _: (existing, retained))
+    def run():
+        return catalog.register(content=incoming, filename='example.ttl', prefix='example',
+                                ontology_name='Example', source=source)
+    if case == 'equivalent':
+        assert run()['ontology_id'] == 'example_one'
+    else:
+        with pytest.raises(ValueError, match={'conflict': 'conflicts with its artifact',
+                'duplicate': 'Multiple ontology', 'retired': 'retired'}[case]):
+            run()
 
 
 def test_catalog_rejects_invalid_ontology_syntax(tmp_path):

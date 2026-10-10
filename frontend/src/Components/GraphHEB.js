@@ -1647,55 +1647,12 @@ const GraphHEB = ({
     }
   }, [clearExpansionState, commitGraphSlice, syncContextualHighlights, syncSharedSearchResults]);
 
-  const selectRichContextualRootId = useCallback(async (matches, query, requestId) => {
-    const dedupedMatches = (matches || []).filter((node, index, array) => (
-      node?.elementId && array.findIndex((entry) => entry.elementId === node.elementId) === index
-    ));
-
-    if (dedupedMatches.length <= 1) {
-      return dedupedMatches[0]?.elementId || null;
-    }
-
-    const probeCandidates = dedupedMatches.slice(0, 24);
-    const scoredCandidates = await Promise.all(probeCandidates.map(async (candidate) => {
-      if (requestId !== contextualSearchRequestIdRef.current) return null;
-
-      try {
-        const response = await graphApi.getTraversal(candidate.elementId, 2);
-        const traversalData = normalizeGraphDataset(response.data, { collapseHiddenBridges: true });
-        const nodes = traversalData.nodes || [];
-        const links = traversalData.links || [];
-        const nodeLabelCount = new Set((nodes || []).flatMap((node) => Array.isArray(node?.labels) ? node.labels : [])).size;
-        const relTypeCount = new Set((links || []).map((link) => String(link.type || '').trim()).filter(Boolean)).size;
-        const businessNodeCount = (nodes || []).filter((node) => !isMetadataWrapperNode(node) && !isRelationshipCarrierNode(node)).length;
-        const richTraceCount = (links || []).filter((link) => String(link?.properties?.collapsed || '') !== 'true').length;
-        const score =
-          (businessNodeCount * 100) +
-          (links.length * 35) +
-          (nodeLabelCount * 15) +
-          (relTypeCount * 20) +
-          (richTraceCount * 10);
-
-        return { id: candidate.elementId, score };
-      } catch (error) {
-        logger.warn('[CONTEXTUAL SEARCH] Root richness probe failed for candidate:', candidate?.elementId, error?.message || error);
-        return { id: candidate.elementId, score: -1 };
-      }
-    }));
-
-    const ranked = scoredCandidates.filter(Boolean).sort((a, b) => b.score - a.score);
-    const bestRichRoot = ranked[0]?.id;
-    return bestRichRoot || findPreferredContextualRootId(dedupedMatches, query);
-  }, [findPreferredContextualRootId]);
-
   const loadContextualSearchMatch = useCallback(async (matches, query, requestId, sourceGraph = null) => {
     const dedupedMatches = matches.filter((node, index, array) => (
       array.findIndex((entry) => entry.elementId === node.elementId) === index
     ));
     const preferredMatchId = findPreferredContextualRootId(dedupedMatches, query);
-    const bestMatchId = preferredMatchId || (
-      await selectRichContextualRootId(dedupedMatches, query, requestId)
-    ) || dedupedMatches[0]?.elementId || null;
+    const bestMatchId = preferredMatchId || dedupedMatches[0]?.elementId || null;
 
     if (!bestMatchId) {
       setContextualSearchResults([]);
@@ -1724,7 +1681,7 @@ const GraphHEB = ({
 
     setHighlightedNodeIds(new Set(matchIds));
     await loadContextualRootGraph(bestMatchId, { preserveSearch: true });
-  }, [findPreferredContextualRootId, loadContextualRootGraph, selectRichContextualRootId]);
+  }, [findPreferredContextualRootId, loadContextualRootGraph]);
 
   const resolveContextualEntryNodeId = useCallback((queryOverride = '') => {
     const queryTerm = normalizeSearchTerm(queryOverride || debouncedSearchQueryRef.current || searchInput || searchQuery);
@@ -2327,7 +2284,7 @@ const getPrimaryNodeLabel = useCallback((d) => {
           const rankedMatches = nodeSearchFunction(candidateNodes, debouncedSearchQuery);
           await loadContextualSearchMatch(rankedMatches, debouncedSearchQuery, requestId, normalized);
         } catch (err) {
-          if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
+          if (abortController.signal.aborted || requestId !== contextualSearchRequestIdRef.current || err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
           logger.error('[CONTEXTUAL SEARCH] Error:', err);
           setContextualSearchWarning('Contextual graph service is unavailable. Results are limited to nodes already loaded in this view.');
           const visibleMatches = nodeSearchFunction(filteredDataRef.current?.nodes || [], debouncedSearchQuery);

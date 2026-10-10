@@ -41,6 +41,15 @@ class PostgresRegistry:
             cursor.execute("SELECT key, value FROM depo_registry WHERE namespace = %s", (self.namespace,))
             return {key: value for key, value in cursor.fetchall()}
 
+    def find_by_field(self, field: str, value: str, *, limit: int = 2) -> list[dict[str, Any]]:
+        """Bounded identity lookup without counting an entire namespace."""
+        if not 1 <= limit <= 100:
+            raise ValueError('Invalid registry lookup limit')
+        with self._connect() as connection, connection.cursor() as cursor:
+            cursor.execute('SELECT value FROM depo_registry WHERE namespace=%s AND value->>%s=%s ORDER BY key LIMIT %s',
+                           (self.namespace, field, value, limit))
+            return [row[0] for row in cursor.fetchall()]
+
     def product_versions(self, product_id):
         with self._connect() as db, db.cursor() as cursor:
             cursor.execute("SELECT key, value FROM depo_registry WHERE namespace=%s AND value->>'product_id'=%s", (self.namespace, product_id))
@@ -256,6 +265,10 @@ class InMemoryRegistry:
         self.values: dict[str, dict[str, Any]] = {}
     def all(self) -> dict[str, Any]: return dict(self.values)
     def get(self, key: str) -> dict[str, Any] | None: return self.values.get(key)
+    def find_by_field(self, field: str, value: str, *, limit: int = 2) -> list[dict[str, Any]]:
+        if not 1 <= limit <= 100:
+            raise ValueError('Invalid registry lookup limit')
+        return [record for key, record in sorted(self.values.items()) if record.get(field) == value][:limit]
     def page(self, *, limit=100, offset=0, field=None, value=None, exclude_latest=False, order_field=None):
         if offset < 0 or not 1 <= limit <= 1000:
             raise ValueError('Invalid registry page')

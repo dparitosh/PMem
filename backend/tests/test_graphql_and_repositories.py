@@ -116,7 +116,7 @@ def test_graph_query_repository_is_parameterized():
     assert "$ontology_id" in query_repository.ONTOLOGY_PROJECTION_NODES
     assert "$iri" in query_repository.ONTOLOGY_TRAVERSAL_NODES
     assert "$terms" in query_repository.ONTOLOGY_SEARCH_NODES
-    assert "RETURN n.iri" in query_repository.ONTOLOGY_SEARCH_NODES
+    assert "RETURN elementId(n) AS id, n.iri AS iri" in query_repository.ONTOLOGY_SEARCH_NODES
 
 
 def test_graph_search_uses_bounded_terms_and_preserves_score(monkeypatch):

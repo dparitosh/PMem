@@ -20,8 +20,11 @@ From E:\App\PMem\infra\windows\semantic-bridge:
 
 You will be asked for source/target XSD file paths and a task prompt.
 Alternatively supply -SourceXsdPath, -TargetXsdPath and -TaskPrompt.
-Each XSD must be self-contained, nonempty, and at most 25 MiB. Multi-file
-include/import/redefine bundles are rejected before any upload is performed.
+The runner collects local include/import/redefine dependencies recursively and
+uploads them with each primary XSD. Retain the original directory structure.
+Each closure is bounded to 63 supporting files and 25 MiB total. Both closures
+are checked before either upload. Remote locations and dependencies outside the
+primary XSD's directory are rejected; they are never downloaded automatically.
 Uploads create retained ontology records even when the later merge fails.
 
 Existing registered inputs
@@ -56,7 +59,7 @@ The task prompt tests a recommendation; execution uses selected, validated IDs.
 Ontology union preserves identities; it does not infer entity equivalence or
 automatically consolidate entities/properties. Merged draft creation does not
 publish that RDF ontology to Neo4j. This is not an audit of every backend feature:
-streaming, worker restart recovery, and multi-file XSD support remain outside scope.
+streaming and worker restart recovery remain outside scope.
 
 Local tests
 -----------

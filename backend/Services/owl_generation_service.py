@@ -36,12 +36,7 @@ _MEMORY_CACHE_ENABLED = os.getenv("OWL_MEMORY_CACHE_ENABLED", "false").lower() =
 
 # Disk-backed TTL cache — survives process restarts (uvicorn --reload, crashes).
 # Written alongside the in-memory cache so TTL is available after a hot reload.
-_TTL_CACHE_DIR = Path(__file__).parent.parent / "ttl_cache"
-
-
-def _ttl_path(task_id: str) -> Path:
-    """Return the on-disk path for a cached TTL file."""
-    return _TTL_CACHE_DIR / f"{task_id}.ttl"
+from .ttl_cache import cache_path as _ttl_path, read_ttl, write_ttl
 
 
 def _write_tmp(content: bytes, suffix: str) -> Path:
@@ -467,13 +462,9 @@ class OWLGenerationService:
     @staticmethod
     def store_owl(task_id: str, ttl: str) -> None:
         """Store generated TTL in memory cache and persist to disk."""
+        write_ttl(task_id, ttl)
         if _MEMORY_CACHE_ENABLED:
             _owl_storage[task_id] = ttl
-        try:
-            _TTL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            _ttl_path(task_id).write_text(ttl, encoding="utf-8")
-        except Exception as e:
-            logger.warning(f"TTL disk write failed for {task_id}: {e}")
 
     @staticmethod
     def store(task_id: str, ttl: str) -> None:
@@ -483,19 +474,14 @@ class OWLGenerationService:
     @staticmethod
     def retrieve_owl(task_id: str) -> Optional[str]:
         """Retrieve cached TTL from memory, falling back to disk if not found."""
+        _ttl_path(task_id)  # Validate identifiers before accessing the memory cache.
         if _MEMORY_CACHE_ENABLED and task_id in _owl_storage:
             return _owl_storage[task_id]
         # Disk fallback — survives process restart / hot reload
-        disk = _ttl_path(task_id)
-        if disk.exists():
-            try:
-                ttl = disk.read_text(encoding="utf-8")
-                if _MEMORY_CACHE_ENABLED:
-                    _owl_storage[task_id] = ttl  # repopulate in-memory cache
-                return ttl
-            except Exception as e:
-                logger.warning(f"TTL disk read failed for {task_id}: {e}")
-        return None
+        ttl = read_ttl(task_id)
+        if ttl is not None and _MEMORY_CACHE_ENABLED:
+            _owl_storage[task_id] = ttl
+        return ttl
 
     @staticmethod
     def retrieve(task_id: str) -> Optional[str]:

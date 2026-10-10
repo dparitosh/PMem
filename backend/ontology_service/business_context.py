@@ -26,9 +26,7 @@ class BusinessContextService:
         self._persistence_error = ""
 
     def _load_persisted_state(self, *, require_persistence: bool = False) -> None:
-        """Load state lazily so OpenAPI/service startup has no database side effect."""
-        if self._loaded:
-            return
+        """Refresh on access so other service processes' writes are visible."""
         try:
             state = self.registry.get(self._STATE_KEY)
         except RuntimeError as exc:
@@ -46,7 +44,10 @@ class BusinessContextService:
                 self.registry.put(self._STATE_KEY, state)
         if state:
             self._load(state)
+        else:
+            self.graph = ContextGraph(advanced_analytics=True)
         self._loaded = True
+        self._persistence_error = ""
 
     def upsert(self, payload: dict[str, Any]) -> dict[str, Any]:
         # Serialize cooperating writers and reload under the lock. Never mutate
@@ -127,7 +128,9 @@ class BusinessContextService:
             json.dump(state, stream)
             temporary = Path(stream.name)
         try:
-            self.graph.load_from_file(temporary)
+            graph = ContextGraph(advanced_analytics=True)
+            graph.load_from_file(temporary)
+            self.graph = graph
         finally:
             temporary.unlink(missing_ok=True)
 

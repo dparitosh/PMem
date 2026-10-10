@@ -11,11 +11,13 @@ from backend.postgres_migrations import MIGRATIONS, MIGRATIONS_DIR, migration_ch
 def catalog_fixture(schema='semantic'):
     defaults = {('depo_schema_migrations','applied_at'):'now()', ('depo_registry','updated_at'):'now()', ('depo_metadata_assets','updated_at'):'now()', ('depo_metadata_events','created_at'):'now()', ('depo_metadata_outbox','created_at'):'now()', ('depo_metadata_outbox','status'):"'pending'::text", ('depo_chat_messages','message_id'):f"nextval('{schema}.depo_chat_messages_message_id_seq'::regclass)"}
     attrs = [(table,column,'YES' if table=='depo_ontology_analytics' or column=='checksum' or (table,column)==('depo_api_credentials','expires_at') else 'NO',defaults.get((table,column))) for table,columns in setup.EXPECTED_COLUMNS.items() for column in columns]
+    credential_defaults = {('depo_api_credentials','revoked'):'false', ('depo_api_credentials','updated_at'):'now()', ('depo_api_credential_events','created_at'):'now()'}
+    attrs = [(table,column,nullable,credential_defaults.get((table,column),default)) for table,column,nullable,default in attrs]
     constraints = [(table,name,definition,True,schema if definition.startswith('FOREIGN') else None) for name,(table,definition) in CONSTRAINTS.items()]
     indexes = [(name,f'CREATE INDEX {name} {definition}',True,True) for name,definition in INDEXES.items()]
     relations = [(table,'v' if table=='depo_ontology_analytics' else 'r') for table in setup.EXPECTED_COLUMNS]
     view = (MIGRATIONS_DIR/'004_ontology_analytics_view.sql').read_text(encoding='utf-8').split('AS\n',1)[1]
-    return [attrs,constraints,indexes,relations], [(f'{schema}.depo_chat_messages_message_id_seq',),(view,)]
+    return [attrs,constraints,indexes,relations], [('a',f'{schema}.depo_api_credential_events_event_id_seq'), (f'{schema}.depo_chat_messages_message_id_seq',),(view,)]
 
 class SchemaAudit(unittest.TestCase):
     def cursor(self, mutate=None):
@@ -41,9 +43,21 @@ class SchemaAudit(unittest.TestCase):
             name,definition,valid,ready=lists[2][0];lists[2][0]=(name,definition,False,ready)
         with self.assertRaisesRegex(RuntimeError,'index'): verify_structure(self.cursor(bad),'semantic',setup.EXPECTED_COLUMNS)
     def test_wrong_view_and_sequence_rejected(self):
-        for which in (0,1):
-            def bad(lists,singles): singles[which]=(None if which==0 else 'SELECT 1',)
+        for which in (1,2):
+            def bad(lists,singles): singles[which]=(None if which==1 else 'SELECT 1',)
             with self.assertRaises(RuntimeError): verify_structure(self.cursor(bad),'semantic',setup.EXPECTED_COLUMNS)
+    def test_revoked_default_drift_rejected(self):
+        def bad(lists,singles):
+            index=next(i for i,row in enumerate(lists[0]) if row[:2]==('depo_api_credentials','revoked'))
+            lists[0][index]=('depo_api_credentials','revoked','NO','true')
+        with self.assertRaisesRegex(RuntimeError,'default'): verify_structure(self.cursor(bad),'semantic',setup.EXPECTED_COLUMNS)
+    def test_credential_events_identity_drift_rejected(self):
+        def bad(lists,singles): singles[0]=('d','semantic.fake_sequence')
+        with self.assertRaisesRegex(RuntimeError,'identity'): verify_structure(self.cursor(bad),'semantic',setup.EXPECTED_COLUMNS)
+    def test_missing_credential_check_rejected(self):
+        def bad(lists,singles):
+            lists[1][:]=[row for row in lists[1] if row[1]!='depo_api_credentials_digest_lengths']
+        with self.assertRaisesRegex(RuntimeError,'constraint'): verify_structure(self.cursor(bad),'semantic',setup.EXPECTED_COLUMNS)
     def test_checksum_drift_and_legacy_optin(self):
         for legacy in (False,True):
             conn=MagicMock();cursor=conn.cursor.return_value.__enter__.return_value

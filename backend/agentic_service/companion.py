@@ -90,6 +90,8 @@ class KnowledgeCompanion:
             "evidence_type": "graph_relationship", "source_id": str(edge.get("start") or ""),
             "target_id": str(edge.get("end") or ""), "relationship": str(edge.get("type") or "RELATED_TO"), "source": endpoint,
         } for edge in selected_edges)
+        from .prompt_security import protect
+        evidence = protect(evidence)
         retrieval = {"nodes_examined": len(nodes), "relationships_examined": len(relationships), "truncated": bool((graph.get("view") or {}).get("truncated"))}
         if not evidence:
             return {

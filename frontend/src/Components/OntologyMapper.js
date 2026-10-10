@@ -65,6 +65,8 @@ export function RequirementsWorkbench({ filter = "", onNavigate }) {
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphError, setGraphError] = useState('');
   const [sourceFilter, setSourceFilter] = useState('all');
+  const [requirementOffset, setRequirementOffset] = useState(0);
+  const [requirementsHaveMore, setRequirementsHaveMore] = useState(false);
   const requirementRequest = useRef(0);
   const q = String(filter || '').trim().toLowerCase();
 
@@ -73,21 +75,33 @@ export function RequirementsWorkbench({ filter = "", onNavigate }) {
     setGraphLoading(true);
     setGraphError('');
     try {
-      const response = await API_METHODS.requirements.list({ source: sourceFilter, limit: 1000 });
+      const response = await API_METHODS.requirements.list({ source: sourceFilter, limit: 1000, offset: requirementOffset });
       if (requestId !== requirementRequest.current) return;
       setGraphRequirements(requirementsPayload(response?.data?.requirements));
+      setRequirementsHaveMore(response?.data?.has_more === true);
     } catch (err) {
       if (requestId !== requirementRequest.current) return;
       setGraphError(apiErrorMessage(err, 'Unable to load graph requirements.'));
       setGraphRequirements([]);
+      setRequirementsHaveMore(false);
     } finally {
       if (requestId === requirementRequest.current) setGraphLoading(false);
     }
-  }, [sourceFilter]);
+  }, [sourceFilter, requirementOffset]);
 
   useEffect(() => {
     loadGraphRequirements();
     return () => { requirementRequest.current += 1; };
+  }, [loadGraphRequirements]);
+
+  useEffect(() => {
+    const refresh = () => loadGraphRequirements();
+    window.addEventListener('depo:credentials-changed', refresh);
+    window.addEventListener('depo:credentials-cleared', refresh);
+    return () => {
+      window.removeEventListener('depo:credentials-changed', refresh);
+      window.removeEventListener('depo:credentials-cleared', refresh);
+    };
   }, [loadGraphRequirements]);
 
   const graphRequirementRows = useMemo(() => (graphRequirements || []).map((row) => ({
@@ -136,7 +150,7 @@ export function RequirementsWorkbench({ filter = "", onNavigate }) {
           <div style={{ fontSize: '12px', color: C.textSec, marginTop: '3px' }}>View normalized requirements from Neo4j context graph plus uploaded ReqIF 1.2 files for Semantic Bridge, GraphRAG, and traceability review.</div>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} style={{ padding: '7px 10px', borderRadius: '6px', border: `1px solid ${C.borderDark}`, background: C.surface, color: C.textPrimary, fontSize: '12px', fontWeight: 700 }}>
+          <select value={sourceFilter} onChange={(event) => { setSourceFilter(event.target.value); setRequirementOffset(0); }} style={{ padding: '7px 10px', borderRadius: '6px', border: `1px solid ${C.borderDark}`, background: C.surface, color: C.textPrimary, fontSize: '12px', fontWeight: 700 }}>
             {['all', 'ReqIF', 'PLMXML', 'MBSE', 'OSLC', 'ALM', 'Unstructured', 'Graph'].map((source) => <option key={source} value={source}>{source === 'all' ? 'All graph sources' : source}</option>)}
           </select>
           <button type="button" onClick={loadGraphRequirements} disabled={graphLoading} style={{ padding: '7px 12px', borderRadius: '6px', border: `1px solid ${C.borderDark}`, background: C.surface, color: C.primaryDark, fontSize: '12px', fontWeight: 800, cursor: graphLoading ? 'wait' : 'pointer' }}>{graphLoading ? 'Loading graph' : 'Refresh graph'}</button>
@@ -192,6 +206,11 @@ export function RequirementsWorkbench({ filter = "", onNavigate }) {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <button disabled={graphLoading || requirementOffset === 0} onClick={() => setRequirementOffset(Math.max(0, requirementOffset - 1000))}>Previous</button>
+            <span>Page {Math.floor(requirementOffset / 1000) + 1}. Search and CSV apply to this page.</span>
+            <button disabled={graphLoading || !requirementsHaveMore} onClick={() => setRequirementOffset(requirementOffset + 1000)}>Next</button>
           </div>
         </div>
     </div>
@@ -2260,7 +2279,7 @@ export default function OntologyMapper() {
       if (generation !== mergeGeneration.current) return;
       setMergeResult({
         kind: 'success',
-        text: 'Merged ontology registered as a draft. Graph publication requires its separate governed action.',
+        text: res.result.publication_status === 'published' ? 'Reviewed merge approved and published to Neo4j.' : 'Merge retained; graph publication is not verified.',
         agentRunId: res.runId,
         report: { ...(mergeResult.report || {}), governed: res.result },
         governedPreview: mergeResult.governedPreview,
@@ -2268,7 +2287,7 @@ export default function OntologyMapper() {
       });
     } catch (e) {
       if (generation !== mergeGeneration.current) return;
-      setMergeResult({ kind: 'error', text: apiErrorMessage(e, 'Ontology merge failed.') });
+      setMergeResult(previous => ({ ...previous, kind: 'error', text: apiErrorMessage(e, 'Merge publication failed. Retry the same reviewed preview to reconcile its publication.') }));
     } finally {
 
       if (generation === mergeGeneration.current) setMergeBusy(false);
@@ -3019,7 +3038,7 @@ export default function OntologyMapper() {
                     <input value={mergeApprover} onChange={(e) => setMergeApprover(e.target.value)} placeholder="name or service principal" style={{ width: '100%', padding: '7px 8px', fontSize: '12px', border: `1px solid ${C.borderDark}`, borderRadius: '6px', background: C.surface }} />
                   </div>
                   <div>
-                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Connect governed agent access in Admin → Service credentials. Both sources require retained RDF artifacts; the merge creates a new draft.</label>
+                    <label style={{ fontSize: '11px', color: C.textSec, display: 'block', marginBottom: '4px' }}>Connect governed agent access in Admin → Service credentials. Both sources require retained RDF artifacts. The reviewed merge is approved and published to Neo4j.</label>
                   </div>
                   <label>Entity to consolidate (full IRI)<input aria-label="Merge source entity IRI" value={mergeEntitySource} onChange={event => setMergeEntitySource(event.target.value)} placeholder="https://example.org/source#Part" /></label>
                   <label>Retained entity identity (full IRI)<input aria-label="Merge target entity IRI" value={mergeEntityTarget} onChange={event => setMergeEntityTarget(event.target.value)} placeholder="https://example.org/target#Component" /></label>
@@ -3039,7 +3058,7 @@ export default function OntologyMapper() {
                     title={mergePlanReady ? 'Commit the reviewed conflict-free merge plan' : 'Review a conflict-free merge plan before committing'}
                     style={{ padding: '8px 12px', border: 'none', borderRadius: '6px', background: mergeBusy || !mergePlanReady ? C.textMuted : C.primaryDark, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: mergeBusy || !mergePlanReady ? 'not-allowed' : 'pointer' }}
                   >
-                    Create merged draft
+                    Approve merge and publish
                   </button>
                 </div>
                 </details>
@@ -3047,7 +3066,7 @@ export default function OntologyMapper() {
                   <div style={{ marginTop: '12px', padding: '10px 12px', borderRadius: '6px', border: `1px solid ${mergeResult.kind === 'error' ? C.red : C.borderDark}`, background: mergeResult.kind === 'error' ? '#FFE5E5' : C.surface }}>
                     <div style={{ fontSize: '12px', fontWeight: 700, color: mergeResult.kind === 'error' ? C.red : C.textPrimary }}>{mergeResult.text}</div>
                     {mergeResult.agentRunId && <div>Agent run: {mergeResult.agentRunId}</div>}
-                    {mergeResult.report?.governed?.ontology?.ontology_id && <p role="status">New draft: {mergeResult.report.governed.ontology.ontology_id}. Open its record in the ontology registry to inspect or publish it.</p>}
+                    {mergeResult.report?.governed?.ontology?.ontology_id && <p role="status">Merged ontology: {mergeResult.report.governed.ontology.ontology_id}. Publication: {mergeResult.report.governed.publication_status || "not requested"}.</p>}
                     {mergeResult.governedPreview && <div>Merged triples: {mergeResult.governedPreview.triple_count} | Duplicate triples: {mergeResult.governedPreview.duplicate_triple_count} | Conflicts: {mergeResult.governedPreview.conflicts?.length || 0}</div>}
                     {mergeResult.governedPreview?.conflicts?.length > 0 && <details open><summary>Conflicts requiring resolution</summary><pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(mergeResult.governedPreview.conflicts, null, 2)}</pre></details>}
                     {mergeResult.governedPreview?.changes && <details open><summary>What changes in the new draft?</summary>

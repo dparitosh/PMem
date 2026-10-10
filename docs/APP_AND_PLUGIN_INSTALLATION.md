@@ -97,8 +97,8 @@ Run from `plugins/mbse_plugin` within the project root:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Install
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Configure -IngestionUrl http://127.0.0.1:8014/api/v1
-# Edit .runtime\config.json if the application uses token authentication.
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Configure -EnvFile E:\App\PMem\.env.local -IngestionUrl http://10.0.2.16:8014/api/v1
+# Replace 10.0.2.16 with the ingestion service's reachable address.
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Start
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\manage-plugin.ps1 -Action Verify
 ```

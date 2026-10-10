@@ -768,31 +768,12 @@ class FileParser:
         refs, values, and type metadata are not lost during streaming.
         """
         try:
-            import xml.etree.ElementTree as ET
+            from defusedxml import ElementTree as ET
             from io import BytesIO
-            import zipfile
+            from backend.Services.reqif_source import reqif_xml, parse_reqif
 
-            data = file_content or b''
-            if data[:2] == b'PK':
-                import os
-                try:
-                    budget = int(os.getenv('DEPO_MAX_INGEST_BYTES', str(500 * 1024 * 1024)))
-                except ValueError:
-                    budget = 500 * 1024 * 1024
-                if budget <= 0:
-                    budget = 500 * 1024 * 1024
-                budget = min(budget, 500 * 1024 * 1024)
-                with zipfile.ZipFile(BytesIO(data)) as archive:
-                    entries = archive.infolist()
-                    if len(entries) > 1000 or sum(entry.file_size for entry in entries) > budget:
-                        raise ValueError('REQIFZ archive exceeds the entry or expanded-byte limit')
-                    members = [name for name in archive.namelist() if name.lower().endswith(('.reqif', '.xml'))]
-                    if not members:
-                        return [], {'error': 'REQIFZ archive does not contain a .reqif or .xml member', 'file_format': 'ReqIF'}
-                    with archive.open(sorted(members)[0]) as member:
-                        data = member.read(budget + 1)
-                    if len(data) > budget:
-                        raise ValueError('REQIFZ member exceeds the expanded-byte limit')
+            data = reqif_xml(file_content)
+            parse_reqif(data)
 
             def local(tag: str) -> str:
                 raw = str(tag or '')
@@ -846,18 +827,18 @@ class FileParser:
                         value = text_value(value_elem)
                     values.append({
                         'definition': definition,
-                        'value': value[:1000],
+                        'value': value,
                         'value_type': value_type,
                     })
                 return values
 
             def make_unique_id(identifier: str, fallback: str) -> tuple[str, str, bool]:
-                raw = identifier or fallback
-                seen = seen_ids.get(raw, 0) + 1
-                seen_ids[raw] = seen
-                if seen == 1:
-                    return raw, raw, False
-                return f"{raw}#{seen}", raw, True
+                if not identifier:
+                    raise ValueError('ReqIF business object requires an IDENTIFIER')
+                if identifier in seen_ids:
+                    raise ValueError(f'ReqIF duplicate IDENTIFIER: {identifier}')
+                seen_ids[identifier] = 1
+                return identifier, identifier, False
 
             def attribute_value(attributes: List[Dict[str, str]], *needles: str) -> str:
                 lowered = [needle.lower() for needle in needles if needle]
@@ -880,7 +861,7 @@ class FileParser:
                     child_text_or_attr(elem, 'DESC')
                     or attribute_value(attributes, 'xhtml', 'object_desc', 'description', 'text')
                     or ''
-                )[:1000]
+                )
 
             rows: List[Dict[str, Any]] = []
             counts = {
@@ -900,6 +881,8 @@ class FileParser:
                     root_name = local(elem.tag)
                     raw_tag = str(elem.tag or '')
                     namespace_uri = raw_tag[1:].split('}', 1)[0] if raw_tag.startswith('{') and '}' in raw_tag else ''
+                    if root_name != 'REQ-IF':
+                        raise ValueError('The supplied XML is not a ReqIF document')
                     continue
                 if event != 'end':
                     continue
@@ -941,6 +924,20 @@ class FileParser:
                         counts['duplicate_ids'] += 1
                     attributes = collect_attribute_values(elem)
                     object_refs = [text_value(ref) for ref in elem.iter() if local(ref.tag) == 'SPEC-OBJECT-REF' and text_value(ref)]
+                    hierarchy = []
+                    def visit_hierarchy(node, parent_id):
+                        for ordinal, child in enumerate(node):
+                            if local(child.tag) == 'SPEC-HIERARCHY':
+                                object_node = direct_child(child, 'OBJECT')
+                                object_id = text_value(object_node) if object_node is not None else ''
+                                if not object_id:
+                                    raise ValueError('ReqIF hierarchy requires an object reference')
+                                hierarchy.append({'source': parent_id, 'target': object_id,
+                                                  'hierarchy_id': attr(child, 'IDENTIFIER'), 'ordinal': ordinal})
+                                visit_hierarchy(child, object_id)
+                            else:
+                                visit_hierarchy(child, parent_id)
+                    visit_hierarchy(elem, identifier)
                     title = semantic_title(elem, identifier, attributes)
                     description = semantic_description(elem, attributes)
                     rows.append({
@@ -957,6 +954,7 @@ class FileParser:
                         'attributes': attributes,
                         'attribute_count': len(attributes),
                         'object_refs': object_refs,
+                        'hierarchy': hierarchy,
                         'object_ref_count': len(object_refs),
                         'last_change': attr(elem, 'LAST-CHANGE'),
                     })
@@ -1007,6 +1005,9 @@ class FileParser:
                     unresolved = [ref for ref in row.get('object_refs') or [] if ref not in requirement_original_ids]
                     row['unresolved_object_refs'] = unresolved
                     unresolved_spec_object_refs += len(unresolved)
+
+            if unresolved_relation_refs or unresolved_spec_object_refs or any(row.get('row_type') == 'relation' and (not row.get('source_resolved') or not row.get('target_resolved')) for row in rows):
+                raise ValueError('ReqIF contains unresolved requirement references')
 
             return rows, {
                 'format': 'ReqIF',
@@ -3275,13 +3276,14 @@ class UnifiedDataImportService:
                         })
                 elif row_type == 'specification':
                     specification_id = reqif_id_map.get(str(row.get('original_id') or row.get('id')))
-                    for object_ref in row.get('object_refs') or []:
-                        requirement_id = reqif_id_map.get(str(object_ref))
-                        if specification_id and requirement_id:
+                    for item in row.get('hierarchy') or []:
+                        parent_id = reqif_id_map.get(str(item['source']))
+                        requirement_id = reqif_id_map.get(str(item['target']))
+                        if parent_id and requirement_id:
                             reqif_edge_groups.setdefault('REQIF_CONTAINS', []).append({
-                                'from_id': specification_id,
+                                'from_id': parent_id,
                                 'to_id': requirement_id,
-                                'properties': {'source_format': 'reqif'},
+                                'properties': {'source_format': 'reqif', 'hierarchy_id': item['hierarchy_id'], 'ordinal': item['ordinal']},
                             })
 
             if reqif_edge_groups:
@@ -3291,7 +3293,7 @@ class UnifiedDataImportService:
                     UNWIND $rows AS row
                     MATCH (a {{id: row.from_id, import_id: row.import_id}})
                     MATCH (b {{id: row.to_id, import_id: row.import_id}})
-                    MERGE (a)-[rel:`{rel_type}`]->(b)
+                    MERGE (a)-[rel:`{rel_type}` {{reqif_identity: coalesce(row.properties.hierarchy_id, row.properties.reqif_relation_id, '')}}]->(b)
                     SET rel += coalesce(row.properties, {{}})
                     RETURN count(*) AS matched_rows
                     """
