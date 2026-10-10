@@ -38,3 +38,14 @@ test('conversation bookmarks cannot cross deployment scopes', () => {
   sessionStorage.setItem('depo.sessionScope.v1', 'different-deployment');
   expect(getClientSessionId()).toBeNull();
 });
+
+
+test('credential changes cancel pending requests and reject late session adoption', async () => {
+  clearServiceAuthToken();
+  clearClientSessionId();
+  const request = apiClient.interceptors.request.handlers[0].fulfilled({url:'http://legacy/chat',method:'get',headers:{}});
+  window.dispatchEvent(new Event('depo:credentials-changed'));
+  expect(request.signal.aborted).toBe(true);
+  await expect(apiClient.interceptors.response.handlers[0].fulfilled({config:request,headers:{'x-session-id':'old-session'},data:{}})).rejects.toThrow(/previous credentials/);
+  expect(getClientSessionId()).toBeNull();
+});

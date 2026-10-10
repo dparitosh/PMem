@@ -1,3 +1,5 @@
+
+from backend.depo_platform.request_bodies import LegacyCleanupBody, LegacyMergeBody
 """
 Unified Data Import Router
 Provides 5 endpoints for file import with progress tracking, preview, and commit capabilities.
@@ -402,7 +404,7 @@ async def get_registered_ontology(ontology_id: str):
     description="Merge all nodes/relationships from the source ontology into the target ontology in Neo4j. Sets ontology_prefix on source nodes to the target prefix.",
     tags=["ontology"],
 )
-async def merge_ontologies(body: dict):
+async def merge_ontologies(body: LegacyMergeBody):
     """
     Merge FROM ontology into TO ontology in Neo4j.
     Body: { "from_ontology_id": "...", "to_ontology_id": "..." }
@@ -554,7 +556,7 @@ async def merge_ontologies(body: dict):
     ),
     tags=["ontology"],
 )
-async def cleanup_old_xsd_schemas(body: dict):
+async def cleanup_old_xsd_schemas(body: LegacyCleanupBody):
     """
     Cleanup old XSD ontology uploads.
 

@@ -3,6 +3,8 @@
 Customer deployment starts the ten modules in infra/deployment/services.json.
 Do not launch this module as the customer production API.
 """
+
+from backend.depo_platform.request_bodies import ContextBody, InferenceBody, ModelDecisionBody, ModelLinkBody, ModelNodeBody, ModelProposalBody, ModelSeedBody, ReportBody
 from typing import Any, Dict
 import os
 import sys
@@ -2596,7 +2598,7 @@ async def get_uploaded_ontology_reasoning(ontology_id: str):
 
 
 @app.post("/api/v1/ontology/{ontology_id}/inference/preview")
-async def preview_uploaded_ontology_inference(ontology_id: str, body: dict | None = None):
+async def preview_uploaded_ontology_inference(ontology_id: str, body: InferenceBody | None = None):
     """Preview selectable ontology inferences without mutating Neo4j."""
     try:
         from backend.ontology_service.domain.reasoning import OntologyReasoningService
@@ -4024,7 +4026,7 @@ def build_graph_embeddings(force: bool = False):
 
 @app.post("/reports")
 @app.post("/api/v1/reports")
-def get_reports(body: dict):
+def get_reports(body: ReportBody):
     """Compatibility report endpoint for customer deployments and external clients."""
     try:
         report_type = str((body or {}).get("type") or (body or {}).get("report_type") or "overview").strip().lower()
@@ -4182,7 +4184,7 @@ _mfg_process = ManufacturingProcessRecommender(graph)
 
 
 @app.post("/recommendations/change-impact")
-def recommend_change_impact(body: dict):
+def recommend_change_impact(body: ContextBody):
     """Analyse change impact given a change entity name or a part name."""
     change_name = body.get("change_name", "")
     part_name = body.get("part_name", "")
@@ -4199,7 +4201,7 @@ def recommend_change_impact(body: dict):
 
 
 @app.post("/recommendations/similar-parts")
-def recommend_similar_parts(body: dict):
+def recommend_similar_parts(body: ContextBody):
     """Find similar parts given a part name."""
     part_name = body.get("part_name", "")
     top_n = body.get("top_n", 10)
@@ -4216,7 +4218,7 @@ def recommend_similar_parts(body: dict):
 
 
 @app.post("/recommendations/manufacturing")
-def recommend_manufacturing(body: dict):
+def recommend_manufacturing(body: ContextBody):
     """Recommend manufacturing processes for a part."""
     part_name = body.get("part_name", "")
     scope = body.get("scope") or {}
@@ -5499,12 +5501,12 @@ async def modeling_context(element_id: str, depth: int = Query(default=1, ge=1, 
 
 
 @app.post("/api/v1/modeling/nodes")
-async def modeling_create_node(payload: Dict[str, Any]):
+async def modeling_create_node(payload: ModelNodeBody):
     return _modeling_service().create_node(payload)
 
 
 @app.put("/api/v1/modeling/nodes/{element_id}")
-async def modeling_update_node(element_id: str, payload: Dict[str, Any]):
+async def modeling_update_node(element_id: str, payload: ModelNodeBody):
     return _modeling_service().update_node(element_id, payload)
 
 
@@ -5514,12 +5516,12 @@ async def modeling_delete_node(element_id: str):
 
 
 @app.post("/api/v1/modeling/links")
-async def modeling_create_link(payload: Dict[str, Any]):
+async def modeling_create_link(payload: ModelLinkBody):
     return _modeling_service().create_link(payload)
 
 
 @app.put("/api/v1/modeling/links/{element_id}")
-async def modeling_update_link(element_id: str, payload: Dict[str, Any]):
+async def modeling_update_link(element_id: str, payload: ModelLinkBody):
     return _modeling_service().update_link(element_id, payload)
 
 
@@ -5535,7 +5537,7 @@ async def modeling_validation(project: str = "Digital Engineering Model"):
 
 
 @app.post("/api/v1/modeling/agent/proposals")
-async def modeling_agent_create_proposal(payload: Dict[str, Any]):
+async def modeling_agent_create_proposal(payload: ModelProposalBody):
     try:
         return _agentic_modeling_service().create_proposal(payload)
     except ValueError as exc:
@@ -5548,7 +5550,7 @@ async def modeling_agent_list_proposals(project: str = "Digital Engineering Mode
 
 
 @app.post("/api/v1/modeling/agent/proposals/{proposal_id}/approve")
-async def modeling_agent_approve_proposal(proposal_id: str, payload: Dict[str, Any] | None = None):
+async def modeling_agent_approve_proposal(proposal_id: str, payload: ModelDecisionBody | None = None):
     payload = payload or {}
     result = _agentic_modeling_service().approve_proposal(proposal_id, approved_by=payload.get("approved_by") or "user", comment=payload.get("comment") or "")
     if result.get("error") == "not_found":
@@ -5559,7 +5561,7 @@ async def modeling_agent_approve_proposal(proposal_id: str, payload: Dict[str, A
 
 
 @app.post("/api/v1/modeling/agent/proposals/{proposal_id}/reject")
-async def modeling_agent_reject_proposal(proposal_id: str, payload: Dict[str, Any] | None = None):
+async def modeling_agent_reject_proposal(proposal_id: str, payload: ModelDecisionBody | None = None):
     payload = payload or {}
     result = _agentic_modeling_service().reject_proposal(proposal_id, rejected_by=payload.get("rejected_by") or "user", comment=payload.get("comment") or "")
     if result.get("error") == "not_found":
@@ -5568,7 +5570,7 @@ async def modeling_agent_reject_proposal(proposal_id: str, payload: Dict[str, An
         raise HTTPException(status_code=409, detail=f"Agent proposal is already {result.get('current_status') or 'finalized'}")
     return result
 @app.post("/api/v1/modeling/seed")
-async def modeling_seed(payload: Dict[str, Any] | None = None):
+async def modeling_seed(payload: ModelSeedBody | None = None):
     payload = payload or {}
     return _modeling_service().seed_sample(project=payload.get("project") or "Digital Engineering Model")
 

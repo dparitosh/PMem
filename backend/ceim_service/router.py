@@ -1,6 +1,8 @@
 """OpenAPI boundary for versioned Canonical Engineering Information Model mappings."""
 from __future__ import annotations
 
+from backend.depo_platform.request_bodies import CeimBatchBody, NormalizeRecordBody, ResolutionBody
+
 import os
 from backend.depo_platform.service_urls import service_url
 import re
@@ -46,7 +48,7 @@ def read_mapping_pack(standard: str) -> dict[str, Any]:
 
 
 @router.post("/normalize/entity", summary="Normalize one declared source entity into CEIM")
-def normalize_entity(payload: dict[str, Any]) -> dict[str, Any]:
+def normalize_entity(payload: NormalizeRecordBody) -> dict[str, Any]:
     try:
         return contract.normalize_entity(standard=str(payload.get("standard") or ""), record=dict(payload.get("record") or {}))
     except (TypeError, ValueError) as exc:
@@ -54,7 +56,7 @@ def normalize_entity(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.post("/normalize/relationship", summary="Normalize one declared source relationship into CEIM")
-def normalize_relationship(payload: dict[str, Any]) -> dict[str, Any]:
+def normalize_relationship(payload: NormalizeRecordBody) -> dict[str, Any]:
     try:
         return contract.normalize_relationship(standard=str(payload.get("standard") or ""), record=dict(payload.get("record") or {}))
     except ValueError as exc:
@@ -62,7 +64,7 @@ def normalize_relationship(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.post("/normalize/batch", summary="Normalize a bounded batch for Spark or ingestion publication")
-def normalize_batch(payload: dict[str, Any]) -> dict[str, Any]:
+def normalize_batch(payload: CeimBatchBody) -> dict[str, Any]:
     standard = str(payload.get("standard") or "")
     entities, relationships = list(payload.get("entities") or []), list(payload.get("relationships") or [])
     if len(entities) + len(relationships) > MAX_BATCH_RECORDS:
@@ -100,7 +102,7 @@ def resolution_cases() -> dict[str, Any]:
 
 
 @router.post("/entity-resolution/cases/{case_id}/resolve", summary="Record a steward-approved CEIM entity resolution")
-def resolve_entity_case(case_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def resolve_entity_case(case_id: str, payload: ResolutionBody, request: Request) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env="CEIM_RESOLUTION_APPROVAL_TOKEN")
     try:
         return resolution_registry.resolve(case_id, str(payload.get("strategy") or ""), actor, str(payload.get("rationale") or ""), payload.get("selected_candidate_index"))
@@ -111,7 +113,7 @@ def resolve_entity_case(case_id: str, payload: dict[str, Any], request: Request)
 
 
 @router.post("/validate/batch", summary="Validate a normalized CEIM batch against CEIM SHACL shapes")
-def validate_batch(payload: dict[str, Any]) -> dict[str, Any]:
+def validate_batch(payload: CeimBatchBody) -> dict[str, Any]:
     try:
         entities, relationships = _normalized_batch(payload)
         return contract.validate_projection(entities=entities, relationships=relationships)
@@ -194,7 +196,7 @@ async def validate_qif(file: UploadFile = File(...)) -> dict[str, Any]:
 
 
 @router.post("/projection/turtle", summary="Create a deterministic CEIM RDF projection for governed graph publication")
-def turtle_projection(payload: dict[str, Any]) -> Response:
+def turtle_projection(payload: CeimBatchBody) -> Response:
     try:
         entities, relationships = _normalized_batch(payload)
         return Response(content=contract.turtle_projection(entities=entities, relationships=relationships), media_type="text/turtle")
@@ -227,7 +229,7 @@ async def _publish_to_graph(*, turtle: str, ontology_id: str, prefix: str, publi
 
 
 @router.post("/publications/graph", summary="Validate and explicitly publish a CEIM RDF projection through the graph service")
-async def publish_graph(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+async def publish_graph(payload: CeimBatchBody, request: Request) -> dict[str, Any]:
     """Publish only a SHACL-conformant CEIM batch with an explicit approval.
 
     Normalization and projection endpoints remain read-only.  This separate

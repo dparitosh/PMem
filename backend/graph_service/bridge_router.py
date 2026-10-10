@@ -1,3 +1,5 @@
+
+from backend.depo_platform.request_bodies import BridgePublicationBody
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 router = APIRouter(prefix="/graph", tags=["semantic-bridge"])
@@ -19,7 +21,7 @@ def bridge_service_identity(request: Request):
 
 
 @router.post('/bridge/publications', dependencies=[Depends(bridge_service_identity)])
-def publish_bridge(payload: dict):
+def publish_bridge(payload: BridgePublicationBody):
     from .bridge_publication import publish
     try:
         return publish(payload)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.depo_platform.request_bodies import ApprovalBody, ProductPublicationBody, ReasonApprovalBody, ReconcileProductsBody
+
 import os
 import asyncio
 import logging
@@ -199,7 +201,7 @@ def _preview_identity(request: Request):
 
 
 @router.post("/preview", dependencies=[Depends(_preview_identity)])
-async def preview(payload: dict) -> dict:
+async def preview(payload: ProductPublicationBody) -> dict:
     _, errors = await _product_io(_validate, payload)
     if not errors:
         try:
@@ -213,7 +215,7 @@ async def preview(payload: dict) -> dict:
 
 
 @router.post("/publish")
-async def publish(payload: dict, request: Request) -> dict:
+async def publish(payload: ProductPublicationBody, request: Request) -> dict:
     artifacts, errors = await _product_io(_validate, payload)
     if errors:
         raise HTTPException(422, {"errors": errors})
@@ -254,7 +256,7 @@ async def publish(payload: dict, request: Request) -> dict:
 
 
 @router.post("/{product_version}/retry-catalog")
-async def retry_catalog(product_version: str, payload: dict, request: Request) -> dict:
+async def retry_catalog(product_version: str, payload: ApprovalBody, request: Request) -> dict:
     approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
     async with _product_lock(product_version) as acquired:
         if not acquired: raise HTTPException(409, "Product operation is in progress; retry after it completes")
@@ -268,7 +270,7 @@ async def retry_catalog(product_version: str, payload: dict, request: Request) -
 
 
 @router.post("/reconcile")
-async def reconcile(payload: dict, request: Request) -> dict:
+async def reconcile(payload: ReconcileProductsBody, request: Request) -> dict:
     approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
     limit = payload.get("limit", 100)
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
@@ -277,7 +279,7 @@ async def reconcile(payload: dict, request: Request) -> dict:
 
 
 @router.post("/{product_version}/revoke")
-async def revoke(product_version: str, payload: dict, request: Request) -> dict:
+async def revoke(product_version: str, payload: ReasonApprovalBody, request: Request) -> dict:
     approval_identity(request, payload, token_env="DATA_PRODUCT_APPROVAL_TOKEN")
     async with _product_lock(product_version) as acquired:
         if not acquired: raise HTTPException(409, "Product operation is in progress; retry after it completes")

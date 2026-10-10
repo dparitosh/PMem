@@ -1,6 +1,8 @@
 """HTTP browsing and export contracts for registered ingestion artifacts."""
 from __future__ import annotations
 
+from backend.depo_platform.request_bodies import InferenceBody
+
 from fastapi import APIRouter, HTTPException
 import os
 from neo4j import GraphDatabase
@@ -67,7 +69,7 @@ def reasoning(ontology_id: str) -> dict:
 
 
 @router.post("/{ontology_id}/inference/preview")
-def preview_inferences(ontology_id: str, body: dict | None = None) -> dict:
+def preview_inferences(ontology_id: str, body: InferenceBody | None = None) -> dict:
     try:
         return OntologyReasoningService.preview_inferences(_resolve_ontology_id(ontology_id), body or {})
     except ValueError as exc:

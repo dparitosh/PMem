@@ -1,6 +1,12 @@
 """OpenAPI contract for Spark-backed DEPO data jobs."""
 from __future__ import annotations
 
+from backend.depo_platform.request_bodies import ApprovalBody
+
+from backend.depo_platform.request_bodies import DocumentWorkflowBody, JobInputBody
+
+from backend.depo_platform.request_bodies import ApprovalBody, JobDefinitionBody, JobPublicationBody, ScheduleBody
+
 import json
 import os
 from backend.depo_platform.service_urls import service_url
@@ -72,7 +78,7 @@ def telemetry() -> dict[str, Any]:
 
 
 @router.post("/jobs/transform", summary="Run a bounded Spark quality transformation and return JSON")
-def transform(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def transform(payload: JobInputBody, request: Request) -> dict[str, Any]:
     _, payload = _authorize_execution(request, payload)
     if _worker_execution_enabled():
         raise HTTPException(status_code=409, detail="Direct Spark transforms are disabled in worker mode; run an approved data-job definition")
@@ -85,7 +91,7 @@ def transform(payload: dict[str, Any], request: Request) -> dict[str, Any]:
 
 
 @router.post("/workflows/document-evidence/run", summary="Run the governed document evidence to CEIM workflow")
-def run_document_evidence_workflow(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def run_document_evidence_workflow(payload: DocumentWorkflowBody, request: Request) -> dict[str, Any]:
     """Execute the fixed unstructured workflow with approved job versions."""
     actor, payload = _authorize_execution(request, payload)
     if _worker_execution_enabled():
@@ -240,7 +246,7 @@ def get_job_definition(job_id: str, version: str) -> dict[str, Any]:
 
 
 @router.post("/jobs/definitions", status_code=201, summary="Create an immutable draft data-job definition")
-def create_job_definition(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def create_job_definition(payload: JobDefinitionBody, request: Request) -> dict[str, Any]:
     actor = service_write_identity(request, token_env="DATA_JOB_APPROVAL_TOKEN", default_actor="data-job-author")
     try:
         return job_definitions.create({**payload, "owner": actor})
@@ -253,7 +259,7 @@ def create_job_definition(payload: dict[str, Any], request: Request) -> dict[str
 
 
 @router.post("/jobs/definitions/{job_id}/{version}/approve", summary="Approve a data-job definition for execution")
-def approve_job_definition(job_id: str, version: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def approve_job_definition(job_id: str, version: str, payload: ApprovalBody, request: Request) -> dict[str, Any]:
     approver = approval_identity(request, payload, token_env="DATA_JOB_APPROVAL_TOKEN")
     try:
         return job_definitions.approve(job_id, version, approver)
@@ -266,7 +272,7 @@ def approve_job_definition(job_id: str, version: str, payload: dict[str, Any], r
 
 
 @router.post("/jobs/definitions/{job_id}/{version}/disable", summary="Disable a data-job definition immediately")
-def disable_job_definition(job_id: str, version: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def disable_job_definition(job_id: str, version: str, payload: ApprovalBody, request: Request) -> dict[str, Any]:
     approver = approval_identity(request, payload, token_env="DATA_JOB_APPROVAL_TOKEN")
     try:
         return job_definitions.disable(job_id, version, approver)
@@ -279,7 +285,7 @@ def disable_job_definition(job_id: str, version: str, payload: dict[str, Any], r
 
 
 @router.post("/jobs/definitions/{job_id}/{version}/schedule", summary="Configure supervised execution from a retained immutable input")
-def configure_job_schedule(job_id: str, version: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def configure_job_schedule(job_id: str, version: str, payload: ScheduleBody, request: Request) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env="DATA_JOB_APPROVAL_TOKEN")
     replay_run_id = str(payload.get("replay_run_id") or "")
     try:
@@ -296,7 +302,7 @@ def configure_job_schedule(job_id: str, version: str, payload: dict[str, Any], r
 
 
 @router.post("/jobs/definitions/{job_id}/{version}/schedule/disable", summary="Disable supervised execution for a data-job definition")
-def disable_job_schedule(job_id: str, version: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def disable_job_schedule(job_id: str, version: str, payload: ApprovalBody, request: Request) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env="DATA_JOB_APPROVAL_TOKEN")
     try:
         return job_definitions.clear_schedule(job_id, version, actor)
@@ -309,7 +315,7 @@ def disable_job_schedule(job_id: str, version: str, payload: dict[str, Any], req
 
 
 @router.post("/jobs/definitions/{job_id}/{version}/run", summary="Run an approved, enabled configured data job")
-def run_configured_job(job_id: str, version: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def run_configured_job(job_id: str, version: str, payload: JobInputBody, request: Request) -> dict[str, Any]:
     actor, payload = _authorize_execution(request, payload)
     try:
         definition = job_definitions.get(job_id, version)
@@ -361,7 +367,7 @@ def get_job_run(run_id: str) -> dict[str, Any]:
 
 
 @router.post("/jobs/runs/{run_id}/publish", summary="Publish an accepted semantic partition and advance its checkpoint")
-async def publish_job_run(run_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+async def publish_job_run(run_id: str, payload: JobPublicationBody, request: Request) -> dict[str, Any]:
     """Use the canonical CEIM API; advance the checkpoint only after success."""
     actor = approval_identity(request, payload, token_env="CEIM_PUBLISH_APPROVAL_TOKEN")
     with run_records.store.advisory_lock('publish:' + run_id) as acquired:
@@ -449,7 +455,7 @@ async def publish_job_run(run_id: str, payload: dict[str, Any], request: Request
 
 
 @router.post("/jobs/runs/{run_id}/replay", summary="Replay a retained immutable data-job input")
-def replay_job_run(run_id: str, request: Request, authorization: dict[str, Any] | None = None) -> dict[str, Any]:
+def replay_job_run(run_id: str, request: Request, authorization: ApprovalBody | None = None) -> dict[str, Any]:
     actor = approval_identity(request, authorization or {}, token_env="DATA_JOB_EXECUTION_TOKEN")
     try:
         previous = run_records.get(run_id)

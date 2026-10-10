@@ -3226,7 +3226,6 @@ In the root `.env.local`, configure the API URL, key and model names. Remove OLL
 
 The supplied `Ollama.openapi.json` declares `http://azdtapimanager.azure-api.net/ollama`, with POST `/api/chat`, `/api/generate`, `/api/embed` and `/v1/chat/completions`; it does not declare GET `/api/tags`. Python clients and the PowerShell diagnostic preserve HTTP or HTTPS as configured. To follow that export, use `OLLAMA_API_URL=http://azdtapimanager.azure-api.net/ollama`, `OLLAMA_CHAT_API_URL=http://azdtapimanager.azure-api.net/ollama/api/chat`, `OLLAMA_API_KEY_HEADER=api-key` and `OLLAMA_DISCOVERY_ENABLED=false`. HTTP sends the configured key without transport encryption. The export documents the contract, not live gateway availability; test POST operations separately. `/ollama-clone` is not the server path in this export.
 
-The supplied `Ollama.openapi.json` declares `http://azdtapimanager.azure-api.net/ollama`, with POST `/api/chat`, `/api/generate`, `/api/embed` and `/v1/chat/completions`; it does not declare GET `/api/tags`. Python clients and the PowerShell diagnostic preserve HTTP or HTTPS as configured. To follow that export, use `OLLAMA_API_URL=http://azdtapimanager.azure-api.net/ollama`, `OLLAMA_CHAT_API_URL=http://azdtapimanager.azure-api.net/ollama/api/chat`, `OLLAMA_API_KEY_HEADER=api-key` and `OLLAMA_DISCOVERY_ENABLED=false`. HTTP sends the configured key without transport encryption. The export documents the contract, not live gateway availability; test POST operations separately. `/ollama-clone` is not the server path in this export.
 
 ```dotenv
 USE_LLM=ollama
@@ -3705,3 +3704,38 @@ Set-Location E:\App\PMem
    registrations reject credential fields; existing nested credential fields
    are omitted from read responses. This redaction does not erase old database
    contents: a DBA must review any previously stored sensitive metadata.
+
+
+### Browser session recovery and service availability
+
+Admin connection creates a bounded delegated session. In gateway deployments, its APIM subscription key is retained with that session in browser sessionStorage for same-tab refresh. Raw application API keys remain memory-only. Disconnect clears the stored session and gateway key; session expiry removes the stored bundle. Use the customer reverse proxy when browser-readable gateway credentials are prohibited.
+
+Unavailable service probes are reported in Admin while healthy services remain usable. Authentication rejections still prevent connection. Renewal retries transient failures every 10 seconds while the session remains valid and recently active. It never extends an expired session. Credential changes cancel pending API-client requests and discard late responses; cancelling a browser request does not undo server writes. Inspect the retained run before retrying a write.
+
+
+### Existing environment files missing deployment settings
+
+From the repository root run ` .\configure-depo.ps1 -CheckExisting` to list missing settings without changing values. Compare the root file with `config/deployment.env.example`. Do not use `-Force` to repair an existing customer file: it replaces configuration and can generate different keys. Complete the database URL, application host, allowed origins, durable artifact path and application keys using customer-approved values, then run `.\infra\deployment\test-depo-deployment.ps1 -EnvFile .\.env.local -Profile Production -SkipEndpointChecks`. No services need to be running for this configuration check.
+
+
+### Update an existing configuration without replacing customer values
+
+Run these commands in PowerShell on the application VM. The first command selects the repository folder; adjust `E:\App\PMem` if your installation uses another location.
+
+```powershell
+Set-Location E:\App\PMem
+.\configure-depo.ps1 -UpdateMissing
+.\configure-depo.ps1 -CheckExisting
+```
+
+`-UpdateMissing` appends settings absent from the current server and frontend files. It preserves existing values, recognizes frontend aliases and the Ollama API URL, and does not generate or rotate credentials. It requires the existing root `.env.local`; if the frontend file is missing, it creates `frontend/.env.local` from the current template settings. It cannot discover customer database addresses, application roles, passwords, public service addresses or allowed browser origins. Complete any customer placeholders in the root `.env.local` using your actual infrastructure values before continuing.
+
+```powershell
+.\diagnose-depo.ps1 -Phase Prerequisites
+```
+
+After the configuration and dependencies are ready, follow the installation or redeployment sequence above. Live endpoint validation fetches the running services' OpenAPI documents and rejects JSON object bodies without named fields or an explicitly documented dynamic-record contract. A static API inventory or a passing schema test does not certify database connectivity or successful CRUD workflows.
+
+### JSON API request fields after this update
+
+The ontology, graph, agent, catalog, product, CEIM, pipeline, modeling, ingestion and OSLC JSON bodies now have named request schemas. Inspect `/openapi.json` on the service owning the operation to see its field names, required fields and types. Send JSON booleans such as `false`, not strings such as `"false"`. Omitted optional settings retain the existing service defaults. Source records and job/tool extension inputs remain dynamic where their selected profile or operation defines the fields; approval, policy and downstream validation still apply.

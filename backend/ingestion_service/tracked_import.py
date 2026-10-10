@@ -1,4 +1,6 @@
 """Tracked SPA import contract hosted by the standalone ingestion service."""
+
+from backend.depo_platform.request_bodies import ApprovalBody
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from backend.depo_platform.authorization import approval_identity, graph_read_identity
 from .router import _ingestion_identity
@@ -60,7 +62,7 @@ def pre_commit(task_id: str):
             'checks': {'task': {'ok': task_ok, 'status': state.get('status'), 'rows': rows}, 'neo4j': {'ok': graph_ok}}}
 
 @router.post('/commit/{task_id}')
-async def commit(task_id: str, payload: dict, request: Request):
+async def commit(task_id: str, payload: ApprovalBody, request: Request):
     actor = approval_identity(request, payload, token_env='INGESTION_WRITE_TOKEN')
     _status(task_id)
     try:

@@ -97,3 +97,15 @@ test('replacing a delegated read credential clears its delegated write scopes', 
 test('session expiry rejected by restoration is also rejected before installation', () => {
   expect(() => setBrowserSessionExpiry('depo_session_bad', new Date(Date.now() + 3600000).toISOString())).toThrow(/fifteen minutes/);
 });
+
+
+test('gateway key survives same-tab session restoration and clears on logout', async () => {
+  const auth = await import('./serviceAuth');
+  auth.installBrowserSession({token:'depo_session_gateway',profiles:['GRAPH_READ_TOKEN'],expires_at:new Date(Date.now()+600000).toISOString()}, 'gateway-test-key');
+  vi.resetModules();
+  const restored = await import('./serviceAuth');
+  expect(restored.getGatewaySubscriptionKey()).toBe('gateway-test-key');
+  restored.clearServiceAuthToken();
+  expect(sessionStorage.getItem('depo.browserSession.v1')).toBeNull();
+  expect(restored.getGatewaySubscriptionKey()).toBe('');
+});

@@ -63,7 +63,7 @@ function persistBrowserSession() {
   const profiles = ['GRAPH_READ_TOKEN', ...[...profileTokens].filter(([profile, token]) => token === browserSession.token).map(([profile]) => profile)];
   try {
     if (typeof window !== 'undefined') window.sessionStorage?.setItem(BROWSER_SESSION_STORAGE_KEY,
-      JSON.stringify({ ...browserSession, profiles, scope: connectionScope() }));
+      JSON.stringify({ ...browserSession, profiles, subscription: gatewaySubscriptionKey, scope: connectionScope() }));
   } catch { /* Raw keys are never used as a persistence fallback. */ }
 }
 function restoreBrowserSession() {
@@ -76,6 +76,7 @@ function restoreBrowserSession() {
         !Number.isFinite(saved.deadline) || saved.deadline <= Date.now() || saved.deadline > Date.now() + 15 * 60 * 1000 || !Array.isArray(saved.profiles) || saved.profiles.length > 32 ||
         !saved.profiles.includes('GRAPH_READ_TOKEN') || saved.profiles.some(profile => typeof profile !== 'string' || !/^(?:[A-Z][A-Z0-9_]*_TOKEN|ADMIN_API_KEY)$/.test(profile))) throw new Error('Invalid stored session');
     setBrowserSessionExpiry(saved.token, new Date(saved.deadline).toISOString(), saved.absoluteDeadline ? new Date(saved.absoluteDeadline).toISOString() : null);
+    gatewaySubscriptionKey = typeof saved.subscription === 'string' && saved.subscription.length <= 4096 ? saved.subscription : '';
     serviceToken = saved.token;
     saved.profiles.filter(profile => profile !== 'GRAPH_READ_TOKEN').forEach(profile => profileTokens.set(profile, saved.token));
     persistBrowserSession();
@@ -170,6 +171,15 @@ export async function renewBrowserSession() {
       setBrowserSessionExpiry(body.token, body.expires_at, body.absolute_expires_at);
       if (typeof window !== 'undefined') window.dispatchEvent(new Event('depo:session-renewed'));
       return getBrowserSessionStatus();
+    } catch (error) {
+      // Retry transport/server failures within the existing session lifetime.
+      if (browserSession?.token === current.token && current.deadline - Date.now() > 11000) {
+        clearTimeout(renewalTimer);
+        renewalTimer = setTimeout(() => {
+          if (Date.now() - lastActivity < 10 * 60 * 1000) renewBrowserSession().catch(() => {});
+        }, 10000);
+      }
+      throw error;
     } finally { clearTimeout(timer); }
   })();
   try { return await renewalInFlight; } finally { renewalInFlight = null; }
@@ -177,6 +187,7 @@ export async function renewBrowserSession() {
 
 export function setGatewaySubscriptionKey(value) {
   gatewaySubscriptionKey = String(value || '').trim();
+  persistBrowserSession();
 }
 
 export function getGatewaySubscriptionKey() {

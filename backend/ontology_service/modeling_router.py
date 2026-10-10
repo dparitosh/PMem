@@ -1,6 +1,8 @@
 """Standalone API boundary for the governed modeling workbench."""
 from __future__ import annotations
 
+from backend.depo_platform.request_bodies import ModelDecisionBody, ModelLinkBody, ModelNodeBody, ModelProposalBody, ModelSeedBody
+
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -53,19 +55,19 @@ def context(element_id: str, depth: int = Query(1, ge=1, le=2), limit: int = Que
     return _call(modeling_service.context, element_id=element_id, depth=depth, limit=limit)
 
 @router.post("/nodes")
-def create_node(payload: dict[str, Any]) -> dict: return _call(modeling_service.create_node, payload)
+def create_node(payload: ModelNodeBody) -> dict: return _call(modeling_service.create_node, payload)
 
 @router.put("/nodes/{element_id}")
-def update_node(element_id: str, payload: dict[str, Any]) -> dict: return _call(modeling_service.update_node, element_id, payload)
+def update_node(element_id: str, payload: ModelNodeBody) -> dict: return _call(modeling_service.update_node, element_id, payload)
 
 @router.delete("/nodes/{element_id}")
 def delete_node(element_id: str) -> dict: return _call(modeling_service.delete_node, element_id)
 
 @router.post("/links")
-def create_link(payload: dict[str, Any]) -> dict: return _call(modeling_service.create_link, payload)
+def create_link(payload: ModelLinkBody) -> dict: return _call(modeling_service.create_link, payload)
 
 @router.put("/links/{element_id}")
-def update_link(element_id: str, payload: dict[str, Any]) -> dict: return _call(modeling_service.update_link, element_id, payload)
+def update_link(element_id: str, payload: ModelLinkBody) -> dict: return _call(modeling_service.update_link, element_id, payload)
 
 @router.delete("/links/{element_id}")
 def delete_link(element_id: str) -> dict: return _call(modeling_service.delete_link, element_id)
@@ -74,22 +76,22 @@ def delete_link(element_id: str) -> dict: return _call(modeling_service.delete_l
 def validation(project: str = "Digital Engineering Model") -> dict: return _call(modeling_service.validate, project=project)
 
 @router.post("/seed")
-def seed(payload: dict[str, Any] | None = None) -> dict:
+def seed(payload: ModelSeedBody | None = None) -> dict:
     return _call(modeling_service.seed_sample, project=(payload or {}).get("project") or "Digital Engineering Model")
 
 @router.post("/agent/proposals")
-def create_proposal(payload: dict[str, Any]) -> dict: return _call(agentic_modeling_service.create_proposal, payload)
+def create_proposal(payload: ModelProposalBody) -> dict: return _call(agentic_modeling_service.create_proposal, payload)
 
 @router.get("/agent/proposals")
 def list_proposals(project: str = "Digital Engineering Model", limit: int = Query(50, ge=1, le=200)) -> dict:
     return _call(agentic_modeling_service.list_proposals, project=project, limit=limit)
 
 @router.post("/agent/proposals/{proposal_id}/approve")
-def approve_proposal(proposal_id: str, payload: dict[str, Any] | None = None) -> dict:
+def approve_proposal(proposal_id: str, payload: ModelDecisionBody | None = None) -> dict:
     data = payload or {}
     return _call(agentic_modeling_service.approve_proposal, proposal_id, approved_by=data.get("approved_by") or "user", comment=data.get("comment") or "")
 
 @router.post("/agent/proposals/{proposal_id}/reject")
-def reject_proposal(proposal_id: str, payload: dict[str, Any] | None = None) -> dict:
+def reject_proposal(proposal_id: str, payload: ModelDecisionBody | None = None) -> dict:
     data = payload or {}
     return _call(agentic_modeling_service.reject_proposal, proposal_id, rejected_by=data.get("rejected_by") or "user", comment=data.get("comment") or "")

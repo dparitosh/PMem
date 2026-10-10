@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.depo_platform.request_bodies import OslcQueryBody
+
 from fastapi import APIRouter, HTTPException, Request, Depends
 from backend.depo_platform.authorization import approval_identity, graph_read_identity
 import httpx
@@ -36,7 +38,7 @@ def remote_catalog() -> dict:
 
 
 @router.post("/remote/query/{resource_type}", dependencies=[Depends(graph_read_identity)])
-def remote_query(resource_type: str, parameters: dict) -> dict:
+def remote_query(resource_type: str, parameters: OslcQueryBody) -> dict:
     require_remote()
     try: return client.query(resource_type, parameters)
     except httpx.HTTPError as exc: raise HTTPException(status_code=503, detail=f"Remote OSLC query unavailable: {exc}") from exc
@@ -45,7 +47,7 @@ def remote_query(resource_type: str, parameters: dict) -> dict:
 
 
 @router.post("/remote/sync/{resource_type}", summary="Pull and stage a remote OSLC query snapshot")
-def pull_remote_sync(resource_type: str, parameters: dict, request: Request) -> dict:
+def pull_remote_sync(resource_type: str, parameters: OslcQueryBody, request: Request) -> dict:
     approval_identity(request, parameters, token_env="AGENTIC_APPROVAL_TOKEN")
     require_remote()
     try:

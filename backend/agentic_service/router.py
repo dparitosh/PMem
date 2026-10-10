@@ -1,5 +1,9 @@
 """Catalog and bounded execution for independently extensible agents/tools."""
 from __future__ import annotations
+
+from backend.depo_platform.request_bodies import ApprovalBody, CompensationBody, DtManifestBody, DtRunBody, ToolRunBody, ToolSuggestionBody, WorkflowRunBody
+
+from backend.depo_platform.request_bodies import AgentPlanBody, OntologyAgentBody, OslcRetrievalBody, ReconcileWorkflowBody, SemanticWorkflowBody, WorkflowControlBody, WorkflowPlanBody
 import asyncio, base64, binascii, json, os, time
 import logging
 from string import Formatter
@@ -139,7 +143,7 @@ def workflows() -> dict: return {"workflows": catalog.read()["workflows"]}
 
 
 @router.post("/integrations/dt-requirements-design/compatibility")
-def dt_requirements_design_compatibility(payload: dict[str, Any]) -> dict:
+def dt_requirements_design_compatibility(payload: DtManifestBody) -> dict:
     """Check an external DT Requirements Design manifest against PMem tools."""
     manifest = payload.get("manifest") if isinstance(payload.get("manifest"), dict) else payload
     if not isinstance(manifest, dict):
@@ -153,7 +157,7 @@ def dt_capability_bindings() -> dict:
 
 
 @router.post("/integrations/dt-requirements-design/runs")
-async def dt_run(payload: dict[str, Any], request: Request) -> dict:
+async def dt_run(payload: DtRunBody, request: Request) -> dict:
     actor = approval_identity(request, payload, token_env="AGENTIC_APPROVAL_TOKEN")
     if os.getenv('DT_AGENT_ENABLED', 'false').lower() != 'true':
         raise HTTPException(503, 'DT integration is disabled; configure and enable DT_AGENT_ENABLED')
@@ -206,7 +210,7 @@ def dt_run_status(run_id: str, request: Request) -> dict:
 
 
 @router.post("/oslc/graph-rag", dependencies=[Depends(graph_read_identity)])
-async def oslc_graph_rag_route(payload: dict[str, Any]) -> dict:
+async def oslc_graph_rag_route(payload: OslcRetrievalBody) -> dict:
     """OSLC-governed, read-only retrieval for agent context."""
     if os.getenv('OSLC_REMOTE_ENABLED', 'false').lower() != 'true':
         raise HTTPException(503, 'Remote OSLC integration is disabled; configure and enable OSLC_REMOTE_ENABLED')
@@ -230,7 +234,7 @@ def workflow_options() -> dict:
 
 
 @router.post("/workflows/execute", dependencies=[Depends(graph_read_identity)])
-def execute_semantic_workflow(payload: dict[str, Any]) -> dict:
+def execute_semantic_workflow(payload: SemanticWorkflowBody) -> dict:
     """Execute a governed semantic workflow without routing through the legacy monolith."""
     workflow_id = str(payload.get("workflow_id") or "").strip()
     if not workflow_id:
@@ -245,7 +249,7 @@ def execute_semantic_workflow(payload: dict[str, Any]) -> dict:
 
 
 @router.post("/ontology-agents/orchestrate", dependencies=[Depends(graph_read_identity)])
-def orchestrate_ontology_agents(payload: dict[str, Any]) -> dict:
+def orchestrate_ontology_agents(payload: OntologyAgentBody) -> dict:
     """Run read-only ontology intake/review/Bridge planning agents."""
     from .ontology_orchestrator import orchestrate
     return _ontology_agent_call(orchestrate, payload)
@@ -266,19 +270,19 @@ def _ontology_agent_call(operation, payload: dict[str, Any]) -> dict:
 
 
 @router.post("/ontology-agents/intake", dependencies=[Depends(graph_read_identity)])
-def ontology_agent_intake(payload: dict[str, Any]) -> dict:
+def ontology_agent_intake(payload: OntologyAgentBody) -> dict:
     from .ontology_orchestrator import intake
     return _ontology_agent_call(intake, payload)
 
 
 @router.post("/ontology-agents/review", dependencies=[Depends(graph_read_identity)])
-def ontology_agent_review(payload: dict[str, Any]) -> dict:
+def ontology_agent_review(payload: OntologyAgentBody) -> dict:
     from .ontology_orchestrator import structure_review
     return _ontology_agent_call(structure_review, payload)
 
 
 @router.post("/ontology-agents/bridge-plan", dependencies=[Depends(graph_read_identity)])
-def ontology_agent_bridge_plan(payload: dict[str, Any]) -> dict:
+def ontology_agent_bridge_plan(payload: OntologyAgentBody) -> dict:
     from .ontology_orchestrator import bridge_plan
     return _ontology_agent_call(bridge_plan, payload)
 
@@ -477,7 +481,7 @@ async def companion_stream(payload: ChatRequest, request: Request) -> StreamingR
         'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 @router.post('/agents/{agent_id}/suggest', dependencies=[Depends(graph_read_identity)])
-async def suggest_agent_tool(agent_id: str, payload: dict[str, Any], request: Request) -> dict:
+async def suggest_agent_tool(agent_id: str, payload: ToolSuggestionBody, request: Request) -> dict:
     """Use an agent's configured prompt to propose one allowlisted tool; never execute it."""
     from .local_llm import suggest_tool, failure_status
     prompt_details = {}
@@ -549,7 +553,7 @@ def saved_recommendation(recommendation_id: str, request: Request) -> dict:
 
 
 @router.post("/plans")
-def plan(payload: dict[str, Any]) -> dict:
+def plan(payload: AgentPlanBody) -> dict:
     try:
         agent, tool = catalog.item("agents", str(payload["agent_id"])), catalog.item("tools", str(payload["tool_id"]))
         if tool["id"] not in agent.get("tools", []): raise ValueError("Tool is not allowlisted for this agent")
@@ -558,7 +562,7 @@ def plan(payload: dict[str, Any]) -> dict:
     except (KeyError, ValueError) as exc: raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 @router.post("/workflow-plans")
-def workflow_plan(payload: dict[str, Any]) -> dict:
+def workflow_plan(payload: WorkflowPlanBody) -> dict:
     try:
         workflow = catalog.item("workflows", str(payload["workflow_id"]))
         steps = []
@@ -686,7 +690,7 @@ async def _proposal_tools(tools, request):
 
 
 @router.post('/llm/probe')
-async def probe_llm_capabilities(payload: dict[str, Any], request: Request):
+async def probe_llm_capabilities(payload: ApprovalBody, request: Request):
     approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
     from .local_llm import probe_capabilities
     try: return await probe_capabilities()
@@ -820,7 +824,7 @@ async def _dispatch(payload: dict[str, Any], request: Request) -> dict:
 
 
 @router.post('/runs')
-async def run(payload: dict[str, Any], request: Request) -> dict:
+async def run(payload: ToolRunBody, request: Request) -> dict:
     planned = plan(payload)
     if planned['requires_approval']:
         approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
@@ -864,7 +868,7 @@ def tool_run(run_id: str) -> dict:
 
 
 @router.post('/workflow-runs')
-async def run_workflow(payload: dict[str, Any], request: Request) -> dict:
+async def run_workflow(payload: WorkflowRunBody, request: Request) -> dict:
     from .durable_workflows import execution_mode, enqueue
     if execution_mode() == 'worker':
         try: return await enqueue(payload,request)
@@ -1039,7 +1043,7 @@ async def _execute_workflow(payload: dict[str, Any], request: Request, recovery=
 
 
 @router.post('/workflow-runs/{run_id}/reconcile')
-async def reconcile_workflow(run_id: str, payload: dict[str, Any], request: Request) -> dict:
+async def reconcile_workflow(run_id: str, payload: ReconcileWorkflowBody, request: Request) -> dict:
     from .recovery import reconcile
     actor = approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
     record = await _agent_io(workflow_store.get, run_id)
@@ -1056,7 +1060,7 @@ async def reconcile_workflow(run_id: str, payload: dict[str, Any], request: Requ
 
 
 @router.post('/workflow-runs/{run_id}/reconcile-receipt')
-async def reconcile_workflow_receipt(run_id: str, payload: dict[str, Any], request: Request) -> dict:
+async def reconcile_workflow_receipt(run_id: str, payload: ReconcileWorkflowBody, request: Request) -> dict:
     from .workflow_receipts import lookup
     from .recovery import reconcile
     actor = approval_identity(request,payload,token_env='AGENTIC_APPROVAL_TOKEN')
@@ -1081,7 +1085,7 @@ def workflow_compensation_plan(run_id: str, request: Request) -> dict:
 
 
 @router.post('/workflow-runs/{run_id}/compensate')
-async def compensate_workflow(run_id: str, payload: dict[str, Any], request: Request) -> dict:
+async def compensate_workflow(run_id: str, payload: CompensationBody, request: Request) -> dict:
     from .workflow_receipts import compensation_plan
     actor = approval_identity(request,payload,token_env='AGENTIC_APPROVAL_TOKEN')
     reason = payload.get('reason')
@@ -1116,7 +1120,7 @@ async def compensate_workflow(run_id: str, payload: dict[str, Any], request: Req
 
 
 @router.post('/workflow-runs/{run_id}/recover')
-async def recover_workflow(run_id: str, payload: dict[str, Any], request: Request) -> dict:
+async def recover_workflow(run_id: str, payload: ApprovalBody, request: Request) -> dict:
     from .recovery import prepare_recovery
     approval_identity(request, payload, token_env='AGENTIC_APPROVAL_TOKEN')
     record = await _agent_io(workflow_store.get, run_id)
@@ -1141,7 +1145,7 @@ async def recover_workflow(run_id: str, payload: dict[str, Any], request: Reques
 
 
 @router.post("/workflow-runs/{run_id}/control", summary="Pause, resume or cancel at the next tool boundary")
-def control_workflow(run_id: str, payload: dict[str, Any], request: Request) -> dict:
+def control_workflow(run_id: str, payload: WorkflowControlBody, request: Request) -> dict:
     from backend.depo_platform.authorization import service_write_identity
     actor = service_write_identity(request, token_env="AGENTIC_APPROVAL_TOKEN", default_actor="agent-supervisor")
     action = payload.get("action")

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from backend.depo_platform.request_bodies import VocabularyBody
+
+from backend.depo_platform.request_bodies import AlignmentBody, ApprovalBody, BusinessContextBody, CompareVersionsBody, EvaluatePoliciesBody, GenerateOntologyBody, GraphAnalyticsBody, MergeApplyBody, MergePreviewBody, NamespaceBody, OntologyIdsBody, PolicyBody, QualityGateBody, ReasonBody, TransitionBody, ValidateGraphBody, VersionBody
+
 import os
 import json
 from backend.depo_platform.service_urls import service_url
@@ -66,7 +70,7 @@ async def ontology_publication_status(ontology_id: str) -> dict:
 
 
 @router.post('/{ontology_id}/publish', summary='Publish an approved retained ontology to Neo4j')
-async def publish_registered_ontology(ontology_id: str, payload: dict[str, Any], request: Request) -> dict:
+async def publish_registered_ontology(ontology_id: str, payload: ApprovalBody, request: Request) -> dict:
     import asyncio
     try:
         return await run_in_threadpool(catalog.with_publication_lock, ontology_id,
@@ -122,6 +126,13 @@ def _array_field(payload: dict[str, Any], name: str) -> list:
     return value
 
 
+def _boolean_field(payload: dict[str, Any], name: str, default: bool = False) -> bool:
+    value = payload.get(name, default)
+    if type(value) is not bool:
+        raise HTTPException(status_code=422, detail=f"{name} must be a JSON boolean")
+    return value
+
+
 @router.get("/health", summary="Ontology service health")
 def health() -> dict:
     return {"status": "ok", "service": "ontology", "semantica": semantica.capabilities()}
@@ -133,7 +144,7 @@ def capabilities() -> dict:
 
 
 @router.post("/generate", summary="Generate, validate, evaluate and export an ontology using Semantica")
-def generate_ontology(payload: dict[str, Any]) -> dict:
+def generate_ontology(payload: GenerateOntologyBody) -> dict:
     data = payload.get("data") or {"entities": payload.get("entities", []), "relationships": payload.get("relationships", [])}
     result = semantica.generate(
         data=data, name=str(payload.get("name") or "GeneratedOntology"),
@@ -147,7 +158,7 @@ def generate_ontology(payload: dict[str, Any]) -> dict:
 
 
 @router.post("/validate-graph", summary="Validate Turtle graph data against a Semantica-generated SHACL ontology")
-def validate_graph(payload: dict[str, Any]) -> dict:
+def validate_graph(payload: ValidateGraphBody) -> dict:
     try:
         ontology = payload.get("ontology") or semantica.workspace.get(str(payload["version_id"]))
         return semantica.workspace.validate_graph(data_graph=str(payload["data_graph"]), ontology=ontology)
@@ -161,7 +172,7 @@ def list_namespaces() -> dict:
 
 
 @router.post("/namespaces", summary="Register an ontology namespace")
-def register_namespace(payload: dict[str, str]) -> dict:
+def register_namespace(payload: NamespaceBody) -> dict:
     try:
         semantica.workspace.namespaces.register_namespace(payload["prefix"], payload["uri"])
         return {"prefix": payload["prefix"], "uri": semantica.workspace.namespaces.get_namespace(payload["prefix"])}
@@ -170,7 +181,7 @@ def register_namespace(payload: dict[str, str]) -> dict:
 
 
 @router.post("/alignments", summary="Create a Semantica ontology alignment")
-def create_alignment(payload: dict[str, str]) -> dict:
+def create_alignment(payload: AlignmentBody) -> dict:
     try:
         record = semantica.workspace.align(source_uri=payload["source_uri"], target_uri=payload["target_uri"], predicate=payload.get("predicate", "skos:exactMatch"))
         return {"alignment": record, "alignments": semantica.workspace.alignments}
@@ -184,7 +195,7 @@ def list_alignments() -> dict:
 
 
 @router.post("/reason", summary="Run explainable Semantica rule inference")
-def reason(payload: dict[str, Any]) -> dict:
+def reason(payload: ReasonBody) -> dict:
     try:
         return {"inferences": semantica.workspace.reason(facts=_array_field(payload, "facts"), rules=_array_field(payload, "rules"))}
     except (TypeError, ValueError) as exc:
@@ -192,10 +203,10 @@ def reason(payload: dict[str, Any]) -> dict:
 
 
 @router.post("/quality-gate", summary="Run Semantica deduplication and conflict checks before publication")
-def quality_gate(payload: dict[str, Any]) -> dict:
+def quality_gate(payload: QualityGateBody) -> dict:
     try:
         return intelligence.quality_gate(
-            entities=_array_field(payload, "entities"), deduplicate=bool(payload.get("deduplicate", True)),
+            entities=_array_field(payload, "entities"), deduplicate=_boolean_field(payload, "deduplicate", True),
             conflict_property=payload.get("conflict_property"), merge_strategy=str(payload.get("merge_strategy", "keep_most_complete")),
         )
     except (TypeError, ValueError) as exc:
@@ -203,7 +214,7 @@ def quality_gate(payload: dict[str, Any]) -> dict:
 
 
 @router.post("/versions", summary="Create a native Semantica ontology version snapshot")
-def create_version(payload: dict[str, Any]) -> dict:
+def create_version(payload: VersionBody) -> dict:
     try:
         ontology = payload.get("ontology") or semantica.workspace.get(str(payload["version_id"]))
         return intelligence.create_version(ontology=ontology, label=str(payload["label"]), author=str(payload.get("author", "system@depo.local")), description=str(payload.get("description", "")))
@@ -217,7 +228,7 @@ def list_versions() -> dict:
 
 
 @router.post("/versions/compare", summary="Compare two native Semantica ontology versions")
-def compare_versions(payload: dict[str, str]) -> dict:
+def compare_versions(payload: CompareVersionsBody) -> dict:
     try:
         return intelligence.compare_versions(payload["older"], payload["newer"])
     except (KeyError, ValueError) as exc:
@@ -225,7 +236,7 @@ def compare_versions(payload: dict[str, str]) -> dict:
 
 
 @router.post("/analytics", summary="Run Semantica graph analytics on a supplied canonical graph")
-def graph_analytics(payload: dict[str, Any]) -> dict:
+def graph_analytics(payload: GraphAnalyticsBody) -> dict:
     try:
         return intelligence.analytics(payload.get("graph") or payload)
     except (TypeError, ValueError) as exc:
@@ -238,7 +249,7 @@ def list_policies() -> dict:
 
 
 @router.post("/policies", summary="Create or update a Semantica decision policy")
-def add_policy(payload: dict[str, Any]) -> dict:
+def add_policy(payload: PolicyBody) -> dict:
     try:
         return intelligence.add_policy(payload)
     except ValueError as exc:
@@ -246,7 +257,7 @@ def add_policy(payload: dict[str, Any]) -> dict:
 
 
 @router.post("/policies/evaluate", summary="Evaluate Semantica policies before a governed action")
-def evaluate_policies(payload: dict[str, Any]) -> dict:
+def evaluate_policies(payload: EvaluatePoliciesBody) -> dict:
     try:
         return intelligence.evaluate_policies(dict(payload.get("decision") or {}), _array_field(payload, "exception_policy_ids"))
     except ValueError as exc:
@@ -254,7 +265,7 @@ def evaluate_policies(payload: dict[str, Any]) -> dict:
 
 
 @router.post("/merges/preview", summary="Create a persistent governed ontology merge preview")
-def preview_merge(payload: dict[str, Any]) -> dict:
+def preview_merge(payload: MergePreviewBody) -> dict:
     try:
         return merges.preview(payload)
     except ValueError as exc:
@@ -262,7 +273,7 @@ def preview_merge(payload: dict[str, Any]) -> dict:
 
 
 @router.post("/merges/{preview_id}/apply", summary="Apply an approved, conflict-free ontology merge")
-async def apply_merge(preview_id: str, payload: dict[str, Any], request: Request) -> dict:
+async def apply_merge(preview_id: str, payload: MergeApplyBody, request: Request) -> dict:
     try:
         approver = approval_identity(request, payload, token_env="ONTOLOGY_APPROVAL_TOKEN")
         publish = payload.get('publish', False)
@@ -304,7 +315,7 @@ def merge_receipt(preview_id: str, reader: str = Depends(graph_read_identity)) -
 
 
 @router.post('/merges/{preview_id}/apply-automatic', summary='Create a conflict-free union draft under delegated approval')
-def automatic_merge(preview_id: str, payload: dict[str, Any], request: Request) -> dict:
+def automatic_merge(preview_id: str, payload: ApprovalBody, request: Request) -> dict:
     try:
         approver = approval_identity(request, payload, token_env='ONTOLOGY_APPROVAL_TOKEN')
         return merges.apply_automatic(preview_id, approver)
@@ -318,7 +329,7 @@ def business_context_summary() -> dict:
 
 
 @router.post("/business-context/objects", summary="Upsert typed business objects and relationships into Semantica ContextGraph")
-def upsert_business_context(payload: dict[str, Any], request: Request) -> dict:
+def upsert_business_context(payload: BusinessContextBody, request: Request) -> dict:
     approval_identity(request, payload, token_env="AGENTIC_APPROVAL_TOKEN")
     try:
         return business_context.upsert(payload)
@@ -368,7 +379,7 @@ def list_vocabularies() -> dict[str, Any]:
 
 
 @router.post("/vocabularies", status_code=201, summary="Create an immutable draft SKOS vocabulary release")
-def create_vocabulary(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def create_vocabulary(payload: VocabularyBody, request: Request) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env="VOCABULARY_APPROVAL_TOKEN")
     try:
         return vocabularies.create(payload, actor)
@@ -387,7 +398,7 @@ def get_vocabulary(scheme_id: str, version: str) -> dict[str, Any]:
 
 
 @router.post("/vocabularies/{scheme_id}/{version}/transition", summary="Review or approve a SKOS vocabulary release")
-def transition_vocabulary(scheme_id: str, version: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def transition_vocabulary(scheme_id: str, version: str, payload: TransitionBody, request: Request) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env="VOCABULARY_APPROVAL_TOKEN")
     try:
         return vocabularies.transition(scheme_id, version, str(payload.get("target") or ""), actor, str(payload.get("reason") or ""))
@@ -398,7 +409,7 @@ def transition_vocabulary(scheme_id: str, version: str, payload: dict[str, Any],
 
 
 @router.post("/vocabularies/{scheme_id}/{version}/publish", summary="Publish an approved SKOS vocabulary through the graph service")
-async def publish_vocabulary(scheme_id: str, version: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+async def publish_vocabulary(scheme_id: str, version: str, payload: ApprovalBody, request: Request) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env="VOCABULARY_APPROVAL_TOKEN")
     record = vocabularies.get(scheme_id, version)
     if not record:
@@ -434,7 +445,7 @@ def list_ontologies() -> dict:
 
 
 @router.post("/migrations/legacy", summary="Adopt legacy ingestion artifacts into the native ontology catalog")
-def migrate_legacy_ontologies(payload: dict[str, Any]) -> dict:
+def migrate_legacy_ontologies(payload: OntologyIdsBody) -> dict:
     """Perform an additive, idempotent catalog migration for named standards."""
     requested = payload.get("ontology_ids")
     if not isinstance(requested, list) or not all(isinstance(value, str) for value in requested):
@@ -472,7 +483,7 @@ def migrate_legacy_ontologies(payload: dict[str, Any]) -> dict:
 
 
 @router.post("/migrations/legacy/analytics", summary="Backfill missing draft catalog analytics from retained ontology artifacts")
-def backfill_legacy_analytics(payload: dict[str, Any], request: Request) -> dict:
+def backfill_legacy_analytics(payload: OntologyIdsBody, request: Request) -> dict:
     actor = approval_identity(request, payload, token_env="ONTOLOGY_APPROVAL_TOKEN")
     ontology_ids = [str(value).strip() for value in payload.get("ontology_ids", []) if str(value).strip()]
     if not ontology_ids:
@@ -522,7 +533,7 @@ async def register_ontology(
 
 
 @router.post("/{ontology_id}/transition", summary="Submit, approve, deprecate, or retire a syntax-validated ontology artifact")
-def transition_ontology(ontology_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def transition_ontology(ontology_id: str, payload: TransitionBody, request: Request) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env="ONTOLOGY_APPROVAL_TOKEN")
     try:
         return catalog.transition(

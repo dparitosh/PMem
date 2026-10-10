@@ -100,3 +100,15 @@ test('administrator validation uses X-API-Key and does not rotate credentials', 
   expect(options.headers.Authorization).toBeUndefined();
   expect(options.method).toBeUndefined();
 });
+
+
+test('an unavailable service does not block a valid central session', async () => {
+ fetch.mockResolvedValueOnce(response(200,{token:'depo_session_partial',profiles:['GRAPH_READ_TOKEN'],expires_at:new Date(Date.now()+600000).toISOString()}))
+ .mockResolvedValueOnce(response(200,{status:'authorized'}))
+ .mockRejectedValueOnce(new Error('Service offline'));
+ render(<CredentialSettings />);
+ fireEvent.change(screen.getByLabelText('Administrator key for connection'),{target:{value:'admin-fixture'}});
+ fireEvent.click(screen.getByRole('button',{name:'Connect registered services'}));
+ await waitFor(() => expect(getCredentialProfile('GRAPH_READ_TOKEN')).toBe('depo_session_partial'));
+ expect(await screen.findByText(/Unavailable services:.*Service offline/)).toBeVisible();
+});

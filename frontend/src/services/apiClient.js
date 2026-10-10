@@ -42,8 +42,16 @@ const MAX_GET_RETRIES = 2;
 const RETRY_BASE_DELAY_MS = 700;
 const SESSION_STORAGE_KEY = 'depo.sessionId.v1';
 const SESSION_SCOPE_KEY = 'depo.sessionScope.v1';
+let credentialGeneration = 0;
+const pendingRequests = new Set();
+function invalidateRequests() { credentialGeneration += 1; pendingRequests.forEach(controller => controller.abort()); pendingRequests.clear(); }
+function releaseRequest(config) { if (config?.__credentialController) pendingRequests.delete(config.__credentialController); }
+function staleRequest(config) { return config?.__credentialGeneration !== undefined && config.__credentialGeneration !== credentialGeneration; }
 if (typeof window !== 'undefined') {
+  window.addEventListener('depo:credentials-changed', invalidateRequests);
+  window.addEventListener('depo:session-replaced', invalidateRequests);
   window.addEventListener('depo:credentials-cleared', () => {
+    invalidateRequests();
     clearClientSessionId();
   });
 }
@@ -127,6 +135,17 @@ function isStandaloneServiceRequest(url) {
  */
 apiClient.interceptors.request.use(
   (requestConfig) => {
+    if (staleRequest(requestConfig)) throw new axios.CanceledError('Credentials changed; retry with current access');
+    if (!requestConfig.__credentialController) {
+      const controller = new AbortController();
+      requestConfig.__credentialController = controller;
+      requestConfig.__credentialGeneration = credentialGeneration;
+      if (requestConfig.signal) {
+        if (requestConfig.signal.aborted) controller.abort();
+        else requestConfig.signal.addEventListener('abort', () => controller.abort(), { once: true, signal: controller.signal });
+      }
+      requestConfig.signal = controller.signal;
+    }
     applyRequestDeadline(requestConfig);
     prepareMultipartHeaders(requestConfig);
     // Older feature modules pass a relative path directly to Axios.  Resolve
@@ -167,6 +186,7 @@ apiClient.interceptors.request.use(
         url: requestConfig.url,
       });
     }
+    pendingRequests.add(requestConfig.__credentialController);
     return requestConfig;
   },
   (error) => {
@@ -180,6 +200,8 @@ apiClient.interceptors.request.use(
  */
 apiClient.interceptors.response.use(
   (response) => {
+    releaseRequest(response.config);
+    if (staleRequest(response.config)) return Promise.reject(new axios.CanceledError('Discarded response from previous credentials'));
     adoptServerSession(response);
     notifyOntologyChange(response);
     if (config.debug) {
@@ -193,6 +215,8 @@ apiClient.interceptors.response.use(
   },
   async (error) => {
     const requestConfig = error?.config || {};
+    releaseRequest(requestConfig);
+    if (staleRequest(requestConfig)) throw new axios.CanceledError('Credentials changed; previous request discarded');
     if (/\/api\/v1\/(?:workflow-runs|runs|chat|chat-stream|ontology-agents|integrations\/dt-requirements-design\/runs)(?:[/?]|$)/.test(String(requestConfig.url || ''))) reportRunRecovery(error);
     const method = String(requestConfig.method || 'get').toLowerCase();
     const retryCount = requestConfig.__retryCount || 0;

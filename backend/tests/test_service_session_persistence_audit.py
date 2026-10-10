@@ -3,7 +3,7 @@ import ast
 import asyncio
 import os
 import unittest
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,7 +15,7 @@ def function(path, name, namespace):
     tree = ast.parse(Path(path).read_text(encoding='utf-8'))
     node = next(n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)
     node.decorator_list = []
-    exec(compile(ast.Module(body=[node], type_ignores=[]), path, 'exec'), namespace)
+    exec(compile(ast.Module(body=[node], type_ignores=[]), path, 'exec', flags=__import__('__future__').annotations.compiler_flag), namespace)
     return namespace[name]
 
 
@@ -32,11 +32,13 @@ class AuditRegressions(unittest.TestCase):
             def __init__(self, **kwargs): observed.update(kwargs)
             async def __aenter__(self): return self
             async def __aexit__(self, *args): return False
-            async def get(self, endpoint, **kwargs):
+            @asynccontextmanager
+            async def stream(self, method, endpoint, **kwargs):
                 observed['endpoint'] = endpoint
                 if failure: raise failure
-                return SimpleNamespace(raise_for_status=lambda: None, json=lambda: body)
-        ns = {'asyncio': asyncio, 'os': os,
+                async def chunks(): yield __import__('json').dumps(body).encode()
+                yield SimpleNamespace(raise_for_status=lambda: None, aiter_bytes=chunks)
+        ns = {'__name__': 'backend.agentic_service.local_llm', '__package__': 'backend.agentic_service', 'asyncio': asyncio, 'os': os,
               'settings': lambda: ('ollama', 'llama3', 'http://127.0.0.1:11434', 30, {'api-key': 'private-key'}),
               'httpx': SimpleNamespace(AsyncClient=Client, HTTPError=HTTPError, ConnectError=ConnectError, TimeoutException=TimeoutException, HTTPStatusError=HTTPStatusError)}
         result = asyncio.run(function('backend/agentic_service/local_llm.py', '_health', ns)())
@@ -102,7 +104,10 @@ class AuditRegressions(unittest.TestCase):
         async def interrupted(record):
             self.assertEqual(store.get('p:1.0.0')['lifecycle_state'], 'revoked')
             raise asyncio.CancelledError()
-        ns = {'store': store, '_register_catalog': interrupted, 'Request': object,
+        @asynccontextmanager
+        async def product_lock(key): yield True
+        async def product_io(function, *args): return function(*args)
+        ns = {'_product_lock': product_lock, '_product_io': product_io, 'store': store, '_register_catalog': interrupted, 'Request': object,
               'approval_identity': lambda *a, **k: 'approver', '_now': lambda: '2026-10-06T00:00:00Z'}
         function('backend/data_product_service/router.py', '_public_product', ns)
         revoke = function('backend/data_product_service/router.py', 'revoke', ns)
@@ -134,7 +139,7 @@ class AuditRegressions(unittest.TestCase):
         thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
         try:
             base = f'http://127.0.0.1:{server.server_port}'
-            ns = {'asyncio': asyncio, 'os': os, 'httpx': httpx, 'settings': lambda: ('ollama', 'llama3', base, 5, {})}
+            ns = {'__name__': 'backend.agentic_service.local_llm', '__package__': 'backend.agentic_service', 'asyncio': asyncio, 'os': os, 'httpx': httpx, 'settings': lambda: ('ollama', 'llama3', base, 5, {})}
             health = function('backend/agentic_service/local_llm.py', '_health', ns)
             with patch.dict(os.environ, {'HTTP_PROXY': 'http://127.0.0.1:1', 'ALL_PROXY': 'http://127.0.0.1:1', 'NO_PROXY': ''}):
                 self.assertEqual(asyncio.run(health())['status'], 'ready')

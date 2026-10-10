@@ -29,12 +29,12 @@ test('reconnect preserves conversation bookmarks and invalid responses preserve 
   window.removeEventListener('depo:credentials-cleared', cleared);
 });
 
-test('activity retries renewal after a transient failure without waiting for expiry', async () => {
+test('automatic renewal retries a transient failure without user activity', async () => {
   vi.useFakeTimers();
   connect();
   vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ ok: true, json: async () => ({ token: 'depo_session_test', expires_at: new Date(Date.now()+600000).toISOString(), absolute_expires_at: new Date(Date.now()+3600000).toISOString() }) }));
   await vi.advanceTimersByTimeAsync(90000);
-  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch).toHaveBeenCalledTimes(2);
   window.dispatchEvent(new Event('pointerdown'));
   await vi.advanceTimersByTimeAsync(1);
   expect(fetch).toHaveBeenCalledTimes(2);

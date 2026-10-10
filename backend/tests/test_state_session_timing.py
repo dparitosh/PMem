@@ -84,7 +84,10 @@ class TimingRegressions(unittest.TestCase):
         exec(compile(ast.Module(body=[fn],type_ignores=[]),'<prune>','exec'),ns)
         ns['prune']()
         self.assertIn('last_seen_at',calls[0][0])
-        self.assertIn('expires_at',calls[0][0])
+        self.assertEqual(len(calls), 2)
+        self.assertIn('DELETE FROM depo_registry', calls[1][0])
+        self.assertIn('expires_at', calls[1][0])
+        self.assertEqual(calls[1][1], ('sessions',))
         self.assertEqual(calls[0][1],('sessions',1800))
 
 if __name__=='__main__':unittest.main()

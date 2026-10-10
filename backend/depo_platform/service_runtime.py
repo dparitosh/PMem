@@ -5,6 +5,8 @@ the supplied PDF Intelligence reference, without introducing a task queue.
 """
 from __future__ import annotations
 
+from backend.depo_platform.request_bodies import BrowserSessionBody, RotateCredentialBody
+
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -170,7 +172,7 @@ def create_service_app(
         return {'status': 'authorized', 'profile': 'ADMIN_API_KEY'}
 
     @app.post('/auth/credentials/{profile}')
-    async def rotate_credential(profile: str, payload: dict, request: Request):
+    async def rotate_credential(profile: str, payload: RotateCredentialBody, request: Request):
         from fastapi import HTTPException
         from datetime import datetime
         from .credentials import uses_postgres, verify_key, register_key
@@ -185,7 +187,7 @@ def create_service_app(
         return {'status': 'registered', 'profile': profile}
 
     @app.post('/auth/browser-session', summary='Connect registered service scopes for fifteen minutes')
-    def browser_session(request: Request, payload: dict):
+    def browser_session(request: Request, payload: BrowserSessionBody):
         from fastapi import HTTPException
         from .credentials import uses_postgres
         from .browser_credentials import create_session

@@ -1,6 +1,10 @@
 """Standalone ingestion service retaining the existing SPA contract."""
 from __future__ import annotations
 
+from backend.depo_platform.request_bodies import SourceProfileBody, SourceRecordBody
+
+from backend.depo_platform.request_bodies import SysmlCommitBody
+
 from pathlib import Path
 import os
 
@@ -101,7 +105,7 @@ def xsd_relational_report(request: Request, ontology_id: str = Query(..., min_le
 
 
 @router.post("/sysml-v2/import-commit", summary="Import the configured SysML v2 commit into an approved data job")
-async def import_sysml_commit(request: Request, payload: dict) -> dict:
+async def import_sysml_commit(request: Request, payload: SysmlCommitBody) -> dict:
     from backend.depo_platform.authorization import approval_identity
     from .sysml_repository import read_snapshot
     approval_identity(request, payload, token_env="DATA_JOB_EXECUTION_TOKEN")
@@ -366,7 +370,7 @@ def list_source_profiles() -> dict:
 
 
 @router.post("/source-profiles", summary="Create or version a declarative source profile")
-def save_source_profile(profile: dict) -> dict:
+def save_source_profile(profile: SourceProfileBody) -> dict:
     try:
         return profiles.save(profile)
     except ValueError as exc:
@@ -374,7 +378,7 @@ def save_source_profile(profile: dict) -> dict:
 
 
 @router.post("/source-profiles/{profile_id}/normalize", summary="Normalize one source record for the ontology service")
-def normalize_source_record(profile_id: str, record: dict) -> dict:
+def normalize_source_record(profile_id: str, record: SourceRecordBody) -> dict:
     try:
         return profiles.normalize(profile=profiles.get(profile_id), record=record)
     except KeyError as exc:

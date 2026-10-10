@@ -17,6 +17,14 @@ $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 switch ($Action) {
   "Start" {
+    if ($LocalInsecureDemo) {
+      if ($Profile -ne 'Bootstrap') { throw '-LocalInsecureDemo requires Bootstrap.' }
+      . (Join-Path $root 'infra/windows/runtime-config.ps1')
+      $demoValues = Read-DepoEnvironment -Root $root -EnvFile $EnvFile
+      if ($demoValues.AUTH_MODE -ne 'disabled' -or $demoValues.DEPO_ALLOW_INSECURE_LOCAL_AUTH -ne 'true' -or $demoValues.DEPO_SERVICE_HOST -notin @('127.0.0.1','localhost','::1')) {
+        throw '-LocalInsecureDemo requires AUTH_MODE=disabled, DEPO_ALLOW_INSECURE_LOCAL_AUTH=true and a loopback service host in the selected file.'
+      }
+    }
     & (Join-Path $PSScriptRoot 'test-depo-deployment.ps1') -EnvFile $EnvFile -Profile $Profile -SkipEndpointChecks
     $startParameters = @{ EnvFile = $EnvFile }
     if ($PostgresBinDir) { $startParameters.PostgresBinDir = $PostgresBinDir }

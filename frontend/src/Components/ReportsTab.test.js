@@ -1,17 +1,19 @@
 import React from 'react';
+import { vi } from 'vitest';
+import { graphApi } from '../services/graphApi';
 import { render, screen, waitFor } from '@testing-library/react';
 import ReportsTab, { escapeCsv } from './ReportsTab';
 
-jest.mock('../contexts/OntologyContext', () => ({
+vi.mock('../contexts/OntologyContext', () => ({
   OntologyProvider: ({ children }) => children,
   useOntologies: () => ({
     ontologies: [],
     loading: false,
     error: null,
     lastUpdated: null,
-    fetchOntologies: jest.fn(),
-    getOntologyByPrefix: jest.fn(),
-    getOntologyById: jest.fn(),
+    fetchOntologies: vi.fn(),
+    getOntologyByPrefix: vi.fn(),
+    getOntologyById: vi.fn(),
   }),
 }));
 
@@ -22,7 +24,12 @@ test('CSV quotes fields using doubled quotes and preserves real newlines', () =>
   expect(escapeCsv(null)).toBe('""');
 });
 
-jest.mock('../services/graphApi', () => ({ graphApi: { getOverview: jest.fn(async () => ({ data: { nodes: [], links: [] } })) } }));
+vi.mock('../services/graphApi', () => ({ graphApi: { getOverview: vi.fn(async () => ({ data: { nodes: [], links: [] } })) } }));
+
+vi.mock('../services/apiClient', () => ({
+  apiClient: { get: vi.fn(async () => ({ data: {} })) },
+  dataPipelineAPI: { telemetry: vi.fn(async () => ({ data: {} })) },
+}));
 
 test('ReportsTab does not substitute canvas data for an empty report projection', async () => {
   render(
@@ -44,7 +51,8 @@ test('ReportsTab does not substitute canvas data for an empty report projection'
     </OntologyProvider>
   );
 
-  await waitFor(() => expect(screen.queryByText('Rotor')).toBeNull());
+  await waitFor(() => expect(graphApi.getOverview).toHaveBeenCalled());
+  expect(screen.queryByText('Rotor')).toBeNull();
   expect(screen.getByText('Analytics overview')).toBeInTheDocument();
   expect(screen.getByText('Entity distribution')).toBeInTheDocument();
   expect(screen.getByText('Relationship distribution')).toBeInTheDocument();

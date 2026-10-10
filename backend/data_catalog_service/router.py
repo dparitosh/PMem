@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.depo_platform.request_bodies import ProductMetadataBody, ReasonApprovalBody, RetentionBody
+
 import os
 import hmac
 import re
@@ -65,7 +67,7 @@ def product(product_id: str) -> dict:
 
 
 @router.put("/products/{product_id}/versions/{version}")
-def register(product_id: str, version: str, payload: dict, request: Request = None, x_depo_service_token: str | None = Header(default=None)) -> dict:
+def register(product_id: str, version: str, payload: ProductMetadataBody, request: Request = None, x_depo_service_token: str | None = Header(default=None)) -> dict:
     _internal(x_depo_service_token or (_request_api_key(request) if request is not None else None))
     # Serialize versions of the same product so latest-version selection and
     # immutable-content checks cannot race across service processes.
@@ -121,7 +123,7 @@ def retention_history(artifact_id: str) -> dict:
 
 
 @router.post("/artifacts/{artifact_id:path}/retention", summary="Register or update an approved artifact retention policy")
-def register_retention(artifact_id: str, payload: dict, request: Request) -> dict:
+def register_retention(artifact_id: str, payload: RetentionBody, request: Request) -> dict:
     actor = approval_identity(request, payload, token_env="ARTIFACT_RETENTION_APPROVAL_TOKEN")
     try:
         return retention.register(artifact_id, payload, actor)
@@ -130,7 +132,7 @@ def register_retention(artifact_id: str, payload: dict, request: Request) -> dic
 
 
 @router.post("/artifacts/{artifact_id:path}/purge", summary="Purge one expired artifact and retain a durable tombstone")
-def purge_artifact(artifact_id: str, payload: dict, request: Request) -> dict:
+def purge_artifact(artifact_id: str, payload: ReasonApprovalBody, request: Request) -> dict:
     actor = approval_identity(request, payload, token_env="ARTIFACT_RETENTION_APPROVAL_TOKEN")
     try:
         return retention.purge(artifact_id, actor, str(payload.get("reason") or ""))

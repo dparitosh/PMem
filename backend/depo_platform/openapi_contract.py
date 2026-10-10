@@ -173,11 +173,42 @@ def contract_errors(document):
             for index, item in enumerate(value):
                 walk(item, f'{location}/{index}')
     walk(document.get('components', {}).get('schemas', {}), 'schemas')
+    def validate_body_schema(schema, location, visited=None):
+        if not isinstance(schema, dict):
+            errors.append(f'{location}: request body schema must be an object')
+            return
+        visited = set(visited or ())
+        reference = schema.get('$ref')
+        if reference:
+            if reference in visited:
+                return
+            visited.add(reference)
+            if not reference.startswith('#/components/schemas/'):
+                errors.append(f'{location}: request body uses an unsupported schema reference')
+                return
+            name = reference.rsplit('/', 1)[-1].replace('~1', '/').replace('~0', '~')
+            target = document.get('components', {}).get('schemas', {}).get(name)
+            if target is None:
+                errors.append(f'{location}: request body schema reference is missing')
+                return
+            validate_body_schema(target, location, visited)
+            return
+        for union in ('anyOf', 'oneOf', 'allOf'):
+            for branch in schema.get(union, []):
+                validate_body_schema(branch, location, visited)
+        if schema.get('type') == 'object' and not schema.get('properties') and not schema.get('x-depo-dynamic-body'):
+            errors.append(f'{location}: JSON object request body needs named fields or an explicit dynamic-body contract')
+
     for path, operations in document.get('paths', {}).items():
         for method, operation in operations.items():
             if method not in {'get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'}:
                 continue
             walk(operation, path + '/' + method)
+            request_body = operation.get('requestBody', {})
+            if isinstance(request_body, dict):
+                for media_type, content in request_body.get('content', {}).items():
+                    if media_type == 'application/json' or media_type.endswith('+json'):
+                        validate_body_schema(content.get('schema', {}), path + '/' + method + '/requestBody')
             identity = operation.get('operationId')
             if not identity or identity in operation_ids:
                 errors.append(f'{path}/{method}: missing or duplicate operationId')

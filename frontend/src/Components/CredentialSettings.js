@@ -77,17 +77,21 @@ export default function CredentialSettings() {
         const endpoint = buildSemanticServiceUrl(service, '/auth/access');
         const probe = await fetch(endpoint, { headers: { ...serviceAuthHeaders(endpoint, 'get', subscription), Authorization: `Bearer ${body.token}` }, signal: controller.signal, credentials: 'omit', redirect: 'error' });
         const result = await probe.json().catch(() => ({}));
-        if (!probe.ok || result.status !== 'authorized') throw new Error(`${service}: HTTP ${probe.status}; ${typeof result.detail === 'string' ? result.detail : 'central session was not accepted'}`);
+        if (!probe.ok || result.status !== 'authorized') {
+          const failure = new Error(`${service}: HTTP ${probe.status}; ${typeof result.detail === 'string' ? result.detail : 'central session was not accepted'}`);
+          failure.authenticationRejected = [401, 403].includes(probe.status);
+          throw failure;
+        }
       }));
       if (!checks.length) throw new Error('No service endpoints are configured');
       const failures = checks.flatMap((check, index) => check.status === 'rejected' ? [`${services[index]}: ${check.reason?.name === 'AbortError' ? 'timed out' : check.reason?.message || 'transport failure'}`] : []);
-      if (failures.length) throw new Error(`Connection checks failed: ${failures.join('; ')}. Previous browser access was preserved. Check service listeners, routing and credential-store configuration.`);
+      if (checks.some(check => check.status === 'rejected' && check.reason?.authenticationRejected)) throw new Error(`Connection checks failed: ${failures.join('; ')}. Previous browser access was preserved. Check service listeners, routing and credential-store configuration.`);
       installBrowserSession(body, subscription);
       pendingSession = null;
       setValues(Object.fromEntries(profiles.map(profile => [profile, ''])));
       setResults(Object.fromEntries(body.profiles.map(profile => [profile, `Connected via central session until ${new Date(body.expires_at).toLocaleTimeString()}`])));
       setSessionAdminKey('');
-      setSessionStatus(`Connected ${body.profiles.length} registered scopes. Session expires ${new Date(body.expires_at).toLocaleTimeString()}. Maintenance ${body.profiles.includes('ADMIN_API_KEY') ? 'enabled' : 'not enabled'}. Credential rotation still requires the separate admin key.`);
+      setSessionStatus(`Connected ${body.profiles.length} registered scopes. Session expires ${new Date(body.expires_at).toLocaleTimeString()}. Maintenance ${body.profiles.includes('ADMIN_API_KEY') ? 'enabled' : 'not enabled'}.${failures.length ? ` Unavailable services: ${failures.join('; ')}. Healthy services remain usable.` : ''} Credential rotation still requires the separate admin key.`);
       window.dispatchEvent(new Event('depo:credentials-changed'));
     } catch (error) {
       if (pendingSession && sessionUrl) {

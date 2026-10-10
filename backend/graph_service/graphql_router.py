@@ -1,6 +1,8 @@
 """HTTP transport for the graph service's deliberately read-only GraphQL API."""
 from __future__ import annotations
 
+from backend.depo_platform.request_bodies import GraphQLBody
+
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -137,7 +139,7 @@ def _validate_variables(variables: Any) -> dict[str, Any] | None:
 
 
 @router.post("", summary="Execute a bounded read-only graph query")
-def query(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def query(payload: GraphQLBody, request: Request) -> dict[str, Any]:
     graph_read_identity(request)
     document = str(payload.get("query") or "")
     if not document.strip() or len(document) > 10_000:

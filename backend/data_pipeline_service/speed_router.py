@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.depo_platform.request_bodies import ApprovalBody, JobPublicationBody, SpeedEventBody, SpeedReconciliationBody, SpeedSourceBody
+
 import json
 import os
 from backend.depo_platform.service_urls import service_url
@@ -17,14 +19,14 @@ router = APIRouter(prefix="/pipeline/speed", tags=["speed-path"])
 def list_sources() -> dict[str, Any]: return {"sources": speed_path.list_sources()}
 
 @router.post("/sources", status_code=201)
-def create_source(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def create_source(payload: SpeedSourceBody, request: Request) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env="SPEED_PATH_APPROVAL_TOKEN")
     try: return speed_path.register_source(payload, actor)
     except FileExistsError as exc: raise HTTPException(409, str(exc)) from exc
     except ValueError as exc: raise HTTPException(422, str(exc)) from exc
 
 @router.post("/sources/{source_id}/approve")
-def approve_source(source_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def approve_source(source_id: str, payload: ApprovalBody, request: Request) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env="SPEED_PATH_APPROVAL_TOKEN")
     try: return speed_path.approve_source(source_id, actor)
     except LookupError as exc: raise HTTPException(404, str(exc)) from exc
@@ -33,20 +35,20 @@ def approve_source(source_id: str, payload: dict[str, Any], request: Request) ->
 def list_events(limit: int = 100) -> dict[str, Any]: return {"events": speed_path.list_events(limit)}
 
 @router.post("/events", status_code=202)
-def capture_event(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def capture_event(payload: SpeedEventBody, request: Request) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env="SPEED_EVENT_TOKEN")
     try: return speed_path.capture_event(payload, actor)
     except ValueError as exc: raise HTTPException(422, str(exc)) from exc
 
 @router.post("/reconciliations", status_code=202)
-def reconcile(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+def reconcile(payload: SpeedReconciliationBody, request: Request) -> dict[str, Any]:
     actor = approval_identity(request, payload, token_env="SPEED_EVENT_TOKEN")
     try: return speed_path.reconcile(list(payload.get("event_ids") or []), actor)
     except LookupError as exc: raise HTTPException(404, str(exc)) from exc
     except ValueError as exc: raise HTTPException(422, str(exc)) from exc
 
 @router.post("/reconciliations/{reconciliation_id}/publish")
-async def publish(reconciliation_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+async def publish(reconciliation_id: str, payload: JobPublicationBody, request: Request) -> dict[str, Any]:
     """Publish a validated speed partition only through the CEIM boundary."""
     actor = approval_identity(request, payload, token_env="CEIM_PUBLISH_APPROVAL_TOKEN")
     record = speed_path.reconciliations.get(reconciliation_id)

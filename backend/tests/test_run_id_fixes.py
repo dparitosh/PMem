@@ -33,7 +33,7 @@ class RunIds(unittest.TestCase):
         tree = ast.parse(Path('backend/agentic_service/router.py').read_text(encoding='utf-8'))
         node = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == name)
         node.decorator_list = []
-        exec(compile(ast.Module(body=[node], type_ignores=[]), '<actual agent route>', 'exec'), namespace)
+        exec(compile(ast.Module(body=[node], type_ignores=[]), '<actual agent route>', 'exec', flags=__import__('__future__').annotations.compiler_flag), namespace)
         return namespace[name]
     def test_tool_id_returned_and_exposed_on_error(self):
         namespace = self.namespace()

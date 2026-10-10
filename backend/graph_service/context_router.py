@@ -1,6 +1,8 @@
 """Read-only context endpoints backed by the configured Neo4j graph."""
 from __future__ import annotations
 
+from backend.depo_platform.request_bodies import ContextBody
+
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -126,7 +128,7 @@ def recommendation_health() -> dict:
 
 
 @router.post("/recommendations/change-impact", summary="Trace graph-backed semantic change impact")
-def change_impact(payload: dict[str, Any]) -> dict:
+def change_impact(payload: ContextBody) -> dict:
     root = _find_node(str(payload.get("change_name") or ""), node_id=str(payload.get("node_id") or ""), scope=payload.get("scope"))
     if root is None:
         return {"message": "No matching graph term was found.", "impacted_parts": [], "assembly_impact": [], "impacted_requirements": [], "process_impacts": [], "realization_chain": []}
@@ -158,7 +160,7 @@ def change_impact(payload: dict[str, Any]) -> dict:
 
 
 @router.post("/recommendations/similar-parts", summary="Find graph terms with lexical and type similarity")
-def similar_parts(payload: dict[str, Any]) -> dict:
+def similar_parts(payload: ContextBody) -> dict:
     root = _find_node(str(payload.get("part_name") or ""), node_id=str(payload.get("node_id") or ""), scope=payload.get("scope"))
     if root is None:
         return {"message": "No matching graph term was found.", "similar_parts": []}
@@ -190,7 +192,7 @@ def similar_parts(payload: dict[str, Any]) -> dict:
 
 
 @router.post("/recommendations/manufacturing", summary="Find process context linked to a graph term")
-def manufacturing_context(payload: dict[str, Any]) -> dict:
+def manufacturing_context(payload: ContextBody) -> dict:
     root = _find_node(str(payload.get("part_name") or ""), node_id=str(payload.get("node_id") or ""), scope=payload.get("scope"))
     if root is None:
         return {"message": "No matching graph term was found.", "direct_processes": [], "process_instances": [], "related_processes": [], "process_summary": {}}
