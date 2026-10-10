@@ -8,7 +8,15 @@ def catalog_shape(identifier: str, base_url: str) -> dict:
     record, content = OntologyCatalog().read_artifact(identifier)
     suffix = record["original_filename"].lower().rsplit(".", 1)[-1]
     formats = {"ttl": "turtle", "rdf": "xml", "owl": "xml", "jsonld": "json-ld"}
-    graph = Graph().parse(data=content, format=formats.get(suffix, "turtle"))
+    graph = None
+    for serialization in dict.fromkeys([formats.get(suffix, 'turtle'), 'turtle', 'xml', 'json-ld', 'nt']):
+        try:
+            graph = Graph().parse(data=content, format=serialization)
+            break
+        except Exception:
+            continue
+    if graph is None:
+        raise ValueError('Retained ontology is not a supported RDF serialization')
     properties = sorted({str(subject) for kind in (OWL.ObjectProperty, OWL.DatatypeProperty)
                          for subject in graph.subjects(RDF.type, kind) if isinstance(subject, URIRef)})
     return {"uri": f"{base_url}/oslc/shapes/{identifier}", "type": "oslc:ResourceShape",

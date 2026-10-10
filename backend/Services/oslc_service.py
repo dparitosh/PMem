@@ -228,6 +228,9 @@ class OSLCService:
             "uri": f"{cfg.base_url}/oslc/providers/{cfg.provider_id}",
             "type": "oslc:ServiceProvider",
             "title": cfg.provider_title,
+            "supportProfile": {"read_only": True, "operations": ["discovery", "query", "resource_read", "shape_read"],
+                               "unsupported_operations": ["create", "update", "delete", "workflow_transition"],
+                               "conformance": "partial_domain_projection"},
             "oslc:domain": canonical_domains,
             "services": [{
                 "domain": service_domain,
@@ -244,9 +247,9 @@ class OSLCService:
                     ("http://open-services.net/ns/qm#", cls.QM_TEST_CASE_TYPE, f"{cfg.base_url}/oslc/query/{cls.QM_TEST_CASE_TYPE}"),
                 ] if capability_domain == service_domain],
                 "resourceShapes": [
-                    f"{cfg.base_url}/oslc/shapes/{cls.AM_RESOURCE_TYPE}",
-                    f"{cfg.base_url}/oslc/shapes/{cls.RM_REQUIREMENT_TYPE}",
-                    f"{cfg.base_url}/oslc/shapes/{cls.RM_COLLECTION_TYPE}",
+                    f"{cfg.base_url}/oslc/shapes/{shape_id}"
+                    for shape_id, definition in cls.DOMAIN_SHAPES.items()
+                    if definition['domain'].replace('oslc_', '') == service_domain.rstrip('#').rsplit('/', 1)[-1]
                 ],
             } for service_domain in canonical_domains],
             "domains": [
@@ -337,7 +340,7 @@ class OSLCService:
                 *[
                     {
                         "resourceType": f"ontology:{domain['ontology_id']}",
-                        "queryBase": query_base,
+                        "queryBase": f"{cfg.base_url}/oslc/query/{quote('ontology:' + domain['ontology_id'], safe='')}",
                         "resourceShape": f"{cfg.base_url}/oslc/shapes/{domain['ontology_id']}",
                         "supportedParameters": ["oslc.where", "oslc.select", "oslc.orderBy", "oslc.searchTerms", "oslc.paging", "oslc.pageSize", "oslc.pageNum"],
                         "domains": [domain["id"]],
@@ -427,7 +430,7 @@ class OSLCService:
                         domain["id"]: {
                             "ontologyId": domain["ontology_id"], "prefix": domain["prefix"],
                             "shape": f"{cfg.base_url}/oslc/shapes/{domain['ontology_id']}",
-                            "queryBase": query_base, "trs": f"{cfg.base_url}/oslc/trs",
+                            "queryBase": f"{cfg.base_url}/oslc/query/{quote('ontology:' + domain['ontology_id'], safe='')}", "trs": f"{cfg.base_url}/oslc/trs",
                         }
                         for domain in cls._ontology_domains()
                     },
@@ -513,7 +516,7 @@ class OSLCService:
             graph = Graph()
             graph.parse(str(shape_file))
             node_shape_nodes = set(graph.subjects(RDF.type, SH.NodeShape))
-            property_shape_nodes = set(graph.subjects(RDF.type, SH.PropertyShape))
+            property_shape_nodes = set(graph.subjects(RDF.type, SH.PropertyShape)) | set(graph.subjects(SH.path, None))
             candidate_shapes = set(property_shape_nodes)
             for node_shape in node_shape_nodes:
                 candidate_shapes.update(graph.objects(node_shape, SH.property))
@@ -525,7 +528,7 @@ class OSLCService:
                     continue
                 path_uri = str(path_obj)
                 title = cls._fragment(path_obj)
-                existing = constraints_by_key.get(path_uri) or constraints_by_key.get(title) or {
+                existing = {
                     "uri": path_uri,
                     "title": title,
                     "minCount": None,
@@ -536,6 +539,9 @@ class OSLCService:
                     "messages": [],
                     "descriptions": [],
                     "shapeCount": 0,
+                    "shape_id": str(shape),
+                    "target_classes": sorted({str(target) for owner in graph.subjects(SH.property, shape)
+                                              for target in graph.objects(owner, SH.targetClass)}),
                 }
                 existing["shapeCount"] += 1
                 min_count = next(graph.objects(shape, SH.minCount), None)
@@ -565,13 +571,12 @@ class OSLCService:
                 for message in message_values:
                     if message not in existing["messages"]:
                         existing["messages"].append(message)
-                constraints_by_key[path_uri] = existing
-                constraints_by_key[title] = existing
+                constraints_by_key[str(shape)] = existing
 
             unique_constraints = []
             seen_ids = set()
             for constraint in constraints_by_key.values():
-                marker = constraint.get("uri") or constraint.get("title")
+                marker = constraint.get("shape_id")
                 if not marker or marker in seen_ids:
                     continue
                 seen_ids.add(marker)
@@ -647,7 +652,7 @@ class OSLCService:
             "occurs": cls._occurs_value(constraint.get("minCount") if constraint else None, constraint.get("maxCount") if constraint else None),
         }
         if constraint:
-            for key in ["minCount", "maxCount", "datatype", "nodeKind", "class", "messages", "shapeCount"]:
+            for key in ["minCount", "maxCount", "datatype", "nodeKind", "class", "messages", "shapeCount", "shape_id", "target_classes"]:
                 value = constraint.get(key)
                 if value not in (None, [], ""):
                     descriptor[key] = value
@@ -676,7 +681,7 @@ class OSLCService:
             "description": description,
             "occurs": cls._occurs_value(constraint.get("minCount"), constraint.get("maxCount")),
         }
-        for key in ["minCount", "maxCount", "datatype", "nodeKind", "class", "messages", "shapeCount"]:
+        for key in ["minCount", "maxCount", "datatype", "nodeKind", "class", "messages", "shapeCount", "shape_id", "target_classes"]:
             value = constraint.get(key)
             if value not in (None, [], ""):
                 descriptor[key] = value
@@ -715,6 +720,12 @@ class OSLCService:
         if property_uri:
             descriptor["uri"] = property_uri
             descriptor["propertyDefinition"] = property_uri
+        descriptor['occurs'] = {
+            'exactly-one': 'http://open-services.net/ns/core#Exactly-one',
+            'zero-or-one': 'http://open-services.net/ns/core#Zero-or-one',
+            'zero-or-many': 'http://open-services.net/ns/core#Zero-or-many',
+            'one-or-many': 'http://open-services.net/ns/core#One-or-many',
+        }.get(descriptor.get('occurs'), descriptor.get('occurs'))
         return descriptor
 
 
@@ -793,9 +804,13 @@ class OSLCService:
         shacl_file = cls._discover_shacl_file(meta, context)
         shacl_summary = cls._shacl_summary(shacl_file)
         constraint_lookup: Dict[str, Dict[str, Any]] = {}
+        constraint_candidates: Dict[str, List[Dict[str, Any]]] = {}
         for constraint in (shacl_summary.get("property_constraints") or []):
             for key in cls._constraint_lookup_keys(constraint.get("uri"), constraint.get("title")):
-                constraint_lookup[key] = constraint
+                constraint_candidates.setdefault(key, []).append(constraint)
+        # Multiple class-specific shapes cannot be flattened into one global
+        # cardinality. Preserve their scoped descriptors below instead.
+        constraint_lookup = {key: values[0] for key, values in constraint_candidates.items() if len(values) == 1}
         semantic_terms = list(OntologyReasoningService.iter_semantic_terms(reasoning))
         classes = reasoning.get("classes") or []
         dictionary_fallback = None
@@ -831,12 +846,12 @@ class OSLCService:
             for key in cls._constraint_lookup_keys(term.get("iri") or term.get("uri"), cls._term_title(term)):
                 if key in constraint_lookup:
                     constraint = constraint_lookup[key]
-                    matched_constraint_keys.add(constraint.get("uri") or constraint.get("title"))
+                    matched_constraint_keys.add(constraint.get("shape_id"))
                     break
             property_descriptors.append(cls._semantic_property_descriptor(term, constraint))
 
         for constraint in (shacl_summary.get("property_constraints") or []):
-            marker = constraint.get("uri") or constraint.get("title")
+            marker = constraint.get("shape_id")
             if marker in matched_constraint_keys:
                 continue
             property_descriptors.append(cls._constraint_only_descriptor(constraint))
@@ -852,7 +867,7 @@ class OSLCService:
         export_links = [
             {
                 "format": item.get("format"),
-                "uri": f"{cfg.base_url}/api/v1/ontology/{normalized_shape_id}/export?format={item.get('format')}",
+                "uri": cls._ontology_export_uri(normalized_shape_id, item.get('format')),
             }
             for item in (meta.get("ontology_export_artifacts") or [])
             if item.get("format")
@@ -876,6 +891,12 @@ class OSLCService:
             "exports": export_links,
             "source": shape_source,
         }
+
+    @staticmethod
+    def _ontology_export_uri(identifier, serialization):
+        from backend.depo_platform.service_urls import service_url
+        root = service_url('ONTOLOGY_SERVICE_URL', 'http://127.0.0.1:8011/api/v1').rstrip('/')
+        return f'{root}/ontology/{quote(identifier, safe="")}/export?{urlencode({"format": serialization})}'
 
     @classmethod
     def list_taxonomies(cls) -> Dict[str, Any]:
@@ -1159,9 +1180,16 @@ class OSLCService:
         else:
             raise ValueError(f"Unsupported OSLC resource type: {resource_type}")
         cfg = cls.config()
-        rows = GraphViewService._run(*cls._build_resource_query(params, query_resource_type, ontology_scope))
-        total_rows = GraphViewService._run(*cls._build_count_query(params, query_resource_type, ontology_scope))
-        total_count = int(total_rows[0].get("count", 0)) if total_rows else 0
+        page_query, page_parameters = cls._build_resource_query(params, query_resource_type, ontology_scope)
+        count_query, count_parameters = cls._build_count_query(params, query_resource_type, ontology_scope)
+        score_field = ', search_score: search_score' if ' AS search_score' in page_query else ''
+        combined = f'''CALL {{ {count_query} }}
+            CALL {{ CALL {{ {page_query} }}
+                RETURN collect({{element_id: element_id, labels: labels, properties: properties{score_field}}}) AS members }}
+            RETURN count, members'''
+        result = GraphViewService._run(combined, {**count_parameters, **page_parameters})
+        rows = result[0].get('members', []) if result else []
+        total_count = int(result[0].get('count', 0)) if result else 0
         response_resource_type = requested_resource_type if ontology_scope else query_resource_type
         members = [cls._row_to_resource_payload(row, params.select, response_resource_type) for row in rows]
         return {
@@ -1209,7 +1237,8 @@ class OSLCService:
         rows = GraphViewService._run(
             """
             MATCH (n)
-            WHERE elementId(n) = $element_id
+            WHERE (($resource_uri IS NULL AND elementId(n) = $element_id)
+                OR ($resource_uri IS NOT NULL AND (n.uri = $resource_uri OR n.rdf_uri = $resource_uri)))
               AND NOT (n:DatasheetChunk OR n:GraphChunk)
             OPTIONAL MATCH (n)-[r]->(m)
             WHERE NOT (m:DatasheetChunk OR m:GraphChunk)
@@ -1219,8 +1248,10 @@ class OSLCService:
               properties(n) AS properties,
               collect(DISTINCT {
                 relationshipType: type(r),
+                predicateUri: coalesce(r.predicate_uri, r.uri, r.predicate),
                 relationshipElementId: elementId(r),
                 targetElementId: elementId(m),
+                targetUriIdentity: coalesce(m.uri, m.rdf_uri),
                 targetLabels: labels(m),
                 targetProperties: {
                   element_type: m.element_type,
@@ -1233,7 +1264,7 @@ class OSLCService:
               }) AS outgoing
             LIMIT 1
             """,
-            {"element_id": element_id},
+            {"element_id": element_id, "resource_uri": element_id[4:] if element_id.startswith('uri:') else None},
         )
         if not rows:
             return None
@@ -1391,7 +1422,7 @@ class OSLCService:
                 "toLower(coalesce(toString(n.type), '')) CONTAINS 'sysml:' OR "
                 "toLower(coalesce(toString(n.archimate_type), '')) <> '')"
             )
-            return f"({architecture} AND NOT {requirement} AND NOT {collection})"
+            return f"({architecture} AND NOT {requirement} AND NOT {collection} AND NOT {change_request} AND NOT {test_result} AND NOT {test_case})"
         raise ValueError(f"Unsupported OSLC resource type: {resource_type}")
 
     @staticmethod
@@ -1431,6 +1462,8 @@ class OSLCService:
             return f"any(lbl IN labels(n) WHERE toLower(lbl) {operator} toLower(toString($${value_key})))".replace("$$", "$")
         if isinstance(condition.value, (int, float)) and not isinstance(condition.value, bool):
             return f"toFloat(properties(n)[$${property_key}]) {operator} toFloat($${value_key})".replace("$$", "$")
+        if isinstance(condition.value, bool):
+            return f"properties(n)[${property_key}] {operator} ${value_key}"
         return f"coalesce(toString(properties(n)[$${property_key}]), '') {operator} toString($${value_key})".replace("$$", "$")
 
     @staticmethod
@@ -1484,18 +1517,21 @@ class OSLCService:
             lowered_labels.intersection({"changerequest", "change_request", "oslcchangerequest"})
             or lowered["semantic_role"] in {"change", "change_request"}
             or lowered["element_type"] in {"change", "changerequest", "change_request"}
+            or lowered["entity_type"] in {"change", "changerequest", "change_request"}
         ):
             return [cls.CM_CHANGE_REQUEST_URI]
         if (
             lowered_labels.intersection({"testresult", "test_result", "oslctestresult"})
             or lowered["semantic_role"] == "test_result"
             or lowered["element_type"] == "testresult"
+            or lowered["entity_type"] == "testresult"
         ):
             return [cls.QM_TEST_RESULT_URI]
         if (
             lowered_labels.intersection({"testcase", "test_case", "oslctestcase"})
             or lowered["semantic_role"] == "test_case"
             or lowered["element_type"] == "testcase"
+            or lowered["entity_type"] == "testcase"
         ):
             return [cls.QM_TEST_CASE_URI]
         architecture_labels = {
@@ -1548,11 +1584,13 @@ class OSLCService:
     ) -> Dict[str, Any]:
         properties = dict(row.get("properties") or {})
         cfg = cls.config()
-        encoded_id = quote(str(row.get('element_id') or ''), safe='')
-        resource_uri = f"{cfg.base_url}/oslc/resources/{encoded_id}"
+        from backend.oslc_service.identity import resource_uri as linked_uri
+        resource_uri = linked_uri(cfg.base_url, properties, row.get('element_id') or '')
         types = row.get("labels") or []
         domain_types = cls._profile_type_uris(resource_type, types, properties)
         rdf_types = domain_types or types
+        from backend.oslc_service.domain_properties import project_properties
+        domain_properties = project_properties(properties, domain_types)
         title = properties.get("name") or properties.get("title") or properties.get("code") or properties.get("label") or properties.get("id") or row.get("element_id")
         if selected_fields:
             selected = {}
@@ -1567,7 +1605,7 @@ class OSLCService:
                 elif normalized in {"elementid", "element_id"}:
                     selected[field_name] = row.get("element_id")
                 else:
-                    selected[field_name] = properties.get(field_name)
+                    selected[field_name] = domain_properties.get(field_name, properties.get(field_name))
         else:
             selected = properties
         payload = {
@@ -1578,6 +1616,7 @@ class OSLCService:
             "oslc:serviceProvider": f"{cfg.base_url}/oslc/providers/{cfg.provider_id}",
             "title": title,
             "properties": selected,
+            "domainProperties": domain_properties if not selected_fields else {key: value for key, value in domain_properties.items() if key in selected_fields},
         }
         instance_shape = cls._shape_for_types(domain_types)
         if instance_shape:
@@ -1588,6 +1627,7 @@ class OSLCService:
 
     @classmethod
     def _resource_detail_payload(cls, row: Dict[str, Any]) -> Dict[str, Any]:
+        from backend.oslc_service.identity import resource_uri as linked_uri
         properties = dict(row.get("properties") or {})
         cfg = cls.config()
         labels = row.get("labels") or []
@@ -1595,8 +1635,8 @@ class OSLCService:
         links = [
             {
                 **item,
-                "targetUri": f"{cfg.base_url}/oslc/resources/{quote(str(item.get('targetElementId') or ''), safe='')}",
-                "predicate": "http://purl.org/dc/terms/relation",
+                "targetUri": linked_uri(cfg.base_url, {'uri': item.get('targetUriIdentity')}, item.get('targetElementId') or ''),
+                "predicate": cls._link_predicate(item),
                 "targetRdfTypes": cls.resource_domain_types(
                     item.get("targetLabels") or [], item.get("targetProperties") or {}
                 ),
@@ -1605,7 +1645,7 @@ class OSLCService:
             if item and item.get("relationshipType") and item.get("targetElementId")
         ]
         payload = {
-            "uri": f"{cfg.base_url}/oslc/resources/{quote(str(row.get('element_id') or ''), safe='')}",
+            "uri": linked_uri(cfg.base_url, properties, row.get('element_id') or ''),
             "elementId": row.get("element_id"),
             "types": labels,
             "rdf:type": domain_types or labels,
@@ -1614,7 +1654,20 @@ class OSLCService:
             "properties": properties,
             "outgoingLinks": links,
         }
+        from backend.oslc_service.domain_properties import project_properties
+        payload['domainProperties'] = project_properties(properties, domain_types)
+        uses = [link['targetUri'] for link in links if link['predicate'] == 'http://open-services.net/ns/rm#uses']
+        if uses and cls.RM_COLLECTION_URI in domain_types:
+            payload['domainProperties']['oslc_rm:uses'] = uses
         instance_shape = cls._shape_for_types(domain_types)
         if instance_shape:
             payload["oslc:instanceShape"] = instance_shape
         return payload
+
+    @staticmethod
+    def _link_predicate(item):
+        from urllib.parse import urlsplit
+        asserted = str(item.get('predicateUri') or '')
+        if urlsplit(asserted).scheme in {'http', 'https', 'urn'}:
+            return asserted
+        return 'urn:depo:relationship:' + quote(str(item.get('relationshipType') or 'related'), safe='')

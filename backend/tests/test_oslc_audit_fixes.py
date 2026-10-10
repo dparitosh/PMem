@@ -25,6 +25,21 @@ def load_sync():
     return namespace
 
 class OSLCAudit(unittest.TestCase):
+    def test_sync_collects_pages_and_rejects_cycles(self):
+        namespace = load_sync()
+        with tempfile.TemporaryDirectory() as temporary:
+            store = namespace['OSLCSyncStore'](); store.root = Path(temporary)
+            client = SimpleNamespace(base_url='https://provider.test/api', query=lambda *args: {'members': [{'uri': 'urn:one'}], 'nextPage': 'page2', 'oslc:totalCount': 2},
+                                     next_page=lambda link, current_url: {'members': [{'uri': 'urn:two'}], 'oslc:totalCount': 2})
+            sync = namespace['OSLCSynchronizer'](client, store)
+            snapshot = sync.pull('resources', {})
+            self.assertTrue(snapshot['complete'])
+            self.assertEqual(snapshot['resource_count'], 2)
+            client.next_page = lambda link, current_url: {'members': [], 'nextPage': 'page2'}
+            with self.assertRaises(ValueError):
+                sync.pull('resources', {})
+            self.assertEqual(len(store.list()), 1)
+
     def test_quoted_operators_and_numeric_identity(self):
         conditions = OSLCQueryService.parse({'oslc.where': 'title="a>=b" and id="001"'}).where
         self.assertEqual([c.value for c in conditions], ['a>=b', '001'])

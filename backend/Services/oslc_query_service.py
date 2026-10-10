@@ -124,7 +124,9 @@ class OSLCQueryService:
         if quote:
             raise OSLCQueryValidationError("Unterminated quoted value in oslc.where.")
         parts.append(expression[start:].strip())
-        return [part for part in parts if part]
+        if any(not part for part in parts) or re.search(r'\s+(?:and|or)\s*$', expression, re.IGNORECASE):
+            raise OSLCQueryValidationError('Boolean operators require a clause on both sides.')
+        return parts
 
     @classmethod
     def _parse_search_terms(cls, raw_terms: str) -> List[str]:
@@ -184,6 +186,11 @@ class OSLCQueryService:
         for item in items:
             direction = "asc"
             field_name = item
+            if item.startswith(('+', '-')):
+                direction = 'desc' if item[0] == '-' else 'asc'
+                field_name = item[1:].strip()
+                order_items.append((cls._sanitize_property(field_name), direction))
+                continue
             lowered = item.lower()
             if lowered.endswith(" desc"):
                 direction = "desc"
@@ -196,6 +203,8 @@ class OSLCQueryService:
     @staticmethod
     def _parse_value(raw_value: str) -> Any:
         value = raw_value.strip()
+        if value in {'true', 'false'}:
+            return value == 'true'
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             if value[0] == '"':
                 import json

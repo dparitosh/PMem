@@ -298,6 +298,7 @@ class OSLCTRSService:
                 MATCH (n)
                 WHERE NOT (n:DatasheetChunk OR n:GraphChunk)
                 RETURN elementId(n) AS element_id,
+                       coalesce(n.uri, n.rdf_uri) AS resource_uri_identity,
                        coalesce(n.name, n.title, n.code, n.label, n.id, elementId(n)) AS title,
                        labels(n) AS labels,
                        {
@@ -341,8 +342,9 @@ class OSLCTRSService:
             element_id = str(row.get('element_id') or '').strip()
             if not element_id:
                 continue
+            from backend.oslc_service.identity import resource_uri as linked_uri
             candidates.append({
-                'resource_uri': f'{cls.base_url()}/oslc/resources/{quote(element_id, safe="")}',
+                'resource_uri': linked_uri(cls.base_url(), {'uri': row.get('resource_uri_identity')}, element_id),
                 'title': row.get('title') or element_id,
                 'element_id': element_id,
                 'rdf_types': OSLCService.resource_domain_types(

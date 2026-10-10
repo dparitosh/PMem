@@ -107,4 +107,32 @@ class OSLCSynchronizer:
         self.client, self.store = client, store or OSLCSyncStore()
 
     def pull(self, resource_type: str, parameters: dict[str, Any]) -> dict[str, Any]:
-        return self.store.create(resource_type=resource_type, parameters=safe_parameters(parameters), payload=self.client.query(resource_type, safe_parameters(parameters)))
+        parameters = safe_parameters(parameters)
+        payload = self.client.query(resource_type, parameters)
+        from urllib.parse import urljoin
+        current_url = self.client.base_url.rstrip('/') + '/oslc/query/' + resource_type
+        max_pages = int(os.getenv('OSLC_SYNC_MAX_PAGES', '20'))
+        max_resources = int(os.getenv('OSLC_SYNC_MAX_RESOURCES', '10000'))
+        max_bytes = int(os.getenv('OSLC_SYNC_MAX_BYTES', str(32 * 1024 * 1024)))
+        if not 1 <= max_pages <= 1000 or not 1 <= max_resources <= 100000 or max_bytes <= 0:
+            raise ValueError('Invalid OSLC synchronization bounds')
+        resources, visited, size = [], set(), 0
+        for page in range(max_pages):
+            collection = next((payload[key] for key in ('members', 'value', 'resources', 'results') if key in payload), None)
+            if not isinstance(collection, list):
+                raise ValueError('Remote resources must be an array')
+            size += len(json.dumps(payload).encode('utf-8'))
+            if size > max_bytes or len(resources) + len(collection) > max_resources:
+                raise ValueError('OSLC synchronization exceeds configured resource or byte limit; no snapshot applied')
+            resources.extend(collection)
+            link = payload.get('nextPage') or payload.get('oslc:nextPage')
+            if not link or page + 1 == max_pages:
+                break
+            if not isinstance(link, str) or link in visited:
+                raise ValueError('Remote pagination is invalid or cyclic; no snapshot applied')
+            visited.add(link)
+            payload = self.client.next_page(link, current_url)
+            current_url = urljoin(current_url, link)
+        result = {'members': resources, 'nextPage': link,
+                  'oslc:totalCount': payload.get('oslc:totalCount', len(resources))}
+        return self.store.create(resource_type=resource_type, parameters=parameters, payload=result)

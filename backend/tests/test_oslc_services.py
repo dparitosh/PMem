@@ -191,7 +191,7 @@ def test_requirement_detail_exposes_cross_domain_architecture_target(monkeypatch
     )
 
     assert payload["rdf:type"] == [OSLCService.RM_REQUIREMENT_URI]
-    assert payload["outgoingLinks"][0]["predicate"] == "http://purl.org/dc/terms/relation"
+    assert payload["outgoingLinks"][0]["predicate"] == "urn:depo:relationship:SATISFIES"
     assert payload["outgoingLinks"][0]["targetRdfTypes"] == [OSLCService.AM_TYPE_URI]
 
 

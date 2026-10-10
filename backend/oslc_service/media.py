@@ -1,5 +1,14 @@
 """Negotiate OSLC representations with specific ranges overriding wildcards."""
 SUPPORTED = ('application/json', 'text/turtle', 'application/rdf+xml', 'application/ld+json')
+REPRESENTATION_RESPONSES = {
+    200: {'description': 'Negotiated OSLC representation', 'content': {
+        media: {'schema': {'type': 'object'} if media in {'application/json', 'application/ld+json'} else {'type': 'string'}}
+        for media in SUPPORTED}},
+    **{code: {'description': description} for code, description in {
+        400: 'Invalid query', 401: 'Authentication required', 403: 'Credential or grant rejected',
+        404: 'Resource not found or service disabled', 406: 'No acceptable representation',
+        503: 'Dependency unavailable'}.items()},
+}
 def negotiate(header):
     ranges = []
     for part in header.split(','):

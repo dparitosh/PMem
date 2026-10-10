@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import re
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urljoin, unquote, parse_qsl
 
 import httpx
 
@@ -50,6 +50,17 @@ class OSLCClient:
 
     def discover(self) -> dict[str, Any]:
         return self._request("oslc/catalog")
+
+    def next_page(self, link: str, current_url: str) -> dict[str, Any]:
+        base = urlsplit(self.base_url)
+        target = urlsplit(urljoin(current_url, link))
+        prefix = base.path.rstrip('/') + '/'
+        if (target.scheme != base.scheme or target.netloc != base.netloc or target.username or target.password
+                or target.fragment or not target.path.startswith(prefix)
+                or any(part in {'.', '..'} for part in unquote(target.path).split('/'))
+                or '\\' in unquote(target.path)):
+            raise ValueError('Remote pagination must remain within the configured provider base')
+        return self._request(target.path[len(prefix):], dict(parse_qsl(target.query, keep_blank_values=True)))
 
     def query(self, resource_type: str, parameters: dict[str, Any]) -> dict[str, Any]:
         if not re.fullmatch(r"(?:[A-Za-z][A-Za-z0-9_-]*|ontology:[A-Za-z0-9_][A-Za-z0-9_.-]{0,199})", resource_type):

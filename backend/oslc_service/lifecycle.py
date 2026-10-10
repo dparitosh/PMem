@@ -13,6 +13,8 @@ from backend.mesh_store import PostgresRegistry
 from backend.depo_platform.authorization import graph_read_identity
 from backend.Services.oslc_service import OSLCService
 from .access import authorize
+from .representation import represent
+from .media import REPRESENTATION_RESPONSES
 
 KINDS = {"job-definitions": "data_job_definitions", "job-runs": "data_job_runs",
          "products": "catalog_products", "ontologies": "ontology_catalog"}
@@ -30,20 +32,21 @@ def base():
     return OSLCService.config().base_url + "/oslc/lifecycle"
 
 
-@router.get("")
-def discovery():
+@router.get("", responses=REPRESENTATION_RESPONSES)
+def discovery(request: Request):
     root = base()
-    return {"uri": root, "type": "oslc:ServiceProvider", "read_only": True,
+    payload = {"uri": root, "type": "oslc:ServiceProvider", "read_only": True,
             "queryCapabilities": [{"queryBase": f"{root}/{kind}",
                                    "resourceShape": f"{root}/shapes/{kind}"} for kind in KINDS]}
+    return represent(payload, request)
 
 
-@router.get("/shapes/{kind}")
-def shape(kind: str):
+@router.get("/shapes/{kind}", responses=REPRESENTATION_RESPONSES)
+def shape(kind: str, request: Request):
     root = base()
     if kind not in KINDS:
         raise HTTPException(404, "Unknown lifecycle resource")
-    return {"uri": f"{root}/shapes/{kind}", "type": "oslc:ResourceShape",
+    payload = {"uri": f"{root}/shapes/{kind}", "type": "oslc:ResourceShape",
             "describes": [f"{root}/types/{kind}"],
             "properties": [{"name": "identifier", "propertyDefinition": "http://purl.org/dc/terms/identifier",
                             "occurs": "http://open-services.net/ns/core#Exactly-one",
@@ -52,9 +55,10 @@ def shape(kind: str):
                               "occurs": "http://open-services.net/ns/core#Zero-or-one",
                               "readOnly": True} for field in sorted(PUBLIC_FIELDS)],
             "extension_note": "Evidence is the existing versioned manifest, not flattened ontology facts"}
+    return represent(payload, request)
 
 
-@router.get("/{kind}/{identifier}")
+@router.get("/{kind}/{identifier}", responses=REPRESENTATION_RESPONSES)
 def resource(kind: str, identifier: str, request: Request, identity: str = Depends(graph_read_identity)):
     root = base()
     if kind not in KINDS:
@@ -92,8 +96,8 @@ def resource(kind: str, identifier: str, request: Request, identity: str = Depen
     return Response(body, media_type=media, headers=headers)
 
 
-@router.get("/{kind}")
-def query(kind: str, page: int = 1, page_size: int = 50, identity: str = Depends(graph_read_identity)):
+@router.get("/{kind}", responses=REPRESENTATION_RESPONSES)
+def query(kind: str, request: Request, page: int = 1, page_size: int = 50, identity: str = Depends(graph_read_identity)):
     root = base()
     if kind not in KINDS:
         raise HTTPException(404, "Unknown lifecycle resource")
@@ -101,6 +105,7 @@ def query(kind: str, page: int = 1, page_size: int = 50, identity: str = Depends
     if not 1 <= page <= 10000 or not 1 <= page_size <= 200:
         raise HTTPException(400, "Invalid paging")
     total, selected = PostgresRegistry(KINDS[kind]).page_keys((page - 1) * page_size, page_size)
-    return {"uri": f"{root}/{kind}", "type": "oslc:QueryResult", "oslc:totalCount": total,
+    payload = {"uri": f"{root}/{kind}", "type": "oslc:QueryResult", "oslc:totalCount": total,
             "members": [{"uri": f"{root}/{kind}/{quote(key, safe='')}", "identifier": key} for key in selected],
             "nextPage": f"{root}/{kind}?page={page+1}&page_size={page_size}" if page * page_size < total else None}
+    return represent(payload, request)

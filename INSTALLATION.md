@@ -2798,16 +2798,47 @@ Remote calls require `OSLC_REMOTE_ENABLED=true`, a completed `OSLC_REMOTE_BASE_U
 Staged snapshot reads additionally require explicit grants in root `.env.local`. Replace the example actor with the identity returned by your read-credential configuration:
 
 ```dotenv
-OSLC_LIFECYCLE_READ_GRANTS={"ui-user":["syncs:*"]}
+OSLC_LIFECYCLE_READ_GRANTS={"ui-user":["syncs:*","ontologies:*"]}
 OSLC_TRS_MAX_BASE_RESOURCES=50000
 OSLC_MAX_RESPONSE_BYTES=8388608
+OSLC_SYNC_MAX_PAGES=20
+OSLC_SYNC_MAX_RESOURCES=10000
+OSLC_SYNC_MAX_BYTES=33554432
 ```
 
-Merge `syncs:*` into existing grants instead of replacing them. For access to only one snapshot use `syncs:<snapshot-uuid>`. Listing all snapshots requires `syncs:*`. The actor must match the configured read token actor; the example does not establish a new user identity.
+Merge grants into existing policy instead of replacing it. For access to only one snapshot use `syncs:<snapshot-uuid>`. Listing all snapshots requires `syncs:*`. Ontology shape reads require `ontologies:<ontology-id>` or `ontologies:*` on both primary and fallback resolution paths. The actor must match the configured read token actor; the example does not establish a new user identity.
 
 Remote synchronization strips approval fields before dispatch/storage. Existing snapshot parameter files are redacted when snapshots are listed or retrieved. Previously exposed credentials must be rotated using the existing rotation process; removing stored values does not revoke a key or erase remote logs.
 
-A remote snapshot with more pages is `staged_partial` with `complete=false`; retrieve the remaining pages before approving ingestion. Local OSLC query responses expose `nextPage` and preserve filters. Follow only URLs at the configured provider—do not paste a provider token into an arbitrary URL.
+Remote synchronization follows pagination within the configured provider base, up to `OSLC_SYNC_MAX_PAGES`. Cyclic pagination or exceeding resource/byte bounds fails without writing a snapshot. If the page cap is reached, the snapshot is `staged_partial` with `complete=false`; retrieve the remaining pages before approving ingestion. Local OSLC query responses expose `nextPage` and preserve filters.
+
+Catalog, provider, shape, query and graph resource routes negotiate `application/json`, `text/turtle`, `application/rdf+xml`, or `application/ld+json`. JSON remains the default. Unmapped metadata uses DEPO extension predicates; this is not certification of complete OSLC domain conformance. SHACL property descriptors retain `shape_id` and `target_classes`; multiple class-specific constraints are not combined into one global cardinality.
+
+The provider advertises these read-only domain projections:
+
+| Domain | Query resource types | Supported projection |
+| --- | --- | --- |
+| RM | `requirements`, `requirement-collections` | Requirements, collections, common metadata and retained `oslc_rm:uses` links |
+| AM | `architecture-resources` | Architecture/model elements recognized from graph labels and source metadata |
+| CM | `change-requests` | Change requests and retained status; no lifecycle transitions |
+| QM | `test-cases`, `test-results` | Test cases/results and retained result status |
+| AP242 profile | `resources` | General graph discovery; no dedicated AP242 query filter or complete OSLC domain claim |
+| Registered ontologies | `ontology:<ontology-id>` | Queries scoped to the registered ontology and retained ontology shapes |
+
+Resource responses expose mapped values in `domainProperties` alongside original `properties`; RDF responses publish those mapped predicates directly. Missing values are not synthesized. Discovery `supportProfile` explicitly lists read operations and unsupported writes/transitions. Enabling a domain does not enable creation factories, updates, deletions, approval workflows or complete domain conformance.
+
+After importing the root environment in PowerShell, test a query as follows:
+
+```powershell
+Set-Location E:\App\PMem
+. .\infra\windows\runtime-config.ps1
+Import-DepoEnvironment -Root 'E:\App\PMem' -EnvFile '.env.local'
+$headers = @{ Authorization = "Bearer $env:GRAPH_READ_TOKEN"; Accept = 'text/turtle' }
+$base = $env:OSLC_BASE_URL.TrimEnd('/')
+Invoke-WebRequest -UseBasicParsing -Uri "$base/oslc/query/resources?oslc.paging=true&oslc.pageSize=20" -Headers $headers
+```
+
+Set `ONTOLOGY_SERVICE_URL` to the reachable ontology API base including `/api/v1` (direct example: `http://10.0.2.16:8011/api/v1`). OSLC ontology export links use that service URL rather than the OSLC port. Retained `uri` or `rdf_uri` identities produce stable graph-resource links; resources without either still use legacy Neo4j element IDs and need a durable identity before links can survive recreation.
 
 For TRS Base, start with `/oslc/trs/base?limit=200`, retain its `snapshot_id` and `cutoff_order`, then follow `nextPage` until null. All pages use the same retained membership. Snapshots expire after 15 minutes; restart the Base if expired. After completing the Base, read `/oslc/trs/changelog?after=<cutoff_order>&limit=200` and advance `next_after`. If `rebase_required=true`, start a fresh Base. A Base above `OSLC_TRS_MAX_BASE_RESOURCES` fails explicitly; adjust capacity and restart the Base instead of accepting truncated state. Concurrent graph mutation/change-event publication still requires customer integration validation.
 
