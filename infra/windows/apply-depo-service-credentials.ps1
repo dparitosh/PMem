@@ -38,5 +38,8 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Central credential import failed. No partial batch was applied; follow the structured action above.' }
   Write-Host 'All supplied application credentials were verified and applied atomically in PostgreSQL. Database passwords, Neo4j credentials, Ollama keys and APIM subscription keys remain server configuration; they are not imported as application profiles. This does not sign a browser in.'
   Write-Host 'Start the services, then open Admin -> Connect registered service credentials. Enter ADMIN_API_KEY once and choose read-only or workflow scopes.'
-  Write-Host ('Verify the running APIs with: .\infra\windows\test-depo-browser-session.ps1 -EnvFile "{0}"' -f $EnvFile)
+  $diagnosticPath = Join-Path $root 'infra\windows\test-depo-browser-session.ps1'
+  $diagnosticEnv = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
+  Write-Host 'After services are running, verify browser-session access with this command (works from any directory):'
+  Write-Host ('& ''{0}'' -EnvFile ''{1}''' -f $diagnosticPath.Replace("'", "''"), $diagnosticEnv.Replace("'", "''"))
 } finally { $OutputEncoding = $previousOutputEncoding; Pop-Location }
