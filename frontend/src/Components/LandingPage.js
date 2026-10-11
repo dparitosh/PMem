@@ -63,8 +63,8 @@ export function OntologyList({ ontologies, loading }) {
   if (!ontologies.length) return <div style={{ color: UI_COLORS.textSec, fontSize: 12, padding: 8 }}>No ontologies registered yet.</div>;
 
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+    <div style={{ overflowX: 'auto' }} aria-label="Ontology registry table">
+      <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse', fontSize: 12, overflowWrap: 'normal', whiteSpace: 'nowrap' }}>
         <thead>
           <tr style={{ background: 'var(--theme-color-component-2)', color: 'var(--theme-color-std-text)', borderBottom: '1px solid #cfd8e3' }}>
             {['Name', 'Prefix', 'Type', 'Uses', 'Last used / registered'].map(h => (
@@ -75,7 +75,7 @@ export function OntologyList({ ontologies, loading }) {
         <tbody>
           {ontologies.map((o, i) => (
             <tr key={o.id || i} style={{ background: i % 2 === 0 ? 'var(--theme-color-component-1)' : 'transparent' }}>
-              <td style={{ padding: '6px 10px', fontWeight: 600, color: 'var(--ui-primary, #005a9c)' }}>
+              <td style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'normal', minWidth: 180, color: 'var(--ui-primary, #005a9c)' }}>
                 {o.label || o.name || o.ontology_name || o.prefix || o.id || o.ontology_id}
               </td>
               <td style={{ padding: '6px 10px' }}>{o.prefix || o.ontology_prefix || 'Not supplied'}</td>
@@ -170,6 +170,12 @@ export default function LandingPage({ setChatResults, onNavigate }) {
   const metricsRequest = useRef(null);
   const selectedRow = ontologies.find(o => (o.ontology_id || o.id) === selectedOntology);
   const selectedPrefix = selectedRow?.prefix || selectedRow?.ontology_prefix || '';
+
+  useEffect(() => {
+    if (!ontologiesLoading && !ontologiesError && selectedOntology && !selectedRow) {
+      setSelectedOntology('');
+    }
+  }, [ontologiesLoading, ontologiesError, selectedOntology, selectedRow]);
 
   const loadMetrics = useCallback(async () => {
     metricsRequest.current?.abort();

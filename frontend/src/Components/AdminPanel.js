@@ -207,7 +207,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       const cleanupWarning = res.data?.status === 'partial' ? res.data?.metadata_cleanup_message || res.data?.registry_reconciliation?.message || 'Graph reset completed, but cleanup is incomplete.' : '';
       window.localStorage.removeItem('depo.import.ontologies.v1');
       window.localStorage.removeItem('depo.import.jobs.v2');
-      await fetchOntologies();
+      await fetchOntologies(true);
       window.dispatchEvent(new Event('dt-schema-cleaned'));
       window.dispatchEvent(new Event('depo:ontologies-changed'));
       if (typeof onSchemaCleaned === 'function') onSchemaCleaned();
@@ -275,7 +275,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
         ? `Cache cleanup completed: ${parts.join(', ')}. No Neo4j graph data or ontology files were deleted.`
         : res.data?.message || 'Application caches cleared. No Neo4j graph data or ontology files were deleted.');
       await loadAdminState();
-      await fetchOntologies();
+      await fetchOntologies(true);
       window.dispatchEvent(new Event('depo:ontologies-changed'));
       if (cacheWarning) setError(cacheWarning);
     } catch (err) {
@@ -315,7 +315,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       setMessage(`Ontology metadata cleanup completed. File registry entries deleted: ${deleted}. Neo4j schema nodes deleted: ${deletedNodes}. Business instance data outside those old XSD schemas was not targeted.`);
       window.localStorage.removeItem('depo.import.ontologies.v1');
       window.dispatchEvent(new Event('depo:ontologies-changed'));
-      await fetchOntologies();
+      await fetchOntologies(true);
       await loadAdminState();
       if (cleanupWarning) setError(cleanupWarning);
     } catch (err) {

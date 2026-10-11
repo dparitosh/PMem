@@ -1,5 +1,7 @@
 import ast
 import logging
+import json
+import builtins
 from pathlib import Path
 import tempfile
 import unittest
@@ -7,14 +9,40 @@ from unittest.mock import MagicMock
 
 
 class CatalogCleanupTests(unittest.TestCase):
-    def method(self):
+    def method(self, name='clear_registration_metadata'):
         source = Path(__file__).resolve().parents[1] / 'ontology_service' / 'catalog.py'
         tree = ast.parse(source.read_text(encoding='utf-8'))
         cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'OntologyCatalog')
-        method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == 'clear_registration_metadata')
-        scope = {'_safe_token': lambda value, **kw: value, 'logging': logging}
+        method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == name)
+        scope = {'_safe_token': lambda value, **kw: value, 'logging': logging, 'json': json, 'Any': object}
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), 'exec'), scope)
-        return scope['clear_registration_metadata']
+        function = scope[name]
+        if name == 'list':
+            scope['list'] = builtins.list
+        return function
+
+    def test_deleted_postgres_registration_is_not_restored_from_mirror(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'qif').mkdir()
+            (root / 'qif' / 'metadata.json').write_text(json.dumps({
+                'ontology_id': 'qif', 'created_at': '2026-10-01'}))
+            catalog = MagicMock(root=root, _postgres_enabled=True)
+            catalog.registry.get.return_value = None
+            catalog.registry.all.return_value = {}
+            self.assertIsNone(self.method('get')(catalog, 'qif'))
+            self.assertEqual(self.method('list')(catalog), [])
+            catalog.registry.put.assert_not_called()
+
+    def test_file_only_catalog_can_still_read_registered_mirrors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'qif').mkdir()
+            metadata = {'ontology_id': 'qif', 'created_at': '2026-10-01'}
+            (root / 'qif' / 'metadata.json').write_text(json.dumps(metadata))
+            catalog = MagicMock(root=root, _postgres_enabled=False)
+            self.assertEqual(self.method('get')(catalog, 'qif'), metadata)
+            self.assertEqual(self.method('list')(catalog), [metadata])
 
     def test_clears_registration_and_mirror_but_preserves_artifact(self):
         with tempfile.TemporaryDirectory() as directory:

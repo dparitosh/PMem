@@ -3212,6 +3212,28 @@ XSD candidates and their matching native registrations; it does not delete all
 ontologies. Partial cleanup must show a warning, not an unconditional success.
 Refresh the landing registry after completion and verify the affected ontology
 is absent. A historical executed run is not proof its graph output still exists.
+With PostgreSQL configured, catalog reads use PostgreSQL exclusively. Retained
+local artifact metadata does not automatically restore deleted registrations.
+Reset Graph Database alone retains registrations; use Full Schema Cleanup when
+the registry must also be emptied. Deploy the updated backend and rebuild the
+frontend before checking this behavior, then restart both service launchers.
+
+XSD ontology upload supports named model groups (`xs:group`) from the supplied
+schema dependency set. Reattach the original XSD and its local dependencies
+after updating the backend, then retry a failed upload. Missing or cyclic group
+references still fail before output is written. Nested and repeating choices
+retain properties and occurrence ranges but carry conversion limitations:
+generated OWL/SHACL is not a replacement for validating XML against the original
+XSD. `xs:attributeGroup`, redefine and override remain unsupported by this
+conversion profile and produce explicit errors.
+Group expansion currently applies to ontology generation. The relational
+analytics mapper still reports model groups as unsupported structural
+constructs and blocks automatic SQL generation; do not treat the generated
+ontology as approval to create or load an analytics warehouse.
+Schema dependency resolution stays inside the selected schema directory, with
+at most 64 documents and the `ONTOLOGY_AGENT_MAX_BYTES` combined byte limit
+(25 MiB by default). Supply relative local `schemaLocation` paths. External
+paths, remote URLs, DTDs and entity declarations are rejected before conversion.
 
 Startup checkpoints, in order: configuration validation; dependencies and
 frontend build; configured PostgreSQL runtime handling; application-role login;

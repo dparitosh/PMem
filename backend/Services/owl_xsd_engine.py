@@ -53,9 +53,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
 if __package__:
-    from .xsd_semantics import inspect_conversion_schemas, element_particles
+    from .xsd_semantics import inspect_conversion_schemas, element_particles, expand_model_groups, consolidated_element_particles
 else:
-    from xsd_semantics import inspect_conversion_schemas, element_particles
+    from xsd_semantics import inspect_conversion_schemas, element_particles, expand_model_groups, consolidated_element_particles
 
 from rdflib import BNode, Graph, Literal, Namespace, URIRef
 from rdflib.namespace import DC, DCTERMS, OWL, RDF, RDFS, SKOS, XSD
@@ -659,7 +659,11 @@ def _rdf_list(g: Graph, values: list) -> BNode:
 
 
 def _add_choice_constraints(g, cfg, type_node, class_uri, type_name):
-    """Preserve simple exclusive choices; reject unrepresentable repeated groups."""
+    """Enforce simple exclusive choices and disclose unsupported compositor constraints."""
+    identities = [element.get('name') or _local(element.get('ref', '')) for element, _, _ in element_particles(type_node)]
+    if len(identities) != len(set(identities)):
+        g.add((class_uri, RDFS.comment, Literal('Conversion limitation: repeated property paths require source XSD validation; exclusive SHACL choice constraints are omitted to avoid rejecting valid instances.')))
+        return
     def visit(node, ancestors=()):
         for child in node:
             if child.tag == XSD_PRE + 'complexType':
@@ -672,8 +676,11 @@ def _add_choice_constraints(g, cfg, type_node, class_uri, type_name):
         if (choice.get('maxOccurs', '1') != '1' or choice.get('minOccurs', '1') not in {'0', '1'}
                 or not branches or any(child.tag != XSD_PRE + 'element' for child in branches)
                 or any(child.get('minOccurs', '1') != '1' for child in branches)
-                or any(parent.get('maxOccurs', '1') != '1' for parent in ancestors)):
-            raise ValueError('Nested or repeating XSD choice cannot be faithfully converted by this profile')
+                or any(parent.tag == XSD_PRE + 'choice' or parent.get('maxOccurs', '1') != '1' for parent in ancestors)):
+            # RDF has no ordered compositor instances. Preserve its properties
+            # and effective bounds, but never assert an incorrect exclusive shape.
+            g.add((class_uri, RDFS.comment, Literal('Conversion limitation: nested, optional-branch or repeating XSD choice requires source XSD validation; generated SHACL does not enforce its complete compositor semantics.')))
+            continue
         names = [child.get('name') or _local(child.get('ref', '')) for child in branches]
         if any(not name for name in names) or len(set(names)) != len(names):
             raise ValueError('Choice branches require distinct property identities')
@@ -844,7 +851,7 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
         return
 
     # sequence / choice / all children → properties
-    for seq_elem, min_occurs, max_occurs in element_particles(ct_element):
+    for seq_elem, min_occurs, max_occurs in consolidated_element_particles(ct_element):
         elem_name  = seq_elem.get("name", "")
         elem_type  = seq_elem.get("type", "")
         ref        = seq_elem.get("ref", "")
@@ -905,7 +912,7 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
             g.add((prop_uri, RDFS.range, XSD_TYPE_MAP[range_local]))
             
             # Add functional property characteristic for single-valued primitives
-            if max_occurs == "1":
+            if max_occurs == "1" and not shared_property:
                 g.add((prop_uri, RDF.type, OWL.FunctionalProperty))
                 
         elif range_local in simple_types:
@@ -917,7 +924,7 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
             g.add((prop_uri, RDFS.range, simple_types[range_local]))
             
             # Add functional property characteristic for single-valued types
-            if max_occurs == "1":
+            if max_occurs == "1" and not shared_property:
                 g.add((prop_uri, RDF.type, OWL.FunctionalProperty))
                 
         else:
@@ -931,7 +938,7 @@ def parse_complex_type(g: Graph, ct_element, file_stem: str,
                 g.add((prop_uri, RDFS.range, range_class_uri))
                 
                 # Add functional property characteristic for single-valued objects
-                if max_occurs == "1":
+                if max_occurs == "1" and not shared_property:
                     g.add((prop_uri, RDF.type, OWL.FunctionalProperty))
                 
                 # Generate inverse property for bidirectional relationships
@@ -1134,10 +1141,10 @@ def _build_enum_list(g: Graph, class_uri: URIRef,
 def process_xsd_file(g: Graph, xsd_path: Path,
                      seen_classes: set, cfg: OntologyConfig,
                      simple_types: dict, prop_kinds: dict,
-                     strict_semantics: bool = True) -> None:
+                     strict_semantics: bool = True, schema_root=None) -> None:
     """Parse one XSD file and add its complexTypes / top-level elements to the graph."""
     try:
-        root = ET.parse(xsd_path).getroot()
+        root = schema_root if schema_root is not None else expand_model_groups(_discover_related_xsds([xsd_path]))[Path(xsd_path).resolve()]
     except ET.ParseError as e:
         logger.warning("parse error in %s: %s", xsd_path.name, e)
         return
@@ -1266,7 +1273,12 @@ def find_xsd_file(schema_dir: Path, base_name: str,
 
 
 def _discover_related_xsds(paths: list[Path]) -> list[Path]:
-    """Follow local xs:include/import locations without looping."""
+    """Follow bounded local dependencies inside the selected schema directory."""
+    if not paths:
+        return []
+    boundary = Path(os.path.commonpath([str(Path(path).resolve().parent) for path in paths]))
+    total_bytes = 0
+    byte_limit = int(os.getenv('ONTOLOGY_AGENT_MAX_BYTES', str(25 * 1024 * 1024)))
     result: list[Path] = []
     seen: set[Path] = set()
     pending = list(paths)
@@ -1274,18 +1286,31 @@ def _discover_related_xsds(paths: list[Path]) -> list[Path]:
         path = Path(pending.pop(0)).resolve()
         if path in seen:
             continue
+        if not path.is_relative_to(boundary):
+            raise ValueError('XSD dependency escapes the selected schema directory')
         if not path.is_file():
             raise ValueError(f'Missing XSD dependency: {path.name}')
         seen.add(path)
+        if len(seen) > 64:
+            raise ValueError('XSD dependency closure exceeds 64 documents')
+        total_bytes += path.stat().st_size
+        if total_bytes > byte_limit:
+            raise ValueError('XSD dependency closure exceeds the configured byte limit')
         result.append(path)
         try:
-            root = ET.parse(path).getroot()
+            content = path.read_bytes()
+            probe = content.replace(b'\x00', b'').upper()
+            if b'<!DOCTYPE' in probe or b'<!ENTITY' in probe:
+                raise ValueError('DOCTYPE/entities are not permitted in conversion schemas')
+            root = ET.fromstring(content)
         except ET.ParseError as exc:
             raise ValueError(f'Malformed XSD dependency: {path.name}') from exc
         for link in list(root):
             if link.tag in {f"{XSD_PRE}include", f"{XSD_PRE}import", f"{XSD_PRE}redefine"}:
                 location = link.get("schemaLocation")
                 if location:
+                    if ':' in location or '\\' in location or Path(location).is_absolute():
+                        raise ValueError('XSD dependencies require relative local schema locations')
                     pending.append(path.parent / location)
                 elif link.get("namespace", "").startswith(("http://", "https://")):
                     logger.warning("Remote XSD dependency is not fetched: %s", link.get("namespace"))
@@ -1391,6 +1416,7 @@ def convert_xsd_to_owl(cfg: OntologyConfig) -> Path:
     if missing or not xsd_paths:
         raise ValueError('Missing conversion targets: ' + ', '.join(missing or ['no XSD files']))
     conversion_diagnostics = inspect_conversion_schemas(xsd_paths, XSD_TYPE_MAP)
+    expanded_schemas = expand_model_groups(xsd_paths)
     for message in conversion_diagnostics:
         g.add((URIRef(cfg.base_uri), DCTERMS.description, Literal('Conversion limitation: ' + message)))
 
@@ -1419,6 +1445,7 @@ def convert_xsd_to_owl(cfg: OntologyConfig) -> Path:
             simple_types,
             prop_kinds,
             strict_semantics=strict_semantics,
+            schema_root=expanded_schemas[xf],
         )
 
     build_bridge_pairs(g, cfg)

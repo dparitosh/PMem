@@ -314,15 +314,12 @@ class OntologyCatalog:
     def get(self, ontology_id: str) -> dict[str, Any] | None:
         _safe_token(ontology_id, field="ontology_id")
         if self._postgres_enabled:
-            record = self.registry.get(ontology_id)
-            if record is not None:
-                return record
+            # A missing authoritative row means unregistered, not restore from disk.
+            return self.registry.get(ontology_id)
         metadata_path = self.root / ontology_id / "metadata.json"
         if not metadata_path.exists():
             return None
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        if self._postgres_enabled:
-            self.registry.put(ontology_id, metadata)
         return metadata
 
     def read_artifact(self, ontology_id: str) -> tuple[dict[str, Any], bytes]:
@@ -455,7 +452,13 @@ class OntologyCatalog:
         return {'status': 'partial' if failed else 'success', 'cleared': cleared, 'failed': failed}
 
     def list(self, *, include_superseded=False) -> list[dict[str, Any]]:
-        entries = list(self.registry.all().values()) if self._postgres_enabled else []
+        if self._postgres_enabled:
+            # Artifact mirrors are retained evidence, never an implicit restore.
+            entries = list(self.registry.all().values())
+            return sorted(
+                (entry for entry in entries if include_superseded or entry.get('status') != 'superseded'),
+                key=lambda item: item.get('created_at', ''), reverse=True)
+        entries = []
         known = {str(item.get("ontology_id") or "") for item in entries}
         for metadata_path in self.root.glob("*/metadata.json"):
             try:
@@ -467,8 +470,6 @@ class OntologyCatalog:
                 logging.getLogger(__name__).warning('Skipping unreadable or invalid ontology catalog mirror; restore it from authoritative storage')
                 continue
             if metadata.get("ontology_id") not in known:
-                if self._postgres_enabled:
-                    self.registry.put(str(metadata["ontology_id"]), metadata)
                 entries.append(metadata)
                 known.add(metadata['ontology_id'])
         active_entries = [entry for entry in entries if include_superseded or entry.get("status") != "superseded"]

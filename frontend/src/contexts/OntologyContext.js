@@ -117,10 +117,12 @@ export const OntologyProvider = ({ children }) => {
     window.addEventListener('depo:credentials-changed', refresh);
     window.addEventListener('depo:credentials-cleared', refresh);
     window.addEventListener('depo:ontologies-changed', changed);
+    window.addEventListener('dt-schema-cleaned', refresh);
     return () => {
       window.removeEventListener('depo:credentials-changed', refresh);
       window.removeEventListener('depo:credentials-cleared', refresh);
       window.removeEventListener('depo:ontologies-changed', changed);
+      window.removeEventListener('dt-schema-cleaned', refresh);
     };
   }, [fetchOntologies]);
 

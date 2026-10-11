@@ -651,7 +651,9 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             metadata_cleared = metadata_result.get('cleared', 0)
         except Exception as e:
             logger.warning(f"Could not clear metadata: {e}")
-            metadata_cleared = 0
+            metadata_result['status'] = 'partial'
+            metadata_result.setdefault('failed', []).append('native_catalog_cleanup')
+            metadata_cleared = metadata_result.get('cleared', 0)
         # Publish again after file deletion so peers cannot retain a list cached
         # between graph reset and the filesystem cleanup.
         try:
