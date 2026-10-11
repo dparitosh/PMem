@@ -737,3 +737,20 @@ async def cleanup_old_xsd_schemas(body: LegacyCleanupBody):
             "neo4j_deleted_by_id_or_source": batch_neo4j_primary,
             "neo4j_deleted_by_prefix": batch_neo4j_prefix,
         })
+
+    if deleted_ontology_ids:
+        try:
+            from backend.ontology_service.catalog import catalog
+            native_result = catalog.clear_registration_metadata(deleted_ontology_ids)
+            errors.extend({'ontology_id': identifier, 'error': 'Native catalog cleanup failed'} for identifier in native_result['failed'])
+            from backend.depo_platform.maintenance import invalidate_shared_caches
+            invalidate_shared_caches()
+        except Exception:
+            logger.exception('Native catalog reconciliation failed after old XSD cleanup')
+            errors.append({'error': 'Native catalog reconciliation failed; retry cleanup with administrator review'})
+    return {
+        'status': 'partial' if errors else 'success', 'mode': 'apply',
+        'deleted_count': len(deleted_ontology_ids), 'deleted_ontology_ids': deleted_ontology_ids,
+        'neo4j_deleted_nodes': neo4j_deleted_by_id_or_source + neo4j_deleted_by_prefix,
+        'batches': batches, 'errors': errors,
+    }

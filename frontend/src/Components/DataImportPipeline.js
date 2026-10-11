@@ -199,20 +199,13 @@ export default function DataImportPipeline() {
           source: 'live',
           lastLoadedAt: new Date().toISOString(),
         });
-      } else if (cachedOntologies.length > 0) {
-        setAvailableOntologies(cachedOntologies);
-        setOntologyCatalogState({
-          loading: false,
-          stale: true,
-          message: 'Using cached ontology catalog while the latest registry data catches up.',
-          source: 'cache',
-          lastLoadedAt: new Date().toISOString(),
-        });
       } else {
+        setAvailableOntologies([]);
+        window.localStorage.removeItem(IMPORT_ONTOLOGIES_CACHE_KEY);
         setOntologyCatalogState({
           loading: false,
           stale: false,
-          message: 'Ontology catalog is still loading.',
+          message: 'No ontologies are registered.',
           source: 'none',
           lastLoadedAt: null,
         });
@@ -303,6 +296,22 @@ export default function DataImportPipeline() {
       console.warn('[import-jobs] persist failed:', persistErr);
     }
   }, [files, pipelineStatus, startedFiles]);
+
+  useEffect(() => {
+    const resetProjection = () => {
+      ontologyLoadAbortRef.current?.abort();
+      window.localStorage.removeItem(IMPORT_ONTOLOGIES_CACHE_KEY);
+      window.localStorage.removeItem(IMPORT_JOBS_STORAGE_KEY);
+      setAvailableOntologies([]);
+      setFiles([]);
+      setPipelineStatus({});
+      setStartedFiles(new Set());
+      setWorkflowRun(null);
+      loadOntologyOptions({ forceLive: true });
+    };
+    window.addEventListener('dt-schema-cleaned', resetProjection);
+    return () => window.removeEventListener('dt-schema-cleaned', resetProjection);
+  }, [loadOntologyOptions]);
 
   useEffect(() => {
     const pending = files.find(f => !startedFiles.has(f.fileId));

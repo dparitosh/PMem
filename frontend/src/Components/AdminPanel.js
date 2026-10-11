@@ -205,8 +205,11 @@ export default function AdminPanel({ onSchemaCleaned }) {
       const graphMessage = res.data?.message || 'Neo4j graph reset completed.';
       setMessage(`Graph reset: ${graphMessage} Ontology metadata files cleared: ${metadataCleared}. Before publishing again, run infra/windows/test-depo-neo4j.ps1 -EnvFile .env.local -Bootstrap to restore publication constraints.`);
       const cleanupWarning = res.data?.status === 'partial' ? res.data?.metadata_cleanup_message || res.data?.registry_reconciliation?.message || 'Graph reset completed, but cleanup is incomplete.' : '';
+      window.localStorage.removeItem('depo.import.ontologies.v1');
+      window.localStorage.removeItem('depo.import.jobs.v2');
       await fetchOntologies();
       window.dispatchEvent(new Event('dt-schema-cleaned'));
+      window.dispatchEvent(new Event('depo:ontologies-changed'));
       if (typeof onSchemaCleaned === 'function') onSchemaCleaned();
       await loadAdminState();
       if (cleanupWarning) setError(cleanupWarning);
@@ -239,7 +242,10 @@ export default function AdminPanel({ onSchemaCleaned }) {
       if (!['SUCCESS', 'PARTIAL'].includes(resetStatus)) throw new Error(res.data?.message || 'Graph reset did not complete.');
       const warning = resetStatus === 'PARTIAL' ? res.data?.message || 'Graph data was reset, but registry reconciliation is incomplete.' : '';
       setMessage(`Graph reset completed. ${res.data?.message || 'Neo4j data was cleared and indexes were recreated.'} Uploaded ontology metadata was not deleted.`);
+      window.localStorage.removeItem('depo.import.ontologies.v1');
+      window.localStorage.removeItem('depo.import.jobs.v2');
       window.dispatchEvent(new Event('dt-schema-cleaned'));
+      window.dispatchEvent(new Event('depo:ontologies-changed'));
       if (typeof onSchemaCleaned === 'function') onSchemaCleaned();
       await loadAdminState();
       if (warning) setError(warning);
@@ -305,9 +311,13 @@ export default function AdminPanel({ onSchemaCleaned }) {
       });
       const deleted = result?.data?.deleted_count || 0;
       const deletedNodes = result?.data?.neo4j_deleted_nodes || 0;
+      const cleanupWarning = result?.data?.status === 'partial' ? 'Old XSD cleanup was partial. Some catalog registrations could not be removed; inspect service logs.' : '';
       setMessage(`Ontology metadata cleanup completed. File registry entries deleted: ${deleted}. Neo4j schema nodes deleted: ${deletedNodes}. Business instance data outside those old XSD schemas was not targeted.`);
+      window.localStorage.removeItem('depo.import.ontologies.v1');
+      window.dispatchEvent(new Event('depo:ontologies-changed'));
       await fetchOntologies();
       await loadAdminState();
+      if (cleanupWarning) setError(cleanupWarning);
     } catch (err) {
       const detail = err?.response?.data?.detail || err?.message || 'Old XSD cleanup failed.';
       setError(typeof detail === 'string' ? detail : JSON.stringify(detail));

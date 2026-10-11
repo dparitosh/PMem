@@ -3196,6 +3196,17 @@ In **QIF**, select two distinct registered versions identified as QIF and AP242.
 
 ### Credential consistency on installation and redeployment
 
+Admin cleanup checkpoints: Clear Cache refreshes projections but does not delete
+ontology registrations or execution history. Full Schema Cleanup removes Neo4j
+data, legacy upload metadata and native ontology registrations/recovery metadata;
+retained native artifacts and backend workflow audit history remain. The Import
+page's saved browser projection is cleared so completed rows are not restored as
+current graph state. Delete Old XSD Schemas targets only superseded/merged legacy
+XSD candidates and their matching native registrations; it does not delete all
+ontologies. Partial cleanup must show a warning, not an unconditional success.
+Refresh the landing registry after completion and verify the affected ontology
+is absent. A historical executed run is not proof its graph output still exists.
+
 Startup checkpoints, in order: configuration validation; dependencies and
 frontend build; configured PostgreSQL runtime handling; application-role login;
 transactional schema migration/verification; credential validation or explicit

@@ -642,6 +642,12 @@ def clean_neo4j_schema(body: CleanSchemaRequest | None = None):
             except ImportError:
                 from Services.ontology_upload_manager import OntologyUploadManager
             metadata_result = OntologyUploadManager.clear_all_metadata()
+            from backend.ontology_service.catalog import catalog
+            native_cleanup = catalog.clear_registration_metadata()
+            metadata_result['cleared'] = metadata_result.get('cleared', 0) + native_cleanup['cleared']
+            metadata_result['failed'] = metadata_result.get('failed', []) + native_cleanup['failed']
+            if native_cleanup['status'] != 'success':
+                metadata_result['status'] = 'partial'
             metadata_cleared = metadata_result.get('cleared', 0)
         except Exception as e:
             logger.warning(f"Could not clear metadata: {e}")

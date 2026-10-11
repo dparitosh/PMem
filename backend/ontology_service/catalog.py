@@ -431,7 +431,30 @@ class OntologyCatalog:
                     results.append({"ontology_id": safe_id, "status": "updated", "statistics": analytics, "lifecycle_status": metadata["lifecycle_status"]})
         return {"results": results, "updated": sum(item["status"] == "updated" for item in results)}
 
-    def list(self) -> list[dict[str, Any]]:
+    def clear_registration_metadata(self, ontology_ids=None) -> dict:
+        """Remove active registrations and their recovery mirrors, retaining artifacts."""
+        entries = self.list(include_superseded=True)
+        if ontology_ids is not None:
+            selected = set(ontology_ids)
+            entries = [entry for entry in entries if entry.get('ontology_id') in selected]
+        cleared, failed = 0, []
+        for entry in entries:
+            identifier = _safe_token(entry['ontology_id'], field='ontology_id')
+            try:
+                mirror = self.root / identifier / 'metadata.json'
+                if mirror.is_symlink() or not mirror.resolve().is_relative_to(self.root.resolve()):
+                    raise ValueError('Catalog metadata is outside storage boundary')
+                mirror.unlink(missing_ok=True)
+                if self._postgres_enabled:
+                    with self.registry._connect() as db, db.cursor() as cursor:
+                        cursor.execute('DELETE FROM depo_registry WHERE namespace=%s AND key=%s', ('ontology_catalog', identifier))
+                cleared += 1
+            except Exception:
+                logging.getLogger(__name__).exception('Could not clear ontology registration %s', identifier)
+                failed.append(identifier)
+        return {'status': 'partial' if failed else 'success', 'cleared': cleared, 'failed': failed}
+
+    def list(self, *, include_superseded=False) -> list[dict[str, Any]]:
         entries = list(self.registry.all().values()) if self._postgres_enabled else []
         known = {str(item.get("ontology_id") or "") for item in entries}
         for metadata_path in self.root.glob("*/metadata.json"):
@@ -448,7 +471,7 @@ class OntologyCatalog:
                     self.registry.put(str(metadata["ontology_id"]), metadata)
                 entries.append(metadata)
                 known.add(metadata['ontology_id'])
-        active_entries = [entry for entry in entries if entry.get("status") != "superseded"]
+        active_entries = [entry for entry in entries if include_superseded or entry.get("status") != "superseded"]
         return sorted(active_entries, key=lambda item: item["created_at"], reverse=True)
 
 
