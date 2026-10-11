@@ -193,10 +193,14 @@ def contract_errors(document):
                 return
             validate_body_schema(target, location, visited)
             return
+        composed = False
         for union in ('anyOf', 'oneOf', 'allOf'):
             for branch in schema.get(union, []):
+                composed = True
                 validate_body_schema(branch, location, visited)
-        if schema.get('type') == 'object' and not schema.get('properties') and not schema.get('x-depo-dynamic-body'):
+        # Nullable OAS 3.0 reference wrappers inherit their fields from allOf.
+        # Their branches were checked above; an empty referenced object still fails.
+        if schema.get('type') == 'object' and not schema.get('properties') and not schema.get('x-depo-dynamic-body') and not composed:
             errors.append(f'{location}: JSON object request body needs named fields or an explicit dynamic-body contract')
 
     for path, operations in document.get('paths', {}).items():
