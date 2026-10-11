@@ -11,6 +11,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import OntologyMetadataForm from './OntologyMetadataForm';
+import XsdDependencies, { appendXsdDependencies } from './XsdDependencies';
 import SemanticBridgeJobs from './ontology/SemanticBridgeJobs';
 import { API_METHODS, apiClient, getClientSessionId, setClientSessionId } from '../services/apiClient';
 import { serviceAuthHeaders, getCredentialProfile } from '../services/serviceAuth';
@@ -76,6 +77,8 @@ export default function DataImportPipeline() {
   const ingestionWriteToken = '';
   const executionToken = '';
   const [publishOntology, setPublishOntology] = useState(true);
+  const [xsdDependencies, setXsdDependencies] = useState([]);
+  const [xsdDependencyPaths, setXsdDependencyPaths] = useState('');
   const [commitApprover, setCommitApprover] = useState('');
   const fileInputRef = useRef(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState('instance.import');
@@ -566,7 +569,12 @@ export default function DataImportPipeline() {
     }
 
     const shouldPublish = publishOntology && ['xsd', 'xmi', 'ontology', 'owl', 'rdf', 'ttl'].includes(file.fileType);
-    const useEngineeringWorkflow = shouldPublish || (file.generationType === 'as_is' && ['ontology', 'owl', 'rdf', 'ttl'].includes(file.fileType));
+    const hasXsdDependencies = file.fileType === 'xsd' && xsdDependencies.length > 0;
+    if (hasXsdDependencies && file.generationType !== 'owl') {
+      setError('Companion XSD conversion requires OWL generation. Reopen ontology details and choose OWL.');
+      return;
+    }
+    const useEngineeringWorkflow = shouldPublish || hasXsdDependencies || (file.generationType === 'as_is' && ['ontology', 'owl', 'rdf', 'ttl'].includes(file.fileType));
     if (shouldPublish && !['owl', 'as_is'].includes(file.generationType)) {
       setError('Graph publication supports OWL or existing RDF. Reopen ontology details and choose OWL, or disable publication to retain the selected SHACL/Both generation mode.');
       return;
@@ -590,6 +598,7 @@ export default function DataImportPipeline() {
       if (useEngineeringWorkflow) {
         const form = new FormData();
         form.append('file', file.fileObj);
+        if (hasXsdDependencies) appendXsdDependencies(form, file.fileObj, xsdDependencies, xsdDependencyPaths);
         form.append('ontology_name', file.ontologyName);
         form.append('prefix', file.prefix);
         form.append('description', file.description || '');
@@ -2823,6 +2832,8 @@ export default function DataImportPipeline() {
             Use this flow for ontology or schema sources only. Namespace capture, preview, and registration happen here; instance ingestion stays in
             <span style={{ color: C.primaryText, fontWeight: '700' }}> Import instance graph</span>.
           </div>
+          <XsdDependencies files={xsdDependencies} paths={xsdDependencyPaths} disabled={workflowLoading}
+            onChange={(nextFiles, nextPaths) => { setXsdDependencies(nextFiles); setXsdDependencyPaths(nextPaths); }} />
           {ontologyCatalogState.message && (
             <div style={{
               fontSize: '9px',

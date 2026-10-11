@@ -243,6 +243,35 @@ describe('DataImportPipeline workflow routing', () => {
     await waitFor(() => expect(screen.getByText('123')).toBeInTheDocument());
   });
 
+  it('sends multiple companion schemas through the engineering workflow in selected order', async () => {
+    await renderPipeline();
+    fireEvent.click(screen.getByLabelText(/Register and publish XSD/));
+    apiClient.post.mockClear();
+    apiClient.post.mockResolvedValueOnce({ data: {
+      status: 'registered', ontology_registration: { ontology_id: 'bom-bundle' },
+    } });
+    await act(async () => {
+      fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['root'], 'bom.xsd')] } });
+      await flushAsyncEffects();
+    });
+    fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'BOM bundle' } });
+    fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'bom' } });
+    fireEvent.change(document.getElementById('ontology-generation-select'), { target: { value: 'owl' } });
+    fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
+    fireEvent.change(screen.getByLabelText('Companion XSD files'), { target: { files: [
+      new File(['common'], 'common.xsd'), new File(['part'], 'part.xsd'),
+    ] } });
+    fireEvent.change(screen.getByLabelText(/Companion relative paths/), { target: { value: 'common.xsd\ntypes/part.xsd' } });
+    setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
+    fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(1));
+    const [url, form] = apiClient.post.mock.calls[0];
+    expect(url).toBe('/api/v1/engineering-workflows');
+    expect(form.getAll('dependencies').map(file => file.name)).toEqual(['common.xsd', 'part.xsd']);
+    expect(JSON.parse(form.get('dependency_paths'))).toEqual(['common.xsd', 'types/part.xsd']);
+    expect(form.get('publish')).toBe('false');
+  });
+
   it('queues multiple ontology files and advances the metadata popup file-by-file', async () => {
     await renderPipeline();
     fireEvent.click(screen.getByLabelText(/Register and publish XSD/));

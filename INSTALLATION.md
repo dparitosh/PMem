@@ -3234,6 +3234,36 @@ Schema dependency resolution stays inside the selected schema directory, with
 at most 64 documents and the `ONTOLOGY_AGENT_MAX_BYTES` combined byte limit
 (25 MiB by default). Supply relative local `schemaLocation` paths. External
 paths, remote URLs, DTDs and entity declarations are rejected before conversion.
+If an upload reports an external `schemaLocation`, supply its companion XSD
+locally and edit the reference to match its uploaded relative path. For example,
+replace `schemaLocation="https://standards.example/common/common.xsd"` with
+`schemaLocation="common.xsd"` and attach `common.xsd` alongside the root file.
+A dependency at `types/part.xsd` may reference `../common.xsd` when both remain
+inside the uploaded set. A root file cannot reference `../common.xsd`: use
+`common.xsd` instead. The ontology upload source filename is a plain filename.
+In Import -> Create ontology, attach companion schemas using **Companion XSD
+files**. Enter one relative path per companion in the selected file order, matching
+its `schemaLocation` (for example `common.xsd` or `types/part.xsd`). Letter casing
+must match exactly, including folder names, for Windows/Linux portability. Use
+literal paths without URI encoding, query strings or fragments. Choose OWL
+generation for a root with companions. Selecting unrelated root uploads does not
+build a shared dependency set. Companion files must be selected again after reload.
+
+The AP242 Edition 2 BOM schema set is included in
+`data/business_object_models/managed_model_based_3d_engineering/`:
+
+1. Open Import -> Create ontology and add `bom.xsd` as the root source.
+2. Choose OWL generation and complete the requested ontology name and prefix.
+3. Under Companion XSD files, select `common.xsd` from the same directory.
+4. Keep its relative path as `common.xsd`, then review and register the ontology.
+
+The bundled `bom.xsd` already imports the local `common.xsd`. Both compile as an
+XSD schema set without network access. `SCHEMA-SOURCES.md` in that directory
+records the official ISO source and checksum of the unchanged companion file.
+Do not substitute the newer `DomainModel.xsd` or remove the import: the BOM
+requires the Edition 2 companion definitions. External schemas are never fetched
+by the upload service. Analytics SQL generation remains subject to the structural
+limitations described above.
 
 Startup checkpoints, in order: configuration validation; dependencies and
 frontend build; configured PostgreSQL runtime handling; application-role login;
