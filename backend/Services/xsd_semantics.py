@@ -5,6 +5,17 @@ import io
 X = '{http://www.w3.org/2001/XMLSchema}'
 
 
+def validate_xsd_schema_set(root_path):
+    """Compile the supplied local closure before translating or retaining output."""
+    from lxml import etree
+    try:
+        document = etree.parse(str(root_path), etree.XMLParser(resolve_entities=False, no_network=True))
+        etree.XMLSchema(document)
+    except (etree.XMLSyntaxError, etree.XMLSchemaParseError) as exc:
+        message = exc.error_log.last_error.message if exc.error_log.last_error else 'invalid schema set'
+        raise ValueError(f'XSD schema-set validation failed: {message}') from exc
+
+
 def inspect_conversion_schemas(paths, primitive_types=()):
     identities = {}
     diagnostics = set()
@@ -34,7 +45,7 @@ def inspect_conversion_schemas(paths, primitive_types=()):
                     raise ValueError(f'{path.name}: invalid {bound}')
             if node.get('maxOccurs', '1') != 'unbounded' and int(node.get('minOccurs', '1')) > int(node.get('maxOccurs', '1')):
                 raise ValueError(f'{path.name}: minOccurs exceeds maxOccurs')
-            if kind in {'redefine', 'override', 'attributeGroup'}:
+            if kind in {'redefine', 'override'}:
                 raise ValueError(f'{path.name}: unsupported xs:{kind}; no partial ontology was generated')
             if kind in {'list', 'union', 'pattern', 'minInclusive', 'maxInclusive', 'minExclusive', 'maxExclusive', 'length', 'minLength', 'maxLength', 'totalDigits', 'fractionDigits', 'enumeration', 'unique', 'key', 'keyref', 'any', 'anyAttribute', 'assert', 'alternative'}:
                 diagnostics.add(f'xs:{kind} is retained in source but is not fully represented by generated OWL/SHACL constraints')
@@ -53,7 +64,7 @@ def expand_model_groups(paths):
     Source files remain untouched. Reference occurrence bounds stay on a
     sequence wrapper so nested group and compositor bounds multiply correctly.
     """
-    roots, contexts, groups = {}, {}, {}
+    roots, contexts, groups, attribute_groups = {}, {}, {}, {}
     for path in paths:
         content = path.read_bytes()
         probe = content.replace(b'\x00', b'').upper()
@@ -109,6 +120,45 @@ def expand_model_groups(paths):
                 raise ValueError(f'{path.name}: duplicate or unnamed model group')
             groups[key] = group
 
+    for path, root in roots.items():
+        for group in root.findall(X+'attributeGroup'):
+            key = (namespaces[path], group.get('name'))
+            if not key[1] or key in attribute_groups:
+                raise ValueError(f'{path.name}: duplicate or unnamed attribute group')
+            attribute_groups[key] = group
+
+    def attributes(node, namespace, stack, budget):
+        ref = node.get('ref')
+        scope = contexts[id(node)]
+        if not ref:
+            raise ValueError('Attribute group use requires a ref')
+        if ':' in ref:
+            prefix, name = ref.split(':', 1)
+            if prefix not in scope:
+                raise ValueError(f'Unbound attribute group prefix: {prefix}')
+            key = (scope[prefix], name)
+        else:
+            key = (scope.get('', namespace), ref)
+        marker = ('attributeGroup', *key)
+        if marker in stack:
+            raise ValueError(f'Cyclic attribute group reference: {ref}')
+        if len(stack) > 64:
+            raise ValueError('Attribute group expansion exceeds the supported complexity limit')
+        declaration = attribute_groups.get(key)
+        if declaration is None:
+            raise ValueError(f'Unresolved attribute group reference: {ref}; supply its schema dependency')
+        result = []
+        for child in declaration:
+            if child.tag == X+'annotation':
+                continue
+            if child.tag == X+'attributeGroup':
+                result.extend(attributes(child, key[0], (*stack, marker), budget))
+            elif child.tag in {X+'attribute', X+'anyAttribute'}:
+                result.append(clone(child, key[0], (*stack, marker), budget))
+            else:
+                raise ValueError(f'Invalid attribute group declaration: {ref}')
+        return result
+
     def clone(node, namespace, stack=(), budget=None):
         budget = budget if budget is not None else [0]
         budget[0] += 1
@@ -139,9 +189,12 @@ def expand_model_groups(paths):
         result.text, result.tail = node.text, node.tail
         for child in node:
             # Declarations are expanded only at their use sites.
-            if child.tag == X+'group' and child.get('name'):
+            if child.tag in {X+'group', X+'attributeGroup'} and child.get('name'):
                 continue
-            result.append(clone(child, namespace, stack, budget))
+            if child.tag == X+'attributeGroup':
+                result.extend(attributes(child, namespace, stack, budget))
+            else:
+                result.append(clone(child, namespace, stack, budget))
         return result
 
     return {path: clone(root, namespaces[path]) for path, root in roots.items()}

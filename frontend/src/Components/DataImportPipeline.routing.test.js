@@ -263,7 +263,9 @@ describe('DataImportPipeline workflow routing', () => {
     ] } });
     fireEvent.change(screen.getByLabelText(/Companion relative paths/), { target: { value: 'common.xsd\ntypes/part.xsd' } });
     setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
-    fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
+    const start = screen.getByRole('button', { name: /^Start$/i });
+    fireEvent.click(start);
+    fireEvent.click(start);
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(1));
     const [url, form] = apiClient.post.mock.calls[0];
     expect(url).toBe('/api/v1/engineering-workflows');
@@ -272,51 +274,32 @@ describe('DataImportPipeline workflow routing', () => {
     expect(form.get('publish')).toBe('false');
   });
 
-  it('queues multiple ontology files and advances the metadata popup file-by-file', async () => {
+  it('combines multiple XSD selections into one metadata prompt and registration', async () => {
     await renderPipeline();
     fireEvent.click(screen.getByLabelText(/Register and publish XSD/));
-
-    const input = document.querySelector('input[type="file"]');
-    const fileOne = new File(['schema-one'], 'bom.xsd', { type: 'application/xml' });
-    const fileTwo = new File(['schema-two'], 'assembly.xsd', { type: 'application/xml' });
-
+    const xml = '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:test"/>';
+    const selected = ['bom.xsd', 'assembly.xsd'].map(name => {
+      const file = new File([xml], name);
+      file.text = async () => xml;
+      return file;
+    });
     await act(async () => {
-      fireEvent.change(input, { target: { files: [fileOne, fileTwo] } });
+      fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: selected } });
       await flushAsyncEffects();
     });
-
-    await waitFor(() => {
-      expect(screen.getByText(/File:/i)).toBeInTheDocument();
-      expect(screen.getByText('bom.xsd')).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'BOM Ontology' } });
-      fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'bom' } });
-      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shacl' } });
-      fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
-      await flushAsyncEffects();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText('assembly.xsd')).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Assembly Ontology' } });
-      fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'assembly' } });
-      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'shacl' } });
-      fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
-      await flushAsyncEffects();
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByText(/Ontology Metadata/i)).not.toBeInTheDocument();
-    });
-
-    expect(screen.getAllByRole('button', { name: /^Start$/i }).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText('bom.xsd').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('assembly.xsd').length).toBeGreaterThan(0);
+    expect(screen.getByText('uploaded-schema-set.xsd')).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Combined Ontology' } });
+    fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'combined' } });
+    fireEvent.change(document.getElementById('ontology-generation-select'), { target: { value: 'owl' } });
+    fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
+    apiClient.post.mockClear();
+    apiClient.post.mockResolvedValueOnce({ data: { status: 'registered', ontology_registration: { ontology_id: 'combined' } } });
+    setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
+    fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(1));
+    const form = apiClient.post.mock.calls[0][1];
+    expect(form.get('ontology_name')).toBe('Combined Ontology');
+    expect(form.getAll('dependencies').map(file => file.name)).toEqual(['bom.xsd', 'assembly.xsd']);
   });
 
   it('register-only RDF uses the retained draft workflow without requesting graph publication', async () => {

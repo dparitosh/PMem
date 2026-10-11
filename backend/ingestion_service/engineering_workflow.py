@@ -75,6 +75,8 @@ class EngineeringWorkflow:
         schema_files: dict[str, bytes] | None = None,
     ) -> dict[str, Any]:
         from pathlib import Path
+        if publish and not register:
+            raise ValueError("Graph publication requires ontology registration")
         with dependency_stage('conversion', request_id):
             if Path(filename).suffix.lower() in {'.ttl', '.rdf', '.owl'}:
                 from .rdf_conversion import convert_rdf
@@ -82,8 +84,6 @@ class EngineeringWorkflow:
             else:
                 conversion = await run_in_threadpool(self.converter.convert, filename=filename, content=content,
                     **({'schema_files': schema_files} if schema_files else {}))
-        if publish and not register:
-            raise ValueError("Graph publication requires ontology registration")
         if not register:
             return {"status": "converted", "conversion": conversion}
         ontology = conversion["ontology"]
@@ -141,9 +141,10 @@ class EngineeringWorkflow:
                 return result
             # Re-read authoritative state: registration may have reused an artifact
             # whose lifecycle was changed after the original request.
-            current = await client.get(f"{self.ontology_url}/ontologies/{registration['ontology_id']}")
-            current.raise_for_status()
-            self._require_publishable(current.json())
+            with dependency_stage("publication_lifecycle_check", request_id):
+                current = await client.get(f"{self.ontology_url}/ontologies/{registration['ontology_id']}")
+                current.raise_for_status()
+                self._require_publishable(current.json())
             published = await self._request(client, 'graph_publication', request_id,
                 f"{self.graph_url}/graph/ontologies/publish",
                 data={"ontology_id": registration["ontology_id"], "prefix": data["prefix"],

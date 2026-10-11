@@ -3265,6 +3265,32 @@ requires the Edition 2 companion definitions. External schemas are never fetched
 by the upload service. Analytics SQL generation remains subject to the structural
 limitations described above.
 
+For QIF schemas with sibling-folder references, prepare an upload copy first.
+`QIFProduct.xsd` uses `../QIFLibrary/...`; a plain root upload loses its original
+`QIFApplications` directory. Do not remove those includes or weaken path checks.
+Run from the repository root after installing backend dependencies:
+
+```powershell
+Set-Location E:\App\PMem
+.\backend\.dt_venv\Scripts\python.exe .\infra\prepare-xsd-upload.py --source .\docs\xsd\QIFApplications\QIFProduct.xsd --schema-root .\docs\xsd --output .\qif-product-upload
+if ($LASTEXITCODE -ne 0) { throw 'QIF upload preparation failed.' }
+Get-Content .\qif-product-upload\dependency-paths.txt
+```
+
+The output directory must not already exist. This produces a copied root and
+11 companions; it updates references in copies only and never downloads schemas.
+In Import -> Create ontology, add `qif-product-upload\QIFProduct.xsd` as the root
+and choose OWL. In Companion XSD files select all 11 `.xsd` files from
+`qif-product-upload\QIFLibrary`. Enter each relative path as
+`QIFLibrary/<selected filename>.xsd`, in the displayed selection order.
+`dependency-paths.txt` lists the required paths; ensure its order matches your
+selected-file order before pasting. Then review and register. Do not also upload
+the original QIFProduct root or queue each companion as a separate ontology.
+The same preparation command supports other local schema sets by changing
+`--source`, `--schema-root` and `--output`; missing or external dependencies fail
+before any output is created. Offline XSD compilation does not certify complete
+OWL translation of every QIF construct.
+
 Startup checkpoints, in order: configuration validation; dependencies and
 frontend build; configured PostgreSQL runtime handling; application-role login;
 transactional schema migration/verification; credential validation or explicit
@@ -3965,3 +3991,43 @@ In Admin → API access, enter the current administrator key and select **Enable
 Use the configured Neo4j database and a role permitted to create schema. Cleanup targets that database; do not execute a destructive reset merely to test connectivity. An error from schema creation or PostgreSQL reconciliation must be corrected before treating the operation as complete.
 
 For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables.
+
+QIF XSD conversion expands local model groups and attribute groups before OWL
+translation. Attribute-group cycles and unresolved references fail explicitly;
+required/optional attribute declarations remain available to the translator.
+Deploy the updated backend/Services/xsd_semantics.py and restart ingestion after
+this source update. A successful source XSD compile does not certify all generated
+OWL/SHACL constraints or downstream registration/publication.
+
+### Optional advanced XSD folder upload with automatic companion paths
+
+Use Import -> Create ontology -> Select complete XSD folder. For QIF select
+`E:\App\PMem\docs\xsd`, including both QIFApplications and QIFLibrary. Choose
+`QIFApplications/QIFProduct.xsd` under Root schema, then click Check folder and
+add root. The browser checks the dependency closure, prepares the root in memory,
+and fills companion paths automatically. Complete the ontology metadata, choose
+OWL, and start registration. Do not queue each companion as its own ontology.
+Missing files, external references, invalid XML and folder escapes are reported
+before upload. This preflight does not certify all OWL conversion semantics or
+service availability; registration and graph publication still require backend
+checks and a confirmed publication receipt. Re-select the folder after a reload.
+The standalone preparation script remains available for API clients.
+
+### Default XSD import: direct file selection
+
+Use Add Files, select one or multiple XSDs, enter the ontology name and prefix,
+and click Start. Multiple XSDs selected together produce one schema-set entry
+and one ontology registration; the selected files are companions of an entry
+schema generated in memory. Folder selection is optional. If dependencies are
+missing, the Optional: resolve missing XSD companions section opens. Select the
+parent folder containing those schemas, then Resolve companions and retry.
+The app preserves the existing ontology details and maps paths automatically.
+For QIF select docs/xsd as that parent folder. Do not select a root again for a
+failed direct upload. Advanced folder-first selection remains available.
+Same namespace schemas use includes; differing namespaces use imports. Conflicting
+schema declarations fail validation rather than being silently overwritten.
+
+Before OWL translation, the backend compiles the uploaded XSD schema set offline
+with lxml. Conflicting declarations and invalid schema references fail before
+ontology registration. This checks XSD validity; it does not claim that every
+XSD constraint has an equivalent OWL or SHACL representation.

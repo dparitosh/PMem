@@ -19,6 +19,24 @@ class ConversionSemanticsTests(unittest.TestCase):
         path.write_text(f'<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="{namespace}">{body}</xs:schema>', encoding='utf-8')
         return path
 
+    def test_attribute_groups_preserve_required_and_optional_attributes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.schema(directory, 'attributes.xsd', '<xs:attributeGroup name="Attrs"><xs:attribute name="id" type="xs:string" use="required"/><xs:attribute name="label" type="xs:string"/></xs:attributeGroup><xs:complexType name="Item"><xs:attributeGroup ref="Attrs"/></xs:complexType>')
+            inspect_conversion_schemas([path])
+            tree = expand_model_groups([path])[path]
+            attrs = tree.find(X+'complexType').findall(X+'attribute')
+            self.assertEqual([(node.get('name'), node.get('use', 'optional')) for node in attrs], [('id', 'required'), ('label', 'optional')])
+
+    def test_attribute_group_cycles_and_missing_refs_fail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for body, message in [
+                ('<xs:attributeGroup name="A"><xs:attributeGroup ref="A"/></xs:attributeGroup><xs:complexType name="Item"><xs:attributeGroup ref="A"/></xs:complexType>', 'Cyclic attribute group'),
+                ('<xs:complexType name="Item"><xs:attributeGroup ref="Missing"/></xs:complexType>', 'Unresolved attribute group'),
+            ]:
+                path = self.schema(directory, 'invalid.xsd', body)
+                with self.assertRaisesRegex(ValueError, message):
+                    expand_model_groups([path])
+
     def test_namespace_collisions_and_primitive_shadowing_fail(self):
         with tempfile.TemporaryDirectory() as directory:
             a = self.schema(directory, 'a.xsd', '<xs:complexType name="Item"/>', 'urn:a')

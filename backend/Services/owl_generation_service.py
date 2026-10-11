@@ -292,6 +292,8 @@ class OWLGenerationService:
                 dependency.write_bytes(data)
             xsd_path = tmp_dir / filename
             xsd_path.write_bytes(file_content)
+            from .xsd_semantics import validate_xsd_schema_set
+            validate_xsd_schema_set(xsd_path)
             tmp_out = tmp_dir / (Path(filename).stem + ".ttl")
             from .owl_xsd_engine import convert_xsd_to_owl, minimal_config
             stem = Path(filename).stem

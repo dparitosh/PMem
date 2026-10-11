@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { appendXsdDependencies } from './XsdDependencies';
 import XsdDependencies from './XsdDependencies';
 import { vi } from 'vitest';
@@ -29,4 +29,21 @@ test('selection supplies default paths and allows clearing', () => {
   view.rerender(<XsdDependencies files={files} paths="common.xsd" onChange={onChange} />);
   fireEvent.click(screen.getByRole('button', { name: 'Clear companion files' }));
   expect(onChange).toHaveBeenLastCalledWith([], '');
+});
+
+test('failed direct upload resolves its selected schema without asking for a root again', async () => {
+  const schema = body => `<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">${body}</xs:schema>`;
+  const root = new File([schema('<xs:include schemaLocation="../Library/part.xsd"/>')], 'root.xsd');
+  root.text = async () => schema('<xs:include schemaLocation="../Library/part.xsd"/>');
+  Object.defineProperty(root, 'webkitRelativePath', { value: 'schemas/Apps/root.xsd' });
+  const part = new File([schema('')], 'part.xsd');
+  part.text = async () => schema('');
+  Object.defineProperty(part, 'webkitRelativePath', { value: 'schemas/Library/part.xsd' });
+  const onRoot = vi.fn();
+  render(<XsdDependencies files={[]} paths="" onChange={vi.fn()} onRoot={onRoot} selectedRoot={root} />);
+  fireEvent.change(screen.getByLabelText('Select complete XSD folder'), { target: { files: [root, part] } });
+  expect(screen.queryByLabelText('Root schema')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Resolve companions and retry' }));
+  await waitFor(() => expect(onRoot).toHaveBeenCalledTimes(1));
+  expect(onRoot.mock.calls[0][1].paths).toBe('Library/part.xsd');
 });
