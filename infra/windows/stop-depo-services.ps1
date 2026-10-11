@@ -2,7 +2,8 @@ param(
   [switch]$StopPostgres,
   [string]$EnvFile = '.env.local',
   [string]$PostgresBinDir = "",
-  [string]$PostgresDataDir = ""
+  [string]$PostgresDataDir = "",
+  [ValidateRange(5,600)][int]$ShutdownGraceSeconds = 60
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,14 +18,29 @@ $entries = @($manifest.workers) + @($manifest.services)
 # Discover verified launchers even if tracking was lost. Shared tree control
 # checks creation times, stops children first, and verifies listener cleanup.
 $snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+# Request graceful shutdown together, before waiting on any individual service.
+# Only verified launchers receive requests; PID reuse is rechecked by tree control.
 foreach ($entry in $entries) {
+  $pattern = '(?<![A-Za-z0-9_.])' + [regex]::Escape([string]$entry.module) + '(?![A-Za-z0-9_.])'
+  foreach ($candidate in @($snapshot | Where-Object {
+    $_.ExecutablePath -ieq $expectedPython -and $_.CommandLine -match $pattern -and
+    $_.CommandLine -match 'backend\.depo_platform\.windows_runtime'
+  })) {
+    Set-Content -LiteralPath (Join-Path $stateDir "stop-$($candidate.ProcessId).request") -Value 'stop' -NoNewline
+  }
+}
+$batchDeadline = (Get-Date).AddSeconds($ShutdownGraceSeconds)
+Write-Host "Stopping DEPO services together; shared graceful shutdown allowance: $ShutdownGraceSeconds seconds."
+foreach ($entry in $entries) {
+  Write-Host "Stopping $($entry.id)..."
   $module = [string]$entry.module
   $pattern = '(?<![A-Za-z0-9_.])' + [regex]::Escape($module) + '(?![A-Za-z0-9_.])'
   $roots = @($snapshot | Where-Object {
     $_.ExecutablePath -ieq $expectedPython -and $_.CommandLine -match $pattern
   })
   foreach ($candidate in $roots) {
-    Stop-DepoProcessTree ([int]$candidate.ProcessId) $expectedPython $module
+    Stop-DepoProcessTree ([int]$candidate.ProcessId) $expectedPython $module $batchDeadline
+    Remove-Item -LiteralPath (Join-Path $stateDir "stop-$($candidate.ProcessId).request") -Force -ErrorAction SilentlyContinue
   }
   $pidPath = Join-Path $stateDir ($entry.id + '.pid')
   if (Test-Path -LiteralPath $pidPath) {
@@ -32,7 +48,7 @@ foreach ($entry in $entries) {
     $current = Get-CimInstance Win32_Process -Filter "ProcessId = $trackedPid" -ErrorAction Stop
     if ($current) {
       # An unrelated reused PID must not be killed or silently untracked.
-      Stop-DepoProcessTree $trackedPid $expectedPython $module
+      Stop-DepoProcessTree $trackedPid $expectedPython $module $batchDeadline
     }
     Remove-Item -LiteralPath $pidPath -Force
   }

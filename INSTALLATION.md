@@ -3279,8 +3279,29 @@ Listener verification must be read-only: it must never create `stop-*.request`
 files or wait for shutdown. Cooperative stop requests belong exclusively in
 the stop function. Do not increase readiness timeouts to conceal this defect.
 The startup script now reports each process check, reuse and launch before
-readiness validation. Graceful shutdown can still legitimately wait for the
-configured `DEPO_SHUTDOWN_GRACE_SECONDS`; this wait is not a startup step.
+readiness validation. Shutdown requests are sent to all verified service launchers together. The stop
+script uses one shared graceful shutdown allowance, defaulting to 60 seconds,
+rather than a separate 60-second wait per service. It reports each service while
+stopping. Process identity and listener cleanup are still checked afterward.
+From the repository root, run:
+
+```powershell
+.\infra\windows\stop-depo-services.ps1 -ShutdownGraceSeconds 30
+```
+
+This allowance does not include Windows process inspection or optional PostgreSQL
+shutdown. Lowering it may force termination of active work after the deadline.
+Security prompts pause execution until answered; they are separate from shutdown.
+After verifying that the release came from your trusted source, remove the
+Windows download warning from its PowerShell files once:
+
+```powershell
+Set-Location E:\App\PMem
+Get-ChildItem -LiteralPath .\infra -Filter *.ps1 -Recurse | Unblock-File
+```
+
+Do not disable execution policy globally. Restarting services does not require
+reinstalling dependencies for this stop-script update.
 
 The repository contains two different files named `install-depo.ps1`: the root
 file is a launcher; `infra/windows/install-depo.ps1` installs dependencies and

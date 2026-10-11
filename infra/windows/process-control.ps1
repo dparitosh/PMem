@@ -36,7 +36,7 @@ function Test-DepoListener([int]$ProcessId, [string]$ExpectedPython, [string]$Mo
     Where-Object { $_.LocalPort -eq $Port -and $_.OwningProcess -in $owners -and $_.LocalAddress -in $addresses }).Count)
 }
 
-function Stop-DepoProcessTree([int]$ProcessId, [string]$ExpectedPython, [string]$Module) {
+function Stop-DepoProcessTree([int]$ProcessId, [string]$ExpectedPython, [string]$Module, [datetime]$BatchDeadline = [datetime]::MaxValue) {
   $tree = @(Get-DepoProcessTree $ProcessId $ExpectedPython $Module)
   $rootNode = $tree | Where-Object { $_.Depth -eq 0 } | Select-Object -First 1
   if ($rootNode -and $rootNode.Process.CommandLine -match 'backend\.depo_platform\.windows_runtime') {
@@ -50,6 +50,7 @@ function Stop-DepoProcessTree([int]$ProcessId, [string]$ExpectedPython, [string]
     }
     Set-Content -LiteralPath $requestPath -Value 'stop' -NoNewline
     $graceDeadline = (Get-Date).AddSeconds($graceSeconds)
+    if ($BatchDeadline -lt $graceDeadline) { $graceDeadline = $BatchDeadline }
     do {
       $liveRoot = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction Stop
       if (-not $liveRoot -or $liveRoot.CreationDate -ne $rootNode.Process.CreationDate) { break }
