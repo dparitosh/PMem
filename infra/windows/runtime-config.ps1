@@ -3,6 +3,7 @@ function Read-DepoEnvironment([string]$Root, [string]$EnvFile) {
   $path = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $Root $EnvFile }
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing environment file: $path" }
   $seen = @{}
+  $firstLines = @{}
   $lineNumber = 0
   foreach ($line in Get-Content -LiteralPath $path -Encoding UTF8) {
     $lineNumber++
@@ -24,8 +25,15 @@ function Read-DepoEnvironment([string]$Root, [string]$EnvFile) {
       # A hash without preceding whitespace belongs to the value (e.g. a URL).
       $value = ($value -replace '\s+#.*$', '').TrimEnd()
     }
-    if ($seen.ContainsKey($key)) { throw "Duplicate environment setting: $key in '$path' at line ${lineNumber}. The value is intentionally hidden." }
+    if ($seen.ContainsKey($key)) {
+      if ([string]::Equals([string]$seen[$key], $value, [StringComparison]::Ordinal)) {
+        Write-Warning "Repeated identical environment setting: $key in '$path' at lines $($firstLines[$key]) and ${lineNumber}; using the single unchanged value. Remove the extra entry when convenient."
+        continue
+      }
+      throw "Conflicting duplicate environment setting: $key in '$path' at lines $($firstLines[$key]) and ${lineNumber}. Keep one intended value. Values are intentionally hidden."
+    }
     $seen[$key] = $value
+    $firstLines[$key] = $lineNumber
   }
   return $seen
 }

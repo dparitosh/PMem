@@ -15,6 +15,11 @@ try {
   Set-Content -LiteralPath $envPath -Value @('DEPO_AUDIT_FIXTURE=one','DEPO_AUDIT_FIXTURE=two')
   Assert-Rejected { Import-DepoEnvironment $fixture '.env.local' } 'Duplicate'
   if ($env:DEPO_AUDIT_FIXTURE) { throw 'Invalid configuration partially changed environment.' }
+  Set-Content -LiteralPath $envPath -Value @('GRAPH_PUBLICATION_TIMEOUT_SECONDS=180','GRAPH_PUBLICATION_TIMEOUT_SECONDS="180" # repeated')
+  $parsed = Read-DepoEnvironment $fixture '.env.local' -WarningAction SilentlyContinue
+  if ($parsed.GRAPH_PUBLICATION_TIMEOUT_SECONDS -ne '180' -or $parsed.Count -ne 1) { throw 'Identical duplicate was not consolidated.' }
+  Set-Content -LiteralPath $envPath -Value @('DEPO_AUDIT_FIXTURE=SecretCase','DEPO_AUDIT_FIXTURE=secretcase')
+  Assert-Rejected { Read-DepoEnvironment $fixture '.env.local' } 'Conflicting duplicate'
   Set-Content -LiteralPath $envPath -Encoding UTF8 -Value @('# valid comment', 'DEPO_AUDIT_FIXTURE = "value with spaces" # comment', 'BROKEN PRIVATE VALUE')
   Assert-Rejected { Import-DepoEnvironment $fixture '.env.local' } 'line 3'
   $secretSafeMessage = ''

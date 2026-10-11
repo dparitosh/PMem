@@ -3196,6 +3196,12 @@ In **QIF**, select two distinct registered versions identified as QIF and AP242.
 
 ### Credential consistency on installation and redeployment
 
+Environment parsing tolerates repeated keys only when their normalized values
+are exactly identical (case-sensitive), with a warning naming the key and line
+numbers. Conflicting duplicates stop deployment without printing values or
+partially importing settings. Keep one entry per key; in particular, retain
+only one `GRAPH_PUBLICATION_TIMEOUT_SECONDS=180` entry when using that timeout.
+
 Admin cleanup checkpoints: Clear Cache refreshes projections but does not delete
 ontology registrations or execution history. Full Schema Cleanup removes Neo4j
 data, legacy upload metadata and native ontology registrations/recovery metadata;
