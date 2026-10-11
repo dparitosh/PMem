@@ -340,3 +340,8 @@ The centralized API configuration system provides:
 6. **Type-safe endpoint management**
 
 This makes the codebase more maintainable, scalable, and easier to work with across multiple environments.
+
+
+## Current environment configuration reference
+
+For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](../deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables. The [installation guide](../INSTALLATION.md) defines the complete deployment sequence.

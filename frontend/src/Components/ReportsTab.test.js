@@ -63,5 +63,5 @@ test('ReportsTab does not substitute canvas data for an empty report projection'
   expect(screen.getByText('Relationship distribution')).toBeInTheDocument();
   expect(screen.getByText('Ontology coverage')).toBeInTheDocument();
   expect(screen.getByText('Data-job status')).toBeInTheDocument();
-  expect(screen.getByText('Data-quality outcome')).toBeInTheDocument();
+  expect(screen.getByText('Record quality metrics')).toBeInTheDocument();
 });

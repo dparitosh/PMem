@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import AdminPanel, { ConfirmationDialog } from './AdminPanel';
 import { API_METHODS } from '../services/apiClient';
+import { getCredentialProfile } from '../services/serviceAuth';
+vi.mock('../services/serviceAuth', () => ({ getCredentialProfile: vi.fn(() => 'test-maintenance-key') }));
 vi.mock('../services/apiClient', () => ({ API_METHODS: { admin: {
   health: vi.fn(async () => ({ data: { status: 'ok' } })),
   schemaStats: vi.fn(async () => ({ data: { stats: {} } })),
@@ -50,4 +52,25 @@ test('a failed graph reset payload is shown as an error, not completion', async 
   fireEvent.click(screen.getByRole('button', { name: 'Reset graph' }));
   await screen.findByText('Index recreation failed after deletion.');
   expect(screen.queryByText(/Graph reset completed\./)).toBeNull();
+});
+
+test('cleanup stays disabled when maintenance access is absent', async () => {
+  getCredentialProfile.mockReturnValue('');
+  render(<AdminPanel />);
+  await waitFor(() => expect(screen.getByRole('button', { name: /Clear Cache/i })).toBeDisabled());
+  expect(screen.getByRole('button', { name: 'Full Schema Cleanup' })).toBeDisabled();
+  expect(screen.getByText(/Enable Admin maintenance checked/)).toBeVisible();
+  getCredentialProfile.mockReturnValue('test-maintenance-key');
+});
+
+test('partial reset refreshes state and keeps reconciliation warning visible', async () => {
+  API_METHODS.admin.resetDatabase.mockResolvedValue({ data: { status: 'partial', message: 'Registry reconciliation failed.' } });
+  render(<AdminPanel />);
+  const button = screen.getByRole('button', { name: 'Reset Graph Only' });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+  fireEvent.change(await screen.findByLabelText('Confirmation phrase'), { target: { value: 'RESET GRAPH' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Reset graph' }));
+  await screen.findByText('Registry reconciliation failed.');
+  expect(screen.getByText(/Graph reset completed\./)).toBeVisible();
 });

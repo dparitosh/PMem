@@ -48,3 +48,8 @@ serving, Linux lifecycle/systemd, release-package checks and INSTALLATION.md.
 No live customer PostgreSQL, Neo4j, Spark/native Hadoop, web server or Linux VM
 was exercised. No machine-wide packages were installed. A fresh customer-VM
 install, restart, upgrade and failure/recovery acceptance run remains necessary.
+
+
+## Current environment configuration reference
+
+For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](../../deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables. The [installation guide](../../INSTALLATION.md) defines the complete deployment sequence. Earlier findings in this document remain historical audit evidence.

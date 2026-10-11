@@ -1288,7 +1288,7 @@ class OSLCService:
         if ontology_scope:
             where_clauses.append(
                 "(toString(coalesce(n.ontology_id, '')) = $ontology_id "
-                "OR toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix)"
+                "OR ($ontology_prefix <> '' AND toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix))"
             )
             cypher_params.update({"ontology_id": ontology_scope["ontology_id"], "ontology_prefix": ontology_scope["prefix"]})
 
@@ -1343,7 +1343,7 @@ class OSLCService:
         if ontology_scope:
             where_clauses.append(
                 "(toString(coalesce(n.ontology_id, '')) = $ontology_id "
-                "OR toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix)"
+                "OR ($ontology_prefix <> '' AND toString(coalesce(n.ontology_prefix, n.prefix, '')) = $ontology_prefix))"
             )
             cypher_params.update({"ontology_id": ontology_scope["ontology_id"], "ontology_prefix": ontology_scope["prefix"]})
         for index, condition in enumerate(params.where):
@@ -1369,34 +1369,34 @@ class OSLCService:
             "(any(lbl IN labels(n) WHERE toLower(lbl) IN "
             "['requirement', 'requirementrevision', 'oslcrequirement', 'reqifspecobject']) OR "
             "toLower(coalesce(toString(n.semantic_role), '')) = 'requirement' OR "
-            "toLower(coalesce(toString(n.element_type), toString(n.entity_type), '')) IN "
-            "['requirement', 'requirementrevision'])"
+            "any(value IN [n.element_type, n.entity_type] WHERE toLower(coalesce(toString(value), '')) IN "
+            "['requirement', 'requirementrevision']))"
         )
         collection = (
             "(any(lbl IN labels(n) WHERE toLower(lbl) IN "
             "['specification', 'requirementcollection', 'reqifspecification']) OR "
             "toLower(coalesce(toString(n.semantic_role), '')) = 'requirement_specification' OR "
-            "toLower(coalesce(toString(n.element_type), toString(n.entity_type), '')) IN "
-            "['specification', 'requirementcollection'])"
+            "any(value IN [n.element_type, n.entity_type] WHERE toLower(coalesce(toString(value), '')) IN "
+            "['specification', 'requirementcollection']))"
         )
         change_request = (
             "(any(lbl IN labels(n) WHERE toLower(lbl) IN "
             "['changerequest', 'change_request', 'oslcchangerequest']) OR "
             "toLower(coalesce(toString(n.semantic_role), '')) IN ['change_request', 'change'] OR "
-            "toLower(coalesce(toString(n.element_type), toString(n.entity_type), '')) IN "
-            "['changerequest', 'change_request', 'change'])"
+            "any(value IN [n.element_type, n.entity_type] WHERE toLower(coalesce(toString(value), '')) IN "
+            "['changerequest', 'change_request', 'change']))"
         )
         test_result = (
             "(any(lbl IN labels(n) WHERE toLower(lbl) IN "
             "['testresult', 'test_result', 'oslctestresult']) OR "
             "toLower(coalesce(toString(n.semantic_role), '')) = 'test_result' OR "
-            "toLower(coalesce(toString(n.element_type), toString(n.entity_type), '')) = 'testresult')"
+            "any(value IN [n.element_type, n.entity_type] WHERE toLower(coalesce(toString(value), '')) = 'testresult'))"
         )
         test_case = (
             "(any(lbl IN labels(n) WHERE toLower(lbl) IN "
             "['testcase', 'test_case', 'oslctestcase']) OR "
             "toLower(coalesce(toString(n.semantic_role), '')) = 'test_case' OR "
-            "toLower(coalesce(toString(n.element_type), toString(n.entity_type), '')) = 'testcase')"
+            "any(value IN [n.element_type, n.entity_type] WHERE toLower(coalesce(toString(value), '')) = 'testcase'))"
         )
         if normalized == cls.DEFAULT_RESOURCE_TYPE:
             return ""

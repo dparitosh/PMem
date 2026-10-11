@@ -2329,8 +2329,17 @@ When a release changes only PostgreSQL DDL, stop the application services,
 take the approved database backup, apply the schema update, validate it, and
 then start the services. Run these commands from the repository root:
 
+For an already deployed customer environment, preserve root `.env.local`,
+frontend configuration and durable artifacts. After stopping the application
+and completing the DBA backup, copy the matching release files, including
+`backend` and the complete `infra/postgres/migrations` folder. Do not run
+`initialize-depo-postgres.ps1`, recreate the database, or replace released SQL
+files with edited copies. If dependencies changed, follow the full upgrade
+sequence in section 4.7 instead.
+
 ```powershell
 .\manage-depo.ps1 -Action Stop -EnvFile .env.local
+.\infra\postgres\test-postgres-connectivity.ps1 -EnvFile .env.local
 .\infra\postgres\update-postgres-schema.ps1 -EnvFile .env.local
 .\infra\postgres\test-postgres-schema.ps1 -EnvFile .env.local
 .\manage-depo.ps1 -Action Start -EnvFile .env.local -Profile Production -SkipPostgres
@@ -2342,6 +2351,18 @@ start the application, contact Neo4j, or run Spark. It applies each new file in
 `infra\postgres\migrations` once, in numeric order, under an advisory lock and
 then verifies the full released schema contract. `test-postgres-schema.ps1`
 uses the same contract in read-only mode and is safe for routine diagnostics.
+
+Proceed to startup only after each command succeeds. The migration and final
+verification run in one transaction; failure rolls back their changes. Current
+success output lists migration versions 1 through 10 and checks 11 relations,
+53 columns, 22 constraints and 8 indexes. Repeating the update skips migrations
+already recorded with matching checksums. Startup also runs this migration
+step automatically before launching services. Existing credential profiles
+are preserved; routine schema upgrades do not require `-Synchronize` or token
+rotation. Missing history versions, newer database versions or changed SQL
+checksums require DBA investigation, not deletion of history rows. This
+updates the application control-plane schema; it does not regenerate customer
+analytics product schemas. There is no automatic downgrade migration.
 # Switching local services and API gateway routing
 
 ## Azure API Management: deploy and verify every service
@@ -3770,3 +3791,30 @@ After the configuration and dependencies are ready, follow the installation or r
 ### JSON API request fields after this update
 
 The ontology, graph, agent, catalog, product, CEIM, pipeline, modeling, ingestion and OSLC JSON bodies now have named request schemas. Inspect `/openapi.json` on the service owning the operation to see its field names, required fields and types. Send JSON booleans such as `false`, not strings such as `"false"`. Omitted optional settings retain the existing service defaults. Source records and job/tool extension inputs remain dynamic where their selected profile or operation defines the fields; approval, policy and downstream validation still apply.
+# Loaded ontology reports and OSLC coverage
+
+After starting the services and connecting API access in Admin, open Reports and choose a registered ontology in **Report ontology**. Choose the actual loaded QIF, AP242 or ReqIF ontology; these standards are not separate hardcoded report populations. Click **Refresh reports** after importing or publishing changes.
+
+The **Loaded ontology — OSLC coverage** panel reads `GET /api/v1/graph/ontology-report/{ontology_id}` from the graph service using the existing graph read credential or central browser session. An API gateway must forward this route and authentication to the graph service, alongside its existing graph routes. Deploy the updated backend, rebuild the frontend and restart the services when adding this endpoint.
+
+The panel counts all matching graph records, outgoing links (including links to other ontologies), and RM/AM/CM/QM classifications using the same metadata rules as OSLC queries. Categories can overlap; do not sum them as a distinct total. Unclassified records are shown separately and are not automatically invalid. An uploaded schema without published graph records can legitimately show zero records. These counts do not establish inspection results, requirements compliance or manufacturing outcomes. Pipeline telemetry elsewhere on Reports remains system-wide.
+
+If the panel reports unavailable data, verify Admin API access, the registered ontology and graph service connectivity. A missing gateway route or an older graph service also makes this panel unavailable; it does not mean the ontology contains zero records.
+
+
+## Current environment configuration reference
+
+### Admin maintenance controls
+
+In Admin → API access, enter the current administrator key and select **Enable Admin maintenance for this session**, then connect registered services. Read-only access alone does not authorize cleanup. Maintenance buttons remain disabled until this scope is connected. **Delete Old XSD Schemas** separately requires ingestion write access through workflow scopes or the registered ingestion key.
+
+**Clear Cache** invalidates application caches without deleting graph data. **Reset Graph Only** deletes graph data and recreates indexes and required publication constraints while retaining uploaded files. Partial registry reconciliation is displayed as a warning after reset; inspect service logs before republishing. **Full Schema Cleanup** also removes indexes, constraints and legacy ontology upload metadata. After full cleanup, run from the repository root before publishing again:
+
+```powershell
+.\infra\windows\test-depo-neo4j.ps1 -EnvFile .\.env.local -Bootstrap
+.\infra\windows\test-depo-neo4j.ps1 -EnvFile .\.env.local -Production
+```
+
+Use the configured Neo4j database and a role permitted to create schema. Cleanup targets that database; do not execute a destructive reset merely to test connectivity. An error from schema creation or PostgreSQL reconciliation must be corrected before treating the operation as complete.
+
+For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables.

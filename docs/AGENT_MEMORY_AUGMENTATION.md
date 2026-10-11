@@ -146,3 +146,8 @@ current graph-linkable ontology class or property and passes validation.
 3. Add tenant/project scope management in Admin.
 4. If the customer accepts the dependency, wrap the official
    `neo4j-agent-memory` SDK behind the same `AgentMemoryService` interface.
+
+
+## Current environment configuration reference
+
+For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](../deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables. The [installation guide](../INSTALLATION.md) defines the complete deployment sequence.

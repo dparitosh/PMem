@@ -272,3 +272,8 @@ Invoke-RestMethod http://localhost:8012/api/v1/tools
 ```
 
 The API fallback should be used to diagnose a UI issue, not as a substitute for demonstrating the customer workflow.
+
+
+## Current environment configuration reference
+
+For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](../deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables. The [installation guide](../INSTALLATION.md) defines the complete deployment sequence.

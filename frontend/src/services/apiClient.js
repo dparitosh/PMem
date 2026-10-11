@@ -390,7 +390,9 @@ export const ontologyAPI = {
       approved_by: approvedBy,
       approval_token: approvalToken,
     }),
-  cleanupOldXsd: (body) => apiClient.post(buildUrl(API.ontology.cleanupOldXsd), body),
+  cleanupOldXsd: (body) => apiClient.post(buildUrl(API.ontology.cleanupOldXsd), body, {
+    headers: { Authorization: `Bearer ${getCredentialProfile('INGESTION_WRITE_TOKEN')}` }, timeout: 300000,
+  }),
   exportUrl: (ontologyId, format = 'ttl') => `${buildUrl(replaceParams(API.ontology.exportRegistered, { ontology: ontologyId }))}?format=${encodeURIComponent(format)}`,
   exportRegistered: (ontologyId, format = 'ttl') =>
     apiClient.get(buildUrl(replaceParams(API.ontology.exportRegistered, { ontology: ontologyId })), { params: { format }, responseType: 'blob' }),
@@ -628,8 +630,8 @@ export const adminAPI = {
   health: (options = {}) => apiClient.get(buildUrl(API.admin.health), options),
   registry: (options = {}) => apiClient.get(buildUrl(API.admin.registry), options),
   cleanSchema: () =>
-    apiClient.post(buildUrl(API.admin.cleanSchema), { confirm: 'CLEAN_NEO4J_SCHEMA' }, { timeout: 300000 }),
-  clearCache: () => apiClient.post(buildUrl(API.admin.clearCache)),
+    apiClient.post(buildUrl(API.admin.cleanSchema), { confirm: 'CLEAN_NEO4J_SCHEMA' }, { timeout: 300000, headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') } }),
+  clearCache: () => apiClient.post(buildUrl(API.admin.clearCache), undefined, { headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') } }),
   deleteData: ({ label, prefix, property, value, batchSize = 10000, dryRun = false }) =>
     apiClient.post(buildUrl(API.admin.deleteData), {
       label: label || null,
@@ -641,10 +643,11 @@ export const adminAPI = {
       confirm: 'DELETE_NEO4J_DATA',
     }, {
       timeout: 300000,
+      headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') },
     }),
   schemaStats: (options = {}) => apiClient.get(buildUrl(API.admin.schemaStats), options),
   resetDatabase: (recreateIndexes = true) =>
-    apiClient.post(buildUrl(API.admin.resetDatabase), null, { params: { recreate_indexes: recreateIndexes }, timeout: 300000 }),
+    apiClient.post(buildUrl(API.admin.resetDatabase), null, { params: { recreate_indexes: recreateIndexes }, timeout: 300000, headers: { 'X-API-Key': getCredentialProfile('ADMIN_API_KEY') } }),
 };
 
 export const metadataRegistryAPI = {

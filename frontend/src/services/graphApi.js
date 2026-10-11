@@ -10,6 +10,11 @@ const readHeaders = () => {
 const graphUrl = (path) => buildSemanticServiceUrl('graph', path);
 
 export const graphApi = {
+  getOntologyReport(ontologyId, signal) {
+    return apiClient.get(graphUrl(`/api/v1/graph/ontology-report/${encodeURIComponent(ontologyId)}`), {
+      signal, timeout: 20000, headers: readHeaders(),
+    });
+  },
   getMetrics(ontologyId = '', signal, ontologyPrefix = '') {
     return apiClient.get(graphUrl('/api/v1/graph/metrics'), {
       params: { ontology_id: ontologyId, ontology_prefix: ontologyPrefix }, signal, timeout: 20000, headers: readHeaders(),

@@ -59,3 +59,8 @@ INT-06: certification validates structured passing evidence by type, commit, dep
 INT-07: read authentication checks broadened; dedicated Python/PowerShell regressions added and existing test fixtures adjusted. Live customer browser/APIM and PostgreSQL concurrency verification remain pending; no production certification is claimed.
 
 Validation: 23 focused Python checks passed; PowerShell external/service-mode selection and evidence pass/failure/wrong-commit tests passed with simulated services; package validator passed with 48 scripts and 8 migrations. Full dependency-bearing pytest/FastAPI/browser suite was not run. Commit and push status is recorded in Git.
+
+
+## Current environment configuration reference
+
+For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](../../deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables. The [installation guide](../../INSTALLATION.md) defines the complete deployment sequence. Earlier findings in this document remain historical audit evidence.

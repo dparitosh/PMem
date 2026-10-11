@@ -522,6 +522,10 @@ class Neo4jSchemaCleaner:
             "CREATE TEXT INDEX idx_ontologyclass_name_text IF NOT EXISTS FOR (n:OntologyClass) ON (n.name)",
             "CREATE INDEX idx_ontologyproperty_prefix IF NOT EXISTS FOR (n:OntologyProperty) ON (n.prefix)",
         ]
+        # A graph reset drops constraints as well as indexes. Restore the same
+        # concurrency and publication contract required by release preflight.
+        from backend.depo_platform.neo4j_setup import SCHEMA_FILE, _statements
+        indexes_to_create.extend(_statements(SCHEMA_FILE.read_text(encoding='utf-8')))
         
         try:
             failures = []

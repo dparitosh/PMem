@@ -144,6 +144,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       if (healthRes.status === 'fulfilled') {
         setHealth(healthRes.value.data || null);
       } else {
+        setHealth(null);
         const detail =
           healthRes.reason?.response?.data?.detail ||
           healthRes.reason?.message ||
@@ -153,6 +154,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       if (statsRes.status === 'fulfilled') {
         setStats(statsRes.value.data?.stats || null);
       } else {
+        setStats(null);
         const detail =
           statsRes.reason?.response?.data?.detail ||
           statsRes.reason?.message ||
@@ -185,7 +187,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
   const cleanSchema = useCallback(async () => {
     const accepted = await requestConfirmation({
       title: 'Clean the complete Neo4j schema?',
-      description: 'This deletes graph data, indexes, constraints, and uploaded ontology registry metadata.',
+      description: 'This deletes graph data, indexes, constraints, and uploaded ontology registry metadata. Run the Neo4j bootstrap script afterward before publishing again. Use Reset Graph Only to retain operational schema.',
       phrase: 'CLEAN NEO4J',
       confirmLabel: 'Clean schema',
     });
@@ -201,7 +203,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
       const res = await API_METHODS.admin.cleanSchema();
       const metadataCleared = res.data?.metadata_cleared ?? 0;
       const graphMessage = res.data?.message || 'Neo4j graph reset completed.';
-      setMessage(`Graph reset: ${graphMessage} Ontology metadata files cleared: ${metadataCleared}. Caches and ontology registry were refreshed.`);
+      setMessage(`Graph reset: ${graphMessage} Ontology metadata files cleared: ${metadataCleared}. Before publishing again, run infra/windows/test-depo-neo4j.ps1 -EnvFile .env.local -Bootstrap to restore publication constraints.`);
       const cleanupWarning = res.data?.status === 'partial' ? res.data?.metadata_cleanup_message || res.data?.registry_reconciliation?.message || 'Graph reset completed, but cleanup is incomplete.' : '';
       await fetchOntologies();
       window.dispatchEvent(new Event('dt-schema-cleaned'));
@@ -233,11 +235,14 @@ export default function AdminPanel({ onSchemaCleaned }) {
     setError('');
     try {
       const res = await API_METHODS.admin.resetDatabase(true);
-      if (String(res.data?.status || '').toUpperCase() !== 'SUCCESS') throw new Error(res.data?.message || 'Graph reset did not complete.');
+      const resetStatus = String(res.data?.status || '').toUpperCase();
+      if (!['SUCCESS', 'PARTIAL'].includes(resetStatus)) throw new Error(res.data?.message || 'Graph reset did not complete.');
+      const warning = resetStatus === 'PARTIAL' ? res.data?.message || 'Graph data was reset, but registry reconciliation is incomplete.' : '';
       setMessage(`Graph reset completed. ${res.data?.message || 'Neo4j data was cleared and indexes were recreated.'} Uploaded ontology metadata was not deleted.`);
       window.dispatchEvent(new Event('dt-schema-cleaned'));
       if (typeof onSchemaCleaned === 'function') onSchemaCleaned();
       await loadAdminState();
+      if (warning) setError(warning);
     } catch (err) {
       const detail = err?.response?.data?.detail || err?.message || 'Graph reset failed.';
       setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
@@ -423,12 +428,15 @@ export default function AdminPanel({ onSchemaCleaned }) {
     return 'Ready';
   }, [error, health, loading]);
 
+  const maintenanceConnected = Boolean(getCredentialProfile('ADMIN_API_KEY'));
+  const ingestionConnected = Boolean(getCredentialProfile('INGESTION_WRITE_TOKEN'));
+
   return (
     <div style={{ height: '100%', overflow: 'auto', background: 'var(--ui-surface)', color: 'var(--ui-text)', padding: 10 }}>
       <ConfirmationDialog confirmation={confirmation} onResolve={resolveConfirmation} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-          <span>{getCredentialProfile('ADMIN_API_KEY') ? 'Admin maintenance access configured' : 'Admin maintenance is not connected; verified read access does not authorize cleanup.'}</span>
+          <span>{maintenanceConnected ? 'Admin maintenance access configured' : 'Cleanup is disabled. In API access, connect registered services with Enable Admin maintenance checked.'}</span>
           <a href="#/admin" onClick={() => { try { sessionStorage.setItem('depo:admin-tab', 'access'); } catch {} window.dispatchEvent(new CustomEvent('depo:admin-section', { detail: 'access' })); }}>Manage maintenance access in Service credentials</a>
           <button type="button" onClick={loadAdminState} disabled={loading} style={buttonStyle}>
             <RefreshCw size={11} />
@@ -553,7 +561,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
             <button
               type="button"
               onClick={previewDeleteData}
-              disabled={loading || (!deleteLabel.trim() && !deletePrefix.trim())}
+              disabled={loading || !maintenanceConnected || (!deleteLabel.trim() && !deletePrefix.trim())}
               style={buttonStyle}
             >
               <RefreshCw size={10} />
@@ -562,7 +570,7 @@ export default function AdminPanel({ onSchemaCleaned }) {
             <button
               type="button"
               onClick={deleteDataByLabel}
-              disabled={loading || (!deleteLabel.trim() && !deletePrefix.trim()) || !deletePreview}
+              disabled={loading || !maintenanceConnected || (!deleteLabel.trim() && !deletePrefix.trim()) || !deletePreview}
               style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}
             >
               <Trash2 size={10} />
@@ -579,15 +587,16 @@ export default function AdminPanel({ onSchemaCleaned }) {
             These actions are operational maintenance. Cache cleanup is non-destructive. Old XSD cleanup targets stale ontology registry entries and their matching schema nodes only.
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button type="button" onClick={clearCache} disabled={loading} style={buttonStyle}>
+            <button type="button" onClick={clearCache} disabled={loading || !maintenanceConnected} style={buttonStyle}>
               <RotateCcw size={10} />
               Clear Cache
             </button>
-            <button type="button" onClick={deleteOldXsdSchemas} disabled={loading} style={buttonStyle}>
+            <button type="button" onClick={deleteOldXsdSchemas} disabled={loading || !ingestionConnected} style={buttonStyle}>
               <Trash2 size={10} />
               Delete Old XSD Schemas
             </button>
           </div>
+          {!ingestionConnected && <p>Old XSD cleanup requires ingestion write access. Connect workflow scopes in API access.</p>}
         </section>
 
         <section style={{ ...cardStyle, borderColor: '#ffb4a8', background: colors.dangerBg }}>
@@ -598,11 +607,11 @@ export default function AdminPanel({ onSchemaCleaned }) {
             Graph Reset clears Neo4j and invalidates publication records while retaining uploaded files. Full Schema Cleanup also removes legacy upload directories. Governed PostgreSQL catalog artifacts and audit history remain retained.
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button type="button" onClick={resetGraphDatabase} disabled={loading} style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}>
+            <button type="button" onClick={resetGraphDatabase} disabled={loading || !maintenanceConnected} style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}>
               <Trash2 size={10} />
               Reset Graph Only
             </button>
-            <button type="button" onClick={cleanSchema} disabled={loading} style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}>
+            <button type="button" onClick={cleanSchema} disabled={loading || !maintenanceConnected} style={{ ...buttonStyle, borderColor: '#ffb4a8', color: colors.danger }}>
               <Trash2 size={10} />
               Full Schema Cleanup
             </button>

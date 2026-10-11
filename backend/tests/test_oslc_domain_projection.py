@@ -28,7 +28,7 @@ class DomainProjectionTests(unittest.TestCase):
         tree = ast.parse(Path('backend/Services/oslc_service.py').read_text())
         cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'OSLCService')
         members = [node for node in cls.body if isinstance(node, ast.Assign)]
-        members.extend(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name in {'service_provider', 'resource_domain_types', '_canonical_property_descriptor'})
+        members.extend(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name in {'service_provider', 'resource_domain_types', '_canonical_property_descriptor', '_resource_type_predicate'})
         namespace = {'quote': quote, 'Dict': dict, 'Any': object, 'List': list, 'Optional': __import__('typing').Optional}
         module = ast.fix_missing_locations(ast.Module(body=[ast.ClassDef(name='Service', bases=[], keywords=[], body=members, decorator_list=[])], type_ignores=[]))
         exec(compile(module, '<actual discovery>', 'exec'), namespace)
@@ -44,6 +44,11 @@ class DomainProjectionTests(unittest.TestCase):
         self.assertTrue(result['domainResources']['ontologies']['domains']['ontology:qif']['queryBase'].endswith('/ontology%3Aqif'))
         for name, expected in [('changerequest', service.CM_CHANGE_REQUEST_URI), ('testresult', service.QM_TEST_RESULT_URI), ('testcase', service.QM_TEST_CASE_URI)]:
             self.assertEqual(service.resource_domain_types([], {'entity_type': name}), [expected])
+            self.assertEqual(service.resource_domain_types([], {'element_type': 'unrelated', 'entity_type': name}), [expected])
+        for resource_type in ['requirements', 'requirement-collections', 'change-requests', 'test-results', 'test-cases']:
+            predicate = service._resource_type_predicate(resource_type)
+            self.assertIn('any(value IN [n.element_type, n.entity_type]', predicate)
+            self.assertNotIn('coalesce(toString(n.element_type), toString(n.entity_type)', predicate)
         self.assertEqual(service._canonical_property_descriptor({'name': 'dcterms:title', 'occurs': 'exactly-one'})['occurs'],
                          'http://open-services.net/ns/core#Exactly-one')
 

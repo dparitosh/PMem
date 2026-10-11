@@ -126,3 +126,8 @@ verify Model Development Kit is listed as installed. Then prepare the draft conf
 
 These checks record local paths and declared versions; they do not claim MDK/MMS
 compatibility or perform synchronization.
+
+
+## Current environment configuration reference
+
+For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](../deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables. The [installation guide](../INSTALLATION.md) defines the complete deployment sequence.

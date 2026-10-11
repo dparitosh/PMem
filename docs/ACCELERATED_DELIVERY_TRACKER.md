@@ -593,3 +593,8 @@ remaining release activities.
 - Promote only one P1 item after P0 is green.
 - Record a test command, result, owner, and deployment impact for each closed item.
 - Treat UI changes as a separate work item after backend contracts are stable.
+
+
+## Current environment configuration reference
+
+For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](../deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables. The [installation guide](../INSTALLATION.md) defines the complete deployment sequence. Earlier findings in this document remain historical audit evidence.

@@ -1,4 +1,8 @@
 .reports-analytics { display: grid; gap: 12px; margin-bottom: 16px; }
+.ontology-oslc-report { min-width: 0; margin: 16px 0; color: var(--ui-text); }
+.ontology-oslc-report__table { overflow-x: auto; margin-top: 12px; border: 1px solid var(--ui-border); }
+.ontology-oslc-report table { width: 100%; border-collapse: collapse; background: var(--ui-surface); }
+.ontology-oslc-report th, .ontology-oslc-report td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--ui-border); }
 .reports-analytics__heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .reports-analytics__heading h2 { margin: 0; color: var(--ui-text); font-size: 16px; }
 .reports-analytics__heading p { margin: 4px 0 0; color: var(--ui-muted); font-size: 12px; }

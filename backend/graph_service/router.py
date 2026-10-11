@@ -13,6 +13,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/graph", tags=["graph"])
 
 
+@router.get('/ontology-report/{ontology_id}', dependencies=[Depends(graph_read_identity)], summary='Full loaded-ontology OSLC domain coverage and linked resource counts')
+def loaded_ontology_report(ontology_id: str) -> dict:
+    from .ontology_reports import ontology_report
+    try:
+        return ontology_report(ontology_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except Exception as exc:
+        logger.exception('Ontology OSLC report failed')
+        raise HTTPException(503, 'Ontology report unavailable; check graph and ontology registry connectivity') from exc
+
+
 @router.get("/health", summary="Graph service health")
 def health() -> dict:
     return {"service": "graph", **publisher.health()}

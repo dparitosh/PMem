@@ -44,3 +44,8 @@ Manual maintenance utilities have their own arguments. Inspect them before use
 and explicitly select the root `.env.local`. The supported cleanup utility
 requires that selected file, applies it over inherited values, displays a
 non-secret target summary, and requires destructive confirmation.
+
+
+## Current environment configuration reference
+
+For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](../deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables. The [installation guide](../INSTALLATION.md) defines the complete deployment sequence.

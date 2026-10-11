@@ -29,3 +29,8 @@ required settings; the retired templates are no longer distributed.
 For production, inject equivalent settings using the deployment secret manager.
 See the [single installation guide](../INSTALLATION.md) for validation and
 authentication profiles.
+
+
+## Current environment configuration reference
+
+For current `.env.local` ownership, copy-and-paste update commands, central credential synchronization and Ollama REST settings, use the [environment configuration reference](../deliverables/DEPO_Environment_Configuration_Reference.md#applying-environment-configuration-in-sequence). Use the selected root server file consistently; never copy its secrets into public frontend variables. The [installation guide](../INSTALLATION.md) defines the complete deployment sequence.

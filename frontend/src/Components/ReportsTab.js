@@ -7,6 +7,7 @@ import { normalizeGraphDataset as normalizeGraphDatasetShared } from '../utils/g
 import { useOntologies } from '../contexts/OntologyContext';
 import KpiStrip from '../widgets/KpiStrip';
 import ReportsAnalytics from './ReportsAnalytics';
+import OntologyOslcReport from './OntologyOslcReport';
 import './ReportsAnalytics.css';
 
 const NOISY_COLUMNS = new Set([
@@ -657,6 +658,7 @@ const ReportsTab = ({ searchResults, graphData }) => {
       </select></label>
       <button type="button" onClick={() => { setContentRevision(value => value + 1); setTelemetryRevision(value => value + 1); }}>Refresh reports</button>
       <p>Graph reports use a bounded service projection (up to 1,200 nodes); they are not full warehouse totals. Pipeline/job telemetry remains system-wide.</p>
+      <OntologyOslcReport ontologyId={reportOntology} revision={contentRevision} />
       <section aria-label="Full graph totals">
         <h3>Full graph totals for selected ontology scope</h3>
         {fullMetricsError && <p role="alert">{fullMetricsError}</p>}

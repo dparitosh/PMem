@@ -10,7 +10,7 @@ from backend.depo_platform.postgres_schema import configured_schema, connect_tim
 from backend.depo_platform.schema_contract import verify_structure
 from backend.postgres_migrations import MIGRATIONS, apply_migrations, migration_checksum
 
-# Column/type contract for the tables owned by migrations 1-4. JSON documents
+# Column/type contract for the current released migrations. JSON documents
 # remain in value; there is no separate relational table for each job namespace.
 EXPECTED_COLUMNS = {
     'depo_api_credentials': {'profile': 'text', 'salt': 'text', 'digest': 'text', 'actor': 'text', 'expires_at': 'timestamp with time zone', 'revoked': 'boolean', 'updated_at': 'timestamp with time zone'},
@@ -115,11 +115,12 @@ def verify_migration_privileges(connection) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
             'SELECT has_database_privilege(current_user, current_database(), %s), '
+            'has_schema_privilege(current_user, %s, %s), '
             'has_schema_privilege(current_user, %s, %s)',
-            ('CONNECT', schema, 'USAGE, CREATE'),
+            ('CONNECT', schema, 'USAGE', schema, 'CREATE'),
         )
         row = cursor.fetchone()
-        if not row or not all(row):
+        if not row or len(row) != 3 or not all(row):
             raise RuntimeError(
                 f"PostgreSQL application role requires CONNECT and USAGE, CREATE privileges on schema '{schema}'"
             )

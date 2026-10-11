@@ -6,7 +6,13 @@ const axis = {
   axisTick: { alignWithLabel: true },
 };
 
-const top = (rows, limit = 10) => (rows || []).filter((row) => Number(row.count) > 0).slice(0, limit);
+const top = (rows, limit = 10) => (rows || []).filter((row) => Number.isFinite(Number(row.count)) && Number(row.count) > 0)
+  .sort((a, b) => Number(b.count) - Number(a.count)).slice(0, limit);
+
+export const telemetryCategories = (telemetry, kind) => Object.entries(telemetry || {})
+  .filter(([key, value]) => (kind === 'runs' ? key.endsWith('_runs') && key !== 'total_runs' : key.startsWith('records_'))
+    && typeof value === 'number' && Number.isFinite(value) && value >= 0)
+  .map(([key, value]) => ({ name: key.replace(kind === 'runs' ? /_runs$/ : /^records_/, '').replace(/_/g, ' '), count: value }));
 
 const barOption = (rows, color) => {
   const values = top(rows);
@@ -38,12 +44,7 @@ const donutOption = (rows) => {
 };
 
 const statusOption = (telemetry) => {
-  const rows = [
-    ['Completed', Number(telemetry?.completed_runs || 0)],
-    ['Running', Number(telemetry?.running_runs || 0)],
-    ['Queued', Number(telemetry?.queued_runs || 0)],
-    ['Failed', Number(telemetry?.failed_runs || 0)],
-  ];
+  const rows = telemetryCategories(telemetry, 'runs').map(row => [row.name, row.count]);
   if (!rows.some(([, value]) => value > 0)) return null;
   return {
     animationDuration: 300,
@@ -52,30 +53,15 @@ const statusOption = (telemetry) => {
     xAxis: { type: 'category', data: rows.map(([name]) => name), axisLabel: { interval: 0 } },
     yAxis: { type: 'value', minInterval: 1 },
     series: [{
-      type: 'bar', name: 'Runs', data: rows.map(([, value], index) => ({
-        value,
-        itemStyle: { color: ['#00a78e', '#00bedc', '#f0b323', '#e63237'][index] },
-      })), barMaxWidth: 34,
+      type: 'bar', name: 'Runs', data: rows.map(([, value]) => value), barMaxWidth: 34,
     }],
   };
 };
 
 const qualityOption = (telemetry) => {
-  const accepted = Number(telemetry?.records_accepted || 0);
-  const rejected = Number(telemetry?.records_rejected || 0);
-  if (accepted + rejected === 0) return null;
-  return {
-    animationDuration: 300,
-    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    series: [{
-      type: 'pie', name: 'Quality outcome', radius: ['48%', '72%'], center: ['50%', '50%'],
-      label: { formatter: '{b}\n{c}' },
-      data: [
-        { name: 'Accepted', value: accepted, itemStyle: { color: '#00a78e' } },
-        { name: 'Rejected', value: rejected, itemStyle: { color: '#e63237' } },
-      ],
-    }],
-  };
+  // Record counters may overlap (processed, accepted, published). A bar chart
+  // shows each returned metric without inventing parts of a percentage total.
+  return barOption(telemetryCategories(telemetry, 'quality'), '#007993');
 };
 
 export default function ReportsAnalytics({ entityTypes, relationships, ontologies, telemetry, telemetryError }) {
@@ -98,7 +84,7 @@ export default function ReportsAnalytics({ entityTypes, relationships, ontologie
       <div className="reports-analytics__heading">
         <div>
           <h2 id="reports-analytics-title">Analytics overview</h2>
-          <p>Live graph, ontology, data-job, and data-quality summaries. Detailed tables remain available below.</p>
+          <p>Service-backed summaries. Entity and relationship charts describe the loaded graph sample; ontology coverage uses full published totals. Pipeline charts describe global runs.</p>
         </div>
         {telemetryError && <span role="status">Pipeline telemetry unavailable; graph analytics remain visible.</span>}
       </div>
@@ -106,8 +92,8 @@ export default function ReportsAnalytics({ entityTypes, relationships, ontologie
         <EChartPanel title="Entity distribution" description="Top entity types in the current report scope." option={entityOption} />
         <EChartPanel title="Relationship distribution" description="Top relationship types in the current graph scope." option={relationshipOption} />
         <EChartPanel title="Ontology coverage" description="Published RDF resource totals from the full graph aggregation; unavailable counts are excluded." option={ontologyOption} />
-        <EChartPanel title="Data-job status" description="Durable pipeline runs by current status." option={executionOption} emptyMessage={telemetryError || 'No pipeline runs are available.'} />
-        <EChartPanel title="Data-quality outcome" description="Accepted and rejected records from recent durable runs." option={dataQualityOption} emptyMessage={telemetryError || 'No quality counts are available.'} />
+        <EChartPanel title="Data-job status" description="Global durable pipeline runs; categories come from returned status counters." option={executionOption} emptyMessage={telemetryError || 'No pipeline runs are available.'} />
+        <EChartPanel title="Record quality metrics" description="Global record counters returned by durable pipeline telemetry; counters may overlap." option={dataQualityOption} emptyMessage={telemetryError || 'No quality counts are available.'} />
       </div>
     </section>
   );

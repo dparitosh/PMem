@@ -52,6 +52,12 @@ def apply_migrations(connection) -> None:
                 f"Database has migration versions newer than or unknown to this release: {unknown}. "
                 "Install the matching application release before modifying the schema."
             )
+        if applied and sorted(applied) != list(range(1, max(applied) + 1)):
+            raise RuntimeError(
+                'PostgreSQL migration history has missing earlier versions; '
+                'restore or reconcile the deployed history with the DBA before upgrading. '
+                'Do not run earlier migrations after later versions or fabricate history rows.'
+            )
         for version, name, statements in sorted(MIGRATIONS):
             existing = applied.get(version)
             if existing and existing[0] != name:
