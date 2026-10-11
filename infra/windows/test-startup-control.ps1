@@ -28,6 +28,19 @@ function Stop-Process { param($Id,[switch]$Force,$ErrorAction)
 }
 Assert-Startup ((@(Get-DepoProcessTree 101 'C:\project\python.exe' 'http.server')).Count -eq 3) 'Verified descendant discovery failed'
 Assert-Startup (Test-DepoListener 101 'C:\project\python.exe' 'http.server' 3000 '127.0.0.1') 'Owned descendant listener rejected'
+$originalCommand = $script:mockProcesses[0].CommandLine
+$script:mockProcesses[0].CommandLine = 'python -m backend.depo_platform.windows_runtime uvicorn http.server'
+# A managed runtime listener probe must never send shutdown requests or wait
+# for graceful shutdown. Previous tests only covered an unmanaged http.server.
+function Set-Content { throw 'Listener verification attempted a filesystem write' }
+function Start-Sleep { throw 'Listener verification attempted a shutdown wait' }
+try {
+  Assert-Startup (Test-DepoListener 101 'C:\project\python.exe' 'http.server' 3000 '127.0.0.1') 'Managed runtime listener rejected'
+} finally {
+  Remove-Item Function:\Set-Content
+  Remove-Item Function:\Start-Sleep
+  $script:mockProcesses[0].CommandLine = $originalCommand
+}
 Assert-Startup (-not (Test-DepoListener 101 'C:\project\python.exe' 'http.server' 3000 '10.0.2.16')) 'Wrong bind address accepted'
 $script:mockListeners = @([pscustomobject]@{LocalPort=3000; LocalAddress='127.0.0.1'; OwningProcess=404})
 Assert-Startup (-not (Test-DepoListener 101 'C:\project\python.exe' 'http.server' 3000 '127.0.0.1')) 'Unrelated port owner accepted'

@@ -24,6 +24,20 @@ function Get-DepoProcessTree([int]$ProcessId, [string]$ExpectedPython, [string]$
 
 function Test-DepoListener([int]$ProcessId, [string]$ExpectedPython, [string]$Module, [int]$Port, [string]$BindHost) {
   $tree = @(Get-DepoProcessTree $ProcessId $ExpectedPython $Module)
+  $owners = @($tree | ForEach-Object { [int]$_.Process.ProcessId })
+  $addresses = if ($BindHost -in @('0.0.0.0','::')) { @($BindHost) } else {
+    @([Net.Dns]::GetHostAddresses($BindHost) | ForEach-Object { $_.ToString() })
+  }
+  # Query all listeners: a port-filtered query raises ObjectNotFound during
+  # normal startup. Do not hide genuine CIM/access failures as a closed port.
+  try { $listeners = @(Get-NetTCPConnection -State Listen -ErrorAction Stop) }
+  catch { throw "Windows listener inspection failed for port ${Port}: $($_.Exception.Message)" }
+  return [bool](@($listeners |
+    Where-Object { $_.LocalPort -eq $Port -and $_.OwningProcess -in $owners -and $_.LocalAddress -in $addresses }).Count)
+}
+
+function Stop-DepoProcessTree([int]$ProcessId, [string]$ExpectedPython, [string]$Module) {
+  $tree = @(Get-DepoProcessTree $ProcessId $ExpectedPython $Module)
   $rootNode = $tree | Where-Object { $_.Depth -eq 0 } | Select-Object -First 1
   if ($rootNode -and $rootNode.Process.CommandLine -match 'backend\.depo_platform\.windows_runtime') {
     $repository = Split-Path (Split-Path (Split-Path $ExpectedPython -Parent) -Parent) -Parent
@@ -43,20 +57,6 @@ function Test-DepoListener([int]$ProcessId, [string]$ExpectedPython, [string]$Mo
     } while ((Get-Date) -lt $graceDeadline)
     Remove-Item -LiteralPath $requestPath -Force -ErrorAction SilentlyContinue
   }
-  $owners = @($tree | ForEach-Object { [int]$_.Process.ProcessId })
-  $addresses = if ($BindHost -in @('0.0.0.0','::')) { @($BindHost) } else {
-    @([Net.Dns]::GetHostAddresses($BindHost) | ForEach-Object { $_.ToString() })
-  }
-  # Query all listeners: a port-filtered query raises ObjectNotFound during
-  # normal startup. Do not hide genuine CIM/access failures as a closed port.
-  try { $listeners = @(Get-NetTCPConnection -State Listen -ErrorAction Stop) }
-  catch { throw "Windows listener inspection failed for port ${Port}: $($_.Exception.Message)" }
-  return [bool](@($listeners |
-    Where-Object { $_.LocalPort -eq $Port -and $_.OwningProcess -in $owners -and $_.LocalAddress -in $addresses }).Count)
-}
-
-function Stop-DepoProcessTree([int]$ProcessId, [string]$ExpectedPython, [string]$Module) {
-  $tree = @(Get-DepoProcessTree $ProcessId $ExpectedPython $Module)
   foreach ($node in @($tree | Sort-Object Depth -Descending)) {
     # Recheck creation time to avoid killing a reused PID after taking a snapshot.
     $current = Get-CimInstance Win32_Process -Filter "ProcessId = $($node.Process.ProcessId)" -ErrorAction Stop

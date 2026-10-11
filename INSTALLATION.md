@@ -3196,6 +3196,23 @@ In **QIF**, select two distinct registered versions identified as QIF and AP242.
 
 ### Credential consistency on installation and redeployment
 
+Startup checkpoints, in order: configuration validation; dependencies and
+frontend build; configured PostgreSQL runtime handling; application-role login;
+transactional schema migration/verification; credential validation or explicit
+synchronization; Neo4j constraints; optional Spark probes; API/worker launch;
+readiness, listener ownership and authorization; browser-session verification;
+release preflight. Success at one checkpoint does not certify later checkpoints.
+The frontend build alone does not serve the UI: run its launcher afterward.
+
+If backend startup takes roughly one minute per API, deploy the corrected
+`infra/windows/process-control.ps1` together with the matching startup script.
+Listener verification must be read-only: it must never create `stop-*.request`
+files or wait for shutdown. Cooperative stop requests belong exclusively in
+the stop function. Do not increase readiness timeouts to conceal this defect.
+The startup script now reports each process check, reuse and launch before
+readiness validation. Graceful shutdown can still legitimately wait for the
+configured `DEPO_SHUTDOWN_GRACE_SECONDS`; this wait is not a startup step.
+
 The repository contains two different files named `install-depo.ps1`: the root
 file is a launcher; `infra/windows/install-depo.ps1` installs dependencies and
 supports `-CheckPrerequisites`. Preserve their original directories when copying

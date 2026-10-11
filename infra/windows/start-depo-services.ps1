@@ -125,8 +125,10 @@ $services = @($manifest.services | ForEach-Object { @{ Name=$_.id; Module=$_.mod
 $services += @($manifest.workers | ForEach-Object { @{ Name=$_.id; Module=$_.module; Port=$null } })
 if ($services.Count -ne 13) { throw "Deployment manifest must define ten HTTP services and three workers." }
 $startedServices = @()
+Write-Host 'Schema and credential checks passed. Checking tracked processes and launching services/workers...' -ForegroundColor Cyan
 try {
 foreach ($service in $services) {
+  Write-Host ("Checking startup for '{0}'{1}..." -f $service.Name, $(if ($service.Port) { " on port $($service.Port)" } else { ' worker' }))
   $pidFile = Join-Path $stateDir "$($service.Name).pid"
   # A PID may be reused after an unplanned shutdown.  Reuse it only when the
   # expected Python executable is still alive *and* the service port is
@@ -142,7 +144,10 @@ foreach ($service in $services) {
     $expectedProcess = $existing -and $processDetails -and
       $processDetails.ExecutablePath -eq $python -and
       $processDetails.CommandLine -match [regex]::Escape($service.Module)
-    if ($expectedProcess -and ($null -eq $service.Port -or (Test-DepoListener $recordedPid $python $service.Module $service.Port $BindHost))) { continue }
+    if ($expectedProcess -and ($null -eq $service.Port -or (Test-DepoListener $recordedPid $python $service.Module $service.Port $BindHost))) {
+      Write-Host "Reusing tracked process for '$($service.Name)'; readiness validation follows."
+      continue
+    }
     if ($expectedProcess -and $portListening) { throw "Tracked service '$($service.Name)' does not own the expected listener/binding. Stop it before changing BindHost; PID tracking is retained." }
     if ($expectedProcess -and -not $portListening) { Stop-DepoProcessTree $recordedPid $python $service.Module }
     Remove-Item -LiteralPath $pidFile -Force
@@ -156,6 +161,7 @@ foreach ($service in $services) {
   $stdout = Join-Path $stateDir "$($service.Name).out.log"
   $stderr = Join-Path $stateDir "$($service.Name).err.log"
   $process = Start-Process -FilePath $python -ArgumentList $arguments -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+  Write-Host "Launched '$($service.Name)' (PID $($process.Id)); readiness validation follows."
   # Roll back only processes launched by this invocation. Existing healthy
   # services are intentionally not part of a failed start attempt.
   $startedServices += @{ ProcessId = $process.Id; PidFile = $pidFile; Module = $service.Module }
