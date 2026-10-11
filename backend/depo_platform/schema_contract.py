@@ -63,7 +63,8 @@ def verify_structure(cursor, schema, columns):
                 raise RuntimeError(f'Required column must be NOT NULL: {table}.{column}')
             if (table,column) in defaults and normalize(str(default),schema) != normalize(defaults[(table,column)],schema):
                 raise RuntimeError(f'Invalid column default: {table}.{column}')
-    cursor.execute("SELECT a.attidentity,pg_get_serial_sequence(format('%I.%I',n.nspname,c.relname),'event_id') FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=%s AND c.relname='depo_api_credential_events' AND a.attname='event_id'", (schema,))
+    # Literal PostgreSQL format specifiers must be escaped for psycopg binding.
+    cursor.execute("SELECT a.attidentity,pg_get_serial_sequence(format('%%I.%%I',n.nspname,c.relname),'event_id') FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=%s AND c.relname='depo_api_credential_events' AND a.attname='event_id'", (schema,))
     identity = cursor.fetchone()
     if not identity or identity[0] != 'a' or not identity[1]:
         raise RuntimeError('Credential events must use an owned GENERATED ALWAYS identity sequence')

@@ -3196,6 +3196,46 @@ In **QIF**, select two distinct registered versions identified as QIF and AP242.
 
 ### Credential consistency on installation and redeployment
 
+The repository contains two different files named `install-depo.ps1`: the root
+file is a launcher; `infra/windows/install-depo.ps1` installs dependencies and
+supports `-CheckPrerequisites`. Preserve their original directories when copying
+a release. Never overwrite the nested file with the root launcher. The Windows
+installer now checks this contract before starting deployment stages.
+
+If root `install-depo.ps1` is missing, the direct
+`infra/windows/install-depo-windows.ps1` command below is also supported. If an
+environment entry is rejected, repair the reported line in root `.env.local`:
+use one `KEY=value` per line or a `#` comment, with no shell commands or Markdown.
+Do not create another legacy `.env` file. The dependency installer loads the
+selected environment before running the import/OpenAPI checks.
+Pip's newer-version notice is informational; upgrading pip does not repair
+application imports, migration SQL or invalid configuration.
+
+To make the selected root `.env.local` authoritative during an existing
+installation update, use the integrated synchronization option. After replacing
+the matching release files, run this from the application VM:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\install-depo-windows.ps1 `
+  -EnvFile 'E:\App\PMem\.env.local' `
+  -Profile Production `
+  -SkipDependencyInstall `
+  -SynchronizeCredentials
+```
+
+Use `-SkipDependencyInstall` only when this release's dependencies are already
+installed; omit it if requirements or lockfiles changed. The installer migrates
+and verifies PostgreSQL, atomically synchronizes the supplied application key
+profiles and their metadata, then continues service startup and release checks.
+There is no separate credential command to run. `-SynchronizeCredentials` is
+an alias for `-ReplaceExistingCredentials` and works with the root launcher too.
+Omitted profiles are preserved. Database passwords, Neo4j and Ollama credentials
+are not imported as application API-key profiles. Old keys and sessions may stop
+working: reconnect in Admin using the selected file's `ADMIN_API_KEY`.
+Without this option the installer validates existing profiles and stops on a
+mismatch; it does not silently overwrite customer credentials.
+
 The installer migrates PostgreSQL, initializes missing profiles and checks supplied credential keys, actor metadata, expiry and revocation before launching APIs. Existing keys are preserved. Conflicts stop the installation with profile names and reasons; secret values are never printed.
 
 Normal first installation or redeployment, from the application repository root:

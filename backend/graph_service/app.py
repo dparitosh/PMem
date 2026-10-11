@@ -9,10 +9,22 @@ from .context_router import router as context_router
 from .graphql_router import router as graphql_router
 from .sparql_router import router as sparql_router
 from .federation_router import router as federation_router
+from contextlib import asynccontextmanager
+from asyncio import to_thread
+from .neo4j_publisher import publisher
+
+
+@asynccontextmanager
+async def graph_lifespan():
+    """Release the shared read pool on normal or exceptional shutdown."""
+    try:
+        yield
+    finally:
+        await to_thread(publisher.close)
 
 # Neo4j serves graph projections while PostgreSQL holds governed federation
 # peer registrations. Both stores are part of the published API contract.
-app = create_service_app(title="DEPO Graph Service", version="1.0.0", dependencies=("neo4j", "postgres"))
+app = create_service_app(title="DEPO Graph Service", version="1.0.0", dependencies=("neo4j", "postgres"), lifespan_hook=graph_lifespan)
 app.include_router(create_odata_catalog_router(
     service_name="DEPOGraph",
     capabilities=[
@@ -41,7 +53,3 @@ app.include_router(federation_router)
 
 from .bridge_router import router as bridge_router
 app.include_router(bridge_router, prefix="/api/v1")
-
-# Release the shared read pool when the service shuts down.
-from .neo4j_publisher import publisher
-app.add_event_handler("shutdown", publisher.close)

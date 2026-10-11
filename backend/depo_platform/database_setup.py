@@ -74,7 +74,12 @@ def _failure_action(exc: Exception) -> dict:
         '42710': 'An untracked constraint or index already exists. Do not delete it; reconcile it with the versioned migration.',
     }
     diagnostic = str(exc).lower()
-    if sqlstate and sqlstate.startswith('08'):
+    if not sqlstate and type(exc).__name__ == 'ProgrammingError':
+        action = ('The PostgreSQL client rejected an application query before server execution. '
+                  'Deploy the matching backend release, including depo_platform/schema_contract.py. '
+                  'Parameterized psycopg queries must escape literal percent signs as %% '
+                  '(PostgreSQL format identifiers use %%I). This is not proof of a login failure.')
+    elif sqlstate and sqlstate.startswith('08'):
         action = 'PostgreSQL is unreachable. Verify host, port 5432, Windows firewall, listen_addresses and pg_hba.conf from the application VM.'
     elif 'no pg_hba.conf entry' in diagnostic:
         action = 'PostgreSQL has no pg_hba.conf rule for this application VM, user, database and SSL mode. Add the matching rule on the database VM, reload PostgreSQL, and retry.'

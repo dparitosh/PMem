@@ -39,6 +39,10 @@ if ($CheckPrerequisites) {
   Write-Host 'Installation prerequisites passed. No dependencies were installed.'
   return
 }
+. (Join-Path $PSScriptRoot 'runtime-config.ps1')
+# Import the selected deployment configuration before any service imports.
+# Python's legacy .env lookup does not load root .env.local automatically.
+Import-DepoEnvironment -Root $root -EnvFile $EnvFile
 if (-not (Test-Path $venvPython)) {
   & $Python -m venv $VenvPath
   if ($LASTEXITCODE -ne 0) { throw "Python virtual environment creation failed." }

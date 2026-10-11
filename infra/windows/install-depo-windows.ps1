@@ -22,13 +22,29 @@ param(
   [switch]$SkipFrontend,
   [switch]$SkipBaselineProvisioning,
   [switch]$SkipDependencyInstall,
-  [switch]$ReplaceExistingCredentials,
+  [Alias('SynchronizeCredentials')][switch]$ReplaceExistingCredentials,
   [switch]$SkipReleasePreflight
 )
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $envPath = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $root $EnvFile }
+if (-not $SkipDependencyInstall) {
+  $dependencyInstaller = Join-Path $PSScriptRoot 'install-depo.ps1'
+  if (-not (Test-Path -LiteralPath $dependencyInstaller -PathType Leaf)) {
+    throw 'Incomplete release: infra/windows/install-depo.ps1 is missing. Restore the complete release with its folder structure.'
+  }
+  $installerTokens = $null
+  $installerErrors = $null
+  $installerAst = [System.Management.Automation.Language.Parser]::ParseFile($dependencyInstaller, [ref]$installerTokens, [ref]$installerErrors)
+  if ($installerErrors.Count -gt 0) { throw 'Dependency installer contains syntax errors. Restore infra/windows/install-depo.ps1 from the matching release.' }
+  $installerParameters = @($installerAst.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
+  foreach ($requiredParameter in @('CheckPrerequisites', 'EnvFile', 'Python', 'SkipFrontend')) {
+    if ($requiredParameter -notin $installerParameters) {
+      throw "Mismatched release: infra/windows/install-depo.ps1 lacks -$requiredParameter. Restore the matching dependency installer, not the repository-root launcher. Preserve environment files and the database."
+    }
+  }
+}
 
 function Invoke-DepoStage([string]$Name, [scriptblock]$Action) {
   Write-Host "`n=== DEPO: $Name ===" -ForegroundColor Cyan
@@ -106,7 +122,8 @@ Invoke-DepoStage 'PostgreSQL schema migration' {
   & (Join-Path $root 'infra\deployment\invoke-depo-lifecycle.ps1') -Action InitializeDatabase -EnvFile $envPath -Profile $Profile
 }
 if ($settings['AUTH_MODE'] -eq 'token' -and $settings['DEPO_CREDENTIAL_STORE'] -eq 'postgres') {
-  Invoke-DepoStage 'Central credential synchronization (before service launch)' {
+  $credentialStage = if ($ReplaceExistingCredentials) { 'Central credential synchronization from selected environment (before service launch)' } else { 'Central credential validation (before service launch)' }
+  Invoke-DepoStage $credentialStage {
     & (Join-Path $PSScriptRoot 'apply-depo-service-credentials.ps1') -EnvFile $envPath -ReplaceExisting:$ReplaceExistingCredentials
   }
 } elseif ($ReplaceExistingCredentials) {
