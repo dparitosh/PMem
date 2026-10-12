@@ -70,7 +70,7 @@ async def test_engineering_publication_uses_the_private_graph_credential(monkeyp
         async def __aenter__(self): return self
         async def __aexit__(self, *args): return None
         async def get(self, url, **kwargs):
-            return Response({"lifecycle_status": "draft", "status": "registered"})
+            return Response({"lifecycle_status": "approved", "status": "registered"})
         async def post(self, url, **kwargs):
             calls.append((url, kwargs))
             if url.endswith("/policies/evaluate"): return Response({"compliant": True})
@@ -91,3 +91,9 @@ async def test_engineering_publication_uses_the_private_graph_credential(monkeyp
     assert result["status"] == "published"
     graph_call = next(call for call in calls if call[0].endswith("/graph/ontologies/publish"))
     assert graph_call[1]["headers"] == {"Authorization": "Bearer private-graph-token"}
+
+
+@pytest.mark.parametrize("state", ["draft", "in_review", "retired", "deprecated"])
+def test_publication_requires_approved_lifecycle(state):
+    with pytest.raises(ValueError):
+        EngineeringWorkflow._require_publishable({"lifecycle_status": state})

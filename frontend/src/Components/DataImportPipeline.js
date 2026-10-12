@@ -629,9 +629,9 @@ export default function DataImportPipeline() {
         form.append('include_conversion', 'false');
         requestSubmitted = true;
         uploadData = await apiClient.post(buildSemanticServiceUrl('ingestion', '/api/v1/engineering-workflows'), form, {
-          headers: { Authorization: `Bearer ${ingestionWriteToken.trim() || getCredentialProfile('INGESTION_WRITE_TOKEN')}` }, timeout: 300000, signal: controller.signal,
+          headers: { Authorization: `Bearer ${ingestionWriteToken.trim() || getCredentialProfile('INGESTION_WRITE_TOKEN')}` }, timeout: 3660000, signal: controller.signal,
         });
-        if (shouldPublish && (uploadData.data.status !== 'published' || !uploadData.data.graph_publication)) {
+        if (shouldPublish && uploadData.data.status !== 'approval_required' && (uploadData.data.status !== 'published' || !uploadData.data.graph_publication)) {
           if (['policy_blocked', 'quality_blocked'].includes(uploadData.data.status)) {
             const rejection = new Error(uploadData.data.message || 'Governance checks blocked publication.');
             rejection.response = { status: 200, data: uploadData.data };
@@ -655,6 +655,7 @@ export default function DataImportPipeline() {
       }
       if (controller.signal.aborted) return;
       const responseBody = uploadData.data || uploadData;
+      const publicationConfirmed = shouldPublish && responseBody.status === 'published';
       const uploadDataBody = useEngineeringWorkflow ? {
         ...responseBody.ontology_registration,
         task_id: responseBody.ontology_registration.ontology_id,
@@ -680,13 +681,13 @@ export default function DataImportPipeline() {
           backendStage: 'verify',
           progress: 100,
           status: 'completed',
-          committed: shouldPublish,
+          committed: publicationConfirmed,
           registered: true,
-          published: shouldPublish,
-          message: shouldPublish ? `Ontology '${file.ontologyName}' published to Neo4j` : `Ontology '${file.ontologyName}' registered; graph publication has not run.`,
+          published: publicationConfirmed,
+          message: publicationConfirmed ? `Ontology '${file.ontologyName}' published to Neo4j` : responseBody.status === 'approval_required' ? responseBody.message : `Ontology '${file.ontologyName}' registered; graph publication has not run.`,
           stats: {
-            entities_found: shouldPublish ? responseBody.graph_publication.resources : uploadDataBody.nodes_merged ?? null,
-            relationships_found: shouldPublish ? responseBody.graph_publication.relationships : null,
+            entities_found: publicationConfirmed ? responseBody.graph_publication.resources : uploadDataBody.nodes_merged ?? null,
+            relationships_found: publicationConfirmed ? responseBody.graph_publication.relationships : null,
           },
           error: false,
           completedAt: new Date().toLocaleTimeString(),
@@ -698,7 +699,7 @@ export default function DataImportPipeline() {
     } catch (err) {
       if (controller.signal.aborted) return;
       const backendDetail = err?.response?.data?.detail;
-      const outcomeUnknown = requestSubmitted && shouldPublish && (!err?.response || err.response.status >= 500);
+      const outcomeUnknown = requestSubmitted && (!err?.response || err.response.status >= 500);
       const detail = Array.isArray(backendDetail)
         ? backendDetail.map(item => `${Array.isArray(item.loc) ? item.loc.join('.') : 'Upload'}: ${item.msg || 'Invalid value'}`).join('; ')
         : typeof backendDetail === 'string' ? backendDetail
@@ -715,7 +716,7 @@ export default function DataImportPipeline() {
           status: outcomeUnknown ? 'outcome_unknown' : 'failed',
           outcomeUnknown,
           message: outcomeUnknown
-            ? `Publication outcome is unverified. Check the ontology and graph publication before retrying with the same source and metadata. ${String(detail)}`
+            ? `Registration or publication outcome is unverified. Check the ontology and graph publication before retrying with the same source and metadata. ${String(detail)}`
             : String(detail),
           error: true,
         }

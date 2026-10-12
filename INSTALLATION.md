@@ -4133,3 +4133,18 @@ ONTOLOGY_APPROVAL_TOKEN for creation from the selected root environment file.
 The script applies centrally resolved ontology routing and the optional APIM
 subscription key. A successful service readiness check alone does not establish
 that these read/write credential profiles are valid in the central store.
+
+
+### XSD registration and approval checkpoint
+
+New XSD imports are registered as drafts. When publication is selected, the
+workflow reports approval required. Review and approve the retained ontology in
+Ontology Junction before publishing it. Policy/quality checks are not approval.
+
+The engineering graph call uses GRAPH_PUBLICATION_TIMEOUT_SECONDS (default 180).
+ENGINEERING_WORKFLOW_TIMEOUT_SECONDS bounds the entire workflow (default 300,
+maximum 3600). The browser allows 3660 seconds for that endpoint. If a response
+is lost, inspect the retained registration and graph receipt before retrying.
+
+Deploy the matching backend files, rebuild the frontend and restart services.
+These changes require no new database migration.

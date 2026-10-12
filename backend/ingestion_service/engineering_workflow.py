@@ -57,6 +57,7 @@ class EngineeringWorkflow:
         self.ontology_url = service_url("ONTOLOGY_SERVICE_URL", "http://127.0.0.1:8011/api/v1")
         self.graph_url = service_url("GRAPH_SERVICE_URL", "http://127.0.0.1:8013/api/v1")
         from backend.depo_platform.network import bounded_timeout_seconds
+        self.publication_timeout = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600)
         self.timeout = bounded_timeout_seconds('SERVICE_REQUEST_TIMEOUT_SECONDS', default=30, maximum=300)
 
     async def run(
@@ -144,12 +145,17 @@ class EngineeringWorkflow:
             with dependency_stage("publication_lifecycle_check", request_id):
                 current = await client.get(f"{self.ontology_url}/ontologies/{registration['ontology_id']}")
                 current.raise_for_status()
-                self._require_publishable(current.json())
+                metadata = current.json()
+                if metadata.get("lifecycle_status") in {"draft", "in_review"}:
+                    return {**result, "status": "approval_required",
+                            "message": "Ontology registered. Review and approve it before publishing from Ontology Junction."}
+                self._require_publishable(metadata)
             published = await self._request(client, 'graph_publication', request_id,
                 f"{self.graph_url}/graph/ontologies/publish",
                 data={"ontology_id": registration["ontology_id"], "prefix": data["prefix"],
                       "publication_id": data["source"].split(":", 1)[1]},
                 files={"artifact": (f"{PathName.safe_stem(filename)}.ttl", ontology["turtle"].encode("utf-8"), "text/turtle")},
+                timeout=self.publication_timeout,
                 headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API", endpoint=self.graph_url),
             )
             published.raise_for_status()
@@ -173,7 +179,7 @@ class EngineeringWorkflow:
 
     @staticmethod
     def _require_publishable(metadata: dict[str, Any]) -> None:
-        if (metadata.get("lifecycle_status") not in {"draft", "in_review", "approved"}
+        if (metadata.get("lifecycle_status") != "approved"
                 or metadata.get("status") == "superseded"):
             raise ValueError("Ontology publication is blocked by its current lifecycle state")
 
