@@ -421,7 +421,7 @@ def _extract_annotation(element) -> "str | None":
     return None
 
 
-def _collect_simple_types(xsd_paths: list) -> dict:
+def _collect_simple_types(xsd_paths: list, schema_roots=None) -> dict:
     """
     Pass 1 — scan every XSD file and return a mapping:
         type_local_name  →  rdflib XSD datatype URIRef
@@ -436,7 +436,7 @@ def _collect_simple_types(xsd_paths: list) -> dict:
 
     for path in xsd_paths:
         try:
-            root = ET.parse(path).getroot()
+            root = schema_roots[path] if schema_roots is not None else ET.parse(path).getroot()
         except ET.ParseError:
             continue
 
@@ -1429,7 +1429,7 @@ def convert_xsd_to_owl(cfg: OntologyConfig) -> Path:
         "1", "true", "yes", "on"
     }
     logger.info("Pass 1: scanning %d schema XSD files for simple-type wrappers...", len(all_schema_xsd))
-    simple_types = _collect_simple_types(all_schema_xsd)
+    simple_types = _collect_simple_types(all_schema_xsd, expanded_schemas)
     logger.info("Found %d wrapper types resolving to XSD primitives", len(simple_types))
 
     ontology_uri = URIRef(cfg.base_uri)

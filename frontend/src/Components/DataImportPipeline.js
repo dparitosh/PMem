@@ -600,6 +600,7 @@ export default function DataImportPipeline() {
     const controller = new AbortController();
     ontologyRegistrationsRef.current.add(fileId);
     importRequestControllersRef.current.add(controller);
+    let requestSubmitted = false;
     try {
       setStartedFiles(prev => new Set([...prev, fileId]));
       setPipelineStatus(prev => ({
@@ -610,7 +611,8 @@ export default function DataImportPipeline() {
           backendStage: 'upload',
           progress: 15,
           status: 'processing',
-          message: `Registering ontology '${file.ontologyName}'...`,
+          message: `Converting '${file.name}', then registering '${file.ontologyName}'${shouldPublish ? ' and publishing after governance checks' : ''}. Waiting for the backend result.`,
+          startedAt: new Date().toISOString(),
           error: false,
         }
       }));
@@ -625,6 +627,7 @@ export default function DataImportPipeline() {
         form.append('description', file.description || '');
         form.append('publish', String(shouldPublish));
         form.append('include_conversion', 'false');
+        requestSubmitted = true;
         uploadData = await apiClient.post(buildSemanticServiceUrl('ingestion', '/api/v1/engineering-workflows'), form, {
           headers: { Authorization: `Bearer ${ingestionWriteToken.trim() || getCredentialProfile('INGESTION_WRITE_TOKEN')}` }, timeout: 300000, signal: controller.signal,
         });
@@ -634,7 +637,9 @@ export default function DataImportPipeline() {
         if (!shouldPublish && (uploadData.data.status !== 'registered' || !uploadData.data.ontology_registration?.ontology_id)) {
           throw new Error('Ontology registration was not confirmed.');
         }
-      } else uploadData = await API_METHODS.ontology.upload(file.fileObj, {
+      } else {
+        requestSubmitted = true;
+        uploadData = await API_METHODS.ontology.upload(file.fileObj, {
         ontologyName: file.ontologyName,
         prefix: file.prefix,
         description: file.description || '',
@@ -642,6 +647,7 @@ export default function DataImportPipeline() {
         schemaType: file.schemaType || 'schema',
         fileType: file.fileType,
       }, ingestionWriteToken || getCredentialProfile('INGESTION_WRITE_TOKEN'));
+      }
       if (controller.signal.aborted) return;
       const responseBody = uploadData.data || uploadData;
       const uploadDataBody = useEngineeringWorkflow ? {
@@ -687,7 +693,7 @@ export default function DataImportPipeline() {
     } catch (err) {
       if (controller.signal.aborted) return;
       const backendDetail = err?.response?.data?.detail;
-      const outcomeUnknown = shouldPublish && (!err?.response || err.response.status >= 500);
+      const outcomeUnknown = requestSubmitted && shouldPublish && (!err?.response || err.response.status >= 500);
       const detail = Array.isArray(backendDetail)
         ? backendDetail.map(item => `${Array.isArray(item.loc) ? item.loc.join('.') : 'Upload'}: ${item.msg || 'Invalid value'}`).join('; ')
         : typeof backendDetail === 'string' ? backendDetail
@@ -3033,18 +3039,20 @@ export default function DataImportPipeline() {
       </div>
 
       {/* Data table */}
-      <div
+      <div role="region" aria-label="Import job history" tabIndex={0}
         style={{
           background: C.surface,
           border: `1px solid ${C.border}`,
           borderRadius: '6px',
-          overflow: 'hidden',
+          overflowX: 'auto',
+          maxWidth: '100%',
         }}
       >
         {/* Table header */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '2fr 0.8fr 1.2fr 1fr 1.2fr 0.8fr 0.8fr 1fr',
+          gridTemplateColumns: 'minmax(260px, 2fr) 85px 140px 130px 150px 70px 70px 180px',
+          minWidth: '1200px',
           gap: '10px',
           padding: '8px 10px',
           background: C.bg,
@@ -3112,7 +3120,8 @@ export default function DataImportPipeline() {
                   key={fileId}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '2fr 0.8fr 1.2fr 1fr 1.2fr 0.8fr 0.8fr 1fr',
+                    gridTemplateColumns: 'minmax(260px, 2fr) 85px 140px 130px 150px 70px 70px 180px',
+          minWidth: '1200px',
                     gap: '10px',
                     padding: '6px 10px',
                     borderBottom: `1px solid ${C.border}`,
@@ -3122,7 +3131,7 @@ export default function DataImportPipeline() {
                   }}
                 >
                   {/* File name */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                     <div style={{ minWidth: 0 }}>
                       <div title={file.name} style={{
                         fontWeight: '500',
@@ -3138,13 +3147,18 @@ export default function DataImportPipeline() {
                           fontSize: '9px',
                           color: C.textSec,
                           marginTop: '2px',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
+                          whiteSpace: 'normal',
+                          overflowWrap: 'anywhere',
                         }}>
                           {status.message || 'Persisted job monitor'}{status.dataJobRunId && <a href={pipelineRunLink(status.dataJobRunId)}> View run</a>}{file.persisted && !file.fileObj && status.error ? ' Re-attach the source file to retry.' : ''}
                         </div>
                       )}
+                      <details style={{ fontSize: '10px', marginTop: 4 }}>
+                        <summary>Processing details</summary>
+                        <div>State: {status.status || 'pending'} · Stage: {status.backendStage || status.stage || 'upload'}</div>
+                        {status.startedAt && <div>Started: {new Date(status.startedAt).toLocaleString()}</div>}
+                        {status.taskId && <div style={{ overflowWrap: 'anywhere' }}>Task: {status.taskId}</div>}
+                      </details>
                     </div>
                     {file.ontologyName && (
                       <span style={{
@@ -3522,11 +3536,16 @@ export default function DataImportPipeline() {
                 borderTop: `1px solid ${C.border}`,
                 fontSize: '10px',
               }}>
-                {(() => {
                 <div style={{ color: C.textMuted }}>
                   {files.length} file{files.length !== 1 ? 's' : ''} • {activeProcessingCount} processing
                 </div>
-                })()}
+                <button type="button" onClick={() => {
+                  const removable = files.filter(file => {
+                    const status = pipelineStatus[file.fileId] || {};
+                    return !status.outcomeUnknown && (['completed', 'failed', 'cancelled', 'canceled'].includes(status.status) || status.stage === 'error');
+                  });
+                  removable.forEach(file => removeFile(file.fileId));
+                }}>Clear finished/failed history</button>
                 <button
                   onClick={startAllImports}
                   disabled={pendingFileCount === 0 || !canRunSelectedWorkflow}

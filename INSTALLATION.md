@@ -4031,3 +4031,50 @@ Before OWL translation, the backend compiles the uploaded XSD schema set offline
 with lxml. Conflicting declarations and invalid schema references fail before
 ontology registration. This checks XSD validity; it does not claim that every
 XSD constraint has an equivalent OWL or SHACL representation.
+
+Import job history is saved in the browser and remains after refresh. Use Clear
+finished/failed history to dismiss terminal upload rows; this does not delete
+registered ontologies or backend execution records. Active jobs and uncertain
+publication outcomes remain for reconciliation. Use the horizontal scrollbar to
+reach all columns. Processing details displays the known state, stage, start time,
+task identifier and full message. Engineering schema processing currently returns
+a final result; the UI must not imply live per-stage progress it has not received.
+
+### Build a clean customer source package
+
+Do not ZIP the complete development workspace. After committing the intended
+release files, build from tracked source files with the packaging script:
+
+```powershell
+Set-Location E:\App\PMem
+.\backend\.dt_venv\Scripts\python.exe .\infra\deployment\build-release-package.py --output .\release-dist\DEPO-customer-release.zip
+if ($LASTEXITCODE -ne 0) { throw 'Release packaging failed.' }
+```
+
+Choose a new output filename if the ZIP already exists. This includes required
+ontology code and baseline TTL files, but excludes .codex evidence, runtime logs,
+customer uploads, caches, dependencies and local environment files. It also
+excludes Git references without packaged source, such as external/sirius-web.
+Empty Python __init__.py files are package markers and must remain. Git does not
+track empty folders; required runtime directories are created by application
+startup or first use. Existing customer data must not be deleted when updating.
+
+Namespace-aware type identities are implemented in the shared XSD conversion
+engine, not in a QIF-only adapter. Colliding user types from separate namespaces
+remain distinct; explicit XSD primitive references stay primitive references.
+This applies to any supported local XSD set. Unsupported schema constructs still
+produce explicit errors or conversion limitations rather than full-conformance
+claims.
+
+For the dedicated QIF workflow, select the reference schema folder centrally in
+the root .env.local when the customer uses a specific QIF distribution:
+
+```dotenv
+QIF_SCHEMA_DIR=E:\App\PMem\data\QIF3.0-2018\xsd
+```
+
+Restart the schema-sets service after changing this setting. With no explicit
+setting, the service prefers data/QIF3.0-2018/xsd when present and otherwise uses
+the tracked docs/xsd reference. An explicit missing folder does not silently fall
+back to another distribution. Customer schema directories are not automatically
+included by the tracked-source release packager.

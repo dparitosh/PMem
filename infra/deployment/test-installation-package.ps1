@@ -21,7 +21,7 @@ foreach ($relative in $requiredFiles) {
   if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) { throw "Missing release file: $relative" }
 }
 
-$excludedDirectories = @('.git', 'node_modules', '.release-test-tmp', '.pytest_cache',
+$excludedDirectories = @('.git', '.codex', 'logs', 'ontology_uploads', 'uploads', 'release-dist', 'node_modules', '.release-test-tmp', '.pytest_cache',
   '__pycache__', '.venv', 'venv', '.dt_venv', '.mypy_cache', '.ruff_cache',
   '.pptx-review-build', '.codex-build', '.codex-pptx-build')
 $directories = [Collections.Generic.Stack[string]]::new()

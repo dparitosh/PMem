@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated
@@ -24,7 +25,12 @@ def _qif_identity(request: Request) -> str:
 
 router = APIRouter(prefix="/qif", tags=["qif"], dependencies=[Depends(_qif_identity)])
 _ROOT = Path(__file__).resolve().parents[2]
-_REFERENCE_ROOT = _ROOT / "docs" / "xsd"
+_configured_reference = os.getenv('QIF_SCHEMA_DIR', '').strip()
+_preferred_reference = _ROOT / 'data' / 'QIF3.0-2018' / 'xsd'
+_REFERENCE_ROOT = (Path(_configured_reference) if _configured_reference else
+                   _preferred_reference if _preferred_reference.is_dir() else _ROOT / 'docs' / 'xsd')
+if not _REFERENCE_ROOT.is_absolute():
+    _REFERENCE_ROOT = _ROOT / _REFERENCE_ROOT
 _MAX_FILES = 40
 _MAX_FILE_BYTES = 10 * 1024 * 1024
 
@@ -104,7 +110,7 @@ async def start_schema_set(
                 raise HTTPException(422, detail=f"{filename or 'Unnamed file'} is not an XSD file")
             if filename.lower() in names:
                 raise HTTPException(422, detail=f"Duplicate filename: {filename}")
-            content = await item.read()
+            content = await item.read(_MAX_FILE_BYTES + 1)
             if not content or len(content) > _MAX_FILE_BYTES:
                 raise HTTPException(422, detail=f"{filename} is empty or exceeds 10 MB")
             path = root / filename; path.write_bytes(content); names.add(filename.lower()); paths.append(path)
@@ -126,7 +132,7 @@ async def start_uploaded_task(files: Annotated[list[UploadFile], File(descriptio
                 raise HTTPException(status_code=422, detail=f"{filename or 'Unnamed file'} is not an XSD file")
             if filename.lower() in names:
                 raise HTTPException(status_code=422, detail=f"Duplicate filename: {filename}")
-            content = await item.read()
+            content = await item.read(_MAX_FILE_BYTES + 1)
             if not content or len(content) > _MAX_FILE_BYTES:
                 raise HTTPException(status_code=422, detail=f"{filename} is empty or exceeds 10 MB")
             path = root / filename

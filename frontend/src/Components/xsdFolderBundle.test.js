@@ -21,6 +21,13 @@ test('folder closure preserves sibling dependencies and excludes unrelated schem
 test('missing dependency fails preflight', async () => {
   await expect(prepareXsdFolder([file('Apps/root.xsd', '<xs:include schemaLocation="../Library/missing.xsd"/>')], 'Apps/root.xsd')).rejects.toThrow('Missing companion');
 });
+test('combined schema identity is independent of selection order', async () => {
+  const a = file('a.xsd', ''), b = file('b.xsd', '');
+  const first = await combineXsdFiles([a, b]);
+  const second = await combineXsdFiles([b, a]);
+  const read = blob => new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsText(blob); });
+  expect(await read(first.root)).toBe(await read(second.root));
+});
 test('multiple direct selections resolve sibling companions from an optional folder', async () => {
   const roots = [file('Apps/one.xsd', '<xs:include schemaLocation="../Library/part.xsd"/>'), file('Apps/two.xsd', '')];
   const bundle = await combineXsdFiles(roots, [...roots, file('Library/part.xsd', '')], true);

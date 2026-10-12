@@ -32,10 +32,10 @@ def inspect_conversion_schemas(paths, primitive_types=()):
             if declaration.tag in {X + 'complexType', X + 'simpleType'} and declaration.get('name'):
                 name = declaration.get('name')
                 if name in primitive_types:
-                    raise ValueError(f'Type {name} shadows an XSD primitive; namespace-qualified type resolution is required')
+                    diagnostics.add(f'Type {name} shadows an XSD primitive and uses a qualified conversion identity')
                 previous = identities.get(name)
                 if previous is not None and previous != namespace:
-                    raise ValueError(f'Namespace collision for type {name}; conversion requires namespace-qualified type identities')
+                    diagnostics.add(f'Namespace collision for type {name} is preserved using qualified conversion identities')
                 identities[name] = namespace
         for node in root.iter():
             kind = node.tag.removeprefix(X)
@@ -56,6 +56,78 @@ def inspect_conversion_schemas(paths, primitive_types=()):
             if kind in {'element', 'attribute'} and node.get('ref') and not node.get('type'):
                 diagnostics.add('Referenced global declarations require QName resolution; unresolved property types are omitted by strict conversion')
     return sorted(diagnostics)
+
+
+def qualify_schema_types(roots, contexts, namespaces):
+    # The translator uses local names internally. Qualify ambiguous user types
+    # before translation, while resolving each QName in its original XML scope.
+    import hashlib
+    declarations = {}
+    for path, root in roots.items():
+        for node in root:
+            if node.tag in {X+'complexType', X+'simpleType'} and node.get('name'):
+                declarations.setdefault(node.get('name'), set()).add(namespaces[path])
+    qualified = {(ns, name): 'ns_' + hashlib.sha256(ns.encode()).hexdigest()[:16] + '_' + name
+                 for name, owners in declarations.items() for ns in owners
+                 if len(owners) > 1 or name in {
+                     'anyType', 'anySimpleType', 'anyAtomicType', 'string', 'boolean', 'decimal', 'float', 'double',
+                     'duration', 'dateTime', 'dateTimeStamp', 'time', 'date', 'gYearMonth', 'gYear', 'gMonthDay', 'gDay', 'gMonth',
+                     'hexBinary', 'base64Binary', 'anyURI', 'QName', 'NOTATION', 'normalizedString', 'token', 'language',
+                     'NMTOKEN', 'NMTOKENS', 'Name', 'NCName', 'ID', 'IDREF', 'IDREFS', 'ENTITY', 'ENTITIES', 'integer',
+                     'nonPositiveInteger', 'negativeInteger', 'long', 'int', 'short', 'byte', 'nonNegativeInteger',
+                     'unsignedLong', 'unsignedInt', 'unsignedShort', 'unsignedByte', 'positiveInteger',
+                     'yearMonthDuration', 'dayTimeDuration'
+                 }}
+    for path, root in roots.items():
+        for node in root.iter():
+            for attribute in ('type', 'base', 'memberTypes', 'itemType'):
+                if not node.get(attribute):
+                    continue
+                converted = []
+                for value in node.get(attribute).split():
+                    scope = contexts[id(node)]
+                    if ':' in value:
+                        prefix, local = value.split(':', 1)
+                        if prefix not in scope:
+                            raise ValueError(f'Unbound type prefix: {prefix}')
+                        ns = scope[prefix]
+                    else:
+                        local, ns = value, scope.get('', '')
+                    converted.append(qualified.get((ns, local), value))
+                node.set(attribute, ' '.join(converted))
+        for declaration in root:
+            if declaration.tag in {X+'complexType', X+'simpleType'}:
+                key = (namespaces[path], declaration.get('name'))
+                if key in qualified:
+                    declaration.set('name', qualified[key])
+
+    element_owners = {}
+    for path, root in roots.items():
+        for element in root.findall(X+'element'):
+            if element.get('name'):
+                element_owners.setdefault(element.get('name'), set()).add(namespaces[path])
+    element_names = {(ns, name): 'element_' + hashlib.sha256(ns.encode()).hexdigest()[:16] + '_' + name
+                     for name, owners in element_owners.items() for ns in owners
+                     if len(owners) > 1 or ns in declarations.get(name, set())}
+    for path, root in roots.items():
+        for node in root.iter(X+'element'):
+            for attr in ('ref', 'substitutionGroup'):
+                ref = node.get(attr)
+                if not ref:
+                    continue
+                scope = contexts[id(node)]
+                if ':' in ref:
+                    prefix, local = ref.split(':', 1)
+                    if prefix not in scope:
+                        raise ValueError(f'Unbound element prefix: {prefix}')
+                    ns = scope[prefix]
+                else:
+                    local, ns = ref, scope.get('', '')
+                node.set(attr, element_names.get((ns, local), ref))
+        for element in root.findall(X+'element'):
+            key = (namespaces[path], element.get('name'))
+            if key in element_names:
+                element.set('name', element_names[key])
 
 
 def expand_model_groups(paths):
@@ -112,6 +184,8 @@ def expand_model_groups(paths):
                         changed = True
         if not changed:
             break
+    qualify_schema_types(roots, contexts, namespaces)
+
     for path, root in roots.items():
         namespace = namespaces[path]
         for group in root.findall(X + 'group'):

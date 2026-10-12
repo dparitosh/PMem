@@ -300,6 +300,11 @@ describe('DataImportPipeline workflow routing', () => {
     const form = apiClient.post.mock.calls[0][1];
     expect(form.get('ontology_name')).toBe('Combined Ontology');
     expect(form.getAll('dependencies').map(file => file.name)).toEqual(['bom.xsd', 'assembly.xsd']);
+    expect(screen.getByRole('region', { name: 'Import job history' })).toHaveStyle({ overflowX: 'auto' });
+    expect(screen.getByText('Processing details')).toBeInTheDocument();
+    await screen.findAllByText(/registered; graph publication has not run/);
+    fireEvent.click(screen.getByRole('button', { name: 'Clear finished/failed history' }));
+    await waitFor(() => expect(screen.queryByText('uploaded-schema-set.xsd')).not.toBeInTheDocument());
   });
 
   it('register-only RDF uses the retained draft workflow without requesting graph publication', async () => {
@@ -322,6 +327,6 @@ describe('DataImportPipeline workflow routing', () => {
     const [url, form] = apiClient.post.mock.calls[0];
     expect(url).toBe('/api/v1/engineering-workflows');
     expect(form.get('publish')).toBe('false');
-    await screen.findByText(/registered; graph publication has not run/);
+    await screen.findAllByText(/registered; graph publication has not run/);
   });
 });

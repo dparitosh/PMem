@@ -9,9 +9,12 @@ export async function combineXsdFiles(selected, available = selected, preflight 
   if (selected.length > 63 || selected.reduce((total, file) => total + file.size, 0) > 25 * 1024 * 1024) throw new Error('Selected schema set exceeds 63 source files or 25 MiB.');
   const paths = folderPaths(available);
   const document = new DOMParser().parseFromString(`<xs:schema xmlns:xs="${XSD}"/>`, 'application/xml');
+  const ordered = [...selected].sort((a, b) => a.name.localeCompare(b.name, 'en'));
   let namespace;
-  for (const original of selected) {
-    const matches = available.map((file, index) => ({ file, path: paths[index] })).filter(item => item.file === original || item.file.name === original.name);
+  for (const original of ordered) {
+    const candidates = available.map((file, index) => ({ file, path: paths[index] }));
+    const originalPath = original.webkitRelativePath ? folderPaths([original])[0] : null;
+    const matches = originalPath ? candidates.filter(item => item.path === originalPath) : candidates.filter(item => item.file === original || item.file.name === original.name);
     if (matches.length !== 1) throw new Error(`Select a folder containing exactly one copy of ${original.name}.`);
     const { file, path } = matches[0];
     const text = await readText(file);

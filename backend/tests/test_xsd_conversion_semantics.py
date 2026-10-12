@@ -19,6 +19,67 @@ class ConversionSemanticsTests(unittest.TestCase):
         path.write_text(f'<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="{namespace}">{body}</xs:schema>', encoding='utf-8')
         return path
 
+    def test_colliding_type_references_follow_their_declared_namespace(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = []
+            for suffix in ('a', 'b'):
+                path = Path(directory) / (suffix+'.xsd')
+                path.write_text('<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:t="urn:'+suffix+'" targetNamespace="urn:'+suffix+'"><xs:complexType name="ClosureRuleType"/><xs:complexType name="Owner'+suffix+'"><xs:sequence><xs:element name="rule" type="t:ClosureRuleType"/></xs:sequence></xs:complexType></xs:schema>')
+                paths.append(path)
+            trees = expand_model_groups(paths)
+            identities = []
+            for path in paths:
+                tree = trees[path]
+                identity = tree.find(X+'complexType').get('name')
+                identities.append(identity)
+                self.assertEqual(tree.find('.//'+X+'element').get('type'), identity)
+                self.assertIn('t:ClosureRuleType', path.read_text())
+            self.assertEqual(len(set(identities)), 2)
+
+    def test_generic_user_datatype_does_not_shadow_xsd_primitive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'customer.xsd'
+            path.write_text('<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:c="urn:customer" targetNamespace="urn:customer"><xs:simpleType name="positiveInteger"><xs:restriction base="xs:string"/></xs:simpleType><xs:complexType name="Record"><xs:sequence><xs:element name="code" type="c:positiveInteger"/><xs:element name="count" type="xs:positiveInteger"/></xs:sequence></xs:complexType></xs:schema>')
+            tree = expand_model_groups([path])[path]
+            elements = tree.findall('.//'+X+'element')
+            self.assertEqual(elements[0].get('type'), tree.find(X+'simpleType').get('name'))
+            self.assertEqual(elements[1].get('type'), 'xs:positiveInteger')
+
+    def test_actual_datatype_collector_uses_qualified_expanded_types(self):
+        source = Path(__file__).resolve().parents[1]/'Services/owl_xsd_engine.py'
+        tree = ast.parse(source.read_text(encoding='utf-8'))
+        nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in {'_local', '_collect_simple_types'}]
+        scope = {'ET': ET, 'XSD_PRE': X, 'XSD_TYPE_MAP': {'string': 'datatype:string', 'decimal': 'datatype:decimal'}}
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), str(source), 'exec'), scope)
+        with tempfile.TemporaryDirectory() as directory:
+            paths = []
+            for suffix, primitive in [('a', 'string'), ('b', 'decimal')]:
+                path = Path(directory)/(suffix+'.xsd')
+                path.write_text('<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:t="urn:'+suffix+'" targetNamespace="urn:'+suffix+'"><xs:simpleType name="ValueType"><xs:restriction base="xs:'+primitive+'"/></xs:simpleType><xs:complexType name="Wrapper'+suffix+'"><xs:simpleContent><xs:extension base="t:ValueType"/></xs:simpleContent></xs:complexType></xs:schema>')
+                paths.append(path)
+            expanded = expand_model_groups(paths)
+            result = scope['_collect_simple_types'](paths, expanded)
+            self.assertEqual(result['Wrappera'], 'datatype:string')
+            self.assertEqual(result['Wrapperb'], 'datatype:decimal')
+            for path, primitive in zip(paths, ['string', 'decimal']):
+                qualified = expanded[path].find(X+'simpleType').get('name')
+                self.assertEqual(result[qualified], 'datatype:'+primitive)
+
+    def test_namespace_distinct_global_elements_and_references_stay_distinct(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = []
+            for suffix in ('a', 'b'):
+                path = Path(directory)/(suffix+'.xsd')
+                path.write_text('<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:t="urn:'+suffix+'" targetNamespace="urn:'+suffix+'"><xs:element name="Item" type="xs:string"/><xs:complexType name="Container'+suffix+'"><xs:sequence><xs:element ref="t:Item"/></xs:sequence></xs:complexType></xs:schema>')
+                paths.append(path)
+            trees = expand_model_groups(paths)
+            names = []
+            for path in paths:
+                name = trees[path].find(X+'element').get('name')
+                names.append(name)
+                self.assertEqual(trees[path].find('.//'+X+'sequence/'+X+'element').get('ref'), name)
+            self.assertEqual(len(set(names)), 2)
+
     def test_attribute_groups_preserve_required_and_optional_attributes(self):
         with tempfile.TemporaryDirectory() as directory:
             path = self.schema(directory, 'attributes.xsd', '<xs:attributeGroup name="Attrs"><xs:attribute name="id" type="xs:string" use="required"/><xs:attribute name="label" type="xs:string"/></xs:attributeGroup><xs:complexType name="Item"><xs:attributeGroup ref="Attrs"/></xs:complexType>')
@@ -41,11 +102,11 @@ class ConversionSemanticsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             a = self.schema(directory, 'a.xsd', '<xs:complexType name="Item"/>', 'urn:a')
             b = self.schema(directory, 'b.xsd', '<xs:complexType name="Item"/>', 'urn:b')
-            with self.assertRaisesRegex(ValueError, 'Namespace collision'):
-                inspect_conversion_schemas([a, b])
+            self.assertTrue(any('Namespace collision' in value for value in inspect_conversion_schemas([a, b])))
+            expanded = expand_model_groups([a, b])
+            self.assertNotEqual(expanded[a].find(X+'complexType').get('name'), expanded[b].find(X+'complexType').get('name'))
             c = self.schema(directory, 'c.xsd', '<xs:simpleType name="string"/>')
-            with self.assertRaisesRegex(ValueError, 'shadows'):
-                inspect_conversion_schemas([c], {'string'})
+            self.assertTrue(any('shadows' in value for value in inspect_conversion_schemas([c], {'string'})))
 
     def test_unsupported_overrides_fail_and_facets_are_reported(self):
         with tempfile.TemporaryDirectory() as directory:

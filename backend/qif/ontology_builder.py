@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
+import io
 
 from defusedxml import ElementTree as ET
 
@@ -39,10 +40,30 @@ def inspect_schema_set(paths: Iterable[Path]) -> dict:
     source_files: list[str] = []
     errors: list[dict[str, str]] = []
 
-    for path in sorted({Path(item) for item in paths}, key=lambda item: item.name.lower()):
+    selected = sorted({Path(item) for item in paths}, key=lambda item: str(item))
+    roots, contexts, namespaces = {}, {}, {}
+    for path in selected:
+        try:
+            data = path.read_bytes()
+            ET.fromstring(data)  # Safe parser rejects entity declarations.
+            from xml.etree import ElementTree as ScopeET
+            scopes, pending = [{}], {}
+            for event, node in ScopeET.iterparse(io.BytesIO(data), events=('start-ns', 'start', 'end')):
+                if event == 'start-ns': pending[node[0]] = node[1]
+                elif event == 'start':
+                    scope = {**scopes[-1], **pending}; pending = {}; scopes.append(scope)
+                    contexts[id(node)] = scope
+                    if path not in roots: roots[path] = node
+                else: scopes.pop()
+            namespaces[path] = roots[path].get('targetNamespace', '')
+        except Exception as exc:
+            errors.append({'file': path.name, 'error': str(exc)})
+    from backend.Services.xsd_semantics import qualify_schema_types
+    qualify_schema_types(roots, contexts, namespaces)
+    for path in selected:
         source_files.append(path.name)
         try:
-            root = ET.parse(path).getroot()
+            root = roots[path]
         except Exception as exc:
             errors.append({"file": path.name, "error": str(exc)})
             continue
