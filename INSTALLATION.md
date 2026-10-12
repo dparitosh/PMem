@@ -4120,3 +4120,16 @@ failure. It copies seven converter/check/launcher files as a matching subset.
 It is a targeted XSD repair, not a complete application/dependency upgrade. No
 Git installation or network download is required. Preserve the extracted matching
 release until startup and an actual upload have passed.
+
+Backend pip installation records stdout and stderr under logs/installation in
+a unique pip-install log. A stderr notice does not determine success: the native
+exit code does. A nonzero exit stops installation and reports the log path.
+Deploy install-depo.ps1 with native-install-command.ps1 from the same release.
+Inspect the referenced log for the actual dependency, hash or network error;
+do not remove hash checking or delete the customer database to retry.
+
+Baseline semantic asset seeding reads GRAPH_READ_TOKEN for asset lookups and
+ONTOLOGY_APPROVAL_TOKEN for creation from the selected root environment file.
+The script applies centrally resolved ontology routing and the optional APIM
+subscription key. A successful service readiness check alone does not establish
+that these read/write credential profiles are valid in the central store.

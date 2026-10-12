@@ -48,9 +48,16 @@ if (-not (Test-Path $venvPython)) {
   if ($LASTEXITCODE -ne 0) { throw "Python virtual environment creation failed." }
 }
 $requirements = if ($Development) { Join-Path $root 'backend/requirements-dev.txt' } else { $productionLock }
-if ($Development) { & $venvPython -m pip install -r $requirements }
-else { & $venvPython -m pip install --require-hashes -r $requirements }
-if ($LASTEXITCODE -ne 0) { throw "Backend dependency installation failed." }
+. (Join-Path $PSScriptRoot 'native-install-command.ps1')
+$installLogDir = Join-Path $root 'logs\installation'
+New-Item -ItemType Directory -Path $installLogDir -Force | Out-Null
+$pipLog = Join-Path $installLogDir ('pip-install-' + [guid]::NewGuid().ToString('N') + '.log')
+$pipArguments = @('-m', 'pip', 'install', '--disable-pip-version-check')
+if (-not $Development) { $pipArguments += '--require-hashes' }
+$pipArguments += @('-r', $requirements)
+Write-Host "Installing backend dependencies. Output log: $pipLog"
+$pipExitCode = Invoke-DepoInstallCommand -Executable $venvPython -NativeArguments $pipArguments -LogPath $pipLog
+if ($pipExitCode -ne 0) { throw "Backend dependency installation failed with exit code $pipExitCode. Inspect $pipLog for the actual pip error; environment files and database were preserved." }
 Push-Location $root
 try {
   # Do not use ``python -c`` here. Windows PowerShell removes embedded double

@@ -5,6 +5,7 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 $requiredFiles = @(
+  'infra/windows/native-install-command.ps1',
   'backend/depo_platform/release_code_check.py',
   'INSTALLATION.md', 'configure-depo.ps1', 'install-depo.ps1', 'diagnose-depo.ps1',
   'manage-depo.ps1', 'certify-depo-release.ps1', 'backend/requirements-lock.txt',
