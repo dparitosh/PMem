@@ -243,6 +243,31 @@ describe('DataImportPipeline workflow routing', () => {
     await waitFor(() => expect(screen.getByText('123')).toBeInTheDocument());
   });
 
+  it('keeps an explicit governance rejection separate from uncertain publication', async () => {
+    await renderPipeline();
+    const input = document.querySelector('input[type="file"]');
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [new File(['schema'], 'demo.xsd', { type: 'application/xml' })] } });
+      await flushAsyncEffects();
+    });
+    const select = document.getElementById('ontology-generation-select');
+    expect(select).toHaveValue('owl');
+    expect(Array.from(select.options).map(option => option.value)).not.toContain('shacl');
+    expect(Array.from(select.options).map(option => option.value)).not.toContain('both');
+    apiClient.post.mockResolvedValueOnce({ data: {
+      status: 'policy_blocked', message: 'Publication blocked by policy checks.',
+    } });
+    fireEvent.change(screen.getByPlaceholderText(/e.g., Product Model/i), { target: { value: 'Published schema' } });
+    fireEvent.change(screen.getByPlaceholderText(/e.g., myprefix/i), { target: { value: 'published_schema' } });
+    fireEvent.click(screen.getByRole('button', { name: /Upload and Parse/i }));
+    setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
+    fireEvent.click(screen.getByRole('button', { name: /^Start$/i }));
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalled());
+    expect(apiClient.post.mock.calls.at(-1)[1].get('publish')).toBe('true');
+    await screen.findAllByText(/Publication blocked by policy checks/);
+    expect(screen.queryByText(/Publication outcome is unverified/)).not.toBeInTheDocument();
+  });
+
   it('sends multiple companion schemas through the engineering workflow in selected order', async () => {
     await renderPipeline();
     fireEvent.click(screen.getByLabelText(/Register and publish XSD/));

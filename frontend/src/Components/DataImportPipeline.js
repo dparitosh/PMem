@@ -632,6 +632,11 @@ export default function DataImportPipeline() {
           headers: { Authorization: `Bearer ${ingestionWriteToken.trim() || getCredentialProfile('INGESTION_WRITE_TOKEN')}` }, timeout: 300000, signal: controller.signal,
         });
         if (shouldPublish && (uploadData.data.status !== 'published' || !uploadData.data.graph_publication)) {
+          if (['policy_blocked', 'quality_blocked'].includes(uploadData.data.status)) {
+            const rejection = new Error(uploadData.data.message || 'Governance checks blocked publication.');
+            rejection.response = { status: 200, data: uploadData.data };
+            throw rejection;
+          }
           throw new Error(uploadData.data.message || 'Policy or quality checks blocked graph publication.');
         }
         if (!shouldPublish && (uploadData.data.status !== 'registered' || !uploadData.data.ontology_registration?.ontology_id)) {
