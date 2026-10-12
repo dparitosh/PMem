@@ -4078,3 +4078,45 @@ setting, the service prefers data/QIF3.0-2018/xsd when present and otherwise use
 the tracked docs/xsd reference. An explicit missing folder does not silently fall
 back to another distribution. Customer schema directories are not automatically
 included by the tracked-source release packager.
+
+### Backend source update and stale-process checkpoint
+
+Deploy the complete matching release. Updating the browser bundle alone does not
+update ingestion or ontology conversion code. Startup checks converter capability
+and fingerprints backend Python files. A running process with a missing or changed
+fingerprint must be stopped before it can be reused. This is expected once when
+upgrading from a release that predates fingerprint tracking.
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\stop-depo-services.ps1
+# Deploy the complete matching backend and infra release files here.
+.\backend\.dt_venv\Scripts\python.exe -B .\backend\depo_platform\release_code_check.py
+if ($LASTEXITCODE -ne 0) { throw 'Backend code update is incomplete.' }
+.\infra\windows\start-depo-services.ps1 -EnvFile .\.env.local
+```
+
+The check is offline and needs no database credentials. It detects old/mixed XSD
+converter code; it does not certify every API behavior. Preserve .env.local and
+customer data when copying releases. Do not delete code fingerprint files to
+bypass the restart checkpoint.
+
+### Repair an old namespace-collision converter on an installed VM
+
+Extract the current matching release into E:\App\DEPO-release, separate from the
+installed application. Stop backend services before replacing loaded code:
+
+```powershell
+Set-Location E:\App\PMem
+.\infra\windows\stop-depo-services.ps1
+& 'E:\App\DEPO-release\infra\windows\repair-depo-xsd-release.ps1' -ReleaseRoot 'E:\App\DEPO-release' -ApplicationRoot 'E:\App\PMem'
+if (-not $?) { throw 'Converter repair failed; do not start services.' }
+.\infra\windows\start-depo-services.ps1 -EnvFile .\.env.local
+```
+
+The repair verifies source capabilities, refuses running backend processes, saves
+backups under logs/release-repair, checks copied hashes, and restores backups on
+failure. It copies seven converter/check/launcher files as a matching subset.
+It is a targeted XSD repair, not a complete application/dependency upgrade. No
+Git installation or network download is required. Preserve the extracted matching
+release until startup and an actual upload have passed.

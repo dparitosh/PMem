@@ -16,6 +16,12 @@ $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $python = Join-Path $root "backend\.dt_venv\Scripts\python.exe"
 if (-not (Test-Path $python)) { throw "Project Python runtime was not found: $python" }
+$codeCheck = Join-Path $root 'backend\depo_platform\release_code_check.py'
+if (-not (Test-Path -LiteralPath $codeCheck)) { throw 'Incomplete backend release: release_code_check.py is missing. Deploy matching backend and Windows scripts.' }
+$codeResult = & $python -B $codeCheck
+if ($LASTEXITCODE -ne 0) { throw "Backend release validation failed: $codeResult" }
+$backendFingerprint = ($codeResult | ConvertFrom-Json).backend_fingerprint
+if (-not $backendFingerprint) { throw 'Backend release fingerprint is missing; refusing to start services.' }
 
 . (Join-Path $PSScriptRoot 'runtime-config.ps1')
 . (Join-Path $PSScriptRoot 'process-control.ps1')
@@ -130,6 +136,7 @@ try {
 foreach ($service in $services) {
   Write-Host ("Checking startup for '{0}'{1}..." -f $service.Name, $(if ($service.Port) { " on port $($service.Port)" } else { ' worker' }))
   $pidFile = Join-Path $stateDir "$($service.Name).pid"
+  $fingerprintFile = Join-Path $stateDir "$($service.Name).code.sha256"
   # A PID may be reused after an unplanned shutdown.  Reuse it only when the
   # expected Python executable is still alive *and* the service port is
   # listening; otherwise an old PID can silently prevent recovery.
@@ -145,6 +152,10 @@ foreach ($service in $services) {
       $processDetails.ExecutablePath -eq $python -and
       $processDetails.CommandLine -match [regex]::Escape($service.Module)
     if ($expectedProcess -and ($null -eq $service.Port -or (Test-DepoListener $recordedPid $python $service.Module $service.Port $BindHost))) {
+      if (-not (Test-Path -LiteralPath $fingerprintFile) -or
+          (Get-Content -LiteralPath $fingerprintFile -Raw).Trim() -ne $backendFingerprint) {
+        throw "Service '$($service.Name)' was launched with older or unverified backend code. Run stop-depo-services.ps1, then start again; deploy the complete matching release first."
+      }
       Write-Host "Reusing tracked process for '$($service.Name)'; readiness validation follows."
       continue
     }
@@ -166,6 +177,7 @@ foreach ($service in $services) {
   # services are intentionally not part of a failed start attempt.
   $startedServices += @{ ProcessId = $process.Id; PidFile = $pidFile; Module = $service.Module }
   Set-Content -LiteralPath $pidFile -Value $process.Id
+  Set-Content -LiteralPath $fingerprintFile -Value $backendFingerprint
 }
 
 foreach ($service in $services | Where-Object { $_.Port }) {

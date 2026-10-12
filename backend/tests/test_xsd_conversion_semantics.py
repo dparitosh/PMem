@@ -14,6 +14,23 @@ X = '{http://www.w3.org/2001/XMLSchema}'
 
 
 class ConversionSemanticsTests(unittest.TestCase):
+    def test_actual_plmxml_classification_userdata_types_stay_distinct(self):
+        directory = Path(__file__).resolve().parents[2]/'data/schemas'
+        paths = [directory/'PLMXMLSchema.xsd', directory/'PLMXMLClassificationSchema.xsd']
+        if not all(path.is_file() for path in paths):
+            self.skipTest('Customer PLMXML schema distribution is not bundled in this checkout')
+        from backend.Services.xsd_semantics import validate_xsd_schema_set
+        validate_xsd_schema_set(paths[1])
+        inspect_conversion_schemas(paths)
+        trees = expand_model_groups(paths)
+        names = []
+        for path in paths:
+            matches = [node.get('name') for node in trees[path].findall(X+'complexType')
+                       if node.get('name', '').startswith('ns_') and node.get('name', '').endswith('_UserDataType')]
+            self.assertEqual(len(matches), 1)
+            names.extend(matches)
+        self.assertEqual(len(set(names)), 2)
+
     def schema(self, directory, name, body, namespace='urn:test'):
         path = Path(directory) / name
         path.write_text(f'<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="{namespace}">{body}</xs:schema>', encoding='utf-8')
