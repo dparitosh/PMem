@@ -4,7 +4,7 @@ import { act } from 'react';
 import { vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import DataImportPipeline from './DataImportPipeline';
-import { apiClient } from '../services/apiClient';
+import { apiClient, API_METHODS } from '../services/apiClient';
 
 const mockOntologyContextValue = {
   ontologies: [],
@@ -72,6 +72,7 @@ vi.mock('../services/apiClient', () => ({
     import: {
       exportOWL: jest.fn(),
     },
+    document: { submitJob: jest.fn(), getJob: jest.fn() },
   },
   apiClient: {
     get: jest.fn(),
@@ -158,7 +159,7 @@ describe('DataImportPipeline workflow routing', () => {
 
     await renderPipeline();
     // This case intentionally tests source-only SHACL registration.
-    fireEvent.click(screen.getByLabelText(/Register and publish XSD/));
+    fireEvent.click(screen.getByLabelText(/Register XSD/));
 
     const input = document.querySelector('input[type="file"]');
     const file = new File(['schema'], 'bom.xsd', { type: 'application/xml' });
@@ -210,7 +211,7 @@ describe('DataImportPipeline workflow routing', () => {
 
   it('defaults to Neo4j publication and makes register-only behavior explicit', async () => {
     await renderPipeline();
-    const publication = screen.getByLabelText(/Register and publish XSD/);
+    const publication = screen.getByLabelText(/Register XSD/);
     expect(publication).toBeChecked();
     expect(screen.getByText(/Publication is confirmed only by a graph receipt/)).toBeInTheDocument();
     fireEvent.click(publication);
@@ -270,7 +271,7 @@ describe('DataImportPipeline workflow routing', () => {
 
   it('sends multiple companion schemas through the engineering workflow in selected order', async () => {
     await renderPipeline();
-    fireEvent.click(screen.getByLabelText(/Register and publish XSD/));
+    fireEvent.click(screen.getByLabelText(/Register XSD/));
     apiClient.post.mockClear();
     apiClient.post.mockResolvedValueOnce({ data: {
       status: 'registered', ontology_registration: { ontology_id: 'bom-bundle' },
@@ -301,7 +302,7 @@ describe('DataImportPipeline workflow routing', () => {
 
   it('combines multiple XSD selections into one metadata prompt and registration', async () => {
     await renderPipeline();
-    fireEvent.click(screen.getByLabelText(/Register and publish XSD/));
+    fireEvent.click(screen.getByLabelText(/Register XSD/));
     const xml = '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:test"/>';
     const selected = ['bom.xsd', 'assembly.xsd'].map(name => {
       const file = new File([xml], name);
@@ -328,13 +329,14 @@ describe('DataImportPipeline workflow routing', () => {
     expect(screen.getByRole('region', { name: 'Import job history' })).toHaveStyle({ overflowX: 'auto' });
     expect(screen.getByText('Processing details')).toBeInTheDocument();
     await screen.findAllByText(/registered; graph publication has not run/);
+    expect(screen.getByText('Review, approve and publish this ontology to Neo4j')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Clear finished/failed history' }));
     await waitFor(() => expect(screen.queryByText('uploaded-schema-set.xsd')).not.toBeInTheDocument());
   });
 
   it('register-only RDF uses the retained draft workflow without requesting graph publication', async () => {
     await renderPipeline();
-    fireEvent.click(screen.getByLabelText(/Register and publish XSD/));
+    fireEvent.click(screen.getByLabelText(/Register XSD/));
     apiClient.post.mockClear();
     apiClient.post.mockResolvedValueOnce({ data: {
       status: 'registered', ontology_registration: { ontology_id: 'rdf-source' },
@@ -354,4 +356,17 @@ describe('DataImportPipeline workflow routing', () => {
     expect(form.get('publish')).toBe('false');
     await screen.findAllByText(/registered; graph publication has not run/);
   });
+  it('a failed document job does not claim indexing succeeded', async () => {
+    await renderPipeline();
+    API_METHODS.document.submitJob.mockResolvedValue({data:{task_id:'failed-document',status:'failed',result:{processed_documents:0}}});
+    await act(async () => {
+      fireEvent.change(document.querySelector('input[type="file"]'), {target:{files:[new File(['text'],'evidence.txt')]}});
+      await flushAsyncEffects();
+    });
+    setCredentialProfile('INGESTION_WRITE_TOKEN', 'fixture-write');
+    fireEvent.click(screen.getByRole('button', {name:/^Start$/i}));
+    await screen.findByText(/Document processing did not complete successfully/);
+    expect(screen.queryByText('Document retained and indexed for GraphRAG search.')).not.toBeInTheDocument();
+  });
+
 });

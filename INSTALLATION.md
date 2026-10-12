@@ -4148,3 +4148,31 @@ is lost, inspect the retained registration and graph receipt before retrying.
 
 Deploy the matching backend files, rebuild the frontend and restart services.
 These changes require no new database migration.
+
+
+### Complete publication from the Import workflow
+
+After registration, expand **Review, approve and publish this ontology to Neo4j**
+beneath the imported file row. Enter the approver identity, submit for review,
+approve, then publish. **View in Ontology Junction** opens the selected ontology
+in a new tab for inspection; return to the workflow to approve and publish.
+The same controls remain available in Ontology Junction.
+While the publication request is active, the panel displays Publishing to Neo4j.
+A verified receipt updates the import row to Published with graph counts.
+An uncertain outcome requires verifying publication before retrying.
+
+Connection refused on ports 8010-8019 means the configured service addresses are
+not accepting connections. On the application VM, run from the repository root:
+
+```powershell
+Set-Location E:\App\PMem
+Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+    Where-Object { $_.LocalPort -ge 8010 -and $_.LocalPort -le 8019 } |
+    Select-Object LocalAddress, LocalPort, OwningProcess
+.\infra\windows\start-depo-services.ps1 -EnvFile .\.env.local
+```
+
+If startup fails, correct the first reported error before retrying. If listeners
+exist, compare their address with the browser request host and root routing
+configuration; restarting frontend after root routing changes regenerates its
+runtime configuration.

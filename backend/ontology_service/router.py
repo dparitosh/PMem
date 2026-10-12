@@ -83,7 +83,7 @@ async def _publish_registered_ontology(ontology_id: str, payload: dict[str, Any]
     actor = approval_identity(request, payload, token_env='ONTOLOGY_APPROVAL_TOKEN')
     metadata = await run_in_threadpool(catalog.get, ontology_id)
     if not metadata: raise HTTPException(404, 'Prepare this retained ontology in the catalog before review and publication')
-    if metadata.get('lifecycle_status') != 'approved': raise HTTPException(409, 'Approve the ontology before graph publication')
+    if metadata.get('lifecycle_status') != 'approved' or metadata.get('status') == 'superseded': raise HTTPException(409, 'Approve the ontology before graph publication')
     from rdflib import Graph
     _, content = await run_in_threadpool(catalog.read_artifact, ontology_id)
     turtle = await run_in_threadpool(lambda: Graph().parse(data=content, format=metadata['validation']['rdf_format']).serialize(format='turtle').encode('utf-8'))
@@ -100,10 +100,12 @@ async def _publish_registered_ontology(ontology_id: str, payload: dict[str, Any]
         if existing['status'] == 'unverified':
             raise ValueError('Graph receipt lookup failed; publication must be reconciled first')
         current_metadata, current_content = await run_in_threadpool(catalog.read_artifact, ontology_id)
-        if current_metadata.get('lifecycle_status') != 'approved' or hashlib.sha256(current_content).hexdigest() != publication_id:
+        if current_metadata.get('lifecycle_status') != 'approved' or current_metadata.get('status') == 'superseded' or hashlib.sha256(current_content).hexdigest() != publication_id:
             raise HTTPException(409, 'Ontology approval or artifact changed; review again before publication')
         await run_in_threadpool(graph_publications.put, ontology_id, record)
-        async with httpx.AsyncClient(timeout=60, trust_env=False) as client:
+        from backend.depo_platform.network import bounded_timeout_seconds
+        publication_timeout = bounded_timeout_seconds('GRAPH_PUBLICATION_TIMEOUT_SECONDS', default=180, maximum=3600)
+        async with httpx.AsyncClient(timeout=publication_timeout, trust_env=False) as client:
             response = await client.post(f'{graph_root}/graph/ontologies/publish',
                 data={'ontology_id': ontology_id, 'prefix': metadata['prefix'], 'publication_id': publication_id},
                 files={'artifact': ('ontology.ttl', turtle, 'text/turtle')},

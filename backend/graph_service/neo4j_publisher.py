@@ -8,7 +8,8 @@ import re
 import threading
 from typing import Any
 
-from neo4j import GraphDatabase, Query
+from neo4j import GraphDatabase, Query, unit_of_work
+from backend.depo_platform.network import bounded_timeout_seconds
 from rdflib import Graph, Literal, URIRef
 from rdflib.compare import to_canonical_graph
 from rdflib.namespace import OWL, RDF, RDFS
@@ -112,6 +113,7 @@ class Neo4jPublisher:
             node.rdf_properties = row.rdf_properties, node.updated_at = $updated_at,
             node.source = row.source, node.description = row.description
         FOREACH (_ IN CASE WHEN row.requirement THEN [1] ELSE [] END | SET node:Requirement)
+        FOREACH (_ IN CASE WHEN row.requirement THEN [] ELSE [1] END | REMOVE node:Requirement)
         """
         relation_queries = {
             "SUBCLASS_OF": "MERGE (source)-[edge:SUBCLASS_OF {ontology_id: $ontology_id}]->(target) SET edge.predicate = row.predicate",
@@ -123,6 +125,8 @@ class Neo4jPublisher:
             relationship: f"MERGE (source)-[edge:{relationship} {{ontology_id: $ontology_id}}]->(target) SET edge.predicate = row.predicate"
             for relationship in ceim_relationships.values()
         })
+        @unit_of_work(timeout=bounded_timeout_seconds(
+            "GRAPH_PUBLICATION_TIMEOUT_SECONDS", default=180, maximum=3600))
         def publish_transaction(tx):
             # The permanent, uniquely constrained receipt key serializes writers.
             tx.run("MERGE (lock:OntologyPublication {ontology_id: $ontology_id, publication_id: '__lock__'}) SET lock.publication_lock = $updated_at",

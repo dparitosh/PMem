@@ -58,7 +58,7 @@ async def test_downstream_http_failure_retains_status():
 
 
 @pytest.mark.asyncio
-async def test_engineering_publication_uses_the_private_graph_credential(monkeypatch):
+async def test_engineering_publication_delegates_to_locked_ontology_service(monkeypatch):
     calls = []
 
     class Response:
@@ -70,16 +70,17 @@ async def test_engineering_publication_uses_the_private_graph_credential(monkeyp
         async def __aenter__(self): return self
         async def __aexit__(self, *args): return None
         async def get(self, url, **kwargs):
+            assert kwargs["headers"]["Authorization"] == "Bearer private-read-token"
             return Response({"lifecycle_status": "approved", "status": "registered"})
         async def post(self, url, **kwargs):
             calls.append((url, kwargs))
             if url.endswith("/policies/evaluate"): return Response({"compliant": True})
             if url.endswith("/quality-gate"): return Response({"publish_recommended": True})
             if url.endswith("/register"): return Response({"ontology_id": "demo"})
-            return Response({"status": "success", "ontology_id": kwargs['data']['ontology_id'],
-                             "publication_id": kwargs['data']['publication_id'], "resources": 1, "relationships": 0})
+            return Response({"status": "published", "ontology_id": "demo", "publication_id": "digest",
+                "receipt": {"status": "success", "ontology_id": "demo", "publication_id": "digest", "resources": 1, "relationships": 0}})
 
-    monkeypatch.setenv("GRAPH_PUBLICATION_TOKEN", "private-graph-token")
+    monkeypatch.setenv("GRAPH_READ_TOKEN", "private-read-token")
     monkeypatch.setenv("ONTOLOGY_APPROVAL_TOKEN", "private-ontology-token")
     monkeypatch.setattr("backend.ingestion_service.engineering_workflow.httpx.AsyncClient", lambda **kwargs: Client())
     workflow = EngineeringWorkflow(StubConverter())
@@ -89,8 +90,9 @@ async def test_engineering_publication_uses_the_private_graph_credential(monkeyp
     result = await workflow.run(filename="demo.exp", content=b"SCHEMA demo; END_SCHEMA;", publish=True)
 
     assert result["status"] == "published"
-    graph_call = next(call for call in calls if call[0].endswith("/graph/ontologies/publish"))
-    assert graph_call[1]["headers"] == {"Authorization": "Bearer private-graph-token"}
+    publication_call = next(call for call in calls if call[0].endswith("/ontologies/demo/publish"))
+    assert publication_call[1]["json"] == {"approved_by": "engineering-ingestion"}
+    assert all(not url.startswith("http://graph/") for url, _ in calls)
 
 
 @pytest.mark.parametrize("state", ["draft", "in_review", "retired", "deprecated"])

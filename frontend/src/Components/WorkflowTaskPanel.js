@@ -11,6 +11,7 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
   const [recoveryId, setRecoveryId] = useState('');
   const resultHandler = useRef(onResult); resultHandler.current = onResult;
   const notifiedMerge = useRef(null);
+  const notifiedResult = useRef(null);
   const request = useRef(null);
   useEffect(() => {
     request.current?.abort(); setRun(null); setBusy(false); setError(''); setSubmissionUnknown(false);
@@ -48,9 +49,13 @@ export default function WorkflowTaskPanel({ workflowId, inputs, label, disabled,
             notifiedMerge.current = data.run_id;
             window.dispatchEvent(new Event('depo:ontologies-changed'));
           }
-          resultHandler.current?.(data);
+          const resultIdentity = key + ':' + data.run_id;
+          if (notifiedResult.current !== resultIdentity) {
+            notifiedResult.current = resultIdentity;
+            resultHandler.current?.(data);
+          }
         }
-        else if (['running', 'queued'].includes(data.status)) timer = setTimeout(refresh, 3000);
+        else if (['running', 'queued', 'paused'].includes(data.status)) timer = setTimeout(refresh, 3000);
       } catch (failure) { if (!controller.signal.aborted) { setError('Could not refresh this run. Status checks will retry; use Refresh status to check now.'); if (![401, 403, 404].includes(failure.response?.status)) timer = setTimeout(refresh, 10000); } }
     };
     refresh();

@@ -10,6 +10,7 @@ afterEach(() => { vi.restoreAllMocks(); sessionStorage.clear(); });
 test('completed automatic merge refreshes ontology context once across status refreshes', async () => {
   setCredentialProfile('AGENTIC_APPROVAL_TOKEN', 'approval');
   const changed = vi.fn();
+  const result = vi.fn();
   window.addEventListener('depo:ontologies-changed', changed);
   try {
     vi.spyOn(agenticAPI, 'runWorkflow').mockResolvedValue({ data: { run_id: 'merged-run' } });
@@ -17,12 +18,13 @@ test('completed automatic merge refreshes ontology context once across status re
       run_id: 'merged-run', workflow_id: 'ontology-union-automation', status: 'completed',
       traces: [{ tool_id: 'ontology.merge.apply_automatic', result: { status: 'merged' } }],
     } });
-    render(<WorkflowTaskPanel workflowId="ontology-union-automation" inputs={{}} governed label="Merge" />);
+    render(<WorkflowTaskPanel workflowId="ontology-union-automation" inputs={{}} governed label="Merge" onResult={result} />);
     fireEvent.click(screen.getByRole('button', { name: 'Merge' }));
     await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('button', { name: 'Refresh status' }));
     await waitFor(() => expect(agenticAPI.getRun).toHaveBeenCalledTimes(2));
     expect(changed).toHaveBeenCalledTimes(1);
+    expect(result).toHaveBeenCalledTimes(1);
   } finally { window.removeEventListener('depo:ontologies-changed', changed); }
 });
 test('retained failure displays actionable diagnostics outside the raw report', async () => {

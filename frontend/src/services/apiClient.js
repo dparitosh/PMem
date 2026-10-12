@@ -610,15 +610,16 @@ export const documentAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  submitJob: (files, metadata = {}, writeToken = '') => {
+  submitJob: (files, metadata = {}, writeToken = '', options = {}) => {
     const formData = new FormData();
     (Array.isArray(files) ? files : [files]).forEach((file) => formData.append('files', file));
     Object.entries(metadata).forEach(([key, value]) => formData.append(key, value));
     return apiClient.post(buildUrl(API.document.jobs), formData, {
+      ...options,
       headers: { ...(writeToken ? { Authorization: `Bearer ${writeToken.trim()}` } : {}) },
     });
   },
-  getJob: (taskId) => apiClient.get(buildUrl(replaceParams(API.document.job, { task_id: taskId }))),
+  getJob: (taskId, options = {}) => apiClient.get(buildUrl(replaceParams(API.document.job, { task_id: taskId })), options),
   cancelJob: (taskId, writeToken = '') => apiClient.post(buildUrl(replaceParams(API.document.cancelJob, { task_id: taskId })), undefined,
     writeToken ? { headers: { Authorization: `Bearer ${writeToken.trim()}` } } : undefined),
   getJobArtifacts: (taskId) => apiClient.get(buildUrl(replaceParams(API.document.jobArtifacts, { task_id: taskId }))),

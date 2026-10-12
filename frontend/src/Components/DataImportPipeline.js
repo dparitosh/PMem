@@ -11,6 +11,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import OntologyMetadataForm from './OntologyMetadataForm';
+import OntologyPublicationPanel from './OntologyPublicationPanel';
 import { combineXsdFiles } from './xsdFolderBundle';
 import XsdDependencies, { appendXsdDependencies } from './XsdDependencies';
 import SemanticBridgeJobs from './ontology/SemanticBridgeJobs';
@@ -78,6 +79,7 @@ export default function DataImportPipeline() {
   const ingestionWriteToken = '';
   const executionToken = '';
   const [publishOntology, setPublishOntology] = useState(true);
+  const [publicationPanels, setPublicationPanels] = useState({});
   const [xsdDependencies, setXsdDependencies] = useState([]);
   const [xsdDependencyPaths, setXsdDependencyPaths] = useState('');
   const [dependencyTarget, setDependencyTarget] = useState(null);
@@ -684,6 +686,7 @@ export default function DataImportPipeline() {
           committed: publicationConfirmed,
           registered: true,
           published: publicationConfirmed,
+          approvalRequired: responseBody.status === 'approval_required',
           message: publicationConfirmed ? `Ontology '${file.ontologyName}' published to Neo4j` : responseBody.status === 'approval_required' ? responseBody.message : `Ontology '${file.ontologyName}' registered; graph publication has not run.`,
           stats: {
             entities_found: publicationConfirmed ? responseBody.graph_publication.resources : uploadDataBody.nodes_merged ?? null,
@@ -769,6 +772,11 @@ export default function DataImportPipeline() {
     }
 
     const fileId = file.fileId;
+    if (ontologyRegistrationsRef.current.has(fileId)) return;
+    const controller = new AbortController();
+    ontologyRegistrationsRef.current.add(fileId);
+    importRequestControllersRef.current.add(controller);
+    let retainedTaskId = '';
     try {
       setStartedFiles(prev => new Set([...prev, fileId]));
       setPipelineStatus(prev => ({
@@ -784,9 +792,11 @@ export default function DataImportPipeline() {
       }));
 
       if (!(ingestionWriteToken.trim() || getCredentialProfile('INGESTION_WRITE_TOKEN'))) throw new Error('Enter INGESTION_WRITE_TOKEN before submitting a document job.');
-      const submissionResponse = await API_METHODS.document.submitJob([file.fileObj], {}, ingestionWriteToken || getCredentialProfile('INGESTION_WRITE_TOKEN'));
+      const submissionResponse = await API_METHODS.document.submitJob([file.fileObj], {}, ingestionWriteToken.trim() || getCredentialProfile('INGESTION_WRITE_TOKEN'), { signal: controller.signal });
+      if (controller.signal.aborted) return;
       const submission = submissionResponse.data || submissionResponse;
       const taskId = submission?.task_id;
+      retainedTaskId = taskId;
       if (!taskId) throw new Error('Document service did not return a task ID.');
       setPipelineStatus(prev => ({
         ...prev,
@@ -807,7 +817,9 @@ export default function DataImportPipeline() {
       while (!['completed', 'partial', 'failed', 'cancelled'].includes(job?.status)) {
         if (Date.now() >= deadline) throw new Error('Document processing timed out while waiting for job completion.');
         await new Promise(resolve => setTimeout(resolve, 1000));
-        const statusResponse = await API_METHODS.document.getJob(taskId);
+        if (controller.signal.aborted) return;
+        const statusResponse = await API_METHODS.document.getJob(taskId, { signal: controller.signal });
+        if (controller.signal.aborted) return;
         job = statusResponse.data || statusResponse;
         const jobSnapshot = job;
         setPipelineStatus(prev => {
@@ -834,7 +846,6 @@ export default function DataImportPipeline() {
       const summary = result?.summary || {};
       const processedDocuments = result?.processed_documents ?? result?.documents_processed ?? summary.successfully_processed ?? 0;
       const failedDocuments = result?.failed_documents ?? summary.failed_processing ?? 0;
-      const totalDocuments = result?.total_documents ?? summary.total_files ?? 1;
       const totalChunks = result?.chunks_created ?? result?.total_chunks ?? (result?.results || []).reduce((sum, item) => sum + Number(item?.chunks_created || 0), 0);
       const resultStatus = job?.status === 'cancelled' || job?.status === 'failed' || failedDocuments > 0 || job?.status === 'partial'
         ? 'failed'
@@ -847,9 +858,10 @@ export default function DataImportPipeline() {
           backendStage: 'indexed',
           progress: resultStatus === 'failed' ? 0 : 100,
           status: resultStatus,
-          message: job?.error || result?.message || 'Document retained and indexed for GraphRAG search.',
+          message: job?.error || result?.message || (resultStatus === 'failed' ? 'Document processing did not complete successfully. Inspect the retained job report.' : 'Document retained and indexed for GraphRAG search.'),
+          error: resultStatus === 'failed',
           stats: {
-            entities_found: processedDocuments || totalDocuments,
+            entities_found: processedDocuments,
             relationships_found: totalChunks,
           },
           result,
@@ -860,6 +872,7 @@ export default function DataImportPipeline() {
       }));
       setError(null);
     } catch (err) {
+      if (controller.signal.aborted) return;
       const detail = err?.response?.data?.detail || err?.response?.data?.error || err.message;
       setPipelineStatus(prev => ({
         ...prev,
@@ -868,8 +881,9 @@ export default function DataImportPipeline() {
           stage: 'error',
           backendStage: 'error',
           progress: 0,
-          status: 'failed',
-          message: String(detail),
+          status: retainedTaskId ? 'outcome_unknown' : 'failed',
+          outcomeUnknown: Boolean(retainedTaskId),
+          message: retainedTaskId ? `Document job ${retainedTaskId} remains retained. Its outcome is unverified; inspect the job before resubmitting. ${String(detail)}` : String(detail),
           error: true,
         },
       }));
@@ -879,6 +893,9 @@ export default function DataImportPipeline() {
         return next;
       });
       setError(`Error processing document: ${detail}`);
+    } finally {
+      ontologyRegistrationsRef.current.delete(fileId);
+      importRequestControllersRef.current.delete(controller);
     }
   };
   const startImport = async (file) => {
@@ -1916,8 +1933,8 @@ export default function DataImportPipeline() {
       <fieldset style={{ marginBottom: '12px', color: C.textPrimary }}>
         <legend>Workflow access</legend>
         <p>Manage and validate keys in <a href="#/admin">Admin → Service credentials</a> before starting uploads or jobs.</p>
-        <label><input type="checkbox" checked={publishOntology} onChange={event => setPublishOntology(event.target.checked)} /> Register and publish XSD/XMI or OWL/RDF/TTL to Neo4j after policy and quality checks</label>
-        <p>{publishOntology ? 'Create ontology publishes OWL or existing RDF to Neo4j after policy and quality checks. SHACL/Both generation is available in register-only mode. Publication is confirmed only by a graph receipt.' : 'Register only: the source is retained, but Neo4j is not updated. Enable publication above to create the graph projection.'} For a restored failed job, remove the row and select the original source file again.</p>
+        <label><input type="checkbox" checked={publishOntology} onChange={event => setPublishOntology(event.target.checked)} /> Register XSD/XMI or OWL/RDF/TTL and request Neo4j publication after review and approval</label>
+        <p>{publishOntology ? 'Create ontology registers a draft. Expand Review, approve and publish this ontology to Neo4j beneath its imported row: Submit for review, Approve ontology, then Publish to Neo4j. Already approved ontologies can publish after policy and quality checks. SHACL/Both generation is available in register-only mode. Publication is confirmed only by a graph receipt.' : 'Register only: the source is retained, but Neo4j is not updated. Enable publication above to create the graph projection.'} For a restored failed job, remove the row and select the original source file again.</p>
       </fieldset>
       {/* Ontology Metadata Form Modal */}
       {showMetadataForm && (
@@ -2568,6 +2585,7 @@ export default function DataImportPipeline() {
                       {countsLabel}
                     </div>
                   </div>
+
                 </div>
               );
             })}
@@ -3118,7 +3136,7 @@ export default function DataImportPipeline() {
               const status = fileStatusIndex.get(fileId) || { stage: 'upload', progress: 0 };
               const isStarted = startedFiles.has(fileId);
               const statusBadge = file.workflowId === 'ontology.create' && status.status === 'completed' && !status.error
-                ? { text: status.committed && status.registered ? 'Published' : 'Registered source', bg: '#E8F5E9', color: C.green }
+                ? { text: status.approvalRequired ? 'Approval required' : status.committed && status.registered ? 'Published' : 'Registered source', bg: status.approvalRequired ? '#FFF3E0' : '#E8F5E9', color: status.approvalRequired ? '#935600' : C.green }
                 : getStatusBadge(status.stage, status.progress, status.error, status.backendStage, status.committing, status.commitError, status.commitPhase);
 
               return (
@@ -3527,6 +3545,21 @@ export default function DataImportPipeline() {
                       <X size={12} />
                     </button>
                   </div>
+                  {file.workflowId === 'ontology.create' && status.registered && status.taskId && (
+                    <details style={{ gridColumn: '1 / -1', marginTop: 8 }} onToggle={event => {
+                      const open = event.currentTarget.open;
+                      setPublicationPanels(previous => ({ ...previous, [fileId]: open }));
+                    }}>
+                      <summary>Review, approve and publish this ontology to Neo4j</summary>
+                      {publicationPanels[fileId] && <OntologyPublicationPanel fromWorkflow ontologyId={file.ontologyId || status.taskId} onPublished={receipt => {
+                        setPipelineStatus(previous => ({ ...previous, [fileId]: {
+                          ...previous[fileId], approvalRequired: false, published: true, committed: true,
+                          message: `Ontology '${file.ontologyName}' published to Neo4j`,
+                          stats: { entities_found: receipt.resources, relationships_found: receipt.relationships },
+                        } }));
+                      }} />}
+                    </details>
+                  )}
                 </div>
               );
             })}

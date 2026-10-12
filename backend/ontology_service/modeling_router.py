@@ -13,7 +13,7 @@ from backend.depo_platform.authorization import graph_read_identity, service_wri
 
 def _modeling_identity(request: Request) -> str:
     if request.method in {"GET", "HEAD", "OPTIONS"}:
-        return "public-read"
+        return graph_read_identity(request)
     return service_write_identity(request, token_env="ONTOLOGY_APPROVAL_TOKEN", default_actor="ontology-modeler")
 
 

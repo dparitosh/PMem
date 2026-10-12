@@ -143,28 +143,33 @@ class EngineeringWorkflow:
             # Re-read authoritative state: registration may have reused an artifact
             # whose lifecycle was changed after the original request.
             with dependency_stage("publication_lifecycle_check", request_id):
-                current = await client.get(f"{self.ontology_url}/ontologies/{registration['ontology_id']}")
+                current = await client.get(f"{self.ontology_url}/ontologies/{registration['ontology_id']}",
+                    headers=service_bearer_headers("GRAPH_READ_TOKEN", service_name="ontology metadata", endpoint=self.ontology_url))
                 current.raise_for_status()
                 metadata = current.json()
                 if metadata.get("lifecycle_status") in {"draft", "in_review"}:
                     return {**result, "status": "approval_required",
-                            "message": "Ontology registered. Review and approve it before publishing from Ontology Junction."}
+                            "message": "Ontology registered. Review and approve it using the import row publication controls."}
                 self._require_publishable(metadata)
+            # The ontology service holds the lifecycle lock and publishes the retained
+            # artifact. Never bypass that lock with a direct graph write.
             published = await self._request(client, 'graph_publication', request_id,
-                f"{self.graph_url}/graph/ontologies/publish",
-                data={"ontology_id": registration["ontology_id"], "prefix": data["prefix"],
-                      "publication_id": data["source"].split(":", 1)[1]},
-                files={"artifact": (f"{PathName.safe_stem(filename)}.ttl", ontology["turtle"].encode("utf-8"), "text/turtle")},
+                f"{self.ontology_url}/ontologies/{registration['ontology_id']}/publish",
+                json={"approved_by": "engineering-ingestion"},
                 timeout=self.publication_timeout,
-                headers=service_bearer_headers("GRAPH_PUBLICATION_TOKEN", service_name="the graph publication API", endpoint=self.graph_url),
             )
             published.raise_for_status()
-            receipt = published.json()
+            publication = published.json()
+            receipt = publication.get("receipt") if isinstance(publication, dict) else None
             if (not isinstance(receipt, dict)
-                    or receipt.get("status") != "success"
+                    or publication.get("status") != "published"
+                    or publication.get("ontology_id") != registration["ontology_id"]
+                    or receipt.get("status") not in {"success", "published"}
                     or receipt.get("ontology_id") != registration["ontology_id"]
-                    or any(type(receipt.get(field)) is not int or receipt[field] < 0 for field in ('resources', 'relationships'))
-                    or receipt.get("publication_id") != data["source"].split(":", 1)[1]):
+                    or not publication.get("publication_id")
+                    or receipt.get("publication_id") != publication["publication_id"]
+                    or receipt.get("current") is False
+                    or any(type(receipt.get(field)) is not int or receipt[field] < 0 for field in ('resources', 'relationships'))):
                 raise RuntimeError("Graph publication outcome is unverified: receipt identity did not match. Reconcile publication before retrying.")
             result["status"] = "published"
             result["graph_publication"] = receipt

@@ -39,3 +39,33 @@ test('changing credentials clears the pending approver identity', async () => {
   fireEvent(window, new Event('depo:credentials-changed'));
   expect(screen.getByPlaceholderText('Your approval identity')).toHaveValue('');
 });
+
+
+test('shows publication in progress until the request settles', async () => {
+  vi.spyOn(apiClient, 'get').mockImplementation(url => Promise.resolve({data: url.endsWith('/publication') ? {status:'not_published'} : {lifecycle_status:'approved'}}));
+  let finish;
+  vi.spyOn(apiClient, 'post').mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  render(<OntologyPublicationPanel ontologyId="progress-demo" />);
+  const button = await screen.findByText('Publish to Neo4j');
+  fireEvent.change(screen.getByPlaceholderText('Your approval identity'), {target:{value:'reviewer'}});
+  fireEvent.click(button);
+  await screen.findByText(/Publishing to Neo4j. Waiting for a verified graph receipt/);
+  expect(button).toBeDisabled();
+  finish({data:{}});
+  await waitFor(() => expect(button).toBeEnabled());
+});
+
+
+test('workflow links to the selected ontology and records the correct review origin', async () => {
+  vi.spyOn(apiClient, 'get').mockImplementation(url => Promise.resolve({data: url.endsWith('/publication') ? {status:'not_published'} : {lifecycle_status:'draft'}}));
+  const post = vi.spyOn(apiClient, 'post').mockResolvedValue({data:{}});
+  render(<OntologyPublicationPanel ontologyId="schema set&v2" fromWorkflow />);
+  const link = screen.getByRole('link', {name:'View in Ontology Junction'});
+  expect(link).toHaveAttribute('href', '#/ontology?target=schema%20set%26v2');
+  expect(link).toHaveAttribute('target', '_blank');
+  const submit = await screen.findByText('Submit for review');
+  fireEvent.change(screen.getByPlaceholderText('Your approval identity'), {target:{value:'reviewer'}});
+  fireEvent.click(submit);
+  expect(post).toHaveBeenCalledWith(expect.stringContaining('/transition'), expect.objectContaining({reason:'Reviewed from import workflow'}), expect.any(Object));
+  await waitFor(() => expect(submit).toBeEnabled());
+});

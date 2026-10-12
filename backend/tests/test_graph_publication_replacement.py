@@ -6,7 +6,8 @@ from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from rdflib import Graph, Literal
+from rdflib import Graph, Literal, URIRef
+from backend.depo_platform.network import bounded_timeout_seconds
 from rdflib.compare import to_canonical_graph
 from rdflib.namespace import OWL, RDF, RDFS
 
@@ -20,7 +21,11 @@ class PublicationReplacementTests(unittest.TestCase):
                 return SimpleNamespace(consume=lambda: None)
         tx = Transaction()
         driver = SimpleNamespace(session=lambda **kw: nullcontext(SimpleNamespace(execute_write=lambda fn: fn(tx))))
-        scope = dict(Graph=Graph, Literal=Literal, OWL=OWL, RDF=RDF, RDFS=RDFS,
+        self.transaction_timeouts = []
+        def unit_of_work(*, timeout):
+            self.transaction_timeouts.append(timeout)
+            return lambda fn: fn
+        scope = dict(unit_of_work=unit_of_work, bounded_timeout_seconds=bounded_timeout_seconds, URIRef=URIRef, Graph=Graph, Literal=Literal, OWL=OWL, RDF=RDF, RDFS=RDFS,
                      to_canonical_graph=to_canonical_graph, json=json, datetime=datetime, timezone=timezone, Any=object)
         tree = ast.parse(Path('backend/graph_service/neo4j_publisher.py').read_text(encoding='utf-8'))
         node = next(method for cls in tree.body if isinstance(cls, ast.ClassDef) for method in cls.body if getattr(method, 'name', '') == 'publish_turtle')
@@ -47,3 +52,11 @@ class PublicationReplacementTests(unittest.TestCase):
         self.assertFalse(any('DETACH DELETE' in query for query in queries))
         self.assertTrue(any('receipt.current = false' in query for query in queries))
         self.assertTrue(any('ON CREATE SET receipt.published_at' in query for query in queries))
+
+    def test_publication_has_transaction_deadline_and_removes_obsolete_requirement_label(self):
+        publish, calls = self.publisher()
+        publish(b'<urn:a> <urn:p> <urn:b> .')
+        self.assertEqual(len(self.transaction_timeouts), 1)
+        self.assertGreater(self.transaction_timeouts[0], 0)
+        self.assertLessEqual(self.transaction_timeouts[0], 3600)
+        self.assertTrue(any('ELSE [1] END | REMOVE node:Requirement' in query for query, _ in calls))
